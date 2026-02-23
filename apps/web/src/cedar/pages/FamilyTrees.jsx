@@ -5,6 +5,7 @@ import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
 import { getToken } from "../lib/helpers.js";
+import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./family-trees.css";
 
 function getCurrentUserId() {
@@ -194,7 +195,7 @@ export default function FamilyTrees() {
           </div>
         </section>
 
-        {state.loading && <div className="ft-status">Loading family trees…</div>}
+        {state.loading && <CedarSkeleton.Grid count={4} />}
         {!state.loading && state.error && <div className="ft-status ft-error">{state.error}</div>}
 
         {!state.loading && !state.error && view.total === 0 && (

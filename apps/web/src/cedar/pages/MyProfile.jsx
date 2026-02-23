@@ -7,6 +7,7 @@ import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
 import { getMe, API_BASE } from "../lib/api";
 import { authHeaders, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
+import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
 
@@ -81,7 +82,7 @@ function PhotosMosaic({ userId }) {
   return (
     <aside className="p1-card p1-photos-card">
       <h2 className="p1-h2">Photos Posted</h2>
-      {loading && <div className="p1-empty">Loading…</div>}
+      {loading && <CedarSkeleton.Lines lines={3} />}
       {!loading && items.length === 0 && <div className="p1-empty">No photos yet.</div>}
       {!!items.length && (
         <div className="p1-mosaic">
@@ -145,7 +146,7 @@ function RelatedProfilesCard({ targetUserId }) {
   return (
     <aside className="p1-card p1-suggest-card">
       <h2 className="p1-h2">Related Profiles</h2>
-      {loading && <div className="p1-empty">Loading…</div>}
+      {loading && <CedarSkeleton.Lines lines={3} />}
       {!loading && items.length === 0 && <div className="p1-empty">No related profiles yet.</div>}
       {!!items.length && (
         <ul className="p1-suggest-list">

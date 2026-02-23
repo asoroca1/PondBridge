@@ -25,7 +25,8 @@ import { env } from "../config/env.js";
 import {
   sendBulkTransactionalEmail,
   sendInviteEmail,
-  sendTransactionalEmail
+  sendTransactionalEmail,
+  sendAccessDecisionEmail
 } from "../services/email.js";
 import { getTenantAnalyticsSnapshot } from "../services/analytics.js";
 import { createInviteRecord } from "../services/invites.js";
@@ -48,6 +49,7 @@ import {
 } from "../services/billing.js";
 import { normalizeBillingPlan } from "../services/billingState.js";
 import { hashPassword } from "../utils/auth.js";
+import { sanitizeText, sanitizeHtmlContent } from "../utils/sanitize.js";
 
 const router = Router({ mergeParams: true });
 const csvUpload = multer({
@@ -779,7 +781,7 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
   const patch = {};
   const assignString = (key) => {
     if (Object.prototype.hasOwnProperty.call(incoming, key)) {
-      patch[key] = String(incoming[key] || "").trim();
+      patch[key] = sanitizeText(String(incoming[key] || "").trim());
     }
   };
 
@@ -884,7 +886,7 @@ router.post("/members/bulk-action", async (req, res) => {
   }
 
   if (action === "flag") {
-    const reason = String(req.body?.reason || "").trim();
+    const reason = sanitizeText(String(req.body?.reason || "").trim());
     await ProfileModel.updateMany(
       req.tenant._id,
       { _id: { $in: ids } },
@@ -1023,12 +1025,14 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     approvedUserId: user._id
   });
 
-  const actorReplyTo = normalizeEmail(req.user.email || "");
-  await sendTransactionalEmail({
-    to: email,
-    subject: `You're approved for ${req.tenant.name}`,
-    text: `Your request to join ${req.tenant.name} was approved. You can now log in to your network.`,
-    ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {})
+  const approvedFirstName = String(
+    request.firstName || request.profilePayload?.firstName || ""
+  ).trim();
+  await sendAccessDecisionEmail({
+    tenant: req.tenant,
+    email,
+    firstName: approvedFirstName,
+    approved: true
   }).catch((error) => {
     console.warn("[email] approval notification failed", {
       tenantId: String(req.tenant._id || ""),
@@ -1046,7 +1050,7 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
 
 router.post("/members/approvals/:requestId/deny", async (req, res) => {
   const requestId = String(req.params.requestId || "").trim();
-  const reason = String(req.body?.reason || "").trim();
+  const reason = sanitizeText(String(req.body?.reason || "").trim());
 
   const pending = await AccessRequestModel.findOne(req.tenant._id, {
     _id: requestId,
@@ -1070,15 +1074,15 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
   });
 
   if (isEmail(request.email)) {
-    const message = reason
-      ? `Reason: ${reason}\n\nYou can reach out to the camp director for details.`
-      : "You can reach out to the camp director for details.";
-    const actorReplyTo = normalizeEmail(req.user.email || "");
-    await sendTransactionalEmail({
-      to: request.email,
-      subject: `Update on your ${req.tenant.name} request`,
-      text: `Your request to join ${req.tenant.name} was not approved.\n\n${message}`,
-      ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {})
+    const deniedFirstName = String(
+      request.firstName || request.profilePayload?.firstName || ""
+    ).trim();
+    await sendAccessDecisionEmail({
+      tenant: req.tenant,
+      email: request.email,
+      firstName: deniedFirstName,
+      approved: false,
+      reason
     }).catch((error) => {
       console.warn("[email] denial notification failed", {
         tenantId: String(req.tenant._id || ""),
@@ -1136,8 +1140,8 @@ router.post("/email/recipients-preview", async (req, res) => {
 });
 
 router.post("/email/test", async (req, res) => {
-  const subject = String(req.body?.subject || "").trim();
-  const body = String(req.body?.body || "").trim();
+  const subject = sanitizeText(String(req.body?.subject || "").trim());
+  const body = sanitizeHtmlContent(String(req.body?.body || "").trim());
   const user = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   const to = normalizeEmail(user?.email || req.user.email || "");
   const replyTo = normalizeEmail(user?.email || req.user.email || "");
@@ -1171,8 +1175,8 @@ router.post("/email/test", async (req, res) => {
 });
 
 router.post("/email/send", emailSendLimiter, async (req, res) => {
-  const subject = String(req.body?.subject || "").trim();
-  const body = String(req.body?.body || "").trim();
+  const subject = sanitizeText(String(req.body?.subject || "").trim());
+  const body = sanitizeHtmlContent(String(req.body?.body || "").trim());
   const targeting = normalizeTargeting(req.body?.targeting || {});
   const scheduledForRaw = String(req.body?.scheduledFor || "").trim();
   const scheduledFor = scheduledForRaw ? new Date(scheduledForRaw) : null;
@@ -1454,7 +1458,7 @@ router.patch("/features", async (req, res) => {
     const currentContent = resolveContent(req.tenant);
     update.content = {
       ...currentContent,
-      newsletterName: String(incomingNames.newsletter || "").trim() || "Newsletter"
+      newsletterName: sanitizeText(String(incomingNames.newsletter || "").trim()) || "Newsletter"
     };
   }
 
@@ -1624,9 +1628,9 @@ router.patch("/settings/identity", async (req, res) => {
   const content = resolveContent(req.tenant);
   const draft = resolveDraft(req.tenant);
   const next = {
-    networkDisplayName: String(req.body?.networkName ?? (content.networkDisplayName || "")).trim(),
-    welcomeHeadline: String(req.body?.tagline ?? (content.welcomeHeadline || "")).trim(),
-    aboutText: String(req.body?.aboutText ?? (content.aboutText || "")).trim(),
+    networkDisplayName: sanitizeText(String(req.body?.networkName ?? (content.networkDisplayName || "")).trim()),
+    welcomeHeadline: sanitizeText(String(req.body?.tagline ?? (content.welcomeHeadline || "")).trim()),
+    aboutText: sanitizeText(String(req.body?.aboutText ?? (content.aboutText || "")).trim()),
     contactEmail: normalizeEmail(req.body?.contactEmail ?? (content.contactEmail || "")),
     supportUrl: String(req.body?.websiteUrl ?? (content.supportUrl || "")).trim()
   };
@@ -1884,7 +1888,7 @@ router.post("/settings/pause", async (req, res) => {
 });
 
 router.post("/settings/delete-request", async (req, res) => {
-  const note = String(req.body?.note || "").trim();
+  const note = sanitizeText(String(req.body?.note || "").trim());
   const currentDeletionRequest = req.tenant.deletionRequest || {};
   const tenant = await TenantModel.update(req.tenant._id, {
     deletionRequest: {

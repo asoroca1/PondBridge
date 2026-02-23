@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
 import { requireFeature } from "../middleware/requireFeature.js";
 import { FamilyTreeModel, RELATIONSHIP_TYPES, UserModel, ProfileModel } from "../db/models/index.js";
+import { sanitizeText } from "../utils/sanitize.js";
 
 const router = Router({ mergeParams: true });
 
@@ -39,7 +40,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const name = String(req.body.name || "").trim();
+  const name = sanitizeText(String(req.body.name || "").trim());
   const members = Array.isArray(req.body.members) ? req.body.members : [];
 
   if (!name) {
@@ -121,7 +122,7 @@ router.put("/:treeId", async (req, res) => {
   }
 
   const patch = {};
-  patch.name = String(req.body.name || tree.name).trim();
+  patch.name = sanitizeText(String(req.body.name || tree.name).trim());
   if (Array.isArray(req.body.members) && req.body.members.length > 0) {
     patch.members = req.body.members.map((member) => ({
       profileId: member.profileId,

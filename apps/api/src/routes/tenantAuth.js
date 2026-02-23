@@ -11,7 +11,7 @@ import {
 import { requireTenant } from "../middleware/tenantContext.js";
 import { comparePassword, hashPassword, sanitizeUser, signToken } from "../utils/auth.js";
 import { env } from "../config/env.js";
-import { sendMagicLinkEmail } from "../services/email.js";
+import { sendMagicLinkEmail, sendWelcomeEmail } from "../services/email.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { clearAuthCookie, setAuthCookie } from "../utils/authCookie.js";
 import { normalizeSignupMode } from "../services/onboarding.js";
@@ -325,6 +325,18 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
       method: prelaunchDirectorInvite ? "invite" : canBootstrapDirector ? "director_bootstrap" : signupMode
     }
   }).catch(() => {});
+
+  await sendWelcomeEmail({
+    tenant: req.tenant,
+    firstName,
+    email
+  }).catch((error) => {
+    console.warn("[email] welcome email failed", {
+      tenantId: String(req.tenant._id || ""),
+      email,
+      message: String(error?.message || "")
+    });
+  });
 
   return res.status(201).json({
     token,

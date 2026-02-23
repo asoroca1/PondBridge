@@ -20,6 +20,7 @@ import { createPresignedUpload } from "../services/objectStorage.js";
 import { findInviteByOpaqueToken } from "../services/invites.js";
 import { cityKey, geocodeCity } from "../utils/geocode.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
+import { sanitizeText } from "../utils/sanitize.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
@@ -777,15 +778,15 @@ router.put("/me", async (req, res) => {
   }
 
   const update = {
-    firstName: req.body.firstName !== undefined ? String(req.body.firstName || "").trim() : undefined,
-    lastName: req.body.lastName !== undefined ? String(req.body.lastName || "").trim() : undefined,
-    cityState: parseCityStateFromBody(req.body),
+    firstName: req.body.firstName !== undefined ? sanitizeText(String(req.body.firstName || "").trim()) : undefined,
+    lastName: req.body.lastName !== undefined ? sanitizeText(String(req.body.lastName || "").trim()) : undefined,
+    cityState: sanitizeText(parseCityStateFromBody(req.body)),
     roleAtCamp: Array.isArray(req.body.roles)
-      ? String(req.body.roles[0] || "").trim()
-      : String(req.body.roleAtCamp || profile.roleAtCamp || "").trim(),
-    highSchool: req.body.highSchool !== undefined ? String(req.body.highSchool || "").trim() : undefined,
-    industry: req.body.industry !== undefined ? String(req.body.industry || "").trim() : undefined,
-    bio: req.body.bio !== undefined ? String(req.body.bio || "").trim() : undefined,
+      ? sanitizeText(String(req.body.roles[0] || "").trim())
+      : sanitizeText(String(req.body.roleAtCamp || profile.roleAtCamp || "").trim()),
+    highSchool: req.body.highSchool !== undefined ? sanitizeText(String(req.body.highSchool || "").trim()) : undefined,
+    industry: req.body.industry !== undefined ? sanitizeText(String(req.body.industry || "").trim()) : undefined,
+    bio: req.body.bio !== undefined ? sanitizeText(String(req.body.bio || "").trim()) : undefined,
     avatarUrl: String(req.body.uploads?.photoUrl || req.body.photoUrl || profile.avatarUrl || "").trim(),
     socials:
       req.body.social || req.body.socials
@@ -1004,7 +1005,7 @@ router.get("/activity", async (req, res) => {
 });
 
 router.post("/activity", async (req, res) => {
-  const message = String(req.body?.message || "").trim();
+  const message = sanitizeText(String(req.body?.message || "").trim());
   if (!message) {
     return res.status(400).json({ error: { code: "MESSAGE_REQUIRED", message: "Message is required" } });
   }
@@ -1147,7 +1148,7 @@ router.post("/photos", async (req, res) => {
     ownerName,
     imageUrl,
     thumbUrl: String(req.body?.thumbUrl || imageUrl).trim(),
-    caption: String(req.body?.caption || "").trim(),
+    caption: sanitizeText(String(req.body?.caption || "").trim()),
     captionMentions: Array.isArray(req.body?.captionMentions) ? req.body.captionMentions : []
   });
 
@@ -1172,7 +1173,7 @@ router.get("/photos/:id/comments", async (req, res) => {
 
 router.post("/photos/:id/comments", async (req, res) => {
   const id = String(req.params.id || "");
-  const text = String(req.body?.text || "").trim();
+  const text = sanitizeText(String(req.body?.text || "").trim());
   if (!isValidObjectId(id)) {
     return res.status(400).json({ error: { code: "INVALID_ID", message: "Invalid photo id" } });
   }
@@ -1329,7 +1330,7 @@ router.post("/conversations/group", async (req, res) => {
     });
   }
 
-  const name = String(req.body?.name || "").trim();
+  const name = sanitizeText(String(req.body?.name || "").trim());
   const now = new Date();
   const convo = await ConversationModel.create({
     tenantId: req.tenant._id,
@@ -1387,7 +1388,7 @@ router.patch("/conversations/:id", async (req, res) => {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Only group owner can rename" } });
   }
 
-  const name = String(req.body?.name || "").trim();
+  const name = sanitizeText(String(req.body?.name || "").trim());
   const updated = await ConversationModel.update(convo._id, { name: name || convo.name });
 
   return res.json(conversationToClient(updated, req.user.id));
@@ -1486,7 +1487,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
 
   const kind = normalizeMessageKind(req.body?.kind);
-  const text = String(req.body?.text || "").trim();
+  const text = sanitizeText(String(req.body?.text || "").trim());
   const media = asMedia(req.body?.media);
   if (kind === "text" && !text) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Text required" } });
@@ -1609,7 +1610,7 @@ router.delete("/conversations/:id", async (req, res) => {
 });
 
 router.post("/forums", async (req, res) => {
-  const name = String(req.body?.name || "").trim();
+  const name = sanitizeText(String(req.body?.name || "").trim());
   if (!name) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Name required" } });
   }
@@ -1728,7 +1729,7 @@ router.post("/forums/:id/posts", async (req, res) => {
   }
 
   const kind = normalizeMessageKind(req.body?.kind);
-  const text = String(req.body?.text || "").trim();
+  const text = sanitizeText(String(req.body?.text || "").trim());
   const media = asMedia(req.body?.media);
   if (kind === "text" && !text) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Text required" } });
@@ -1853,7 +1854,7 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     return res.status(400).json({ error: { code: "INVALID_FILE", message: "Only PDF uploads are supported" } });
   }
 
-  const season = String(req.body?.season || "").trim();
+  const season = sanitizeText(String(req.body?.season || "").trim());
   const year = Number(req.body?.year || 0);
   if (!season || !Number.isFinite(year) || year < 1900 || year > 2100) {
     return res.status(400).json({ error: { code: "INVALID_METADATA", message: "Season and valid year are required" } });
@@ -1861,7 +1862,7 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
 
   const newsletterLabel =
     String(req.tenant?.content?.newsletterName || "Newsletter").trim() || "Newsletter";
-  const title = String(req.body?.title || "").trim() || `${season} ${year} ${newsletterLabel}`;
+  const title = sanitizeText(String(req.body?.title || "").trim()) || `${season} ${year} ${newsletterLabel}`;
   const created = await NewsletterModel.create({
     tenantId: req.tenant._id,
     title,

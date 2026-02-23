@@ -17,6 +17,7 @@ import searchRoutes from "./routes/search.js";
 import tenantsRoutes from "./routes/tenants.js";
 import stripeWebhookRoutes from "./routes/stripeWebhook.js";
 import legacyCedarCompatRoutes from "./routes/legacyCedarCompat.js";
+import { csrfProtection } from "./middleware/csrfProtection.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { patchExpressAsyncErrors } from "./utils/patchExpressAsyncErrors.js";
 import { getEmailServiceStatus } from "./services/email.js";
@@ -57,6 +58,7 @@ app.use((req, res, next) => {
 
 app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRoutes);
 app.use(express.json({ limit: env.API_JSON_LIMIT }));
+app.use(csrfProtection);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

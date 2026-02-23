@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import CedarBackground from "../components/CedarBackground";
+import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./photo-stream.css";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
@@ -612,7 +613,7 @@ export default function PhotoStream() {
           </div>
 
           <div ref={loaderRef} style={{ height: 1 }} />
-          {loading && <div className="ps-loading">Loading…</div>}
+          {loading && <CedarSkeleton.Lines lines={2} />}
           {!loading && items.length === 0 && (
             <div className="ps-empty">{`📷 No photos yet - be the first to share a ${campName} memory.`}</div>
           )}

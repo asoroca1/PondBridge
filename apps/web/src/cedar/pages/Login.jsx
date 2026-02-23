@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignIn } from "@clerk/clerk-react";
 import Navbar1 from "../components/Navbar1";
 import { API_BASE } from "../lib/api";
@@ -74,6 +74,9 @@ function LoginScaffold({
                 >
                   {sendingMagicLink ? "Sending magic link..." : "Email magic link"}
                 </button>
+                <Link to="../forgot-password" className="login1-forgot" style={{ fontSize: "0.88rem" }}>
+                  Forgot password?
+                </Link>
               </>
             ) : (
               <p className="login1-forgot">Password reset and verification are managed by Clerk.</p>

@@ -4,6 +4,7 @@ import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import AppShell from "./components/AppShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import DirectorOnboardingCommandCenterPage from "./pages/DirectorOnboardingCommandCenterPage.jsx";
 import DirectorClaimPage from "./pages/DirectorClaimPage.jsx";
 import DirectorCreateAccountPage from "./pages/DirectorCreateAccountPage.jsx";
@@ -42,6 +43,7 @@ import {
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import CedarHomePage from "./cedar/pages/Home.jsx";
 import CedarLoginPage from "./cedar/pages/Login.jsx";
+import CedarForgotPasswordPage from "./cedar/pages/ForgotPassword.jsx";
 import CedarCreateProfileWizardPage from "./cedar/pages/CreateProfileWizard.jsx";
 import CedarMainHomePage from "./cedar/pages/MainHome.jsx";
 import CedarMyProfilePage from "./cedar/pages/MyProfile.jsx";
@@ -194,9 +196,11 @@ function TenantScopeRoutes() {
 
   return (
     <AppShell>
+      <ErrorBoundary level="page">
       <Routes>
         <Route index element={onboardingIncomplete ? <DirectorClaimPage /> : <CedarHomePage />} />
         <Route path="login" element={<CedarLoginPage />} />
+        <Route path="forgot-password" element={<CedarForgotPasswordPage />} />
         <Route path="create-account" element={<CedarCreateProfileWizardPage />} />
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
         <Route path="request-access" element={<TenantAccessPendingPage />} />
@@ -395,6 +399,7 @@ function TenantScopeRoutes() {
 
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
+      </ErrorBoundary>
     </AppShell>
   );
 }
@@ -455,7 +460,7 @@ export default function App() {
           <Route path="/super">
             <Route index element={<Navigate to="login" replace />} />
             <Route path="login" element={<SuperLoginPage />} />
-            <Route element={<SuperShellLayout />}>
+            <Route element={<ErrorBoundary level="page"><SuperShellLayout /></ErrorBoundary>}>
               <Route path="dashboard" element={<SuperPlatformPulsePage />} />
               <Route path="tenants" element={<SuperTenantsPage />} />
 

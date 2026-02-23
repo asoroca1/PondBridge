@@ -16,6 +16,7 @@ import {
   Pin as PinIcon,
   X as XIcon,
 } from "lucide-react";
+import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./main-home.css";
 
 /* ================= helpers ================= */
@@ -184,7 +185,7 @@ function RelatedProfilesCard({ targetUserId }) {
       <div className="card-head">
         <h3>Related Profiles</h3>
       </div>
-      {loading && <div className="p1-empty">Loading…</div>}
+      {loading && <CedarSkeleton.Lines lines={3} />}
       {!loading && items.length === 0 && <div className="p1-empty">No related profiles yet.</div>}
       {!!items.length && (
         <ul className="p1-suggest-list">

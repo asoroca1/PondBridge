@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
 import { UserModel, ProfileModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
+import { sanitizeText } from "../utils/sanitize.js";
 
 const router = Router({ mergeParams: true });
 
@@ -31,21 +32,21 @@ router.put("/me", async (req, res) => {
   }
 
   const update = {
-    firstName: String(req.body.firstName || "").trim(),
-    lastName: String(req.body.lastName || "").trim(),
+    firstName: sanitizeText(String(req.body.firstName || "").trim()),
+    lastName: sanitizeText(String(req.body.lastName || "").trim()),
     emails: Array.isArray(req.body.emails) ? req.body.emails : undefined,
     phones: Array.isArray(req.body.phones) ? req.body.phones : undefined,
-    cityState: String(req.body.cityState || "").trim(),
-    roleAtCamp: String(req.body.roleAtCamp || "").trim(),
-    highSchool: String(req.body.highSchool || "").trim(),
+    cityState: sanitizeText(String(req.body.cityState || "").trim()),
+    roleAtCamp: sanitizeText(String(req.body.roleAtCamp || "").trim()),
+    highSchool: sanitizeText(String(req.body.highSchool || "").trim()),
     colleges: Array.isArray(req.body.colleges) ? req.body.colleges : undefined,
     collegeYears: Array.isArray(req.body.collegeYears) ? req.body.collegeYears : undefined,
     currentJobs: Array.isArray(req.body.currentJobs) ? req.body.currentJobs : undefined,
     pastJobs: Array.isArray(req.body.pastJobs) ? req.body.pastJobs : undefined,
-    industry: String(req.body.industry || "").trim(),
+    industry: sanitizeText(String(req.body.industry || "").trim()),
     socials: req.body.socials || undefined,
     avatarUrl: String(req.body.avatarUrl || "").trim(),
-    bio: String(req.body.bio || "").trim()
+    bio: sanitizeText(String(req.body.bio || "").trim())
   };
 
   const cleanUpdate = Object.fromEntries(

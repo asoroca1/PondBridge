@@ -1,5 +1,12 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
+import {
+  inviteTemplate,
+  magicLinkTemplate,
+  welcomeTemplate,
+  accessApprovedTemplate,
+  accessDeniedTemplate
+} from "./emailTemplates.js";
 
 let transport = null;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -512,25 +519,51 @@ export async function sendBulkTransactionalEmail({
 
 export async function sendInviteEmail({ tenant, email, token, roleToAssign, expiresAt }) {
   const link = inviteLink({ tenantSlug: tenant.slug, token, email });
-  const subject = `You are invited to ${tenant.name} on PondBridge`;
-  const text = [
-    `You were invited to join ${tenant.name}.`,
-    `Assigned role: ${roleToAssign}.`,
-    `This invite expires on ${new Date(expiresAt).toISOString()}.`,
-    `Create your account: ${link}`
-  ].join("\n");
+  const { subject, text, html } = inviteTemplate({
+    tenantName: tenant.name,
+    link,
+    roleToAssign,
+    expiresAt
+  });
 
-  return sendTransactionalEmail({ to: email, subject, text });
+  return sendTransactionalEmail({ to: email, subject, text, html });
 }
 
 export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
   const link = magicLink({ tenantSlug: tenant.slug, token });
-  const subject = `Your ${tenant.name} sign-in link`;
-  const text = [
-    `Use this one-time sign-in link for ${tenant.name}.`,
-    `This link expires on ${new Date(expiresAt).toISOString()}.`,
-    `Sign in: ${link}`
-  ].join("\n");
+  const { subject, text, html } = magicLinkTemplate({
+    tenantName: tenant.name,
+    link,
+    expiresAt
+  });
 
-  return sendTransactionalEmail({ to: email, subject, text });
+  return sendTransactionalEmail({ to: email, subject, text, html });
+}
+
+export async function sendWelcomeEmail({ tenant, firstName, email }) {
+  const { subject, text, html } = welcomeTemplate({
+    tenantName: tenant.name,
+    firstName
+  });
+
+  return sendTransactionalEmail({ to: email, subject, text, html });
+}
+
+export async function sendAccessDecisionEmail({ tenant, email, firstName, approved, reason, loginUrl }) {
+  if (approved) {
+    const resolvedLoginUrl = loginUrl || `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/login`;
+    const { subject, text, html } = accessApprovedTemplate({
+      tenantName: tenant.name,
+      firstName,
+      loginUrl: resolvedLoginUrl
+    });
+    return sendTransactionalEmail({ to: email, subject, text, html });
+  }
+
+  const { subject, text, html } = accessDeniedTemplate({
+    tenantName: tenant.name,
+    firstName,
+    reason
+  });
+  return sendTransactionalEmail({ to: email, subject, text, html });
 }

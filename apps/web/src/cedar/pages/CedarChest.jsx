@@ -8,6 +8,7 @@ import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, fmtDate } from "../lib/helpers.js";
+import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./cedar-chest.css";
 import { Newspaper } from "lucide-react";
 
@@ -171,7 +172,7 @@ export default function CedarChest() {
         <section className="cc-layout">
           {/* LEFT: newsletter stream OR status — this column is the anchor for alignment */}
           <div className="cc-left">
-            {loading && <div className="cc-status">Loading newsletters…</div>}
+            {loading && <CedarSkeleton.Lines lines={4} />}
             {err && !loading && (
               <div className="cc-error">Couldn’t load newsletters: {err}</div>
             )}

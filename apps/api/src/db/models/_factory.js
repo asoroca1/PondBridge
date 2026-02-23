@@ -28,6 +28,14 @@ function toDocs(rows, colMap) {
   return rows.map((r) => toDoc(r, colMap));
 }
 
+function normalizeFilterOperand(value) {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) {
+    return value.map((item) => (item instanceof Date ? item.toISOString() : item));
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 // Filter translation — converts Mongoose-style filters to Supabase query
 // ---------------------------------------------------------------------------
@@ -74,19 +82,20 @@ function applyFilter(query, filter, colMap) {
         query = query.is(jsonbPath, null);
       } else if (typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
         for (const [op, operand] of Object.entries(value)) {
+          const normalizedOperand = normalizeFilterOperand(operand);
           switch (op) {
-            case "$eq":  query = query.filter(jsonbPath, "eq", operand);  break;
+            case "$eq":  query = query.filter(jsonbPath, "eq", normalizedOperand);  break;
             case "$ne":
-            case "$neq": query = query.filter(jsonbPath, "neq", operand); break;
-            case "$gt":  query = query.filter(jsonbPath, "gt", operand);  break;
-            case "$gte": query = query.filter(jsonbPath, "gte", operand); break;
-            case "$lt":  query = query.filter(jsonbPath, "lt", operand);  break;
-            case "$lte": query = query.filter(jsonbPath, "lte", operand); break;
+            case "$neq": query = query.filter(jsonbPath, "neq", normalizedOperand); break;
+            case "$gt":  query = query.filter(jsonbPath, "gt", normalizedOperand);  break;
+            case "$gte": query = query.filter(jsonbPath, "gte", normalizedOperand); break;
+            case "$lt":  query = query.filter(jsonbPath, "lt", normalizedOperand);  break;
+            case "$lte": query = query.filter(jsonbPath, "lte", normalizedOperand); break;
             default: break;
           }
         }
       } else {
-        query = query.filter(jsonbPath, "eq", value);
+        query = query.filter(jsonbPath, "eq", normalizeFilterOperand(value));
       }
       continue;
     }
@@ -97,46 +106,47 @@ function applyFilter(query, filter, colMap) {
     if (value === null || value === undefined) {
       query = query.is(col, null);
     } else if (typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
-      // Operator object, e.g. { $in: [...], $gte: date }
+        // Operator object, e.g. { $in: [...], $gte: date }
       for (const [op, operand] of Object.entries(value)) {
+        const normalizedOperand = normalizeFilterOperand(operand);
         switch (op) {
           case "$eq":
-            query = query.eq(col, operand);
+            query = query.eq(col, normalizedOperand);
             break;
           case "$ne":
           case "$neq":
-            query = query.neq(col, operand);
+            query = query.neq(col, normalizedOperand);
             break;
           case "$gt":
-            query = query.gt(col, operand);
+            query = query.gt(col, normalizedOperand);
             break;
           case "$gte":
-            query = query.gte(col, operand);
+            query = query.gte(col, normalizedOperand);
             break;
           case "$lt":
-            query = query.lt(col, operand);
+            query = query.lt(col, normalizedOperand);
             break;
           case "$lte":
-            query = query.lte(col, operand);
+            query = query.lte(col, normalizedOperand);
             break;
           case "$in":
-            query = query.in(col, operand);
+            query = query.in(col, normalizedOperand);
             break;
           case "$nin":
-            query = query.not(col, "in", `(${operand.join(",")})`);
+            query = query.not(col, "in", `(${normalizedOperand.join(",")})`);
             break;
           case "$contains":
-            query = query.contains(col, operand);
+            query = query.contains(col, normalizedOperand);
             break;
           case "$ilike":
-            query = query.ilike(col, operand);
+            query = query.ilike(col, normalizedOperand);
             break;
           default:
             break;
         }
       }
     } else {
-      query = query.eq(col, value);
+      query = query.eq(col, normalizeFilterOperand(value));
     }
   }
   return query;

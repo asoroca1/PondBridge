@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { clerkUiEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
 import "@pondbridge/ui/theme.css";
 import "./styles.css";
@@ -23,4 +24,10 @@ const appTree = clerkUiEnabled() ? (
   baseTree
 );
 
-ReactDOM.createRoot(document.getElementById("root")).render(<React.StrictMode>{appTree}</React.StrictMode>);
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <ErrorBoundary level="app">
+      {appTree}
+    </ErrorBoundary>
+  </React.StrictMode>
+);
