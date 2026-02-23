@@ -4443,38 +4443,19 @@ img[draggable="false"] { -webkit-user-drag: none; }
 }
 
 .super-login-subtitle {
-  margin: 10px 0 16px;
+  margin: 10px 0 12px;
   color: #4c6481;
-  font-size: 1rem;
+  font-size: 1.02rem;
 }
 
 .super-login-card {
   width: min(460px, 100%);
   margin-top: 8px;
-  padding: 16px 18px 14px;
+  padding: 12px 14px;
   background: #fff;
   border-radius: var(--radius-xl);
   border: 1px solid #d6e2f0;
   box-shadow: var(--shadow-xl);
-}
-
-.super-login-panel-head {
-  margin-bottom: 10px;
-  text-align: left;
-}
-
-.super-login-panel-title {
-  margin: 0;
-  color: #18395f;
-  font-size: clamp(1.08rem, 2vw, 1.26rem);
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.super-login-panel-subtitle {
-  margin: 5px 0 0;
-  color: #58708d;
-  font-size: 0.9rem;
 }
 
 .super-login-form {

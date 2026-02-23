@@ -45,18 +45,24 @@ function ClerkSuperLoginPage() {
       <div className="super-login-content">
         <p className="super-login-kicker">PondBridge</p>
         <h1>Super Admin Console</h1>
-        <p className="super-login-subtitle">Sign in with Clerk to access the super admin console.</p>
+        <p className="super-login-subtitle">Secure sign-in for platform administration.</p>
         <div className="super-login-card">
-          <div className="super-login-panel-head">
-            <h2 className="super-login-panel-title">Sign in to PondBridge Super Admin</h2>
-            <p className="super-login-panel-subtitle">Only authorized platform admins can access this console.</p>
-          </div>
           <SignIn
             routing="virtual"
             fallbackRedirectUrl="/super/dashboard"
             forceRedirectUrl="/super/dashboard"
             withSignUp={false}
             appearance={{
+              variables: {
+                colorPrimary: "#0b2f57",
+                colorText: "#17375e",
+                colorTextSecondary: "#5d738d",
+                colorInputBackground: "#ffffff",
+                colorInputText: "#17375e",
+                colorNeutral: "#d4dfec",
+                borderRadius: "12px",
+                fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
+              },
               elements: {
                 rootBox: {
                   width: "100%"
@@ -76,8 +82,42 @@ function ClerkSuperLoginPage() {
                 },
                 headerSubtitle: {
                   display: "none"
+                },
+                socialButtonsBlockButton: {
+                  borderColor: "#d4dfec",
+                  boxShadow: "none",
+                  minHeight: "44px"
+                },
+                dividerLine: {
+                  background: "#dce6f3"
+                },
+                dividerText: {
+                  color: "#7286a0",
+                  fontSize: "0.84rem"
+                },
+                formFieldLabel: {
+                  color: "#17375e",
+                  fontWeight: "700"
+                },
+                formFieldInput: {
+                  borderColor: "#d4dfec",
+                  boxShadow: "none",
+                  minHeight: "44px"
+                },
+                formButtonPrimary: {
+                  background: "#0b2f57",
+                  boxShadow: "none",
+                  minHeight: "44px",
+                  fontWeight: "700"
+                },
+                footerAction: {
+                  display: "none"
+                },
+                footer: {
+                  display: "none"
                 }
-              }
+              },
+              unsafe_disableDevelopmentModeWarnings: true
             }}
           />
         </div>
