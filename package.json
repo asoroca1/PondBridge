@@ -10,6 +10,8 @@
     "dev": "concurrently -k -n api,web -c green,blue \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm --workspace @pondbridge/api run dev",
     "dev:web": "npm --workspace @pondbridge/web run dev",
+    "cloudflare:setup": "node scripts/cloudflareSetup.mjs",
+    "cloudflare:setup:dry": "node scripts/cloudflareSetup.mjs --dry-run",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",

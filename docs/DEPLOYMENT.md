@@ -51,3 +51,24 @@ For production rollout with wildcard subdomains and cookie/JWT strategy, see `do
 - `app.pondbridgealumni.com` -> Web host (Vercel target)
 - `*.pondbridgealumni.com` -> Web host (same Vercel target as `app`)
 - `pondbridgealumni.com` and `www.pondbridgealumni.com` -> your preferred web entrypoint (`app` or marketing site)
+
+## Cloudflare API Automation (Optional)
+The repo includes a script to upsert DNS records and optionally bind Pages domains.
+
+1. Copy root env template:
+   ```bash
+   cp .env.example .env
+   ```
+2. Fill in Cloudflare values in root `.env`.
+3. Run dry-run first:
+   ```bash
+   npm run cloudflare:setup:dry
+   ```
+4. Apply changes:
+   ```bash
+   npm run cloudflare:setup
+   ```
+
+Notes:
+- `CLOUDFLARE_API_ORIGIN` is your backend provider hostname (for example `pondbridge-api.onrender.com`), not `api.pondbridgealumni.com`.
+- `CLOUDFLARE_WEB_CNAME_TARGET` for Cloudflare Pages is typically `<project>.pages.dev`.
