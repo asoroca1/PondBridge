@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth as useClerkAuth, useClerk } from "@clerk/clerk-react";
 import { clearAuthStorage, readAuthFromStorage, writeAuthToStorage } from "../lib/storage.js";
 import { requestJson } from "../lib/http.js";
@@ -10,6 +10,168 @@ import {
 } from "../lib/authMode.js";
 
 const AuthContext = createContext(null);
+
+const IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
+const TAB_ID_KEY = "pondbridgeActiveTabId";
+const ACTIVE_TABS_KEY = "pondbridgeActiveTabs";
+const FORCE_RELOGIN_KEY = "pondbridgeForceReloginOnOpen";
+const TAB_HEARTBEAT_MS = 15000;
+const TAB_STALE_MS = 120000;
+const AUTO_LOGOUT_MINUTES = Number(import.meta.env.VITE_AUTO_LOGOUT_MINUTES || 30);
+const AUTO_LOGOUT_TIMEOUT_MS =
+  Number.isFinite(AUTO_LOGOUT_MINUTES) && AUTO_LOGOUT_MINUTES > 0
+    ? AUTO_LOGOUT_MINUTES * 60 * 1000
+    : 0;
+const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
+  String(import.meta.env.VITE_FORCE_LOGOUT_ON_TAB_CLOSE || "true")
+    .trim()
+    .toLowerCase()
+);
+
+function createTabId() {
+  return `tab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function parseJson(raw, fallback) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readActiveTabs() {
+  if (typeof window === "undefined") return {};
+  const now = Date.now();
+  const tabs = parseJson(window.localStorage.getItem(ACTIVE_TABS_KEY), {});
+  const next = {};
+  for (const [id, seenAt] of Object.entries(tabs || {})) {
+    const time = Number(seenAt || 0);
+    if (Number.isFinite(time) && now - time <= TAB_STALE_MS) {
+      next[id] = time;
+    }
+  }
+  return next;
+}
+
+function writeActiveTabs(tabs) {
+  if (typeof window === "undefined") return;
+  const entries = Object.entries(tabs || {});
+  if (!entries.length) {
+    window.localStorage.removeItem(ACTIVE_TABS_KEY);
+    return;
+  }
+  window.localStorage.setItem(ACTIVE_TABS_KEY, JSON.stringify(Object.fromEntries(entries)));
+}
+
+function useTabCloseRelogin({ enabled, ready, isAuthenticated, onLogout }) {
+  const isFreshTabRef = useRef(false);
+  const forcedRef = useRef(false);
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return undefined;
+
+    const existingTabId = window.sessionStorage.getItem(TAB_ID_KEY);
+    isFreshTabRef.current = !existingTabId;
+    const tabId = existingTabId || createTabId();
+    if (!existingTabId) {
+      window.sessionStorage.setItem(TAB_ID_KEY, tabId);
+    }
+
+    const heartbeat = () => {
+      const tabs = readActiveTabs();
+      tabs[tabId] = Date.now();
+      writeActiveTabs(tabs);
+    };
+
+    let closed = false;
+    const markClosed = () => {
+      if (closed) return;
+      closed = true;
+      const tabs = readActiveTabs();
+      delete tabs[tabId];
+      const remaining = Object.keys(tabs).length;
+      writeActiveTabs(tabs);
+      if (remaining === 0) {
+        window.localStorage.setItem(FORCE_RELOGIN_KEY, "1");
+      }
+    };
+
+    heartbeat();
+    const intervalId = window.setInterval(heartbeat, TAB_HEARTBEAT_MS);
+    window.addEventListener("pagehide", markClosed);
+    window.addEventListener("beforeunload", markClosed);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("pagehide", markClosed);
+      window.removeEventListener("beforeunload", markClosed);
+    };
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled || !ready || typeof window === "undefined" || forcedRef.current) return;
+
+    const shouldForce = window.localStorage.getItem(FORCE_RELOGIN_KEY) === "1";
+    if (!shouldForce) return;
+
+    if (!isFreshTabRef.current) {
+      window.localStorage.removeItem(FORCE_RELOGIN_KEY);
+      return;
+    }
+
+    forcedRef.current = true;
+    Promise.resolve(isAuthenticated ? onLogout?.() : null).finally(() => {
+      window.localStorage.removeItem(FORCE_RELOGIN_KEY);
+    });
+  }, [enabled, isAuthenticated, onLogout, ready]);
+}
+
+function useIdleLogout({ enabled, isAuthenticated, onLogout }) {
+  const timeoutRef = useRef(null);
+  const logoutInFlightRef = useRef(false);
+
+  const clearTimer = useCallback(() => {
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const schedule = useCallback(() => {
+    if (!enabled || !isAuthenticated || AUTO_LOGOUT_TIMEOUT_MS <= 0) return;
+    clearTimer();
+    timeoutRef.current = window.setTimeout(() => {
+      if (logoutInFlightRef.current) return;
+      logoutInFlightRef.current = true;
+      Promise.resolve(onLogout?.()).finally(() => {
+        logoutInFlightRef.current = false;
+      });
+    }, AUTO_LOGOUT_TIMEOUT_MS);
+  }, [clearTimer, enabled, isAuthenticated, onLogout]);
+
+  useEffect(() => {
+    if (!enabled || !isAuthenticated || AUTO_LOGOUT_TIMEOUT_MS <= 0) {
+      clearTimer();
+      return undefined;
+    }
+
+    const onActivity = () => schedule();
+    schedule();
+    for (const eventName of IDLE_EVENTS) {
+      window.addEventListener(eventName, onActivity, { passive: true });
+    }
+    document.addEventListener("visibilitychange", onActivity);
+
+    return () => {
+      clearTimer();
+      for (const eventName of IDLE_EVENTS) {
+        window.removeEventListener(eventName, onActivity);
+      }
+      document.removeEventListener("visibilitychange", onActivity);
+    };
+  }, [clearTimer, enabled, isAuthenticated, schedule]);
+}
 
 function normalizeUserShape(user) {
   if (!user) return null;
@@ -56,6 +218,19 @@ function LegacyAuthProvider({ children }) {
     setUser(null);
     clearAuthStorage();
   }, []);
+
+  useTabCloseRelogin({
+    enabled: FORCE_RELOGIN_ON_TAB_CLOSE,
+    ready: true,
+    isAuthenticated: Boolean(token),
+    onLogout: logout
+  });
+
+  useIdleLogout({
+    enabled: true,
+    isAuthenticated: Boolean(token),
+    onLogout: logout
+  });
 
   const refreshSession = useCallback(async () => {
     return {
@@ -204,6 +379,19 @@ function ClerkBackedAuthProvider({ children }) {
       // no-op
     }
   }, [clearLocalAuth, signOut]);
+
+  useTabCloseRelogin({
+    enabled: FORCE_RELOGIN_ON_TAB_CLOSE,
+    ready: Boolean(isLoaded),
+    isAuthenticated: Boolean(isSignedIn),
+    onLogout: logout
+  });
+
+  useIdleLogout({
+    enabled: Boolean(isLoaded),
+    isAuthenticated: Boolean(isSignedIn),
+    onLogout: logout
+  });
 
   const value = useMemo(
     () => ({
