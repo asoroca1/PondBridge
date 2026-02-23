@@ -1,7 +1,8 @@
+import { useCallback } from "react";
 import { Navigate } from "react-router-dom";
 import { SignIn } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
-import { useAuth } from "../context/AuthContext.jsx";
+import { noteTabLoginIntent, useAuth } from "../context/AuthContext.jsx";
 import { clerkConfigError, clerkUiEnabled } from "../lib/authMode.js";
 
 function roleSetFromUser(user) {
@@ -20,6 +21,9 @@ function superDestinationFromUser(user) {
 
 function ClerkSuperLoginPage() {
   const { token, user, isReady, logout } = useAuth();
+  const handleAuthInteraction = useCallback(() => {
+    noteTabLoginIntent();
+  }, []);
 
   if (token && hasSuperConsoleRole(user)) {
     return <Navigate to={superDestinationFromUser(user)} replace />;
@@ -46,7 +50,12 @@ function ClerkSuperLoginPage() {
         <p className="super-login-kicker">PondBridge</p>
         <h1>Super Admin Console</h1>
         <p className="super-login-subtitle">Secure sign-in for platform administration.</p>
-        <div className="super-login-card">
+        <div
+          className="super-login-card"
+          onMouseDownCapture={handleAuthInteraction}
+          onTouchStartCapture={handleAuthInteraction}
+          onKeyDownCapture={handleAuthInteraction}
+        >
           <SignIn
             routing="virtual"
             fallbackRedirectUrl="/super/dashboard"

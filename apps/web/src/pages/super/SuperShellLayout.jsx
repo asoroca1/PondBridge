@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
@@ -58,7 +58,7 @@ const FINANCE_NAV = [
 ];
 
 export default function SuperShellLayout() {
-  const { token, user, logout, authProvider, isReady, refreshSession, getAuthToken } = useAuth();
+  const { token, user, logout, authProvider, isReady, getAuthToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -67,7 +67,6 @@ export default function SuperShellLayout() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [notifications, setNotifications] = useState({ criticalCount: 0, items: [] });
   const [topbarError, setTopbarError] = useState("");
-  const sessionSyncAttemptedRef = useRef(false);
 
   const role = roleFromUser(user);
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -83,19 +82,6 @@ export default function SuperShellLayout() {
     const campName = String(params.get("camp") || "").trim();
     return campName ? `Viewing: ${campName}` : "Viewing: Global";
   }, [location.search]);
-
-  useEffect(() => {
-    if (!clerkMode || !isReady || !token) {
-      sessionSyncAttemptedRef.current = false;
-      return;
-    }
-    if (sessionSyncAttemptedRef.current) return;
-
-    sessionSyncAttemptedRef.current = true;
-    refreshSession().catch(() => {
-      // Keep route-level auth guard behavior; avoid request loops.
-    });
-  }, [clerkMode, isReady, refreshSession, token]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;
@@ -184,11 +170,25 @@ export default function SuperShellLayout() {
   }
 
   if (!isReady) {
-    return null;
+    return (
+      <section className="super-shell-boot">
+        <div className="super-shell-boot-card">
+          <h2>Preparing Super Admin Console</h2>
+          <p>Loading secure session...</p>
+        </div>
+      </section>
+    );
   }
 
   if (clerkMode && token && !user) {
-    return null;
+    return (
+      <section className="super-shell-boot">
+        <div className="super-shell-boot-card">
+          <h2>Preparing Super Admin Console</h2>
+          <p>Finalizing your admin session...</p>
+        </div>
+      </section>
+    );
   }
 
   if (!token) {

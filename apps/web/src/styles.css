@@ -4886,6 +4886,36 @@ img[draggable="false"] { -webkit-user-drag: none; }
   overflow-y: auto;
 }
 
+.super-shell-boot {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #eef3fb;
+}
+
+.super-shell-boot-card {
+  width: min(560px, 100%);
+  border-radius: 18px;
+  border: 1px solid #d7e1ee;
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(15, 36, 63, 0.12);
+  padding: 24px 26px;
+}
+
+.super-shell-boot-card h2 {
+  margin: 0;
+  color: #17375e;
+  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-size: clamp(1.35rem, 2vw, 1.65rem);
+}
+
+.super-shell-boot-card p {
+  margin: 8px 0 0;
+  color: #5b7391;
+  font-size: 1rem;
+}
+
 .super-main .pb-card {
   border-radius: 18px;
   border: 1px solid #d7e1ee;
