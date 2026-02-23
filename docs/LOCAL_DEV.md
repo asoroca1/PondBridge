@@ -54,7 +54,7 @@ npm --workspace @pondbridge/api run seed
 ```
 
 This creates:
-- Tenant: `Camp Cedar` (`camp-cedar`)
+- Tenant: `Camp Cedar` (`cedar`)
 - Tenant admin: `admin@campcedar.local` / `Pondbridge123!`
 - Sample users: `camper1@campcedar.local`, `staff1@campcedar.local` / `Pondbridge123!`
 - Super admin: `superadmin@pondbridge.local` / `SuperAdmin123!`
@@ -76,11 +76,11 @@ npm run dev
 ```
 
 ## 6. Open app
-- Tenant app: [http://localhost:5173/t/camp-cedar](http://localhost:5173/t/camp-cedar)
+- Tenant app: [http://localhost:5173/t/cedar](http://localhost:5173/t/cedar)
 - Super admin login: [http://localhost:5173/super/login](http://localhost:5173/super/login)
 
 If port `5173` is already in use (for example by your marketing site), Vite will start PondBridge on `5174` automatically. In that case use:
-- Tenant app: [http://localhost:5174/t/camp-cedar](http://localhost:5174/t/camp-cedar)
+- Tenant app: [http://localhost:5174/t/cedar](http://localhost:5174/t/cedar)
 - Super admin login: [http://localhost:5174/super/login](http://localhost:5174/super/login)
 
 ## 7. Useful commands

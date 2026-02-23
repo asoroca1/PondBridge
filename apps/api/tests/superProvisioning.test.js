@@ -53,6 +53,24 @@ async function loginSuper() {
 }
 
 describe("Super provisioning", () => {
+  test("tenant slug strips leading camp prefix for domain keys", async () => {
+    await createSuperAdmin();
+    const superToken = await loginSuper();
+
+    const createTenant = await request(app)
+      .post("/api/super/tenants")
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        name: "Camp Cedar",
+        slug: "camp-cedar",
+        planTier: "base"
+      });
+
+    expect(createTenant.status).toBe(201);
+    expect(createTenant.body.tenant.slug).toBe("cedar");
+    expect(createTenant.body.tenant.customDomain).toBe("cedar.pondbridge.test");
+  });
+
   test("super admin can create tenant + director invite and director can register before launch", async () => {
     await createSuperAdmin();
     const superToken = await loginSuper();

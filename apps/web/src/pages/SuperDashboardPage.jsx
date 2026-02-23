@@ -186,7 +186,7 @@ export default function SuperDashboardPage() {
               Camp URL key
               <Input
                 value={form.slug}
-                placeholder="camp-cedar"
+                placeholder="cedar"
                 onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
               />
             </label>

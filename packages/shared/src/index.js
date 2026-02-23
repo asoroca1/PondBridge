@@ -133,10 +133,20 @@ export const onboardingPatchSchema = z.object({
 });
 
 export function normalizeSlug(value = "") {
-  return String(value)
+  const normalized = String(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+
+  if (!normalized) return "";
+
+  const withoutCampPrefix = normalized.replace(/^(camp-)+/, "");
+  if (withoutCampPrefix) return withoutCampPrefix;
+
+  // "camp" alone should not become a tenant slug.
+  if (normalized === "camp") return "";
+
+  return normalized;
 }

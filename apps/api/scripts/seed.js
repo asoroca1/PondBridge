@@ -94,7 +94,7 @@ async function run() {
 
   const tenantData = {
     name: "Camp Cedar",
-    slug: "camp-cedar",
+    slug: "cedar",
     status: "active",
     planTier: "premium",
     billingStatus: "active",
@@ -160,10 +160,13 @@ async function run() {
   };
 
   // Upsert the tenant
-  const existingTenant = await TenantModel.findBySlug("camp-cedar");
+  const existingTenant = await TenantModel.findBySlug("cedar");
+  const legacyTenant = existingTenant ? null : await TenantModel.findBySlug("camp-cedar");
   const tenant = existingTenant
     ? await TenantModel.update(existingTenant._id, tenantData)
-    : await TenantModel.create(tenantData);
+    : legacyTenant
+      ? await TenantModel.update(legacyTenant._id, tenantData)
+      : await TenantModel.create(tenantData);
 
   const tenantAdminPassword = await hashPassword("Pondbridge123!");
   const memberPassword = await hashPassword("Pondbridge123!");
@@ -232,7 +235,7 @@ async function run() {
   await UserModel.update(memberTwo._id, { profileId: memberTwoProfile._id });
 
   console.log("Seed complete");
-  console.log("Tenant URL: http://localhost:5173/t/camp-cedar");
+  console.log("Tenant URL: http://localhost:5173/t/cedar");
   console.log("Tenant admin login: admin@campcedar.local / Pondbridge123!");
   console.log("Member login: camper1@campcedar.local / Pondbridge123!");
   console.log("Super admin login: superadmin@pondbridge.local / SuperAdmin123!");

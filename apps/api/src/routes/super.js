@@ -730,21 +730,72 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
 });
 
 router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
+  const existingTenant = await TenantModel.findById(req.params.tenantId);
+  if (!existingTenant) {
+    return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
+  }
+
   const update = {};
 
   if (req.body.status) update.status = req.body.status;
   if (req.body.planTier) update.planTier = req.body.planTier;
   if (req.body.onboardingStatus) update.onboardingStatus = req.body.onboardingStatus;
   if (req.body.theme) update.theme = req.body.theme;
+  if (req.body.customDomain) update.customDomain = String(req.body.customDomain).trim().toLowerCase();
+
+  if (Object.prototype.hasOwnProperty.call(req.body, "slug")) {
+    const nextSlug = normalizeSlug(String(req.body.slug || "").trim());
+    if (!nextSlug) {
+      return res.status(400).json({
+        error: { code: "INVALID_INPUT", message: "slug is required" }
+      });
+    }
+    if (isReservedSubdomain(nextSlug)) {
+      return res.status(400).json({
+        error: { code: "INVALID_INPUT", message: "slug is reserved. Choose a different camp slug." }
+      });
+    }
+    if (nextSlug !== existingTenant.slug) {
+      const duplicate = await TenantModel.findBySlug(nextSlug);
+      if (duplicate && String(duplicate._id) !== String(existingTenant._id)) {
+        return res.status(409).json({
+          error: { code: "TENANT_EXISTS", message: `Tenant slug '${nextSlug}' already exists` }
+        });
+      }
+
+      update.slug = nextSlug;
+
+      // Keep domain in sync only when tenant still uses the default generated domain.
+      if (!Object.prototype.hasOwnProperty.call(update, "customDomain")) {
+        const currentDefaultDomain = defaultTenantDomain(existingTenant.slug);
+        const existingCustomDomain = String(existingTenant.customDomain || "").trim().toLowerCase();
+        if (!existingCustomDomain || existingCustomDomain === currentDefaultDomain) {
+          update.customDomain = defaultTenantDomain(nextSlug);
+        }
+      }
+    }
+  }
 
   const tenant = await TenantModel.update(req.params.tenantId, update);
   if (!tenant) {
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
   }
 
+  let domainProvisioning = { status: "skipped", reason: "unchanged" };
+  if (Object.prototype.hasOwnProperty.call(update, "customDomain")) {
+    try {
+      domainProvisioning = await provisionTenantDomain(update.customDomain);
+    } catch (error) {
+      domainProvisioning = {
+        status: "error",
+        message: String(error?.message || "Cloudflare provisioning failed")
+      };
+    }
+  }
+
   await writeAudit(tenant._id, req.user.id, "super_tenant_updated", { update });
 
-  res.json({ tenant });
+  res.json({ tenant, domainProvisioning });
 });
 
 router.post("/tenants/:tenantId/provision-domain", requireSuperMutation, async (req, res) => {

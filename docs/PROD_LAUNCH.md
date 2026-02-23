@@ -90,7 +90,7 @@ For `pondbridgealumni.com`:
 
 Result:
 
-- `camp-cedar.pondbridgealumni.com` resolves to web app.
+- `cedar.pondbridgealumni.com` resolves to web app.
 - web app derives tenant slug from subdomain.
 
 ## 7) SSL Strategy
@@ -132,12 +132,12 @@ Use `lvh.me` for wildcard local subdomains:
 1. In `apps/api/.env` set:
    - `APP_BASE_DOMAIN=lvh.me`
    - `FRONTEND_ORIGIN=http://app.lvh.me:5173`
-   - `FRONTEND_ORIGINS=http://app.lvh.me:5173,http://camp-cedar.lvh.me:5173`
+   - `FRONTEND_ORIGINS=http://app.lvh.me:5173,http://cedar.lvh.me:5173`
    - `AUTH_TOKEN_MODE=hybrid`
 2. Run:
    - `npm run dev`
 3. Open:
-   - `http://camp-cedar.lvh.me:5173`
+   - `http://cedar.lvh.me:5173`
 
 ## 11) Minimal Launch Checklist
 

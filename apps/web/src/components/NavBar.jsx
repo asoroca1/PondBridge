@@ -90,7 +90,7 @@ function ListAvatar({ person }) {
 export default function NavBar() {
   const params = useParams();
   const { slug: contextSlug, tenant } = useTenant();
-  const slug = params.slug || contextSlug || "camp-cedar";
+  const slug = params.slug || contextSlug || "cedar";
   const location = useLocation();
   const navigate = useNavigate();
   const { token, user, isAuthenticated, logout } = useAuth();
@@ -119,7 +119,7 @@ export default function NavBar() {
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const content = resolveTenantContent(tenant);
   const merchShopUrl = String(content.merchShopUrl || "").trim() || "https://thecampspot.com/camphome.aspx";
-  const logoUrl = branding.logoUrl || (slug === "camp-cedar" ? cedarLogo : "");
+  const logoUrl = branding.logoUrl || (slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "");
   const fallbackLogoInitial = initialsFrom(tenant?.name || "Camp");
   const avatarSrc = getPhotoUrl(user) || defaultProfile;
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
