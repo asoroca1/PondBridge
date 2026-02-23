@@ -676,8 +676,10 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
       createdByUserId: req.user.id
     });
 
-    inviteLink = `/t/${tenant.slug}/director-claim`;
-    directorClaimLink = network.directorClaimUrl || inviteLink;
+    inviteLink = `/t/${tenant.slug}/director-claim?inviteToken=${encodeURIComponent(invite.token)}`;
+    directorClaimLink = network.directorClaimUrl
+      ? `${network.directorClaimUrl}?inviteToken=${encodeURIComponent(invite.token)}`
+      : inviteLink;
     directorInvite = {
       id: String(invite._id),
       email: invite.email,
