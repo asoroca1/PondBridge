@@ -1,15 +1,19 @@
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
+import { useTenant } from "../context/TenantContext.jsx";
 
 export default function DirectorClaimPage() {
-  const { slug } = useParams();
+  const { slug: paramSlug } = useParams();
+  const { slug: tenantSlug } = useTenant();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
+  const slug = String(paramSlug || tenantSlug || "").trim().toLowerCase();
   const token = String(searchParams.get("token") || searchParams.get("inviteToken") || "").trim();
+  const createAccountBasePath = slug ? `/t/${slug}/director-create-account` : "/director-create-account";
   const createAccountPath = token
-    ? `/t/${slug}/director-create-account?inviteToken=${encodeURIComponent(token)}`
-    : `/t/${slug}/director-create-account`;
+    ? `${createAccountBasePath}?inviteToken=${encodeURIComponent(token)}`
+    : createAccountBasePath;
 
   return (
     <section className="product-claim-page">

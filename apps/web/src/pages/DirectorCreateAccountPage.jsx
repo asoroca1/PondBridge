@@ -321,11 +321,12 @@ export default function DirectorCreateAccountPage() {
     );
   }
 
-  const { slug } = useParams();
+  const { slug: paramSlug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, token: authToken, user } = useAuth();
   const { tenant } = useTenant();
+  const slug = String(paramSlug || tenant?.slug || "").trim().toLowerCase();
   const initialBrandColor = useMemo(() => DEFAULT_SETUP_BRAND, []);
 
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
