@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
@@ -67,6 +67,7 @@ export default function SuperShellLayout() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [notifications, setNotifications] = useState({ criticalCount: 0, items: [] });
   const [topbarError, setTopbarError] = useState("");
+  const sessionSyncAttemptedRef = useRef(false);
 
   const role = roleFromUser(user);
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -84,10 +85,17 @@ export default function SuperShellLayout() {
   }, [location.search]);
 
   useEffect(() => {
-    if (!isReady || !token) return;
-    if (!["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase())) return;
-    refreshSession().catch(() => {});
-  }, [authProvider, isReady, refreshSession, token]);
+    if (!clerkMode || !isReady || !token) {
+      sessionSyncAttemptedRef.current = false;
+      return;
+    }
+    if (user || sessionSyncAttemptedRef.current) return;
+
+    sessionSyncAttemptedRef.current = true;
+    refreshSession().catch(() => {
+      // Keep route-level auth guard behavior; avoid request loops.
+    });
+  }, [clerkMode, isReady, refreshSession, token, user]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;

@@ -11,6 +11,31 @@ function mergeRoleSet(existing = [], required = []) {
   return [...new Set([...(existing || []), ...(required || [])].map((role) => String(role || "").trim()).filter(Boolean))];
 }
 
+function toEpoch(value) {
+  const n = new Date(value || 0).getTime();
+  return Number.isFinite(n) ? n : 0;
+}
+
+function uniqueById(items = []) {
+  const map = new Map();
+  for (const item of items || []) {
+    const id = String(item?._id || item?.id || "").trim();
+    if (!id || map.has(id)) continue;
+    map.set(id, item);
+  }
+  return [...map.values()];
+}
+
+function rolesChanged(current = [], next = []) {
+  const a = new Set((current || []).map((role) => String(role || "").trim()).filter(Boolean));
+  const b = new Set((next || []).map((role) => String(role || "").trim()).filter(Boolean));
+  if (a.size !== b.size) return true;
+  for (const role of b) {
+    if (!a.has(role)) return true;
+  }
+  return false;
+}
+
 function isSuperAllowlisted(identity = {}) {
   const email = normalizeEmail(identity.email || "");
   const clerkUserId = String(identity.clerkUserId || "").trim();
@@ -47,6 +72,40 @@ async function globalSuperAdminCount() {
   });
 }
 
+async function coalesceGlobalUsers(candidates = [], identity = {}) {
+  const unique = uniqueById(candidates).sort((a, b) => toEpoch(a.createdAt) - toEpoch(b.createdAt));
+  if (!unique.length) return null;
+
+  let primary = unique[0];
+  const duplicates = unique.slice(1);
+  if (!duplicates.length) return primary;
+
+  const mergedRoles = mergeRoleSet([], unique.flatMap((item) => item.roles || []));
+  const activeStatus = unique.some((item) => item.status === "active") ? "active" : primary.status || "active";
+  const preferredEmail = normalizeEmail(identity.email || primary.email || "");
+  const preferredClerkUserId = String(identity.clerkUserId || primary.clerkUserId || "").trim();
+
+  const patch = {};
+  if (preferredEmail && primary.email !== preferredEmail) patch.email = preferredEmail;
+  if (preferredClerkUserId && primary.clerkUserId !== preferredClerkUserId) patch.clerkUserId = preferredClerkUserId;
+  if (rolesChanged(primary.roles || [], mergedRoles)) patch.roles = mergedRoles;
+  if (activeStatus && primary.status !== activeStatus) patch.status = activeStatus;
+
+  if (Object.keys(patch).length > 0) {
+    primary = await UserModel.update(primary._id, patch);
+  }
+
+  for (const duplicate of duplicates) {
+    try {
+      await UserModel.delete(duplicate._id);
+    } catch {
+      // Best-effort cleanup: do not block auth if a duplicate row cannot be deleted.
+    }
+  }
+
+  return primary;
+}
+
 export async function ensureGlobalSuperAdmin(identity = {}) {
   const clerkUserId = String(identity.clerkUserId || "").trim();
   const email = normalizeEmail(identity.email || "");
@@ -55,10 +114,11 @@ export async function ensureGlobalSuperAdmin(identity = {}) {
 
   if (!clerkUserId && !email) return null;
 
-  let existing = clerkUserId ? await UserModel.findGlobalByClerkUserId(clerkUserId) : null;
-  if (!existing && email) {
-    existing = await UserModel.findOne({ tenantId: null, email });
-  }
+  const [matchesByClerkUserId, matchesByEmail] = await Promise.all([
+    clerkUserId ? UserModel.find({ tenantId: null, clerkUserId }) : Promise.resolve([]),
+    email ? UserModel.find({ tenantId: null, email }) : Promise.resolve([])
+  ]);
+  let existing = await coalesceGlobalUsers([...matchesByClerkUserId, ...matchesByEmail], identity);
 
   const shouldBootstrap =
     allowlisted ||

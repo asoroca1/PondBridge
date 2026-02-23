@@ -17,51 +17,53 @@ const COLUMNS = {
 
 const base = createModel("users", COLUMNS);
 
+async function queryFirstUser(query) {
+  const { data, error } = await query.order("created_at", { ascending: true }).limit(1);
+  if (error) throw error;
+  return toDoc((data || [])[0], COLUMNS);
+}
+
 export const UserModel = {
   ...base,
 
   async findByEmail(tenantId, email) {
-    const { data, error } = await getSupabaseAdmin()
+    return queryFirstUser(
+      getSupabaseAdmin()
       .from("users")
       .select("*")
       .eq("tenant_id", tenantId)
       .eq("email", email.toLowerCase().trim())
-      .maybeSingle();
-    if (error) throw error;
-    return toDoc(data, COLUMNS);
+    );
   },
 
   async findSuperAdmin(email) {
-    const { data, error } = await getSupabaseAdmin()
+    return queryFirstUser(
+      getSupabaseAdmin()
       .from("users")
       .select("*")
       .eq("email", email.toLowerCase().trim())
       .overlaps("roles", ["super_admin", "support_admin", "finance_admin"])
-      .maybeSingle();
-    if (error) throw error;
-    return toDoc(data, COLUMNS);
+    );
   },
 
   async findByClerkUserId(tenantId, clerkUserId) {
-    const { data, error } = await getSupabaseAdmin()
+    return queryFirstUser(
+      getSupabaseAdmin()
       .from("users")
       .select("*")
       .eq("tenant_id", tenantId)
       .eq("clerk_user_id", String(clerkUserId || "").trim())
-      .maybeSingle();
-    if (error) throw error;
-    return toDoc(data, COLUMNS);
+    );
   },
 
   async findGlobalByClerkUserId(clerkUserId) {
-    const { data, error } = await getSupabaseAdmin()
+    return queryFirstUser(
+      getSupabaseAdmin()
       .from("users")
       .select("*")
       .is("tenant_id", null)
       .eq("clerk_user_id", String(clerkUserId || "").trim())
-      .maybeSingle();
-    if (error) throw error;
-    return toDoc(data, COLUMNS);
+    );
   },
 
   async findMembershipsByClerkUserId(clerkUserId) {
