@@ -1,6 +1,7 @@
 // src/pages/ChatsAndForums.jsx
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import CedarBackground from "../components/CedarBackground";
+import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
 import { createSocket } from "../lib/socket";
 import "./chats.css";
@@ -308,17 +309,11 @@ export default function ChatAndForums() {
     <div style={{ position: "relative", minHeight: "100vh" }}>
       <CedarBackground behavior="scroll" opacity={0.9} zIndex={-1} />
       <main className="cf-main nav2-page-shell">
-        <header className="cf-header">
-          <div className="cf-head-left">
-            <div className="cf-title-row">
-              <span className="cf-title-icon">
-                <MessageSquare size={18} />
-              </span>
-              <h1 className="cf-title">Chats &amp; Forums</h1>
-            </div>
-            <p className="cf-subtitle">Direct messages, group chats, and forum posts — all in one place.</p>
-          </div>
-
+        <CedarPageHeader
+          icon={<MessageSquare size={18} />}
+          title="Chats & Forums"
+          subtitle="Direct messages, group chats, and forum posts — all in one place."
+        >
           <nav className="cf-tabs" role="tablist" aria-label="Chats & Forums">
             <button
               className={`cf-tab ${tab === "personal" ? "is-active" : ""}`}
@@ -345,7 +340,7 @@ export default function ChatAndForums() {
               <Megaphone size={16} /> Forums
             </button>
           </nav>
-        </header>
+        </CedarPageHeader>
 
         {tab === "personal" && <PersonalTab socket={socket} />}
         {tab === "groups" && <GroupsTab socket={socket} />}

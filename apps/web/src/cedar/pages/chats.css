@@ -28,10 +28,10 @@
   gap: 14px;
   background: var(--cf-card);
   border: 1px solid var(--cf-border);
-  border-radius: 18px;
+  border-radius: var(--radius-xl);
   padding: 14px 16px;
   margin: 0 0 14px;
-  box-shadow: var(--cf-shadow);
+  box-shadow: var(--shadow-sm);
 }
 
 .cf-head-left {
@@ -948,7 +948,7 @@
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     padding: 12px;
   }
 

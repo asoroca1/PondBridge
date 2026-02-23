@@ -58,6 +58,39 @@ function applyFilter(query, filter, colMap) {
       }
       continue;
     }
+    // ------------------------------------------------------------------
+    // JSONB dotted-path support (e.g. "summary.errorCount": { $gt: 0 })
+    // Splits on "." — the first segment is mapped via colMap, the rest
+    // are treated as JSONB arrow traversals (->), and operators use
+    // Supabase's raw .filter() so PostgREST handles type coercion.
+    // ------------------------------------------------------------------
+    if (key.includes(".")) {
+      const parts = key.split(".");
+      const baseCol = colMap[parts[0]];
+      if (!baseCol) continue;
+      const jsonbPath = parts.slice(1).reduce((path, seg) => `${path}->${seg}`, baseCol);
+
+      if (value === null || value === undefined) {
+        query = query.is(jsonbPath, null);
+      } else if (typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
+        for (const [op, operand] of Object.entries(value)) {
+          switch (op) {
+            case "$eq":  query = query.filter(jsonbPath, "eq", operand);  break;
+            case "$ne":
+            case "$neq": query = query.filter(jsonbPath, "neq", operand); break;
+            case "$gt":  query = query.filter(jsonbPath, "gt", operand);  break;
+            case "$gte": query = query.filter(jsonbPath, "gte", operand); break;
+            case "$lt":  query = query.filter(jsonbPath, "lt", operand);  break;
+            case "$lte": query = query.filter(jsonbPath, "lte", operand); break;
+            default: break;
+          }
+        }
+      } else {
+        query = query.filter(jsonbPath, "eq", value);
+      }
+      continue;
+    }
+
     const col = colMap[key];
     if (!col) continue;
 

@@ -5,6 +5,7 @@ import {
   resolveNewsletterLabel
 } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
+import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, fmtDate } from "../lib/helpers.js";
 import "./cedar-chest.css";
@@ -137,15 +138,11 @@ export default function CedarChest() {
       {/* background visible; keep as you last set it */}
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <main className="cc-wrap nav2-page-shell">
-      <header className="cc-header">
-        <div className="cc-head-left">
-            <div className="cc-title-row">
-            <span className="cc-title-icon"><Newspaper size={18} /></span>
-            <h1 className="cc-title">{`The ${newsletterLabel}`}</h1>
-            </div>
-            <p className="cc-subtitle">{`Seasonal PDF newsletter for the ${networkDisplayName} community.`}</p>
-        </div>
-
+      <CedarPageHeader
+        icon={<Newspaper size={18} />}
+        title={`The ${newsletterLabel}`}
+        subtitle={`Seasonal PDF newsletter for the ${networkDisplayName} community.`}
+      >
         <div className="cc-filters" role="group" aria-label="Filter newsletters">
             <label className="cc-filter">
             <div className="cc-filter-label">Season</div>
@@ -167,7 +164,7 @@ export default function CedarChest() {
             </select>
             </label>
         </div>
-        </header>
+      </CedarPageHeader>
 
 
         {/* TWO-COLUMN GRID */}

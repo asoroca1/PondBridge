@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, TreePine } from "lucide-react";
 import CedarBackground from "../components/CedarBackground";
+import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
 import { getToken } from "../lib/helpers.js";
 import "./family-trees.css";
@@ -164,20 +165,15 @@ export default function FamilyTrees() {
     <>
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <main className="ft-main nav2-page-shell">
-        <header className="ft-header">
-          <div className="ft-title-wrap">
-            <span className="ft-title-icon" aria-hidden="true">
-              <TreePine size={18} />
-            </span>
-            <div>
-              <h1 className="ft-title">Family Trees</h1>
-              <p className="ft-sub">Explore family tree containers across alumni profiles.</p>
-            </div>
-          </div>
+        <CedarPageHeader
+          icon={<TreePine size={18} />}
+          title="Family Trees"
+          subtitle="Explore family tree containers across alumni profiles."
+        >
           <Link className="btn-cedar" to="/family-trees/new">
             Create New Family Tree
           </Link>
-        </header>
+        </CedarPageHeader>
 
         <section className="ft-toolbar">
           <label htmlFor="family-tree-search" className="ft-search-label">

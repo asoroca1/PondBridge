@@ -4,6 +4,7 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import CedarBackground from "../components/CedarBackground";
+import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { MapPin } from "lucide-react";
 import { API_BASE } from "../lib/api";
 import { initialsOf } from "../lib/helpers.js";
@@ -407,17 +408,11 @@ export default function LocationMap() {
       <CedarBackground behavior="scroll" opacity={0.9} zIndex={0} />
 
       <main className="lm-main nav2-page-shell">
-        <header className="lm-header">
-          <div className="lm-head-left">
-            <div className="lm-title-row">
-              <span className="lm-title-icon">
-                <MapPin size={18} />
-              </span>
-              <h1 className="lm-title">Alumni Location Map</h1>
-            </div>
-            <p className="lm-subtitle">Explore where your alumni network lives around the world.</p>
-          </div>
-        </header>
+        <CedarPageHeader
+          icon={<MapPin size={18} />}
+          title="Alumni Location Map"
+          subtitle="Explore where your alumni network lives around the world."
+        />
 
         <section className="lm-map-card">
           <div className="lm-map" ref={mapEl} />
