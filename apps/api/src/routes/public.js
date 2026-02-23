@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { TenantModel } from "../db/models/index.js";
 import { listFeaturesForPlan } from "@pondbridge/shared";
 import {
@@ -9,11 +10,27 @@ import {
   resolveTheme
 } from "../services/onboarding.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
+import { buildBillingPublicSnapshot } from "../services/billing.js";
+import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 
 const router = Router();
 
+const publicLookupLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many lookup requests. Please slow down."
+    }
+  }
+});
+
 function isSignupEnabled(tenant) {
-  return tenant?.status === "active" && tenant?.onboardingStatus === "live";
+  if (!(tenant?.status === "active" && tenant?.onboardingStatus === "live")) return false;
+  return isTenantBillingAccessAllowed(tenant).allowed;
 }
 
 function normalizeHost(value = "") {
@@ -63,7 +80,7 @@ async function resolveTenantForPublicRequest(req) {
   };
 }
 
-router.get("/tenant-config", async (req, res, next) => {
+router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
   try {
     const { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
     if (!lookupValue) {
@@ -89,6 +106,7 @@ router.get("/tenant-config", async (req, res, next) => {
 
     const config = buildTenantConfig(tenant, { includeSensitive: false });
     const network = buildTenantUrls(tenant);
+    const billing = buildBillingPublicSnapshot(tenant);
 
     return res.json({
       id: String(tenant._id),
@@ -96,18 +114,14 @@ router.get("/tenant-config", async (req, res, next) => {
       slug: tenant.slug,
       status: tenant.status,
       planTier: tenant.planTier,
-      billingStatus: tenant.billingStatus,
-      onboardingFeeAmount: Number(tenant.onboardingFeeAmount || 0),
-      onboardingFeePaid: Boolean(tenant.onboardingFeePaid),
+      billingStatus: billing.billingStatus,
+      onboardingFeeAmount: billing.onboardingFeeAmount,
+      onboardingFeePaid: billing.onboardingFeePaid,
       customDomain: tenant.customDomain || "",
       onboardingStatus: tenant.onboardingStatus,
       addOns: tenant.addOns || [],
       network,
-      billing: {
-        billingStatus: tenant.billingStatus,
-        onboardingFeeAmount: Number(tenant.onboardingFeeAmount || 0),
-        onboardingFeePaid: Boolean(tenant.onboardingFeePaid)
-      },
+      billing,
       config,
       theme: resolveTheme(tenant),
       content: resolveContent(tenant),
@@ -123,7 +137,7 @@ router.get("/tenant-config", async (req, res, next) => {
   }
 });
 
-router.get("/tenant-status", async (req, res, next) => {
+router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
   try {
     const { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
     if (!lookupValue) {
@@ -148,12 +162,18 @@ router.get("/tenant-status", async (req, res, next) => {
     }
 
     const settings = resolveSettings(tenant);
+    const billingAccess = isTenantBillingAccessAllowed(tenant);
 
     return res.json({
       slug: tenant.slug,
       status: tenant.status,
       onboardingStatus: tenant.onboardingStatus,
       signupEnabled: isSignupEnabled(tenant),
+      billingAccess: {
+        allowed: billingAccess.allowed,
+        reason: billingAccess.reason,
+        inGrace: billingAccess.inGrace
+      },
       signupMode: normalizeSignupMode(settings.signupMode || "open")
     });
   } catch (error) {

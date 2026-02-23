@@ -23,7 +23,7 @@ function normalizeTransportError(error, path) {
   return wrapped;
 }
 
-export async function requestJson(path, { method = "GET", body, token, headers = {} } = {}) {
+export async function requestJson(path, { method = "GET", body, token, headers = {}, signal } = {}) {
   const requestHeaders = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...headers
@@ -39,6 +39,7 @@ export async function requestJson(path, { method = "GET", body, token, headers =
       method,
       headers: requestHeaders,
       credentials: "include",
+      signal,
       body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined
     });
   } catch (error) {

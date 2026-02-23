@@ -5,13 +5,21 @@ import { useTenant } from "../context/TenantContext.jsx";
 export default function ProtectedRoute({ children, role }) {
   const { slug } = useParams();
   const { slug: tenantSlug } = useTenant();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isReady, user } = useAuth();
   const effectiveSlug = slug || tenantSlug;
   const loginPath = effectiveSlug ? `/t/${effectiveSlug}/login` : "/login";
   const fallbackPath = effectiveSlug ? `/t/${effectiveSlug}/home` : "/home";
 
+  if (!isReady) {
+    return null;
+  }
+
   if (!isAuthenticated) {
     return <Navigate to={loginPath} replace />;
+  }
+
+  if (role && !user) {
+    return null;
   }
 
   if (role && !user?.roles?.includes(role) && !user?.roles?.includes("super_admin")) {

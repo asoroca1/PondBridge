@@ -3,10 +3,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveNewsletterLabel, resolveTenantContent } from "../../lib/campLabels.js";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import cedarField from "../assets/cedar-field.jpeg";
 import { API_BASE, getMe } from "../lib/api";
+import { authHeaders, initialsOf, displayName, avatarUrl } from "../lib/helpers.js";
 import {
   Users,
   MapPin,
@@ -19,13 +19,6 @@ import {
 import "./main-home.css";
 
 /* ================= helpers ================= */
-function authHeaders(json = true) {
-  const t = localStorage.getItem("token");
-  const h = {};
-  if (json) h["Content-Type"] = "application/json";
-  if (t) h["Authorization"] = `Bearer ${t}`;
-  return h;
-}
 
 function normalizeActorName(name) {
   const s = String(name || "").trim();
@@ -145,36 +138,6 @@ function useElementHeight(ref) {
 }
 
 /* ============= name/avatars ============= */
-function initialsOf(first = "", last = "", nick = "") {
-  const s = [first, nick, last].filter(Boolean).join(" ").trim();
-  return s
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() || "")
-    .join("");
-}
-function safeNickname(u = {}) {
-  const nick = String(u?.nickname || "").trim();
-  if (!nick) return "";
-  const f = String(u?.firstName || "").trim().toLowerCase();
-  const l = String(u?.lastName || "").trim().toLowerCase();
-  const n = nick.toLowerCase();
-
-  // If nickname is just a duplicate of first/last, treat it as "not set"
-  if (n === f || n === l) return "";
-  return nick;
-}
-
-function displayName(u = {}) {
-  const nick = safeNickname(u);
-  return nick
-    ? `${u.firstName || ""} "${nick}" ${u.lastName || ""}`.trim()
-    : `${u?.firstName || ""} ${u?.lastName || ""}`.trim();
-}
-
-function avatarUrl(u = {}) {
-  return u?.uploads?.photoUrl || u?.photoUrl || u?.profilePhotoUrl || "";
-}
 function topCurrentJob(u = {}) {
   const j = (u.currentJobs || [])[0];
   return j ? [j.role, j.company].filter(Boolean).join(" • ") : "";
@@ -668,7 +631,6 @@ export default function MainHome() {
   return (
     <div className="home-wrap">
       <CedarBackground behavior="fixed" opacity={1} zIndex={0} />
-      <Navbar2 />
       <div className="nav-spacer" />
       <div
         className="home-masthead"

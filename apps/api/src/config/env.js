@@ -1,10 +1,29 @@
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoEnvPath = path.resolve(__dirname, "../../../../.env");
+const apiEnvPath = path.resolve(__dirname, "../../.env");
+const isTestEnv = String(process.env.NODE_ENV || "").toLowerCase() === "test";
+
+// For local/dev/runtime we support a shared root .env.
+// In tests we skip it so suite behavior stays deterministic.
+if (!isTestEnv) {
+  dotenv.config({ path: repoEnvPath, override: false });
+}
+dotenv.config({ path: apiEnvPath, override: false });
 
 function toNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toBoundedInt(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
 }
 
 function toBoolean(value, fallback = false) {
@@ -41,6 +60,20 @@ function normalizeUrl(value = "", fallback = "") {
   }
 }
 
+function defaultEmailFromForDomain(baseDomain = "") {
+  const domain = String(baseDomain || "")
+    .trim()
+    .toLowerCase();
+  const hasPublicSuffix = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain);
+  const isLocalDomain =
+    domain === "localhost" || domain.endsWith(".localhost") || domain.endsWith(".local");
+
+  if (domain && hasPublicSuffix && !isLocalDomain) {
+    return `no-reply@${domain}`;
+  }
+  return "no-reply@pondbridge.local";
+}
+
 function assertValidChoice(name, value, allowedValues) {
   if (!allowedValues.includes(value)) {
     throw new Error(`${name} must be one of: ${allowedValues.join(", ")}.`);
@@ -55,6 +88,10 @@ const resendApiBaseUrl = normalizeUrl(
   process.env.RESEND_API_BASE_URL || "https://api.resend.com",
   "https://api.resend.com"
 );
+const appBaseDomain =
+  String(process.env.APP_BASE_DOMAIN || "pondbridgealumni.com")
+    .trim()
+    .toLowerCase() || "pondbridgealumni.com";
 const cloudflareAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
 const r2Endpoint = normalizeUrl(
   process.env.R2_ENDPOINT ||
@@ -62,9 +99,11 @@ const r2Endpoint = normalizeUrl(
   ""
 );
 const r2PublicBaseUrl = normalizeUrl(process.env.R2_PUBLIC_BASE_URL || "", "");
+const defaultEmailFrom = defaultEmailFromForDomain(appBaseDomain);
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV || "development",
+  AUTH_PROVIDER: String(process.env.AUTH_PROVIDER || "legacy").trim().toLowerCase(),
   DB_PROVIDER: "supabase",
   PORT: toNumber(process.env.PORT, 4000),
   API_JSON_LIMIT: String(process.env.API_JSON_LIMIT || "15mb").trim() || "15mb",
@@ -84,14 +123,29 @@ export const env = {
     normalizeOrigin("http://127.0.0.1:5174"),
     ...extraOrigins
   ]),
-  APP_BASE_DOMAIN: process.env.APP_BASE_DOMAIN || "pondbridgealumni.com",
+  APP_BASE_DOMAIN: appBaseDomain,
   CORS_ALLOW_SUBDOMAIN_ORIGINS: toBoolean(process.env.CORS_ALLOW_SUBDOMAIN_ORIGINS, true),
   CUSTOM_DOMAIN_ALLOWLIST: dedupe(toCsvList(process.env.CUSTOM_DOMAIN_ALLOWLIST || "")),
   TRUST_PROXY_HOPS: toNumber(process.env.TRUST_PROXY_HOPS, 1),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
   BILLING_MODE: process.env.BILLING_MODE || "auto",
+  ALLOW_MOCK_BILLING_IN_PRODUCTION: toBoolean(
+    process.env.ALLOW_MOCK_BILLING_IN_PRODUCTION,
+    false
+  ),
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
+  STRIPE_PRICE_LEGACY_ANNUAL:
+    process.env.STRIPE_PRICE_LEGACY_ANNUAL || process.env.STRIPE_PRICE_BASE || "",
+  STRIPE_PRICE_FOUNDERS_ANNUAL: process.env.STRIPE_PRICE_FOUNDERS_ANNUAL || "",
+  STRIPE_PRICE_INSTITUTIONAL_ANNUAL:
+    process.env.STRIPE_PRICE_INSTITUTIONAL_ANNUAL || process.env.STRIPE_PRICE_PREMIUM || "",
+  STRIPE_PRICE_LEGACY_ONBOARDING:
+    process.env.STRIPE_PRICE_LEGACY_ONBOARDING || process.env.STRIPE_ONBOARDING_PRICE_BASE || "",
+  STRIPE_PRICE_INSTITUTIONAL_ONBOARDING:
+    process.env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING ||
+    process.env.STRIPE_ONBOARDING_PRICE_PREMIUM ||
+    "",
   STRIPE_PRICE_BASE: process.env.STRIPE_PRICE_BASE || "",
   STRIPE_PRICE_PREMIUM: process.env.STRIPE_PRICE_PREMIUM || "",
   STRIPE_ONBOARDING_PRICE_BASE: process.env.STRIPE_ONBOARDING_PRICE_BASE || "",
@@ -103,9 +157,14 @@ export const env = {
   MOCK_BILLING_BASE_URL:
     process.env.MOCK_BILLING_BASE_URL || "https://mock-billing.pondbridge.local",
   EMAIL_MODE: String(process.env.EMAIL_MODE || "mock").trim().toLowerCase(),
-  EMAIL_FROM: process.env.EMAIL_FROM || "no-reply@pondbridge.local",
+  EMAIL_FROM: String(process.env.EMAIL_FROM || defaultEmailFrom).trim(),
   RESEND_API_KEY: process.env.RESEND_API_KEY || "",
   RESEND_API_BASE_URL: resendApiBaseUrl,
+  RESEND_REQUEST_TIMEOUT_MS: toBoundedInt(process.env.RESEND_REQUEST_TIMEOUT_MS, 12000, 1000, 60000),
+  RESEND_MAX_RETRIES: toBoundedInt(process.env.RESEND_MAX_RETRIES, 2, 0, 5),
+  RESEND_RETRY_BASE_DELAY_MS: toBoundedInt(process.env.RESEND_RETRY_BASE_DELAY_MS, 300, 0, 10000),
+  EMAIL_BROADCAST_BATCH_SIZE: toBoundedInt(process.env.EMAIL_BROADCAST_BATCH_SIZE, 40, 1, 200),
+  EMAIL_BROADCAST_MAX_RECIPIENTS: toBoundedInt(process.env.EMAIL_BROADCAST_MAX_RECIPIENTS, 500, 1, 5000),
   CLOUDFLARE_ACCOUNT_ID: cloudflareAccountId,
   CLOUDFLARE_API_TOKEN: String(process.env.CLOUDFLARE_API_TOKEN || "").trim(),
   CLOUDFLARE_ZONE_ID: String(process.env.CLOUDFLARE_ZONE_ID || "").trim(),
@@ -119,6 +178,9 @@ export const env = {
   R2_REGION: String(process.env.R2_REGION || "auto").trim() || "auto",
   R2_ENDPOINT: r2Endpoint,
   R2_PUBLIC_BASE_URL: r2PublicBaseUrl,
+  R2_MAX_UPLOAD_BYTES: toBoundedInt(process.env.R2_MAX_UPLOAD_BYTES, 20 * 1024 * 1024, 1024, 1024 * 1024 * 1024),
+  R2_PRESIGN_EXPIRES_SECONDS: toBoundedInt(process.env.R2_PRESIGN_EXPIRES_SECONDS, 900, 60, 3600),
+  R2_DEFAULT_CACHE_CONTROL: String(process.env.R2_DEFAULT_CACHE_CONTROL || "public, max-age=31536000, immutable").trim(),
   SMTP_HOST: process.env.SMTP_HOST || "",
   SMTP_PORT: toNumber(process.env.SMTP_PORT, 587),
   SMTP_SECURE: process.env.SMTP_SECURE || "false",
@@ -134,21 +196,36 @@ export const env = {
     process.env.AUTH_COOKIE_SECURE,
     (process.env.NODE_ENV || "development") === "production"
   ),
-  AUTH_COOKIE_MAX_AGE_SECONDS: toNumber(process.env.AUTH_COOKIE_MAX_AGE_SECONDS, 60 * 60 * 24 * 7)
+  AUTH_COOKIE_MAX_AGE_SECONDS: toNumber(process.env.AUTH_COOKIE_MAX_AGE_SECONDS, 60 * 60 * 24 * 7),
+  CLERK_SECRET_KEY: String(process.env.CLERK_SECRET_KEY || "").trim(),
+  CLERK_AUTHORIZED_PARTIES: dedupe(toCsvList(process.env.CLERK_AUTHORIZED_PARTIES || "")),
+  CLERK_JWT_AUDIENCE: String(process.env.CLERK_JWT_AUDIENCE || "").trim(),
+  CLERK_SUPER_ADMIN_EMAILS: dedupe(
+    toCsvList(process.env.CLERK_SUPER_ADMIN_EMAILS || "").map((email) =>
+      String(email || "").trim().toLowerCase()
+    )
+  ),
+  CLERK_SUPER_ADMIN_USER_IDS: dedupe(toCsvList(process.env.CLERK_SUPER_ADMIN_USER_IDS || "")),
+  CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN: toBoolean(process.env.CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN, true)
 };
-
-if (!env.JWT_SECRET) {
-  throw new Error("Missing JWT_SECRET in apps/api/.env");
-}
 
 assertValidChoice("NODE_ENV", env.NODE_ENV, [
   "development",
   "test",
   "production"
 ]);
+assertValidChoice("AUTH_PROVIDER", env.AUTH_PROVIDER, ["legacy", "hybrid", "clerk"]);
 assertValidChoice("EMAIL_MODE", env.EMAIL_MODE, ["mock", "smtp", "resend"]);
 assertValidChoice("AUTH_TOKEN_MODE", env.AUTH_TOKEN_MODE, ["bearer", "cookie", "hybrid"]);
 assertValidChoice("AUTH_COOKIE_SAMESITE", env.AUTH_COOKIE_SAMESITE, ["lax", "strict", "none"]);
+
+if (["legacy", "hybrid"].includes(env.AUTH_PROVIDER) && !env.JWT_SECRET) {
+  throw new Error("Missing JWT_SECRET in apps/api/.env for legacy/hybrid auth mode.");
+}
+
+if (["clerk", "hybrid"].includes(env.AUTH_PROVIDER) && !env.CLERK_SECRET_KEY) {
+  throw new Error("Missing CLERK_SECRET_KEY in apps/api/.env for clerk/hybrid auth mode.");
+}
 
 if (!env.SUPABASE_URL) {
   throw new Error("Missing SUPABASE_URL in apps/api/.env");

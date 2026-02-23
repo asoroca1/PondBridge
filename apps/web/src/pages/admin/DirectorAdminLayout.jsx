@@ -1,29 +1,29 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { AdminLayout, ContextBanner, SidebarNav } from "../../components/admin/AdminUi.jsx";
 
 const ADMIN_NAV = [
-  { to: "dashboard", label: "Dashboard" },
-  { to: "members", label: "Members" },
-  { to: "members/import", label: "Import" },
-  { to: "email/compose", label: "Email" },
-  { to: "email/history", label: "Sent Emails" },
-  { to: "analytics", label: "Analytics" },
-  { to: "features", label: "Features" },
-  { to: "billing", label: "Billing" }
+  { key: "overview", to: "dashboard", label: "Overview" },
+  { key: "members", to: "members", label: "Members", end: true },
+  { key: "directory", to: "directory", label: "Camper Directory" },
+  { key: "trees", to: "family-trees", label: "Family Trees" },
+  { key: "events", to: "events", label: "Events" },
+  { key: "communications", to: "communications", label: "Communications" },
+  { key: "billing", to: "billing", label: "Billing" }
 ];
 
 const SETTINGS_NAV = [
-  { to: "settings/network", label: "Network Identity" },
-  { to: "settings/branding", label: "Branding" },
-  { to: "settings/access", label: "Access Policy" },
-  { to: "settings/admins", label: "Admins" },
-  { to: "settings/notifications", label: "Notifications" },
-  { to: "settings/danger", label: "Danger Zone" }
+  { key: "network", to: "settings/network", label: "Network Identity", className: "director-admin-sidebar-sublink" },
+  { key: "branding", to: "settings/branding", label: "Branding", className: "director-admin-sidebar-sublink" },
+  { key: "access", to: "settings/access", label: "Access Policy", className: "director-admin-sidebar-sublink" },
+  { key: "admins", to: "settings/admins", label: "Admins", className: "director-admin-sidebar-sublink" },
+  { key: "notifications", to: "settings/notifications", label: "Notifications", className: "director-admin-sidebar-sublink" },
+  { key: "danger", to: "settings/danger", label: "Danger Zone", className: "director-admin-sidebar-sublink" }
 ];
 
 export default function DirectorAdminLayout() {
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -39,75 +39,64 @@ export default function DirectorAdminLayout() {
     if (onSettingsRoute) setSettingsOpen(true);
   }, [onSettingsRoute]);
 
+  const sections = useMemo(() => {
+    const base = ADMIN_NAV.map((item) => ({ ...item, className: "director-admin-sidebar-link" }));
+
+    if (showApprovals) {
+      const membersIndex = base.findIndex((item) => item.key === "members");
+      if (membersIndex >= 0) {
+        base.splice(membersIndex + 1, 0, {
+          key: "approvals",
+          to: "members/approvals",
+          label: "Pending Approvals",
+          className: "director-admin-sidebar-link"
+        });
+      }
+    }
+
+    base.splice(6, 0, {
+      key: "settings",
+      label: "Settings",
+      children: SETTINGS_NAV,
+      isExpanded: settingsOpen,
+      onToggle: () => setSettingsOpen((open) => !open),
+      toggleClassName: "director-admin-sidebar-link director-admin-sidebar-toggle",
+      className: `director-admin-sidebar-group ${onSettingsRoute ? "is-active" : ""}`.trim()
+    });
+
+    return base;
+  }, [onSettingsRoute, settingsOpen, showApprovals]);
+
+  const tenantName = tenant?.name || "Your Network";
+  const resolvedSlug = String(slug || tenant?.slug || "cedar");
+
   return (
     <section className="pb-cedar-page">
-      <div className="director-admin-shell">
-        <aside className="director-admin-sidebar" aria-label="Director admin navigation">
-          <p className="director-admin-sidebar-title">Manage Network</p>
-          <nav className="director-admin-sidebar-nav">
-            {ADMIN_NAV.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "members"}
-                className={({ isActive }) =>
-                  `director-admin-sidebar-link ${isActive ? "is-active" : ""}`.trim()
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            {showApprovals ? (
-              <NavLink
-                to="members/approvals"
-                className={({ isActive }) =>
-                  `director-admin-sidebar-link ${isActive ? "is-active" : ""}`.trim()
-                }
-              >
-                Approvals
-              </NavLink>
-            ) : null}
-            <div className={`director-admin-sidebar-group ${onSettingsRoute ? "is-active" : ""}`.trim()}>
-              <button
-                type="button"
-                className={`director-admin-sidebar-link director-admin-sidebar-toggle ${
-                  onSettingsRoute ? "is-active" : ""
-                }`.trim()}
-                onClick={() => setSettingsOpen((open) => !open)}
-                aria-expanded={settingsOpen}
-                aria-controls="director-admin-settings-subnav"
-              >
-                <span>Settings</span>
-                <span
-                  aria-hidden="true"
-                  className={`director-admin-sidebar-caret ${settingsOpen ? "is-open" : ""}`.trim()}
-                >
-                  ▾
-                </span>
-              </button>
-              {settingsOpen ? (
-                <div id="director-admin-settings-subnav" className="director-admin-sidebar-subnav">
-                  {SETTINGS_NAV.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      className={({ isActive }) =>
-                        `director-admin-sidebar-sublink ${isActive ? "is-active" : ""}`.trim()
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </nav>
-        </aside>
-
+      <AdminLayout
+        className="director-admin-scope"
+        banner={
+          <ContextBanner
+            title={`Admin Mode - ${tenantName}`}
+            subtitle="Manage members, communications, settings, and billing for your network."
+            exitTo={`/t/${resolvedSlug}/home`}
+            exitLabel="Exit Admin"
+          />
+        }
+        sidebar={
+          <SidebarNav
+            title="Manage Network"
+            sections={sections}
+            className="director-admin-sidebar"
+            navClassName="director-admin-sidebar-nav"
+            linkClassName="director-admin-sidebar-link"
+            activeLinkClassName="is-active"
+          />
+        }
+      >
         <div className="director-admin-main">
           <Outlet />
         </div>
-      </div>
+      </AdminLayout>
     </section>
   );
 }

@@ -10,12 +10,14 @@
     "lint": "eslint src scripts",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
     "seed": "node scripts/seed.js",
+    "dev:provision-test-camp": "node scripts/devProvisionTestCampFlow.js",
     "supabase:apply-schema": "node scripts/applySupabaseSchema.js",
     "migrate:legacy-media-to-r2": "node scripts/migrateLegacyMediaToR2.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.995.0",
     "@aws-sdk/s3-request-presigner": "^3.995.0",
+    "@clerk/backend": "^2.32.0",
     "@pondbridge/shared": "0.1.0",
     "@supabase/supabase-js": "^2.97.0",
     "bcryptjs": "^2.4.3",

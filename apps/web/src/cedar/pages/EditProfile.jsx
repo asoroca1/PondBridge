@@ -5,7 +5,6 @@ import {
   resolveAgeGroupOptions,
   resolveStaffRoleOptions
 } from "../../lib/campLabels.js";
-import Navbar2 from "../components/Navbar2";
 import AvatarCropper from "../components/AvatarCropper";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE, getMe } from "../lib/api";
@@ -555,7 +554,7 @@ export default function EditProfile() {
         // harmless if endpoint ignores auth; helpful if you later lock it down
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ fileName, fileType }),
+      body: JSON.stringify({ fileName, fileType, fileSize: Number(blob?.size || 0) }),
     });
     if (!r.ok) throw new Error("Presign failed");
     const { uploadUrl, objectUrl, headers } = await r.json();
@@ -1472,7 +1471,6 @@ export default function EditProfile() {
     return (
       <div style={{ position: "relative", minHeight: "100vh" }}>
         <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
-        <Navbar2 />
         <main className="wizard1-main nav2-page-shell" style={{ position: "relative", zIndex: 1 }}>
           <div className="wizard1-container">
             <h1 className="wizard1-title">Edit Profile</h1>
@@ -1486,7 +1484,6 @@ export default function EditProfile() {
   return (
     <div style={{ position: "relative", minHeight: "100vh" }}>
       <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
-      <Navbar2 />
       <main className="wizard1-main nav2-page-shell" style={{ position: "relative", zIndex: 1 }}>
         <div className="wizard1-container">
           <h1 className="wizard1-title">Edit Profile</h1>

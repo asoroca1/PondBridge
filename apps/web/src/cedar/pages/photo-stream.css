@@ -1,21 +1,21 @@
 /* ========== Photo Stream (v1, surface + background) ========== */
 :root{
-    --ps-navy:#002b5c;
+    --ps-navy: var(--brand-primary, #002b5c);
     --ps-blue-600:#0b3b7a;
     --ps-gray-50:#f8fafc;
     --ps-gray-100:#f1f5f9;
-    --ps-gray-200:#e2e8f0;
+    --ps-gray-200: var(--card-border, #e2e8f0);
     --ps-gray-300:#cbd5e1;
     --ps-gray-400:#94a3b8;
-    --ps-gray-500:#64748b;
-    --ps-white:#ffffff;
-  
-    --ps-radius:14px;
-    --ps-shadow:0 6px 20px rgba(2,33,71,0.10);
-    --ps-shadow-soft:0 2px 10px rgba(2,33,71,0.08);
-  
+    --ps-gray-500: var(--text-muted, #64748b);
+    --ps-white: var(--card, #ffffff);
+
+    --ps-radius: var(--radius-lg);
+    --ps-shadow: var(--shadow-md);
+    --ps-shadow-soft: var(--shadow-sm);
+
     --ps-container-max:1200px;
-    --ps-top-pad:110px; /* under fixed Navbar2 */
+    --ps-top-pad:110px;
   }
   
   /* page background underneath the white surface */

@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
-import Navbar2 from "../components/Navbar2";
 import { API_BASE } from "../lib/api";
 import CedarBackground from "../components/CedarBackground";
 import defaultProfile from "../assets/default-profile.png";
@@ -309,9 +308,6 @@ export default function AdvancedSearch() {
     <div style={{ position: "relative", minHeight: "100vh" }}>
       {/* BACKGROUND */}
       <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={0} />
-
-      {/* NAV */}
-      <Navbar2 />
 
       {/* PAGE CONTENT */}
       <main className="as2 nav2-page-shell" style={{ position: "relative", zIndex: 1, background: "transparent" }}>

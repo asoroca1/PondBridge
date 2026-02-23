@@ -1,6 +1,5 @@
 // src/pages/ChatsAndForums.jsx
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { createSocket } from "../lib/socket";
@@ -9,18 +8,9 @@ import { MessageSquare, Users, Megaphone, Plus, Paperclip, Shield, ChevronLeft, 
 import PeoplePicker from "../components/chat/PeoplePicker";
 import MessageComposer from "../components/chat/MessageComposer";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
+import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDateTime, relativeTime } from "../lib/helpers.js";
 
 /* ======================= Helpers ======================= */
-function getToken() {
-  return localStorage.getItem("token");
-}
-function authHeaders(json = true) {
-  const t = getToken();
-  const h = {};
-  if (json) h["Content-Type"] = "application/json";
-  if (t) h["Authorization"] = `Bearer ${t}`;
-  return h;
-}
 
 /* ---------- unread chats (localStorage) ---------- */
 /**
@@ -81,32 +71,6 @@ function persistLocalRead(conversationId, iso) {
 
 /** Person profile route */
 const profilePath = (userId) => `/profile/${userId}`;
-
-/** Consistent, seconds-free date formatting */
-const TIME_OPTS = {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-};
-function formatTime(d) {
-  return new Date(d || Date.now()).toLocaleString([], TIME_OPTS);
-}
-
-function formatRelativeTime(ts) {
-  if (!ts) return "";
-  const delta = Date.now() - new Date(ts).getTime();
-  if (!Number.isFinite(delta)) return "";
-  const mins = Math.floor(delta / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
-}
 
 function conversationSnippet(item) {
   const text =
@@ -215,47 +179,6 @@ async function fetchUser(id) {
   return data.user;
 }
 
-function getPhotoUrl(u) {
-  const up = u?.uploads || {};
-  return (
-    up.photoUrl ||
-    up.profilePhoto?.url ||
-    u?.photoUrl ||
-    u?.profilePhotoUrl ||
-    u?.avatarUrl ||
-    u?.imageUrl ||
-    u?.profilePhoto ||
-    ""
-  );
-}
-
-function displayFullName(u) {
-  const n = u?.nickname || u?.campNickname || "";
-  return n
-    ? `${u?.firstName || ""} "${n}" ${u?.lastName || ""}`.trim()
-    : `${u?.firstName || ""} ${u?.lastName || ""}`.trim();
-}
-function displayName(u) {
-  const n = u?.nickname || u?.campNickname || "";
-  return n
-    ? `${u?.firstName || ""} "${n}" ${u?.lastName || ""}`.trim()
-    : `${u?.firstName || ""} ${u?.lastName || ""}`.trim();
-}
-function initialsFromName(name) {
-  const cleaned = String(name || "")
-    .replace(/"[^"]*"/g, " ") // remove quoted nicknames
-    .replace(/[^a-zA-Z\s]/g, " ")
-    .trim();
-
-  const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "";
-  if (parts.length === 1) return (parts[0][0] || "").toUpperCase();
-
-  const first = (parts[0][0] || "").toUpperCase();
-  const last = (parts[parts.length - 1][0] || "").toUpperCase();
-  return `${first}${last}`;
-}
-
 /* ==== auth/ownership helpers (flexible + admin support) ==== */
 function getJwtPayload() {
   try {
@@ -300,7 +223,7 @@ function Avatar({ name, url, size = "md", userId, linkTo }) {
     .join(" ");
 
   const showInitials = !url || broken;
-  const initials = initialsFromName(name);
+  const initials = initialsOf(name);
   const clickable = !!(userId || linkTo);
 
   const base = showInitials ? (
@@ -384,7 +307,6 @@ export default function ChatAndForums() {
   return (
     <div style={{ position: "relative", minHeight: "100vh" }}>
       <CedarBackground behavior="scroll" opacity={0.9} zIndex={-1} />
-      <Navbar2 />
       <main className="cf-main nav2-page-shell">
         <header className="cf-header">
           <div className="cf-head-left">
@@ -439,7 +361,7 @@ function MessageBubble({ me, msg, nameLookup, userLookup }) {
   const lookup = userLookup?.[String(msg.senderId)] || null;
   const who = !mine ? lookup?.name || nameLookup?.[msg.senderId] || "Unknown" : "You";
   const avatar = lookup?.avatar || "";
-  const time = formatTime(msg.createdAt);
+  const time = fmtDateTime(msg.createdAt);
   const isText = msg.kind === "text";
   const isImage = msg.kind === "image";
   const isFile = msg.kind === "file";
@@ -597,9 +519,9 @@ function PersonalTab({ socket }) {
       }
       try {
         const u = await fetchUser(otherId);
-        const nm = displayFullName(u);
+        const nm = displayName(u);
         map[c._id] = nm;
-        cacheUpdates[otherId] = { name: nm, avatar: getPhotoUrl(u) };
+        cacheUpdates[otherId] = { name: nm, avatar: avatarUrl(u) };
       } catch {
         map[c._id] = "Direct Message";
       }
@@ -661,7 +583,7 @@ function PersonalTab({ socket }) {
     for (const id of unknowns) {
       try {
         const u = await fetchUser(id);
-        setUserCache((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: getPhotoUrl(u) } }));
+        setUserCache((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: avatarUrl(u) } }));
       } catch {}
     }
   }
@@ -678,7 +600,7 @@ function PersonalTab({ socket }) {
       } else {
         try {
           const u = await fetchUser(otherId);
-          const info = { name: displayFullName(u), avatar: getPhotoUrl(u) };
+          const info = { name: displayName(u), avatar: avatarUrl(u) };
           setUserCache((prev) => ({ ...prev, [otherId]: info }));
           setOther(info);
         } catch {
@@ -932,7 +854,7 @@ function PersonalTab({ socket }) {
                       <div className="cf-li-text">
                         <div className="cf-li-title-row">
                           <div className="cf-li-title">{title}</div>
-                          <div className="cf-li-time">{formatRelativeTime(c.lastMessageAt)}</div>
+                          <div className="cf-li-time">{relativeTime(c.lastMessageAt)}</div>
                         </div>
                         <div className="cf-li-sub">{conversationSnippet(c)}</div>
                       </div>
@@ -988,7 +910,7 @@ function PersonalTab({ socket }) {
                 />
               ))}
               {typing && <div className="cf-typing">Typing…</div>}
-              {lastReadISO && <div className="cf-read">Seen up to {formatTime(lastReadISO)}</div>}
+              {lastReadISO && <div className="cf-read">Seen up to {fmtDateTime(lastReadISO)}</div>}
             </div>
 
             <MessageComposer
@@ -997,7 +919,11 @@ function PersonalTab({ socket }) {
                 const res = await fetch(`${API_BASE}/conversations/${active._id}/presign`, {
                   method: "POST",
                   headers: authHeaders(),
-                  body: JSON.stringify({ fileName: file.name, fileType: file.type }),
+                  body: JSON.stringify({
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileSize: Number(file.size || 0)
+                  }),
                 });
                 return res.json();
               }}
@@ -1233,7 +1159,7 @@ function GroupsTab({ socket }) {
       if (memberInfo[id]) return;
       try {
         const u = await fetchUser(id);
-        setMemberInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: getPhotoUrl(u) } }));
+        setMemberInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: avatarUrl(u) } }));
       } catch {}
     });
     setShowSettings(true);
@@ -1354,12 +1280,12 @@ function GroupsTab({ socket }) {
                 <button className="cf-li-btn" onClick={() => openGroup(g)}>
                   <div className="cf-li-row">
                     <div className="cf-group-avatar">
-                      <span>{initialsFromName(g.name || "G")}</span>
+                      <span>{initialsOf(g.name || "G")}</span>
                     </div>
                     <div className="cf-li-text">
                       <div className="cf-li-title-row">
                         <div className="cf-li-title">{g.name || "Group Chat"}</div>
-                        <div className="cf-li-time">{formatRelativeTime(g.lastMessageAt)}</div>
+                        <div className="cf-li-time">{relativeTime(g.lastMessageAt)}</div>
                       </div>
                       <div className="cf-li-sub">
                         {(getGroupMemberIds(g).length || 0)} members · {conversationSnippet(g)}
@@ -1422,7 +1348,11 @@ function GroupsTab({ socket }) {
                 const res = await fetch(`${API_BASE}/conversations/${active._id}/presign`, {
                   method: "POST",
                   headers: authHeaders(),
-                  body: JSON.stringify({ fileName: file.name, fileType: file.type }),
+                  body: JSON.stringify({
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileSize: Number(file.size || 0)
+                  }),
                 });
                 return res.json();
               }}
@@ -1638,7 +1568,7 @@ function ForumsTab({ socket }) {
     if (me && ids.includes(String(meId)) && !authorInfo[String(meId)]) {
       setAuthorInfo((prev) => ({
         ...prev,
-        [String(meId)]: { name: displayFullName(me), avatar: getPhotoUrl(me) },
+        [String(meId)]: { name: displayName(me), avatar: avatarUrl(me) },
       }));
     }
 
@@ -1646,7 +1576,7 @@ function ForumsTab({ socket }) {
     for (const id of unknowns) {
       try {
         const u = await fetchUser(id);
-        setAuthorInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: getPhotoUrl(u) } }));
+        setAuthorInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: avatarUrl(u) } }));
       } catch {}
     }
   }
@@ -1732,7 +1662,7 @@ function ForumsTab({ socket }) {
       if (forumMemberInfo[id]) return;
       try {
         const u = await fetchUser(id);
-        setForumMemberInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: getPhotoUrl(u) } }));
+        setForumMemberInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: avatarUrl(u) } }));
       } catch {}
     });
     setShowMembers(true);
@@ -1841,7 +1771,7 @@ function ForumsTab({ socket }) {
                     <div className="cf-li-text">
                       <div className="cf-li-title-row">
                         <div className="cf-li-title">{f.name}</div>
-                        <div className="cf-li-time">{formatRelativeTime(f.lastActivityAt)}</div>
+                        <div className="cf-li-time">{relativeTime(f.lastActivityAt)}</div>
                       </div>
                       <div className="cf-li-sub">
                         {f.postsCount || 0} posts · {(f.memberIds || []).length || 0} members
@@ -1903,7 +1833,7 @@ function ForumsTab({ socket }) {
                 const me = getCachedMe();
                 const meInstant =
                   authorId && String(authorId) === String(meId) && me
-                    ? { name: displayFullName(me), avatar: getPhotoUrl(me) }
+                    ? { name: displayName(me), avatar: avatarUrl(me) }
                     : null;
 
                 const info = authorInfo[authorId] || meInstant || { name: "Unknown", avatar: "" };
@@ -1915,7 +1845,7 @@ function ForumsTab({ socket }) {
                         <Avatar name={info.name} url={info.avatar} size="lg" userId={authorId} />
                         <div>
                           <div className="cf-post-author">{info.name}</div>
-                          <div className="cf-post-time">{formatTime(p.createdAt)}</div>
+                          <div className="cf-post-time">{fmtDateTime(p.createdAt)}</div>
                         </div>
                       </div>
                     </div>
@@ -1949,7 +1879,11 @@ function ForumsTab({ socket }) {
                   const res = await fetch(`${API_BASE}/forums/${active._id}/presign`, {
                     method: "POST",
                     headers: authHeaders(),
-                    body: JSON.stringify({ fileName: file.name, fileType: file.type }),
+                    body: JSON.stringify({
+                      fileName: file.name,
+                      fileType: file.type,
+                      fileSize: Number(file.size || 0)
+                    }),
                   });
                   return res.json();
                 }}

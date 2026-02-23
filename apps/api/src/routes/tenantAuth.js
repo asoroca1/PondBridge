@@ -4,7 +4,6 @@ import rateLimit from "express-rate-limit";
 import {
   UserModel,
   ProfileModel,
-  InviteModel,
   AccessRequestModel,
   MagicLinkTokenModel,
   TenantModel
@@ -16,6 +15,9 @@ import { sendMagicLinkEmail } from "../services/email.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { clearAuthCookie, setAuthCookie } from "../utils/authCookie.js";
 import { normalizeSignupMode } from "../services/onboarding.js";
+import { findInviteByOpaqueToken, markInviteUsed } from "../services/invites.js";
+import { hashOpaqueToken } from "../utils/tokens.js";
+import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 
 const router = Router({ mergeParams: true });
 const magicLinkRequestLimiter = rateLimit({
@@ -24,6 +26,43 @@ const magicLinkRequestLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 25,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+const inviteVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+const magicLinkConsumeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+function isLegacyTenantAuthDisabled() {
+  return ["clerk", "hybrid"].includes(String(env.AUTH_PROVIDER || "").toLowerCase());
+}
+
+function rejectLegacyTenantAuth(res) {
+  return res.status(410).json({
+    error: {
+      code: "LEGACY_AUTH_DISABLED",
+      message: "Password and magic-link routes are disabled. Continue with Clerk authentication."
+    }
+  });
+}
 
 function generateToken(length = 24) {
   return crypto.randomBytes(length).toString("base64url");
@@ -66,7 +105,11 @@ function profileFromBody(body) {
   };
 }
 
-router.post("/register", requireTenant, async (req, res) => {
+router.post("/register", registerLimiter, requireTenant, async (req, res) => {
+  if (isLegacyTenantAuthDisabled()) {
+    return rejectLegacyTenantAuth(res);
+  }
+
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const firstName = String(req.body.firstName || "").trim();
@@ -96,22 +139,14 @@ router.post("/register", requireTenant, async (req, res) => {
   const signupMode = resolveSignupMode(req.tenant);
   let matchingInvite = null;
   if (inviteToken) {
-    const inviteByToken = await InviteModel.findOne(req.tenant._id, {
-      token: inviteToken,
-      usedAt: null
-    });
+    const inviteByToken = await findInviteByOpaqueToken(req.tenant._id, inviteToken);
 
     const inviteEmail = String(inviteByToken?.email || "").trim().toLowerCase();
-    const inviteAllowsEmail =
-      inviteByToken?.roleToAssign === "tenant_admin" || !inviteEmail || inviteEmail === email;
+    const inviteAllowsEmail = !inviteEmail || inviteEmail === email;
 
     if (inviteByToken && inviteAllowsEmail) {
       matchingInvite = inviteByToken;
     }
-  }
-
-  if (matchingInvite && new Date(matchingInvite.expiresAt) <= new Date()) {
-    matchingInvite = null;
   }
 
   const prelaunchDirectorInvite = matchingInvite?.roleToAssign === "tenant_admin";
@@ -119,12 +154,21 @@ router.post("/register", requireTenant, async (req, res) => {
   const canBootstrapDirector =
     directorSignup && req.tenant.onboardingStatus !== "live" && !prelaunchDirectorInvite && !existingDirector;
   const bypassAccessControls = prelaunchDirectorInvite || canBootstrapDirector;
+  const billingAccess = isTenantBillingAccessAllowed(req.tenant);
 
   if (req.tenant.onboardingStatus !== "live" && !bypassAccessControls) {
     return res.status(403).json({
       error: {
         code: "TENANT_NOT_LIVE",
         message: "This network is not live yet. Contact your camp director."
+      }
+    });
+  }
+  if (req.tenant.onboardingStatus === "live" && !bypassAccessControls && !billingAccess.allowed) {
+    return res.status(403).json({
+      error: {
+        code: "BILLING_RESTRICTED",
+        message: "This network is temporarily unavailable due to billing status."
       }
     });
   }
@@ -252,16 +296,7 @@ router.post("/register", requireTenant, async (req, res) => {
   user.profileId = profile._id;
 
   if (matchingInvite) {
-    const existingInvite = await InviteModel.findOne(req.tenant._id, {
-      _id: matchingInvite._id,
-      usedAt: null
-    });
-    if (existingInvite) {
-      await InviteModel.update(existingInvite._id, {
-        usedAt: new Date(),
-        usedByUserId: user._id
-      });
-    }
+    await markInviteUsed(matchingInvite, user._id);
   }
 
   let tenant = req.tenant;
@@ -306,7 +341,7 @@ router.post("/register", requireTenant, async (req, res) => {
   });
 });
 
-router.post("/invite/verify", requireTenant, async (req, res) => {
+router.post("/invite/verify", inviteVerifyLimiter, requireTenant, async (req, res) => {
   const inviteToken = String(req.body.inviteToken || "").trim();
   if (!inviteToken) {
     return res.status(400).json({
@@ -317,8 +352,8 @@ router.post("/invite/verify", requireTenant, async (req, res) => {
     });
   }
 
-  const invite = await InviteModel.findOne(req.tenant._id, { token: inviteToken, usedAt: null });
-  if (!invite || new Date(invite.expiresAt) <= new Date()) {
+  const invite = await findInviteByOpaqueToken(req.tenant._id, inviteToken);
+  if (!invite) {
     return res.status(404).json({
       error: {
         code: "INVITE_INVALID",
@@ -337,7 +372,11 @@ router.post("/invite/verify", requireTenant, async (req, res) => {
   });
 });
 
-router.post("/login", requireTenant, async (req, res) => {
+router.post("/login", loginLimiter, requireTenant, async (req, res) => {
+  if (isLegacyTenantAuthDisabled()) {
+    return rejectLegacyTenantAuth(res);
+  }
+
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
 
@@ -371,11 +410,20 @@ router.post("/login", requireTenant, async (req, res) => {
   }
 
   const isAdminUser = (user.roles || []).includes("tenant_admin") || (user.roles || []).includes("super_admin");
+  const billingAccess = isTenantBillingAccessAllowed(req.tenant);
   if (req.tenant.onboardingStatus !== "live" && !isAdminUser) {
     return res.status(403).json({
       error: {
         code: "TENANT_NOT_LIVE",
         message: "This network is still being set up."
+      }
+    });
+  }
+  if (req.tenant.onboardingStatus === "live" && !billingAccess.allowed && !isAdminUser) {
+    return res.status(403).json({
+      error: {
+        code: "BILLING_RESTRICTED",
+        message: "This network is temporarily unavailable due to billing status."
       }
     });
   }
@@ -400,6 +448,10 @@ router.post("/login", requireTenant, async (req, res) => {
 });
 
 router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async (req, res) => {
+  if (isLegacyTenantAuthDisabled()) {
+    return rejectLegacyTenantAuth(res);
+  }
+
   const email = String(req.body.email || "").trim().toLowerCase();
   if (!email) {
     return res.status(400).json({
@@ -419,11 +471,20 @@ router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async
   }
 
   const isAdminUser = (user.roles || []).includes("tenant_admin") || (user.roles || []).includes("super_admin");
+  const billingAccess = isTenantBillingAccessAllowed(req.tenant);
   if (req.tenant.onboardingStatus !== "live" && !isAdminUser) {
     return res.status(403).json({
       error: {
         code: "TENANT_NOT_LIVE",
         message: "This network is still being set up."
+      }
+    });
+  }
+  if (req.tenant.onboardingStatus === "live" && !billingAccess.allowed && !isAdminUser) {
+    return res.status(403).json({
+      error: {
+        code: "BILLING_RESTRICTED",
+        message: "This network is temporarily unavailable due to billing status."
       }
     });
   }
@@ -437,7 +498,7 @@ router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async
     tenantId: req.tenant._id,
     userId: user._id,
     email,
-    token,
+    token: hashOpaqueToken(token),
     expiresAt,
     usedAt: null
   });
@@ -455,7 +516,11 @@ router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async
   });
 });
 
-router.post("/magic-link/consume", requireTenant, async (req, res) => {
+router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async (req, res) => {
+  if (isLegacyTenantAuthDisabled()) {
+    return rejectLegacyTenantAuth(res);
+  }
+
   const token = String(req.body.token || "").trim();
   if (!token) {
     return res.status(400).json({
@@ -466,12 +531,45 @@ router.post("/magic-link/consume", requireTenant, async (req, res) => {
     });
   }
 
-  const magicLink = await MagicLinkTokenModel.findOne(req.tenant._id, {
-    token,
+  const tokenHash = hashOpaqueToken(token);
+  let magicLink = await MagicLinkTokenModel.findOne(req.tenant._id, {
+    token: tokenHash,
     usedAt: null
   });
+  let matchedLegacyPlaintextToken = false;
+  if (!magicLink) {
+    magicLink = await MagicLinkTokenModel.findOne(req.tenant._id, {
+      token,
+      usedAt: null
+    });
+    matchedLegacyPlaintextToken = Boolean(magicLink);
+  }
 
-  if (!magicLink || new Date(magicLink.expiresAt) <= new Date()) {
+  if (!magicLink) {
+    const usedMagicLink =
+      (await MagicLinkTokenModel.findOne(req.tenant._id, { token: tokenHash })) ||
+      (await MagicLinkTokenModel.findOne(req.tenant._id, { token }));
+    if (usedMagicLink?.usedAt) {
+      return res.status(409).json({
+        error: {
+          code: "MAGIC_LINK_ALREADY_USED",
+          message: "Magic link has already been used."
+        }
+      });
+    }
+    return res.status(400).json({
+      error: {
+        code: "MAGIC_LINK_INVALID",
+        message: "Magic link is invalid or expired."
+      }
+    });
+  }
+
+  if (matchedLegacyPlaintextToken) {
+    await MagicLinkTokenModel.update(magicLink._id, { token: tokenHash }).catch(() => {});
+  }
+
+  if (new Date(magicLink.expiresAt) <= new Date()) {
     return res.status(400).json({
       error: {
         code: "MAGIC_LINK_INVALID",
@@ -490,12 +588,35 @@ router.post("/magic-link/consume", requireTenant, async (req, res) => {
     });
   }
 
-  const existingMagicLink = await MagicLinkTokenModel.findOne(req.tenant._id, {
-    _id: magicLink._id,
-    usedAt: null
+  const isAdminUser = (user.roles || []).includes("tenant_admin") || (user.roles || []).includes("super_admin");
+  const billingAccess = isTenantBillingAccessAllowed(req.tenant);
+  if (req.tenant.onboardingStatus !== "live" && !isAdminUser) {
+    return res.status(403).json({
+      error: {
+        code: "TENANT_NOT_LIVE",
+        message: "This network is still being set up."
+      }
+    });
+  }
+  if (req.tenant.onboardingStatus === "live" && !billingAccess.allowed && !isAdminUser) {
+    return res.status(403).json({
+      error: {
+        code: "BILLING_RESTRICTED",
+        message: "This network is temporarily unavailable due to billing status."
+      }
+    });
+  }
+
+  const consumedMagicLink = await MagicLinkTokenModel.consumeIfUnused(req.tenant._id, magicLink._id, {
+    usedAt: new Date()
   });
-  if (existingMagicLink) {
-    await MagicLinkTokenModel.update(existingMagicLink._id, { usedAt: new Date() });
+  if (!consumedMagicLink) {
+    return res.status(409).json({
+      error: {
+        code: "MAGIC_LINK_ALREADY_USED",
+        message: "Magic link has already been used."
+      }
+    });
   }
 
   await UserModel.update(user._id, { lastLoginAt: new Date() });
@@ -524,20 +645,6 @@ router.post("/magic-link/consume", requireTenant, async (req, res) => {
 router.post("/logout", requireTenant, async (_req, res) => {
   clearAuthCookie(res);
   return res.json({ ok: true });
-});
-
-router.post("/forgot-password", requireTenant, async (_req, res) => {
-  return res.json({
-    ok: true,
-    message: "If the account exists, password reset instructions have been sent."
-  });
-});
-
-router.post("/reset-password", requireTenant, async (_req, res) => {
-  return res.json({
-    ok: true,
-    message: "Password reset is not enabled in local demo mode."
-  });
 });
 
 export default router;

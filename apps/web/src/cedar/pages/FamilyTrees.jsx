@@ -1,14 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, TreePine } from "lucide-react";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
+import { getToken } from "../lib/helpers.js";
 import "./family-trees.css";
-
-function getToken() {
-  return localStorage.getItem("cedarToken") || localStorage.getItem("token") || "";
-}
 
 function getCurrentUserId() {
   try {
@@ -166,7 +162,6 @@ export default function FamilyTrees() {
 
   return (
     <>
-      <Navbar2 />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <main className="ft-main nav2-page-shell">
         <header className="ft-header">

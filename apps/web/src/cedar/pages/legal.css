@@ -16,8 +16,8 @@
     background: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(6px);
     border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 18px;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
     padding: 20px 18px;
   }
   

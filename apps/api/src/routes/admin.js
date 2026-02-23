@@ -1,6 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 import PDFDocument from "pdfkit";
 import { stringify } from "csv-stringify/sync";
 import { parse as parseCsv } from "csv-parse/sync";
@@ -21,8 +22,13 @@ import {
 } from "../db/models/index.js";
 import { runTenantCsvImport, findImportReportForTenant } from "../services/csvImport.js";
 import { env } from "../config/env.js";
-import { sendInviteEmail, sendTransactionalEmail } from "../services/email.js";
+import {
+  sendBulkTransactionalEmail,
+  sendInviteEmail,
+  sendTransactionalEmail
+} from "../services/email.js";
 import { getTenantAnalyticsSnapshot } from "../services/analytics.js";
+import { createInviteRecord } from "../services/invites.js";
 import {
   buildSettingsStorePayload,
   resolveDraft,
@@ -32,7 +38,15 @@ import {
   normalizeSignupMode,
   resolveSettings
 } from "../services/onboarding.js";
-import { createBillingPortalUrl, getBillingMode } from "../services/billing.js";
+import {
+  buildBillingPublicSnapshot,
+  createBillingPortalUrl,
+  createTenantCheckoutSession,
+  getBillingCatalog,
+  getBillingMode,
+  getFoundersAvailability
+} from "../services/billing.js";
+import { normalizeBillingPlan } from "../services/billingState.js";
 import { hashPassword } from "../utils/auth.js";
 
 const router = Router({ mergeParams: true });
@@ -68,6 +82,43 @@ const inviteUpload = multer({
     return cb(null, true);
   }
 });
+const emailSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 24,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many email sends. Please wait before trying again."
+    }
+  }
+});
+const inviteSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many invite operations. Please wait before trying again."
+    }
+  }
+});
+const exportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many export requests. Please wait before exporting again."
+    }
+  }
+});
+const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 
 function toBoolean(value) {
   if (typeof value === "boolean") return value;
@@ -107,10 +158,6 @@ function normalizeEmail(value = "") {
 
 function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
-}
-
-function generateToken(length = 24) {
-  return crypto.randomBytes(length).toString("base64url");
 }
 
 function parseEmailsFromText(text = "") {
@@ -982,7 +1029,13 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     subject: `You're approved for ${req.tenant.name}`,
     text: `Your request to join ${req.tenant.name} was approved. You can now log in to your network.`,
     ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {})
-  }).catch(() => {});
+  }).catch((error) => {
+    console.warn("[email] approval notification failed", {
+      tenantId: String(req.tenant._id || ""),
+      email,
+      message: String(error?.message || "")
+    });
+  });
 
   return res.json({
     ok: true,
@@ -1026,7 +1079,13 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
       subject: `Update on your ${req.tenant.name} request`,
       text: `Your request to join ${req.tenant.name} was not approved.\n\n${message}`,
       ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {})
-    }).catch(() => {});
+    }).catch((error) => {
+      console.warn("[email] denial notification failed", {
+        tenantId: String(req.tenant._id || ""),
+        email: request.email,
+        message: String(error?.message || "")
+      });
+    });
   }
 
   return res.json({ ok: true, requestId: toObjectIdString(request._id) });
@@ -1111,7 +1170,7 @@ router.post("/email/test", async (req, res) => {
   return res.json({ ok: true, sentTo: to });
 });
 
-router.post("/email/send", async (req, res) => {
+router.post("/email/send", emailSendLimiter, async (req, res) => {
   const subject = String(req.body?.subject || "").trim();
   const body = String(req.body?.body || "").trim();
   const targeting = normalizeTargeting(req.body?.targeting || {});
@@ -1138,6 +1197,15 @@ router.post("/email/send", async (req, res) => {
     });
   }
 
+  if (recipients.length > env.EMAIL_BROADCAST_MAX_RECIPIENTS) {
+    return res.status(400).json({
+      error: {
+        code: "TOO_MANY_RECIPIENTS",
+        message: `Recipient list exceeds max size of ${env.EMAIL_BROADCAST_MAX_RECIPIENTS}. Narrow your targeting and try again.`
+      }
+    });
+  }
+
   const now = new Date();
   const isScheduled = scheduledFor && !Number.isNaN(scheduledFor.getTime()) && scheduledFor > now;
   const basePayload = {
@@ -1156,16 +1224,31 @@ router.post("/email/send", async (req, res) => {
   const broadcast = await EmailBroadcastModel.create({ ...basePayload, tenantId: req.tenant._id });
 
   if (!isScheduled) {
-    const to = recipients[0];
-    const bcc = recipients.slice(1);
-    await sendTransactionalEmail({
-      to,
+    const delivery = await sendBulkTransactionalEmail({
+      recipients,
       subject,
       text: body,
-      ...(bcc.length > 0 ? { bcc: bcc.join(",") } : {}),
-      ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {})
-    }).catch(async () => {
-      await EmailBroadcastModel.update(broadcast._id, { status: "failed" });
+      ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {}),
+      batchSize: env.EMAIL_BROADCAST_BATCH_SIZE,
+      maxRecipients: env.EMAIL_BROADCAST_MAX_RECIPIENTS
+    });
+    const deliveryStats = {
+      attemptedCount: delivery.attemptedCount,
+      sentCount: delivery.sentCount,
+      failedCount: delivery.failedCount,
+      batchesAttempted: delivery.batchesAttempted,
+      batchesSucceeded: delivery.batchesSucceeded,
+      batchesFailed: delivery.batchesFailed,
+      messageIds: delivery.messageIds.slice(0, 20),
+      failures: delivery.failures.slice(0, 10)
+    };
+    await EmailBroadcastModel.update(broadcast._id, {
+      status: delivery.sentCount > 0 ? "sent" : "failed",
+      sentAt: delivery.sentCount > 0 ? new Date() : null,
+      stats: {
+        ...(broadcast.stats || {}),
+        delivery: deliveryStats
+      }
     });
   }
 
@@ -1392,6 +1475,8 @@ router.get("/billing", async (req, res) => {
     tenant: req.tenant,
     returnPath: `/t/${req.tenant.slug}/admin/billing`
   });
+  const billing = buildBillingPublicSnapshot(req.tenant);
+  const foundersAvailability = await getFoundersAvailability();
 
   const memberCount = await ProfileModel.count(req.tenant._id, { status: { $ne: "removed" } });
   const planLimit = req.tenant.planTier === "premium" ? null : 5000;
@@ -1403,12 +1488,23 @@ router.get("/billing", async (req, res) => {
       slug: req.tenant.slug,
       name: req.tenant.name,
       planTier: req.tenant.planTier,
-      billingStatus: req.tenant.billingStatus,
-      onboardingFeeAmount: Number(req.tenant.onboardingFeeAmount || 0),
-      onboardingFeePaid: Boolean(req.tenant.onboardingFeePaid),
+      billingPlan: billing.billingPlan,
+      billingStatus: billing.billingStatus,
+      billingLifecycleStatus: billing.lifecycleStatus,
+      onboardingFeeAmount: billing.onboardingFeeAmount,
+      onboardingFeePaid: billing.onboardingFeePaid,
+      onboardingFeeStatus: billing.onboardingFeeStatus,
+      onboardingFeeWaived: billing.onboardingFeeWaived,
       onboardingFeeInvoiceId: req.tenant.onboardingFeeInvoiceId || "",
-      billingDetails: req.tenant.billingDetails || {}
+      billingDetails: req.tenant.billingDetails || {},
+      currentPeriodEnd: billing.currentPeriodEnd,
+      foundersReserved: billing.foundersReserved,
+      foundersSlot: billing.foundersSlot,
+      foundersEligible: billing.foundersEligible
     },
+    billing,
+    catalog: getBillingCatalog(),
+    foundersAvailability,
     usage: {
       members: memberCount,
       memberLimit: planLimit,
@@ -1418,6 +1514,44 @@ router.get("/billing", async (req, res) => {
     manageBillingUrl: portal.url || "",
     invoices: []
   });
+});
+
+router.post("/billing/checkout", async (req, res, next) => {
+  try {
+    const requested = String(req.body?.planCode || req.body?.billingPlan || "").trim().toLowerCase();
+    if (requested && !VALID_BILLING_PLAN_CODES.has(requested)) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_BILLING_PLAN",
+          message: "Billing plan must be legacy, founders, or institutional."
+        }
+      });
+    }
+
+    const planCode = normalizeBillingPlan(requested, req.tenant.planTier);
+
+    const checkout = await createTenantCheckoutSession({
+      tenant: req.tenant,
+      billingOperator: req.user,
+      planCode,
+      successUrl: req.body?.successUrl,
+      cancelUrl: req.body?.cancelUrl
+    });
+
+    const updatedTenant = checkout?.tenant || (await TenantModel.findById(req.tenant._id));
+
+    return res.status(201).json({
+      ok: true,
+      mode: checkout.mode,
+      checkoutUrl: checkout.checkoutUrl,
+      sessionId: checkout.sessionId || "",
+      notes: checkout.message || "",
+      billing: buildBillingPublicSnapshot(updatedTenant),
+      catalog: getBillingCatalog()
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.get("/settings", async (req, res) => {
@@ -1629,7 +1763,7 @@ router.get("/settings/admins", async (req, res) => {
   });
 });
 
-router.post("/settings/admins/invite", async (req, res) => {
+router.post("/settings/admins/invite", inviteSendLimiter, async (req, res) => {
   const email = normalizeEmail(req.body?.email || "");
   if (!isEmail(email)) {
     return res.status(400).json({
@@ -1651,26 +1785,27 @@ router.post("/settings/admins/invite", async (req, res) => {
     max: 30,
     fallback: env.INVITE_EXPIRES_DAYS
   });
-  const expiresAt = new Date(Date.now() + expiresInDays * DAY_MS);
-  const token = generateToken(24);
-
-  const invite = await InviteModel.create({
+  const { invite, token } = await createInviteRecord({
     tenantId: req.tenant._id,
     email,
-    token,
-    expiresAt,
-    usedAt: null,
     roleToAssign: "tenant_admin",
-    createdByUserId: req.user.id
+    createdByUserId: req.user.id,
+    expiresInDays
   });
 
   await sendInviteEmail({
     tenant: req.tenant,
     email,
-    token: invite.token,
+    token,
     roleToAssign: "tenant_admin",
     expiresAt: invite.expiresAt
-  }).catch(() => {});
+  }).catch((error) => {
+    console.warn("[email] director invite failed", {
+      tenantId: String(req.tenant._id || ""),
+      email,
+      message: String(error?.message || "")
+    });
+  });
 
   return res.status(201).json({
     ok: true,
@@ -1848,7 +1983,7 @@ router.get("/invites", async (req, res) => {
   });
 });
 
-router.post("/invites/send", inviteUpload.single("file"), async (req, res, next) => {
+router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), async (req, res, next) => {
   try {
     const roleToAssign = String(req.body.roleToAssign || "user").trim();
     if (!["user", "tenant_admin"].includes(roleToAssign)) {
@@ -1865,7 +2000,6 @@ router.post("/invites/send", inviteUpload.single("file"), async (req, res, next)
       max: 30,
       fallback: env.INVITE_EXPIRES_DAYS
     });
-    const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
 
     const inputEmails = [
       ...parseEmailsFromText(req.body.emails || ""),
@@ -1893,15 +2027,12 @@ router.post("/invites/send", inviteUpload.single("file"), async (req, res, next)
         continue;
       }
 
-      const token = generateToken(24);
-      const invite = await InviteModel.create({
+      const { invite, token } = await createInviteRecord({
         tenantId: req.tenant._id,
         email,
-        token,
-        expiresAt,
-        usedAt: null,
         roleToAssign,
-        createdByUserId: req.user.id
+        createdByUserId: req.user.id,
+        expiresInDays
       });
       createdCount += 1;
 
@@ -1909,7 +2040,7 @@ router.post("/invites/send", inviteUpload.single("file"), async (req, res, next)
         await sendInviteEmail({
           tenant: req.tenant,
           email,
-          token: invite.token,
+          token,
           roleToAssign,
           expiresAt: invite.expiresAt
         });
@@ -2039,7 +2170,7 @@ router.delete("/profiles/:profileId", async (req, res) => {
   return res.json({ ok: true, deletedProfileId: req.params.profileId });
 });
 
-router.get("/export/csv", async (req, res) => {
+router.get("/export/csv", exportLimiter, async (req, res) => {
   const profiles = await ProfileModel.find(req.tenant._id, {}, {
     sort: { lastName: 1, firstName: 1 }
   });
@@ -2064,7 +2195,7 @@ router.get("/export/csv", async (req, res) => {
   return res.send(csv);
 });
 
-router.get("/export/pdf", requireFeature("pdfExport"), async (req, res) => {
+router.get("/export/pdf", exportLimiter, requireFeature("pdfExport"), async (req, res) => {
   const profiles = await ProfileModel.find(req.tenant._id, {}, {
     sort: { lastName: 1, firstName: 1 }
   });

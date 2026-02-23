@@ -4,6 +4,8 @@
 -- proper relational tables for all 20 models.
 -- ============================================================
 
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- 1. TENANTS
 CREATE TABLE IF NOT EXISTS public.tenants (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
@@ -53,6 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_tenants_billing_status ON public.tenants (billing
 CREATE TABLE IF NOT EXISTS public.users (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   tenant_id text REFERENCES public.tenants(id),
+  clerk_user_id text,
   email text NOT NULL,
   password_hash text NOT NULL,
   roles text[] NOT NULL DEFAULT '{user}',
@@ -64,8 +67,14 @@ CREATE TABLE IF NOT EXISTS public.users (
   UNIQUE (tenant_id, email)
 );
 
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS clerk_user_id text;
+
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON public.users (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_email_roles ON public.users (email, roles);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_clerk_user
+  ON public.users ((COALESCE(tenant_id, '__global__')), clerk_user_id)
+  WHERE clerk_user_id IS NOT NULL AND clerk_user_id <> '';
 
 -- 3. PROFILES
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -100,6 +109,16 @@ CREATE INDEX IF NOT EXISTS idx_profiles_tenant_status ON public.profiles (tenant
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_role ON public.profiles (tenant_id, role_at_camp);
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_industry ON public.profiles (tenant_id, industry);
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_city ON public.profiles (tenant_id, city_state);
+CREATE INDEX IF NOT EXISTS idx_profiles_name_trgm ON public.profiles
+  USING gin ((lower(trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')))) gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_profiles_role_trgm ON public.profiles
+  USING gin ((lower(coalesce(role_at_camp, ''))) gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_profiles_industry_trgm ON public.profiles
+  USING gin ((lower(coalesce(industry, ''))) gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_profiles_city_trgm ON public.profiles
+  USING gin ((lower(coalesce(city_state, ''))) gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_profiles_emails_trgm ON public.profiles
+  USING gin ((lower(array_to_string(emails, ' '))) gin_trgm_ops);
 
 -- 4. INVITES
 CREATE TABLE IF NOT EXISTS public.invites (
@@ -147,6 +166,9 @@ CREATE TABLE IF NOT EXISTS public.access_requests (
 CREATE INDEX IF NOT EXISTS idx_access_requests_tenant ON public.access_requests (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_access_requests_tenant_status ON public.access_requests (tenant_id, status, requested_at DESC);
 CREATE INDEX IF NOT EXISTS idx_access_requests_tenant_email ON public.access_requests (tenant_id, email, status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_access_requests_pending_unique
+  ON public.access_requests (tenant_id, lower(email))
+  WHERE status = 'pending';
 
 -- 6. MAGIC LINK TOKENS
 CREATE TABLE IF NOT EXISTS public.magic_link_tokens (
@@ -431,26 +453,104 @@ CREATE OR REPLACE FUNCTION public.search_profiles(
 RETURNS SETOF public.profiles
 LANGUAGE sql STABLE
 AS $$
-  SELECT *
-  FROM public.profiles
-  WHERE tenant_id = p_tenant_id
-    AND (
-      p_query IS NULL OR p_query = '' OR (
-        first_name ILIKE '%' || p_query || '%'
-        OR last_name ILIKE '%' || p_query || '%'
-        OR city_state ILIKE '%' || p_query || '%'
-        OR role_at_camp ILIKE '%' || p_query || '%'
-        OR industry ILIKE '%' || p_query || '%'
-        OR EXISTS (SELECT 1 FROM unnest(emails) e WHERE e ILIKE '%' || p_query || '%')
-        OR EXISTS (SELECT 1 FROM unnest(colleges) c WHERE c ILIKE '%' || p_query || '%')
-        OR current_jobs::text ILIKE '%' || p_query || '%'
+  WITH normalized AS (
+    SELECT
+      trim(coalesce(p_query, '')) AS raw_query,
+      lower(trim(coalesce(p_query, ''))) AS query_lc,
+      GREATEST(1, LEAST(coalesce(p_limit, 30), 100)) AS effective_limit
+  ),
+  base AS (
+    SELECT
+      p.id,
+      lower(trim(coalesce(p.first_name, '') || ' ' || coalesce(p.last_name, ''))) AS full_name,
+      lower(coalesce(p.city_state, '')) AS city_state_lc,
+      lower(coalesce(p.role_at_camp, '')) AS role_lc,
+      lower(coalesce(p.industry, '')) AS industry_lc,
+      lower(array_to_string(coalesce(p.emails, '{}'::text[]), ' ')) AS emails_lc,
+      lower(array_to_string(coalesce(p.colleges, '{}'::text[]), ' ')) AS colleges_lc,
+      lower(coalesce(p.current_jobs::text, '')) AS jobs_lc
+    FROM public.profiles p
+    WHERE p.tenant_id = p_tenant_id
+      AND p.status <> 'removed'
+      AND (p_role_at_camp IS NULL OR p.role_at_camp ILIKE '%' || p_role_at_camp || '%')
+      AND (p_industry IS NULL OR p.industry ILIKE '%' || p_industry || '%')
+      AND (p_city_state IS NULL OR p.city_state ILIKE '%' || p_city_state || '%')
+  ),
+  scored AS (
+    SELECT
+      b.id,
+      CASE WHEN n.query_lc <> '' AND b.full_name = n.query_lc THEN 1 ELSE 0 END AS exact_name_rank,
+      CASE
+        WHEN n.query_lc <> '' AND (
+          b.full_name LIKE n.query_lc || '%'
+          OR b.emails_lc LIKE n.query_lc || '%'
+        ) THEN 1
+        ELSE 0
+      END AS prefix_rank,
+      CASE
+        WHEN n.query_lc <> '' AND (
+          b.full_name ILIKE '%' || n.raw_query || '%'
+          OR b.city_state_lc ILIKE '%' || n.query_lc || '%'
+          OR b.role_lc ILIKE '%' || n.query_lc || '%'
+          OR b.industry_lc ILIKE '%' || n.query_lc || '%'
+          OR b.emails_lc ILIKE '%' || n.query_lc || '%'
+          OR b.colleges_lc ILIKE '%' || n.query_lc || '%'
+          OR b.jobs_lc ILIKE '%' || n.query_lc || '%'
+        ) THEN 1
+        ELSE 0
+      END AS contains_rank,
+      CASE
+        WHEN n.query_lc = '' THEN 0::double precision
+        ELSE GREATEST(
+          similarity(b.full_name, n.query_lc),
+          similarity(b.emails_lc, n.query_lc),
+          similarity(b.city_state_lc, n.query_lc),
+          similarity(b.role_lc, n.query_lc),
+          similarity(b.industry_lc, n.query_lc),
+          similarity(b.colleges_lc, n.query_lc),
+          similarity(b.jobs_lc, n.query_lc)
+        )
+      END AS fuzzy_score
+    FROM base b
+    CROSS JOIN normalized n
+    WHERE n.query_lc = ''
+      OR (
+        b.full_name ILIKE '%' || n.raw_query || '%'
+        OR b.city_state_lc ILIKE '%' || n.query_lc || '%'
+        OR b.role_lc ILIKE '%' || n.query_lc || '%'
+        OR b.industry_lc ILIKE '%' || n.query_lc || '%'
+        OR b.emails_lc ILIKE '%' || n.query_lc || '%'
+        OR b.colleges_lc ILIKE '%' || n.query_lc || '%'
+        OR b.jobs_lc ILIKE '%' || n.query_lc || '%'
+        OR GREATEST(
+          similarity(b.full_name, n.query_lc),
+          similarity(b.emails_lc, n.query_lc),
+          similarity(b.city_state_lc, n.query_lc),
+          similarity(b.role_lc, n.query_lc),
+          similarity(b.industry_lc, n.query_lc),
+          similarity(b.colleges_lc, n.query_lc),
+          similarity(b.jobs_lc, n.query_lc)
+        ) >= (
+          CASE
+            WHEN char_length(n.query_lc) <= 3 THEN 0.40
+            WHEN char_length(n.query_lc) <= 5 THEN 0.30
+            ELSE 0.22
+          END
+        )
       )
-    )
-    AND (p_role_at_camp IS NULL OR role_at_camp ILIKE '%' || p_role_at_camp || '%')
-    AND (p_industry IS NULL OR industry ILIKE '%' || p_industry || '%')
-    AND (p_city_state IS NULL OR city_state ILIKE '%' || p_city_state || '%')
-  ORDER BY last_name, first_name
-  LIMIT p_limit;
+  )
+  SELECT p.*
+  FROM scored s
+  JOIN public.profiles p ON p.id = s.id
+  CROSS JOIN normalized n
+  ORDER BY
+    s.exact_name_rank DESC,
+    s.prefix_rank DESC,
+    s.contains_rank DESC,
+    s.fuzzy_score DESC,
+    p.last_name ASC,
+    p.first_name ASC
+  LIMIT n.effective_limit;
 $$;
 
 -- Top search terms from analytics
@@ -522,6 +622,63 @@ BEGIN
       'DROP TRIGGER IF EXISTS set_updated_at ON public.%I; CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.trigger_set_updated_at();',
       tbl, tbl
     );
+  END LOOP;
+END;
+$$;
+
+-- ============================================================
+-- Row Level Security (Defense in Depth)
+-- ============================================================
+-- The API uses the service_role key server-side, but RLS is still enabled on
+-- all public tables so direct client access remains blocked by default.
+
+DO $$
+DECLARE
+  tbl text;
+BEGIN
+  FOR tbl IN
+    SELECT unnest(ARRAY[
+      'tenants', 'users', 'profiles', 'invites', 'access_requests',
+      'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
+      'photos', 'newsletters', 'email_broadcasts', 'family_trees',
+      'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
+      'resume_parse_results', 'city_geo', 'activity_items'
+    ])
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
+    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY;', tbl);
+  END LOOP;
+END;
+$$;
+
+DO $$
+DECLARE
+  tbl text;
+  policy_name text;
+BEGIN
+  FOR tbl IN
+    SELECT unnest(ARRAY[
+      'tenants', 'users', 'profiles', 'invites', 'access_requests',
+      'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
+      'photos', 'newsletters', 'email_broadcasts', 'family_trees',
+      'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
+      'resume_parse_results', 'city_geo', 'activity_items'
+    ])
+  LOOP
+    policy_name := format('%s_service_role_all', tbl);
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = tbl
+        AND policyname = policy_name
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true);',
+        policy_name,
+        tbl
+      );
+    END IF;
   END LOOP;
 END;
 $$;

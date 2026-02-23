@@ -8,7 +8,15 @@ import {
   ProfileModel,
   ImportReportModel
 } from "../db/models/index.js";
-import { createBillingPortalUrl, getBillingMode, isStripeEnabled } from "../services/billing.js";
+import {
+  buildBillingPublicSnapshot,
+  createBillingPortalUrl,
+  createTenantCheckoutSession,
+  getBillingCatalog,
+  getBillingMode,
+  getFoundersAvailability,
+  isStripeEnabled
+} from "../services/billing.js";
 import { runTenantCsvImport } from "../services/csvImport.js";
 import {
   buildOnboardingResponse,
@@ -30,6 +38,7 @@ import {
   validateThemePayload
 } from "../services/onboarding.js";
 import { buildTenantUrls, resolveTenantDomain } from "../utils/domainProvisioning.js";
+import { resolveTenantBilling } from "../services/billingState.js";
 
 const router = Router();
 
@@ -73,6 +82,7 @@ function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
 
 const DEFAULT_TERMS_VERSION = "2026-02-21";
 const DEFAULT_PRIVACY_VERSION = "2026-02-21";
+const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 
 function hasOwn(source, key) {
   return Boolean(source && Object.prototype.hasOwnProperty.call(source, key));
@@ -158,6 +168,36 @@ function unflattenPatch(patch) {
   return result;
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+}
+
+function deepMergeObjects(baseValue, patchValue) {
+  if (!isPlainObject(patchValue)) return patchValue;
+  const base = isPlainObject(baseValue) ? { ...baseValue } : {};
+  for (const [key, value] of Object.entries(patchValue)) {
+    if (isPlainObject(value) && isPlainObject(base[key])) {
+      base[key] = deepMergeObjects(base[key], value);
+    } else {
+      base[key] = value;
+    }
+  }
+  return base;
+}
+
+const JSON_MERGE_KEYS = [
+  "theme",
+  "content",
+  "settings",
+  "modules",
+  "accessSettings",
+  "onboardingDraft",
+  "launch",
+  "onboardingProgress",
+  "billingDetails",
+  "directorLegalAgreement"
+];
+
 async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
   const isSuperAdmin = req.user.roles?.includes("super_admin");
   const isTenantAdmin = req.user.roles?.includes("tenant_admin");
@@ -242,6 +282,34 @@ function applyChecklistAndStep(tenant, { currentChecklist, stepToComplete, nextS
   };
 }
 
+function resolveRequestedBillingPlan(body = {}, tenant = null) {
+  const direct = String(body?.planCode || body?.billingPlan || "").trim().toLowerCase();
+  if (direct) {
+    if (!VALID_BILLING_PLAN_CODES.has(direct)) {
+      return {
+        error: {
+          status: 400,
+          payload: {
+            error: {
+              code: "INVALID_BILLING_PLAN",
+              message: "Billing plan must be legacy, founders, or institutional."
+            }
+          }
+        }
+      };
+    }
+    return { planCode: direct };
+  }
+
+  const planTier = String(body?.planTier || "").trim().toLowerCase();
+  if (planTier === "premium") return { planCode: "institutional" };
+  if (planTier === "base") return { planCode: "legacy" };
+
+  return {
+    planCode: tenant ? resolveTenantBilling(tenant).billingPlan : "legacy"
+  };
+}
+
 function onboardingPayload(tenant, counts, extra = {}) {
   return {
     ...buildOnboardingResponse(tenant, { counts, includeDraft: true }),
@@ -251,7 +319,21 @@ function onboardingPayload(tenant, counts, extra = {}) {
 }
 
 async function saveTenantOnboarding(tenantId, update) {
-  return TenantModel.update(tenantId, unflattenPatch(update));
+  const patch = unflattenPatch(update);
+  const existing = await TenantModel.findById(tenantId);
+  if (!existing) {
+    const error = new Error("Tenant not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  for (const key of JSON_MERGE_KEYS) {
+    if (isPlainObject(patch[key])) {
+      patch[key] = deepMergeObjects(existing[key] || {}, patch[key]);
+    }
+  }
+
+  return TenantModel.update(tenantId, patch);
 }
 
 router.patch("/me/onboarding/draft", requireAuth, async (req, res, next) => {
@@ -283,7 +365,7 @@ router.patch("/me/onboarding/draft", requireAuth, async (req, res, next) => {
       update["onboardingDraft.billingDetails"] = body.billingDetails;
     }
 
-    await TenantModel.update(tenant._id, unflattenPatch(update));
+    await saveTenantOnboarding(tenant._id, update);
     return res.json({ ok: true });
   } catch (error) {
     return next(error);
@@ -1021,7 +1103,7 @@ router.patch("/me/billing", requireAuth, async (req, res) => {
   }
   update.onboardingStatus = tenant.onboardingStatus === "live" ? "live" : "in_progress";
 
-  const updated = await TenantModel.update(tenant._id, unflattenPatch(update));
+  const updated = await saveTenantOnboarding(tenant._id, update);
 
   await createAuditLog({
     tenantId: tenant._id,
@@ -1100,6 +1182,69 @@ router.patch("/me/plan", requireAuth, async (req, res) => {
   });
 });
 
+router.post("/me/billing/checkout", requireAuth, async (req, res, next) => {
+  try {
+    const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
+    if (resolved.error) {
+      return res.status(resolved.error.status).json(resolved.error.payload);
+    }
+
+    const { tenant } = resolved;
+    const requestedPlan = resolveRequestedBillingPlan(req.body || {}, tenant);
+    if (requestedPlan.error) {
+      return res.status(requestedPlan.error.status).json(requestedPlan.error.payload);
+    }
+    const planCode = requestedPlan.planCode;
+    const checkout = await createTenantCheckoutSession({
+      tenant,
+      billingOperator: req.user,
+      planCode,
+      successUrl: req.body?.successUrl,
+      cancelUrl: req.body?.cancelUrl
+    });
+
+    const updatedTenant = checkout?.tenant || (await TenantModel.findById(tenant._id));
+    const [foundersAvailability] = await Promise.all([
+      getFoundersAvailability()
+    ]);
+
+    await createAuditLog({
+      tenantId: tenant._id,
+      actorUserId: req.user.id,
+      event: "billing_checkout_started",
+      metadata: {
+        mode: checkout.mode,
+        planCode,
+        sessionId: checkout.sessionId || ""
+      }
+    });
+
+    return res.status(201).json({
+      ok: true,
+      mode: checkout.mode,
+      stripeEnabled: isStripeEnabled(),
+      checkoutUrl: checkout.checkoutUrl,
+      sessionId: checkout.sessionId || "",
+      notes: checkout.message || "",
+      catalog: getBillingCatalog(),
+      foundersAvailability,
+      billing: buildBillingPublicSnapshot(updatedTenant),
+      tenant: {
+        id: String(updatedTenant._id),
+        slug: updatedTenant.slug,
+        name: updatedTenant.name,
+        planTier: updatedTenant.planTier,
+        billingStatus: updatedTenant.billingStatus,
+        onboardingFeeAmount: updatedTenant.onboardingFeeAmount,
+        onboardingFeePaid: Boolean(updatedTenant.onboardingFeePaid),
+        onboardingFeeInvoiceId: updatedTenant.onboardingFeeInvoiceId || ""
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get("/me/billing", requireAuth, async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
@@ -1117,7 +1262,11 @@ router.get("/me/billing", requireAuth, async (req, res) => {
     });
   }
 
-  const portal = await createBillingPortalUrl({ tenant: { ...tenant } });
+  const [portal, foundersAvailability] = await Promise.all([
+    createBillingPortalUrl({ tenant: { ...tenant } }),
+    getFoundersAvailability()
+  ]);
+  const billing = buildBillingPublicSnapshot(tenant);
 
   return res.json({
     mode: getBillingMode(),
@@ -1127,17 +1276,28 @@ router.get("/me/billing", requireAuth, async (req, res) => {
       slug: tenant.slug,
       name: tenant.name,
       planTier: tenant.planTier,
-      billingStatus: tenant.billingStatus,
+      billingPlan: billing.billingPlan,
+      billingStatus: billing.billingStatus,
+      billingLifecycleStatus: billing.lifecycleStatus,
       stripeCustomerId: tenant.stripeCustomerId,
       stripeSubscriptionId: tenant.stripeSubscriptionId,
       stripePriceId: tenant.stripePriceId,
-      onboardingFeeAmount: tenant.onboardingFeeAmount,
-      onboardingFeePaid: Boolean(tenant.onboardingFeePaid),
+      onboardingFeeAmount: billing.onboardingFeeAmount,
+      onboardingFeePaid: billing.onboardingFeePaid,
+      onboardingFeeStatus: billing.onboardingFeeStatus,
+      onboardingFeeWaived: billing.onboardingFeeWaived,
       onboardingFeeInvoiceId: tenant.onboardingFeeInvoiceId || "",
       billingDetails: tenant.billingDetails || {},
-      directorLegalAgreement: tenant.directorLegalAgreement || {}
+      directorLegalAgreement: tenant.directorLegalAgreement || {},
+      currentPeriodEnd: billing.currentPeriodEnd,
+      foundersReserved: billing.foundersReserved,
+      foundersSlot: billing.foundersSlot,
+      foundersEligible: billing.foundersEligible
     },
     features: listFeaturesForPlan(tenant.planTier, tenant.addOns || []),
+    catalog: getBillingCatalog(),
+    foundersAvailability,
+    billing,
     manageSubscriptionUrl: portal.url || "",
     notes: portal.message || ""
   });

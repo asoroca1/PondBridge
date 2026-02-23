@@ -3,15 +3,15 @@
    ========================= */
 
 :root {
-  --cf-navy: #002b5c;
+  --cf-navy: var(--brand-primary, #002b5c);
   --cf-navy-2: #123f74;
   --cf-bg-soft: #f7f9fd;
-  --cf-card: #ffffff;
-  --cf-border: #e1e6f0;
+  --cf-card: var(--card, #ffffff);
+  --cf-border: var(--card-border, #e1e6f0);
   --cf-border-strong: #cad5e8;
-  --cf-text: #0f172a;
-  --cf-muted: #64748b;
-  --cf-shadow: 0 1px 2px rgba(15, 23, 42, 0.07), 0 8px 24px rgba(15, 23, 42, 0.05);
+  --cf-text: var(--text, #0f172a);
+  --cf-muted: var(--text-muted, #64748b);
+  --cf-shadow: var(--shadow-lg);
 }
 
 .cf-main {
@@ -110,7 +110,7 @@
 .cf-thread {
   background: var(--cf-card);
   border: 1px solid var(--cf-border);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--cf-shadow);
   min-height: 0;
 }
@@ -608,9 +608,9 @@
 .cf-post {
   background: #fff;
   border: 1px solid #e5ecfa;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 12px;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .cf-post-head {
@@ -834,8 +834,8 @@
 .cf-modal-card {
   width: min(720px, 92vw);
   background: #fff;
-  border-radius: 14px;
-  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--cf-border);
   display: flex;
   flex-direction: column;
   max-height: 90dvh;

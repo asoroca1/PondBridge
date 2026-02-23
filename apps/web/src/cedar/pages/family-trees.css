@@ -18,9 +18,9 @@
   gap: 12px;
   background: #fff;
   border: 1px solid #e4e7ee;
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   padding: 14px 16px;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .ft-title-wrap {
@@ -132,10 +132,10 @@
 
 .ft-card {
   background: #fff;
-  border: 1px solid #e4e7ee;
-  border-radius: 14px;
+  border: 1px solid var(--card-border, #e4e7ee);
+  border-radius: var(--radius-lg);
   padding: 14px;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -145,7 +145,7 @@
 
 .ft-card:hover {
   border-color: #bcd1ee;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-lg);
   transform: translateY(-1px);
 }
 
@@ -211,8 +211,8 @@
 }
 
 .ft-card-btn-primary {
-  background: #002b5c;
-  border-color: #002b5c;
+  background: var(--brand-primary, #002b5c);
+  border-color: var(--brand-primary, #002b5c);
   color: #fff;
 }
 
@@ -254,8 +254,8 @@
 
 .ft-simple-head {
   background: #fff;
-  border: 1px solid #e4e7ee;
-  border-radius: 16px;
+  border: 1px solid var(--card-border, #e4e7ee);
+  border-radius: var(--radius-xl);
   padding: 14px 16px;
   display: flex;
   justify-content: space-between;
@@ -272,10 +272,10 @@
 
 .ft-form-card {
   background: #fff;
-  border: 1px solid #d7dee9;
-  border-radius: 14px;
+  border: 1px solid var(--card-border, #d7dee9);
+  border-radius: var(--radius-lg);
   padding: 14px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  box-shadow: var(--shadow-sm);
 }
 
 .ft-form-title {
@@ -522,8 +522,8 @@ select.ft-input {
 }
 
 .ft-head-btn.is-primary {
-  background: #002b5c;
-  border-color: #002b5c;
+  background: var(--brand-primary, #002b5c);
+  border-color: var(--brand-primary, #002b5c);
   color: #fff;
   box-shadow: 0 3px 10px rgba(0, 43, 92, 0.22);
 }
@@ -547,10 +547,10 @@ select.ft-input {
 
 .ft-rel-card {
   background: #fff;
-  border: 1px solid #e4e7ee;
-  border-radius: 14px;
+  border: 1px solid var(--card-border, #e4e7ee);
+  border-radius: var(--radius-lg);
   padding: 12px;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .ft-rel-card h3 {
@@ -621,7 +621,7 @@ select.ft-input {
 .ft-tree-board {
   position: relative;
   border: 1px solid #d7e0ed;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background:
     radial-gradient(circle at 16% 8%, rgba(214, 228, 247, 0.52), transparent 34%),
     linear-gradient(180deg, #fcfdff, #f6f9ff);
@@ -691,9 +691,9 @@ select.ft-input {
   width: 240px;
   min-height: 82px;
   border: 1px solid #cfd9e8;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: #fff;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+  box-shadow: var(--shadow-sm);
   padding: 10px;
   display: flex;
   align-items: center;

@@ -1,22 +1,22 @@
 :root{
-    --cedar-navy:#002b5c;
+    --cedar-navy: var(--brand-primary, #002b5c);
     --grid-gap: 18px;
     --card-pad: 14px;
     --maxw: 1240px;
     --nav-h: 68px;
-    --border:#e6e8eb;
-    --shadow: 0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04);
+    --border: var(--card-border, #e6e8eb);
+    --shadow: var(--shadow-sm);
   }
   .home-wrap{ position:relative; min-height:100vh; }
   .home-wrap, .welcome-hero, .quick-actions, .content-grid { position: relative; z-index: 1; }
   .nav-spacer{ height: var(--nav-h); }
-  .muted{ color:#5b6270; }
+  .muted{ color:var(--text-muted, #5b6270); }
   
   /* ---------- Welcome ---------- */
   .welcome-hero{ max-width: var(--maxw); margin: 8px auto 14px; padding: 0 16px; }
   .welcome-banner{
     position: relative; display:flex; align-items:center; justify-content:space-between; gap:16px;
-    padding:22px; border-radius:18px; background:
+    padding:22px; border-radius:var(--radius-xl); background:
     linear-gradient(135deg, rgba(255,255,255,.92), rgba(255,255,255,.98)),
     radial-gradient(140% 100% at -10% -30%, #e7eef6 0%, #f5f7fa 60%, #ffffff 100%);
     border:1px solid var(--border); box-shadow: var(--shadow); overflow:hidden;
@@ -43,7 +43,7 @@
   /* Pulse card inside hero */
   .pulse-card{
     display:flex; flex-direction:column; gap:8px;
-    background:#fff; border:1px solid var(--border); border-radius:14px;
+    background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg);
     padding:10px 12px; box-shadow: var(--shadow);
   }
   .pulse-head{
@@ -65,18 +65,18 @@
   }
   .qa-btn{
     display:flex; align-items:center; justify-content:center; gap:10px;
-    padding:14px 16px; border-radius:12px; background:#fff; border:1px solid var(--border);
+    padding:14px 16px; border-radius:var(--radius-md); background:#fff; border:1px solid var(--border);
     box-shadow: var(--shadow); font-weight:700; color:#173a63; text-decoration:none;
   }
-  .qa-btn:hover{ transform:translateY(-1px); box-shadow:0 6px 18px rgba(16,24,40,.08); }
+  .qa-btn:hover{ transform:translateY(-1px); box-shadow:var(--shadow-md); }
   
   /* smaller “chip” variant for Cedar Chest */
   .qa-chip{
     display:flex; align-items:center; justify-content:center; gap:8px;
-    padding:8px 12px; border-radius:999px; background:#fff; border:1px solid var(--border);
+    padding:8px 12px; border-radius:var(--radius-pill); background:#fff; border:1px solid var(--border);
     box-shadow: var(--shadow); font-weight:700; color:#173a63; text-decoration:none;
   }
-  .qa-chip:hover{ transform:translateY(-1px); box-shadow:0 6px 18px rgba(16,24,40,.08); }
+  .qa-chip:hover{ transform:translateY(-1px); box-shadow:var(--shadow-md); }
   
   /* ---------- Content grid (modern 2-col) ---------- */
   .content-grid{
@@ -88,10 +88,10 @@
   
   /* ---------- generic cards ---------- */
   .p1-card{
-    background:#fff; border:1px solid var(--border); border-radius:16px;
+    background:#fff; border:1px solid var(--border); border-radius:var(--radius-xl);
     box-shadow: var(--shadow); padding: var(--card-pad);
   }
-  .hoverable:hover{ transform: translateY(-1px); box-shadow: 0 6px 18px rgba(16,24,40,.08); }
+  .hoverable:hover{ transform: translateY(-1px); box-shadow: var(--shadow-md); }
   .card-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
   .card-head h3{ margin:0; font-size:15.5px; letter-spacing: .2px; }
   .link-subtle{
@@ -130,9 +130,9 @@
   }
   
   /* ---------- Announce + feed ---------- */
-  .announce-form{ display:flex; gap:8px; padding:8px 10px; background:#f8fafc; border:1px solid var(--border); border-radius:12px; margin-bottom:10px; }
+  .announce-form{ display:flex; gap:8px; padding:8px 10px; background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px; }
   .announce-input{ flex:1; border:0; background:transparent; outline:none; font-size:15px; padding:10px 8px; }
-  .announce-btn{ background:var(--cedar-navy); color:#fff; border:0; border-radius:12px; padding:10px 12px; font-weight:700; cursor:pointer; }
+  .announce-btn{ background:var(--cedar-navy); color:#fff; border:0; border-radius:var(--radius-md); padding:10px 12px; font-weight:700; cursor:pointer; }
   .announce-btn:disabled{ opacity:.6; cursor:not-allowed; }
   
   /* feed list + separators */
@@ -167,7 +167,7 @@
   .activity-bubble{
     display:inline-block; max-width:68ch;
     background:#f8fafc; border:1px solid var(--border);
-    padding:10px 12px; border-radius:12px; color:#0b1220; font-size:15px; line-height:1.35;
+    padding:10px 12px; border-radius:var(--radius-md); color:#0b1220; font-size:15px; line-height:1.35;
   }
   
   /* right column: time + actions */
@@ -261,7 +261,7 @@
   
   /* ---------- Photo mini grid ---------- */
   .photos-mini{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
-  .photos-mini-item{ position:relative; aspect-ratio: 4/3; border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+  .photos-mini-item{ position:relative; aspect-ratio: 4/3; border-radius:var(--radius-md); overflow:hidden; border:1px solid var(--border); }
   .photos-mini-item img{ width:100%; height:100%; object-fit:cover; display:block; }
   
   /* ---------- suggested profiles ---------- */
@@ -339,7 +339,7 @@
     .pulse-card{ align-self:flex-start; }
     .welcome-title{ font-size:22px; }
     .title-accent{ width:56px; }
-    .p1-card{ padding:12px; border-radius:14px; }
+    .p1-card{ padding:12px; border-radius:var(--radius-lg); }
     .card-head h3{ font-size:14.5px; }
     .photos-mini{ gap:8px; }
     .activity-item{ gap:12px; padding:12px 8px; }
@@ -366,13 +366,8 @@
   }
   
   /* ---------- Background + masthead controls ---------- */
-  :root { --page-bg: #f5f7fa; }
   :root{
-    --page-bg: #f5f7fa;
-    --masthead-overlap: 72px;
-  }
-  :root{
-    --page-bg: #f5f7fa;
+    --page-bg: var(--bg, #f5f7fa);
     --masthead-height: 380px;
     --masthead-pos: 50% 60%;
     --fade-cutoff: 62%;
@@ -484,9 +479,9 @@
   font-weight: 700;
   line-height: 18px;
 
-  background: #002b5c;
+  background: var(--brand-primary, #002b5c);
   color: #fff;
 
   border: 2px solid rgba(255,255,255,0.95);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow-md);
 }

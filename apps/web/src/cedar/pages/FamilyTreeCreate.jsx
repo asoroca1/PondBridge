@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
+import { getToken, displayName } from "../lib/helpers.js";
 import defaultProfile from "../assets/default-profile.png";
 import "./family-trees.css";
 
@@ -21,10 +21,6 @@ const REL_TYPES = [
   { value: "partner_of", label: "Partner of" },
   { value: "cousin_of", label: "Cousin of" },
 ];
-
-function getToken() {
-  return localStorage.getItem("cedarToken") || localStorage.getItem("token") || "";
-}
 
 function readCurrentUser() {
   try {
@@ -57,12 +53,6 @@ function normalizeSearchResult(item = {}) {
   const currentJob = item.currentJob || "";
   const photoUrl = item.photoUrl || item?.uploads?.photoUrl || "";
   return { id, firstName, lastName, nickname, currentJob, photoUrl };
-}
-
-function displayName(person = {}) {
-  const nick = String(person.nickname || "").trim();
-  if (nick) return `${person.firstName || ""} "${nick}" ${person.lastName || ""}`.trim();
-  return `${person.firstName || ""} ${person.lastName || ""}`.trim() || "Unnamed";
 }
 
 function makeEdgeRow(a = "", b = "") {
@@ -223,7 +213,6 @@ export default function FamilyTreeCreate() {
 
   return (
     <>
-      <Navbar2 />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <main className="ft-main nav2-page-shell">
         <header className="ft-simple-head">

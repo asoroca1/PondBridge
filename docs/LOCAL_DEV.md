@@ -35,7 +35,17 @@ Optional for transactional email with Resend:
 EMAIL_MODE=resend
 EMAIL_FROM=no-reply@your-domain.com
 RESEND_API_KEY=re_...
+RESEND_REQUEST_TIMEOUT_MS=12000
+RESEND_MAX_RETRIES=2
+RESEND_RETRY_BASE_DELAY_MS=300
+EMAIL_BROADCAST_BATCH_SIZE=40
+EMAIL_BROADCAST_MAX_RECIPIENTS=500
 ```
+
+For production branded sending on `pondbridgealumni.com`:
+- Verify `pondbridgealumni.com` in Resend.
+- Set `EMAIL_FROM=no-reply@pondbridgealumni.com`.
+- Keep `EMAIL_MODE=resend`.
 
 Optional for media uploads with Cloudflare R2:
 ```env
@@ -46,6 +56,32 @@ R2_SECRET_ACCESS_KEY=...
 R2_REGION=auto
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 R2_PUBLIC_BASE_URL=https://<your-public-r2-base>
+R2_MAX_UPLOAD_BYTES=20971520
+R2_PRESIGN_EXPIRES_SECONDS=900
+R2_DEFAULT_CACHE_CONTROL=public, max-age=31536000, immutable
+```
+
+Recommended R2 bucket CORS for browser presigned uploads:
+```json
+[
+  {
+    "AllowedOrigins": [
+      "https://pondbridgealumni.com",
+      "https://*.pondbridgealumni.com",
+      "http://localhost:5173",
+      "http://localhost:5174"
+    ],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["Content-Type", "Cache-Control"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Health check now includes integration readiness details:
+```bash
+curl http://localhost:4000/health
 ```
 
 ## 4. Seed Cedar tenant + users

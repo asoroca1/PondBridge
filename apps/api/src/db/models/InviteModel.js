@@ -1,4 +1,5 @@
-import { createModel } from "./_factory.js";
+import { createModel, toDoc } from "./_factory.js";
+import { getSupabaseAdmin } from "../supabaseAdmin.js";
 
 const COLUMNS = {
   id: "id",
@@ -14,4 +15,25 @@ const COLUMNS = {
   updatedAt: "updated_at"
 };
 
-export const InviteModel = createModel("invites", COLUMNS);
+const base = createModel("invites", COLUMNS);
+
+export const InviteModel = {
+  ...base,
+  COLUMNS,
+
+  async consumeIfUnused(tenantId, inviteId, { usedByUserId = null, usedAt = new Date() } = {}) {
+    const { data, error } = await getSupabaseAdmin()
+      .from("invites")
+      .update({
+        used_at: new Date(usedAt).toISOString(),
+        used_by_user_id: usedByUserId || null
+      })
+      .eq("tenant_id", String(tenantId || ""))
+      .eq("id", String(inviteId || ""))
+      .is("used_at", null)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    return toDoc(data, COLUMNS);
+  }
+};

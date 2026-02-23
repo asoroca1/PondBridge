@@ -1,10 +1,8 @@
 import React from "react";
-import Navbar2 from "../components/Navbar2";
 
 export default function ComingSoon({ title = "Coming Soon" }) {
   return (
     <div className="comingsoon1">
-      <Navbar2 />
       <main className="nav2-page-shell">
         <div style={{ maxWidth: 960, margin: "0 auto", padding: "1rem" }}>
           <h1 style={{ fontSize: "2rem", marginBottom: ".5rem" }}>{title}</h1>

@@ -1,18 +1,38 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useAuth as useClerkAuth, useClerk } from "@clerk/clerk-react";
 import { clearAuthStorage, readAuthFromStorage, writeAuthToStorage } from "../lib/storage.js";
+import { requestJson } from "../lib/http.js";
+import {
+  AUTH_PROVIDER,
+  clerkConfigError,
+  clerkModeRequested,
+  clerkUiEnabled
+} from "../lib/authMode.js";
 
 const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
+function normalizeUserShape(user) {
+  if (!user) return null;
+  const id = String(user.id || user._id || "").trim();
+  if (!id) return null;
+  return {
+    ...user,
+    id,
+    _id: id,
+    roles: Array.isArray(user.roles) ? user.roles : []
+  };
+}
+
+function LegacyAuthProvider({ children }) {
   const initial = readAuthFromStorage();
   const [token, setToken] = useState(initial.token);
-  const [user, setUser] = useState(initial.user);
+  const [user, setUser] = useState(normalizeUserShape(initial.user));
 
   useEffect(() => {
     function syncFromStorage() {
       const next = readAuthFromStorage();
       setToken(next.token || "");
-      setUser(next.user || null);
+      setUser(normalizeUserShape(next.user));
     }
 
     window.addEventListener("storage", syncFromStorage);
@@ -24,31 +44,209 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const login = (nextToken, nextUser) => {
-    setToken(nextToken);
-    setUser(nextUser);
-    writeAuthToStorage(nextToken, nextUser);
-  };
+  const login = useCallback((nextToken, nextUser) => {
+    const normalized = normalizeUserShape(nextUser);
+    setToken(nextToken || "");
+    setUser(normalized);
+    writeAuthToStorage(nextToken || "", normalized);
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken("");
     setUser(null);
     clearAuthStorage();
-  };
+  }, []);
+
+  const refreshSession = useCallback(async () => {
+    return {
+      ok: Boolean(token),
+      authProvider: "legacy",
+      user
+    };
+  }, [token, user]);
 
   const value = useMemo(
     () => ({
       token,
       user,
       isAuthenticated: Boolean(token),
+      isReady: true,
+      authProvider: "legacy",
+      authConfigError: "",
       login,
       logout,
-      setUser
+      refreshSession,
+      setUser: (nextUser) => {
+        const normalized = normalizeUserShape(nextUser);
+        setUser(normalized);
+        writeAuthToStorage(token || "", normalized);
+      }
     }),
-    [token, user]
+    [login, logout, refreshSession, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function ClerkBackedAuthProvider({ children }) {
+  const initial = readAuthFromStorage();
+  const [token, setToken] = useState(initial.token || "");
+  const [user, setUser] = useState(normalizeUserShape(initial.user));
+  const [sessionRefreshing, setSessionRefreshing] = useState(false);
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { signOut } = useClerk();
+
+  const clearLocalAuth = useCallback(() => {
+    setToken("");
+    setUser(null);
+    clearAuthStorage();
+  }, []);
+
+  const refreshSession = useCallback(
+    async ({ tenantSlug = "" } = {}) => {
+      if (!isLoaded || !isSignedIn) {
+        clearLocalAuth();
+        return null;
+      }
+
+      const clerkToken = (await getToken()) || "";
+      if (!clerkToken) {
+        clearLocalAuth();
+        return null;
+      }
+
+      setSessionRefreshing(true);
+      setToken(clerkToken);
+
+      try {
+        const payload = await requestJson("/api/auth/session", {
+          token: clerkToken,
+          headers: tenantSlug ? { "X-Tenant-Slug": tenantSlug } : {}
+        });
+        const normalizedUser = normalizeUserShape(payload?.user);
+        setUser(normalizedUser);
+        writeAuthToStorage(clerkToken, normalizedUser);
+        return payload;
+      } catch (error) {
+        if (error?.status === 401 || error?.status === 403) {
+          writeAuthToStorage(clerkToken, null);
+          setUser(null);
+          return null;
+        }
+        throw error;
+      } finally {
+        setSessionRefreshing(false);
+      }
+    },
+    [clearLocalAuth, getToken, isLoaded, isSignedIn]
+  );
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      clearLocalAuth();
+      return;
+    }
+
+    let active = true;
+    getToken()
+      .then((nextToken) => {
+        if (!active) return;
+        const safeToken = nextToken || "";
+        setToken(safeToken);
+        writeAuthToStorage(safeToken, normalizeUserShape(user));
+      })
+      .catch(() => {
+        if (!active) return;
+        clearLocalAuth();
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [clearLocalAuth, getToken, isLoaded, isSignedIn, user]);
+
+  const login = useCallback(
+    (nextToken, nextUser) => {
+      if (nextToken) {
+        const normalized = normalizeUserShape(nextUser);
+        setToken(nextToken);
+        setUser(normalized);
+        writeAuthToStorage(nextToken, normalized);
+        return;
+      }
+      refreshSession().catch(() => {});
+    },
+    [refreshSession]
+  );
+
+  const logout = useCallback(async () => {
+    clearLocalAuth();
+    try {
+      await signOut();
+    } catch {
+      // no-op
+    }
+  }, [clearLocalAuth, signOut]);
+
+  const value = useMemo(
+    () => ({
+      token,
+      user,
+      isAuthenticated: Boolean(token),
+      isReady: Boolean(isLoaded) && !sessionRefreshing,
+      authProvider: AUTH_PROVIDER,
+      authConfigError: "",
+      login,
+      logout,
+      refreshSession,
+      setUser: (nextUser) => {
+        const normalized = normalizeUserShape(nextUser);
+        setUser(normalized);
+        writeAuthToStorage(token || "", normalized);
+      }
+    }),
+    [isLoaded, login, logout, refreshSession, sessionRefreshing, token, user]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function ClerkUnavailableAuthProvider({ children }) {
+  const logout = useCallback(() => {
+    clearAuthStorage();
+  }, []);
+
+  const refreshSession = useCallback(async () => null, []);
+  const configError = clerkConfigError();
+
+  const value = useMemo(
+    () => ({
+      token: "",
+      user: null,
+      isAuthenticated: false,
+      isReady: true,
+      authProvider: AUTH_PROVIDER,
+      authConfigError: configError,
+      login: () => {},
+      logout,
+      refreshSession,
+      setUser: () => {}
+    }),
+    [configError, logout, refreshSession]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function AuthProvider({ children }) {
+  if (clerkUiEnabled()) {
+    return <ClerkBackedAuthProvider>{children}</ClerkBackedAuthProvider>;
+  }
+  if (clerkModeRequested()) {
+    return <ClerkUnavailableAuthProvider>{children}</ClerkUnavailableAuthProvider>;
+  }
+  return <LegacyAuthProvider>{children}</LegacyAuthProvider>;
 }
 
 export function useAuth() {

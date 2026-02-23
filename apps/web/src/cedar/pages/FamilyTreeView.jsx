@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
+import { getToken, displayName } from "../lib/helpers.js";
 import defaultProfile from "../assets/default-profile.png";
 import "./family-trees.css";
 
@@ -28,10 +28,6 @@ const PARENT_OF_TYPES = new Set(["parent_of", "father_of", "mother_of"]);
 const CHILD_OF_TYPES = new Set(["child_of", "son_of", "daughter_of"]);
 const SIBLING_TYPES = new Set(["sibling_of", "brother_of", "sister_of"]);
 const SPOUSE_TYPES = new Set(["spouse_of", "partner_of"]);
-
-function getToken() {
-  return localStorage.getItem("cedarToken") || localStorage.getItem("token") || "";
-}
 
 function readCurrentUserId() {
   try {
@@ -59,12 +55,6 @@ function normalizeEdge(raw = {}) {
     toProfileId: String(raw.toProfileId || raw.to || "").trim(),
     type: String(raw.type || "").trim(),
   };
-}
-
-function displayName(person = {}) {
-  const nick = String(person.nickname || "").trim();
-  if (nick) return `${person.firstName || ""} "${nick}" ${person.lastName || ""}`.trim();
-  return `${person.firstName || ""} ${person.lastName || ""}`.trim() || "Unnamed";
 }
 
 function makeEdgeRow(a = "", b = "") {
@@ -546,7 +536,6 @@ export default function FamilyTreeView() {
 
   return (
     <>
-      <Navbar2 />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <main className="ft-main nav2-page-shell">
         {loading && <div className="ft-status">Loading family tree…</div>}

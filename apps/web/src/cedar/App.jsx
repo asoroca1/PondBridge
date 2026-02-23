@@ -7,9 +7,6 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import CreateProfileWizard from "./pages/CreateProfileWizard";
 
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-
 import MainHome from "./pages/MainHome";
 import MyProfile from "./pages/MyProfile";
 import EditProfile from "./pages/EditProfile";
@@ -55,8 +52,6 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/create-account" element={<CreateProfileWizard />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/legal" element={<Legal />} />
 
           {/* Private */}

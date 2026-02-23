@@ -1,13 +1,13 @@
 /* ===== Advanced Search v2 (namespaced) ===== */
   .as2 {
-    --as2-navy: #002b5c;
-    --as2-bg: #f6f5f2;
-    --as2-card: #ffffff;
-    --as2-border: #e7e5e4;
-    --as2-radius: 14px;
-    --as2-shadow: 0 8px 28px rgba(0,0,0,.08);
+    --as2-navy: var(--brand-primary, #002b5c);
+    --as2-bg: var(--bg-warm, #f6f5f2);
+    --as2-card: var(--card, #ffffff);
+    --as2-border: var(--card-border, #e7e5e4);
+    --as2-radius: var(--radius-lg);
+    --as2-shadow: var(--shadow-lg);
     --as2-text: #0b2a5c;
-    --as2-mute: #8f99a5;
+    --as2-mute: var(--text-muted, #8f99a5);
     --as2-chip: #eef2f6;
   
     background: var(--as2-bg);

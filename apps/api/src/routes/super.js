@@ -1,5 +1,5 @@
 import { Router } from "express";
-import crypto from "crypto";
+import rateLimit from "express-rate-limit";
 import { normalizeSlug } from "@pondbridge/shared";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
@@ -13,16 +13,38 @@ import {
   TenantAdminAuditLogModel
 } from "../db/models/index.js";
 import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
+import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
+import { createInviteRecord } from "../services/invites.js";
 import { provisionTenantDomain } from "../services/cloudflareDomains.js";
+import { getEmailServiceStatus } from "../services/email.js";
+import { getR2ServiceStatus } from "../services/objectStorage.js";
 import { buildTenantUrls, defaultTenantDomain, isReservedSubdomain } from "../utils/domainProvisioning.js";
+import { hashOpaqueToken } from "../utils/tokens.js";
 import { env } from "../config/env.js";
 
 const router = Router();
+const superSearchLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many super admin search requests. Please wait and try again."
+    }
+  }
+});
 
 const SUPER_CONSOLE_ROLES = ["super_admin", "support_admin", "finance_admin"];
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PLAN_MRR = { base: 299, premium: 599 };
+const BILLING_PLAN_MRR = {
+  legacy: 3500 / 12,
+  founders: 2800 / 12,
+  institutional: 5500 / 12
+};
+const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 const APP_BASE_DOMAIN = String(env.APP_BASE_DOMAIN || "pondbridgealumni.com").trim().toLowerCase();
 const FLAG_TEMPLATES = [
   {
@@ -141,10 +163,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function generateToken(length = 24) {
-  return crypto.randomBytes(length).toString("base64url");
-}
-
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
 }
@@ -205,8 +223,8 @@ function billingStatusLabel(tenant = {}) {
 }
 
 function planMonthlyAmount(tenant = {}) {
-  const tier = tenant.planTier === "premium" ? "premium" : "base";
-  return PLAN_MRR[tier] || PLAN_MRR.base;
+  const billing = resolveTenantBilling(tenant);
+  return BILLING_PLAN_MRR[billing.billingPlan] || BILLING_PLAN_MRR.legacy;
 }
 
 function tenantMrr(tenant = {}) {
@@ -340,7 +358,7 @@ router.get("/notifications", async (_req, res) => {
   res.json(notifications);
 });
 
-router.get("/search", async (req, res) => {
+router.get("/search", superSearchLimiter, async (req, res) => {
   const q = String(req.query.q || "").trim();
   if (q.length < 2) {
     return res.json({ items: [] });
@@ -539,7 +557,8 @@ router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) =>
     alerts: alerts.slice(0, 5),
     integrations: {
       stripe: "db_synced",
-      resend: "proxy_from_invites",
+      resend: getEmailServiceStatus(),
+      r2: getR2ServiceStatus(),
       loops: "not_connected",
       posthog: "partial",
       trigger: "proxy_from_import_reports"
@@ -674,29 +693,24 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   }
 
   if (directorEmail) {
-    const token = generateToken(24);
-    const expiresAt = new Date(Date.now() + inviteExpiresInDays * DAY_MS);
-
-    const invite = await InviteModel.create({
+    const { invite, token } = await createInviteRecord({
       tenantId: tenant._id,
       email: directorEmail,
-      token,
-      expiresAt,
-      usedAt: null,
       roleToAssign: "tenant_admin",
-      createdByUserId: req.user.id
+      createdByUserId: req.user.id,
+      expiresInDays: inviteExpiresInDays
     });
 
-    inviteLink = `/t/${tenant.slug}/director-claim?inviteToken=${encodeURIComponent(invite.token)}`;
+    inviteLink = `/t/${tenant.slug}/director-claim?inviteToken=${encodeURIComponent(token)}`;
     directorClaimLink = network.directorClaimUrl
-      ? `${network.directorClaimUrl}?inviteToken=${encodeURIComponent(invite.token)}`
+      ? `${network.directorClaimUrl}?inviteToken=${encodeURIComponent(token)}`
       : inviteLink;
     directorInvite = {
       id: String(invite._id),
       email: invite.email,
       roleToAssign: invite.roleToAssign,
       expiresAt: invite.expiresAt,
-      signupUrl: `/t/${tenant.slug}/create-account?inviteToken=${invite.token}`,
+      signupUrl: `/t/${tenant.slug}/create-account?inviteToken=${token}`,
       claimUrl: directorClaimLink,
       onboardingUrl: `/t/${tenant.slug}/onboarding`
     };
@@ -834,17 +848,25 @@ router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, re
       });
     }
 
-    const planTier = req.body.planTier === "premium" ? "premium" : "base";
-    const onboardingFeeAmount = Number(
-      Object.prototype.hasOwnProperty.call(req.body, "onboardingFeeAmount")
-        ? req.body.onboardingFeeAmount
-        : tenant.onboardingFeeAmount || 0
+    const requested = String(req.body.planCode || req.body.billingPlan || "").trim().toLowerCase();
+    if (requested && !VALID_BILLING_PLAN_CODES.has(requested)) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_BILLING_PLAN",
+          message: "Billing plan must be legacy, founders, or institutional."
+        }
+      });
+    }
+
+    const requestedPlanCode = normalizeBillingPlan(
+      requested,
+      req.body.planTier === "premium" ? "premium" : tenant.planTier
     );
 
     const checkout = await createTenantCheckoutSession({
       tenant,
-      planTier,
-      onboardingFeeAmount,
+      billingOperator: req.user,
+      planCode: requestedPlanCode,
       successUrl: req.body.successUrl,
       cancelUrl: req.body.cancelUrl
     });
@@ -852,8 +874,8 @@ router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, re
     const updatedTenant = await TenantModel.findById(tenant._id);
 
     await writeAudit(tenant._id, req.user.id, "super_billing_checkout_created", {
-      planTier,
-      onboardingFeeAmount,
+      planCode: requestedPlanCode,
+      onboardingFeeAmount: checkout.onboardingFeeAmount,
       mode: checkout.mode
     });
 
@@ -924,7 +946,7 @@ router.get("/email/transactional", requireRole("support_admin"), async (req, res
       recipientDomain: domain,
       status,
       statusTone: statusTone(status),
-      messageId: String(invite.token || "").slice(0, 20),
+      messageId: toObjectIdString(invite._id).slice(0, 20),
       canRetry: status === "bounced"
     };
   });
@@ -984,15 +1006,19 @@ router.get("/email/transactional", requireRole("support_admin"), async (req, res
 router.post("/email/retry", requireSuperMutation, async (req, res) => {
   const inviteId = String(req.body.inviteId || "").trim();
   const token = String(req.body.token || "").trim();
-  const finder = inviteId ? { _id: inviteId } : token ? { token } : null;
-
-  if (!finder) {
+  if (!inviteId && !token) {
     return res.status(400).json({
       error: { code: "INVALID_INPUT", message: "inviteId or token is required" }
     });
   }
 
-  const invite = await InviteModel.findOne(finder);
+  const invite =
+    (inviteId ? await InviteModel.findOne({ _id: inviteId }) : null) ||
+    (token
+      ? await InviteModel.findOne({ token: hashOpaqueToken(token) })
+      : null) ||
+    (token ? await InviteModel.findOne({ token }) : null);
+
   if (!invite) {
     return res.status(404).json({
       error: { code: "INVITE_NOT_FOUND", message: "Invite not found" }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, PageShell, SectionTitle } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -37,11 +37,19 @@ function formatMoney(value) {
   }).format(Number(value || 0));
 }
 
+function billingPlanLabel(code = "") {
+  const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "founders") return "Founders";
+  if (normalized === "institutional") return "Institutional";
+  return "Legacy";
+}
+
 export default function DirectorOnboardingCommandCenterPage() {
   const { slug } = useParams();
   const { token, user } = useAuth();
   const { tenant } = useTenant();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,8 +57,12 @@ export default function DirectorOnboardingCommandCenterPage() {
   const [payload, setPayload] = useState(null);
   const [billing, setBilling] = useState(null);
   const [updatingBilling, setUpdatingBilling] = useState(false);
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  const [launching, setLaunching] = useState(false);
+  const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
 
   const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
+  const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
 
   async function loadCommandCenter() {
     setLoading(true);
@@ -62,6 +74,14 @@ export default function DirectorOnboardingCommandCenterPage() {
       ]);
       setPayload(onboardingPayload);
       setBilling(billingPayload);
+      const livePlanCode = String(
+        billingPayload?.tenant?.billingPlan || billingPayload?.billing?.billingPlan || "legacy"
+      )
+        .trim()
+        .toLowerCase();
+      if (livePlanCode) {
+        setSelectedPlanCode(livePlanCode);
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -72,6 +92,16 @@ export default function DirectorOnboardingCommandCenterPage() {
   useEffect(() => {
     loadCommandCenter();
   }, [token]);
+
+  useEffect(() => {
+    if (checkoutQueryState === "success") {
+      setStatus("Stripe checkout completed. Billing activation may take a few seconds.");
+      setError("");
+    } else if (checkoutQueryState === "cancel") {
+      setError("Stripe checkout was canceled. Restart checkout when you are ready.");
+      setStatus("");
+    }
+  }, [checkoutQueryState]);
 
   async function markBillingReady() {
     setUpdatingBilling(true);
@@ -97,6 +127,70 @@ export default function DirectorOnboardingCommandCenterPage() {
     }
   }
 
+  async function startStripeCheckout() {
+    setStartingCheckout(true);
+    setError("");
+    setStatus("");
+
+    try {
+      const successUrl = `${window.location.origin}/t/${slug}/onboarding?checkout=success`;
+      const cancelUrl = `${window.location.origin}/t/${slug}/onboarding?checkout=cancel`;
+      const response = await requestJson("/api/tenants/me/billing/checkout", {
+        method: "POST",
+        token,
+        body: {
+          planCode: selectedPlanCode,
+          successUrl,
+          cancelUrl
+        }
+      });
+      const checkoutUrl = String(response?.checkoutUrl || "").trim();
+      if (!checkoutUrl) {
+        throw new Error("Stripe checkout URL was not returned.");
+      }
+      window.location.assign(checkoutUrl);
+    } catch (requestError) {
+      setError(requestError.message || "Unable to start Stripe checkout.");
+      setStartingCheckout(false);
+    }
+  }
+
+  async function launchNetwork() {
+    setLaunching(true);
+    setError("");
+    setStatus("");
+
+    try {
+      const response = await requestJson("/api/tenants/me/launch", {
+        method: "POST",
+        token,
+        body: {
+          mode: "onboarding_command_center"
+        }
+      });
+      const loginUrl = String(response?.network?.loginUrl || "").trim();
+      if (loginUrl.startsWith("http")) {
+        window.location.assign(loginUrl);
+        return;
+      }
+      await loadCommandCenter();
+      setStatus("Network launched successfully.");
+      navigate(`/t/${slug}/home`);
+    } catch (requestError) {
+      const blockers = Array.isArray(requestError?.payload?.error?.details?.blockers)
+        ? requestError.payload.error.details.blockers
+        : [];
+      if (blockers.length > 0) {
+        const blockerText = blockers.map((item) => item.label).filter(Boolean).join(", ");
+        setError(`Launch blocked. Complete: ${blockerText}`);
+      } else {
+        setError(requestError.message || "Unable to launch network.");
+      }
+    } finally {
+      setLaunching(false);
+    }
+  }
+
   const checklist = payload?.tenant?.onboardingChecklist || [];
   const completion = progressPercent(checklist);
   const completedCount = checklist.filter((item) => item.status === "completed").length;
@@ -108,9 +202,17 @@ export default function DirectorOnboardingCommandCenterPage() {
     }));
   }, [checklist]);
 
-  const isPremium = payload?.tenant?.planTier === "premium";
+  const isPremium =
+    String(billing?.tenant?.billingPlan || "").trim().toLowerCase() === "institutional" ||
+    payload?.tenant?.planTier === "premium";
   const inactive = payload?.tenant?.status === "inactive";
   const billingReady = Boolean(payload?.readiness?.checks?.find((check) => check.id === "billing")?.ok);
+  const launchReady = Boolean(payload?.readiness?.isReady);
+  const activePlanCode = String(
+    billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "legacy"
+  )
+    .trim()
+    .toLowerCase();
 
   if (loading) {
     return (
@@ -138,6 +240,11 @@ export default function DirectorOnboardingCommandCenterPage() {
         </div>
         <div className="inline-actions">
           <Button onClick={() => navigate(`/t/${slug}/admin`)}>Open Director Dashboard</Button>
+          {payload?.tenant?.onboardingStatus !== "live" ? (
+            <Button onClick={launchNetwork} disabled={!launchReady || launching}>
+              {launching ? "Launching..." : "Launch Network"}
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={loadCommandCenter}>
             Refresh
           </Button>
@@ -224,18 +331,56 @@ export default function DirectorOnboardingCommandCenterPage() {
         <Card>
           <SectionTitle>Billing Step</SectionTitle>
           <p>
+            <strong>Plan:</strong> {billingPlanLabel(activePlanCode)}
+          </p>
+          <p>
             <strong>Status:</strong> {billing?.tenant?.billingStatus || "unknown"}
+          </p>
+          <p>
+            <strong>Lifecycle:</strong> {billing?.tenant?.billingLifecycleStatus || "uninitialized"}
           </p>
           <p>
             <strong>Onboarding fee:</strong> {formatMoney(billing?.tenant?.onboardingFeeAmount || 0)}
           </p>
           <p>
-            <strong>Onboarding fee paid:</strong> {billing?.tenant?.onboardingFeePaid ? "Yes" : "No"}
+            <strong>Onboarding fee status:</strong> {billing?.tenant?.onboardingFeeStatus || "unpaid"}
           </p>
           <p>
             <strong>Readiness:</strong> {billingReady ? "Ready" : "Blocked until billing is ready"}
           </p>
+          {Array.isArray(billing?.catalog?.plans) && billing.catalog.plans.length ? (
+            <label className="director-command-center-plan-select">
+              Plan selection
+              <select
+                value={selectedPlanCode}
+                onChange={(event) => setSelectedPlanCode(event.target.value)}
+              >
+                {billing.catalog.plans.map((plan) => (
+                  <option key={plan.code} value={plan.code}>
+                    {plan.label} · {formatMoney(plan.annualAmount)}/yr
+                    {plan.onboardingFeeAmount > 0
+                      ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding`
+                      : " · no onboarding fee"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {billing?.foundersAvailability ? (
+            <p className="muted">
+              Founders slots: {billing.foundersAvailability.reserved}/{billing.foundersAvailability.max} reserved
+              {" · "}
+              {billing.foundersAvailability.remaining} remaining
+            </p>
+          ) : null}
           <div className="inline-actions">
+            <Button onClick={startStripeCheckout} disabled={startingCheckout}>
+              {startingCheckout
+                ? "Redirecting..."
+                : selectedPlanCode === activePlanCode
+                ? "Start Stripe Checkout"
+                : "Switch Plan & Checkout"}
+            </Button>
             {billing?.manageSubscriptionUrl ? (
               <a className="link-button" href={billing.manageSubscriptionUrl} target="_blank" rel="noreferrer">
                 Open Billing Portal

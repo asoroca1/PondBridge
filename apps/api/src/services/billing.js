@@ -1,23 +1,327 @@
 import Stripe from "stripe";
 import { env } from "../config/env.js";
-import { TenantModel } from "../db/models/index.js";
+import { TenantAdminAuditLogModel, TenantModel } from "../db/models/index.js";
+import {
+  buildTenantSettingsWithBillingPatch,
+  isBillingReadyForLaunch,
+  mapStripeLifecycleStatus,
+  normalizeBillingPlan,
+  resolveFeatureTierFromBillingPlan,
+  resolveTenantBilling,
+  toLegacyBillingStatusFromLifecycle
+} from "./billingState.js";
 
-const STRIPE_STATUS_MAP = {
-  trialing: "trialing",
-  active: "active",
-  past_due: "past_due",
-  canceled: "canceled",
-  unpaid: "past_due",
-  incomplete: "past_due",
-  incomplete_expired: "past_due",
-  paused: "past_due"
-};
+const FOUNDERS_MAX_CAMPS = 10;
+const ONBOARDING_FEE_UNPAID = "unpaid";
+const ONBOARDING_FEE_PAID = "paid";
+const ONBOARDING_FEE_WAIVED = "waived";
 
 const stripe = env.STRIPE_SECRET_KEY
   ? new Stripe(env.STRIPE_SECRET_KEY, {
       apiVersion: "2024-06-20"
     })
   : null;
+
+const BILLING_PLAN_CATALOG = {
+  legacy: {
+    code: "legacy",
+    label: "Legacy",
+    description: "Legacy annual plan",
+    planTier: "base",
+    annualAmount: 3500,
+    onboardingFeeAmount: 350,
+    annualPriceId: String(env.STRIPE_PRICE_LEGACY_ANNUAL || env.STRIPE_PRICE_BASE || "").trim(),
+    onboardingPriceId: String(
+      env.STRIPE_PRICE_LEGACY_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_BASE || ""
+    ).trim(),
+    foundersOnly: false
+  },
+  founders: {
+    code: "founders",
+    label: "Founders",
+    description: "Founders annual plan (first 10 camps)",
+    planTier: "base",
+    annualAmount: 2800,
+    onboardingFeeAmount: 0,
+    annualPriceId: String(env.STRIPE_PRICE_FOUNDERS_ANNUAL || "").trim(),
+    onboardingPriceId: "",
+    foundersOnly: true
+  },
+  institutional: {
+    code: "institutional",
+    label: "Institutional",
+    description: "Institutional annual plan",
+    planTier: "premium",
+    annualAmount: 5500,
+    onboardingFeeAmount: 750,
+    annualPriceId: String(env.STRIPE_PRICE_INSTITUTIONAL_ANNUAL || env.STRIPE_PRICE_PREMIUM || "").trim(),
+    onboardingPriceId: String(
+      env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_PREMIUM || ""
+    ).trim(),
+    foundersOnly: false
+  }
+};
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizePlanCode(value = "", fallbackTier = "base") {
+  return normalizeBillingPlan(value, fallbackTier);
+}
+
+function getCatalogEntry(planCode = "legacy") {
+  return BILLING_PLAN_CATALOG[normalizePlanCode(planCode)] || BILLING_PLAN_CATALOG.legacy;
+}
+
+function dedupeEventIds(values = []) {
+  return [...new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )].slice(-250);
+}
+
+function pickTenantIdFromPayload(payload = {}) {
+  return (
+    String(payload?.metadata?.tenantId || "").trim() ||
+    String(payload?.client_reference_id || "").trim() ||
+    String(payload?.subscription_details?.metadata?.tenantId || "").trim()
+  );
+}
+
+function defaultSuccessUrl(tenant) {
+  return `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/admin/billing?checkout=success`;
+}
+
+function defaultCancelUrl(tenant) {
+  return `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/admin/billing?checkout=cancel`;
+}
+
+function allowMockBilling() {
+  return env.NODE_ENV !== "production" || env.ALLOW_MOCK_BILLING_IN_PRODUCTION;
+}
+
+async function writeBillingAudit(tenantId, event, metadata = {}) {
+  if (!tenantId || !event) return;
+  await TenantAdminAuditLogModel.create({
+    tenantId,
+    actorUserId: null,
+    event,
+    metadata
+  });
+}
+
+async function updateTenantWithBillingPatch(tenant, { tenantPatch = {}, billingPatch = {} } = {}) {
+  const tenantId = String(tenant?._id || tenant?.id || "").trim();
+  if (!tenantId) {
+    const error = new Error("Tenant ID is required for billing update.");
+    error.code = "TENANT_ID_REQUIRED";
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const patch = {
+    ...tenantPatch
+  };
+
+  if (isPlainObject(billingPatch) && Object.keys(billingPatch).length > 0) {
+    patch.settings = buildTenantSettingsWithBillingPatch(tenant, billingPatch);
+  }
+
+  return TenantModel.update(tenantId, patch);
+}
+
+async function ensureStripeCustomer(tenant, billingOperator = null) {
+  const tenantId = String(tenant?._id || tenant?.id || "").trim();
+  if (!tenantId) {
+    const error = new Error("Tenant ID is required to provision Stripe customer.");
+    error.code = "TENANT_ID_REQUIRED";
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (tenant.stripeCustomerId) {
+    return tenant.stripeCustomerId;
+  }
+
+  const contactEmail =
+    String(tenant?.billingDetails?.mailingAddress?.email || "").trim().toLowerCase() ||
+    String(tenant?.content?.contactEmail || "").trim().toLowerCase() ||
+    String(billingOperator?.email || "").trim().toLowerCase();
+
+  const customer = await stripe.customers.create({
+    name: tenant.name,
+    ...(contactEmail ? { email: contactEmail } : {}),
+    metadata: {
+      tenantId,
+      tenantSlug: tenant.slug
+    }
+  });
+
+  await TenantModel.update(tenantId, { stripeCustomerId: customer.id });
+  return customer.id;
+}
+
+function getPlanCodeFromTenant(tenant) {
+  const billing = resolveTenantBilling(tenant);
+  return billing.billingPlan;
+}
+
+function getPlanCodeFromStripePriceId(priceId = "", tenant = null) {
+  const price = String(priceId || "").trim();
+  if (!price) return tenant ? getPlanCodeFromTenant(tenant) : "legacy";
+
+  for (const entry of Object.values(BILLING_PLAN_CATALOG)) {
+    if (price === entry.annualPriceId || price === entry.onboardingPriceId) {
+      return entry.code;
+    }
+  }
+
+  return tenant ? getPlanCodeFromTenant(tenant) : "legacy";
+}
+
+function hasOnboardingFeeLine(invoice, tenant = null) {
+  const lines = invoice?.lines?.data || [];
+  const planCode = tenant ? getPlanCodeFromTenant(tenant) : "legacy";
+  const catalog = getCatalogEntry(planCode);
+  const knownOnboardingPriceIds = new Set(
+    Object.values(BILLING_PLAN_CATALOG)
+      .map((entry) => String(entry.onboardingPriceId || "").trim())
+      .filter(Boolean)
+  );
+  if (catalog.onboardingPriceId) {
+    knownOnboardingPriceIds.add(catalog.onboardingPriceId);
+  }
+
+  return lines.some((line) => {
+    const priceId = String(line?.price?.id || "").trim();
+    if (knownOnboardingPriceIds.has(priceId)) return true;
+    const description = String(line?.description || "").trim().toLowerCase();
+    const metadataType = String(line?.metadata?.lineType || "").trim().toLowerCase();
+    return description.includes("onboarding") || metadataType === "onboarding_fee";
+  });
+}
+
+function inferCheckoutLifecycleStatus(session = {}) {
+  const paymentStatus = String(session.payment_status || "").trim().toLowerCase();
+  if (paymentStatus === "paid") return "active";
+  if (paymentStatus === "unpaid" || paymentStatus === "no_payment_required") return "checkout_started";
+  return "checkout_started";
+}
+
+async function listFoundersReservations() {
+  const tenants = await TenantModel.find({}, {
+    select: ["id", "slug", "settings", "planTier"]
+  });
+
+  return tenants
+    .map((tenant) => ({
+      tenantId: String(tenant._id),
+      slug: tenant.slug,
+      billing: resolveTenantBilling(tenant)
+    }))
+    .filter((item) => item.billing.foundersReserved || item.billing.billingPlan === "founders")
+    .sort((a, b) => {
+      const at = new Date(a.billing.foundersReservedAt || 0).getTime();
+      const bt = new Date(b.billing.foundersReservedAt || 0).getTime();
+      return at - bt;
+    });
+}
+
+function nextAvailableFoundersSlot(reservations = []) {
+  const used = new Set(
+    reservations
+      .map((entry) => Number(entry.billing.foundersSlot))
+      .filter((slot) => Number.isInteger(slot) && slot >= 1 && slot <= FOUNDERS_MAX_CAMPS)
+  );
+  for (let slot = 1; slot <= FOUNDERS_MAX_CAMPS; slot += 1) {
+    if (!used.has(slot)) return slot;
+  }
+  return null;
+}
+
+async function ensureFoundersReservation(tenant) {
+  const billing = resolveTenantBilling(tenant);
+  if (billing.foundersReserved) {
+    return { tenant, slot: billing.foundersSlot || null };
+  }
+
+  const reservations = await listFoundersReservations();
+  if (reservations.length >= FOUNDERS_MAX_CAMPS) {
+    const error = new Error("Founders plan is no longer available.");
+    error.statusCode = 409;
+    error.code = "FOUNDERS_CAP_REACHED";
+    throw error;
+  }
+
+  const slot = nextAvailableFoundersSlot(reservations);
+  if (!slot) {
+    const error = new Error("Founders plan is no longer available.");
+    error.statusCode = 409;
+    error.code = "FOUNDERS_CAP_REACHED";
+    throw error;
+  }
+
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    billingPatch: {
+      foundersReserved: true,
+      foundersReservedAt: nowIso(),
+      foundersSlot: slot,
+      foundersEligible: true
+    }
+  });
+
+  await writeBillingAudit(tenant._id, "founders_slot_reserved", {
+    slot
+  }).catch(() => {});
+
+  return { tenant: updated, slot };
+}
+
+async function findTenantForStripePayload(payload = {}) {
+  const tenantId = pickTenantIdFromPayload(payload);
+  if (tenantId) {
+    const byId = await TenantModel.findById(tenantId);
+    if (byId) return byId;
+  }
+
+  const subscriptionId = String(payload?.subscription || payload?.id || "").trim();
+  if (subscriptionId) {
+    const bySub = await TenantModel.findByStripeSubscriptionId(subscriptionId);
+    if (bySub) return bySub;
+  }
+
+  const customerId = String(payload?.customer || "").trim();
+  if (customerId) {
+    const byCustomer = await TenantModel.findByStripeCustomerId(customerId);
+    if (byCustomer) return byCustomer;
+  }
+
+  return null;
+}
+
+async function appendProcessedEventId(tenant, eventId = "") {
+  const id = String(eventId || "").trim();
+  if (!id) return tenant;
+
+  const billing = resolveTenantBilling(tenant);
+  if (billing.processedEventIds.includes(id)) {
+    return null;
+  }
+
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    billingPatch: {
+      processedEventIds: dedupeEventIds([...billing.processedEventIds, id])
+    }
+  });
+
+  return updated;
+}
 
 export function getBillingMode() {
   if (env.BILLING_MODE === "mock") return "mock";
@@ -30,268 +334,480 @@ export function isStripeEnabled() {
 }
 
 export function getPriceIdForPlan(planTier = "base") {
-  return planTier === "premium" ? env.STRIPE_PRICE_PREMIUM : env.STRIPE_PRICE_BASE;
+  return String(planTier || "").trim().toLowerCase() === "premium"
+    ? BILLING_PLAN_CATALOG.institutional.annualPriceId
+    : BILLING_PLAN_CATALOG.legacy.annualPriceId;
 }
 
 export function getOnboardingPriceIdForPlan(planTier = "base") {
-  return planTier === "premium"
-    ? env.STRIPE_ONBOARDING_PRICE_PREMIUM
-    : env.STRIPE_ONBOARDING_PRICE_BASE;
+  return String(planTier || "").trim().toLowerCase() === "premium"
+    ? BILLING_PLAN_CATALOG.institutional.onboardingPriceId
+    : BILLING_PLAN_CATALOG.legacy.onboardingPriceId;
 }
 
-function mapStripeStatus(status = "") {
-  return STRIPE_STATUS_MAP[String(status || "").toLowerCase()] || "past_due";
+export async function getFoundersAvailability() {
+  const reservations = await listFoundersReservations();
+  return {
+    max: FOUNDERS_MAX_CAMPS,
+    reserved: reservations.length,
+    remaining: Math.max(0, FOUNDERS_MAX_CAMPS - reservations.length)
+  };
 }
 
-function defaultSuccessUrl(tenant) {
-  return `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/admin/billing?checkout=success`;
-}
-
-function defaultCancelUrl(tenant) {
-  return `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/admin/billing?checkout=cancel`;
-}
-
-async function ensureStripeCustomer(tenant) {
-  if (tenant.stripeCustomerId) {
-    return tenant.stripeCustomerId;
-  }
-
-  const customer = await stripe.customers.create({
-    name: tenant.name,
-    metadata: {
-      tenantId: String(tenant._id),
-      tenantSlug: tenant.slug
+export function getBillingCatalog() {
+  return {
+    plans: Object.values(BILLING_PLAN_CATALOG).map((entry) => ({
+      code: entry.code,
+      label: entry.label,
+      description: entry.description,
+      planTier: entry.planTier,
+      annualAmount: entry.annualAmount,
+      onboardingFeeAmount: entry.onboardingFeeAmount,
+      foundersOnly: entry.foundersOnly,
+      hasAnnualPriceId: Boolean(entry.annualPriceId),
+      hasOnboardingPriceId: entry.onboardingFeeAmount > 0 ? Boolean(entry.onboardingPriceId) : true
+    })),
+    founders: {
+      maxCamps: FOUNDERS_MAX_CAMPS
     }
-  });
-
-  await TenantModel.update(tenant._id, { stripeCustomerId: customer.id });
-
-  return customer.id;
+  };
 }
 
 export async function createTenantCheckoutSession({
   tenant,
-  planTier,
-  onboardingFeeAmount,
+  billingOperator = null,
+  planCode = "",
+  planTier = "",
   successUrl,
   cancelUrl
 }) {
   const mode = getBillingMode();
-  const normalizedPlan = planTier === "premium" ? "premium" : "base";
-  const normalizedOnboardingFee = Number(onboardingFeeAmount || 0);
+  const currentBilling = resolveTenantBilling(tenant);
+  const planCodeFromTier = String(planTier || "").trim().toLowerCase() === "premium"
+    ? "institutional"
+    : String(planTier || "").trim().toLowerCase() === "base"
+    ? "legacy"
+    : "";
+  const normalizedPlanCode = normalizePlanCode(
+    planCode || planCodeFromTier || currentBilling.billingPlan,
+    tenant.planTier
+  );
+  const catalogEntry = getCatalogEntry(normalizedPlanCode);
+  let tenantForUpdate = tenant;
+
+  if (catalogEntry.code === "founders") {
+    const reserved = await ensureFoundersReservation(tenantForUpdate);
+    tenantForUpdate = reserved.tenant;
+  }
+
+  const planTierForFeatures = resolveFeatureTierFromBillingPlan(catalogEntry.code);
+  const onboardingFeeAmount = catalogEntry.onboardingFeeAmount;
+  const onboardingFeeStatus =
+    onboardingFeeAmount <= 0 ? ONBOARDING_FEE_WAIVED : ONBOARDING_FEE_UNPAID;
+  const onboardingFeeWaived = onboardingFeeStatus === ONBOARDING_FEE_WAIVED;
 
   if (mode === "mock") {
+    if (!allowMockBilling()) {
+      const error = new Error(
+        "Mock billing mode is disabled in production. Configure Stripe keys or explicitly allow mock billing."
+      );
+      error.statusCode = 503;
+      error.code = "MOCK_BILLING_DISABLED";
+      throw error;
+    }
+
     const mockSessionId = `mock_cs_${Date.now()}_${tenant.slug}`;
     const mockCheckoutUrl = `${env.MOCK_BILLING_BASE_URL}/checkout?tenant=${encodeURIComponent(
       tenant.slug
-    )}&plan=${normalizedPlan}&session=${mockSessionId}`;
+    )}&plan=${catalogEntry.code}&session=${mockSessionId}`;
 
-    await TenantModel.update(tenant._id, {
-      planTier: normalizedPlan,
-      onboardingFeeAmount: normalizedOnboardingFee,
-      stripePriceId: getPriceIdForPlan(normalizedPlan) || `mock_price_${normalizedPlan}`,
-      billingStatus: "trialing",
-      onboardingFeePaid: normalizedOnboardingFee <= 0
+    const updated = await updateTenantWithBillingPatch(tenantForUpdate, {
+      tenantPatch: {
+        planTier: planTierForFeatures,
+        onboardingFeeAmount,
+        stripePriceId: catalogEntry.annualPriceId || `mock_price_${catalogEntry.code}`,
+        billingStatus: "trialing",
+        onboardingFeePaid: onboardingFeeWaived
+      },
+      billingPatch: {
+        planCode: catalogEntry.code,
+        lifecycleStatus: "checkout_started",
+        onboardingFeeStatus,
+        onboardingFeeWaived,
+        onboardingFeeWaiveReason: onboardingFeeWaived ? "founders" : "",
+        checkoutStartedAt: nowIso(),
+        lastCheckoutSessionId: mockSessionId,
+        lastCheckoutSessionStatus: "open",
+        lastCheckoutCreatedAt: nowIso()
+      }
     });
+
+    await writeBillingAudit(updated._id, "billing_checkout_started", {
+      mode,
+      planCode: catalogEntry.code,
+      checkoutSessionId: mockSessionId
+    }).catch(() => {});
 
     return {
       mode,
       sessionId: mockSessionId,
       checkoutUrl: mockCheckoutUrl,
+      planCode: catalogEntry.code,
+      onboardingFeeAmount,
+      tenant: updated,
       message:
         "Mock billing mode active. Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET to enable live Stripe checkout."
     };
   }
 
-  const planPriceId = getPriceIdForPlan(normalizedPlan);
-  if (!planPriceId) {
+  if (!catalogEntry.annualPriceId) {
     const error = new Error(
-      `Missing Stripe price for ${normalizedPlan} plan. Set STRIPE_PRICE_${
-        normalizedPlan === "premium" ? "PREMIUM" : "BASE"
-      }.`
+      `Missing Stripe annual price ID for plan '${catalogEntry.code}'. Configure the corresponding STRIPE_PRICE_* variable.`
     );
     error.statusCode = 400;
     error.code = "STRIPE_PRICE_MISSING";
     throw error;
   }
+  if (catalogEntry.onboardingFeeAmount > 0 && !catalogEntry.onboardingPriceId) {
+    const error = new Error(
+      `Missing Stripe onboarding price ID for plan '${catalogEntry.code}'. Configure the corresponding STRIPE_PRICE_*_ONBOARDING variable.`
+    );
+    error.statusCode = 400;
+    error.code = "STRIPE_ONBOARDING_PRICE_MISSING";
+    throw error;
+  }
 
-  const customerId = await ensureStripeCustomer(tenant);
-  const lineItems = [{ price: planPriceId, quantity: 1 }];
-
-  if (normalizedOnboardingFee > 0) {
-    const onboardingPriceId = getOnboardingPriceIdForPlan(normalizedPlan);
-
-    if (onboardingPriceId) {
-      lineItems.push({ price: onboardingPriceId, quantity: 1 });
-    } else {
-      lineItems.push({
-        price_data: {
-          currency: env.STRIPE_CURRENCY,
-          product_data: {
-            name: `${tenant.name} onboarding fee`
-          },
-          unit_amount: Math.round(normalizedOnboardingFee * 100)
-        },
-        quantity: 1
-      });
-    }
+  const customerId = await ensureStripeCustomer(tenantForUpdate, billingOperator);
+  const lineItems = [{ price: catalogEntry.annualPriceId, quantity: 1 }];
+  if (catalogEntry.onboardingFeeAmount > 0) {
+    lineItems.push({
+      price: catalogEntry.onboardingPriceId,
+      quantity: 1
+    });
   }
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
     line_items: lineItems,
-    success_url: successUrl || env.STRIPE_SUCCESS_URL || defaultSuccessUrl(tenant),
-    cancel_url: cancelUrl || env.STRIPE_CANCEL_URL || defaultCancelUrl(tenant),
-    client_reference_id: String(tenant._id),
+    success_url: successUrl || env.STRIPE_SUCCESS_URL || defaultSuccessUrl(tenantForUpdate),
+    cancel_url: cancelUrl || env.STRIPE_CANCEL_URL || defaultCancelUrl(tenantForUpdate),
+    client_reference_id: String(tenantForUpdate._id),
     allow_promotion_codes: true,
+    billing_address_collection: "required",
     metadata: {
-      tenantId: String(tenant._id),
-      planTier: normalizedPlan,
-      onboardingFeeAmount: String(normalizedOnboardingFee)
+      tenantId: String(tenantForUpdate._id),
+      tenantSlug: tenantForUpdate.slug,
+      planCode: catalogEntry.code,
+      planTier: planTierForFeatures,
+      onboardingFeeAmount: String(onboardingFeeAmount),
+      onboardingFeeStatus
     },
     subscription_data: {
       metadata: {
-        tenantId: String(tenant._id),
-        planTier: normalizedPlan
+        tenantId: String(tenantForUpdate._id),
+        tenantSlug: tenantForUpdate.slug,
+        planCode: catalogEntry.code,
+        planTier: planTierForFeatures
       }
     }
   });
 
-  await TenantModel.update(tenant._id, {
-    planTier: normalizedPlan,
-    onboardingFeeAmount: normalizedOnboardingFee,
-    stripeCustomerId: customerId,
-    stripePriceId: planPriceId,
-    billingStatus: "trialing",
-    onboardingFeePaid: normalizedOnboardingFee <= 0
+  const updated = await updateTenantWithBillingPatch(tenantForUpdate, {
+    tenantPatch: {
+      planTier: planTierForFeatures,
+      onboardingFeeAmount,
+      stripeCustomerId: customerId,
+      stripePriceId: catalogEntry.annualPriceId,
+      billingStatus: "trialing",
+      onboardingFeePaid: onboardingFeeWaived
+    },
+    billingPatch: {
+      planCode: catalogEntry.code,
+      lifecycleStatus: "checkout_started",
+      onboardingFeeStatus,
+      onboardingFeeWaived,
+      onboardingFeeWaiveReason: onboardingFeeWaived ? "founders" : "",
+      checkoutStartedAt: nowIso(),
+      lastCheckoutSessionId: session.id,
+      lastCheckoutSessionStatus: String(session.status || "open").toLowerCase(),
+      lastCheckoutCreatedAt: nowIso(),
+      stripePriceId: catalogEntry.annualPriceId,
+      initiatedByUserId: String(billingOperator?._id || "").trim() || null
+    }
   });
+
+  await writeBillingAudit(updated._id, "billing_checkout_started", {
+    mode,
+    planCode: catalogEntry.code,
+    checkoutSessionId: session.id,
+    requestedByUserId: String(billingOperator?._id || "").trim() || null
+  }).catch(() => {});
 
   return {
     mode,
     sessionId: session.id,
-    checkoutUrl: session.url
+    checkoutUrl: session.url,
+    planCode: catalogEntry.code,
+    onboardingFeeAmount,
+    tenant: updated
   };
 }
 
-function extractTenantIdFromEventPayload(eventPayload = {}) {
-  return (
-    eventPayload?.metadata?.tenantId ||
-    eventPayload?.client_reference_id ||
-    eventPayload?.subscription_details?.metadata?.tenantId ||
-    ""
-  );
-}
-
-async function findTenantForSubscriptionEvent(payload = {}) {
-  const tenantId = extractTenantIdFromEventPayload(payload);
-  if (tenantId) {
-    return TenantModel.findById(tenantId);
-  }
-
-  if (payload.id) {
-    const bySubId = await TenantModel.findByStripeSubscriptionId(payload.id);
-    if (bySubId) return bySubId;
-  }
-
-  if (payload.customer) {
-    return TenantModel.findByStripeCustomerId(payload.customer);
-  }
-
-  return null;
-}
-
-function invoiceContainsOnboardingFee(invoice, tenantPlanTier) {
-  const onboardingPriceId = getOnboardingPriceIdForPlan(tenantPlanTier);
-  const lines = invoice?.lines?.data || [];
-
-  if (onboardingPriceId) {
-    return lines.some((line) => line?.price?.id === onboardingPriceId);
-  }
-
-  return lines.some((line) => String(line?.description || "").toLowerCase().includes("onboarding"));
-}
-
-async function handleCheckoutSessionCompleted(session) {
-  const tenantId = extractTenantIdFromEventPayload(session);
-  if (!tenantId) return;
-
-  const tenant = await TenantModel.findById(tenantId);
+async function handleCheckoutSessionCompleted(event, session) {
+  let tenant = await findTenantForStripePayload(session);
   if (!tenant) return;
 
-  const update = {
-    stripeCustomerId: session.customer || tenant.stripeCustomerId,
-    stripeSubscriptionId: session.subscription || tenant.stripeSubscriptionId,
-    billingStatus: "active"
-  };
+  const deduped = await appendProcessedEventId(tenant, event.id);
+  if (deduped === null) return;
+  if (deduped) tenant = deduped;
 
-  if (Number(tenant.onboardingFeeAmount || 0) <= 0) {
-    update.onboardingFeePaid = true;
-  }
+  const metadataPlanCode = normalizePlanCode(
+    String(session?.metadata?.planCode || "").trim(),
+    tenant.planTier
+  );
+  let lifecycleStatus = inferCheckoutLifecycleStatus(session);
+  let stripePriceId = tenant.stripePriceId;
+  let currentPeriodEnd = resolveTenantBilling(tenant).currentPeriodEnd;
+  let resolvedPlanCode = metadataPlanCode;
+  let planTier = resolveFeatureTierFromBillingPlan(resolvedPlanCode);
 
   if (session.subscription && stripe) {
-    const subscription = await stripe.subscriptions.retrieve(session.subscription);
-    update.billingStatus = mapStripeStatus(subscription.status);
-    update.stripePriceId = subscription?.items?.data?.[0]?.price?.id || tenant.stripePriceId;
+    const subscription = await stripe.subscriptions.retrieve(String(session.subscription), {
+      expand: ["items.data.price"]
+    });
+    const priceId = String(subscription?.items?.data?.[0]?.price?.id || "").trim();
+    stripePriceId = priceId || stripePriceId;
+    resolvedPlanCode = normalizePlanCode(
+      String(subscription?.metadata?.planCode || "").trim() ||
+        getPlanCodeFromStripePriceId(priceId, tenant),
+      tenant.planTier
+    );
+    planTier = resolveFeatureTierFromBillingPlan(resolvedPlanCode);
+    lifecycleStatus = mapStripeLifecycleStatus(subscription.status);
+    const periodEnd = Number(subscription?.current_period_end || 0);
+    if (periodEnd > 0) currentPeriodEnd = new Date(periodEnd * 1000).toISOString();
   }
 
-  await TenantModel.update(tenant._id, update);
+  const catalog = getCatalogEntry(resolvedPlanCode);
+  const onboardingFeeStatus = catalog.onboardingFeeAmount <= 0 ? ONBOARDING_FEE_WAIVED : ONBOARDING_FEE_UNPAID;
+
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    tenantPatch: {
+      planTier,
+      stripeCustomerId: String(session.customer || tenant.stripeCustomerId || "").trim(),
+      stripeSubscriptionId: String(session.subscription || tenant.stripeSubscriptionId || "").trim(),
+      stripePriceId: stripePriceId || tenant.stripePriceId,
+      onboardingFeeAmount: catalog.onboardingFeeAmount,
+      onboardingFeePaid: onboardingFeeStatus !== ONBOARDING_FEE_UNPAID,
+      billingStatus: toLegacyBillingStatusFromLifecycle(lifecycleStatus)
+    },
+    billingPatch: {
+      planCode: resolvedPlanCode,
+      lifecycleStatus,
+      onboardingFeeStatus,
+      onboardingFeeWaived: onboardingFeeStatus === ONBOARDING_FEE_WAIVED,
+      onboardingFeeWaiveReason: onboardingFeeStatus === ONBOARDING_FEE_WAIVED ? "founders" : "",
+      lastCheckoutSessionId: String(session.id || "").trim(),
+      lastCheckoutSessionStatus: String(session.status || "").trim().toLowerCase(),
+      currentPeriodEnd
+    }
+  });
+
+  await writeBillingAudit(updated._id, "billing_checkout_completed", {
+    eventId: event.id,
+    stripeSessionId: session.id,
+    planCode: resolvedPlanCode
+  }).catch(() => {});
 }
 
-async function handleSubscriptionUpdate(subscription) {
-  const tenant = await findTenantForSubscriptionEvent(subscription);
+async function handleSubscriptionUpdate(event, subscription) {
+  let tenant = await findTenantForStripePayload(subscription);
   if (!tenant) return;
 
-  const update = {
-    stripeCustomerId: subscription.customer || tenant.stripeCustomerId,
-    stripeSubscriptionId: subscription.id || tenant.stripeSubscriptionId,
-    stripePriceId: subscription?.items?.data?.[0]?.price?.id || tenant.stripePriceId,
-    billingStatus: mapStripeStatus(subscription.status)
-  };
+  const deduped = await appendProcessedEventId(tenant, event.id);
+  if (deduped === null) return;
+  if (deduped) tenant = deduped;
 
-  await TenantModel.update(tenant._id, update);
+  const stripePriceId = String(subscription?.items?.data?.[0]?.price?.id || "").trim();
+  const resolvedPlanCode = normalizePlanCode(
+    String(subscription?.metadata?.planCode || "").trim() ||
+      getPlanCodeFromStripePriceId(stripePriceId, tenant),
+    tenant.planTier
+  );
+  const planTier = resolveFeatureTierFromBillingPlan(resolvedPlanCode);
+  const lifecycleStatus = mapStripeLifecycleStatus(subscription.status);
+  const billing = resolveTenantBilling(tenant);
+  const periodEnd = Number(subscription?.current_period_end || 0);
+
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    tenantPatch: {
+      planTier,
+      stripeCustomerId: String(subscription.customer || tenant.stripeCustomerId || "").trim(),
+      stripeSubscriptionId: String(subscription.id || tenant.stripeSubscriptionId || "").trim(),
+      stripePriceId: stripePriceId || tenant.stripePriceId,
+      billingStatus: toLegacyBillingStatusFromLifecycle(lifecycleStatus)
+    },
+    billingPatch: {
+      planCode: resolvedPlanCode,
+      lifecycleStatus,
+      onboardingFeeStatus: billing.onboardingFeeStatus,
+      currentPeriodEnd: periodEnd > 0 ? new Date(periodEnd * 1000).toISOString() : billing.currentPeriodEnd
+    }
+  });
+
+  await writeBillingAudit(updated._id, "billing_subscription_updated", {
+    eventId: event.id,
+    stripeSubscriptionId: subscription.id,
+    lifecycleStatus,
+    planCode: resolvedPlanCode
+  }).catch(() => {});
 }
 
-async function handleInvoicePaid(invoice) {
-  const tenant =
-    (invoice.customer && (await TenantModel.findByStripeCustomerId(invoice.customer))) || null;
+async function handleInvoicePaid(event, invoice) {
+  let tenant = await findTenantForStripePayload(invoice);
   if (!tenant) return;
 
-  const update = {
-    billingStatus: "active"
-  };
+  const deduped = await appendProcessedEventId(tenant, event.id);
+  if (deduped === null) return;
+  if (deduped) tenant = deduped;
 
-  if (invoiceContainsOnboardingFee(invoice, tenant.planTier)) {
-    update.onboardingFeePaid = true;
-    update.onboardingFeeInvoiceId = invoice.id;
+  const billing = resolveTenantBilling(tenant);
+  const invoiceHasOnboarding = hasOnboardingFeeLine(invoice, tenant);
+  const onboardingFeeStatus = invoiceHasOnboarding
+    ? ONBOARDING_FEE_PAID
+    : billing.onboardingFeeStatus;
+  const lifecycleStatus = billing.lifecycleStatus === "canceled" ? "canceled" : "active";
+
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    tenantPatch: {
+      billingStatus: toLegacyBillingStatusFromLifecycle(lifecycleStatus),
+      onboardingFeePaid:
+        onboardingFeeStatus === ONBOARDING_FEE_PAID ||
+        onboardingFeeStatus === ONBOARDING_FEE_WAIVED,
+      onboardingFeeInvoiceId: invoiceHasOnboarding
+        ? String(invoice.id || tenant.onboardingFeeInvoiceId || "").trim()
+        : tenant.onboardingFeeInvoiceId
+    },
+    billingPatch: {
+      lifecycleStatus,
+      onboardingFeeStatus,
+      onboardingFeeWaived: onboardingFeeStatus === ONBOARDING_FEE_WAIVED,
+      lastInvoiceId: String(invoice.id || "").trim(),
+      lastInvoiceStatus: String(invoice.status || "").trim().toLowerCase()
+    }
+  });
+
+  await writeBillingAudit(updated._id, "billing_invoice_paid", {
+    eventId: event.id,
+    stripeInvoiceId: invoice.id,
+    onboardingFeePaid: invoiceHasOnboarding
+  }).catch(() => {});
+}
+
+async function handleInvoicePaymentFailed(event, invoice) {
+  let tenant = await findTenantForStripePayload(invoice);
+  if (!tenant) return;
+
+  const deduped = await appendProcessedEventId(tenant, event.id);
+  if (deduped === null) return;
+  if (deduped) tenant = deduped;
+
+  const lifecycleStatus = "past_due";
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    tenantPatch: {
+      billingStatus: "past_due"
+    },
+    billingPatch: {
+      lifecycleStatus,
+      lastInvoiceId: String(invoice.id || "").trim(),
+      lastInvoiceStatus: String(invoice.status || "payment_failed").trim().toLowerCase()
+    }
+  });
+
+  await writeBillingAudit(updated._id, "billing_invoice_failed", {
+    eventId: event.id,
+    stripeInvoiceId: invoice.id
+  }).catch(() => {});
+}
+
+async function handlePaymentIntent(event, paymentIntent) {
+  let tenant = await findTenantForStripePayload(paymentIntent);
+  if (!tenant && paymentIntent?.invoice && stripe) {
+    try {
+      const invoice = await stripe.invoices.retrieve(String(paymentIntent.invoice));
+      tenant = await findTenantForStripePayload(invoice || {});
+    } catch {
+      tenant = null;
+    }
   }
-
-  await TenantModel.update(tenant._id, update);
-}
-
-async function handleInvoicePaymentFailed(invoice) {
-  const tenant =
-    (invoice.customer && (await TenantModel.findByStripeCustomerId(invoice.customer))) || null;
   if (!tenant) return;
 
-  await TenantModel.update(tenant._id, { billingStatus: "past_due" });
+  const deduped = await appendProcessedEventId(tenant, event.id);
+  if (deduped === null) return;
+  if (deduped) tenant = deduped;
+
+  const type = String(event.type || "").trim().toLowerCase();
+  const succeeded = type === "payment_intent.succeeded";
+  const status = String(paymentIntent.status || "").trim().toLowerCase();
+  const metadataOnboarding =
+    String(paymentIntent?.metadata?.lineType || "").trim().toLowerCase() === "onboarding_fee";
+  const billing = resolveTenantBilling(tenant);
+  const onboardingFeeStatus = metadataOnboarding && succeeded ? ONBOARDING_FEE_PAID : billing.onboardingFeeStatus;
+
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    tenantPatch: {
+      onboardingFeePaid:
+        onboardingFeeStatus === ONBOARDING_FEE_PAID ||
+        onboardingFeeStatus === ONBOARDING_FEE_WAIVED,
+      billingStatus: succeeded
+        ? toLegacyBillingStatusFromLifecycle(
+            billing.lifecycleStatus === "canceled" ? "canceled" : "active"
+          )
+        : "past_due"
+    },
+    billingPatch: {
+      lifecycleStatus: succeeded
+        ? billing.lifecycleStatus === "canceled"
+          ? "canceled"
+          : "active"
+        : "past_due",
+      onboardingFeeStatus,
+      lastPaymentIntentId: String(paymentIntent.id || "").trim(),
+      lastPaymentIntentStatus: status
+    }
+  });
+
+  await writeBillingAudit(updated._id, "billing_payment_intent_updated", {
+    eventId: event.id,
+    paymentIntentId: paymentIntent.id,
+    status,
+    onboardingFeeSettled: metadataOnboarding && succeeded
+  }).catch(() => {});
 }
 
 export async function processStripeEvent(event) {
-  switch (event.type) {
+  const eventType = String(event?.type || "").trim();
+  if (!eventType) return;
+
+  switch (eventType) {
     case "checkout.session.completed":
-      await handleCheckoutSessionCompleted(event.data.object);
+      await handleCheckoutSessionCompleted(event, event.data.object);
       break;
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
-      await handleSubscriptionUpdate(event.data.object);
+      await handleSubscriptionUpdate(event, event.data.object);
       break;
     case "invoice.paid":
-      await handleInvoicePaid(event.data.object);
+      await handleInvoicePaid(event, event.data.object);
       break;
     case "invoice.payment_failed":
-      await handleInvoicePaymentFailed(event.data.object);
+      await handleInvoicePaymentFailed(event, event.data.object);
+      break;
+    case "payment_intent.succeeded":
+    case "payment_intent.payment_failed":
+      await handlePaymentIntent(event, event.data.object);
       break;
     default:
       break;
@@ -300,6 +816,15 @@ export async function processStripeEvent(event) {
 
 export async function constructStripeEventFromRequest(req) {
   if (getBillingMode() === "mock") {
+    if (!allowMockBilling()) {
+      const error = new Error(
+        "Mock webhook ingestion is disabled in production. Configure Stripe webhook secrets."
+      );
+      error.statusCode = 503;
+      error.code = "MOCK_BILLING_DISABLED";
+      throw error;
+    }
+
     const raw = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : JSON.stringify(req.body || {});
     const body = raw ? JSON.parse(raw) : {};
 
@@ -335,11 +860,20 @@ export async function constructStripeEventFromRequest(req) {
   return stripe.webhooks.constructEvent(req.body, signature, env.STRIPE_WEBHOOK_SECRET);
 }
 
-export async function createBillingPortalUrl({ tenant, returnUrl }) {
+export async function createBillingPortalUrl({ tenant, returnUrl, returnPath }) {
   const mode = getBillingMode();
   const fallbackUrl = `${env.MOCK_BILLING_BASE_URL}/portal?tenant=${encodeURIComponent(tenant.slug)}`;
 
   if (mode === "mock") {
+    if (!allowMockBilling()) {
+      const error = new Error(
+        "Mock billing portal is disabled in production. Configure Stripe keys."
+      );
+      error.statusCode = 503;
+      error.code = "MOCK_BILLING_DISABLED";
+      throw error;
+    }
+
     return {
       mode,
       url: fallbackUrl,
@@ -352,14 +886,44 @@ export async function createBillingPortalUrl({ tenant, returnUrl }) {
     return { mode, url: "" };
   }
 
+  let finalReturnUrl = String(returnUrl || "").trim();
+  if (!finalReturnUrl && returnPath) {
+    finalReturnUrl = `${env.FRONTEND_ORIGIN}${String(returnPath || "").trim()}`;
+  }
+  if (!finalReturnUrl) {
+    finalReturnUrl =
+      env.STRIPE_BILLING_PORTAL_RETURN_URL || `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/admin/billing`;
+  }
+
   const session = await stripe.billingPortal.sessions.create({
     customer: tenant.stripeCustomerId,
-    return_url:
-      returnUrl || env.STRIPE_BILLING_PORTAL_RETURN_URL || `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/admin/billing`
+    return_url: finalReturnUrl
   });
 
   return {
     mode,
     url: session.url
+  };
+}
+
+export function buildBillingPublicSnapshot(tenant = {}) {
+  const readiness = isBillingReadyForLaunch(tenant);
+  return {
+    billingPlan: readiness.billingPlan,
+    lifecycleStatus: readiness.lifecycleStatus,
+    billingStatus: readiness.legacyStatus,
+    onboardingFeeStatus: readiness.onboardingFeeStatus,
+    onboardingFeeAmount: readiness.onboardingFeeAmount,
+    onboardingFeePaid: readiness.onboardingFeePaid,
+    onboardingFeeWaived: readiness.onboardingFeeWaived,
+    currentPeriodEnd: readiness.currentPeriodEnd,
+    foundersReserved: readiness.foundersReserved,
+    foundersSlot: readiness.foundersSlot,
+    foundersEligible: readiness.foundersEligible,
+    launchReady: readiness.ok,
+    launchReadiness: {
+      lifecycleReady: readiness.lifecycleReady,
+      feeReady: readiness.feeReady
+    }
   };
 }

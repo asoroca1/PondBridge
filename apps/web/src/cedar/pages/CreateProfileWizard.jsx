@@ -2,9 +2,11 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import Navbar1 from "../components/Navbar1";
 import AvatarCropper from "../components/AvatarCropper";
+import ClerkCreateAccountFlow from "../components/ClerkCreateAccountFlow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../lib/api";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/authMode.js";
 import {
   resolveAgeGroupOptions,
   resolveStaffRoleOptions
@@ -483,6 +485,28 @@ function Stepper({ activeStep = 0, canStepNavigate, onStepClick }) {
 }
 
 export default function CreateProfileWizard() {
+  if (clerkUiEnabled()) {
+    return <ClerkCreateAccountFlow />;
+  }
+  if (clerkModeRequested()) {
+    return (
+      <div className="wizard1">
+        <Navbar1 />
+        <section className="wizard1-main">
+          <div className="wizard1-card">
+            <h1 className="wizard1-h1">Create Profile</h1>
+            <p className="login1-error">
+              {clerkConfigError() || "Clerk auth is enabled but web auth configuration is incomplete."}
+            </p>
+            <p className="wizard1-sub">
+              Set <code>VITE_CLERK_PUBLISHABLE_KEY</code> and restart the web app.
+            </p>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   const navigate = useNavigate();
   const { tenant } = useTenant();
   const [searchParams] = useSearchParams();
@@ -504,7 +528,7 @@ export default function CreateProfileWizard() {
     const r = await fetch(`${API_BASE}/uploads/presign-public`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName, fileType }),
+      body: JSON.stringify({ fileName, fileType, fileSize: Number(blob?.size || 0) }),
     });
     if (!r.ok) throw new Error("Presign failed");
     const { uploadUrl, objectUrl, headers } = await r.json();

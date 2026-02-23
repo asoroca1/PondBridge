@@ -1,7 +1,6 @@
 // src/pages/Legal.jsx
 import React, { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import "./legal.css";
 
@@ -22,7 +21,6 @@ export default function Legal() {
   return (
     <div className="legal-page nav2-page-shell">
       <CedarBackground />
-      <Navbar2 />
 
       <div className="legal-wrap">
         <div className="legal-card">

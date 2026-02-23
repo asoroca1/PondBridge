@@ -1,42 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import "./photo-stream.css";
 import { API_BASE } from "../lib/api";
+import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
 
 const API = API_BASE;
 
 /* ========= helpers ========= */
-function getToken() { return localStorage.getItem("token"); }
-function authHeaders(json = true) {
-  const t = getToken(); const h = {};
-  if (json) h["Content-Type"] = "application/json";
-  if (t) h["Authorization"] = `Bearer ${t}`;
-  return h;
-}
-
-function safeInitials(name = "Unknown") {
-  return String(name)
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase() || "")
-    .join("");
-}
-
-function fmtDate(d) {
-  try {
-    return new Date(d).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return "";
-  }
-}
 
 function getCurrentUserId() {
   try {
@@ -57,30 +29,9 @@ async function fetchUser(id) {
   return data.user;
 }
 
-function getPhotoUrl(u) {
-  const up = u?.uploads || {};
-  return (
-    up.photoUrl ||
-    up.profilePhoto?.url ||
-    u?.photoUrl ||
-    u?.profilePhotoUrl ||
-    u?.avatarUrl ||
-    u?.imageUrl ||
-    u?.profilePhoto ||
-    ""
-  );
-}
-
-function displayName(u) {
-  const n = u?.nickname || u?.campNickname || "";
-  return n
-    ? `${u?.firstName || ""} "${n}" ${u?.lastName || ""}`.trim()
-    : `${u?.firstName || ""} ${u?.lastName || ""}`.trim();
-}
-
 /** Tiny component to render a clickable avatar that links to /profile/:id */
 function AvatarLink({ userId, name, url, size = 34 }) {
-  const initials = safeInitials(name);
+  const initials = initialsOf(name);
   const style = { width: size, height: size, fontSize: size * 0.4 };
   const classBase = "ps-avatar";
   const avatarNode = url ? (
@@ -166,7 +117,11 @@ function UploadModal({ open, onClose, onPosted }) {
       const p = await fetch(`${API}/photos/presign`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ fileName: file.name, fileType: file.type || "image/jpeg" })
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type || "image/jpeg",
+          fileSize: Number(file.size || 0)
+        })
       });
       if (!p.ok) throw new Error("Presign failed");
       const { uploadUrl, objectUrl, headers } = await p.json();
@@ -343,7 +298,7 @@ function CommentsPanel({ photoId, canModerate }) {
           // ✅ rely on stable ids only; no index fallback
           <div key={c._id} className="ps-comment-row">
             <Link to={`/profile/${c.authorId}`} className="ps-avatar-link" title={c.authorName}>
-              <div className="ps-comment-avatar">{safeInitials(c.authorName)}</div>
+              <div className="ps-comment-avatar">{initialsOf(c.authorName)}</div>
             </Link>
             <div className="ps-comment-body">
               <div className="ps-comment-topline">
@@ -500,7 +455,7 @@ export default function PhotoStream() {
         const u = await fetchUser(id);
         setAuthorInfo((prev) => ({
           ...prev,
-          [id]: { name: displayName(u), avatar: getPhotoUrl(u) },
+          [id]: { name: displayName(u), avatar: avatarUrl(u) },
         }));
       } catch {
         // ignore
@@ -602,7 +557,6 @@ export default function PhotoStream() {
       {/* Cedar background, fixed under everything */}
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
 
-      <Navbar2 />
 
       <div className="ps-container nav2-page-shell">
         {/* White scrollable surface */}

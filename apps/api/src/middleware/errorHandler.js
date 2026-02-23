@@ -8,7 +8,18 @@ export function notFoundHandler(req, res) {
 }
 
 export function errorHandler(err, req, res, _next) {
-  console.error(err);
+  const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
+  if (isProd) {
+    console.error("[api:error]", {
+      code: err?.code || "INTERNAL_ERROR",
+      status: err?.statusCode || err?.status || 500,
+      path: req.originalUrl,
+      method: req.method,
+      message: String(err?.message || "Unexpected server error")
+    });
+  } else {
+    console.error(err);
+  }
 
   const rawCode = err?.code || "";
   const rawMessage = String(err?.message || "");
@@ -41,7 +52,7 @@ export function errorHandler(err, req, res, _next) {
     error: {
       code,
       message,
-      details: err.details || null,
+      details: isProd ? null : err.details || null,
       path: req.originalUrl
     }
   });

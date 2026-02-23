@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { API_BASE } from "../lib/api";
 import defaultProfile from "../assets/default-profile.png";
-import Navbar2 from "../components/Navbar2";
 
 /* ------------ helpers (keep OUTSIDE the component) ------------ */
 function pickCurrentJob(p = {}) {
@@ -112,7 +111,6 @@ export default function SearchResults() {
 
   return (
     <>
-      <Navbar2 />
 
       <div className="page-container sr-container nav2-page-shell">
         <div className="sr-header">

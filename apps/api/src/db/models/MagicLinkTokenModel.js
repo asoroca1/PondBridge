@@ -1,4 +1,5 @@
-import { createModel } from "./_factory.js";
+import { createModel, toDoc } from "./_factory.js";
+import { getSupabaseAdmin } from "../supabaseAdmin.js";
 
 const COLUMNS = {
   id: "id",
@@ -12,4 +13,24 @@ const COLUMNS = {
   updatedAt: "updated_at"
 };
 
-export const MagicLinkTokenModel = createModel("magic_link_tokens", COLUMNS);
+const base = createModel("magic_link_tokens", COLUMNS);
+
+export const MagicLinkTokenModel = {
+  ...base,
+  COLUMNS,
+
+  async consumeIfUnused(tenantId, tokenId, { usedAt = new Date() } = {}) {
+    const { data, error } = await getSupabaseAdmin()
+      .from("magic_link_tokens")
+      .update({
+        used_at: new Date(usedAt).toISOString()
+      })
+      .eq("tenant_id", String(tenantId || ""))
+      .eq("id", String(tokenId || ""))
+      .is("used_at", null)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    return toDoc(data, COLUMNS);
+  }
+};

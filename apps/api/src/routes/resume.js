@@ -1,11 +1,25 @@
 import { Router } from "express";
 import multer from "multer";
 import pdfParse from "pdf-parse";
+import rateLimit from "express-rate-limit";
 import { requireTenant } from "../middleware/tenantContext.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 import { hasFeature } from "@pondbridge/shared";
 import { parseResumeTextToProfile } from "../utils/resume.js";
 
 const router = Router({ mergeParams: true });
+const resumeParseLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many resume parsing attempts. Please try again later."
+    }
+  }
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -18,7 +32,7 @@ const upload = multer({
   }
 });
 
-router.post("/parse", requireTenant, upload.single("resume"), async (req, res) => {
+router.post("/parse", resumeParseLimiter, requireAuth, requireTenant, upload.single("resume"), async (req, res) => {
   if (!hasFeature(req.tenant.planTier, "resumeParsing", req.tenant.addOns || [])) {
     return res.status(403).json({
       error: {

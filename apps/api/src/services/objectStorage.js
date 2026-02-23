@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { HeadBucketCommand, S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config/env.js";
 
@@ -80,19 +80,89 @@ function joinObjectUrl(baseUrl, objectKey) {
   return `${safeBase}/${encodedPath}`;
 }
 
-function ensureR2Configured() {
+function createStorageError(message, code = "STORAGE_ERROR", statusCode = 500, details = null) {
+  const error = new Error(String(message || "Storage operation failed."));
+  error.code = code;
+  error.statusCode = statusCode;
+  if (details) error.details = details;
+  return error;
+}
+
+function normalizeFileSizeBytes(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw createStorageError("fileSize must be a positive number.", "INVALID_UPLOAD_SIZE", 400);
+  }
+  return Math.trunc(parsed);
+}
+
+function normalizeMaxBytes(value, fallback = env.R2_MAX_UPLOAD_BYTES) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return Math.max(1024, Number(fallback) || 20 * 1024 * 1024);
+  return Math.max(1024, Math.trunc(parsed));
+}
+
+function assertUploadSizeWithinLimit(fileSizeBytes, maxBytes) {
+  const requestedSize = normalizeFileSizeBytes(fileSizeBytes);
+  const limit = normalizeMaxBytes(maxBytes);
+  if (requestedSize > 0 && requestedSize > limit) {
+    throw createStorageError(
+      `File is too large. Maximum allowed size is ${limit} bytes.`,
+      "FILE_TOO_LARGE",
+      413,
+      { requested: requestedSize, maxBytes: limit }
+    );
+  }
+  return { requestedSize, limit };
+}
+
+function assertAllowedContentType(contentType, allowedContentTypes = []) {
+  const allowList = Array.isArray(allowedContentTypes)
+    ? [...new Set(allowedContentTypes.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean))]
+    : [];
+  if (allowList.length === 0) return;
+  if (allowList.includes(String(contentType || "").trim().toLowerCase())) return;
+  throw createStorageError(
+    `Unsupported file type: ${contentType || "unknown"}.`,
+    "UNSUPPORTED_FILE_TYPE",
+    400,
+    { contentType, allowedContentTypes: allowList }
+  );
+}
+
+function resolveDefaultCacheControl(cacheControl) {
+  const candidate = String(cacheControl || env.R2_DEFAULT_CACHE_CONTROL || "").trim();
+  return candidate || "";
+}
+
+export function getR2ServiceStatus() {
   const missing = [];
   if (!env.R2_BUCKET_NAME) missing.push("R2_BUCKET_NAME");
   if (!env.R2_ACCESS_KEY_ID) missing.push("R2_ACCESS_KEY_ID");
   if (!env.R2_SECRET_ACCESS_KEY) missing.push("R2_SECRET_ACCESS_KEY");
   if (!env.R2_ENDPOINT) missing.push("R2_ENDPOINT");
   if (!env.R2_PUBLIC_BASE_URL) missing.push("R2_PUBLIC_BASE_URL");
+  return {
+    configured: missing.length === 0,
+    missing,
+    bucketName: env.R2_BUCKET_NAME || "",
+    endpoint: env.R2_ENDPOINT || "",
+    publicBaseUrl: env.R2_PUBLIC_BASE_URL || ""
+  };
+}
+
+function ensureR2Configured() {
+  const status = getR2ServiceStatus();
+  const missing = status.missing || [];
 
   if (missing.length > 0) {
-    const error = new Error(`Missing R2 configuration: ${missing.join(", ")}.`);
-    error.code = "R2_NOT_CONFIGURED";
-    error.statusCode = 503;
-    throw error;
+    throw createStorageError(
+      `Missing R2 configuration: ${missing.join(", ")}.`,
+      "R2_NOT_CONFIGURED",
+      503,
+      { missing }
+    );
   }
 }
 
@@ -120,24 +190,36 @@ function buildObjectKey({ tenantSlug, prefix, fileName, contentType }) {
     .filter(Boolean)
     .join("/");
 
-  const { baseName, extension: sourceExtension } = splitNameAndExtension(fileName);
+  const { extension: sourceExtension } = splitNameAndExtension(fileName);
   const extension = sourceExtension || inferExtensionFromContentType(contentType);
   const randomToken = crypto.randomBytes(8).toString("hex");
   const stamp = Date.now();
-  const finalFileName = `${baseName || "file"}-${stamp}-${randomToken}${extension ? `.${extension}` : ""}`;
+  const finalFileName = `${stamp}-${randomToken}${extension ? `.${extension}` : ""}`;
 
   if (!safePrefix) return `${safeTenant}/${finalFileName}`;
   return `${safeTenant}/${safePrefix}/${finalFileName}`;
 }
 
 export function isR2Configured() {
-  return Boolean(
-    env.R2_BUCKET_NAME &&
-      env.R2_ACCESS_KEY_ID &&
-      env.R2_SECRET_ACCESS_KEY &&
-      env.R2_ENDPOINT &&
-      env.R2_PUBLIC_BASE_URL
-  );
+  return getR2ServiceStatus().configured;
+}
+
+export async function verifyR2Connectivity() {
+  ensureR2Configured();
+  try {
+    await getR2Client().send(
+      new HeadBucketCommand({
+        Bucket: env.R2_BUCKET_NAME
+      })
+    );
+    return { ok: true };
+  } catch (error) {
+    throw createStorageError(
+      `R2 connectivity check failed: ${String(error?.message || "unknown error")}`,
+      "R2_CONNECTIVITY_FAILED",
+      503
+    );
+  }
 }
 
 function normalizeBody(body) {
@@ -169,26 +251,29 @@ export async function uploadBufferToR2({
   fileName = "file",
   fileType = "",
   body,
-  cacheControl = ""
+  cacheControl = "",
+  maxBytes = env.R2_MAX_UPLOAD_BYTES,
+  allowedContentTypes = []
 } = {}) {
   ensureR2Configured();
 
   const normalizedBody = normalizeBody(body);
   if (!normalizedBody || !bodyByteLength(normalizedBody)) {
-    const error = new Error("body is required for R2 uploads.");
-    error.code = "INVALID_UPLOAD_BODY";
-    error.statusCode = 400;
-    throw error;
+    throw createStorageError("body is required for R2 uploads.", "INVALID_UPLOAD_BODY", 400);
   }
 
+  const byteLength = bodyByteLength(normalizedBody);
+  assertUploadSizeWithinLimit(byteLength, maxBytes);
   const contentType = inferContentType({ fileType, fileName });
+  assertAllowedContentType(contentType, allowedContentTypes);
   const objectKey = buildObjectKey({ tenantSlug, prefix, fileName, contentType });
+  const resolvedCacheControl = resolveDefaultCacheControl(cacheControl);
   const command = new PutObjectCommand({
     Bucket: env.R2_BUCKET_NAME,
     Key: objectKey,
     Body: normalizedBody,
     ContentType: contentType,
-    ...(cacheControl ? { CacheControl: String(cacheControl).trim() } : {})
+    ...(resolvedCacheControl ? { CacheControl: resolvedCacheControl } : {})
   });
 
   await getR2Client().send(command);
@@ -197,7 +282,7 @@ export async function uploadBufferToR2({
     objectUrl: joinObjectUrl(env.R2_PUBLIC_BASE_URL, objectKey),
     key: objectKey,
     contentType,
-    size: bodyByteLength(normalizedBody)
+    size: byteLength
   };
 }
 
@@ -206,18 +291,27 @@ export async function createPresignedUpload({
   prefix = "uploads",
   fileName = "file",
   fileType = "",
-  expiresInSeconds = 900
+  fileSizeBytes = 0,
+  maxBytes = env.R2_MAX_UPLOAD_BYTES,
+  expiresInSeconds = env.R2_PRESIGN_EXPIRES_SECONDS || 900,
+  cacheControl = "",
+  allowedContentTypes = []
 } = {}) {
   ensureR2Configured();
 
   const contentType = inferContentType({ fileType, fileName });
+  assertAllowedContentType(contentType, allowedContentTypes);
+  const { requestedSize } = assertUploadSizeWithinLimit(fileSizeBytes, maxBytes);
   const objectKey = buildObjectKey({ tenantSlug, prefix, fileName, contentType });
   const expiresIn = Math.min(3600, Math.max(60, Number(expiresInSeconds) || 900));
+  const resolvedCacheControl = resolveDefaultCacheControl(cacheControl);
 
   const command = new PutObjectCommand({
     Bucket: env.R2_BUCKET_NAME,
     Key: objectKey,
-    ContentType: contentType
+    ContentType: contentType,
+    ...(resolvedCacheControl ? { CacheControl: resolvedCacheControl } : {}),
+    ...(requestedSize > 0 ? { ContentLength: requestedSize } : {})
   });
 
   const uploadUrl = await getSignedUrl(getR2Client(), command, { expiresIn });
@@ -228,7 +322,8 @@ export async function createPresignedUpload({
     objectUrl,
     key: objectKey,
     headers: {
-      "Content-Type": contentType
+      "Content-Type": contentType,
+      ...(resolvedCacheControl ? { "Cache-Control": resolvedCacheControl } : {})
     }
   };
 }

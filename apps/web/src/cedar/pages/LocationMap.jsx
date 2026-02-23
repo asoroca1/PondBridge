@@ -3,21 +3,15 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import { MapPin } from "lucide-react";
 import { API_BASE } from "../lib/api";
+import { initialsOf } from "../lib/helpers.js";
 import "./location-map.css";
 
 function nameOf(p) {
   const full = [p.firstName, p.lastName].filter(Boolean).join(" ").trim();
   return full || "Alumni Member";
-}
-function initialsOf(p) {
-  const a = (p.firstName || "").trim();
-  const b = (p.lastName || "").trim();
-  const i = (a[0] || "") + (b[0] || "");
-  return i.toUpperCase() || "?";
 }
 function cityLabel(c) {
   return [c.city, c.state].filter(Boolean).join(", ");
@@ -411,7 +405,6 @@ export default function LocationMap() {
   return (
     <div className="lm-wrap" style={{ position: "relative", minHeight: "100vh" }}>
       <CedarBackground behavior="scroll" opacity={0.9} zIndex={0} />
-      <Navbar2 />
 
       <main className="lm-main nav2-page-shell">
         <header className="lm-header">

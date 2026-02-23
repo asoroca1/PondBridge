@@ -1,18 +1,26 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { ClerkProvider } from "@clerk/clerk-react";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
+import { clerkUiEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
 import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
-  </React.StrictMode>
+const baseTree = (
+  <BrowserRouter>
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  </BrowserRouter>
 );
+
+const appTree = clerkUiEnabled() ? (
+  <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>{baseTree}</ClerkProvider>
+) : (
+  baseTree
+);
+
+ReactDOM.createRoot(document.getElementById("root")).render(<React.StrictMode>{appTree}</React.StrictMode>);

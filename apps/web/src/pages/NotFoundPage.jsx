@@ -8,10 +8,15 @@ export default function NotFoundPage() {
 
   return (
     <PageShell>
-      <Card>
-        <h1>Page not found</h1>
-        <p>This route does not exist in the PondBridge app.</p>
-        <Link to={destination}>Go to your camp network</Link>
+      <Card style={{ textAlign: "center", maxWidth: 480, margin: "60px auto", padding: 32 }}>
+        <p style={{ fontSize: 48, margin: "0 0 8px", lineHeight: 1 }} aria-hidden="true">🔍</p>
+        <h1 style={{ margin: "0 0 8px" }}>Page Not Found</h1>
+        <p style={{ color: "var(--text-muted, #5b6270)", margin: "0 0 20px" }}>
+          We couldn&apos;t find what you were looking for. The page may have moved or no longer exists.
+        </p>
+        <Link to={destination} style={{ fontWeight: 700, color: "var(--brand-primary, #002b5c)" }}>
+          ← Back to your network
+        </Link>
       </Card>
     </PageShell>
   );

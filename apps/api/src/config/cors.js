@@ -5,7 +5,8 @@ function tryParseOrigin(origin) {
     const parsed = new URL(origin);
     return {
       origin: parsed.origin,
-      hostname: parsed.hostname.toLowerCase()
+      hostname: parsed.hostname.toLowerCase(),
+      protocol: parsed.protocol.toLowerCase()
     };
   } catch {
     return null;
@@ -24,6 +25,17 @@ export function isAllowedCorsOrigin(origin) {
 
   const parsed = tryParseOrigin(origin);
   if (!parsed) return false;
+
+  const isLocalhost =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname.endsWith(".localhost");
+  const isHttps = parsed.protocol === "https:";
+
+  // In production, reject non-HTTPS browser origins except localhost dev hosts.
+  if (env.NODE_ENV === "production" && !isLocalhost && !isHttps) {
+    return false;
+  }
 
   if (env.FRONTEND_ORIGINS.includes(parsed.origin)) return true;
 

@@ -106,6 +106,8 @@ export default function NavBar() {
   const toggleRef = useRef(null);
   const acBoxRef = useRef(null);
   const debounceRef = useRef(null);
+  const searchRequestIdRef = useRef(0);
+  const searchAbortRef = useRef(null);
 
   const config = tenant?.config || {};
   const branding = config.branding || tenant?.theme || {};
@@ -133,15 +135,17 @@ export default function NavBar() {
   const onAuthRoute =
     onLoginRoute ||
     onCreateAccountRoute ||
-    /\/forgot-password\/?$/.test(currentPath) ||
-    /\/reset-password\/[^/]+\/?$/.test(currentPath);
+    /\/auth\/callback\/?$/.test(currentPath) ||
+    /\/request-access\/?$/.test(currentPath);
   const onPublicEntryRoute =
     currentPath === "/" ||
     currentPath === `/t/${slug}` ||
     currentPath === `/t/${slug}/`;
+  const onAdminModeRoute =
+    currentPath.includes(`/t/${slug}/admin`) || /^\/admin(\/|$)/.test(currentPath);
   const usePublicNav = onAuthRoute || onPublicEntryRoute;
 
-  const showSearch = canSearch && !usePublicNav;
+  const showSearch = canSearch && !usePublicNav && !onAdminModeRoute;
   const showAuthActions = !isAuthenticated || usePublicNav;
   const showPrivateTools = isAuthenticated && !usePublicNav;
 
@@ -285,7 +289,16 @@ export default function NavBar() {
     };
   }, []);
 
-  useEffect(() => () => window.clearTimeout(debounceRef.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(debounceRef.current);
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     setMenuOpen(false);
@@ -294,48 +307,78 @@ export default function NavBar() {
   }, [currentPath]);
 
   async function fetchNames(term) {
-    if (!term || !canSearch) {
+    const normalized = String(term || "").trim();
+    if (!normalized || normalized.length < 2 || !canSearch) {
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
+      }
       setItems([]);
+      setLoading(false);
       return;
     }
 
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
     setLoading(true);
     try {
       const fallbackToken = readAuthFromStorage().token || "";
       const payload = await requestJson(
-        `/api/t/${slug}/search/names?q=${encodeURIComponent(term)}&limit=8`,
-        { token: token || fallbackToken }
+        `/api/t/${slug}/search/names?q=${encodeURIComponent(normalized)}&limit=8`,
+        { token: token || fallbackToken, signal: controller.signal }
       );
+      if (searchRequestIdRef.current !== requestId) return;
       const list = Array.isArray(payload?.items)
         ? payload.items
         : Array.isArray(payload?.results)
         ? payload.results
         : [];
+      const seen = new Set();
       setItems(
-        list.map((entry) => ({
-          id: entry.id || entry._id || entry.profileId || entry.userId || "",
-          name:
-            String(entry.name || "").trim() ||
-            `${entry.firstName || ""} ${entry.lastName || ""}`.trim() ||
-            "Unknown",
-          subtitle: searchSubtitleFrom(entry),
-          avatarUrl: entry?.uploads?.photoUrl || entry?.avatarUrl || entry?.profilePhotoUrl || ""
-        }))
+        list
+          .map((entry) => ({
+            id: String(entry.id || entry._id || entry.profileId || entry.userId || "").trim(),
+            name:
+              String(entry.name || "").trim() ||
+              `${entry.firstName || ""} ${entry.lastName || ""}`.trim() ||
+              "Unknown",
+            subtitle: searchSubtitleFrom(entry),
+            avatarUrl: entry?.uploads?.photoUrl || entry?.avatarUrl || entry?.profilePhotoUrl || ""
+          }))
+          .filter((entry) => {
+            if (!entry.id || seen.has(entry.id)) return false;
+            seen.add(entry.id);
+            return true;
+          })
       );
-    } catch {
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      if (searchRequestIdRef.current !== requestId) return;
       setItems([]);
     } finally {
+      if (searchRequestIdRef.current !== requestId) return;
+      if (searchAbortRef.current === controller) {
+        searchAbortRef.current = null;
+      }
       setLoading(false);
     }
   }
 
   function onInput(event) {
     const value = event.target.value;
+    const trimmed = value.trim();
     setQ(value);
-    setAcOpen(Boolean(value.trim()));
+    setAcOpen(trimmed.length >= 2);
+    setActive(-1);
     window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
-      fetchNames(value.trim());
+      fetchNames(trimmed);
     }, 200);
   }
 
@@ -412,7 +455,7 @@ export default function NavBar() {
                 type="text"
                 value={q}
                 onChange={onInput}
-                onFocus={() => setAcOpen(Boolean(q.trim()))}
+                onFocus={() => setAcOpen(q.trim().length >= 2)}
                 onKeyDown={onKeyDown}
                 placeholder="Search names..."
                 className="navbar2-search-input"
@@ -422,7 +465,7 @@ export default function NavBar() {
                 <Search size={16} />
               </button>
 
-              {acOpen && q.trim() ? (
+              {acOpen && q.trim().length >= 2 ? (
                 <ul className="nav2-ac-list" role="listbox">
                   {loading ? <li className="nav2-ac-item muted">Searching...</li> : null}
                   {!loading
@@ -445,9 +488,7 @@ export default function NavBar() {
                         </li>
                       ))
                     : null}
-                  {!loading && items.length === 0 ? (
-                    <li className="nav2-ac-item muted">No matching profiles found.</li>
-                  ) : null}
+                  {!loading && items.length === 0 ? <li className="nav2-ac-item muted">No matching profiles found.</li> : null}
                   {!loading ? (
                     <li
                       role="option"

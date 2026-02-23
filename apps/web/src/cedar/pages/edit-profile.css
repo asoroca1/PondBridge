@@ -39,7 +39,7 @@
 .wizard2-step-sub{ color:#6d7b8a; font-weight:600; }
 
 /* Card & grid */
-.wizard2-card { background:#fff; border-radius:12px; padding:1rem; box-shadow:0 10px 26px rgba(0,0,0,.08); }
+.wizard2-card { background:#fff; border-radius:var(--radius-md); padding:1rem; box-shadow:var(--shadow-lg); }
 .wizard2-h2 { font:800 1.15rem/1.2 Inter,sans-serif; color:#0b2f57; margin:0 0 .75rem; }
 
 .wizard2-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); }

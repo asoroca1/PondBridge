@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { isValidObjectId, generateObjectId } from "../utils/objectId.js";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
 import {
@@ -16,12 +17,38 @@ import {
   CityGeoModel
 } from "../db/models/index.js";
 import { createPresignedUpload } from "../services/objectStorage.js";
+import { findInviteByOpaqueToken } from "../services/invites.js";
 import { cityKey, geocodeCity } from "../utils/geocode.js";
+import { isAllowedCorsOrigin } from "../config/cors.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }
+});
+const publicUploadPresignLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 80,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many upload requests. Please wait before trying again."
+    }
+  }
+});
+const privateUploadPresignLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 160,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many upload requests. Please wait before trying again."
+    }
+  }
 });
 const CITIES_CACHE_TTL_MS = Math.max(5000, Number(process.env.MAP_CITIES_CACHE_TTL_MS || 60000));
 const CITY_PEOPLE_CACHE_TTL_MS = Math.max(
@@ -51,6 +78,8 @@ const IMAGE_MIME_TYPES = new Set([
   "image/webp",
   "image/svg+xml"
 ]);
+const PUBLIC_UPLOAD_SCOPES = new Set(["avatar"]);
+const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero"]);
 
 function normalizeFileName(fileName = "file") {
   return String(fileName || "file")
@@ -108,6 +137,71 @@ function assertImageContentType(fileType = "", fileName = "") {
   }
 
   return inferred;
+}
+
+function scopeToPrefix(scope = "avatar") {
+  const normalized = String(scope || "avatar")
+    .trim()
+    .toLowerCase();
+  if (!PRIVATE_UPLOAD_SCOPES.has(normalized)) {
+    const error = new Error("Invalid upload scope.");
+    error.statusCode = 400;
+    error.code = "INVALID_UPLOAD_SCOPE";
+    throw error;
+  }
+  if (normalized === "branding-logo") return "branding/logos";
+  if (normalized === "branding-hero") return "branding/heroes";
+  return "profiles/avatars";
+}
+
+function ensureBrowserOriginAllowed(req) {
+  const origin = String(req.headers.origin || "").trim();
+  if (!origin || !isAllowedCorsOrigin(origin)) {
+    const error = new Error("Upload origin is not allowed.");
+    error.statusCode = 403;
+    error.code = "UPLOAD_ORIGIN_FORBIDDEN";
+    throw error;
+  }
+}
+
+async function ensurePublicUploadScopeAllowed(req, scope) {
+  if (PUBLIC_UPLOAD_SCOPES.has(scope)) return;
+  const inviteToken = String(req.body?.inviteToken || "").trim();
+  if (!inviteToken) {
+    const error = new Error("A director invite token is required for this upload scope.");
+    error.statusCode = 403;
+    error.code = "INVITE_REQUIRED";
+    throw error;
+  }
+  const invite = await findInviteByOpaqueToken(req.tenant._id, inviteToken);
+  if (!invite || String(invite.roleToAssign || "").trim() !== "tenant_admin") {
+    const error = new Error("A valid director invite token is required for this upload scope.");
+    error.statusCode = 403;
+    error.code = "INVITE_REQUIRED";
+    throw error;
+  }
+}
+
+async function buildPresignedImageUpload(req, { allowPublicScopesOnly = true } = {}) {
+  const fileName = ensureFileName(req.body?.fileName || "profile.jpg");
+  const fileType = assertImageContentType(req.body?.fileType || "", fileName);
+  const scope = String(req.body?.scope || "avatar")
+    .trim()
+    .toLowerCase();
+  const prefix = scopeToPrefix(scope);
+
+  if (allowPublicScopesOnly) {
+    await ensurePublicUploadScopeAllowed(req, scope);
+  }
+
+  return createPresignedUpload({
+    tenantSlug: req.tenant.slug,
+    prefix,
+    fileName,
+    fileType,
+    fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
+    allowedContentTypes: [...IMAGE_MIME_TYPES]
+  });
 }
 
 function asRegex(value = "") {
@@ -588,14 +682,6 @@ function forumPostToClient(post = {}) {
 
 router.use(requireTenant);
 
-router.post("/auth/forgot-password", (_req, res) => {
-  return res.json({ ok: true, message: "If the account exists, reset instructions were sent." });
-});
-
-router.post("/auth/reset-password", (_req, res) => {
-  return res.json({ ok: true, message: "Password reset is not enabled in local demo mode." });
-});
-
 router.get("/locations/cities/:state", async (req, res) => {
   const state = String(req.params.state || "").trim().toUpperCase();
   if (!state) return res.json([]);
@@ -617,26 +703,10 @@ router.post("/locations/cities", (_req, res) => {
   return res.status(201).json({ ok: true });
 });
 
-router.post("/uploads/presign-public", async (req, res, next) => {
+router.post("/uploads/presign-public", publicUploadPresignLimiter, async (req, res, next) => {
   try {
-    const fileName = ensureFileName(req.body?.fileName || "profile.jpg");
-    const fileType = assertImageContentType(req.body?.fileType || "", fileName);
-    const scope = String(req.body?.scope || "avatar")
-      .trim()
-      .toLowerCase();
-    const prefix =
-      scope === "branding-logo"
-        ? "branding/logos"
-        : scope === "branding-hero"
-          ? "branding/heroes"
-          : "profiles/avatars";
-
-    const presigned = await createPresignedUpload({
-      tenantSlug: req.tenant.slug,
-      prefix,
-      fileName,
-      fileType
-    });
+    ensureBrowserOriginAllowed(req);
+    const presigned = await buildPresignedImageUpload(req, { allowPublicScopesOnly: true });
 
     return res.json({
       ...presigned,
@@ -648,11 +718,17 @@ router.post("/uploads/presign-public", async (req, res, next) => {
 });
 
 router.post("/prelaunch/unlock", (_req, res) => {
-  return res.json({ unlocked: true });
+  return res.status(410).json({
+    error: {
+      code: "ENDPOINT_DISABLED",
+      message: "Prelaunch unlock is not available on this endpoint."
+    }
+  });
 });
 
-router.get("/prelaunch/status", (_req, res) => {
-  return res.json({ unlocked: true, mode: "live" });
+router.get("/prelaunch/status", (req, res) => {
+  const unlocked = req.tenant?.status === "active" && req.tenant?.onboardingStatus === "live";
+  return res.json({ unlocked, mode: unlocked ? "live" : "locked" });
 });
 
 router.use(requireAuth);
@@ -671,6 +747,19 @@ router.use((req, res, next) => {
   }
 
   return next();
+});
+
+router.post("/uploads/presign", privateUploadPresignLimiter, async (req, res, next) => {
+  try {
+    ensureBrowserOriginAllowed(req);
+    const presigned = await buildPresignedImageUpload(req, { allowPublicScopesOnly: false });
+    return res.json({
+      ...presigned,
+      publicUrl: presigned.objectUrl
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.get("/me", async (req, res) => {
@@ -796,8 +885,12 @@ router.get("/search/names", async (req, res) => {
   const mapped = items.map((profile) => ({
     id: String(profile._id),
     _id: String(profile._id),
+    name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown",
     firstName: profile.firstName,
     lastName: profile.lastName,
+    cityState: profile.cityState || "",
+    roleAtCamp: profile.roleAtCamp || "",
+    industry: profile.industry || "",
     uploads: { photoUrl: profile.avatarUrl || "" },
     currentJobs: profile.currentJobs || []
   }));
@@ -996,7 +1089,9 @@ router.post("/photos/presign", async (req, res, next) => {
       tenantSlug: req.tenant.slug,
       prefix: `photos/${req.user.id}`,
       fileName,
-      fileType
+      fileType,
+      fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
+      allowedContentTypes: [...IMAGE_MIME_TYPES]
     });
 
     return res.json(presigned);
@@ -1484,7 +1579,8 @@ router.post("/conversations/:id/presign", async (req, res, next) => {
       tenantSlug: req.tenant.slug,
       prefix: `chat/${id}`,
       fileName,
-      fileType: fileType || undefined
+      fileType: fileType || undefined,
+      fileSizeBytes: req.body?.fileSize || req.body?.size || 0
     });
 
     return res.json(presigned);
@@ -1679,7 +1775,8 @@ router.post("/forums/:id/presign", async (req, res, next) => {
       tenantSlug: req.tenant.slug,
       prefix: `forums/${id}`,
       fileName,
-      fileType: fileType || undefined
+      fileType: fileType || undefined,
+      fileSizeBytes: req.body?.fileSize || req.body?.size || 0
     });
 
     return res.json(presigned);

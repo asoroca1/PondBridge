@@ -7,6 +7,8 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import DirectorOnboardingCommandCenterPage from "./pages/DirectorOnboardingCommandCenterPage.jsx";
 import DirectorClaimPage from "./pages/DirectorClaimPage.jsx";
 import DirectorCreateAccountPage from "./pages/DirectorCreateAccountPage.jsx";
+import TenantAccessPendingPage from "./pages/TenantAccessPendingPage.jsx";
+import TenantAuthCallbackPage from "./pages/TenantAuthCallbackPage.jsx";
 import DirectorAdminLayout from "./pages/admin/DirectorAdminLayout.jsx";
 import {
   DirectorAdminAnalyticsPage,
@@ -41,8 +43,6 @@ import NotFoundPage from "./pages/NotFoundPage.jsx";
 import CedarHomePage from "./cedar/pages/Home.jsx";
 import CedarLoginPage from "./cedar/pages/Login.jsx";
 import CedarCreateProfileWizardPage from "./cedar/pages/CreateProfileWizard.jsx";
-import CedarForgotPasswordPage from "./cedar/pages/ForgotPassword.jsx";
-import CedarResetPasswordPage from "./cedar/pages/ResetPassword.jsx";
 import CedarMainHomePage from "./cedar/pages/MainHome.jsx";
 import CedarMyProfilePage from "./cedar/pages/MyProfile.jsx";
 import CedarEditProfilePage from "./cedar/pages/EditProfile.jsx";
@@ -93,10 +93,17 @@ function CustomDomainCampLayout() {
 
 function TenantScopeRoutes() {
   const { loading, error, tenant, slug: tenantSlug } = useTenant();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isReady, user, authProvider, refreshSession } = useAuth();
   const location = useLocation();
   const params = useParams();
   const slug = params.slug || tenantSlug;
+
+  useEffect(() => {
+    if (!isReady || !isAuthenticated) return;
+    if (!["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase())) return;
+    if (!slug) return;
+    refreshSession({ tenantSlug: slug }).catch(() => {});
+  }, [authProvider, isAuthenticated, isReady, refreshSession, slug]);
 
   if (loading) {
     return (
@@ -104,6 +111,17 @@ function TenantScopeRoutes() {
         <div className="app-status-card">
           <h1>Loading your camp...</h1>
           <p>Please wait while we load network settings.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!isReady) {
+    return (
+      <section className="app-status-shell">
+        <div className="app-status-card">
+          <h1>Checking your account...</h1>
+          <p>Please wait while we verify your access.</p>
         </div>
       </section>
     );
@@ -143,6 +161,7 @@ function TenantScopeRoutes() {
 
   const isCampDirector =
     isAuthenticated && (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"));
+  const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
   const onboardingIncomplete = tenant?.onboardingStatus !== "live";
   const currentPath = location.pathname || "";
   const onboardingPath = slug ? `/t/${slug}/onboarding` : "/onboarding";
@@ -153,6 +172,17 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-claim") ||
     currentPath.includes("/director-create-account");
   const inviteToken = new URLSearchParams(location.search || "").get("inviteToken");
+
+  if (clerkMode && isAuthenticated && !user) {
+    return (
+      <section className="app-status-shell">
+        <div className="app-status-card">
+          <h1>Loading your membership...</h1>
+          <p>We are syncing your account for this network.</p>
+        </div>
+      </section>
+    );
+  }
 
   if (isCampDirector && onboardingIncomplete && !onOnboardingRoute) {
     return <Navigate to={onboardingPath} replace />;
@@ -168,10 +198,10 @@ function TenantScopeRoutes() {
         <Route index element={onboardingIncomplete ? <DirectorClaimPage /> : <CedarHomePage />} />
         <Route path="login" element={<CedarLoginPage />} />
         <Route path="create-account" element={<CedarCreateProfileWizardPage />} />
+        <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
+        <Route path="request-access" element={<TenantAccessPendingPage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
         <Route path="director-create-account" element={<DirectorCreateAccountPage />} />
-        <Route path="forgot-password" element={<CedarForgotPasswordPage />} />
-        <Route path="reset-password/:token" element={<CedarResetPasswordPage />} />
         <Route path="legal" element={<CedarLegalPage />} />
 
         <Route
@@ -301,6 +331,10 @@ function TenantScopeRoutes() {
           <Route path="members" element={<DirectorAdminMembersPage />} />
           <Route path="members/approvals" element={<DirectorAdminApprovalsPage />} />
           <Route path="members/import" element={<DirectorAdminImportPage />} />
+          <Route path="directory" element={<Navigate to="../members" replace />} />
+          <Route path="family-trees" element={<Navigate to="../features" replace />} />
+          <Route path="events" element={<Navigate to="../analytics" replace />} />
+          <Route path="communications" element={<Navigate to="../email/compose" replace />} />
           <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
           <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
           <Route path="analytics" element={<DirectorAdminAnalyticsPage />} />

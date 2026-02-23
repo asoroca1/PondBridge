@@ -4,6 +4,14 @@ import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import {
+  DataTable,
+  FilterBar,
+  LoadingSkeleton,
+  ModalConfirm,
+  PageHeader,
+  SlideOverPanel
+} from "../../components/admin/AdminUi.jsx";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -33,6 +41,13 @@ function statusTone(status = "") {
   if (["pending", "scheduled", "trialing", "in_setup", "in_progress"].includes(key)) return "warning";
   if (["failed", "denied", "past_due", "removed", "flagged", "canceled"].includes(key)) return "danger";
   return "neutral";
+}
+
+function billingPlanLabel(code = "") {
+  const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "founders") return "Founders";
+  if (normalized === "institutional") return "Institutional";
+  return "Legacy";
 }
 
 function downloadTextAsFile(text, filename, mime = "text/plain;charset=utf-8") {
@@ -78,17 +93,7 @@ function useAdminApi() {
   return { slug, token, request, download };
 }
 
-function AdminPageHeader({ title, subtitle = "", actions = null }) {
-  return (
-    <header className="director-admin-page-head">
-      <div>
-        <h1>{title}</h1>
-        {subtitle ? <p>{subtitle}</p> : null}
-      </div>
-      {actions ? <div className="director-admin-page-actions">{actions}</div> : null}
-    </header>
-  );
-}
+const AdminPageHeader = PageHeader;
 
 function StatCard({ label, value, hint = "", tone = "neutral" }) {
   return (
@@ -126,61 +131,61 @@ export function DirectorAdminDashboardPage() {
   if (loading && !payload) {
     return (
       <Card>
-        <p className="muted">Loading director dashboard...</p>
+        <LoadingSkeleton lines={4} />
       </Card>
     );
   }
 
   const stats = payload?.stats || {};
   const tenant = payload?.tenant || {};
-  const showPendingApprovals = tenant.accessPolicy === "approval_queue";
+  const pendingApprovals = Number(stats.pendingApprovals || 0);
+  const totalMembers = Number(stats.totalMembers || 0);
+  const activeMembers = Number(stats.activeMembers ?? Math.max(0, totalMembers - pendingApprovals));
+  const recentSignups = Number(stats.newThisWeek || 0);
   const statCards = [
     {
       key: "total-members",
       label: "Total Members",
-      value: stats.totalMembers || 0,
+      value: totalMembers,
       hint: `${stats.totalMembersDelta >= 0 ? "+" : ""}${stats.totalMembersDelta || 0}% vs prior window`,
       tone: "success"
     },
     {
-      key: "new-this-week",
-      label: "New This Week",
-      value: stats.newThisWeek || 0,
-      hint: "Last 7 days",
+      key: "active-members",
+      label: "Active Members",
+      value: activeMembers,
+      hint: `${totalMembers ? Math.round((activeMembers / totalMembers) * 100) : 0}% currently active`,
       tone: "neutral"
     },
     {
-      key: "profile-completion",
-      label: "Profile Completion",
-      value: `${stats.profileCompletion || 0}%`,
-      hint: "Average across network",
-      tone: Number(stats.profileCompletion || 0) >= 80 ? "success" : "warning"
-    }
-  ];
-  if (showPendingApprovals) {
-    statCards.splice(2, 0, {
       key: "pending-approvals",
       label: "Pending Approvals",
-      value: stats.pendingApprovals || 0,
+      value: pendingApprovals,
       hint: "Awaiting review",
-      tone: stats.pendingApprovals > 0 ? "warning" : "neutral"
-    });
-  }
+      tone: pendingApprovals > 0 ? "warning" : "neutral"
+    },
+    {
+      key: "recent-signups",
+      label: "Recent Signups",
+      value: recentSignups,
+      hint: "Last 7 days",
+      tone: recentSignups > 0 ? "success" : "neutral"
+    }
+  ];
   const quickActions = [
-    { to: `/t/${slug}/admin/members`, label: "View Members" },
-    { to: `/t/${slug}/admin/email/compose`, label: "Send Email" },
-    { to: `/t/${slug}/admin/members/import`, label: "Import Data" },
-    { to: `/t/${slug}/admin/settings/network`, label: "Settings" }
+    { to: `/t/${slug}/admin/settings/admins`, label: "Invite Member" },
+    { to: `/t/${slug}/admin/members`, label: "Export Directory" },
+    { to: `/t/${slug}/admin/members/import`, label: "Add Camper" },
+    { to: `/t/${slug}/admin/events`, label: "Create Event" }
   ];
 
   return (
     <div className="director-admin-stack">
       <Card>
         <AdminPageHeader
-          title="Network Admin"
-          subtitle={`${tenant.name || "Your Network"} · ${tenant.status || "in_setup"}${
-            tenant.launchedAt ? ` · Live since ${formatDate(tenant.launchedAt)}` : ""
-          }`}
+          title="Admin Overview"
+          subtitle={`${tenant.name || "Your Network"} management summary`}
+          className="director-admin-page-head"
           actions={
             <>
               <Link className="link-button secondary" to={`/t/${slug}/home`}>
@@ -192,6 +197,11 @@ export function DirectorAdminDashboardPage() {
             </>
           }
         />
+        <p className="muted">
+          {`${tenant.status || "in_setup"}${
+            tenant.launchedAt ? ` · Live since ${formatDate(tenant.launchedAt)}` : ""
+          }`}
+        </p>
         {error ? <p className="error-text">{error}</p> : null}
         <div className="director-admin-stat-grid">
           {statCards.map((item) => (
@@ -279,6 +289,7 @@ export function DirectorAdminMembersPage() {
   const [page, setPage] = useState(1);
   const [payload, setPayload] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [rowMenuId, setRowMenuId] = useState("");
   const [editingMember, setEditingMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -317,6 +328,13 @@ export function DirectorAdminMembersPage() {
   useEffect(() => {
     setSelected((prev) => prev.filter((id) => payload?.items?.some((item) => item.id === id)));
   }, [payload?.items]);
+
+  useEffect(() => {
+    if (!rowMenuId) return;
+    if (!payload?.items?.some((item) => item.id === rowMenuId)) {
+      setRowMenuId("");
+    }
+  }, [payload?.items, rowMenuId]);
 
   function toggleAll(event) {
     if (!payload?.items?.length) return;
@@ -408,12 +426,25 @@ export function DirectorAdminMembersPage() {
   const roleOptions = payload?.filters?.roleOptions || [];
   const yearOptions = payload?.filters?.yearOptions || [];
 
+  function resetFilters() {
+    setQuery("");
+    setPage(1);
+    setFilters({
+      role: "all",
+      year: "all",
+      status: "all",
+      completion: "all",
+      sort: "join_desc"
+    });
+  }
+
   return (
     <div className="director-admin-stack">
       <Card>
         <AdminPageHeader
           title="Members"
           subtitle="Search, filter, edit, and manage your network members."
+          className="director-admin-page-head"
           actions={
             <>
               <Link className="link-button" to={`/t/${slug}/admin/settings/admins`}>
@@ -429,7 +460,7 @@ export function DirectorAdminMembersPage() {
           }
         />
 
-        <div className="director-admin-filter-row">
+        <FilterBar className="director-admin-filter-row">
           <Input
             value={query}
             onChange={(event) => {
@@ -503,7 +534,10 @@ export function DirectorAdminMembersPage() {
             <option value="completion_asc">Completion low-high</option>
             <option value="last_active_desc">Last active recent</option>
           </Select>
-        </div>
+          <Button variant="secondary" onClick={resetFilters}>
+            Reset
+          </Button>
+        </FilterBar>
 
         {selected.length > 0 ? (
           <div className="director-admin-bulk-bar">
@@ -531,8 +565,7 @@ export function DirectorAdminMembersPage() {
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
 
-        <div className="director-admin-table-wrap">
-          <table className="director-admin-table">
+        <DataTable className="director-admin-table-wrap" tableClassName="director-admin-table" minWidth={860}>
             <thead>
               <tr>
                 <th>
@@ -597,25 +630,43 @@ export function DirectorAdminMembersPage() {
                       </span>
                     </td>
                     <td>
-                      <div className="inline-actions">
-                        <Link className="director-admin-inline-link" to={`/t/${slug}/profile/${item.id}`}>
-                          View
-                        </Link>
+                      <div className="director-admin-row-actions">
                         <button
                           type="button"
-                          className="director-admin-inline-link"
-                          onClick={() => setEditingMember({ ...item })}
+                          className="director-admin-row-menu-trigger"
+                          aria-label="Open row actions"
+                          onClick={() => setRowMenuId((current) => (current === item.id ? "" : item.id))}
                         >
-                          Edit
+                          ⋯
                         </button>
+                        {rowMenuId === item.id ? (
+                          <div className="director-admin-row-menu">
+                            <Link
+                              className="director-admin-inline-link"
+                              to={`/t/${slug}/profile/${item.id}`}
+                              onClick={() => setRowMenuId("")}
+                            >
+                              View Profile
+                            </Link>
+                            <button
+                              type="button"
+                              className="director-admin-inline-link"
+                              onClick={() => {
+                                setRowMenuId("");
+                                setEditingMember({ ...item });
+                              }}
+                            >
+                              Edit Member
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+        </DataTable>
 
         <div className="director-admin-pagination">
           <small>
@@ -636,94 +687,114 @@ export function DirectorAdminMembersPage() {
         </div>
       </Card>
 
-      {editingMember ? (
-        <div className="director-admin-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="director-admin-modal">
-            <h2>Edit Member — {editingMember.fullName}</h2>
-            <form className="director-admin-form-grid" onSubmit={saveMemberEdit}>
-              <label>
-                First name
-                <Input
-                  value={editingMember.firstName || ""}
-                  onChange={(event) =>
-                    setEditingMember((prev) => ({ ...prev, firstName: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Last name
-                <Input
-                  value={editingMember.lastName || ""}
-                  onChange={(event) =>
-                    setEditingMember((prev) => ({ ...prev, lastName: event.target.value }))
-                  }
-                />
-              </label>
-              <label className="full-width">
-                Email
-                <Input
-                  value={editingMember.email || ""}
-                  onChange={(event) =>
-                    setEditingMember((prev) => ({ ...prev, email: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Role
-                <Input
-                  value={editingMember.role || ""}
-                  onChange={(event) =>
-                    setEditingMember((prev) => ({ ...prev, role: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Location
-                <Input
-                  value={editingMember.location || ""}
-                  onChange={(event) =>
-                    setEditingMember((prev) => ({ ...prev, location: event.target.value }))
-                  }
-                />
-              </label>
-              <label className="full-width">
-                Bio
-                <Textarea
-                  value={editingMember.bio || ""}
-                  onChange={(event) =>
-                    setEditingMember((prev) => ({ ...prev, bio: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Status
-                <Select
-                  value={editingMember.status || "active"}
-                  onChange={(event) =>
-                    setEditingMember((prev) => ({ ...prev, status: event.target.value }))
-                  }
-                >
-                  <option value="active">Active</option>
-                  <option value="pending">Pending</option>
-                  <option value="flagged">Flagged</option>
-                  <option value="removed">Removed</option>
-                </Select>
-              </label>
-              <div className="director-admin-modal-actions full-width">
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Saving..." : "Save Changes"}
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => setEditingMember(null)}>
-                  Cancel
-                </Button>
-                <Link className="link-button secondary" to={`/t/${slug}/profile/${editingMember.id}`}>
-                  View Full Profile
-                </Link>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
+      <SlideOverPanel
+        open={Boolean(editingMember)}
+        title={`Edit Member - ${editingMember?.fullName || "Member"}`}
+        subtitle="Update profile details without leaving the members table."
+        onClose={() => setEditingMember(null)}
+        footer={
+          <>
+            <Link className="link-button secondary" to={`/t/${slug}/profile/${editingMember?.id || ""}`}>
+              View Full Profile
+            </Link>
+            <div className="inline-actions">
+              <Button type="button" variant="secondary" onClick={() => setEditingMember(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={saving || !editingMember?.id}
+                onClick={() => {
+                  const formEl = document.getElementById("director-admin-member-edit-form");
+                  formEl?.requestSubmit();
+                }}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </>
+        }
+      >
+        {editingMember ? (
+          <form id="director-admin-member-edit-form" className="director-admin-form-grid" onSubmit={saveMemberEdit}>
+            <h3 className="full-width pb-section-title">Identity</h3>
+            <label>
+              First name
+              <Input
+                value={editingMember.firstName || ""}
+                onChange={(event) =>
+                  setEditingMember((prev) => ({ ...prev, firstName: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Last name
+              <Input
+                value={editingMember.lastName || ""}
+                onChange={(event) =>
+                  setEditingMember((prev) => ({ ...prev, lastName: event.target.value }))
+                }
+              />
+            </label>
+
+            <h3 className="full-width pb-section-title">Contact</h3>
+            <label className="full-width">
+              Email
+              <Input
+                value={editingMember.email || ""}
+                onChange={(event) =>
+                  setEditingMember((prev) => ({ ...prev, email: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Location
+              <Input
+                value={editingMember.location || ""}
+                onChange={(event) =>
+                  setEditingMember((prev) => ({ ...prev, location: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Role at camp
+              <Input
+                value={editingMember.role || ""}
+                onChange={(event) =>
+                  setEditingMember((prev) => ({ ...prev, role: event.target.value }))
+                }
+              />
+            </label>
+
+            <h3 className="full-width pb-section-title">Notes</h3>
+            <label className="full-width">
+              Bio
+              <Textarea
+                value={editingMember.bio || ""}
+                onChange={(event) =>
+                  setEditingMember((prev) => ({ ...prev, bio: event.target.value }))
+                }
+              />
+            </label>
+
+            <h3 className="full-width pb-section-title">Access</h3>
+            <label>
+              Status
+              <Select
+                value={editingMember.status || "active"}
+                onChange={(event) =>
+                  setEditingMember((prev) => ({ ...prev, status: event.target.value }))
+                }
+              >
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="flagged">Flagged</option>
+                <option value="removed">Removed</option>
+              </Select>
+            </label>
+          </form>
+        ) : null}
+      </SlideOverPanel>
     </div>
   );
 }
@@ -1290,18 +1361,6 @@ export function DirectorAdminEmailComposePage() {
               {sending ? "Sending..." : form.scheduleType === "later" ? "Schedule Email" : "Send Email"}
             </Button>
           </div>
-          <div className="director-admin-recipient-preview">
-            <h3>Recipient preview</h3>
-            <p className="muted">Sending to: {recipientPreview.count || 0} members</p>
-            <ul className="director-admin-preview-recipient-list">
-              {(recipientPreview.preview || []).map((person) => (
-                <li key={person.id}>
-                  <span>{person.name}</span>
-                  <small>{person.email}</small>
-                </li>
-              ))}
-            </ul>
-          </div>
         </section>
       </form>
     </Card>
@@ -1648,8 +1707,93 @@ export function DirectorAdminFeaturesPage() {
   if (!payload) {
     return (
       <Card>
-        <p className="muted">Loading features...</p>
+        <LoadingSkeleton lines={3} />
       </Card>
+    );
+  }
+
+  const moduleColumns = [[], []];
+  (payload.modules || []).forEach((module, index) => {
+    moduleColumns[index % 2].push(module);
+  });
+
+  function renderModuleCard(module) {
+    return (
+      <article
+        key={module.key}
+        className={`director-admin-module-card ${module.enabled ? "is-enabled" : ""} ${module.locked ? "is-locked" : ""}`.trim()}
+      >
+        <header>
+          <div>
+            <h3>{module.label}</h3>
+            <p>{module.description}</p>
+          </div>
+          {module.locked ? (
+            <span className="director-admin-status-badge tone-warning">Premium</span>
+          ) : (
+            <label className="director-admin-switch">
+              <input
+                type="checkbox"
+                checked={Boolean(module.enabled)}
+                onChange={(event) => {
+                  const nextEnabled = Boolean(event.target.checked);
+                  if (!nextEnabled && module.enabled) {
+                    const confirmed = window.confirm(
+                      `Turn off ${module.label}? This hides it from members, but data is preserved.`
+                    );
+                    if (!confirmed) return;
+                  }
+                  const nextModules = Object.fromEntries(
+                    payload.modules.map((item) => [item.key, item.key === module.key ? nextEnabled : item.enabled])
+                  );
+                  setPayload((prev) => ({
+                    ...prev,
+                    modules: prev.modules.map((item) =>
+                      item.key === module.key ? { ...item, enabled: nextEnabled } : item
+                    )
+                  }));
+                  saveModules(nextModules);
+                }}
+                disabled={saving}
+              />
+              <span>{module.enabled ? "On" : "Off"}</span>
+            </label>
+          )}
+        </header>
+        {module.key === "newsletter" && !module.locked ? (
+          <div className="director-admin-module-settings">
+            <label>
+              Newsletter display name
+              <Input
+                value={moduleDisplayNames.newsletter || ""}
+                onChange={(event) =>
+                  setModuleDisplayNames((prev) => ({ ...prev, newsletter: event.target.value }))
+                }
+                placeholder="Newsletter"
+              />
+            </label>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const nextModules = Object.fromEntries(
+                  payload.modules.map((item) => [item.key, item.enabled])
+                );
+                saveModules(nextModules, moduleDisplayNames);
+              }}
+              disabled={saving}
+            >
+              Save Settings
+            </Button>
+          </div>
+        ) : null}
+        {module.locked ? (
+          <p className="muted">This feature requires Premium.</p>
+        ) : (
+          <Link className="director-admin-inline-link" to={modulePreviewPath(slug, module.key)}>
+            Preview in network
+          </Link>
+        )}
+      </article>
     );
   }
 
@@ -1658,6 +1802,7 @@ export function DirectorAdminFeaturesPage() {
       <AdminPageHeader
         title="Features & Modules"
         subtitle="Control which features are active in your network. Changes apply immediately."
+        className="director-admin-page-head"
         actions={
           <>
             <Badge tone="neutral">{payload?.tenant?.planTier || "base"} plan</Badge>
@@ -1671,83 +1816,11 @@ export function DirectorAdminFeaturesPage() {
       />
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
-      <div className="director-admin-modules-grid">
-        {(payload.modules || []).map((module) => (
-          <article
-            key={module.key}
-            className={`director-admin-module-card ${module.enabled ? "is-enabled" : ""} ${module.locked ? "is-locked" : ""}`.trim()}
-          >
-            <header>
-              <div>
-                <h3>{module.label}</h3>
-                <p>{module.description}</p>
-              </div>
-              {module.locked ? (
-                <span className="director-admin-status-badge tone-warning">Premium</span>
-              ) : (
-                <label className="director-admin-switch">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(module.enabled)}
-                    onChange={(event) => {
-                      const nextEnabled = Boolean(event.target.checked);
-                      if (!nextEnabled && module.enabled) {
-                        const confirmed = window.confirm(
-                          `Turn off ${module.label}? This hides it from members, but data is preserved.`
-                        );
-                        if (!confirmed) return;
-                      }
-                      const nextModules = Object.fromEntries(
-                        payload.modules.map((item) => [item.key, item.key === module.key ? nextEnabled : item.enabled])
-                      );
-                      setPayload((prev) => ({
-                        ...prev,
-                        modules: prev.modules.map((item) =>
-                          item.key === module.key ? { ...item, enabled: nextEnabled } : item
-                        )
-                      }));
-                      saveModules(nextModules);
-                    }}
-                    disabled={saving}
-                  />
-                  <span>{module.enabled ? "On" : "Off"}</span>
-                </label>
-              )}
-            </header>
-            {module.key === "newsletter" && !module.locked ? (
-              <div className="director-admin-module-settings">
-                <label>
-                  Newsletter display name
-                  <Input
-                    value={moduleDisplayNames.newsletter || ""}
-                    onChange={(event) =>
-                      setModuleDisplayNames((prev) => ({ ...prev, newsletter: event.target.value }))
-                    }
-                    placeholder="Newsletter"
-                  />
-                </label>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    const nextModules = Object.fromEntries(
-                      payload.modules.map((item) => [item.key, item.enabled])
-                    );
-                    saveModules(nextModules, moduleDisplayNames);
-                  }}
-                  disabled={saving}
-                >
-                  Save Settings
-                </Button>
-              </div>
-            ) : null}
-            {module.locked ? (
-              <p className="muted">This feature requires Premium.</p>
-            ) : (
-              <Link className="director-admin-inline-link" to={modulePreviewPath(slug, module.key)}>
-                Preview in network
-              </Link>
-            )}
-          </article>
+      <div className="director-admin-modules-columns">
+        {moduleColumns.map((column, index) => (
+          <div key={`module-column-${index}`} className="director-admin-modules-column">
+            {column.map((module) => renderModuleCard(module))}
+          </div>
         ))}
       </div>
     </Card>
@@ -1755,10 +1828,16 @@ export function DirectorAdminFeaturesPage() {
 }
 
 export function DirectorAdminBillingPage() {
-  const { request } = useAdminApi();
+  const { slug, request } = useAdminApi();
+  const [searchParams] = useSearchParams();
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
+  const [startingCheckout, setStartingCheckout] = useState(false);
+
+  const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
 
   const loadBilling = useCallback(async () => {
     setLoading(true);
@@ -1766,6 +1845,14 @@ export function DirectorAdminBillingPage() {
     try {
       const response = await request("/billing");
       setPayload(response);
+      const livePlanCode = String(
+        response?.tenant?.billingPlan || response?.billing?.billingPlan || "legacy"
+      )
+        .trim()
+        .toLowerCase();
+      if (livePlanCode) {
+        setSelectedPlanCode(livePlanCode);
+      }
     } catch (requestError) {
       setError(requestError.message || "Failed to load billing.");
     } finally {
@@ -1776,6 +1863,43 @@ export function DirectorAdminBillingPage() {
   useEffect(() => {
     loadBilling();
   }, [loadBilling]);
+
+  useEffect(() => {
+    if (checkoutQueryState === "success") {
+      setStatus("Stripe checkout completed. Billing activation may take a few seconds.");
+      setError("");
+    } else if (checkoutQueryState === "cancel") {
+      setError("Stripe checkout was canceled.");
+      setStatus("");
+    }
+  }, [checkoutQueryState]);
+
+  async function startCheckout() {
+    setStartingCheckout(true);
+    setError("");
+    setStatus("");
+
+    try {
+      const successUrl = `${window.location.origin}/t/${slug}/admin/billing?checkout=success`;
+      const cancelUrl = `${window.location.origin}/t/${slug}/admin/billing?checkout=cancel`;
+      const response = await request("/billing/checkout", {
+        method: "POST",
+        body: {
+          planCode: selectedPlanCode,
+          successUrl,
+          cancelUrl
+        }
+      });
+      const checkoutUrl = String(response?.checkoutUrl || "").trim();
+      if (!checkoutUrl) {
+        throw new Error("Stripe checkout URL was not returned.");
+      }
+      window.location.assign(checkoutUrl);
+    } catch (requestError) {
+      setError(requestError.message || "Unable to start Stripe checkout.");
+      setStartingCheckout(false);
+    }
+  }
 
   if (loading && !payload) {
     return (
@@ -1788,8 +1912,11 @@ export function DirectorAdminBillingPage() {
   const tenant = payload?.tenant || {};
   const usage = payload?.usage || {};
   const billingStatus = String(tenant.billingStatus || "").toLowerCase();
+  const lifecycleStatus = String(tenant.billingLifecycleStatus || "").toLowerCase();
+  const currentPlanCode = String(tenant.billingPlan || "legacy").trim().toLowerCase();
   const showTrialBanner = billingStatus === "trialing";
   const showPastDueBanner = billingStatus === "past_due";
+  const showCheckoutBanner = lifecycleStatus === "checkout_started";
 
   return (
     <div className="director-admin-stack">
@@ -1815,6 +1942,12 @@ export function DirectorAdminBillingPage() {
         </Card>
       ) : null}
 
+      {showCheckoutBanner ? (
+        <Card className="director-admin-banner tone-info">
+          <p>Stripe checkout is in progress. Complete payment to activate launch readiness.</p>
+        </Card>
+      ) : null}
+
       <div className="director-admin-two-col">
         <Card>
           <AdminPageHeader
@@ -1823,8 +1956,9 @@ export function DirectorAdminBillingPage() {
             actions={<Button variant="secondary" onClick={loadBilling}>Refresh</Button>}
           />
           {error ? <p className="error-text">{error}</p> : null}
+          {status ? <p className="success-text">{status}</p> : null}
           <p>
-            <strong>Plan:</strong> {tenant.planTier === "premium" ? "Premium Plan" : "Base Plan"}
+            <strong>Plan:</strong> {billingPlanLabel(currentPlanCode)}
           </p>
           <p>
             <strong>Status:</strong>{" "}
@@ -1833,10 +1967,16 @@ export function DirectorAdminBillingPage() {
             </span>
           </p>
           <p>
+            <strong>Lifecycle:</strong> {tenant.billingLifecycleStatus || "uninitialized"}
+          </p>
+          <p>
             <strong>Onboarding fee:</strong> {formatMoney(tenant.onboardingFeeAmount)}
           </p>
           <p>
-            <strong>Onboarding paid:</strong> {tenant.onboardingFeePaid ? "Yes" : "No"}
+            <strong>Onboarding status:</strong> {tenant.onboardingFeeStatus || (tenant.onboardingFeePaid ? "paid" : "unpaid")}
+          </p>
+          <p>
+            <strong>Launch ready:</strong> {payload?.billing?.launchReady ? "Yes" : "No"}
           </p>
           <p>
             <strong>Members:</strong>{" "}
@@ -1860,23 +2000,49 @@ export function DirectorAdminBillingPage() {
           </div>
         </Card>
 
-        {tenant.planTier === "base" ? (
-          <Card>
-            <h2 className="pb-section-title">Unlock Premium</h2>
-            <p className="muted">Everything in Base, plus:</p>
-            <ul className="director-admin-feature-list">
-              <li>Advanced analytics</li>
-              <li>Premium modules</li>
-              <li>Priority support</li>
-              <li>Custom domain options</li>
-            </ul>
-            {payload?.manageBillingUrl ? (
-              <a className="link-button" href={payload.manageBillingUrl} target="_blank" rel="noreferrer">
-                Upgrade to Premium
-              </a>
-            ) : null}
-          </Card>
-        ) : null}
+        <Card>
+          <h2 className="pb-section-title">Plan & Checkout</h2>
+          <p className="muted">
+            Choose Legacy, Founders, or Institutional and continue in Stripe Checkout.
+          </p>
+          {Array.isArray(payload?.catalog?.plans) && payload.catalog.plans.length ? (
+            <label>
+              Select billing plan
+              <Select
+                value={selectedPlanCode}
+                onChange={(event) => setSelectedPlanCode(event.target.value)}
+              >
+                {payload.catalog.plans.map((plan) => (
+                  <option key={plan.code} value={plan.code}>
+                    {plan.label} · {formatMoney(plan.annualAmount)}/yr
+                    {plan.onboardingFeeAmount > 0
+                      ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding`
+                      : " · no onboarding fee"}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          {payload?.foundersAvailability ? (
+            <p className="muted">
+              Founders slots: {payload.foundersAvailability.reserved}/{payload.foundersAvailability.max} reserved
+              {" · "}
+              {payload.foundersAvailability.remaining} remaining
+            </p>
+          ) : null}
+          <div className="inline-actions">
+            <Button onClick={startCheckout} disabled={startingCheckout}>
+              {startingCheckout
+                ? "Redirecting..."
+                : selectedPlanCode === currentPlanCode
+                ? "Start Stripe Checkout"
+                : "Switch Plan & Checkout"}
+            </Button>
+            <Button variant="secondary" onClick={loadBilling}>
+              Refresh Billing
+            </Button>
+          </div>
+        </Card>
       </div>
 
       <Card>
@@ -2059,12 +2225,13 @@ export function DirectorAdminSettingsBrandingPage() {
               ? "svg"
               : "jpg";
 
-    const presign = await requestJson(`/api/t/${slug}/uploads/presign-public`, {
+    const presign = await requestJson(`/api/t/${slug}/uploads/presign`, {
       method: "POST",
       token,
       body: {
         fileName: `${scope}-${Date.now()}.${extension}`,
         fileType: fileType || "image/jpeg",
+        fileSize: Number(blob?.size || 0),
         scope
       }
     });
@@ -2294,6 +2461,8 @@ export function DirectorAdminSettingsAdminsPage() {
   const [payload, setPayload] = useState({ admins: [], pendingInvites: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [adminToRemove, setAdminToRemove] = useState(null);
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -2336,13 +2505,16 @@ export function DirectorAdminSettingsAdminsPage() {
   }
 
   async function removeAdmin(userId) {
-    if (!window.confirm("Remove this admin?")) return;
     setError("");
+    setRemoving(true);
     try {
       await request(`/settings/admins/${userId}`, { method: "DELETE" });
+      setAdminToRemove(null);
       await loadAdmins();
     } catch (requestError) {
       setError(requestError.message || "Failed to remove admin.");
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -2378,7 +2550,11 @@ export function DirectorAdminSettingsAdminsPage() {
                     {item.role === "Director" ? (
                       <span className="muted">Protected</span>
                     ) : (
-                      <button type="button" className="director-admin-inline-link" onClick={() => removeAdmin(item.id)}>
+                      <button
+                        type="button"
+                        className="director-admin-inline-link"
+                        onClick={() => setAdminToRemove(item)}
+                      >
                         Remove
                       </button>
                     )}
@@ -2415,6 +2591,20 @@ export function DirectorAdminSettingsAdminsPage() {
           </ul>
         </>
       ) : null}
+
+      <ModalConfirm
+        open={Boolean(adminToRemove)}
+        title="Remove Admin Access?"
+        description={`This will revoke director-level access for ${adminToRemove?.email || "this user"}.`}
+        confirmLabel="Remove Admin"
+        cancelLabel="Cancel"
+        busy={removing}
+        onCancel={() => setAdminToRemove(null)}
+        onConfirm={() => {
+          if (!adminToRemove?.id) return;
+          removeAdmin(adminToRemove.id);
+        }}
+      />
     </Card>
   );
 }

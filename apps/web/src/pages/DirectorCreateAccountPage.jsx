@@ -4,8 +4,10 @@ import { requestJson } from "../lib/http.js";
 import { defaultTenantDomain } from "../lib/domain.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
 import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/storage.js";
 import { generatePalette } from "../lib/colorUtils.js";
+import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
 
 const STEP_ACCOUNT = "account";
 const STEP_DESIGN = "design";
@@ -55,6 +57,39 @@ const EMPTY_ADDRESS = {
   postalCode: "",
   country: "United States"
 };
+const BILLING_PLAN_OPTIONS = [
+  {
+    code: "legacy",
+    title: "Legacy Plan",
+    annualAmount: 3500,
+    onboardingFeeAmount: 350,
+    summary: "Core alumni network features with annual billing."
+  },
+  {
+    code: "founders",
+    title: "Founders Plan",
+    annualAmount: 2800,
+    onboardingFeeAmount: 0,
+    summary: "Discounted annual pricing for the first 10 camps."
+  },
+  {
+    code: "institutional",
+    title: "Institutional Plan",
+    annualAmount: 5500,
+    onboardingFeeAmount: 750,
+    summary: "Advanced feature tier with institutional-level support."
+  }
+];
+
+function normalizeBillingPlanCode(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized) ? normalized : "legacy";
+}
+
+function billingPlanLabel(code = "") {
+  const match = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(code));
+  return match ? match.title : "Legacy Plan";
+}
 
 const FEATURE_OPTIONS = [
   {
@@ -269,6 +304,23 @@ async function optimizeImageFile(
 }
 
 export default function DirectorCreateAccountPage() {
+  if (clerkUiEnabled()) {
+    return <DirectorCreateAccountClerkPage />;
+  }
+  if (clerkModeRequested()) {
+    return (
+      <section className="app-status-shell is-error">
+        <div className="app-status-card">
+          <h1>Create Network</h1>
+          <p>{clerkConfigError() || "Clerk auth is enabled but web auth configuration is incomplete."}</p>
+          <p>
+            Set <code>VITE_CLERK_PUBLISHABLE_KEY</code> and restart the web app.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   const { slug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -277,6 +329,7 @@ export default function DirectorCreateAccountPage() {
   const initialBrandColor = useMemo(() => DEFAULT_SETUP_BRAND, []);
 
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
   const [step, setStep] = useState(STEP_ACCOUNT);
   const [submitError, setSubmitError] = useState("");
   const [finishing, setFinishing] = useState(false);
@@ -292,7 +345,7 @@ export default function DirectorCreateAccountPage() {
     password: "",
     confirmPassword: "",
     campName: "",
-    planTier: "base"
+    billingPlanCode: "legacy"
   });
   const [errors, setErrors] = useState({});
   const [themeErrors, setThemeErrors] = useState({});
@@ -364,13 +417,22 @@ export default function DirectorCreateAccountPage() {
       ? draftMainColor
       : initialBrandColor;
 
-  const selectedPlanTier = form.planTier === "premium" ? "premium" : "base";
+  const selectedBillingPlanCode = normalizeBillingPlanCode(form.billingPlanCode);
+  const selectedBillingPlan = BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) || BILLING_PLAN_OPTIONS[0];
   const billingStatus = String(tenant?.billingStatus || "").trim().toLowerCase();
-  const onboardingFeeAmount = Number(tenant?.onboardingFeeAmount || 0);
+  const onboardingFeeAmount = Number(
+    tenant?.onboardingFeeAmount ?? selectedBillingPlan.onboardingFeeAmount ?? 0
+  );
   const onboardingFeePaid = Boolean(tenant?.onboardingFeePaid);
+  const checkoutInProgress =
+    String(tenant?.billingLifecycleStatus || tenant?.billing?.lifecycleStatus || "")
+      .trim()
+      .toLowerCase() === "checkout_started";
   const onboardingFeeStatusText =
     onboardingFeeAmount <= 0 || onboardingFeePaid
-      ? "Paid via Stripe"
+      ? "Paid or waived in Stripe"
+      : checkoutInProgress
+      ? "Checkout started — awaiting Stripe confirmation"
       : billingStatus === "active" || billingStatus === "trialing"
       ? "Pending Stripe payment"
       : "Billing setup required";
@@ -440,10 +502,12 @@ export default function DirectorCreateAccountPage() {
 
   useEffect(() => {
     if (!tenant || planHydratedRef.current) return;
-    const planTier = String(tenant?.planTier || "").trim().toLowerCase();
-    if (planTier === "base" || planTier === "premium") {
-      setForm((prev) => ({ ...prev, planTier }));
-    }
+    const billingPlanCode = normalizeBillingPlanCode(
+      tenant?.billingPlan ||
+        tenant?.billing?.billingPlan ||
+        (String(tenant?.planTier || "").trim().toLowerCase() === "premium" ? "institutional" : "legacy")
+    );
+    setForm((prev) => ({ ...prev, billingPlanCode }));
     planHydratedRef.current = true;
   }, [tenant]);
 
@@ -485,7 +549,7 @@ export default function DirectorCreateAccountPage() {
         lastName: localDraft.lastName || prev.lastName,
         email: localDraft.email || prev.email,
         campName: localDraft.campName || prev.campName,
-        planTier: localDraft.planTier || prev.planTier
+        billingPlanCode: normalizeBillingPlanCode(localDraft.billingPlanCode || prev.billingPlanCode)
       }));
     }
 
@@ -542,7 +606,7 @@ export default function DirectorCreateAccountPage() {
         lastName: form.lastName,
         email: form.email,
         campName: form.campName,
-        planTier: form.planTier
+        billingPlanCode: form.billingPlanCode
       });
       return;
     }
@@ -608,7 +672,9 @@ export default function DirectorCreateAccountPage() {
       body: {
         fileName,
         fileType,
-        scope
+        fileSize: Number(blob?.size || 0),
+        scope,
+        inviteToken
       }
     });
 
@@ -648,8 +714,8 @@ export default function DirectorCreateAccountPage() {
     else if (form.password !== form.confirmPassword) next.confirmPassword = "Passwords do not match.";
 
     if (!String(form.campName || "").trim()) next.campName = "Please enter your camp name.";
-    if (!["base", "premium"].includes(String(form.planTier || "").trim())) {
-      next.planTier = "Please choose a plan.";
+    if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
+      next.billingPlanCode = "Please choose a plan.";
     }
     return next;
   }
@@ -1177,14 +1243,6 @@ export default function DirectorCreateAccountPage() {
         }));
       }
 
-      await requestJson("/api/tenants/me/plan", {
-        method: "PATCH",
-        token,
-        body: {
-          planTier: selectedPlanTier
-        }
-      });
-
       await requestJson("/api/tenants/me/theme", {
         method: "PATCH",
         token,
@@ -1247,6 +1305,41 @@ export default function DirectorCreateAccountPage() {
           billingDetails: billingCheck.billingDetails
         }
       });
+
+      const billingSnapshot = await requestJson("/api/tenants/me/billing", { token });
+      const billingState = billingSnapshot?.billing || {};
+      const launchReady = Boolean(
+        billingState.launchReady ||
+          (billingState.launchReadiness?.lifecycleReady &&
+            billingState.launchReadiness?.feeReady)
+      );
+
+      if (!launchReady) {
+        const lifecycleStatus = String(billingState.lifecycleStatus || "").trim().toLowerCase();
+        if (checkoutQueryState === "success" && lifecycleStatus === "checkout_started") {
+          throw new Error(
+            "Stripe is still confirming your payment. Please wait a few seconds and click Complete setup again."
+          );
+        }
+
+        const successUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=success`;
+        const cancelUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=cancel`;
+        const checkoutPayload = await requestJson("/api/tenants/me/billing/checkout", {
+          method: "POST",
+          token,
+          body: {
+            planCode: selectedBillingPlanCode,
+            successUrl,
+            cancelUrl
+          }
+        });
+        const checkoutUrl = String(checkoutPayload?.checkoutUrl || "").trim();
+        if (!checkoutUrl) {
+          throw new Error("Unable to start Stripe checkout right now. Please try again.");
+        }
+        window.location.assign(checkoutUrl);
+        return;
+      }
 
       const launchPayload = await requestJson("/api/tenants/me/launch", {
         method: "POST",
@@ -1471,34 +1564,35 @@ export default function DirectorCreateAccountPage() {
                       Choose alumni network plan<span className="req" aria-hidden="true"> *</span>
                     </label>
                     <div className="director-plan-grid" role="radiogroup" aria-label="Choose alumni network plan">
-                      <label className={`director-plan-card ${selectedPlanTier === "base" ? "active" : ""}`}>
-                        <input
-                          type="radio"
-                          name="director-plan-tier"
-                          value="base"
-                          checked={selectedPlanTier === "base"}
-                          onChange={(event) => updateField("planTier", event.target.value)}
-                        />
-                        <div className="director-plan-copy">
-                          <strong>Base Plan</strong>
-                          <span>Core alumni network features for launch.</span>
-                        </div>
-                      </label>
-                      <label className={`director-plan-card ${selectedPlanTier === "premium" ? "active" : ""}`}>
-                        <input
-                          type="radio"
-                          name="director-plan-tier"
-                          value="premium"
-                          checked={selectedPlanTier === "premium"}
-                          onChange={(event) => updateField("planTier", event.target.value)}
-                        />
-                        <div className="director-plan-copy">
-                          <strong>Premium Plan</strong>
-                          <span>Includes premium modules and advanced capabilities.</span>
-                        </div>
-                      </label>
+                      {BILLING_PLAN_OPTIONS.map((option) => (
+                        <label
+                          key={option.code}
+                          className={`director-plan-card ${
+                            selectedBillingPlanCode === option.code ? "active" : ""
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="director-billing-plan"
+                            value={option.code}
+                            checked={selectedBillingPlanCode === option.code}
+                            onChange={(event) => updateField("billingPlanCode", event.target.value)}
+                          />
+                          <div className="director-plan-copy">
+                            <strong>{option.title}</strong>
+                            <span>{option.summary}</span>
+                            <span>
+                              {formatMoney(option.annualAmount)}/year
+                              {" · "}
+                              {option.onboardingFeeAmount > 0
+                                ? `${formatMoney(option.onboardingFeeAmount)} onboarding fee`
+                                : "No onboarding fee"}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
                     </div>
-                    {errors.planTier ? <p className="wizard1-error">{errors.planTier}</p> : null}
+                    {errors.billingPlanCode ? <p className="wizard1-error">{errors.billingPlanCode}</p> : null}
                   </div>
                 </div>
 
@@ -1987,10 +2081,14 @@ export default function DirectorCreateAccountPage() {
                     <article className="director-summary-card">
                       <h3>Selected alumni network plan</h3>
                       <p className="director-summary-main">
-                        {selectedPlanTier === "premium" ? "Premium Plan" : "Base Plan"}
+                        {billingPlanLabel(selectedBillingPlanCode)}
                       </p>
                       <p className="director-field-hint">
-                        You can adjust plan settings later from your director billing area.
+                        {formatMoney(selectedBillingPlan.annualAmount)} yearly
+                        {" · "}
+                        {selectedBillingPlan.onboardingFeeAmount > 0
+                          ? `${formatMoney(selectedBillingPlan.onboardingFeeAmount)} onboarding fee`
+                          : "No onboarding fee"}
                       </p>
                     </article>
                   </div>
@@ -2287,7 +2385,7 @@ export default function DirectorCreateAccountPage() {
                           <strong>Camp:</strong> {form.campName || "Not set"}
                         </li>
                         <li>
-                          <strong>Plan:</strong> {selectedPlanTier === "premium" ? "Premium" : "Base"}
+                          <strong>Plan:</strong> {billingPlanLabel(selectedBillingPlanCode)}
                         </li>
                       </ul>
                     </article>
@@ -2357,7 +2455,7 @@ export default function DirectorCreateAccountPage() {
                       <ul className="director-review-list">
                         <li>
                           <strong>Plan confirmed:</strong>{" "}
-                          {selectedPlanTier === "premium" ? "Premium Plan" : "Base Plan"}
+                          {billingPlanLabel(selectedBillingPlanCode)}
                         </li>
                         <li>
                           <strong>Onboarding fee:</strong> {formatMoney(onboardingFeeAmount)}

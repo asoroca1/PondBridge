@@ -1,12 +1,12 @@
 // src/pages/PublicProfile.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
-import Navbar2 from "../components/Navbar2";
 import defaultProfile from "../assets/default-profile.png";
 import coverPhoto from "../assets/profile-cover.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
 import { API_BASE } from "../lib/api";
+import { authHeaders, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
 
@@ -49,28 +49,9 @@ function sortEducationNewest(rows = []) {
 
 
 
-function authHeaders(json = true) {
-  const t = localStorage.getItem("token");
-  const h = {};
-  if (json) h["Content-Type"] = "application/json";
-  if (t) h["Authorization"] = `Bearer ${t}`;
-  return h;
-}
-function initialsOf(first = "", last = "", nick = "") {
-  const s = [first, nick, last].filter(Boolean).join(" ").trim();
-  return s.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("");
-}
-function displayName(u = {}) {
-  return u.nickname
-    ? `${u.firstName || ""} "${u.nickname}" ${u.lastName || ""}`.trim()
-    : `${u.firstName || ""} ${u.lastName || ""}`.trim();
-}
 function topCurrentJob(u = {}) {
   const j = (u.currentJobs || [])[0];
   return j ? [j.role, j.company].filter(Boolean).join(" • ") : "";
-}
-function avatarUrl(u = {}) {
-  return u?.uploads?.photoUrl || u?.photoUrl || u?.profilePhotoUrl || "";
 }
 function normalizeProfile(src = {}) {
   return {
@@ -268,7 +249,6 @@ export default function PublicProfile() {
     return (
       <div style={{ position: "relative", minHeight: "100vh" }}>
         <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
-        <Navbar2 />
         <div className="profile1" style={{ position: "relative", zIndex: 1 }}>
           <main className="profile1-main">
             <div className="profile1-container">
@@ -284,7 +264,6 @@ export default function PublicProfile() {
     return (
       <div style={{ position: "relative", minHeight: "100vh" }}>
         <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
-        <Navbar2 />
         <div className="profile1" style={{ position: "relative", zIndex: 1 }}>
           <main className="profile1-main">
             <div className="profile1-container">
@@ -313,7 +292,6 @@ export default function PublicProfile() {
   return (
     <div style={{ position: "relative", minHeight: "100vh" }}>
       <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
-      <Navbar2 />
 
       <div className="profile1" style={{ position: "relative", zIndex: 1 }}>
         <main className="profile1-main">

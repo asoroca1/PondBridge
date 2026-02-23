@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
+import { SuperAdminLayout } from "../../components/admin/AdminUi.jsx";
 
 function roleFromUser(user) {
   const roles = new Set(user?.roles || []);
@@ -13,28 +14,35 @@ function roleFromUser(user) {
 
 const SUPER_NAV = [
   {
-    label: "Home",
-    items: [{ to: "/super/dashboard", icon: "◉", label: "Platform Pulse" }]
+    label: "Camps",
+    items: [{ to: "/super/tenants", label: "Camp Directory" }]
   },
   {
-    label: "Tenants",
-    items: [{ to: "/super/tenants", icon: "▦", label: "Tenant Directory" }]
-  },
-  {
-    label: "Email",
-    items: [{ to: "/super/email/transactional", icon: "✉", label: "Transactional" }]
+    label: "Users",
+    items: [{ to: "/super/tenants", label: "Users & Directors" }]
   },
   {
     label: "Billing",
     items: [
-      { to: "/super/billing", icon: "$", label: "Overview" },
-      { to: "/super/billing/tenants", icon: "☰", label: "Tenant Billing" },
-      { to: "/super/billing/failed", icon: "!", label: "Failed Payments" }
+      { to: "/super/billing", label: "Billing Overview" },
+      { to: "/super/billing/tenants", label: "Tenant Billing" },
+      { to: "/super/billing/failed", label: "Failed Payments" }
     ]
   },
   {
-    label: "Settings",
-    items: [{ to: "/super/settings", icon: "⚙", label: "Settings" }]
+    label: "Platform Settings",
+    items: [{ to: "/super/settings", label: "Settings" }]
+  },
+  {
+    label: "Metrics",
+    items: [
+      { to: "/super/dashboard", label: "Platform Pulse" },
+      { to: "/super/email/transactional", label: "Transactional Email" }
+    ]
+  },
+  {
+    label: "Audit Log",
+    items: [{ to: "/super/settings", label: "Audit Log" }]
   }
 ];
 
@@ -42,15 +50,15 @@ const FINANCE_NAV = [
   {
     label: "Billing",
     items: [
-      { to: "/super/billing", icon: "$", label: "Overview" },
-      { to: "/super/billing/tenants", icon: "☰", label: "Tenant Billing" },
-      { to: "/super/billing/failed", icon: "!", label: "Failed Payments" }
+      { to: "/super/billing", label: "Billing Overview" },
+      { to: "/super/billing/tenants", label: "Tenant Billing" },
+      { to: "/super/billing/failed", label: "Failed Payments" }
     ]
   }
 ];
 
 export default function SuperShellLayout() {
-  const { token, user, logout } = useAuth();
+  const { token, user, logout, authProvider, isReady, refreshSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -61,6 +69,7 @@ export default function SuperShellLayout() {
   const [topbarError, setTopbarError] = useState("");
 
   const role = roleFromUser(user);
+  const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
   const allowed = role === "super_admin" || role === "support_admin" || role === "finance_admin";
   const financeRouteAllowed = /^\/super\/billing(\/|$)/.test(location.pathname || "");
 
@@ -68,6 +77,17 @@ export default function SuperShellLayout() {
     if (role === "finance_admin") return FINANCE_NAV;
     return SUPER_NAV;
   }, [role]);
+  const contextLabel = useMemo(() => {
+    const params = new URLSearchParams(location.search || "");
+    const campName = String(params.get("camp") || "").trim();
+    return campName ? `Viewing: ${campName}` : "Viewing: Global";
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!isReady || !token) return;
+    if (!["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase())) return;
+    refreshSession().catch(() => {});
+  }, [authProvider, isReady, refreshSession, token]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;
@@ -148,6 +168,14 @@ export default function SuperShellLayout() {
     navigate(href);
   }
 
+  if (!isReady) {
+    return null;
+  }
+
+  if (clerkMode && token && !user) {
+    return null;
+  }
+
   if (!token) {
     return <Navigate to="/super/login" replace state={{ from: location }} />;
   }
@@ -161,8 +189,10 @@ export default function SuperShellLayout() {
   }
 
   return (
-    <div className="super-shell">
-      <header className="super-topbar">
+    <SuperAdminLayout
+      className="super-shell"
+      topbar={
+        <header className="super-topbar">
         <div className="super-topbar-brand">PondBridge</div>
 
         <div className="super-topbar-search-wrap">
@@ -187,6 +217,7 @@ export default function SuperShellLayout() {
             </div>
           ) : null}
         </div>
+        <span className="super-context-chip">{contextLabel}</span>
 
         <div className="super-topbar-actions">
           <button
@@ -206,8 +237,9 @@ export default function SuperShellLayout() {
           </button>
         </div>
       </header>
-
-      <aside className="super-sidebar" aria-label="Super admin navigation">
+      }
+      sidebar={
+        <aside className="super-sidebar" aria-label="Super admin navigation">
         {navGroups.map((group) => (
           <section key={group.label} className="super-nav-group">
             <p className="super-nav-group-label">{group.label}</p>
@@ -218,9 +250,6 @@ export default function SuperShellLayout() {
                   to={item.to}
                   className={({ isActive }) => `super-nav-link ${isActive ? "is-active" : ""}`.trim()}
                 >
-                  <span className="super-nav-icon" aria-hidden="true">
-                    {item.icon}
-                  </span>
                   <span className="super-nav-text">{item.label}</span>
                 </NavLink>
               ))}
@@ -228,11 +257,12 @@ export default function SuperShellLayout() {
           </section>
         ))}
       </aside>
-
-      <main className="super-main" role="main">
+      }
+    >
+      <div className="super-main" role="main">
         {topbarError ? <p className="super-inline-error">{topbarError}</p> : null}
         <Outlet />
-      </main>
-    </div>
+      </div>
+    </SuperAdminLayout>
   );
 }

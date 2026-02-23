@@ -4,37 +4,14 @@ import {
   resolveNetworkDisplayName,
   resolveNewsletterLabel
 } from "../../lib/campLabels.js";
-import Navbar2 from "../components/Navbar2";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
+import { getToken, authHeaders, fmtDate } from "../lib/helpers.js";
 import "./cedar-chest.css";
 import { Newspaper } from "lucide-react";
 
 
 const API = API_BASE;
-
-// ===== helpers =====
-function getToken() {
-  return localStorage.getItem("token"); // keep in sync with rest of app
-}
-function authHeaders(json = true) {
-  const t = getToken();
-  const h = {};
-  if (json) h["Content-Type"] = "application/json";
-  if (t) h["Authorization"] = `Bearer ${t}`;
-  return h;
-}
-function fmtDate(d) {
-  try {
-    return new Date(d).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "";
-  }
-}
 
 // ===== config =====
 // Temporary: single-account admin allow-list
@@ -157,7 +134,6 @@ export default function CedarChest() {
 
   return (
     <>
-      <Navbar2 />
       {/* background visible; keep as you last set it */}
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <main className="cc-wrap nav2-page-shell">

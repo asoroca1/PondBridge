@@ -8,6 +8,7 @@ import {
 } from "@pondbridge/shared";
 import { hashPassword } from "../utils/auth.js";
 import { TenantAdminAuditLogModel } from "../db/models/index.js";
+import { isBillingReadyForLaunch } from "./billingState.js";
 
 const CHECKLIST_ORDER = [
   {
@@ -42,8 +43,6 @@ const FONT_TOKEN_TO_FAMILY = {
   modern_clean: '"Inter", "Avenir Next", "Segoe UI", sans-serif',
   classic_serif: '"Lora", "Roboto Slab", serif'
 };
-const BILLING_READY_STATUSES = new Set(["active", "trialing"]);
-
 function deepClone(value = {}) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -516,19 +515,23 @@ export function getReadinessChecklist(tenant, { importedCount = 0 } = {}) {
 }
 
 export function getBillingReadiness(tenant) {
-  const billingStatus = String(tenant?.billingStatus || "").trim().toLowerCase();
-  const billingStatusReady = BILLING_READY_STATUSES.has(billingStatus);
-  const onboardingFeeAmount = Number(tenant?.onboardingFeeAmount || 0);
-  const onboardingFeePaid = Boolean(tenant?.onboardingFeePaid);
-  const onboardingFeeReady = onboardingFeeAmount <= 0 || onboardingFeePaid;
+  const billing = isBillingReadyForLaunch(tenant);
 
   return {
-    billingStatus,
-    billingStatusReady,
-    onboardingFeeAmount,
-    onboardingFeePaid,
-    onboardingFeeReady,
-    ok: billingStatusReady && onboardingFeeReady
+    billingPlan: billing.billingPlan,
+    billingStatus: billing.legacyStatus,
+    lifecycleStatus: billing.lifecycleStatus,
+    billingStatusReady: billing.lifecycleReady,
+    onboardingFeeAmount: billing.onboardingFeeAmount,
+    onboardingFeePaid: billing.onboardingFeePaid,
+    onboardingFeeStatus: billing.onboardingFeeStatus,
+    onboardingFeeWaived: billing.onboardingFeeWaived,
+    onboardingFeeReady: billing.feeReady,
+    currentPeriodEnd: billing.currentPeriodEnd,
+    foundersReserved: billing.foundersReserved,
+    foundersSlot: billing.foundersSlot,
+    foundersEligible: billing.foundersEligible,
+    ok: billing.ok
   };
 }
 

@@ -1,14 +1,14 @@
 :root {
-  --po-bg: #eff2f6;
-  --po-surface: #ffffff;
-  --po-border: #d8e0ea;
-  --po-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.05);
-  --po-text: #13233b;
-  --po-muted: #5f6c80;
-  --po-brand: #0f2747;
-  --po-brand-strong: #0b1e37;
-  --po-radius-card: 14px;
-  --po-radius-btn: 10px;
+  --po-bg: var(--bg, #eff2f6);
+  --po-surface: var(--card, #ffffff);
+  --po-border: var(--card-border, #d8e0ea);
+  --po-shadow: var(--shadow-sm);
+  --po-text: var(--text, #13233b);
+  --po-muted: var(--text-muted, #5f6c80);
+  --po-brand: var(--brand-primary, #0f2747);
+  --po-brand-strong: var(--brand-primary-hover, #0b1e37);
+  --po-radius-card: var(--radius-lg);
+  --po-radius-btn: var(--radius-sm);
 }
 
 .product-app-shell {
@@ -311,7 +311,7 @@
 
 .director-plan-card {
   border: 1px solid #d3dce9;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: #fbfcfe;
   padding: 12px 14px;
   display: grid;
@@ -367,7 +367,7 @@
 
 .director-summary-card {
   border: 1px solid #d3dce9;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: #fbfcfe;
   padding: 12px 14px;
 }
@@ -451,7 +451,7 @@
   justify-content: space-between;
   gap: 14px;
   border: 1px solid #d3dce9;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: #fbfcfe;
   padding: 12px 14px;
   min-height: 120px;
@@ -493,7 +493,7 @@
 .director-newsletter-panel {
   margin-top: 12px;
   border: 1px solid #d3dce9;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: #f8fbff;
   overflow: hidden;
 }
@@ -575,7 +575,7 @@
 
 .director-design-preview {
   border: 1px solid #d5deea;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: #fff;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
@@ -847,7 +847,7 @@
 
 .director-live-preview-frame {
   border: 1px solid #d5deea;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: #f0f2f5;
   height: 340px;
@@ -956,7 +956,7 @@
 .director-live-preview-pulse {
   flex: 0 0 180px;
   border: 1px solid #e6eaf0;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 14px 16px;
   background: #fbfcfe;
 }

@@ -1,5 +1,31 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoEnvPath = path.resolve(__dirname, "../../.env");
+const webEnvPath = path.resolve(__dirname, ".env");
+
+// Make root .env (Cloudflare/Clerk shared config) available to web builds,
+// then allow apps/web/.env to fill in anything not present there.
+dotenv.config({ path: repoEnvPath, override: false });
+dotenv.config({ path: webEnvPath, override: false });
+
+const envFallbackMap = {
+  VITE_AUTH_PROVIDER: "AUTH_PROVIDER",
+  VITE_CLERK_PUBLISHABLE_KEY: "CLERK_PUBLISHABLE_KEY",
+  VITE_API_BASE: "API_BASE",
+  VITE_APP_BASE_DOMAIN: "APP_BASE_DOMAIN"
+};
+
+for (const [viteKey, sharedKey] of Object.entries(envFallbackMap)) {
+  if (!process.env[viteKey] && process.env[sharedKey]) {
+    process.env[viteKey] = process.env[sharedKey];
+  }
+}
 
 export default defineConfig({
   plugins: [react()],
