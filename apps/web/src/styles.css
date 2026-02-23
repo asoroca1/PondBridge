@@ -4451,11 +4451,78 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .super-login-card {
   width: min(460px, 100%);
   margin-top: 8px;
-  padding: 12px 14px;
+}
+
+.super-login-card .cl-card {
+  width: 100%;
+  margin: 0;
   background: #fff;
-  border-radius: var(--radius-xl);
   border: 1px solid #d6e2f0;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.super-login-card .cl-main {
+  padding: 14px;
+  gap: 10px;
+}
+
+.super-login-card .cl-socialButtons {
+  gap: 8px;
+}
+
+.super-login-card .cl-socialButtonsBlockButton {
+  min-height: 42px;
+  border-radius: 12px;
+  border: 1px solid #d4dfec;
+  box-shadow: none;
+  background: #fff;
+}
+
+.super-login-card .cl-dividerLine {
+  background: #dce6f3;
+}
+
+.super-login-card .cl-dividerText {
+  color: #7286a0;
+  font-size: 0.84rem;
+}
+
+.super-login-card .cl-formFieldLabel {
+  color: #17375e;
+  font-weight: 700;
+}
+
+.super-login-card .cl-formFieldInput {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #d4dfec;
+  box-shadow: none;
+  color: #17375e;
+  background: #fff;
+}
+
+.super-login-card .cl-formFieldInput:focus {
+  border-color: #174272;
+  box-shadow: 0 0 0 3px rgba(19, 72, 129, 0.12);
+}
+
+.super-login-card .cl-formButtonPrimary {
+  min-height: 44px;
+  border-radius: 12px;
+  background: #0b2f57;
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.super-login-card .cl-formButtonPrimary:hover {
+  background: #164377;
+}
+
+.super-login-card .cl-formFieldAction,
+.super-login-card .cl-footerActionLink {
+  color: #17375e;
 }
 
 .super-login-form {

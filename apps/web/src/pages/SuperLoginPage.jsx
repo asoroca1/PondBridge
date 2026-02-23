@@ -52,6 +52,26 @@ function ClerkSuperLoginPage() {
             fallbackRedirectUrl="/super/dashboard"
             forceRedirectUrl="/super/dashboard"
             withSignUp={false}
+            localization={{
+              signIn: {
+                start: {
+                  title: "Sign in to PondBridge Super Admin",
+                  subtitle: "Use your authorized administrator account."
+                },
+                password: {
+                  title: "Enter your password",
+                  subtitle: "Continue to PondBridge Super Admin."
+                },
+                emailCode: {
+                  title: "Check your email",
+                  subtitle: "Enter the verification code we sent to your email."
+                },
+                emailLink: {
+                  title: "Check your email",
+                  subtitle: "Open the secure sign-in link in your email to continue."
+                }
+              }
+            }}
             appearance={{
               variables: {
                 colorPrimary: "#0b2f57",
@@ -67,13 +87,6 @@ function ClerkSuperLoginPage() {
                 rootBox: {
                   width: "100%"
                 },
-                card: {
-                  boxShadow: "none",
-                  border: "none",
-                  width: "100%",
-                  background: "transparent",
-                  padding: "0"
-                },
                 header: {
                   display: "none"
                 },
@@ -82,33 +95,6 @@ function ClerkSuperLoginPage() {
                 },
                 headerSubtitle: {
                   display: "none"
-                },
-                socialButtonsBlockButton: {
-                  borderColor: "#d4dfec",
-                  boxShadow: "none",
-                  minHeight: "44px"
-                },
-                dividerLine: {
-                  background: "#dce6f3"
-                },
-                dividerText: {
-                  color: "#7286a0",
-                  fontSize: "0.84rem"
-                },
-                formFieldLabel: {
-                  color: "#17375e",
-                  fontWeight: "700"
-                },
-                formFieldInput: {
-                  borderColor: "#d4dfec",
-                  boxShadow: "none",
-                  minHeight: "44px"
-                },
-                formButtonPrimary: {
-                  background: "#0b2f57",
-                  boxShadow: "none",
-                  minHeight: "44px",
-                  fontWeight: "700"
                 },
                 footerAction: {
                   display: "none"

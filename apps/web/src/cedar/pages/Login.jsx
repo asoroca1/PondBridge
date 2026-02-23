@@ -210,6 +210,26 @@ function ClerkLogin() {
             signUpUrl={signUpUrl}
             fallbackRedirectUrl={callbackPath}
             forceRedirectUrl={callbackPath}
+            localization={{
+              signIn: {
+                start: {
+                  title: `Sign in to ${networkName}`,
+                  subtitle: `Continue to ${networkName}.`
+                },
+                password: {
+                  title: "Enter your password",
+                  subtitle: `Continue to ${networkName}.`
+                },
+                emailCode: {
+                  title: "Check your email",
+                  subtitle: `Enter the verification code to continue to ${networkName}.`
+                },
+                emailLink: {
+                  title: "Check your email",
+                  subtitle: `Open the secure sign-in link to continue to ${networkName}.`
+                }
+              }
+            }}
             appearance={{
               elements: {
                 rootBox: {
