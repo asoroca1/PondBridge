@@ -292,6 +292,7 @@ export function SuperTenantsPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [claimLink, setClaimLink] = useState("");
+  const [provisioningTenantId, setProvisioningTenantId] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "", plan: "", billingStatus: "" });
   const [form, setForm] = useState({
     name: "",
@@ -339,9 +340,27 @@ export function SuperTenantsPage() {
         token,
         body: form
       });
-      const nextClaimLink = payload.directorClaimLink || payload.directorInvite?.claimUrl || "";
+      const provisioning = payload?.domainProvisioning || {};
+      const domainReady = String(provisioning.status || "").toLowerCase() === "ok";
+      const fallbackClaimPath = String(payload?.inviteLink || "").trim();
+      const fallbackClaimLink =
+        fallbackClaimPath && fallbackClaimPath.startsWith("/") ? `${window.location.origin}${fallbackClaimPath}` : "";
+      const nextClaimLink =
+        (domainReady ? payload.directorClaimLink || payload.directorInvite?.claimUrl : "") ||
+        fallbackClaimLink ||
+        payload.directorClaimLink ||
+        payload.directorInvite?.claimUrl ||
+        "";
       setClaimLink(nextClaimLink);
-      setStatus(nextClaimLink ? `Created ${payload.tenant.name}. Director claim link is ready.` : `Created ${payload.tenant.name}.`);
+      const provisioningDetail =
+        domainReady || !provisioning?.status
+          ? ""
+          : ` Domain provisioning status: ${provisioning.status}${provisioning.reason ? ` (${provisioning.reason})` : ""}.`;
+      setStatus(
+        nextClaimLink
+          ? `Created ${payload.tenant.name}. Director claim link is ready.${provisioningDetail}`
+          : `Created ${payload.tenant.name}.${provisioningDetail}`
+      );
       setForm({ name: "", slug: "", planTier: "base", onboardingFeeAmount: 0, directorEmail: "" });
       loadData();
     } catch (createError) {
@@ -369,6 +388,31 @@ export function SuperTenantsPage() {
       loadData();
     } catch (toggleError) {
       setError(toggleError.message || "Could not update tenant status.");
+    }
+  }
+
+  async function provisionDomain(camp) {
+    try {
+      setError("");
+      setStatus("");
+      setProvisioningTenantId(String(camp._id || ""));
+      const payload = await requestJson(`/api/super/tenants/${camp._id}/provision-domain`, {
+        method: "POST",
+        token,
+        body: {}
+      });
+      const result = payload?.result || {};
+      const detail = [result?.dnsAction, result?.pagesAction].filter(Boolean).join(", ");
+      setStatus(
+        detail
+          ? `Domain provisioned for ${camp.name}: ${payload?.domain || camp.customDomain || ""} (${detail}).`
+          : `Domain provisioned for ${camp.name}: ${payload?.domain || camp.customDomain || ""}.`
+      );
+      loadData();
+    } catch (provisionError) {
+      setError(provisionError.message || "Could not provision camp domain.");
+    } finally {
+      setProvisioningTenantId("");
     }
   }
 
@@ -491,6 +535,7 @@ export function SuperTenantsPage() {
             <thead>
               <tr>
                 <th>Camp</th>
+                <th>Domain</th>
                 <th>Slug</th>
                 <th>Status</th>
                 <th>Plan</th>
@@ -503,6 +548,7 @@ export function SuperTenantsPage() {
               {items.map((camp) => (
                 <tr key={camp._id}>
                   <td>{camp.name}</td>
+                  <td>{camp.customDomain || `${camp.slug}.pondbridgealumni.com`}</td>
                   <td>{camp.slug}</td>
                   <td>
                     <StatusBadge status={camp.status} />
@@ -511,9 +557,18 @@ export function SuperTenantsPage() {
                   <td>{camp.counts?.users || 0}</td>
                   <td>{camp.counts?.profiles || 0}</td>
                   <td>
-                    <Button variant="secondary" onClick={() => toggleTenant(camp)} disabled={!canMutate(role)}>
-                      {camp.status === "active" ? "Disable" : "Enable"}
-                    </Button>
+                    <div className="super-inline-row">
+                      <Button variant="secondary" onClick={() => toggleTenant(camp)} disabled={!canMutate(role)}>
+                        {camp.status === "active" ? "Disable" : "Enable"}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => provisionDomain(camp)}
+                        disabled={!canMutate(role) || provisioningTenantId === String(camp._id || "")}
+                      >
+                        {provisioningTenantId === String(camp._id || "") ? "Provisioning..." : "Provision Domain"}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

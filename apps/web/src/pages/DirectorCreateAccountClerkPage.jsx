@@ -1,24 +1,36 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../lib/http.js";
 import { useTenant } from "../context/TenantContext.jsx";
 
-function routeWithSlug(slug, path) {
-  return slug ? `/t/${slug}${path.startsWith("/") ? path : `/${path}`}` : path;
+function routeWithSlug(slug, path, useSlugPrefix = true) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return slug && useSlugPrefix ? `/t/${slug}${normalizedPath}` : normalizedPath;
 }
 
 export default function DirectorCreateAccountClerkPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const params = useParams();
   const { slug: contextSlug } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
+  const usingSlugRoute =
+    Boolean(slug) &&
+    (location.pathname === `/t/${slug}` || location.pathname.startsWith(`/t/${slug}/`));
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const directorBootstrap = !inviteToken;
   const { isLoaded, isSignedIn } = useClerkAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [inviteError, setInviteError] = useState("");
+  const loginPath = inviteToken
+    ? `${routeWithSlug(slug, "/login", usingSlugRoute)}?inviteToken=${encodeURIComponent(inviteToken)}`
+    : routeWithSlug(slug, "/login", usingSlugRoute);
+  const callbackPath = inviteToken
+    ? `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?inviteToken=${encodeURIComponent(inviteToken)}`
+    : `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
+  const signUpPath = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -38,28 +50,13 @@ export default function DirectorCreateAccountClerkPage() {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !slug || !inviteToken) return;
-    navigate(routeWithSlug(slug, `/auth/callback?inviteToken=${encodeURIComponent(inviteToken)}`), {
-      replace: true
-    });
-  }, [inviteToken, isLoaded, isSignedIn, navigate, slug]);
+    navigate(callbackPath, { replace: true });
+  }, [callbackPath, inviteToken, isLoaded, isSignedIn, navigate, slug]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !slug || !directorBootstrap) return;
-    navigate(routeWithSlug(slug, "/auth/callback?directorBootstrap=1"), {
-      replace: true
-    });
-  }, [directorBootstrap, isLoaded, isSignedIn, navigate, slug]);
-
-  const loginPath = routeWithSlug(
-    slug,
-    `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
-  );
-  const callbackPath = inviteToken
-    ? routeWithSlug(slug, `/auth/callback?inviteToken=${encodeURIComponent(inviteToken)}`)
-    : routeWithSlug(slug, "/auth/callback?directorBootstrap=1");
-  const signUpPath = inviteToken
-    ? routeWithSlug(slug, `/director-create-account?inviteToken=${encodeURIComponent(inviteToken)}`)
-    : routeWithSlug(slug, "/director-create-account?directorBootstrap=1");
+    navigate(callbackPath, { replace: true });
+  }, [callbackPath, directorBootstrap, isLoaded, isSignedIn, navigate, slug]);
 
   return (
     <section className="product-claim-page product-director-create-page">
