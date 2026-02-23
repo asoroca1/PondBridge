@@ -23,6 +23,28 @@ function normalizeTransportError(error, path) {
   return wrapped;
 }
 
+async function readBrowserClerkToken({ forceRefresh = false } = {}) {
+  if (typeof window === "undefined") return "";
+  const clerk = window?.Clerk;
+  const getSessionToken = clerk?.session?.getToken;
+  if (typeof getSessionToken !== "function") return "";
+  try {
+    return (await getSessionToken(forceRefresh ? { skipCache: true } : undefined)) || "";
+  } catch {
+    return "";
+  }
+}
+
+async function performJsonRequest(url, { method, headers, signal, body }) {
+  return fetch(url, {
+    method,
+    headers,
+    credentials: "include",
+    signal,
+    body
+  });
+}
+
 export async function requestJson(path, { method = "GET", body, token, getToken, headers = {}, signal } = {}) {
   let resolvedToken = token || "";
   if (typeof getToken === "function") {
@@ -31,28 +53,52 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     } catch {
       resolvedToken = token || "";
     }
+  } else if (resolvedToken) {
+    const browserToken = await readBrowserClerkToken({ forceRefresh: true });
+    if (browserToken) resolvedToken = browserToken;
   }
 
-  const requestHeaders = {
-    ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
+  const baseHeaders = {
     ...headers
   };
 
   if (!(body instanceof FormData)) {
-    requestHeaders["Content-Type"] = "application/json";
+    baseHeaders["Content-Type"] = "application/json";
+  }
+
+  async function callWithToken(currentToken) {
+    const requestHeaders = {
+      ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+      ...baseHeaders
+    };
+    return performJsonRequest(`${API_BASE}${path}`, {
+      method,
+      headers: requestHeaders,
+      signal,
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined
+    });
   }
 
   let response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers: requestHeaders,
-      credentials: "include",
-      signal,
-      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined
-    });
+    response = await callWithToken(resolvedToken);
   } catch (error) {
     throw normalizeTransportError(error, path);
+  }
+
+  if (response.status === 401) {
+    const refreshedToken =
+      typeof getToken === "function"
+        ? await getToken().catch(() => "")
+        : await readBrowserClerkToken({ forceRefresh: true });
+    if (refreshedToken && refreshedToken !== resolvedToken) {
+      resolvedToken = refreshedToken;
+      try {
+        response = await callWithToken(resolvedToken);
+      } catch (error) {
+        throw normalizeTransportError(error, path);
+      }
+    }
   }
 
   const isJson = response.headers.get("content-type")?.includes("application/json");
