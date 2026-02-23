@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: pondbridge-api
+    env: node
+    plan: starter
+    region: oregon
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm --workspace @pondbridge/api run start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: APP_BASE_DOMAIN
+        sync: false
+      - key: AUTH_TOKEN_MODE
+        value: hybrid
+      - key: AUTH_COOKIE_NAME
+        value: pondbridge_auth
+      - key: AUTH_COOKIE_DOMAIN
+        sync: false
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: AUTH_COOKIE_SAMESITE
+        value: lax

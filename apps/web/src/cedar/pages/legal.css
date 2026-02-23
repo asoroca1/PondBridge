@@ -1,0 +1,124 @@
+/* src/pages/legal.css */
+
+.legal-page {
+    min-height: 100vh;
+    position: relative;
+  }
+  
+  .legal-wrap {
+    width: 100%;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 14px 70px;
+  }
+  
+  .legal-card {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+    padding: 20px 18px;
+  }
+  
+  .legal-header h1 {
+    margin: 0 0 6px;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+  }
+  
+  .legal-sub {
+    margin: 0 0 14px;
+    opacity: 0.85;
+  }
+  
+  .legal-toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 0 18px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    margin-bottom: 18px;
+  }
+  
+  .legal-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(0,0,0,0.12);
+    background: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  
+  .legal-section {
+    padding: 8px 0 18px;
+  }
+  
+  .legal-section h2 {
+    margin: 8px 0 10px;
+    font-size: 22px;
+  }
+  
+  .legal-section h3 {
+    margin: 18px 0 8px;
+    font-size: 17px;
+  }
+  
+  .legal-section h4 {
+    margin: 14px 0 6px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.85;
+  }
+  
+  .legal-section p {
+    line-height: 1.6;
+  }
+  
+  .legal-section ul {
+    margin: 8px 0 10px 20px;
+    line-height: 1.6;
+  }
+  
+  .legal-muted {
+    opacity: 0.85;
+  }
+  
+  .legal-callout {
+    padding: 10px 12px;
+    border-left: 4px solid rgba(0,0,0,0.25);
+    background: rgba(0,0,0,0.05);
+    border-radius: 10px;
+  }
+  
+  .legal-allcaps {
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  
+  .legal-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  
+  .legal-footer a {
+    text-decoration: none;
+    font-weight: 600;
+  }
+  
+  .legal-page {
+    padding-top: var(--page-shell-top);
+  }
+  

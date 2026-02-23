@@ -1,0 +1,164 @@
+import { Router } from "express";
+import { TenantModel } from "../db/models/index.js";
+import { listFeaturesForPlan } from "@pondbridge/shared";
+import {
+  buildTenantConfig,
+  normalizeSignupMode,
+  resolveContent,
+  resolveSettings,
+  resolveTheme
+} from "../services/onboarding.js";
+import { buildTenantUrls } from "../utils/domainProvisioning.js";
+
+const router = Router();
+
+function isSignupEnabled(tenant) {
+  return tenant?.status === "active" && tenant?.onboardingStatus === "live";
+}
+
+function normalizeHost(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .split("/")[0]
+    .split(":")[0];
+}
+
+function resolveHostFromRequest(req) {
+  const fromQuery = normalizeHost(req.query.host || "");
+  if (fromQuery) return fromQuery;
+
+  const forwarded = normalizeHost(String(req.headers["x-forwarded-host"] || "").split(",")[0] || "");
+  if (forwarded) return forwarded;
+
+  const host = normalizeHost(req.headers.host || "");
+  if (host) return host;
+
+  const origin = normalizeHost(req.headers.origin || "");
+  if (origin) return origin;
+
+  return "";
+}
+
+async function resolveTenantForPublicRequest(req) {
+  const slug = String(req.query.slug || "").trim().toLowerCase();
+  if (slug) {
+    return {
+      tenant: await TenantModel.findBySlug(slug),
+      lookup: "slug",
+      lookupValue: slug
+    };
+  }
+
+  const host = resolveHostFromRequest(req);
+  if (!host) {
+    return { tenant: null, lookup: "missing", lookupValue: "" };
+  }
+
+  return {
+    tenant: await TenantModel.findByDomain(host),
+    lookup: "host",
+    lookupValue: host
+  };
+}
+
+router.get("/tenant-config", async (req, res, next) => {
+  try {
+    const { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
+    if (!lookupValue) {
+      return res.status(400).json({
+        error: {
+          code: "TENANT_LOOKUP_REQUIRED",
+          message: "Provide query param 'slug' or 'host'."
+        }
+      });
+    }
+
+    if (!tenant) {
+      return res.status(404).json({
+        error: {
+          code: "TENANT_NOT_FOUND",
+          message:
+            lookup === "slug"
+              ? `Tenant '${lookupValue}' not found`
+              : `Tenant for host '${lookupValue}' not found`
+        }
+      });
+    }
+
+    const config = buildTenantConfig(tenant, { includeSensitive: false });
+    const network = buildTenantUrls(tenant);
+
+    return res.json({
+      id: String(tenant._id),
+      name: tenant.name,
+      slug: tenant.slug,
+      status: tenant.status,
+      planTier: tenant.planTier,
+      billingStatus: tenant.billingStatus,
+      onboardingFeeAmount: Number(tenant.onboardingFeeAmount || 0),
+      onboardingFeePaid: Boolean(tenant.onboardingFeePaid),
+      customDomain: tenant.customDomain || "",
+      onboardingStatus: tenant.onboardingStatus,
+      addOns: tenant.addOns || [],
+      network,
+      billing: {
+        billingStatus: tenant.billingStatus,
+        onboardingFeeAmount: Number(tenant.onboardingFeeAmount || 0),
+        onboardingFeePaid: Boolean(tenant.onboardingFeePaid)
+      },
+      config,
+      theme: resolveTheme(tenant),
+      content: resolveContent(tenant),
+      accessSettings: {
+        signupMode: normalizeSignupMode(config.accessRules.signupMode || "open"),
+        signupEnabled: isSignupEnabled(tenant)
+      },
+      modules: config.modules,
+      features: listFeaturesForPlan(tenant.planTier, tenant.addOns || [])
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/tenant-status", async (req, res, next) => {
+  try {
+    const { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
+    if (!lookupValue) {
+      return res.status(400).json({
+        error: {
+          code: "TENANT_LOOKUP_REQUIRED",
+          message: "Provide query param 'slug' or 'host'."
+        }
+      });
+    }
+
+    if (!tenant) {
+      return res.status(404).json({
+        error: {
+          code: "TENANT_NOT_FOUND",
+          message:
+            lookup === "slug"
+              ? `Tenant '${lookupValue}' not found`
+              : `Tenant for host '${lookupValue}' not found`
+        }
+      });
+    }
+
+    const settings = resolveSettings(tenant);
+
+    return res.json({
+      slug: tenant.slug,
+      status: tenant.status,
+      onboardingStatus: tenant.onboardingStatus,
+      signupEnabled: isSignupEnabled(tenant),
+      signupMode: normalizeSignupMode(settings.signupMode || "open")
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+export default router;

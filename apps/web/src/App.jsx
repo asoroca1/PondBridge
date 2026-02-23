@@ -1,0 +1,455 @@
+import { useEffect, useRef, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
+import { useAuth } from "./context/AuthContext.jsx";
+import AppShell from "./components/AppShell.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import DirectorOnboardingCommandCenterPage from "./pages/DirectorOnboardingCommandCenterPage.jsx";
+import DirectorClaimPage from "./pages/DirectorClaimPage.jsx";
+import DirectorCreateAccountPage from "./pages/DirectorCreateAccountPage.jsx";
+import DirectorAdminLayout from "./pages/admin/DirectorAdminLayout.jsx";
+import {
+  DirectorAdminAnalyticsPage,
+  DirectorAdminApprovalsPage,
+  DirectorAdminBillingPage,
+  DirectorAdminDashboardPage,
+  DirectorAdminEmailComposePage,
+  DirectorAdminEmailHistoryPage,
+  DirectorAdminFeaturesPage,
+  DirectorAdminImportPage,
+  DirectorAdminMembersPage,
+  DirectorAdminSettingsAccessPage,
+  DirectorAdminSettingsAdminsPage,
+  DirectorAdminSettingsBrandingPage,
+  DirectorAdminSettingsDangerPage,
+  DirectorAdminSettingsLayout,
+  DirectorAdminSettingsNetworkPage,
+  DirectorAdminSettingsNotificationsPage
+} from "./pages/admin/DirectorAdminPages.jsx";
+import SuperLoginPage from "./pages/SuperLoginPage.jsx";
+import SuperShellLayout from "./pages/super/SuperShellLayout.jsx";
+import {
+  SuperBillingFailedPage,
+  SuperBillingOverviewPage,
+  SuperBillingTenantsPage,
+  SuperEmailTransactionalPage,
+  SuperPlatformPulsePage,
+  SuperSettingsPage,
+  SuperTenantsPage
+} from "./pages/super/SuperPages.jsx";
+import NotFoundPage from "./pages/NotFoundPage.jsx";
+import CedarHomePage from "./cedar/pages/Home.jsx";
+import CedarLoginPage from "./cedar/pages/Login.jsx";
+import CedarCreateProfileWizardPage from "./cedar/pages/CreateProfileWizard.jsx";
+import CedarForgotPasswordPage from "./cedar/pages/ForgotPassword.jsx";
+import CedarResetPasswordPage from "./cedar/pages/ResetPassword.jsx";
+import CedarMainHomePage from "./cedar/pages/MainHome.jsx";
+import CedarMyProfilePage from "./cedar/pages/MyProfile.jsx";
+import CedarEditProfilePage from "./cedar/pages/EditProfile.jsx";
+import CedarAdvancedSearchPage from "./cedar/pages/AdvancedSearch.jsx";
+import CedarPhotoStreamPage from "./cedar/pages/PhotoStream.jsx";
+import CedarChatAndForumsPage from "./cedar/pages/ChatAndForums.jsx";
+import CedarChestPage from "./cedar/pages/CedarChest.jsx";
+import CedarLocationMapPage from "./cedar/pages/LocationMap.jsx";
+import CedarSearchResultsPage from "./cedar/pages/SearchResults.jsx";
+import CedarPublicProfilePage from "./cedar/pages/PublicProfile.jsx";
+import CedarLegalPage from "./cedar/pages/Legal.jsx";
+import CedarFamilyTreesPage from "./cedar/pages/FamilyTrees.jsx";
+import CedarFamilyTreeCreatePage from "./cedar/pages/FamilyTreeCreate.jsx";
+import CedarFamilyTreeViewPage from "./cedar/pages/FamilyTreeView.jsx";
+import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
+
+function TenantScopeLayout() {
+  const { slug } = useParams();
+
+  return (
+    <TenantProvider slug={slug}>
+      <TenantScopeRoutes />
+    </TenantProvider>
+  );
+}
+
+function SubdomainCampLayout() {
+  const slug = inferCampSlugFromHost();
+
+  if (!slug) {
+    return <Navigate to="/404" replace />;
+  }
+
+  return (
+    <TenantProvider slug={slug}>
+      <TenantScopeRoutes />
+    </TenantProvider>
+  );
+}
+
+function CustomDomainCampLayout() {
+  return (
+    <TenantProvider>
+      <TenantScopeRoutes />
+    </TenantProvider>
+  );
+}
+
+function TenantScopeRoutes() {
+  const { loading, error, tenant, slug: tenantSlug } = useTenant();
+  const { isAuthenticated, user } = useAuth();
+  const location = useLocation();
+  const params = useParams();
+  const slug = params.slug || tenantSlug;
+
+  if (loading) {
+    return (
+      <section className="app-status-shell">
+        <div className="app-status-card">
+          <h1>Loading your camp...</h1>
+          <p>Please wait while we load network settings.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    const normalizedError = String(error || "").toLowerCase();
+    const schemaMissing = normalizedError.includes("supabase:apply-schema");
+    const apiUnavailable =
+      normalizedError.includes("could not reach api server") ||
+      normalizedError.includes("api_unreachable") ||
+      normalizedError.includes("load failed") ||
+      normalizedError.includes("failed to fetch");
+    return (
+      <section className="app-status-shell is-error">
+        <div className="app-status-card">
+          <h1>Unable to load this network</h1>
+          <p>{error}</p>
+          {schemaMissing ? (
+            <ol className="app-status-steps">
+              <li>Run `npm --workspace @pondbridge/api run supabase:apply-schema`</li>
+              <li>Run `npm --workspace @pondbridge/api run seed`</li>
+              <li>Refresh this page</li>
+            </ol>
+          ) : null}
+          {apiUnavailable ? (
+            <ol className="app-status-steps">
+              <li>Run `npm --workspace @pondbridge/api run dev`</li>
+              <li>Confirm `apps/web/.env` has the correct `VITE_API_BASE` value</li>
+              <li>Refresh this page</li>
+            </ol>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  const isCampDirector =
+    isAuthenticated && (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"));
+  const onboardingIncomplete = tenant?.onboardingStatus !== "live";
+  const currentPath = location.pathname || "";
+  const onboardingPath = slug ? `/t/${slug}/onboarding` : "/onboarding";
+  const isIndexRoute = currentPath === `/t/${slug}` || currentPath === `/t/${slug}/`;
+  const onOnboardingRoute =
+    isIndexRoute ||
+    currentPath.includes("/onboarding") ||
+    currentPath.includes("/director-claim") ||
+    currentPath.includes("/director-create-account");
+  const inviteToken = new URLSearchParams(location.search || "").get("inviteToken");
+
+  if (isCampDirector && onboardingIncomplete && !onOnboardingRoute) {
+    return <Navigate to={onboardingPath} replace />;
+  }
+
+  if (!isCampDirector && onboardingIncomplete && currentPath.endsWith("/create-account") && !inviteToken) {
+    return <Navigate to={slug ? `/t/${slug}/login` : "/login"} replace />;
+  }
+
+  return (
+    <AppShell>
+      <Routes>
+        <Route index element={onboardingIncomplete ? <DirectorClaimPage /> : <CedarHomePage />} />
+        <Route path="login" element={<CedarLoginPage />} />
+        <Route path="create-account" element={<CedarCreateProfileWizardPage />} />
+        <Route path="director-claim" element={<DirectorClaimPage />} />
+        <Route path="director-create-account" element={<DirectorCreateAccountPage />} />
+        <Route path="forgot-password" element={<CedarForgotPasswordPage />} />
+        <Route path="reset-password/:token" element={<CedarResetPasswordPage />} />
+        <Route path="legal" element={<CedarLegalPage />} />
+
+        <Route
+          path="home"
+          element={
+            <ProtectedRoute>
+              <CedarMainHomePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="my-profile"
+          element={
+            <ProtectedRoute>
+              <CedarMyProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="edit-profile"
+          element={
+            <ProtectedRoute>
+              <CedarEditProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="search"
+          element={
+            <ProtectedRoute>
+              <CedarAdvancedSearchPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="profile/:id"
+          element={
+            <ProtectedRoute>
+              <CedarPublicProfilePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="photo-stream"
+          element={
+            <ProtectedRoute>
+              <CedarPhotoStreamPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="chat-rooms"
+          element={
+            <ProtectedRoute>
+              <CedarChatAndForumsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="chat/:id"
+          element={
+            <ProtectedRoute>
+              <CedarChatAndForumsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="cedar-chest"
+          element={
+            <ProtectedRoute>
+              <CedarChestPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="location-map"
+          element={
+            <ProtectedRoute>
+              <CedarLocationMapPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="search-results"
+          element={
+            <ProtectedRoute>
+              <CedarSearchResultsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="family-trees"
+          element={
+            <ProtectedRoute>
+              <CedarFamilyTreesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="family-trees/new"
+          element={
+            <ProtectedRoute>
+              <CedarFamilyTreeCreatePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="family-trees/:id"
+          element={
+            <ProtectedRoute>
+              <CedarFamilyTreeViewPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="admin"
+          element={
+            <ProtectedRoute role="tenant_admin">
+              <DirectorAdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<DirectorAdminDashboardPage />} />
+          <Route path="members" element={<DirectorAdminMembersPage />} />
+          <Route path="members/approvals" element={<DirectorAdminApprovalsPage />} />
+          <Route path="members/import" element={<DirectorAdminImportPage />} />
+          <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
+          <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
+          <Route path="analytics" element={<DirectorAdminAnalyticsPage />} />
+          <Route path="features" element={<DirectorAdminFeaturesPage />} />
+          <Route path="billing" element={<DirectorAdminBillingPage />} />
+          <Route path="settings" element={<DirectorAdminSettingsLayout />}>
+            <Route index element={<Navigate to="network" replace />} />
+            <Route path="network" element={<DirectorAdminSettingsNetworkPage />} />
+            <Route path="branding" element={<DirectorAdminSettingsBrandingPage />} />
+            <Route path="access" element={<DirectorAdminSettingsAccessPage />} />
+            <Route path="admins" element={<DirectorAdminSettingsAdminsPage />} />
+            <Route path="notifications" element={<DirectorAdminSettingsNotificationsPage />} />
+            <Route path="danger" element={<DirectorAdminSettingsDangerPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="dashboard" replace />} />
+        </Route>
+
+        <Route
+          path="onboarding"
+          element={
+            <ProtectedRoute role="tenant_admin">
+              <DirectorOnboardingCommandCenterPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="onboarding/wizard" element={<Navigate to={slug ? `/t/${slug}/onboarding` : "/onboarding"} replace />} />
+
+        <Route
+          path="settings/branding"
+          element={<Navigate to={slug ? `/t/${slug}/admin/settings/branding` : "/admin/settings/branding"} replace />}
+        />
+        <Route
+          path="settings/signup"
+          element={<Navigate to={slug ? `/t/${slug}/admin/settings/access` : "/admin/settings/access"} replace />}
+        />
+        <Route
+          path="settings/content"
+          element={<Navigate to={slug ? `/t/${slug}/admin/settings/network` : "/admin/settings/network"} replace />}
+        />
+        <Route
+          path="settings/admins"
+          element={<Navigate to={slug ? `/t/${slug}/admin/settings/admins` : "/admin/settings/admins"} replace />}
+        />
+        <Route
+          path="settings/imports"
+          element={<Navigate to={slug ? `/t/${slug}/admin/members/import` : "/admin/members/import"} replace />}
+        />
+
+        <Route path="main-home" element={<Navigate to={slug ? `/t/${slug}/home` : "/home"} replace />} />
+        <Route path="advanced-search" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
+        <Route path="directory" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
+        <Route path="search-old" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
+        <Route path="admin/onboarding" element={<Navigate to={slug ? `/t/${slug}/onboarding` : "/onboarding"} replace />} />
+        <Route path="admin/import" element={<Navigate to={slug ? `/t/${slug}/admin/members/import` : "/admin/members/import"} replace />} />
+        <Route path="admin/invites" element={<Navigate to={slug ? `/t/${slug}/admin/settings/admins` : "/admin/settings/admins"} replace />} />
+        <Route path="admin/analytics" element={<Navigate to={slug ? `/t/${slug}/admin/analytics` : "/admin/analytics"} replace />} />
+        <Route path="admin/billing" element={<Navigate to={slug ? `/t/${slug}/admin/billing` : "/admin/billing"} replace />} />
+
+        <Route path="*" element={<Navigate to="." replace />} />
+      </Routes>
+    </AppShell>
+  );
+}
+
+function redirectSlug() {
+  return inferCampSlugFromHost() || localStorage.getItem("pondbridgeTenantSlug") || "";
+}
+
+function LegacyRootRedirect() {
+  const location = useLocation();
+  const slug = redirectSlug();
+  if (!slug) {
+    return <Navigate to="/super/login" replace />;
+  }
+  const path = location.pathname || "/";
+  return (
+    <Navigate
+      to={`/t/${slug}${path}${location.search || ""}${location.hash || ""}`}
+      replace
+    />
+  );
+}
+
+function SuperAliasRedirect() {
+  const location = useLocation();
+  const nextPath = (location.pathname || "/admin").replace(/^\/admin/, "/super");
+  return <Navigate to={`${nextPath}${location.search || ""}${location.hash || ""}`} replace />;
+}
+
+export default function App() {
+  const location = useLocation();
+  const routeTimerRef = useRef(null);
+  const [isRouting, setIsRouting] = useState(true);
+  const hostCampSlug = inferCampSlugFromHost();
+  const rememberedSlug = localStorage.getItem("pondbridgeTenantSlug") || "";
+  const legacyRedirectEnabled = Boolean(hostCampSlug || rememberedSlug);
+  const customDomainHost = isPotentialCustomTenantHost();
+
+  useEffect(() => {
+    setIsRouting(true);
+    window.clearTimeout(routeTimerRef.current);
+    routeTimerRef.current = window.setTimeout(() => {
+      setIsRouting(false);
+    }, 220);
+
+    return () => {
+      window.clearTimeout(routeTimerRef.current);
+    };
+  }, [location.pathname, location.search, location.hash]);
+
+  return (
+    <div className={`app-route-shell ${isRouting ? "is-routing" : ""}`}>
+      <div className={`app-route-progress ${isRouting ? "is-active" : ""}`} aria-hidden="true" />
+      <div key={`${location.pathname}${location.search}${location.hash}`} className="app-route-stage">
+        <Routes location={location}>
+          <Route path="/t/:slug/*" element={<TenantScopeLayout />} />
+
+          <Route path="/super">
+            <Route index element={<Navigate to="login" replace />} />
+            <Route path="login" element={<SuperLoginPage />} />
+            <Route element={<SuperShellLayout />}>
+              <Route path="dashboard" element={<SuperPlatformPulsePage />} />
+              <Route path="tenants" element={<SuperTenantsPage />} />
+
+              <Route path="email/transactional" element={<SuperEmailTransactionalPage />} />
+              <Route path="email/broadcast" element={<Navigate to="/super/email/transactional" replace />} />
+
+              <Route path="billing" element={<SuperBillingOverviewPage />} />
+              <Route path="billing/tenants" element={<SuperBillingTenantsPage />} />
+              <Route path="billing/failed" element={<SuperBillingFailedPage />} />
+
+              <Route path="settings" element={<SuperSettingsPage />} />
+              <Route path="*" element={<Navigate to="/super/dashboard" replace />} />
+            </Route>
+          </Route>
+          <Route path="/admin/*" element={<SuperAliasRedirect />} />
+
+          {legacyRedirectEnabled ? <Route path="/:legacy/*" element={<LegacyRootRedirect />} /> : null}
+
+          <Route path="/404" element={<NotFoundPage />} />
+          {hostCampSlug ? (
+            <Route path="/*" element={<SubdomainCampLayout />} />
+          ) : customDomainHost ? (
+            <Route path="/*" element={<CustomDomainCampLayout />} />
+          ) : (
+            <Route path="*" element={<Navigate to="/super/login" replace />} />
+          )}
+        </Routes>
+      </div>
+    </div>
+  );
+}

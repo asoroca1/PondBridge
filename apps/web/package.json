@@ -1,0 +1,27 @@
+{
+  "name": "@pondbridge/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src/App.jsx src/components src/context src/lib src/pages --ext .js,.jsx",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "@pondbridge/shared": "0.1.0",
+    "@pondbridge/ui": "0.1.0",
+    "lucide-react": "^0.540.0",
+    "maplibre-gl": "^5.18.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.2",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.7"
+  }
+}

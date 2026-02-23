@@ -1,0 +1,284 @@
+:root{
+    --cc-maxw: 1180px;            /* widened */
+    --cc-top-pad: 112px;          /* under Navbar2 */
+    --cc-gap: 16px;
+  
+    --cc-navy: #002b5c;           /* Cedar navy */
+    --cc-gray: #6b7280;           /* slate-500-ish */
+    --cc-border: #e5e7eb;         /* gray-200 */
+    --cc-card: #ffffff;           /* white card on light bg */
+    --cc-chip: #f1f5f9;           /* gray-100 */
+    --cc-focus: #0ea5e9;          /* sky-500-ish for focus ring */
+  }
+  
+  /* background from CedarBackground should show through */
+  html, body, #root { background: transparent; }
+  
+  .cc-wrap{
+    position: relative;
+    max-width: var(--cc-maxw);
+    margin: 0 auto;
+    padding: var(--cc-top-pad) 16px 40px;
+  }
+  
+  .cc-head{
+    display:flex; align-items:flex-end; justify-content:space-between; gap: 12px;
+    margin-bottom: 12px; /* tightened */
+  }
+  
+  .cc-title h1{
+    margin:0;
+    font-size: 34px;
+    color: var(--cc-navy);
+    letter-spacing: .2px;
+  }
+  .cc-sub{
+    margin:6px 0 0;
+    color: var(--cc-gray);
+    font-size: 14px;
+  }
+  
+  .cc-filters{
+    display:flex; gap: 10px; align-items:flex-end;
+  }
+  .cc-filter{
+    display:flex; flex-direction:column; gap:6px; min-width: 140px;
+  }
+  .cc-filter label{ font-size: 12px; color: var(--cc-gray); }
+  .cc-filter select{
+    border:1px solid var(--cc-border);
+    border-radius: 10px; padding: 8px 10px; background:#fff; font:inherit;
+  }
+  .cc-filter select:focus{ outline:2px solid var(--cc-focus); outline-offset:2px; }
+  
+  /* status boxes softened */
+  .cc-status, .cc-error, .cc-empty{
+    padding: 12px 12px;
+    border: 1px dashed var(--cc-border);
+    border-radius: 12px;
+    color: var(--cc-gray);
+    background: #fafafa;
+    margin-bottom: 12px;
+  }
+  
+  /* two-column page section */
+  .cc-layout{
+    display:grid;
+    grid-template-columns: minmax(0, 1fr) 360px;  /* left grows, right fixed */
+    gap: 18px;
+    align-items: start;
+    margin-top: 12px;
+    margin-bottom: 24px;
+  }
+  .cc-left{ min-width: 0; }              /* prevents overflow in the left grid cell */
+  .cc-right{ position: sticky; top: 96px; }
+  .cc-rail{ display:flex; flex-direction:column; gap: 14px; }
+  
+  /* list + cards */
+  .cc-list{
+    display:flex; flex-direction:column; gap: 12px;
+    margin-bottom: 0; /* grid handles spacing */
+  }
+  
+  .cc-card{
+    background: var(--cc-card);
+    border:1px solid var(--cc-border);
+    border-radius: 14px;
+    padding: 14px;
+    display:grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "meta actions"
+      "title actions"
+      "date actions";
+    gap: 6px 10px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03);  /* subtle depth */
+  }
+  .cc-card-meta{ grid-area: meta; display:flex; gap:8px; align-items:center; }
+  .cc-chip{
+    background: var(--cc-chip);
+    border:1px solid var(--cc-border);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px; color: #0f172a;
+  }
+  .cc-year{ font-size: 13px; color: var(--cc-gray); }
+  .cc-card-title{ grid-area: title; margin:4px 0 0; font-size: 18px; color:#0f172a;}
+  .cc-card-date{ grid-area: date; font-size: 12px; color: var(--cc-gray); }
+  
+  .cc-card-actions{
+    grid-area: actions;
+    display:flex; align-items:center; gap: 8px; align-self:center;
+  }
+  .cc-btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--cc-navy);
+    color: var(--cc-navy);
+    text-decoration: none;
+    font-weight: 600;
+    transition: background .15s ease, color .15s ease;
+  }
+  .cc-btn:hover{ background: var(--cc-navy); color: #fff; }
+  .cc-miss{ color: var(--cc-gray); font-size: 13px; }
+  
+  /* subscribe (sidebar) */
+  .cc-subscribe{
+    background: #f8fafc;
+    border:1px solid var(--cc-border);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.02);
+  }
+  .cc-subscribe h2{ margin: 0 0 10px; font-size: 18px; color:#0f172a; }
+  .cc-sub-form{
+    display:flex; gap: 8px; flex-wrap: wrap;
+  }
+  .cc-sub-form input[type="email"]{
+    flex:1 1 220px;
+    min-width: 200px;
+    border:1px solid var(--cc-border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font:inherit;
+  }
+  .cc-sub-form input[type="email"]:focus{ outline:2px solid var(--cc-focus); outline-offset:2px; }
+  .cc-sub-form button{
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--cc-navy);
+    background: var(--cc-navy);      /* navy button */
+    color:#fff; font-weight:600;
+    cursor:pointer;
+  }
+  .cc-sub-form button:hover{ filter: brightness(0.95); }
+  .cc-sub-msg{ margin-top:8px; color: var(--cc-gray); font-size: 13px; }
+  
+  /* admin panel (now in right rail as a card) */
+  .cc-admin{
+    background: #ffffff;
+    border:1px solid var(--cc-border);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.02);
+  }
+  .cc-admin h2{ margin:0 0 10px; font-size: 18px; color:#0f172a; }
+  .cc-admin-form{ display:flex; flex-direction:column; gap: 12px; }
+  .cc-row{ display:flex; flex-direction:column; gap:6px; }
+  .cc-row-2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cc-admin-form input[type="text"],
+  .cc-admin-form input[type="number"],
+  .cc-admin-form select,
+  .cc-admin-form input[type="file"]{
+    border:1px solid var(--cc-border);
+    border-radius: 10px;
+    padding: 10px 12px; font:inherit; background:#fff;
+    width: 100%;
+  }
+  .cc-actions{ display:flex; align-items:center; gap:10px; }
+  .cc-actions button{
+    padding: 10px 14px; border-radius: 10px; border:1px solid var(--cc-navy);
+    background: var(--cc-navy); color:#fff; font-weight:600; cursor:pointer;
+  }
+  .cc-msg{ color: var(--cc-gray); }
+  .cc-note{ margin: 8px 0 0; color: var(--cc-gray); font-size: 12px; }
+  
+  /* responsive: stack columns on smaller screens */
+  @media (max-width: 900px){
+    .cc-layout{ grid-template-columns: 1fr; }
+    .cc-right{ position: static; }
+  }
+  
+  @media (max-width: 640px){
+    .cc-row-2{ grid-template-columns: 1fr; }
+    .cc-head{ flex-direction: column; align-items: flex-start; gap: 10px; }
+    .cc-filters{ width:100%; }
+  }
+
+/* cedar-chest.css additions */
+.cc-btn.danger { border-color: #c62828; }
+.cc-btn.danger:hover { background: #c62828; color: #fff; }
+.cc-btn.busy, .cc-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.cc-error.small { font-size: 0.9rem; margin-top: 6px; }
+
+/* ===== Header card (match Chats) ===== */
+.cc-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  
+    background:#fff;
+    border:1px solid #e4e7ee;
+    border-radius:16px;
+    padding:14px 16px;
+    margin:0 0 16px;
+    box-shadow:0 1px 0 rgba(17,24,39,0.03);
+  }
+  
+  .cc-head-left{ display:flex; flex-direction:column; gap:4px; }
+  .cc-title-row{ display:flex; align-items:center; gap:10px; }
+  
+  .cc-title{
+    margin:0;
+    font-size:22px;
+    line-height:1.2;
+    letter-spacing:-0.01em;
+    color:#0f172a;
+  }
+  
+  .cc-title-icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:28px; height:28px;
+    border-radius:999px;
+    background:#eef3ff;
+    color:#002b5c;
+    border:1px solid #d8def0;
+  }
+  
+  .cc-subtitle{
+    margin:0;
+    font-size:13px;
+    color:#6b7280;
+  }
+  
+  /* Filters styled to sit like the Chats tabs area */
+  .cc-filters{
+    display:flex;
+    gap:8px;
+    align-self:flex-start;
+  }
+  
+  .cc-filter{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    min-width:140px;
+  }
+  
+  .cc-filter-label{
+    font-size:12px;
+    color:#6b7280;
+  }
+  
+  .cc-filter select{
+    border:1px solid #d5d8df;
+    border-radius:10px;
+    padding:8px 10px;
+    background:#fff;
+    font:inherit;
+  }
+  
+  .cc-filter select:focus{
+    outline:2px solid #0ea5e9;
+    outline-offset:2px;
+  }
+  
+  /* Stack nicely on small screens */
+  @media (max-width: 720px){
+    .cc-header{ flex-direction:column; align-items:stretch; gap:10px; }
+    .cc-filters{ align-self:stretch; }
+  }
+  
