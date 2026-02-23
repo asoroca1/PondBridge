@@ -15,6 +15,7 @@ export default function DirectorCreateAccountClerkPage() {
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const directorBootstrap = !inviteToken;
   const { isLoaded, isSignedIn } = useClerkAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [inviteError, setInviteError] = useState("");
@@ -42,22 +43,34 @@ export default function DirectorCreateAccountClerkPage() {
     });
   }, [inviteToken, isLoaded, isSignedIn, navigate, slug]);
 
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !slug || !directorBootstrap) return;
+    navigate(routeWithSlug(slug, "/auth/callback?directorBootstrap=1"), {
+      replace: true
+    });
+  }, [directorBootstrap, isLoaded, isSignedIn, navigate, slug]);
+
   const loginPath = routeWithSlug(
     slug,
     `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
   );
-  const callbackPath = routeWithSlug(slug, `/auth/callback?inviteToken=${encodeURIComponent(inviteToken)}`);
-  const signUpPath = routeWithSlug(slug, `/director-create-account?inviteToken=${encodeURIComponent(inviteToken)}`);
+  const callbackPath = inviteToken
+    ? routeWithSlug(slug, `/auth/callback?inviteToken=${encodeURIComponent(inviteToken)}`)
+    : routeWithSlug(slug, "/auth/callback?directorBootstrap=1");
+  const signUpPath = inviteToken
+    ? routeWithSlug(slug, `/director-create-account?inviteToken=${encodeURIComponent(inviteToken)}`)
+    : routeWithSlug(slug, "/director-create-account?directorBootstrap=1");
 
   return (
-    <section className="wizard-shell">
-      <div className="wizard-page-header">
+    <section className="product-claim-page product-director-create-page">
+      <div className="product-claim-wrap product-director-create-wrap">
+        <article className="product-claim-card product-director-create-card">
         <h1>Create Director Account</h1>
-        <p>Claim your invite and continue camp onboarding.</p>
-      </div>
-
-      <section className="wizard-card">
-        {!inviteToken ? <p className="error-text">A valid director invite token is required.</p> : null}
+          <p className="product-claim-body director-create-subtitle">
+            {inviteToken
+              ? "Claim your invite and continue camp onboarding."
+              : "No invite token detected. The first verified signup for this prelaunch camp will claim director setup."}
+          </p>
         {inviteError ? <p className="error-text">{inviteError}</p> : null}
         {inviteMeta ? (
           <p className="success-text">
@@ -65,7 +78,7 @@ export default function DirectorCreateAccountClerkPage() {
           </p>
         ) : null}
 
-        {inviteToken ? (
+          {!inviteError ? (
           <SignUp
             path={signUpPath}
             routing="path"
@@ -84,13 +97,13 @@ export default function DirectorCreateAccountClerkPage() {
           />
         ) : null}
 
-        <div className="wizard-actions">
+          <div className="product-claim-actions">
           <Link className="btn btn-secondary" to={loginPath}>
             I already have an account
           </Link>
         </div>
-      </section>
+        </article>
+      </div>
     </section>
   );
 }
-

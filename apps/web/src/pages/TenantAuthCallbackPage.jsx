@@ -40,6 +40,7 @@ function ClerkAuthCallbackPage() {
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const directorBootstrap = truthy(searchParams.get("directorBootstrap"));
   const completeJoin = truthy(searchParams.get("completeJoin"));
   const { refreshSession } = useAuth();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
@@ -68,7 +69,13 @@ function ClerkAuthCallbackPage() {
         );
         let decision = payload?.decision || {};
 
-        if (decision.action === "accept_invite" && inviteToken) {
+        if (directorBootstrap) {
+          await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
+            method: "POST",
+            token,
+            body: {}
+          });
+        } else if (decision.action === "accept_invite" && inviteToken) {
           await requestJson(`/api/t/${slug}/access/invite/accept`, {
             method: "POST",
             token,
@@ -117,7 +124,7 @@ function ClerkAuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [completeJoin, getToken, inviteToken, isLoaded, isSignedIn, navigate, refreshSession, slug]);
+  }, [completeJoin, directorBootstrap, getToken, inviteToken, isLoaded, isSignedIn, navigate, refreshSession, slug]);
 
   return (
     <section className="app-status-shell">

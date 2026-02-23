@@ -1,9 +1,11 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
+  UserModel,
   AccessRequestModel,
   InviteModel,
-  TenantAdminAuditLogModel
+  TenantAdminAuditLogModel,
+  TenantModel
 } from "../db/models/index.js";
 import { requireIdentity } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
@@ -305,6 +307,92 @@ router.get("/decision", accessDecisionLimiter, async (req, res) => {
       onboardingStatus: req.tenant.onboardingStatus
     },
     decision
+  });
+});
+
+router.post("/director-bootstrap", accessMutationLimiter, async (req, res) => {
+  if (req.tenant.status !== "active") {
+    return res.status(403).json({
+      error: {
+        code: "TENANT_INACTIVE",
+        message: "This network is inactive."
+      }
+    });
+  }
+
+  if (req.tenant.onboardingStatus === "live") {
+    return res.status(403).json({
+      error: {
+        code: "DIRECTOR_BOOTSTRAP_DISABLED",
+        message: "Director bootstrap is only available before launch."
+      }
+    });
+  }
+
+  const tenantId = String(req.tenant._id);
+  const identity = req.identity || {};
+  const identityEmail = normalizeEmail(identity.email || "");
+
+  const existingDirector = await UserModel.findOne(tenantId, {
+    roles: { $contains: ["tenant_admin"] },
+    status: "active"
+  });
+
+  if (existingDirector) {
+    const sameDirectorByClerkId =
+      String(existingDirector.clerkUserId || "").trim() &&
+      String(existingDirector.clerkUserId || "").trim() === String(identity.clerkUserId || "").trim();
+    const sameDirectorByEmail = identityEmail && normalizeEmail(existingDirector.email || "") === identityEmail;
+
+    if (!sameDirectorByClerkId && !sameDirectorByEmail) {
+      return res.status(409).json({
+        error: {
+          code: "DIRECTOR_ALREADY_CLAIMED",
+          message: "A director account already exists for this camp."
+        }
+      });
+    }
+  }
+
+  const member = await createTenantMembershipFromIdentity({
+    tenantId,
+    identity,
+    roles: ["tenant_admin", "user"],
+    status: "active"
+  });
+
+  await ensureProfileForUser({
+    tenantId,
+    user: member,
+    identity
+  });
+
+  if (req.tenant.onboardingStatus !== "in_progress") {
+    await TenantModel.update(req.tenant._id, { onboardingStatus: "in_progress" });
+  }
+
+  await writeTenantAudit(tenantId, String(member._id), "director_bootstrap_claimed", {
+    clerkUserId: String(identity.clerkUserId || "").trim() || null,
+    email: identityEmail || null
+  });
+
+  await logTenantEvent({
+    tenantId,
+    userId: member._id,
+    eventType: "director_bootstrap_claimed",
+    metadata: {
+      source: "clerk_director_create_account"
+    }
+  }).catch(() => {});
+
+  return res.json({
+    ok: true,
+    membership: {
+      id: String(member._id),
+      roles: member.roles || [],
+      status: member.status
+    },
+    nextRoute: `${decisionRouteBase(req.tenant.slug)}/onboarding`
   });
 });
 
