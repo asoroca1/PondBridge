@@ -6,8 +6,8 @@
 - API: Render or Fly (`apps/api`)
 - Database: MongoDB Atlas
 - Tenant URLs:
-  - Default: `https://{tenant-slug}.pondbridge.co`
-  - Fallback during migration: `https://app.pondbridge.co/t/{tenant-slug}`
+  - Default: `https://{tenant-slug}.pondbridgealumni.com`
+  - Fallback during migration: `https://app.pondbridgealumni.com/t/{tenant-slug}`
 
 ## 2) Deployment Presets Included
 
@@ -73,24 +73,24 @@ Key env vars:
 
 - `AUTH_TOKEN_MODE=hybrid`
 - `AUTH_COOKIE_NAME=pondbridge_auth`
-- `AUTH_COOKIE_DOMAIN=.pondbridge.co` (production)
+- `AUTH_COOKIE_DOMAIN=.pondbridgealumni.com` (production)
 - `AUTH_COOKIE_SAMESITE=lax`
 - `AUTH_COOKIE_SECURE=true` (production)
 
 ## 6) DNS Setup (Wildcard Subdomains)
 
-For `pondbridge.co`:
+For `pondbridgealumni.com`:
 
 1. Set API host (example):
-   - `api.pondbridge.co` -> Render/Fly API endpoint (CNAME or A/AAAA per provider)
+   - `api.pondbridgealumni.com` -> Render/Fly API endpoint (CNAME or A/AAAA per provider)
 2. Set app host:
-   - `app.pondbridge.co` -> Vercel project
+   - `app.pondbridgealumni.com` -> Vercel project
 3. Set wildcard tenant host:
-   - `*.pondbridge.co` -> Vercel project
+   - `*.pondbridgealumni.com` -> Vercel project
 
 Result:
 
-- `camp-cedar.pondbridge.co` resolves to web app.
+- `camp-cedar.pondbridgealumni.com` resolves to web app.
 - web app derives tenant slug from subdomain.
 
 ## 7) SSL Strategy
@@ -105,13 +105,13 @@ Result:
 Current app supports both:
 
 - path-based tenancy: `/t/:slug/...`
-- host-based tenancy: `https://{slug}.pondbridge.co/...`
+- host-based tenancy: `https://{slug}.pondbridgealumni.com/...`
 
 Recommended rollout:
 
 1. Keep both URL strategies enabled.
 2. Update tenant links/emails to subdomain format.
-3. Add 301 redirects from `app.pondbridge.co/t/{slug}` to `{slug}.pondbridge.co` when ready.
+3. Add 301 redirects from `app.pondbridgealumni.com/t/{slug}` to `{slug}.pondbridgealumni.com` when ready.
 4. Keep API tenant resolution fallback (`/t/:slug` + subdomain + header) for backward compatibility.
 
 ## 9) MongoDB Atlas
