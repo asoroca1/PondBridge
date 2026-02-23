@@ -72,9 +72,12 @@ ALTER TABLE public.users
 
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON public.users (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_email_roles ON public.users (email, roles);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_clerk_user
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_scope_clerk_user_unique
   ON public.users ((COALESCE(tenant_id, '__global__')), clerk_user_id)
   WHERE clerk_user_id IS NOT NULL AND clerk_user_id <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_global_email_unique
+  ON public.users ((lower(email)))
+  WHERE tenant_id IS NULL;
 
 -- 3. PROFILES
 CREATE TABLE IF NOT EXISTS public.profiles (
