@@ -108,6 +108,10 @@ async function upsertCnameRecord(client, zoneId, { name, content, proxied, ttl, 
 
 async function bindPagesDomain(client, accountId, projectName, domain, dryRun) {
   if (!accountId || !projectName || !domain) return;
+  if (domain.includes("*")) {
+    console.log(`Skipping Pages wildcard bind for ${domain} (unsupported by Pages API).`);
+    return;
+  }
   if (dryRun) {
     console.log(`[dry-run] Pages bind domain ${domain} -> ${projectName}`);
     return;
@@ -123,7 +127,11 @@ async function bindPagesDomain(client, accountId, projectName, domain, dryRun) {
     console.log(`Bound Pages domain ${domain}`);
   } catch (error) {
     const msg = String(error?.message || "");
-    if (msg.toLowerCase().includes("already exists")) {
+    const normalized = msg.toLowerCase();
+    if (
+      normalized.includes("already exists") ||
+      normalized.includes("already added this custom domain")
+    ) {
       console.log(`Pages domain ${domain} already bound`);
       return;
     }
@@ -160,7 +168,9 @@ async function main() {
   const createWildcard = toBool(envValue("CLOUDFLARE_CREATE_WILDCARD", "true"), true);
   const createApex = toBool(envValue("CLOUDFLARE_CREATE_APEX", "true"), true);
   const createWww = toBool(envValue("CLOUDFLARE_CREATE_WWW", "true"), true);
-  const proxied = toBool(envValue("CLOUDFLARE_PROXIED", "true"), true);
+  const defaultProxied = toBool(envValue("CLOUDFLARE_PROXIED", "true"), true);
+  const apiProxied = toBool(envValue("CLOUDFLARE_API_PROXIED", String(defaultProxied)), defaultProxied);
+  const webProxied = toBool(envValue("CLOUDFLARE_WEB_PROXIED", String(defaultProxied)), defaultProxied);
   const ttl = Number(envValue("CLOUDFLARE_TTL", "1")) || 1;
 
   const bindPagesDomains = toBool(envValue("CLOUDFLARE_BIND_PAGES_DOMAINS", "false"), false);
@@ -192,7 +202,7 @@ async function main() {
   await upsertCnameRecord(client, zoneId, {
     name: apiFqdn,
     content: apiOriginHost,
-    proxied,
+    proxied: apiProxied,
     ttl,
     dryRun
   });
@@ -200,7 +210,7 @@ async function main() {
   await upsertCnameRecord(client, zoneId, {
     name: webFqdn,
     content: webCnameTarget,
-    proxied,
+    proxied: webProxied,
     ttl,
     dryRun
   });
@@ -209,7 +219,7 @@ async function main() {
     await upsertCnameRecord(client, zoneId, {
       name: wildcardFqdn,
       content: webCnameTarget,
-      proxied,
+      proxied: webProxied,
       ttl,
       dryRun
     });
@@ -219,7 +229,7 @@ async function main() {
     await upsertCnameRecord(client, zoneId, {
       name: apexFqdn,
       content: webCnameTarget,
-      proxied,
+      proxied: webProxied,
       ttl,
       dryRun
     });
@@ -229,7 +239,7 @@ async function main() {
     await upsertCnameRecord(client, zoneId, {
       name: wwwFqdn,
       content: webCnameTarget,
-      proxied,
+      proxied: webProxied,
       ttl,
       dryRun
     });

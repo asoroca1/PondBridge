@@ -13,6 +13,14 @@ For production rollout with wildcard subdomains and cookie/JWT strategy, see `do
 - `FRONTEND_ORIGIN`
 - `APP_BASE_DOMAIN`
 - `OPENAI_API_KEY` (optional; required for AI resume parsing)
+- Optional for automatic tenant domain provisioning on creation:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ZONE_ID`
+  - `CLOUDFLARE_ACCOUNT_ID`
+  - `CLOUDFLARE_PAGES_PROJECT_NAME`
+  - `CLOUDFLARE_WEB_CNAME_TARGET` (defaults to `<project>.pages.dev` when omitted)
+  - `CLOUDFLARE_WEB_PROXIED` (default `true`)
+  - `CLOUDFLARE_TTL` (default `1`)
 
 ### Web (`apps/web/.env`)
 - `VITE_API_BASE` (public API URL)
@@ -41,13 +49,15 @@ For production rollout with wildcard subdomains and cookie/JWT strategy, see `do
 
 ## Deploy Steps
 1. Deploy API first and confirm `GET /health`.
+   - For Render, add `api.pondbridgealumni.com` in **Settings -> Custom Domains**.
+   - If `https://api.pondbridgealumni.com/health` shows Cloudflare `Error 1000` or `403`, the custom domain is not yet attached/verified on the Render service.
 2. Deploy web and set `VITE_API_BASE` to API URL.
 3. Configure CORS (`FRONTEND_ORIGIN`) on API.
 4. Seed production/staging DB.
 5. Log in as super admin, create first real tenant, verify `/t/{slug}` flow.
 
 ## Cloudflare DNS Baseline
-- `api.pondbridgealumni.com` -> API host (Render/Fly target)
+- `api.pondbridgealumni.com` -> API host (Render/Fly target), set as DNS-only (not proxied)
 - `app.pondbridgealumni.com` -> Web host (Vercel target)
 - `*.pondbridgealumni.com` -> Web host (same Vercel target as `app`)
 - `pondbridgealumni.com` and `www.pondbridgealumni.com` -> your preferred web entrypoint (`app` or marketing site)
@@ -72,3 +82,4 @@ The repo includes a script to upsert DNS records and optionally bind Pages domai
 Notes:
 - `CLOUDFLARE_API_ORIGIN` is your backend provider hostname (for example `pondbridge-api.onrender.com`), not `api.pondbridgealumni.com`.
 - `CLOUDFLARE_WEB_CNAME_TARGET` for Cloudflare Pages is typically `<project>.pages.dev`.
+- For Render-backed APIs, use `CLOUDFLARE_API_PROXIED=false` and `CLOUDFLARE_WEB_PROXIED=true`.

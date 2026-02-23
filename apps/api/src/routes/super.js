@@ -14,6 +14,7 @@ import {
 } from "../db/models/index.js";
 import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
+import { provisionTenantDomain } from "../services/cloudflareDomains.js";
 import { buildTenantUrls, defaultTenantDomain, isReservedSubdomain } from "../utils/domainProvisioning.js";
 import { env } from "../config/env.js";
 
@@ -661,6 +662,16 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   let directorInvite = null;
   let directorClaimLink = "";
   const network = buildTenantUrls(tenant);
+  let domainProvisioning = { status: "skipped", reason: "not_attempted" };
+
+  try {
+    domainProvisioning = await provisionTenantDomain(network.domain);
+  } catch (error) {
+    domainProvisioning = {
+      status: "error",
+      message: String(error?.message || "Cloudflare provisioning failed")
+    };
+  }
 
   if (directorEmail) {
     const token = generateToken(24);
@@ -700,6 +711,7 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   res.status(201).json({
     tenant,
     network,
+    domainProvisioning,
     inviteLink,
     directorClaimLink,
     directorInvite,
@@ -733,6 +745,33 @@ router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
   await writeAudit(tenant._id, req.user.id, "super_tenant_updated", { update });
 
   res.json({ tenant });
+});
+
+router.post("/tenants/:tenantId/provision-domain", requireSuperMutation, async (req, res) => {
+  const tenant = await TenantModel.findById(req.params.tenantId);
+  if (!tenant) {
+    return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
+  }
+
+  const domain = String(tenant.customDomain || defaultTenantDomain(tenant.slug) || "").trim();
+  if (!domain) {
+    return res.status(400).json({
+      error: { code: "INVALID_DOMAIN", message: "Tenant does not have a domain to provision" }
+    });
+  }
+
+  try {
+    const result = await provisionTenantDomain(domain);
+    await writeAudit(tenant._id, req.user.id, "super_tenant_domain_provisioned", { domain, result });
+    return res.json({ domain, result });
+  } catch (error) {
+    return res.status(502).json({
+      error: {
+        code: "DOMAIN_PROVISION_FAILED",
+        message: String(error?.message || "Failed to provision tenant domain")
+      }
+    });
+  }
 });
 
 router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, res, next) => {
