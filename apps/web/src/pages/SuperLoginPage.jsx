@@ -47,16 +47,35 @@ function ClerkSuperLoginPage() {
         <h1>Super Admin Console</h1>
         <p className="super-login-subtitle">Sign in with Clerk to access the super admin console.</p>
         <div className="super-login-card">
+          <div className="super-login-panel-head">
+            <h2 className="super-login-panel-title">Sign in to PondBridge Super Admin</h2>
+            <p className="super-login-panel-subtitle">Only authorized platform admins can access this console.</p>
+          </div>
           <SignIn
             routing="virtual"
             fallbackRedirectUrl="/super/dashboard"
             forceRedirectUrl="/super/dashboard"
+            withSignUp={false}
             appearance={{
               elements: {
+                rootBox: {
+                  width: "100%"
+                },
                 card: {
                   boxShadow: "none",
                   border: "none",
-                  width: "100%"
+                  width: "100%",
+                  background: "transparent",
+                  padding: "0"
+                },
+                header: {
+                  display: "none"
+                },
+                headerTitle: {
+                  display: "none"
+                },
+                headerSubtitle: {
+                  display: "none"
                 }
               }
             }}

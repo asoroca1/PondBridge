@@ -7,6 +7,7 @@ import { requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/authMode.js";
+import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 
 function normalizeErrorMessage(payload, fallback) {
   if (!payload) return fallback;
@@ -182,8 +183,9 @@ function LegacyLogin() {
 
 function ClerkLogin() {
   const { slug: paramSlug = "" } = useParams();
-  const { slug: contextSlug = "" } = useTenant();
+  const { slug: contextSlug = "", tenant } = useTenant();
   const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
+  const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const path = slug ? `/t/${slug}/login` : "/login";
@@ -200,7 +202,8 @@ function ClerkLogin() {
       <section className="login1-main">
         <div className="login1-card">
           <h1 className="login1-title">Login</h1>
-          <p className="login1-forgot">Sign in with email, Google, Apple, and password recovery via Clerk.</p>
+          <h2 className="login1-clerk-panel-title">Sign in to {networkName}</h2>
+          <p className="login1-clerk-panel-subtitle">Use email, Google, Apple, and password recovery via Clerk.</p>
           <SignIn
             path={path}
             routing="path"
@@ -209,10 +212,24 @@ function ClerkLogin() {
             forceRedirectUrl={callbackPath}
             appearance={{
               elements: {
+                rootBox: {
+                  width: "100%"
+                },
                 card: {
                   boxShadow: "none",
                   border: "none",
-                  width: "100%"
+                  width: "100%",
+                  background: "transparent",
+                  padding: "0"
+                },
+                header: {
+                  display: "none"
+                },
+                headerTitle: {
+                  display: "none"
+                },
+                headerSubtitle: {
+                  display: "none"
                 }
               }
             }}
