@@ -179,7 +179,7 @@ function LoadingBlock({ label = "Loading..." }) {
 }
 
 export function SuperPlatformPulsePage() {
-  const { token } = useAuth();
+  const { token, getAuthToken } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -187,7 +187,10 @@ export function SuperPlatformPulsePage() {
   async function loadData() {
     try {
       setError("");
-      const payload = await requestJson("/api/super/platform-pulse", { token });
+      const payload = await requestJson("/api/super/platform-pulse", {
+        token,
+        getToken: () => getAuthToken({ forceRefresh: true })
+      });
       setData(payload);
     } catch (loadError) {
       setError(loadError.message || "Failed to load platform pulse.");

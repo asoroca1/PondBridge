@@ -58,7 +58,7 @@ const FINANCE_NAV = [
 ];
 
 export default function SuperShellLayout() {
-  const { token, user, logout, authProvider, isReady, refreshSession } = useAuth();
+  const { token, user, logout, authProvider, isReady, refreshSession, getAuthToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -89,13 +89,13 @@ export default function SuperShellLayout() {
       sessionSyncAttemptedRef.current = false;
       return;
     }
-    if (user || sessionSyncAttemptedRef.current) return;
+    if (sessionSyncAttemptedRef.current) return;
 
     sessionSyncAttemptedRef.current = true;
     refreshSession().catch(() => {
       // Keep route-level auth guard behavior; avoid request loops.
     });
-  }, [clerkMode, isReady, refreshSession, token, user]);
+  }, [clerkMode, isReady, refreshSession, token]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;
@@ -104,7 +104,10 @@ export default function SuperShellLayout() {
 
     async function loadNotifications() {
       try {
-        const payload = await requestJson("/api/super/notifications", { token });
+        const payload = await requestJson("/api/super/notifications", {
+          token,
+          getToken: () => getAuthToken({ forceRefresh: true })
+        });
         if (!active) return;
         setNotifications(payload);
       } catch (error) {
@@ -120,7 +123,7 @@ export default function SuperShellLayout() {
       active = false;
       window.clearInterval(id);
     };
-  }, [token, allowed]);
+  }, [allowed, getAuthToken, token]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;
@@ -137,7 +140,10 @@ export default function SuperShellLayout() {
 
     const id = window.setTimeout(async () => {
       try {
-        const payload = await requestJson(`/api/super/search?q=${encodeURIComponent(query)}`, { token });
+        const payload = await requestJson(`/api/super/search?q=${encodeURIComponent(query)}`, {
+          token,
+          getToken: () => getAuthToken({ forceRefresh: true })
+        });
         if (!active) return;
         setSearchResults(payload.items || []);
       } catch {
@@ -153,13 +159,14 @@ export default function SuperShellLayout() {
       active = false;
       window.clearTimeout(id);
     };
-  }, [search, token, allowed]);
+  }, [allowed, getAuthToken, search, token]);
 
   async function handleLogout() {
     try {
       await requestJson("/api/auth/super/logout", {
         method: "POST",
-        token
+        token,
+        getToken: () => getAuthToken({ forceRefresh: true })
       });
     } catch {
       // no-op

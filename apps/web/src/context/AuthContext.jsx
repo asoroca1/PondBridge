@@ -75,6 +75,7 @@ function LegacyAuthProvider({ children }) {
       authConfigError: "",
       login,
       logout,
+      getAuthToken: async () => token || "",
       refreshSession,
       setUser: (nextUser) => {
         const normalized = normalizeUserShape(nextUser);
@@ -89,10 +90,9 @@ function LegacyAuthProvider({ children }) {
 }
 
 function ClerkBackedAuthProvider({ children }) {
-  const initial = readAuthFromStorage();
-  const [token, setToken] = useState(initial.token || "");
-  const [user, setUser] = useState(normalizeUserShape(initial.user));
-  const [sessionRefreshing, setSessionRefreshing] = useState(false);
+  const [token, setToken] = useState("");
+  const [user, setUser] = useState(null);
+  const [sessionRefreshing, setSessionRefreshing] = useState(true);
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const { signOut } = useClerk();
 
@@ -102,16 +102,30 @@ function ClerkBackedAuthProvider({ children }) {
     clearAuthStorage();
   }, []);
 
+  const getAuthToken = useCallback(
+    async ({ forceRefresh = false } = {}) => {
+      if (!isLoaded || !isSignedIn) return "";
+      const nextToken = (await getToken(forceRefresh ? { skipCache: true } : undefined)) || "";
+      if (nextToken) {
+        setToken(nextToken);
+      }
+      return nextToken;
+    },
+    [getToken, isLoaded, isSignedIn]
+  );
+
   const refreshSession = useCallback(
     async ({ tenantSlug = "" } = {}) => {
       if (!isLoaded || !isSignedIn) {
         clearLocalAuth();
+        setSessionRefreshing(false);
         return null;
       }
 
-      const clerkToken = (await getToken()) || "";
+      const clerkToken = await getAuthToken({ forceRefresh: true });
       if (!clerkToken) {
         clearLocalAuth();
+        setSessionRefreshing(false);
         return null;
       }
 
@@ -138,33 +152,35 @@ function ClerkBackedAuthProvider({ children }) {
         setSessionRefreshing(false);
       }
     },
-    [clearLocalAuth, getToken, isLoaded, isSignedIn]
+    [clearLocalAuth, getAuthToken, isLoaded, isSignedIn]
   );
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded) {
+      setSessionRefreshing(true);
+      return;
+    }
     if (!isSignedIn) {
       clearLocalAuth();
+      setSessionRefreshing(false);
       return;
     }
 
     let active = true;
-    getToken()
-      .then((nextToken) => {
+    refreshSession()
+      .then(() => {
         if (!active) return;
-        const safeToken = nextToken || "";
-        setToken(safeToken);
-        writeAuthToStorage(safeToken, normalizeUserShape(user));
       })
       .catch(() => {
         if (!active) return;
         clearLocalAuth();
+        setSessionRefreshing(false);
       });
 
     return () => {
       active = false;
     };
-  }, [clearLocalAuth, getToken, isLoaded, isSignedIn, user]);
+  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession]);
 
   const login = useCallback(
     (nextToken, nextUser) => {
@@ -199,6 +215,7 @@ function ClerkBackedAuthProvider({ children }) {
       authConfigError: "",
       login,
       logout,
+      getAuthToken,
       refreshSession,
       setUser: (nextUser) => {
         const normalized = normalizeUserShape(nextUser);
@@ -206,7 +223,7 @@ function ClerkBackedAuthProvider({ children }) {
         writeAuthToStorage(token || "", normalized);
       }
     }),
-    [isLoaded, login, logout, refreshSession, sessionRefreshing, token, user]
+    [getAuthToken, isLoaded, login, logout, refreshSession, sessionRefreshing, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -230,6 +247,7 @@ function ClerkUnavailableAuthProvider({ children }) {
       authConfigError: configError,
       login: () => {},
       logout,
+      getAuthToken: async () => "",
       refreshSession,
       setUser: () => {}
     }),

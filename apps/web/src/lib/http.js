@@ -23,9 +23,18 @@ function normalizeTransportError(error, path) {
   return wrapped;
 }
 
-export async function requestJson(path, { method = "GET", body, token, headers = {}, signal } = {}) {
+export async function requestJson(path, { method = "GET", body, token, getToken, headers = {}, signal } = {}) {
+  let resolvedToken = token || "";
+  if (typeof getToken === "function") {
+    try {
+      resolvedToken = (await getToken()) || resolvedToken;
+    } catch {
+      resolvedToken = token || "";
+    }
+  }
+
   const requestHeaders = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
     ...headers
   };
 
