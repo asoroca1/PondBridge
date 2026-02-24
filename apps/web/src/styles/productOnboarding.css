@@ -214,9 +214,8 @@
 .product-director-create-clerk-page {
   align-items: flex-start;
   justify-content: center;
-  overflow: auto;
-  padding-top: clamp(20px, 4vh, 44px);
-  padding-bottom: clamp(20px, 4vh, 44px);
+  overflow: visible;
+  padding: clamp(20px, 4vh, 44px) clamp(28px, 5vw, 60px) clamp(20px, 4vh, 44px);
 }
 
 .product-director-create-clerk-intro {
@@ -1241,6 +1240,11 @@
 
   .product-claim-card {
     padding: 22px 20px;
+  }
+
+  .product-director-create-clerk-page {
+    padding-left: 24px;
+    padding-right: 24px;
   }
 
   .product-director-create-clerk-card {
