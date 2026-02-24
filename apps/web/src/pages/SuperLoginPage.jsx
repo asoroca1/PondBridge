@@ -26,6 +26,10 @@ function ClerkSuperLoginPage() {
   const handleAuthInteraction = useCallback(() => {
     noteTabLoginIntent();
   }, []);
+  const handleSwitchAccount = useCallback(async () => {
+    await logout();
+    noteTabLoginIntent();
+  }, [logout]);
 
   if (token && hasSuperConsoleRole(user)) {
     return <Navigate to={superDestinationFromUser(user)} replace />;
@@ -41,8 +45,12 @@ function ClerkSuperLoginPage() {
               <p className="super-login-kicker">PondBridge</p>
               <h1>Super Admin Console</h1>
               <p className="error-text">This account is not authorized for super admin access.</p>
+              <p className="super-login-subtitle">
+                Signed in as <strong>{String(user?.email || "unknown account")}</strong>. Switch accounts to continue
+                with your super admin login.
+              </p>
             </div>
-            <Button onClick={() => logout()}>Sign out</Button>
+            <Button onClick={handleSwitchAccount}>Switch account</Button>
           </div>
         </div>
       </section>

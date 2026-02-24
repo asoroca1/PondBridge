@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { Button } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
@@ -26,8 +27,8 @@ export default function DirectorCreateAccountClerkPage() {
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const directorBootstrap = !inviteToken;
-  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
-  const { refreshSession } = useAuth();
+  const { isLoaded, isSignedIn } = useClerkAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [inviteError, setInviteError] = useState("");
   const bootstrapInFlightRef = useRef(false);
@@ -36,16 +37,20 @@ export default function DirectorCreateAccountClerkPage() {
     : `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
   const signUpPath = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
   const signInPath = routeWithSlug(slug, "/login", usingSlugRoute);
+  const setupPath = routeWithSlug(slug, "/director-create-account?setup=1", usingSlugRoute);
+  const hasDirectorMembership = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
+  const showDirectorContinue = Boolean(isLoaded && isSignedIn && directorBootstrap && hasDirectorMembership);
+  const showAccountSwitchPrompt = Boolean(isLoaded && isSignedIn && directorBootstrap && !hasDirectorMembership);
 
   useEffect(() => {
     if (typeof window === "undefined" || !slug) return;
     const key = directorBootstrapIntentKey(slug);
-    if (directorBootstrap) {
+    if (directorBootstrap && !(isLoaded && isSignedIn)) {
       window.sessionStorage.setItem(key, "1");
       return;
     }
     window.sessionStorage.removeItem(key);
-  }, [directorBootstrap, slug]);
+  }, [directorBootstrap, isLoaded, isSignedIn, slug]);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -69,55 +74,20 @@ export default function DirectorCreateAccountClerkPage() {
   }, [callbackPath, inviteToken, isLoaded, isSignedIn, navigate, slug]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !slug || !directorBootstrap) return;
+    if (!showDirectorContinue) return;
+    navigate(setupPath, { replace: true });
+  }, [navigate, setupPath, showDirectorContinue]);
+
+  async function handleSwitchToDirectorSignup() {
     if (bootstrapInFlightRef.current) return;
-    let cancelled = false;
     bootstrapInFlightRef.current = true;
-
-    async function bootstrapDirector() {
-      try {
-        const token = await getToken();
-        if (!token) throw new Error("No authenticated session token from Clerk.");
-
-        await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
-          method: "POST",
-          token,
-          body: {}
-        });
-        await refreshSession({ tenantSlug: slug });
-
-        if (cancelled) return;
-        navigate(routeWithSlug(slug, "/director-create-account?setup=1", usingSlugRoute), {
-          replace: true
-        });
-      } catch (error) {
-        if (cancelled) return;
-        const status = Number(error?.status || 0);
-        if (status === 409) {
-          navigate(callbackPath, { replace: true });
-          return;
-        }
-        setInviteError(String(error?.message || "Unable to claim director access."));
-      } finally {
-        bootstrapInFlightRef.current = false;
-      }
+    try {
+      await logout();
+      navigate(signUpPath, { replace: true });
+    } finally {
+      bootstrapInFlightRef.current = false;
     }
-
-    bootstrapDirector();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    callbackPath,
-    directorBootstrap,
-    getToken,
-    isLoaded,
-    isSignedIn,
-    navigate,
-    refreshSession,
-    slug,
-    usingSlugRoute
-  ]);
+  }
 
   return (
     <section className="product-claim-page product-director-create-page product-director-create-clerk-page">
@@ -137,7 +107,21 @@ export default function DirectorCreateAccountClerkPage() {
             </p>
           ) : null}
 
-          {!inviteError ? (
+          {showAccountSwitchPrompt ? (
+            <div className="director-create-signed-in-gate">
+              <p className="product-claim-body">
+                You are currently signed in as <strong>{String(user?.email || "another account")}</strong>.
+                Sign out first to create and verify the director account for this camp.
+              </p>
+              <div className="product-claim-actions director-claim-actions">
+                <Button onClick={handleSwitchToDirectorSignup} disabled={bootstrapInFlightRef.current}>
+                  {bootstrapInFlightRef.current ? "Switching..." : "Sign out and create director account"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {!inviteError && !showAccountSwitchPrompt ? (
             <SignUp
               path={signUpPath}
               routing="path"

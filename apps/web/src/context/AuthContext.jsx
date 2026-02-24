@@ -233,7 +233,7 @@ function ClerkBackedAuthProvider({ children }) {
         return null;
       }
 
-      const clerkToken = await getAuthToken({ forceRefresh: true });
+      const clerkToken = await getAuthToken();
       if (!clerkToken) {
         clearLocalAuth();
         setSessionRefreshing(false);
