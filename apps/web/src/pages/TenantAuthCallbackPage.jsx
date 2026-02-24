@@ -11,6 +11,20 @@ function truthy(value) {
   return ["1", "true", "yes", "on"].includes(normalized);
 }
 
+function directorBootstrapIntentKey(slug = "") {
+  return `pondbridgeDirectorBootstrapIntent:${String(slug || "").trim().toLowerCase() || "default"}`;
+}
+
+function readDirectorBootstrapIntent(slug = "") {
+  if (typeof window === "undefined") return false;
+  return window.sessionStorage.getItem(directorBootstrapIntentKey(slug)) === "1";
+}
+
+function clearDirectorBootstrapIntent(slug = "") {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(directorBootstrapIntentKey(slug));
+}
+
 function routeWithSlug(slug, path) {
   return slug ? `/t/${slug}${path.startsWith("/") ? path : `/${path}`}` : path;
 }
@@ -68,20 +82,30 @@ function ClerkAuthCallbackPage() {
           { token }
         );
         let decision = payload?.decision || {};
+        const hasDirectorBootstrapIntent = directorBootstrap || readDirectorBootstrapIntent(slug);
+        const tenantOnboardingStatus = String(payload?.tenant?.onboardingStatus || "").trim().toLowerCase();
+        const shouldBootstrapFromPrelaunchFallback =
+          !inviteToken &&
+          tenantOnboardingStatus &&
+          tenantOnboardingStatus !== "live" &&
+          decision.state === "not_member";
 
-        if (directorBootstrap) {
+        if (hasDirectorBootstrapIntent || shouldBootstrapFromPrelaunchFallback) {
           await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
             method: "POST",
             token,
             body: {}
           });
+          clearDirectorBootstrapIntent(slug);
         } else if (decision.action === "accept_invite" && inviteToken) {
+          clearDirectorBootstrapIntent(slug);
           await requestJson(`/api/t/${slug}/access/invite/accept`, {
             method: "POST",
             token,
             body: { inviteToken }
           });
         } else if (decision.action === "join_network") {
+          clearDirectorBootstrapIntent(slug);
           if (String(decision.signupMode || "").toLowerCase() === "code" && !completeJoin) {
             navigate(
               routeWithSlug(
@@ -99,6 +123,7 @@ function ClerkAuthCallbackPage() {
             body: {}
           });
         } else if (decision.action === "request_access") {
+          clearDirectorBootstrapIntent(slug);
           await requestJson(`/api/t/${slug}/access/request-access`, {
             method: "POST",
             token,

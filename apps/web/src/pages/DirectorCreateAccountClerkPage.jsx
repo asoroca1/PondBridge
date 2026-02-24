@@ -9,6 +9,10 @@ function routeWithSlug(slug, path, useSlugPrefix = true) {
   return slug && useSlugPrefix ? `/t/${slug}${normalizedPath}` : normalizedPath;
 }
 
+function directorBootstrapIntentKey(slug = "") {
+  return `pondbridgeDirectorBootstrapIntent:${String(slug || "").trim().toLowerCase() || "default"}`;
+}
+
 export default function DirectorCreateAccountClerkPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -28,6 +32,17 @@ export default function DirectorCreateAccountClerkPage() {
     ? `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?inviteToken=${encodeURIComponent(inviteToken)}`
     : `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
   const signUpPath = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
+  const signInPath = routeWithSlug(slug, "/login", usingSlugRoute);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !slug) return;
+    const key = directorBootstrapIntentKey(slug);
+    if (directorBootstrap) {
+      window.sessionStorage.setItem(key, "1");
+      return;
+    }
+    window.sessionStorage.removeItem(key);
+  }, [directorBootstrap, slug]);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -78,8 +93,12 @@ export default function DirectorCreateAccountClerkPage() {
               path={signUpPath}
               routing="path"
               withSignIn={false}
+              signInUrl={signInPath}
               fallbackRedirectUrl={callbackPath}
               forceRedirectUrl={callbackPath}
+              signInFallbackRedirectUrl={callbackPath}
+              signInForceRedirectUrl={callbackPath}
+              afterSignUpUrl={callbackPath}
               localization={{
                 signUp: {
                   start: {
