@@ -182,8 +182,15 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-claim") ||
     currentPath.includes("/director-create-account");
   const inviteToken = new URLSearchParams(location.search || "").get("inviteToken");
+  const onAuthBootstrapRoute =
+    currentPath.includes("/auth/callback") ||
+    currentPath.includes("/director-claim") ||
+    currentPath.includes("/director-create-account") ||
+    currentPath.includes("/login") ||
+    currentPath.includes("/create-account") ||
+    currentPath.includes("/request-access");
 
-  if (clerkMode && isAuthenticated && !user) {
+  if (clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute) {
     return (
       <section className="app-status-shell">
         <div className="app-status-card">
