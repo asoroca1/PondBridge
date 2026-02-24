@@ -6,7 +6,6 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
 import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/storage.js";
-import { generatePalette } from "../lib/colorUtils.js";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
 
 const STEP_ACCOUNT = "account";
@@ -1718,8 +1717,8 @@ function DirectorCreateAccountWizardPage() {
 
           {step === STEP_DESIGN ? (
             <>
-              <div className="director-design-head">
-                <div>
+              <div className="director-design-head director-design-head--styled">
+                <div className="director-design-intro">
                   <h1>Design your network</h1>
                   <p className="product-claim-body director-create-subtitle">
                     Choose your camp colors and logo. This styling will be applied across your alumni network.
@@ -1751,56 +1750,6 @@ function DirectorCreateAccountWizardPage() {
                     </div>
                     {themeErrors.brandPrimary ? (
                       <p className="wizard1-error">{themeErrors.brandPrimary}</p>
-                    ) : null}
-
-                    {isHexColor(themeDraft.brandPrimary) ? (
-                      <>
-                        <div className="director-palette-panel">
-                          <p className="director-palette-label">Suggested palette</p>
-                          <div className="director-palette-swatches">
-                            {Object.entries(generatePalette(themeDraft.brandPrimary)).map(
-                              ([name, color]) => (
-                                <button
-                                  key={name}
-                                  type="button"
-                                  className={`director-palette-swatch ${name === "primary" ? "active" : ""}`}
-                                  style={{ background: color }}
-                                  title={`${name}: ${color}`}
-                                  aria-label={`${name} color ${color}`}
-                                />
-                              )
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="director-color-preview-strip">
-                          <span
-                            className="director-color-preview-chip"
-                            style={{ background: themeDraft.brandPrimary, color: "#fff" }}
-                          >
-                            Button
-                          </span>
-                          <span
-                            className="director-color-preview-chip"
-                            style={{
-                              background: deriveSecondaryHex(themeDraft.brandPrimary),
-                              color: themeDraft.brandPrimary
-                            }}
-                          >
-                            Card accent
-                          </span>
-                          <span
-                            className="director-color-preview-chip"
-                            style={{
-                              background: darkenHex(themeDraft.brandPrimary),
-                              color: "#fff",
-                              borderRadius: "999px"
-                            }}
-                          >
-                            Nav bar
-                          </span>
-                        </div>
-                      </>
                     ) : null}
                   </div>
 

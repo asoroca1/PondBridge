@@ -459,6 +459,30 @@
   align-items: flex-start;
 }
 
+.director-design-head--styled {
+  margin-bottom: 14px;
+}
+
+.director-design-intro {
+  display: grid;
+  gap: 8px;
+  width: min(760px, 100%);
+  border: 1px solid #d5deea;
+  border-radius: var(--radius-md);
+  background: #f8fbff;
+  padding: 18px 20px;
+}
+
+.director-design-intro h1 {
+  margin: 0;
+}
+
+.director-design-intro .director-create-subtitle {
+  margin: 0;
+  max-width: 60ch;
+  text-align: left;
+}
+
 .director-design-fields {
   gap: 14px;
 }
@@ -960,65 +984,6 @@
   font-size: 0.94rem;
 }
 
-/* ── Palette panel (Feature 3) ── */
-
-.director-palette-panel {
-  margin-top: 12px;
-}
-
-.director-palette-label {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: #4f627b;
-  margin: 0 0 8px;
-}
-
-.director-palette-swatches {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.director-palette-swatch {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  border: 2px solid rgba(0, 0, 0, 0.08);
-  cursor: default;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  padding: 0;
-}
-
-.director-palette-swatch:hover {
-  transform: scale(1.12);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
-.director-palette-swatch.active {
-  border-color: rgba(0, 0, 0, 0.25);
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.12);
-}
-
-.director-color-preview-strip {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.director-color-preview-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 16px;
-  border-radius: 8px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
 /* ── Live preview (Feature 4) ── */
 
 .director-live-preview-frame {
@@ -1319,6 +1284,15 @@
 
   .director-design-head {
     flex-direction: column;
+  }
+
+  .director-design-intro {
+    width: 100%;
+    padding: 14px;
+  }
+
+  .director-design-intro .director-create-subtitle {
+    text-align: left;
   }
 
   .director-feature-grid {
