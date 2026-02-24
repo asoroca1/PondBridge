@@ -199,13 +199,13 @@ function TenantScopeRoutes() {
       <ErrorBoundary level="page">
       <Routes>
         <Route index element={onboardingIncomplete ? <DirectorClaimPage /> : <CedarHomePage />} />
-        <Route path="login" element={<CedarLoginPage />} />
+        <Route path="login/*" element={<CedarLoginPage />} />
         <Route path="forgot-password" element={<CedarForgotPasswordPage />} />
-        <Route path="create-account" element={<CedarCreateProfileWizardPage />} />
+        <Route path="create-account/*" element={<CedarCreateProfileWizardPage />} />
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
         <Route path="request-access" element={<TenantAccessPendingPage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
-        <Route path="director-create-account" element={<DirectorCreateAccountPage />} />
+        <Route path="director-create-account/*" element={<DirectorCreateAccountPage />} />
         <Route path="legal" element={<CedarLegalPage />} />
 
         <Route
@@ -459,7 +459,7 @@ export default function App() {
 
           <Route path="/super">
             <Route index element={<Navigate to="login" replace />} />
-            <Route path="login" element={<SuperLoginPage />} />
+            <Route path="login/*" element={<SuperLoginPage />} />
             <Route element={<ErrorBoundary level="page"><SuperShellLayout /></ErrorBoundary>}>
               <Route path="dashboard" element={<SuperPlatformPulsePage />} />
               <Route path="tenants" element={<SuperTenantsPage />} />
