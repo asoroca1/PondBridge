@@ -16,7 +16,7 @@ function hasSuperConsoleRole(user) {
 
 function superDestinationFromUser(user) {
   const roles = roleSetFromUser(user);
-  return roles.has("finance_admin") && !roles.has("super_admin") ? "/super/billing" : "/super/dashboard";
+  return roles.has("finance_admin") && !roles.has("super_admin") ? "/super/billing" : "/super/tenants";
 }
 
 function ClerkSuperLoginPage() {
@@ -58,8 +58,8 @@ function ClerkSuperLoginPage() {
         >
           <SignIn
             routing="virtual"
-            fallbackRedirectUrl="/super/dashboard"
-            forceRedirectUrl="/super/dashboard"
+            fallbackRedirectUrl="/super/tenants"
+            forceRedirectUrl="/super/tenants"
             withSignUp={false}
             localization={{
               signIn: {
