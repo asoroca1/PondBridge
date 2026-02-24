@@ -212,7 +212,9 @@
 }
 
 .product-director-create-clerk-page {
-  align-items: center;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
   padding-top: clamp(20px, 4vh, 44px);
   padding-bottom: clamp(20px, 4vh, 44px);
 }
