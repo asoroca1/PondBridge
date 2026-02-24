@@ -192,7 +192,7 @@
 }
 
 .product-director-create-clerk-wrap {
-  width: min(780px, 100%);
+  width: min(620px, 100%);
 }
 
 .product-director-create-card {
@@ -206,6 +206,11 @@
   backdrop-filter: blur(2px);
   padding: clamp(28px, 4vw, 38px);
   width: 100%;
+}
+
+.product-director-create-clerk-form {
+  width: min(440px, 100%);
+  margin: 6px auto 0;
 }
 
 .product-director-create-clerk-page {
@@ -265,6 +270,12 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+.product-director-create-clerk-page .cl-rootBox,
+.product-director-create-clerk-page .cl-main {
+  width: 100% !important;
+  max-width: none !important;
 }
 
 .product-director-create-clerk-page .cl-main {
