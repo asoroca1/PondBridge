@@ -181,6 +181,7 @@
 .product-director-create-page {
   align-items: flex-start;
   padding-top: clamp(24px, 4.2vh, 46px);
+  overflow: visible;
 }
 
 .product-director-create-page::before {

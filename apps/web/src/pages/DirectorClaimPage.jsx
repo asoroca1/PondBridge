@@ -22,7 +22,9 @@ export default function DirectorClaimPage() {
   const createAccountPath = token
     ? `${createAccountBasePath}?inviteToken=${encodeURIComponent(token)}`
     : createAccountBasePath;
-  const onboardingPath = slug ? `/t/${slug}/onboarding` : "/onboarding";
+  const setupWizardPath = slug
+    ? `/t/${slug}/director-create-account?setup=1`
+    : "/director-create-account?setup=1";
 
   useEffect(() => {
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -42,7 +44,7 @@ export default function DirectorClaimPage() {
         });
         await refreshSession({ tenantSlug: slug });
         if (cancelled) return;
-        navigate(onboardingPath, { replace: true });
+        navigate(setupWizardPath, { replace: true });
       } catch (error) {
         if (cancelled) return;
         const status = Number(error?.status || 0);
@@ -65,7 +67,7 @@ export default function DirectorClaimPage() {
     isReady,
     isSignedIn,
     navigate,
-    onboardingPath,
+    setupWizardPath,
     refreshSession,
     slug,
     token

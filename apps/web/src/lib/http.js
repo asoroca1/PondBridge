@@ -1,3 +1,5 @@
+import { inferCampSlugFromHost } from "./domain.js";
+
 const rawBase = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 export const API_BASE = rawBase.replace(/\/+$/, "");
 
@@ -45,6 +47,18 @@ async function performJsonRequest(url, { method, headers, signal, body }) {
   });
 }
 
+function inferTenantSlugForRequest(path = "") {
+  if (typeof window === "undefined") return "";
+  if (!String(path || "").startsWith("/api/tenants/me")) return "";
+
+  const routeMatch = String(window.location.pathname || "").match(/^\/t\/([^/]+)/i);
+  if (routeMatch?.[1]) {
+    return decodeURIComponent(routeMatch[1]).trim().toLowerCase();
+  }
+
+  return inferCampSlugFromHost(window.location.hostname || "");
+}
+
 export async function requestJson(path, { method = "GET", body, token, getToken, headers = {}, signal } = {}) {
   let resolvedToken = token || "";
   if (typeof getToken === "function") {
@@ -61,6 +75,12 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
   const baseHeaders = {
     ...headers
   };
+  if (!baseHeaders["X-Tenant-Slug"]) {
+    const inferredTenantSlug = inferTenantSlugForRequest(path);
+    if (inferredTenantSlug) {
+      baseHeaders["X-Tenant-Slug"] = inferredTenantSlug;
+    }
+  }
 
   if (!(body instanceof FormData)) {
     baseHeaders["Content-Type"] = "application/json";

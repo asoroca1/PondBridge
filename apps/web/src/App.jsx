@@ -165,10 +165,8 @@ function TenantScopeRoutes() {
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
   const onboardingIncomplete = tenant?.onboardingStatus !== "live";
   const currentPath = location.pathname || "";
-  const onboardingPath = slug ? `/t/${slug}/onboarding` : "/onboarding";
-  const isIndexRoute = currentPath === `/t/${slug}` || currentPath === `/t/${slug}/`;
+  const directorSetupPath = slug ? `/t/${slug}/director-create-account?setup=1` : "/director-create-account?setup=1";
   const onOnboardingRoute =
-    isIndexRoute ||
     currentPath.includes("/onboarding") ||
     currentPath.includes("/director-claim") ||
     currentPath.includes("/director-create-account");
@@ -186,7 +184,7 @@ function TenantScopeRoutes() {
   }
 
   if (isCampDirector && onboardingIncomplete && !onOnboardingRoute) {
-    return <Navigate to={onboardingPath} replace />;
+    return <Navigate to={directorSetupPath} replace />;
   }
 
   if (!isCampDirector && onboardingIncomplete && currentPath.endsWith("/create-account") && !inviteToken) {

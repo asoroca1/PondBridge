@@ -162,6 +162,7 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "" }) {
   const base = decisionRouteBase(tenant.slug);
   const loginRoute = `${base}/login`;
   const onboardingRoute = `${base}/edit-profile`;
+  const directorSetupRoute = `${base}/director-create-account?setup=1`;
   const homeRoute = `${base}/home`;
   const pendingRoute = `${base}/request-access`;
 
@@ -201,7 +202,7 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "" }) {
     }
     const nextRoute =
       isDirector && tenant.onboardingStatus !== "live"
-        ? `${base}/onboarding`
+        ? directorSetupRoute
         : needsOnboarding
         ? onboardingRoute
         : homeRoute;
@@ -392,7 +393,7 @@ router.post("/director-bootstrap", accessMutationLimiter, async (req, res) => {
       roles: member.roles || [],
       status: member.status
     },
-    nextRoute: `${decisionRouteBase(req.tenant.slug)}/onboarding`
+    nextRoute: `${decisionRouteBase(req.tenant.slug)}/director-create-account?setup=1`
   });
 });
 

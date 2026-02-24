@@ -87,7 +87,9 @@ export default function DirectorCreateAccountClerkPage() {
         await refreshSession({ tenantSlug: slug });
 
         if (cancelled) return;
-        navigate(routeWithSlug(slug, "/onboarding", usingSlugRoute), { replace: true });
+        navigate(routeWithSlug(slug, "/director-create-account?setup=1", usingSlugRoute), {
+          replace: true
+        });
       } catch (error) {
         if (cancelled) return;
         const status = Number(error?.status || 0);

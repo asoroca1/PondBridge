@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { listFeaturesForPlan } from "@pondbridge/shared";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { getTenantContext } from "../middleware/tenantContext.js";
 import {
   TenantModel,
   UserModel,
@@ -221,21 +222,35 @@ async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
     String(req.body?.tenantId || "").trim() ||
     String(req.user.tenantId || "").trim();
 
-  if (!tenantId) {
+  let tenant = null;
+  if (tenantId) {
+    tenant = await TenantModel.findById(tenantId);
+  }
+
+  if (!tenant) {
+    const context = getTenantContext(req);
+    if (context.slug) {
+      tenant = await TenantModel.findBySlug(context.slug);
+    } else if (context.host) {
+      tenant = await TenantModel.findByDomain(context.host);
+    }
+  }
+
+  if (!tenant && !tenantId) {
     return {
       error: {
         status: 400,
         payload: {
           error: {
             code: "TENANT_REQUIRED",
-            message: "No tenant context found for this admin user."
+            message:
+              "No tenant context found for this admin user. Open this route from a camp domain or pass tenantId."
           }
         }
       }
     };
   }
 
-  const tenant = await TenantModel.findById(tenantId);
   if (!tenant) {
     return {
       error: {

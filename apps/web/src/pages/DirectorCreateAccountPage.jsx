@@ -303,11 +303,33 @@ async function optimizeImageFile(
   return result;
 }
 
-export default function DirectorCreateAccountPage() {
-  if (clerkUiEnabled()) {
+function DirectorCreateAccountClerkGate() {
+  const { isReady, isAuthenticated, user } = useAuth();
+  const hasWizardAccess = Boolean(
+    isAuthenticated &&
+      (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"))
+  );
+
+  if (!isReady) {
+    return (
+      <section className="app-status-shell">
+        <div className="app-status-card">
+          <h1>Loading your account...</h1>
+          <p>We are syncing your director access.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!hasWizardAccess) {
     return <DirectorCreateAccountClerkPage />;
   }
-  if (clerkModeRequested()) {
+
+  return <DirectorCreateAccountWizardPage />;
+}
+
+export default function DirectorCreateAccountPage() {
+  if (clerkModeRequested() && !clerkUiEnabled()) {
     return (
       <section className="app-status-shell is-error">
         <div className="app-status-card">
@@ -321,17 +343,28 @@ export default function DirectorCreateAccountPage() {
     );
   }
 
+  if (clerkUiEnabled()) {
+    return <DirectorCreateAccountClerkGate />;
+  }
+
+  return <DirectorCreateAccountWizardPage />;
+}
+
+function DirectorCreateAccountWizardPage() {
   const { slug: paramSlug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, token: authToken, user } = useAuth();
   const { tenant } = useTenant();
   const slug = String(paramSlug || tenant?.slug || "").trim().toLowerCase();
+  const isDirectorUser =
+    user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin");
+  const accountStepRequired = !isDirectorUser;
   const initialBrandColor = useMemo(() => DEFAULT_SETUP_BRAND, []);
 
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
-  const [step, setStep] = useState(STEP_ACCOUNT);
+  const [step, setStep] = useState(() => (accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN));
   const [submitError, setSubmitError] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [logoFileName, setLogoFileName] = useState("");
@@ -379,6 +412,7 @@ export default function DirectorCreateAccountPage() {
   const campSpecificsHydratedRef = useRef(false);
   const planHydratedRef = useRef(false);
   const initialThemeVarsRef = useRef(null);
+  const skipAccountHydratedRef = useRef(false);
 
   const cardRef = useRef(null);
 
@@ -387,6 +421,32 @@ export default function DirectorCreateAccountPage() {
       cardRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [step]);
+
+  useEffect(() => {
+    if (skipAccountHydratedRef.current) return;
+    if (accountStepRequired) return;
+
+    skipAccountHydratedRef.current = true;
+    setStep((currentStep) => (currentStep === STEP_ACCOUNT ? STEP_DESIGN : currentStep));
+  }, [accountStepRequired]);
+
+  useEffect(() => {
+    if (!isDirectorUser) return;
+
+    const identityEmail = String(user?.email || "").trim();
+    const fullName = String(user?.name || "").trim();
+    const [firstFromName = "", ...restName] = fullName ? fullName.split(/\s+/) : [];
+    const lastFromName = restName.join(" ").trim();
+    const tenantName = String(tenant?.name || "").trim();
+
+    setForm((prev) => ({
+      ...prev,
+      firstName: prev.firstName || firstFromName,
+      lastName: prev.lastName || lastFromName,
+      email: prev.email || identityEmail,
+      campName: prev.campName || tenantName
+    }));
+  }, [isDirectorUser, tenant?.name, user?.email, user?.name]);
 
   useEffect(() => {
     if (!showLaunchCelebration || !launchRedirectUrl) return;
@@ -406,8 +466,7 @@ export default function DirectorCreateAccountPage() {
   const loginPath = inviteToken
     ? `/t/${slug}/login?inviteToken=${encodeURIComponent(inviteToken)}`
     : `/t/${slug}/login`;
-  const isDirectorUser =
-    user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin");
+  const firstWizardStep = accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN;
   const draftMainColor = isHexColor(themeDraft.brandPrimary)
     ? themeDraft.brandPrimary
     : initialBrandColor;
@@ -700,6 +759,10 @@ export default function DirectorCreateAccountPage() {
   }
 
   function validateAccountStep() {
+    if (!accountStepRequired) {
+      return {};
+    }
+
     const next = {};
     if (!String(form.firstName || "").trim()) next.firstName = "Please enter your first name.";
     if (!String(form.lastName || "").trim()) next.lastName = "Please enter your last name.";
@@ -806,7 +869,7 @@ export default function DirectorCreateAccountPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(STEP_ACCOUNT);
+      setStep(firstWizardStep);
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -828,7 +891,7 @@ export default function DirectorCreateAccountPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(STEP_ACCOUNT);
+      setStep(firstWizardStep);
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -858,7 +921,7 @@ export default function DirectorCreateAccountPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(STEP_ACCOUNT);
+      setStep(firstWizardStep);
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -896,7 +959,7 @@ export default function DirectorCreateAccountPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(STEP_ACCOUNT);
+      setStep(firstWizardStep);
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -1076,7 +1139,7 @@ export default function DirectorCreateAccountPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(STEP_ACCOUNT);
+      setStep(firstWizardStep);
       setSubmitError("Complete account details before continuing.");
       return;
     }
@@ -1139,7 +1202,7 @@ export default function DirectorCreateAccountPage() {
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setSubmitError("Please complete your account details before finishing setup.");
-      setStep(STEP_ACCOUNT);
+      setStep(firstWizardStep);
       return;
     }
 
@@ -1418,47 +1481,49 @@ export default function DirectorCreateAccountPage() {
       <div className="product-claim-wrap product-director-create-wrap">
         <article ref={cardRef} className="product-claim-card product-director-create-card pb-cedar-page">
           <div className="director-create-stepper" aria-label="Onboarding progress">
-            <button
-              type="button"
-              className={`director-step-pill ${stepClass(STEP_ACCOUNT)}`}
-              onClick={() => goToStep(STEP_ACCOUNT)}
-            >
-              1. Account
-            </button>
+            {accountStepRequired ? (
+              <button
+                type="button"
+                className={`director-step-pill ${stepClass(STEP_ACCOUNT)}`}
+                onClick={() => goToStep(STEP_ACCOUNT)}
+              >
+                1. Account
+              </button>
+            ) : null}
             <button
               type="button"
               className={`director-step-pill ${stepClass(STEP_DESIGN)}`}
               onClick={() => goToStep(STEP_DESIGN)}
             >
-              2. Design
+              {accountStepRequired ? "2. Design" : "1. Design"}
             </button>
             <button
               type="button"
               className={`director-step-pill ${stepClass(STEP_FEATURES)}`}
               onClick={() => goToStep(STEP_FEATURES)}
             >
-              3. Features
+              {accountStepRequired ? "3. Features" : "2. Features"}
             </button>
             <button
               type="button"
               className={`director-step-pill ${stepClass(STEP_CAMP_SPECIFICS)}`}
               onClick={() => goToStep(STEP_CAMP_SPECIFICS)}
             >
-              4. Camp specifics
+              {accountStepRequired ? "4. Camp specifics" : "3. Camp specifics"}
             </button>
             <button
               type="button"
               className={`director-step-pill ${stepClass(STEP_BILLING_PLAN)}`}
               onClick={() => goToStep(STEP_BILLING_PLAN)}
             >
-              5. Billing and plan
+              {accountStepRequired ? "5. Billing and plan" : "4. Billing and plan"}
             </button>
             <button
               type="button"
               className={`director-step-pill ${stepClass(STEP_REVIEW_LAUNCH)}`}
               onClick={() => goToStep(STEP_REVIEW_LAUNCH)}
             >
-              6. Review and launch
+              {accountStepRequired ? "6. Review and launch" : "5. Review and launch"}
             </button>
           </div>
 
@@ -1832,10 +1897,12 @@ export default function DirectorCreateAccountPage() {
                   <button
                     type="button"
                     className="wizard1-btn-secondary"
-                    onClick={() => setStep(STEP_ACCOUNT)}
+                    onClick={() =>
+                      accountStepRequired ? setStep(STEP_ACCOUNT) : navigate(backPath)
+                    }
                     disabled={finishing}
                   >
-                    Back
+                    {accountStepRequired ? "Back" : "Back to claim page"}
                   </button>
                   <div className="wizard1-actions-right">
                     <button
