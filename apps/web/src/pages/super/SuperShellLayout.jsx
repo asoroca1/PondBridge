@@ -18,10 +18,6 @@ const SUPER_NAV = [
     items: [{ to: "/super/tenants", label: "Camp Directory" }]
   },
   {
-    label: "Users",
-    items: [{ to: "/super/tenants", label: "Users & Directors" }]
-  },
-  {
     label: "Billing",
     items: [
       { to: "/super/billing", label: "Billing Overview" },
