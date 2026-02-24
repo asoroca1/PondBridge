@@ -15,6 +15,8 @@ const STEP_CAMP_SPECIFICS = "camp_specifics";
 const STEP_BILLING_PLAN = "billing_plan";
 const STEP_REVIEW_LAUNCH = "review_launch";
 const DEFAULT_SETUP_BRAND = "#0f2747";
+const BILLING_REQUIRED_DURING_ONBOARDING =
+  String(import.meta.env.VITE_REQUIRE_BILLING_ONBOARDING || "").trim().toLowerCase() === "true";
 
 const STEP_ORDER = [
   STEP_ACCOUNT,
@@ -833,25 +835,27 @@ function DirectorCreateAccountWizardPage() {
   }
 
   function validateBillingStep() {
-    const next = {};
     const mailingAddress = normalizeAddress(billingDetails.mailingAddress);
     const billingAddress = billingDetails.sameAsMailing
       ? { ...mailingAddress }
       : normalizeAddress(billingDetails.billingAddress);
-    const requiredFields = ["line1", "city", "state", "postalCode", "country"];
+    const next = {};
+    if (BILLING_REQUIRED_DURING_ONBOARDING) {
+      const requiredFields = ["line1", "city", "state", "postalCode", "country"];
 
-    requiredFields.forEach((field) => {
-      if (!String(mailingAddress[field] || "").trim()) {
-        next[`mailingAddress.${field}`] = "This field is required.";
-      }
-    });
-
-    if (!billingDetails.sameAsMailing) {
       requiredFields.forEach((field) => {
-        if (!String(billingAddress[field] || "").trim()) {
-          next[`billingAddress.${field}`] = "This field is required.";
+        if (!String(mailingAddress[field] || "").trim()) {
+          next[`mailingAddress.${field}`] = "This field is required.";
         }
       });
+
+      if (!billingDetails.sameAsMailing) {
+        requiredFields.forEach((field) => {
+          if (!String(billingAddress[field] || "").trim()) {
+            next[`billingAddress.${field}`] = "This field is required.";
+          }
+        });
+      }
     }
 
     return {
@@ -1000,12 +1004,16 @@ function DirectorCreateAccountWizardPage() {
       return;
     }
 
-    const billingCheck = validateBillingStep();
-    setBillingErrors(billingCheck.errors);
-    if (Object.keys(billingCheck.errors).length > 0) {
-      setStep(STEP_BILLING_PLAN);
-      setSubmitError("Please complete billing details before moving forward.");
-      return;
+    if (BILLING_REQUIRED_DURING_ONBOARDING) {
+      const billingCheck = validateBillingStep();
+      setBillingErrors(billingCheck.errors);
+      if (Object.keys(billingCheck.errors).length > 0) {
+        setStep(STEP_BILLING_PLAN);
+        setSubmitError("Please complete billing details before moving forward.");
+        return;
+      }
+    } else {
+      setBillingErrors({});
     }
 
     setSubmitError("");
@@ -1245,11 +1253,15 @@ function DirectorCreateAccountWizardPage() {
     }
 
     const billingCheck = validateBillingStep();
-    setBillingErrors(billingCheck.errors);
-    if (Object.keys(billingCheck.errors).length > 0) {
-      setStep(STEP_BILLING_PLAN);
-      setSubmitError("Please complete billing details before finishing setup.");
-      return;
+    if (BILLING_REQUIRED_DURING_ONBOARDING) {
+      setBillingErrors(billingCheck.errors);
+      if (Object.keys(billingCheck.errors).length > 0) {
+        setStep(STEP_BILLING_PLAN);
+        setSubmitError("Please complete billing details before finishing setup.");
+        return;
+      }
+    } else {
+      setBillingErrors({});
     }
 
     if (!legalAgreementAccepted) {
@@ -1386,47 +1398,49 @@ function DirectorCreateAccountWizardPage() {
         }
       });
 
-      await requestJson("/api/tenants/me/billing", {
-        method: "PATCH",
-        token,
-        body: {
-          billingDetails: billingCheck.billingDetails
-        }
-      });
-
-      const billingSnapshot = await requestJson("/api/tenants/me/billing", { token });
-      const billingState = billingSnapshot?.billing || {};
-      const launchReady = Boolean(
-        billingState.launchReady ||
-          (billingState.launchReadiness?.lifecycleReady &&
-            billingState.launchReadiness?.feeReady)
-      );
-
-      if (!launchReady) {
-        const lifecycleStatus = String(billingState.lifecycleStatus || "").trim().toLowerCase();
-        if (checkoutQueryState === "success" && lifecycleStatus === "checkout_started") {
-          throw new Error(
-            "Stripe is still confirming your payment. Please wait a few seconds and click Complete setup again."
-          );
-        }
-
-        const successUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=success`;
-        const cancelUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=cancel`;
-        const checkoutPayload = await requestJson("/api/tenants/me/billing/checkout", {
-          method: "POST",
+      if (BILLING_REQUIRED_DURING_ONBOARDING) {
+        await requestJson("/api/tenants/me/billing", {
+          method: "PATCH",
           token,
           body: {
-            planCode: selectedBillingPlanCode,
-            successUrl,
-            cancelUrl
+            billingDetails: billingCheck.billingDetails
           }
         });
-        const checkoutUrl = String(checkoutPayload?.checkoutUrl || "").trim();
-        if (!checkoutUrl) {
-          throw new Error("Unable to start Stripe checkout right now. Please try again.");
+
+        const billingSnapshot = await requestJson("/api/tenants/me/billing", { token });
+        const billingState = billingSnapshot?.billing || {};
+        const launchReady = Boolean(
+          billingState.launchReady ||
+            (billingState.launchReadiness?.lifecycleReady &&
+              billingState.launchReadiness?.feeReady)
+        );
+
+        if (!launchReady) {
+          const lifecycleStatus = String(billingState.lifecycleStatus || "").trim().toLowerCase();
+          if (checkoutQueryState === "success" && lifecycleStatus === "checkout_started") {
+            throw new Error(
+              "Stripe is still confirming your payment. Please wait a few seconds and click Complete setup again."
+            );
+          }
+
+          const successUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=success`;
+          const cancelUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=cancel`;
+          const checkoutPayload = await requestJson("/api/tenants/me/billing/checkout", {
+            method: "POST",
+            token,
+            body: {
+              planCode: selectedBillingPlanCode,
+              successUrl,
+              cancelUrl
+            }
+          });
+          const checkoutUrl = String(checkoutPayload?.checkoutUrl || "").trim();
+          if (!checkoutUrl) {
+            throw new Error("Unable to start Stripe checkout right now. Please try again.");
+          }
+          window.location.assign(checkoutUrl);
+          return;
         }
-        window.location.assign(checkoutUrl);
-        return;
       }
 
       const launchPayload = await requestJson("/api/tenants/me/launch", {
@@ -2116,7 +2130,7 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Billing and plan</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    Confirm your alumni network plan and onboarding fee status before finishing setup.
+                    Confirm your plan details. Billing fields are optional for onboarding and can be completed later.
                   </p>
                 </div>
               </div>
@@ -2155,7 +2169,7 @@ function DirectorCreateAccountWizardPage() {
                       <div className="wizard1-grid wizard1-gap">
                         <div className="wizard1-field wizard1-span-12">
                           <label className="wizard1-label" htmlFor="director-mailing-line1">
-                            Address line 1<span className="req" aria-hidden="true"> *</span>
+                            Address line 1
                           </label>
                           <input
                             id="director-mailing-line1"
@@ -2186,7 +2200,7 @@ function DirectorCreateAccountWizardPage() {
 
                         <div className="wizard1-field wizard1-span-4">
                           <label className="wizard1-label" htmlFor="director-mailing-city">
-                            City<span className="req" aria-hidden="true"> *</span>
+                            City
                           </label>
                           <input
                             id="director-mailing-city"
@@ -2203,7 +2217,7 @@ function DirectorCreateAccountWizardPage() {
 
                         <div className="wizard1-field wizard1-span-4">
                           <label className="wizard1-label" htmlFor="director-mailing-state">
-                            State / Province<span className="req" aria-hidden="true"> *</span>
+                            State / Province
                           </label>
                           <input
                             id="director-mailing-state"
@@ -2220,7 +2234,7 @@ function DirectorCreateAccountWizardPage() {
 
                         <div className="wizard1-field wizard1-span-4">
                           <label className="wizard1-label" htmlFor="director-mailing-postal">
-                            Postal code<span className="req" aria-hidden="true"> *</span>
+                            Postal code
                           </label>
                           <input
                             id="director-mailing-postal"
@@ -2237,7 +2251,7 @@ function DirectorCreateAccountWizardPage() {
 
                         <div className="wizard1-field wizard1-span-6">
                           <label className="wizard1-label" htmlFor="director-mailing-country">
-                            Country<span className="req" aria-hidden="true"> *</span>
+                            Country
                           </label>
                           <input
                             id="director-mailing-country"
@@ -2273,7 +2287,7 @@ function DirectorCreateAccountWizardPage() {
                         <div className="wizard1-grid wizard1-gap">
                           <div className="wizard1-field wizard1-span-12">
                             <label className="wizard1-label" htmlFor="director-billing-line1">
-                              Address line 1<span className="req" aria-hidden="true"> *</span>
+                              Address line 1
                             </label>
                             <input
                               id="director-billing-line1"
@@ -2304,7 +2318,7 @@ function DirectorCreateAccountWizardPage() {
 
                           <div className="wizard1-field wizard1-span-4">
                             <label className="wizard1-label" htmlFor="director-billing-city">
-                              City<span className="req" aria-hidden="true"> *</span>
+                              City
                             </label>
                             <input
                               id="director-billing-city"
@@ -2321,7 +2335,7 @@ function DirectorCreateAccountWizardPage() {
 
                           <div className="wizard1-field wizard1-span-4">
                             <label className="wizard1-label" htmlFor="director-billing-state">
-                              State / Province<span className="req" aria-hidden="true"> *</span>
+                              State / Province
                             </label>
                             <input
                               id="director-billing-state"
@@ -2338,7 +2352,7 @@ function DirectorCreateAccountWizardPage() {
 
                           <div className="wizard1-field wizard1-span-4">
                             <label className="wizard1-label" htmlFor="director-billing-postal">
-                              Postal code<span className="req" aria-hidden="true"> *</span>
+                              Postal code
                             </label>
                             <input
                               id="director-billing-postal"
@@ -2355,7 +2369,7 @@ function DirectorCreateAccountWizardPage() {
 
                           <div className="wizard1-field wizard1-span-6">
                             <label className="wizard1-label" htmlFor="director-billing-country">
-                              Country<span className="req" aria-hidden="true"> *</span>
+                              Country
                             </label>
                             <input
                               id="director-billing-country"

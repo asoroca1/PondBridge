@@ -129,6 +129,10 @@ export const env = {
   TRUST_PROXY_HOPS: toNumber(process.env.TRUST_PROXY_HOPS, 1),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
   BILLING_MODE: process.env.BILLING_MODE || "auto",
+  DIRECTOR_WIZARD_REQUIRE_BILLING: toBoolean(
+    process.env.DIRECTOR_WIZARD_REQUIRE_BILLING,
+    false
+  ),
   ALLOW_MOCK_BILLING_IN_PRODUCTION: toBoolean(
     process.env.ALLOW_MOCK_BILLING_IN_PRODUCTION,
     false

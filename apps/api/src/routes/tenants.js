@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { listFeaturesForPlan } from "@pondbridge/shared";
+import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { getTenantContext } from "../middleware/tenantContext.js";
 import {
@@ -926,10 +927,14 @@ router.post("/me/launch", requireAuth, async (req, res) => {
         }
       ];
   const blockingChecklist = fromDirectorWizard ? [] : checklistBlockers;
+  const billingBlockers =
+    superAdminOverride || (fromDirectorWizard && !env.DIRECTOR_WIZARD_REQUIRE_BILLING)
+      ? []
+      : readiness.checks.filter((item) => !item.ok && item.id === "billing");
   const launchBlockers = [
     ...blockingChecklist,
     ...legalBlockers,
-    ...(superAdminOverride ? [] : readiness.checks.filter((item) => !item.ok && item.id === "billing"))
+    ...billingBlockers
   ];
 
   if (launchBlockers.length > 0) {
