@@ -60,45 +60,56 @@ export default function DirectorCreateAccountClerkPage() {
 
   return (
     <section className="product-claim-page product-director-create-page">
-      <div className="product-claim-wrap product-director-create-wrap">
-        <article className="product-claim-card product-director-create-card">
-        <h1>Create Director Account</h1>
+      <div className="product-claim-wrap product-director-create-wrap product-director-create-clerk-wrap">
+        <article className="product-claim-card product-director-create-card product-director-create-clerk-card">
+          <h1>Create Director Account</h1>
           <p className="product-claim-body director-create-subtitle">
-            {inviteToken
-              ? "Claim your invite and continue camp onboarding."
-              : "No invite token detected. The first verified signup for this prelaunch camp will claim director setup."}
+            Create your director account to continue camp onboarding.
           </p>
-        {inviteError ? <p className="error-text">{inviteError}</p> : null}
-        {inviteMeta ? (
-          <p className="success-text">
-            Invite verified for <strong>{inviteMeta.email || "director"}</strong>.
-          </p>
-        ) : null}
+          {inviteError ? <p className="error-text">{inviteError}</p> : null}
+          {inviteMeta ? (
+            <p className="success-text">
+              Invite verified for <strong>{inviteMeta.email || "director"}</strong>.
+            </p>
+          ) : null}
 
           {!inviteError ? (
-          <SignUp
-            path={signUpPath}
-            routing="path"
-            signInUrl={loginPath}
-            fallbackRedirectUrl={callbackPath}
-            forceRedirectUrl={callbackPath}
-            appearance={{
-              elements: {
-                card: {
-                  boxShadow: "none",
-                  border: "none",
-                  width: "100%"
+            <SignUp
+              path={signUpPath}
+              routing="path"
+              signInUrl={loginPath}
+              fallbackRedirectUrl={callbackPath}
+              forceRedirectUrl={callbackPath}
+              appearance={{
+                elements: {
+                  rootBox: {
+                    width: "100%"
+                  },
+                  card: {
+                    boxShadow: "0 16px 38px rgba(13, 34, 66, 0.12)",
+                    border: "1px solid #d6deeb",
+                    width: "100%",
+                    maxWidth: "100%",
+                    borderRadius: "16px",
+                    background: "#ffffff"
+                  },
+                  headerTitle: {
+                    fontSize: "2rem",
+                    lineHeight: "1.12"
+                  },
+                  headerSubtitle: {
+                    fontSize: "1rem"
+                  }
                 }
-              }
-            }}
-          />
-        ) : null}
-
-          <div className="product-claim-actions">
-          <Link className="btn btn-secondary" to={loginPath}>
-            I already have an account
-          </Link>
-        </div>
+              }}
+            />
+          ) : (
+            <div className="product-claim-actions">
+              <Link className="btn btn-secondary" to={loginPath}>
+                Back to login
+              </Link>
+            </div>
+          )}
         </article>
       </div>
     </section>
