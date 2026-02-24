@@ -425,8 +425,8 @@ function DirectorCreateAccountWizardPage() {
   const cardRef = useRef(null);
 
   useEffect(() => {
-    if (cardRef.current) {
-      cardRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   }, [step]);
 
