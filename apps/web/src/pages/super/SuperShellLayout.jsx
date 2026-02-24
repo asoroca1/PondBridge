@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
@@ -55,6 +55,7 @@ export default function SuperShellLayout() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const searchCacheRef = useRef(new Map());
 
   const role = roleFromUser(user);
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -65,44 +66,57 @@ export default function SuperShellLayout() {
     if (role === "finance_admin") return FINANCE_NAV;
     return SUPER_NAV;
   }, [role]);
-  const contextLabel = useMemo(() => {
-    const params = new URLSearchParams(location.search || "");
-    const campName = String(params.get("camp") || "").trim();
-    return campName ? `Viewing: ${campName}` : "Viewing: Global";
-  }, [location.search]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;
 
     const query = search.trim();
-    if (query.length < 2) {
+    if (!query) {
       setSearchResults([]);
       setSearchLoading(false);
       return undefined;
     }
 
+    const normalizedQuery = query.toLowerCase();
+    const cached = searchCacheRef.current.get(normalizedQuery);
+    if (cached) {
+      setSearchResults(cached);
+      setSearchLoading(false);
+      return undefined;
+    }
+
     let active = true;
+    const controller = new AbortController();
     setSearchLoading(true);
 
     const id = window.setTimeout(async () => {
       try {
         const payload = await requestJson(`/api/super/search?q=${encodeURIComponent(query)}`, {
           token,
-          getToken: () => getAuthToken({ forceRefresh: true })
+          getToken: () => getAuthToken(),
+          signal: controller.signal
         });
         if (!active) return;
-        setSearchResults(payload.items || []);
-      } catch {
+        const items = payload.items || [];
+        setSearchResults(items);
+        searchCacheRef.current.set(normalizedQuery, items);
+        if (searchCacheRef.current.size > 30) {
+          const oldestKey = searchCacheRef.current.keys().next().value;
+          if (oldestKey) searchCacheRef.current.delete(oldestKey);
+        }
+      } catch (error) {
+        if (error?.name === "AbortError") return;
         if (!active) return;
         setSearchResults([]);
       } finally {
         if (!active) return;
         setSearchLoading(false);
       }
-    }, 180);
+    }, 90);
 
     return () => {
       active = false;
+      controller.abort();
       window.clearTimeout(id);
     };
   }, [allowed, getAuthToken, search, token]);
@@ -192,8 +206,6 @@ export default function SuperShellLayout() {
             </div>
           ) : null}
         </div>
-        <span className="super-context-chip">{contextLabel}</span>
-
         <div className="super-topbar-actions">
           <button type="button" className="super-signout-btn" onClick={handleLogout}>
             Sign out

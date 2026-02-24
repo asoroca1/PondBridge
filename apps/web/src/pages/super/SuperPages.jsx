@@ -182,7 +182,7 @@ export function SuperPlatformPulsePage() {
   const { token, getAuthToken } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
 
   async function loadData() {
     try {
@@ -288,11 +288,12 @@ export function SuperTenantsPage() {
 
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [claimLink, setClaimLink] = useState("");
+  const [createResult, setCreateResult] = useState(null);
   const [provisioningTenantId, setProvisioningTenantId] = useState("");
+  const [deletingTenantId, setDeletingTenantId] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "", plan: "", billingStatus: "" });
   const [form, setForm] = useState({
     name: "",
@@ -333,7 +334,7 @@ export function SuperTenantsPage() {
     event.preventDefault();
     setError("");
     setStatus("");
-    setClaimLink("");
+    setCreateResult(null);
     try {
       const payload = await requestJson("/api/super/tenants", {
         method: "POST",
@@ -351,27 +352,24 @@ export function SuperTenantsPage() {
         payload.directorClaimLink ||
         payload.directorInvite?.claimUrl ||
         "";
-      setClaimLink(nextClaimLink);
-      const provisioningDetail =
-        domainReady || !provisioning?.status
-          ? ""
-          : ` Domain provisioning status: ${provisioning.status}${provisioning.reason ? ` (${provisioning.reason})` : ""}.`;
-      setStatus(
-        nextClaimLink
-          ? `Created ${payload.tenant.name}. Director claim link is ready.${provisioningDetail}`
-          : `Created ${payload.tenant.name}.${provisioningDetail}`
-      );
+      setCreateResult({
+        campName: payload?.tenant?.name || form.name,
+        claimLink: nextClaimLink,
+        provisioningStatus: String(provisioning?.status || ""),
+        provisioningReason: String(provisioning?.reason || "")
+      });
       setForm({ name: "", slug: "", planTier: "base", onboardingFeeAmount: 0, directorEmail: "" });
       loadData();
     } catch (createError) {
+      setCreateResult(null);
       setError(createError.message || "Could not create camp.");
     }
   }
 
-  async function copyClaim() {
-    if (!claimLink) return;
-    await navigator.clipboard.writeText(claimLink);
-    setStatus("Claim link copied.");
+  async function copyClaim(link) {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setStatus("Director claim link copied.");
   }
 
   async function toggleTenant(camp) {
@@ -416,11 +414,38 @@ export function SuperTenantsPage() {
     }
   }
 
+  async function wipeTenant(camp) {
+    const phrase = `WIPE ${camp.slug}`;
+    const typed = window.prompt(
+      `This permanently deletes ${camp.name} (${camp.slug}) and all backend records for this camp.\n\nType "${phrase}" to continue.`
+    );
+    if (typed === null) return;
+
+    try {
+      setError("");
+      setStatus("");
+      setDeletingTenantId(String(camp._id || ""));
+      const payload = await requestJson(`/api/super/tenants/${camp._id}/hard-delete`, {
+        method: "DELETE",
+        token,
+        body: { confirmation: typed }
+      });
+
+      const removed = payload?.removed?.counts || {};
+      const removedTotal = Object.values(removed).reduce((sum, value) => sum + Number(value || 0), 0);
+      setStatus(`Deleted ${camp.name} and wiped ${removedTotal} related record${removedTotal === 1 ? "" : "s"}.`);
+      loadData();
+    } catch (deleteError) {
+      setError(deleteError.message || "Could not wipe camp.");
+    } finally {
+      setDeletingTenantId("");
+    }
+  }
+
   return (
     <div className="super-panel-stack">
       <Card className="super-tenants-summary-card">
         <PanelHeader title="Tenants" subtitle="Create and manage camp tenants." />
-        {loading ? <p className="muted">Loading tenant summary...</p> : null}
         {summary ? (
           <div className="super-stat-grid three-up">
             <StatCard label="Camps" value={summary.tenants || 0} subtext="Total tenant records" tone="neutral" />
@@ -429,15 +454,45 @@ export function SuperTenantsPage() {
           </div>
         ) : null}
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
-        {claimLink ? (
-          <div className="super-inline-row">
-            <Input readOnly value={claimLink} />
-            <Button variant="secondary" onClick={copyClaim}>
-              Copy
-            </Button>
-          </div>
+        {createResult ? (
+          <section className="super-create-result" role="status">
+            <header className="super-create-result-header">
+              <h3>Camp created</h3>
+              <p>
+                <strong>{createResult.campName}</strong> is ready for director onboarding.
+              </p>
+            </header>
+            {createResult.claimLink ? (
+              <>
+                <p className="super-create-result-label">Director claim link</p>
+                <div className="super-create-result-link-row">
+                  <Input readOnly value={createResult.claimLink} />
+                  <div className="super-create-result-actions">
+                    <Button type="button" variant="secondary" onClick={() => copyClaim(createResult.claimLink)}>
+                      Copy link
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => window.open(createResult.claimLink, "_blank", "noopener,noreferrer")}
+                    >
+                      Open link
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="super-create-result-note">Director claim link will appear once domain provisioning completes.</p>
+            )}
+            {createResult.provisioningStatus && createResult.provisioningStatus.toLowerCase() !== "ok" ? (
+              <p className="super-create-result-note">
+                Domain provisioning: <strong>{createResult.provisioningStatus}</strong>
+                {createResult.provisioningReason ? ` (${createResult.provisioningReason})` : ""}
+              </p>
+            ) : null}
+          </section>
         ) : null}
+        {status ? <p className="success-text">{status}</p> : null}
       </Card>
 
       <div className="super-two-col super-align-start super-tenants-layout-row">
@@ -567,6 +622,13 @@ export function SuperTenantsPage() {
                         disabled={!canMutate(role) || provisioningTenantId === String(camp._id || "")}
                       >
                         {provisioningTenantId === String(camp._id || "") ? "Provisioning..." : "Provision Domain"}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        onClick={() => wipeTenant(camp)}
+                        disabled={!canMutate(role) || deletingTenantId === String(camp._id || "")}
+                      >
+                        {deletingTenantId === String(camp._id || "") ? "Wiping..." : "Wipe Camp"}
                       </Button>
                     </div>
                   </td>

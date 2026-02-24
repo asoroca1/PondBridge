@@ -4489,12 +4489,29 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .super-login-content {
   position: relative;
-  width: min(560px, 100%);
+  width: min(920px, 100%);
+  display: grid;
+  place-items: center;
   z-index: 1;
 }
 
+.super-login-panel {
+  width: min(860px, 100%);
+  border: 1px solid #d6e2f0;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-xl);
+  padding: clamp(22px, 3vw, 34px);
+  display: grid;
+  gap: 16px;
+}
+
+.super-login-panel-header {
+  text-align: center;
+}
+
 .super-login-kicker {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   color: #29476b;
   font-size: 0.84rem;
   font-weight: 800;
@@ -4510,28 +4527,28 @@ img[draggable="false"] { -webkit-user-drag: none; }
 }
 
 .super-login-subtitle {
-  margin: 10px 0 12px;
+  margin: 10px 0 0;
   color: #4c6481;
   font-size: 1.02rem;
 }
 
 .super-login-card {
-  width: min(460px, 100%);
-  margin-top: 8px;
+  width: min(500px, 100%);
+  justify-self: center;
 }
 
 .super-login-card .cl-card {
   width: 100%;
   margin: 0;
-  background: #fff;
-  border: 1px solid #d6e2f0;
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xl);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   overflow: hidden;
 }
 
 .super-login-card .cl-main {
-  padding: 14px;
+  padding: 0;
   gap: 10px;
 }
 
@@ -4618,6 +4635,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
 @media (max-width: 760px) {
   .super-login-shell {
     padding: 14px;
+  }
+
+  .super-login-panel {
+    padding: 18px 14px;
   }
 
   .super-login-subtitle {
@@ -4753,17 +4774,6 @@ img[draggable="false"] { -webkit-user-drag: none; }
   align-items: center;
   gap: 9px;
   margin-left: auto;
-}
-
-.super-context-chip {
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.95);
-  border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .super-notification-btn,
@@ -5239,6 +5249,58 @@ button.super-stat-card {
   font-size: 1.75rem;
 }
 
+.super-create-result {
+  margin-top: 14px;
+  border: 1px solid #bfe0d1;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f6fcf8 0%, #f0f8f4 100%);
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.super-create-result-header h3 {
+  margin: 0;
+  color: #123d2f;
+  font-size: 1.1rem;
+  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+}
+
+.super-create-result-header p {
+  margin: 4px 0 0;
+  color: #355f50;
+  font-size: 0.9rem;
+}
+
+.super-create-result-label {
+  margin: 0;
+  color: #1f4d3d;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.super-create-result-link-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.super-create-result-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.super-create-result-note {
+  margin: 0;
+  color: #355f50;
+  font-size: 0.87rem;
+}
+
 .super-tenants-create-card,
 .super-tenants-filter-card {
   display: flex;
@@ -5261,6 +5323,12 @@ button.super-stat-card {
 
 .super-inline-row.wrap {
   flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .super-create-result-link-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .super-inline-check {
@@ -5819,13 +5887,6 @@ button.super-stat-card {
     margin-left: 0;
     width: 100%;
     justify-content: space-between;
-  }
-
-  .super-context-chip {
-    order: 3;
-    width: fit-content;
-    font-size: 0.72rem;
-    padding: 6px 10px;
   }
 
   .super-role-badge {

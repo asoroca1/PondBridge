@@ -8,15 +8,27 @@ import {
   UserModel,
   ProfileModel,
   InviteModel,
+  AccessRequestModel,
+  MagicLinkTokenModel,
+  ConversationModel,
+  MessageModel,
+  ForumModel,
+  ForumPostModel,
+  PhotoModel,
+  NewsletterModel,
+  EmailBroadcastModel,
+  FamilyTreeModel,
   ImportReportModel,
   AnalyticsEventModel,
-  TenantAdminAuditLogModel
+  TenantAdminAuditLogModel,
+  ResumeParseResultModel,
+  ActivityItemModel
 } from "../db/models/index.js";
 import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
 import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
 import { createInviteRecord } from "../services/invites.js";
-import { provisionTenantDomain } from "../services/cloudflareDomains.js";
+import { deprovisionTenantDomain, provisionTenantDomain } from "../services/cloudflareDomains.js";
 import { getEmailServiceStatus } from "../services/email.js";
 import { getR2ServiceStatus } from "../services/objectStorage.js";
 import { buildTenantUrls, defaultTenantDomain, isReservedSubdomain } from "../utils/domainProvisioning.js";
@@ -46,6 +58,26 @@ const BILLING_PLAN_MRR = {
 };
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 const APP_BASE_DOMAIN = String(env.APP_BASE_DOMAIN || "pondbridgealumni.com").trim().toLowerCase();
+const TENANT_PURGE_STEPS = [
+  { key: "messages", model: MessageModel },
+  { key: "forumPosts", model: ForumPostModel },
+  { key: "conversations", model: ConversationModel },
+  { key: "forums", model: ForumModel },
+  { key: "photos", model: PhotoModel },
+  { key: "newsletters", model: NewsletterModel },
+  { key: "emailBroadcasts", model: EmailBroadcastModel },
+  { key: "familyTrees", model: FamilyTreeModel },
+  { key: "importReports", model: ImportReportModel },
+  { key: "analyticsEvents", model: AnalyticsEventModel },
+  { key: "tenantAuditLogs", model: TenantAdminAuditLogModel },
+  { key: "resumeParseResults", model: ResumeParseResultModel },
+  { key: "activityItems", model: ActivityItemModel },
+  { key: "magicLinkTokens", model: MagicLinkTokenModel },
+  { key: "accessRequests", model: AccessRequestModel },
+  { key: "invites", model: InviteModel },
+  { key: "profiles", model: ProfileModel },
+  { key: "users", model: UserModel }
+];
 const FLAG_TEMPLATES = [
   {
     key: "directory_module",
@@ -204,6 +236,42 @@ function getPrimaryRole(user) {
   return "unknown";
 }
 
+function normalizeDomain(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .split("/")[0]
+    .split(":")[0];
+}
+
+function canAutoDeleteTenantDomain(domain = "") {
+  const safeDomain = normalizeDomain(domain);
+  if (!safeDomain) return false;
+  if (!APP_BASE_DOMAIN) return false;
+  if (safeDomain === APP_BASE_DOMAIN) return false;
+  if (!safeDomain.endsWith(`.${APP_BASE_DOMAIN}`)) return false;
+
+  const subdomain = safeDomain.slice(0, -1 * (APP_BASE_DOMAIN.length + 1)).split(".")[0] || "";
+  if (!subdomain) return false;
+  if (isReservedSubdomain(subdomain)) return false;
+  return true;
+}
+
+async function purgeTenantRows(tenantId) {
+  const counts = {};
+
+  for (const step of TENANT_PURGE_STEPS) {
+    const existing = await step.model.count(tenantId, {});
+    counts[step.key] = existing;
+    if (existing > 0) {
+      await step.model.deleteMany(tenantId, {});
+    }
+  }
+
+  return counts;
+}
+
 function requireSuperMutation(req, res, next) {
   if (getPrimaryRole(req.user) !== "super_admin") {
     return res.status(403).json({
@@ -360,40 +428,55 @@ router.get("/notifications", async (_req, res) => {
 
 router.get("/search", superSearchLimiter, async (req, res) => {
   const q = String(req.query.q || "").trim();
-  if (q.length < 2) {
+  if (!q) {
     return res.json({ items: [] });
   }
 
-  const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-
-  const [allTenants, allDirectors, allImports] = await Promise.all([
-    TenantModel.find({}),
-    UserModel.find({ roles: { $contains: ["tenant_admin"] } }),
-    ImportReportModel.find({}, { sort: { createdAt: -1 }, limit: 250 })
+  const ilikePattern = `%${q}%`;
+  const [tenantsByName, tenantsBySlug, directors] = await Promise.all([
+    TenantModel.find(
+      { name: { $ilike: ilikePattern } },
+      { select: ["id", "name", "slug", "customDomain"], sort: { name: 1 }, limit: 8 }
+    ),
+    TenantModel.find(
+      { slug: { $ilike: ilikePattern } },
+      { select: ["id", "name", "slug", "customDomain"], sort: { slug: 1 }, limit: 8 }
+    ),
+    UserModel.find(
+      {
+        roles: { $contains: ["tenant_admin"] },
+        email: { $ilike: ilikePattern }
+      },
+      { select: ["id", "tenantId", "email"], sort: { email: 1 }, limit: 8 }
+    )
   ]);
 
-  const tenants = allTenants
-    .filter((tenant) => rx.test(tenant.name) || rx.test(tenant.slug))
-    .slice(0, 8);
-  const directors = allDirectors
-    .filter((director) => rx.test(director.email))
-    .slice(0, 8);
-  const imports = allImports
-    .filter((job) => rx.test(job.fileName) || (q.match(/^[a-f\d]{24}$/i) && toObjectIdString(job._id) === q))
-    .slice(0, 8);
+  const tenantMap = new Map();
+  for (const tenant of [...tenantsByName, ...tenantsBySlug]) {
+    if (!tenant) continue;
+    tenantMap.set(toObjectIdString(tenant._id), tenant);
+  }
 
-  const tenantIds = Array.from(
-    new Set([
-      ...directors.map((item) => toObjectIdString(item.tenantId)),
-      ...imports.map((item) => toObjectIdString(item.tenantId))
-    ].filter(Boolean))
+  const missingTenantIds = Array.from(
+    new Set(
+      directors
+        .map((director) => toObjectIdString(director.tenantId))
+        .filter((tenantId) => tenantId && !tenantMap.has(tenantId))
+    )
   );
-  const tenantMap = new Map(
-    (await TenantModel.find({ _id: { $in: tenantIds } })).map((tenant) => [
-      toObjectIdString(tenant._id),
-      tenant
-    ])
-  );
+
+  if (missingTenantIds.length) {
+    const missingTenants = await TenantModel.find(
+      { _id: { $in: missingTenantIds } },
+      { select: ["id", "name", "slug", "customDomain"] }
+    );
+    for (const tenant of missingTenants) {
+      if (!tenant) continue;
+      tenantMap.set(toObjectIdString(tenant._id), tenant);
+    }
+  }
+
+  const tenants = Array.from(tenantMap.values()).slice(0, 8);
 
   const items = [
     ...tenants.map((tenant) => ({
@@ -411,16 +494,6 @@ router.get("/search", superSearchLimiter, async (req, res) => {
         label: director.email,
         meta: tenant ? `${tenant.name}` : "Director",
         href: `/super/tenants?search=${encodeURIComponent(director.email)}`
-      };
-    }),
-    ...imports.map((job) => {
-      const tenant = tenantMap.get(toObjectIdString(job.tenantId));
-      return {
-        id: `job_${job._id}`,
-        type: "job",
-        label: `Import ${String(job._id).slice(-8)}`,
-        meta: tenant ? `${tenant.name} · ${job.fileName}` : job.fileName,
-        href: `/super/jobs/log?search=${encodeURIComponent(String(job._id))}`
       };
     })
   ];
@@ -810,6 +883,52 @@ router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
   await writeAudit(tenant._id, req.user.id, "super_tenant_updated", { update });
 
   res.json({ tenant, domainProvisioning });
+});
+
+router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req, res) => {
+  const tenant = await TenantModel.findById(req.params.tenantId);
+  if (!tenant) {
+    return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
+  }
+
+  const confirmation = String(req.body?.confirmation || "").trim();
+  const expected = `WIPE ${tenant.slug}`;
+  if (confirmation !== expected) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_CONFIRMATION",
+        message: `Confirmation phrase required: ${expected}`
+      }
+    });
+  }
+
+  const domain = String(tenant.customDomain || defaultTenantDomain(tenant.slug) || "").trim().toLowerCase();
+  let domainCleanup = { status: "skipped", reason: "domain_not_eligible" };
+
+  if (canAutoDeleteTenantDomain(domain)) {
+    try {
+      domainCleanup = await deprovisionTenantDomain(domain);
+    } catch (error) {
+      domainCleanup = {
+        status: "error",
+        message: String(error?.message || "Domain deprovision failed")
+      };
+    }
+  }
+
+  const counts = await purgeTenantRows(tenant._id);
+  await TenantModel.delete(tenant._id);
+
+  return res.json({
+    ok: true,
+    removed: {
+      tenantId: String(tenant._id),
+      slug: tenant.slug,
+      name: tenant.name,
+      counts
+    },
+    domainCleanup
+  });
 });
 
 router.post("/tenants/:tenantId/provision-domain", requireSuperMutation, async (req, res) => {

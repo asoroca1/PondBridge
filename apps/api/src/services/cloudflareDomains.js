@@ -55,6 +55,13 @@ async function findDnsRecord(name) {
   return payload?.result?.[0] || null;
 }
 
+async function deleteDnsRecord(name) {
+  const existing = await findDnsRecord(name);
+  if (!existing) return "not_found";
+  await cfRequest("DELETE", `/zones/${env.CLOUDFLARE_ZONE_ID}/dns_records/${existing.id}`);
+  return "deleted";
+}
+
 async function upsertCnameRecord(name, content, proxied, ttl) {
   const payload = { type: "CNAME", name, content, proxied, ttl };
   const existing = await findDnsRecord(name);
@@ -109,5 +116,38 @@ export async function provisionTenantDomain(domain = "") {
     cnameTarget,
     proxied,
     ttl
+  };
+}
+
+export async function deprovisionTenantDomain(domain = "") {
+  const safeDomain = sanitizeDomain(domain);
+  if (!safeDomain) return { status: "skipped", reason: "missing_domain" };
+  if (!cloudflareEnabled()) return { status: "skipped", reason: "cloudflare_env_missing" };
+
+  const dnsAction = await deleteDnsRecord(safeDomain);
+
+  let pagesAction = "not_configured";
+  if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_PAGES_PROJECT_NAME) {
+    try {
+      await cfRequest(
+        "DELETE",
+        `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${env.CLOUDFLARE_PAGES_PROJECT_NAME}/domains/${encodeURIComponent(safeDomain)}`
+      );
+      pagesAction = "deleted";
+    } catch (error) {
+      const normalized = String(error?.message || "").toLowerCase();
+      if (normalized.includes("not found") || normalized.includes("invalid request")) {
+        pagesAction = "not_found";
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  return {
+    status: "ok",
+    domain: safeDomain,
+    dnsAction,
+    pagesAction
   };
 }

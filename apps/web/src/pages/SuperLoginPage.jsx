@@ -36,10 +36,14 @@ function ClerkSuperLoginPage() {
       <section className="super-login-shell">
         <div className="super-login-backdrop" />
         <div className="super-login-content">
-          <p className="super-login-kicker">PondBridge</p>
-          <h1>Super Admin Console</h1>
-          <p className="error-text">This account is not authorized for super admin access.</p>
-          <Button onClick={() => logout()}>Sign out</Button>
+          <div className="super-login-panel">
+            <div className="super-login-panel-header">
+              <p className="super-login-kicker">PondBridge</p>
+              <h1>Super Admin Console</h1>
+              <p className="error-text">This account is not authorized for super admin access.</p>
+            </div>
+            <Button onClick={() => logout()}>Sign out</Button>
+          </div>
         </div>
       </section>
     );
@@ -49,95 +53,99 @@ function ClerkSuperLoginPage() {
     <section className="super-login-shell">
       <div className="super-login-backdrop" />
       <div className="super-login-content">
-        <p className="super-login-kicker">PondBridge</p>
-        <h1>Super Admin Console</h1>
-        <p className="super-login-subtitle">Secure sign-in for platform administration.</p>
-        <div
-          className="super-login-card"
-          onMouseDownCapture={handleAuthInteraction}
-          onTouchStartCapture={handleAuthInteraction}
-          onKeyDownCapture={handleAuthInteraction}
-        >
-          <SignIn
-            routing="virtual"
-            fallbackRedirectUrl="/super/tenants"
-            forceRedirectUrl="/super/tenants"
-            withSignUp={false}
-            localization={{
-              signIn: {
-                start: {
-                  title: "Sign in to PondBridge Super Admin",
-                  subtitle: "Use your authorized administrator account."
-                },
-                password: {
-                  title: "Enter your password",
-                  subtitle: "Continue to PondBridge Super Admin."
-                },
-                emailCode: {
-                  title: "Check your email",
-                  subtitle: "Enter the verification code we sent to your email."
-                },
-                emailLink: {
-                  title: "Check your email",
-                  subtitle: "Open the secure sign-in link in your email to continue."
+        <div className="super-login-panel">
+          <div className="super-login-panel-header">
+            <p className="super-login-kicker">PondBridge</p>
+            <h1>Super Admin Console</h1>
+            <p className="super-login-subtitle">Secure sign-in for platform administration.</p>
+          </div>
+          <div
+            className="super-login-card"
+            onMouseDownCapture={handleAuthInteraction}
+            onTouchStartCapture={handleAuthInteraction}
+            onKeyDownCapture={handleAuthInteraction}
+          >
+            <SignIn
+              routing="virtual"
+              fallbackRedirectUrl="/super/tenants"
+              forceRedirectUrl="/super/tenants"
+              withSignUp={false}
+              localization={{
+                signIn: {
+                  start: {
+                    title: "Sign in to PondBridge Super Admin",
+                    subtitle: "Use your authorized administrator account."
+                  },
+                  password: {
+                    title: "Enter your password",
+                    subtitle: "Continue to PondBridge Super Admin."
+                  },
+                  emailCode: {
+                    title: "Check your email",
+                    subtitle: "Enter the verification code we sent to your email."
+                  },
+                  emailLink: {
+                    title: "Check your email",
+                    subtitle: "Open the secure sign-in link in your email to continue."
+                  }
                 }
-              }
-            }}
-            appearance={{
-              variables: {
-                colorPrimary: "#0b2f57",
-                colorText: "#17375e",
-                colorTextSecondary: "#5d738d",
-                colorInputBackground: "#ffffff",
-                colorInputText: "#17375e",
-                colorNeutral: "#d4dfec",
-                borderRadius: "12px",
-                fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
-              },
-              elements: {
-                rootBox: {
-                  width: "100%"
+              }}
+              appearance={{
+                variables: {
+                  colorPrimary: "#0b2f57",
+                  colorText: "#17375e",
+                  colorTextSecondary: "#5d738d",
+                  colorInputBackground: "#ffffff",
+                  colorInputText: "#17375e",
+                  colorNeutral: "#d4dfec",
+                  borderRadius: "12px",
+                  fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
                 },
-                socialButtons: {
-                  display: "none"
+                elements: {
+                  rootBox: {
+                    width: "100%"
+                  },
+                  socialButtons: {
+                    display: "none"
+                  },
+                  socialButtonsBlock: {
+                    display: "none"
+                  },
+                  socialButtonsBlockButton: {
+                    display: "none"
+                  },
+                  socialButtonsIconButton: {
+                    display: "none"
+                  },
+                  dividerRow: {
+                    display: "none"
+                  },
+                  dividerLine: {
+                    display: "none"
+                  },
+                  dividerText: {
+                    display: "none"
+                  },
+                  header: {
+                    display: "none"
+                  },
+                  headerTitle: {
+                    display: "none"
+                  },
+                  headerSubtitle: {
+                    display: "none"
+                  },
+                  footerAction: {
+                    display: "none"
+                  },
+                  footer: {
+                    display: "none"
+                  }
                 },
-                socialButtonsBlock: {
-                  display: "none"
-                },
-                socialButtonsBlockButton: {
-                  display: "none"
-                },
-                socialButtonsIconButton: {
-                  display: "none"
-                },
-                dividerRow: {
-                  display: "none"
-                },
-                dividerLine: {
-                  display: "none"
-                },
-                dividerText: {
-                  display: "none"
-                },
-                header: {
-                  display: "none"
-                },
-                headerTitle: {
-                  display: "none"
-                },
-                headerSubtitle: {
-                  display: "none"
-                },
-                footerAction: {
-                  display: "none"
-                },
-                footer: {
-                  display: "none"
-                }
-              },
-              unsafe_disableDevelopmentModeWarnings: true
-            }}
-          />
+                unsafe_disableDevelopmentModeWarnings: true
+              }}
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -149,12 +157,16 @@ function ClerkConfigErrorPage() {
     <section className="super-login-shell">
       <div className="super-login-backdrop" />
       <div className="super-login-content">
-        <p className="super-login-kicker">PondBridge</p>
-        <h1>Super Admin Console</h1>
-        <p className="error-text">{clerkConfigError() || "Clerk auth is not configured correctly."}</p>
-        <p className="super-login-subtitle">
-          Set <code>VITE_CLERK_PUBLISHABLE_KEY</code> and restart the web build.
-        </p>
+        <div className="super-login-panel">
+          <div className="super-login-panel-header">
+            <p className="super-login-kicker">PondBridge</p>
+            <h1>Super Admin Console</h1>
+            <p className="error-text">{clerkConfigError() || "Clerk auth is not configured correctly."}</p>
+            <p className="super-login-subtitle">
+              Set <code>VITE_CLERK_PUBLISHABLE_KEY</code> and restart the web build.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   );
