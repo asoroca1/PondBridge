@@ -4906,7 +4906,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .super-shell-boot-card {
   width: min(560px, 100%);
-  border-radius: 18px;
+  border-radius: 6px;
   border: 1px solid #d7e1ee;
   background: #ffffff;
   box-shadow: 0 16px 40px rgba(15, 36, 63, 0.12);
@@ -4927,7 +4927,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 }
 
 .super-main .pb-card {
-  border-radius: 18px;
+  border-radius: 6px;
   border: 1px solid #d7e1ee;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   padding: clamp(16px, 1.6vw, 24px);
@@ -4953,7 +4953,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   background: #fff1f1;
   color: #9f231f;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 6px;
   font-size: 0.84rem;
 }
 
@@ -5017,7 +5017,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .super-stat-card {
   border: 1px solid #dae4f0;
-  border-radius: 14px;
+  border-radius: 6px;
   min-height: 126px;
   padding: 12px 13px;
   background: linear-gradient(180deg, #f9fbfe 0%, #f2f6fb 100%);
@@ -5104,7 +5104,7 @@ button.super-stat-card {
   width: 100%;
   overflow: auto;
   border: 1px solid #e3eaf3;
-  border-radius: 14px;
+  border-radius: 6px;
   background: #fff;
 }
 
@@ -5239,20 +5239,82 @@ button.super-stat-card {
   font-size: 1.8rem;
 }
 
-.super-tenants-summary-card .super-stat-card {
-  min-height: 108px;
-  padding: 10px 12px;
+.super-tenant-metric-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.super-tenants-summary-card .super-stat-card strong {
-  margin-top: 2px;
-  font-size: 1.75rem;
+.super-tenant-metric-card {
+  border: 1px solid #d6dfec;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f6fc 100%);
+  padding: 14px;
+  min-height: 150px;
+  display: grid;
+  gap: 8px;
+}
+
+.super-tenant-metric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.super-tenant-metric-head span {
+  color: #546b89;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.super-tenant-metric-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #c7d5ea;
+  background: #ffffff;
+}
+
+.super-tenant-metric-icon svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: #1f4f89;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.super-tenant-metric-card strong {
+  color: #143861;
+  font-size: 2.1rem;
+  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  line-height: 1;
+}
+
+.super-tenant-metric-card small {
+  color: #607896;
+  font-size: 0.95rem;
+}
+
+.super-tenant-metric-card.kind-camps .super-tenant-metric-icon {
+  background: linear-gradient(180deg, #f4f8ff 0%, #e9f1ff 100%);
+}
+
+.super-tenant-metric-card.kind-users .super-tenant-metric-icon {
+  background: linear-gradient(180deg, #f6fbf9 0%, #e7f6ee 100%);
+}
+
+.super-tenant-metric-card.kind-profiles .super-tenant-metric-icon {
+  background: linear-gradient(180deg, #fffaf2 0%, #fff1df 100%);
 }
 
 .super-create-result {
   margin-top: 14px;
   border: 1px solid #bfe0d1;
-  border-radius: 14px;
+  border-radius: 6px;
   background: linear-gradient(180deg, #f6fcf8 0%, #f0f8f4 100%);
   padding: 14px;
   display: grid;
@@ -5848,6 +5910,10 @@ button.super-stat-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .super-tenant-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .super-visual-card {
     min-height: 250px;
   }
@@ -5910,7 +5976,7 @@ button.super-stat-card {
 
   .super-main .pb-card {
     padding: 14px;
-    border-radius: 14px;
+    border-radius: 6px;
   }
 
   .super-main .pb-btn,
@@ -5943,7 +6009,8 @@ button.super-stat-card {
 
   .super-stat-grid.three-up,
   .super-stat-grid.four-up,
-  .super-stat-grid.seven-up {
+  .super-stat-grid.seven-up,
+  .super-tenant-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -5989,6 +6056,12 @@ button.super-stat-card {
   }
 
   .super-expanded-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .super-tenant-metric-grid {
     grid-template-columns: 1fr;
   }
 }

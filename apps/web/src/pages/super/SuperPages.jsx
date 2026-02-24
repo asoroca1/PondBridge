@@ -98,6 +98,53 @@ function StatCard({ label, value, subtext, tone = "neutral", onClick }) {
   );
 }
 
+function TenantMetricIcon({ kind }) {
+  if (kind === "camps") {
+    return (
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <rect x="6" y="14" width="28" height="18" rx="2" />
+        <path d="M10 14h20L20 7z" />
+        <path d="M16 32V22h8v10" />
+      </svg>
+    );
+  }
+
+  if (kind === "users") {
+    return (
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="14" cy="14" r="5" />
+        <circle cx="26" cy="15" r="4" />
+        <path d="M7 30c0-4 3-7 7-7s7 3 7 7" />
+        <path d="M21 30c0-3 2-6 5-6s5 3 5 6" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="6" y="9" width="28" height="22" rx="3" />
+      <circle cx="14" cy="18" r="3" />
+      <path d="M10 26c0-3 2-5 4-5s4 2 4 5" />
+      <path d="M22 15h8M22 20h8M22 25h6" />
+    </svg>
+  );
+}
+
+function TenantMetricCard({ label, value, subtext, kind }) {
+  return (
+    <article className={`super-tenant-metric-card ${kind ? `kind-${kind}` : ""}`.trim()}>
+      <div className="super-tenant-metric-head">
+        <span>{label}</span>
+        <div className="super-tenant-metric-icon">
+          <TenantMetricIcon kind={kind} />
+        </div>
+      </div>
+      <strong>{value}</strong>
+      <small>{subtext}</small>
+    </article>
+  );
+}
+
 function SparkBars({ items = [], percent = false }) {
   const values = items.map((item) => Number(item.value || item.rate || 0));
   const max = Math.max(1, ...values);
@@ -447,10 +494,10 @@ export function SuperTenantsPage() {
       <Card className="super-tenants-summary-card">
         <PanelHeader title="Tenants" subtitle="Create and manage camp tenants." />
         {summary ? (
-          <div className="super-stat-grid three-up">
-            <StatCard label="Camps" value={summary.tenants || 0} subtext="Total tenant records" tone="neutral" />
-            <StatCard label="Users" value={summary.users || 0} subtext="Across all camps" tone="neutral" />
-            <StatCard label="Profiles" value={summary.profiles || 0} subtext="Member profiles" tone="neutral" />
+          <div className="super-tenant-metric-grid">
+            <TenantMetricCard label="Camps" value={summary.tenants || 0} subtext="Total tenant records" kind="camps" />
+            <TenantMetricCard label="Users" value={summary.users || 0} subtext="Across all camps" kind="users" />
+            <TenantMetricCard label="Profiles" value={summary.profiles || 0} subtext="Member profiles" kind="profiles" />
           </div>
         ) : null}
         {error ? <p className="error-text">{error}</p> : null}
