@@ -5209,6 +5209,27 @@ button.super-stat-card {
 
 .super-tenants-layout-row {
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.super-tenants-summary-card .super-panel-header h1 {
+  font-size: 1.8rem;
+}
+
+.super-tenants-summary-card .super-stat-card {
+  min-height: 108px;
+  padding: 10px 12px;
+}
+
+.super-tenants-summary-card .super-stat-card strong {
+  margin-top: 2px;
+  font-size: 1.75rem;
+}
+
+.super-tenants-create-card,
+.super-tenants-filter-card {
+  display: flex;
+  flex-direction: column;
 }
 
 .super-tenants-filter-card .super-filter-grid-tenants {

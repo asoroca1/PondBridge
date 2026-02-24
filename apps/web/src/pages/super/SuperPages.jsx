@@ -418,7 +418,7 @@ export function SuperTenantsPage() {
 
   return (
     <div className="super-panel-stack">
-      <Card>
+      <Card className="super-tenants-summary-card">
         <PanelHeader title="Tenants" subtitle="Create and manage camp tenants." />
         {loading ? <p className="muted">Loading tenant summary...</p> : null}
         {summary ? (
