@@ -55,8 +55,6 @@ export default function SuperShellLayout() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [notifications, setNotifications] = useState({ criticalCount: 0, items: [] });
-  const [topbarError, setTopbarError] = useState("");
 
   const role = roleFromUser(user);
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -72,34 +70,6 @@ export default function SuperShellLayout() {
     const campName = String(params.get("camp") || "").trim();
     return campName ? `Viewing: ${campName}` : "Viewing: Global";
   }, [location.search]);
-
-  useEffect(() => {
-    if (!token || !allowed) return undefined;
-
-    let active = true;
-
-    async function loadNotifications() {
-      try {
-        const payload = await requestJson("/api/super/notifications", {
-          token,
-          getToken: () => getAuthToken({ forceRefresh: true })
-        });
-        if (!active) return;
-        setNotifications(payload);
-      } catch (error) {
-        if (!active) return;
-        setTopbarError(error.message || "Could not load alerts.");
-      }
-    }
-
-    loadNotifications();
-    const id = window.setInterval(loadNotifications, 30000);
-
-    return () => {
-      active = false;
-      window.clearInterval(id);
-    };
-  }, [allowed, getAuthToken, token]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;
@@ -225,18 +195,6 @@ export default function SuperShellLayout() {
         <span className="super-context-chip">{contextLabel}</span>
 
         <div className="super-topbar-actions">
-          <button
-            type="button"
-            className="super-notification-btn"
-            onClick={() => navigate("/super/billing/failed")}
-            title="Critical alerts"
-          >
-            Alerts
-            {notifications.criticalCount > 0 ? <span className="super-notification-count">{notifications.criticalCount}</span> : null}
-          </button>
-          <span className={`super-role-badge role-${role.replace(/_/g, "-")}`}>
-            {role === "super_admin" ? "Super Admin" : role === "support_admin" ? "Support" : "Finance"}
-          </span>
           <button type="button" className="super-signout-btn" onClick={handleLogout}>
             Sign out
           </button>
@@ -265,7 +223,6 @@ export default function SuperShellLayout() {
       }
     >
       <div className="super-main" role="main">
-        {topbarError ? <p className="super-inline-error">{topbarError}</p> : null}
         <Outlet />
       </div>
     </SuperAdminLayout>
