@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../lib/http.js";
 import { useTenant } from "../context/TenantContext.jsx";
@@ -24,9 +24,6 @@ export default function DirectorCreateAccountClerkPage() {
   const { isLoaded, isSignedIn } = useClerkAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [inviteError, setInviteError] = useState("");
-  const loginPath = inviteToken
-    ? `${routeWithSlug(slug, "/login", usingSlugRoute)}?inviteToken=${encodeURIComponent(inviteToken)}`
-    : routeWithSlug(slug, "/login", usingSlugRoute);
   const callbackPath = inviteToken
     ? `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?inviteToken=${encodeURIComponent(inviteToken)}`
     : `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
@@ -59,13 +56,16 @@ export default function DirectorCreateAccountClerkPage() {
   }, [callbackPath, directorBootstrap, isLoaded, isSignedIn, navigate, slug]);
 
   return (
-    <section className="product-claim-page product-director-create-page">
+    <section className="product-claim-page product-director-create-page product-director-create-clerk-page">
       <div className="product-claim-wrap product-director-create-wrap product-director-create-clerk-wrap">
         <article className="product-claim-card product-director-create-card product-director-create-clerk-card">
-          <h1>Create Director Account</h1>
-          <p className="product-claim-body director-create-subtitle">
-            Create your director account to continue camp onboarding.
-          </p>
+          <div className="product-director-create-clerk-intro">
+            <p className="product-director-create-kicker">Director Onboarding</p>
+            <h1>Create Director Account</h1>
+            <p className="product-claim-body director-create-subtitle">
+              Create your director login to start network setup.
+            </p>
+          </div>
           {inviteError ? <p className="error-text">{inviteError}</p> : null}
           {inviteMeta ? (
             <p className="success-text">
@@ -77,7 +77,6 @@ export default function DirectorCreateAccountClerkPage() {
             <SignUp
               path={signUpPath}
               routing="path"
-              signInUrl={loginPath}
               fallbackRedirectUrl={callbackPath}
               forceRedirectUrl={callbackPath}
               appearance={{
@@ -106,31 +105,48 @@ export default function DirectorCreateAccountClerkPage() {
                   dividerText: {
                     display: "none"
                   },
+                  footerAction: {
+                    display: "none"
+                  },
+                  footerActionText: {
+                    display: "none"
+                  },
+                  footerActionLink: {
+                    display: "none"
+                  },
+                  footer: {
+                    display: "none"
+                  },
+                  header: {
+                    display: "none"
+                  },
                   card: {
-                    boxShadow: "0 16px 38px rgba(13, 34, 66, 0.12)",
-                    border: "1px solid #d6deeb",
+                    boxShadow: "none",
+                    border: "none",
                     width: "100%",
                     maxWidth: "100%",
-                    borderRadius: "16px",
-                    background: "#ffffff"
+                    borderRadius: "0",
+                    background: "transparent",
+                    padding: "0"
+                  },
+                  main: {
+                    padding: "0",
+                    gap: "10px"
+                  },
+                  form: {
+                    gap: "12px"
                   },
                   headerTitle: {
-                    fontSize: "2rem",
-                    lineHeight: "1.12"
+                    display: "none"
                   },
                   headerSubtitle: {
-                    fontSize: "1rem"
+                    display: "none"
                   }
-                }
+                },
+                unsafe_disableDevelopmentModeWarnings: true
               }}
             />
-          ) : (
-            <div className="product-claim-actions">
-              <Link className="btn btn-secondary" to={loginPath}>
-                Back to login
-              </Link>
-            </div>
-          )}
+          ) : null}
         </article>
       </div>
     </section>
