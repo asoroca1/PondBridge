@@ -273,6 +273,9 @@
   width: 100% !important;
   max-width: none !important;
   padding: 0 !important;
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 .product-director-create-clerk-page .cl-rootBox,
@@ -282,6 +285,9 @@
   max-width: min(620px, 100%) !important;
   margin-left: auto !important;
   margin-right: auto !important;
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 .product-director-create-clerk-page .cl-main {
@@ -314,6 +320,7 @@
 }
 
 .product-director-create-clerk-page .cl-formButtonPrimary {
+  display: block !important;
   width: 100%;
   min-height: 48px;
   border-radius: 12px;
