@@ -5363,6 +5363,72 @@ button.super-stat-card {
   font-size: 0.87rem;
 }
 
+.super-camp-create-form-card .super-panel-header {
+  margin-bottom: 10px;
+}
+
+.super-camp-create-summary-card {
+  display: grid;
+  gap: 14px;
+}
+
+.super-camp-create-summary-header h2 {
+  margin: 0;
+  color: #153155;
+  font-size: 1.45rem;
+  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+}
+
+.super-camp-create-summary-header p {
+  margin: 6px 0 0;
+  color: #526884;
+  font-size: 0.98rem;
+}
+
+.super-camp-create-summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.super-camp-create-summary-grid article {
+  border: 1px solid #d8e2ef;
+  background: #f8fbff;
+  padding: 11px 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.super-camp-create-summary-grid span {
+  color: #5e7592;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.super-camp-create-summary-grid strong {
+  color: #163b63;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.super-camp-create-next-steps h3 {
+  margin: 0 0 8px;
+  color: #173b63;
+  font-size: 1.02rem;
+}
+
+.super-camp-create-next-steps ol {
+  margin: 0;
+  padding-left: 20px;
+  color: #3f5877;
+  display: grid;
+  gap: 5px;
+}
+
 .super-tenants-create-card,
 .super-tenants-filter-card {
   display: flex;
@@ -5390,6 +5456,10 @@ button.super-stat-card {
 @media (max-width: 1100px) {
   .super-create-result-link-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .super-camp-create-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -6062,6 +6132,10 @@ button.super-stat-card {
 
 @media (max-width: 560px) {
   .super-tenant-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .super-camp-create-summary-grid {
     grid-template-columns: 1fr;
   }
 }

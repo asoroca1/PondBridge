@@ -338,17 +338,9 @@ export function SuperTenantsPage() {
   const [_loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [createResult, setCreateResult] = useState(null);
   const [provisioningTenantId, setProvisioningTenantId] = useState("");
   const [deletingTenantId, setDeletingTenantId] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "", plan: "", billingStatus: "" });
-  const [form, setForm] = useState({
-    name: "",
-    slug: "",
-    planTier: "base",
-    onboardingFeeAmount: 0,
-    directorEmail: ""
-  });
 
   async function loadData() {
     const query = new URLSearchParams();
@@ -376,48 +368,6 @@ export function SuperTenantsPage() {
     setLoading(true);
     loadData();
   }, [token, filters.search, filters.status, filters.plan, filters.billingStatus]);
-
-  async function createCamp(event) {
-    event.preventDefault();
-    setError("");
-    setStatus("");
-    setCreateResult(null);
-    try {
-      const payload = await requestJson("/api/super/tenants", {
-        method: "POST",
-        token,
-        body: form
-      });
-      const provisioning = payload?.domainProvisioning || {};
-      const domainReady = String(provisioning.status || "").toLowerCase() === "ok";
-      const fallbackClaimPath = String(payload?.inviteLink || "").trim();
-      const fallbackClaimLink =
-        fallbackClaimPath && fallbackClaimPath.startsWith("/") ? `${window.location.origin}${fallbackClaimPath}` : "";
-      const nextClaimLink =
-        (domainReady ? payload.directorClaimLink || payload.directorInvite?.claimUrl : "") ||
-        fallbackClaimLink ||
-        payload.directorClaimLink ||
-        payload.directorInvite?.claimUrl ||
-        "";
-      setCreateResult({
-        campName: payload?.tenant?.name || form.name,
-        claimLink: nextClaimLink,
-        provisioningStatus: String(provisioning?.status || ""),
-        provisioningReason: String(provisioning?.reason || "")
-      });
-      setForm({ name: "", slug: "", planTier: "base", onboardingFeeAmount: 0, directorEmail: "" });
-      loadData();
-    } catch (createError) {
-      setCreateResult(null);
-      setError(createError.message || "Could not create camp.");
-    }
-  }
-
-  async function copyClaim(link) {
-    if (!link) return;
-    await navigator.clipboard.writeText(link);
-    setStatus("Director claim link copied.");
-  }
 
   async function toggleTenant(camp) {
     try {
@@ -501,134 +451,47 @@ export function SuperTenantsPage() {
           </div>
         ) : null}
         {error ? <p className="error-text">{error}</p> : null}
-        {createResult ? (
-          <section className="super-create-result" role="status">
-            <header className="super-create-result-header">
-              <h3>Camp created</h3>
-              <p>
-                <strong>{createResult.campName}</strong> is ready for director onboarding.
-              </p>
-            </header>
-            {createResult.claimLink ? (
-              <>
-                <p className="super-create-result-label">Director claim link</p>
-                <div className="super-create-result-link-row">
-                  <Input readOnly value={createResult.claimLink} />
-                  <div className="super-create-result-actions">
-                    <Button type="button" variant="secondary" onClick={() => copyClaim(createResult.claimLink)}>
-                      Copy link
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => window.open(createResult.claimLink, "_blank", "noopener,noreferrer")}
-                    >
-                      Open link
-                    </Button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="super-create-result-note">Director claim link will appear once domain provisioning completes.</p>
-            )}
-            {createResult.provisioningStatus && createResult.provisioningStatus.toLowerCase() !== "ok" ? (
-              <p className="super-create-result-note">
-                Domain provisioning: <strong>{createResult.provisioningStatus}</strong>
-                {createResult.provisioningReason ? ` (${createResult.provisioningReason})` : ""}
-              </p>
-            ) : null}
-          </section>
-        ) : null}
         {status ? <p className="success-text">{status}</p> : null}
       </Card>
 
-      <div className="super-two-col super-align-start super-tenants-layout-row">
-        <Card className="super-tenants-create-card">
-          <h2 className="pb-section-title">Create Camp</h2>
-          <form className="super-form-grid" onSubmit={createCamp}>
-            <label>
-              Camp name
-              <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} required />
-            </label>
-            <label>
-              Camp URL key
-              <Input
-                value={form.slug}
-                placeholder="cedar"
-                onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
-                required
-              />
-            </label>
-            <label>
-              Plan tier
-              <Select value={form.planTier} onChange={(event) => setForm((prev) => ({ ...prev, planTier: event.target.value }))}>
-                <option value="base">Base</option>
-                <option value="premium">Premium</option>
-              </Select>
-            </label>
-            <label>
-              Onboarding fee
-              <Input
-                type="number"
-                min={0}
-                value={form.onboardingFeeAmount}
-                onChange={(event) => setForm((prev) => ({ ...prev, onboardingFeeAmount: Number(event.target.value || 0) }))}
-              />
-            </label>
-            <label className="full-width">
-              Director email (optional)
-              <Input
-                type="email"
-                value={form.directorEmail}
-                onChange={(event) => setForm((prev) => ({ ...prev, directorEmail: event.target.value }))}
-              />
-            </label>
-            <div className="super-form-actions full-width">
-              <Button disabled={!canMutate(role)}>Create camp</Button>
-              {!canMutate(role) ? <small className="muted">View only role</small> : null}
-            </div>
-          </form>
-        </Card>
-
-        <Card className="super-tenants-filter-card">
-          <h2 className="pb-section-title">Filters</h2>
-          <div className="super-filter-grid super-filter-grid-tenants">
-            <label>
-              Search
-              <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
-            </label>
-            <label>
-              Status
-              <Select value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}>
-                <option value="">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </Select>
-            </label>
-            <label>
-              Plan
-              <Select value={filters.plan} onChange={(event) => setFilters((prev) => ({ ...prev, plan: event.target.value }))}>
-                <option value="">All</option>
-                <option value="base">Base</option>
-                <option value="premium">Premium</option>
-              </Select>
-            </label>
-            <label>
-              Billing
-              <Select
-                value={filters.billingStatus}
-                onChange={(event) => setFilters((prev) => ({ ...prev, billingStatus: event.target.value }))}
-              >
-                <option value="">All</option>
-                <option value="trialing">Trialing</option>
-                <option value="active">Active</option>
-                <option value="past_due">Past Due</option>
-                <option value="canceled">Canceled</option>
-              </Select>
-            </label>
-          </div>
-        </Card>
-      </div>
+      <Card className="super-tenants-filter-card">
+        <h2 className="pb-section-title">Filters</h2>
+        <div className="super-filter-grid super-filter-grid-tenants">
+          <label>
+            Search
+            <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
+          </label>
+          <label>
+            Status
+            <Select value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}>
+              <option value="">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </Select>
+          </label>
+          <label>
+            Plan
+            <Select value={filters.plan} onChange={(event) => setFilters((prev) => ({ ...prev, plan: event.target.value }))}>
+              <option value="">All</option>
+              <option value="base">Base</option>
+              <option value="premium">Premium</option>
+            </Select>
+          </label>
+          <label>
+            Billing
+            <Select
+              value={filters.billingStatus}
+              onChange={(event) => setFilters((prev) => ({ ...prev, billingStatus: event.target.value }))}
+            >
+              <option value="">All</option>
+              <option value="trialing">Trialing</option>
+              <option value="active">Active</option>
+              <option value="past_due">Past Due</option>
+              <option value="canceled">Canceled</option>
+            </Select>
+          </label>
+        </div>
+      </Card>
 
       <Card>
         <h2 className="pb-section-title">Tenant List</h2>
@@ -685,6 +548,201 @@ export function SuperTenantsPage() {
           </table>
         </div>
       </Card>
+    </div>
+  );
+}
+
+export function SuperTenantCreatePage() {
+  const { token, user } = useAuth();
+  const role = roleFromUser(user);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [createResult, setCreateResult] = useState(null);
+  const [form, setForm] = useState({
+    name: "",
+    slug: "",
+    planTier: "base",
+    onboardingFeeAmount: 0,
+    directorEmail: ""
+  });
+
+  async function createCamp(event) {
+    event.preventDefault();
+    setError("");
+    setStatus("");
+    setCreateResult(null);
+    try {
+      const payload = await requestJson("/api/super/tenants", {
+        method: "POST",
+        token,
+        body: form
+      });
+
+      const provisioning = payload?.domainProvisioning || {};
+      const directorInvite = payload?.directorInvite || null;
+      const fallbackClaimPath = String(payload?.inviteLink || "").trim();
+      const fallbackClaimLink =
+        fallbackClaimPath && fallbackClaimPath.startsWith("/") ? `${window.location.origin}${fallbackClaimPath}` : "";
+      const claimLink = payload?.directorClaimLink || directorInvite?.claimUrl || fallbackClaimLink;
+      const domain = payload?.tenant?.customDomain || payload?.network?.domain || "";
+
+      setCreateResult({
+        campName: payload?.tenant?.name || form.name,
+        slug: payload?.tenant?.slug || form.slug,
+        planTier: payload?.tenant?.planTier || form.planTier,
+        onboardingFeeAmount: Number(payload?.tenant?.onboardingFeeAmount ?? form.onboardingFeeAmount ?? 0),
+        domain,
+        claimLink,
+        provisioningStatus: String(provisioning?.status || ""),
+        provisioningReason: String(provisioning?.reason || provisioning?.message || ""),
+        directorEmail: directorInvite?.email || form.directorEmail || "",
+        nextSteps: Array.isArray(payload?.nextSteps) ? payload.nextSteps : []
+      });
+      setForm({ name: "", slug: "", planTier: "base", onboardingFeeAmount: 0, directorEmail: "" });
+      setStatus("Camp created successfully.");
+    } catch (createError) {
+      setCreateResult(null);
+      setError(createError.message || "Could not create camp.");
+    }
+  }
+
+  async function copyClaim(link) {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setStatus("Director claim link copied.");
+  }
+
+  return (
+    <div className="super-panel-stack">
+      <Card className="super-tenants-create-card super-camp-create-form-card">
+        <PanelHeader
+          title="Create Camp"
+          subtitle="Provision a new tenant and generate director onboarding access in one flow."
+        />
+        {error ? <p className="error-text">{error}</p> : null}
+        {status ? <p className="success-text">{status}</p> : null}
+        <form className="super-form-grid" onSubmit={createCamp}>
+          <label>
+            Camp name
+            <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} required />
+          </label>
+          <label>
+            Camp URL key
+            <Input
+              value={form.slug}
+              placeholder="cedar"
+              onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
+              required
+            />
+          </label>
+          <label>
+            Plan tier
+            <Select value={form.planTier} onChange={(event) => setForm((prev) => ({ ...prev, planTier: event.target.value }))}>
+              <option value="base">Base</option>
+              <option value="premium">Premium</option>
+            </Select>
+          </label>
+          <label>
+            Onboarding fee
+            <Input
+              type="number"
+              min={0}
+              value={form.onboardingFeeAmount}
+              onChange={(event) => setForm((prev) => ({ ...prev, onboardingFeeAmount: Number(event.target.value || 0) }))}
+            />
+          </label>
+          <label className="full-width">
+            Director email (optional)
+            <Input
+              type="email"
+              value={form.directorEmail}
+              onChange={(event) => setForm((prev) => ({ ...prev, directorEmail: event.target.value }))}
+            />
+          </label>
+          <div className="super-form-actions full-width">
+            <Button disabled={!canMutate(role)}>Create camp</Button>
+            {!canMutate(role) ? <small className="muted">View only role</small> : null}
+          </div>
+        </form>
+      </Card>
+
+      {createResult ? (
+        <Card className="super-camp-create-summary-card" role="status">
+          <header className="super-camp-create-summary-header">
+            <h2>Camp Ready</h2>
+            <p>
+              <strong>{createResult.campName}</strong> has been created and is ready for director onboarding.
+            </p>
+          </header>
+
+          <div className="super-camp-create-summary-grid">
+            <article>
+              <span>Slug</span>
+              <strong>{createResult.slug}</strong>
+            </article>
+            <article>
+              <span>Plan</span>
+              <strong>{createResult.planTier === "premium" ? "Premium" : "Base"}</strong>
+            </article>
+            <article>
+              <span>Onboarding Fee</span>
+              <strong>{formatMoney(createResult.onboardingFeeAmount)}</strong>
+            </article>
+            <article>
+              <span>Domain</span>
+              <strong>{createResult.domain || "-"}</strong>
+            </article>
+            <article>
+              <span>Provisioning</span>
+              <strong>{createResult.provisioningStatus || "unknown"}</strong>
+            </article>
+            <article>
+              <span>Director Email</span>
+              <strong>{createResult.directorEmail || "Not provided"}</strong>
+            </article>
+          </div>
+
+          <section className="super-create-result">
+            <p className="super-create-result-label">Director claim link</p>
+            {createResult.claimLink ? (
+              <div className="super-create-result-link-row">
+                <Input readOnly value={createResult.claimLink} />
+                <div className="super-create-result-actions">
+                  <Button type="button" variant="secondary" onClick={() => copyClaim(createResult.claimLink)}>
+                    Copy link
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => window.open(createResult.claimLink, "_blank", "noopener,noreferrer")}
+                  >
+                    Open link
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="super-create-result-note">Claim link will appear after domain provisioning finishes.</p>
+            )}
+
+            {createResult.provisioningReason ? (
+              <p className="super-create-result-note">
+                Provisioning detail: <strong>{createResult.provisioningReason}</strong>
+              </p>
+            ) : null}
+          </section>
+
+          {createResult.nextSteps.length ? (
+            <section className="super-camp-create-next-steps">
+              <h3>Next steps</h3>
+              <ol>
+                {createResult.nextSteps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
+        </Card>
+      ) : null}
     </div>
   );
 }

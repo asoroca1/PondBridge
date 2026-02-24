@@ -15,7 +15,10 @@ function roleFromUser(user) {
 const SUPER_NAV = [
   {
     label: "Camps",
-    items: [{ to: "/super/tenants", label: "Camp Directory" }]
+    items: [
+      { to: "/super/tenants/create", label: "Create Camp" },
+      { to: "/super/tenants", label: "Camp Directory" }
+    ]
   },
   {
     label: "Billing",

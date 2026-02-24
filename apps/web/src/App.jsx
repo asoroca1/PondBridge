@@ -37,6 +37,7 @@ import {
   SuperEmailTransactionalPage,
   SuperPlatformPulsePage,
   SuperSettingsPage,
+  SuperTenantCreatePage,
   SuperTenantsPage
 } from "./pages/super/SuperPages.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
@@ -459,6 +460,7 @@ export default function App() {
             <Route path="login/*" element={<SuperLoginPage />} />
             <Route element={<ErrorBoundary level="page"><SuperShellLayout /></ErrorBoundary>}>
               <Route path="dashboard" element={<SuperPlatformPulsePage />} />
+              <Route path="tenants/create" element={<SuperTenantCreatePage />} />
               <Route path="tenants" element={<SuperTenantsPage />} />
 
               <Route path="email/transactional" element={<SuperEmailTransactionalPage />} />
