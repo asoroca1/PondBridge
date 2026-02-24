@@ -38,7 +38,9 @@ export default function DirectorCreateAccountClerkPage() {
   const signUpPath = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
   const signInPath = routeWithSlug(slug, "/login", usingSlugRoute);
   const setupPath = routeWithSlug(slug, "/director-create-account?setup=1", usingSlugRoute);
-  const hasDirectorMembership = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
+  const hasDirectorMembership = Boolean(
+    isAuthenticated && (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"))
+  );
   const showDirectorContinue = Boolean(isLoaded && isSignedIn && directorBootstrap && hasDirectorMembership);
   const showAccountSwitchPrompt = Boolean(isLoaded && isSignedIn && directorBootstrap && !hasDirectorMembership);
 
