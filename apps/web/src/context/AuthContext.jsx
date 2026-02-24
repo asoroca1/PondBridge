@@ -20,7 +20,7 @@ const AUTO_LOGOUT_TIMEOUT_MS =
     ? AUTO_LOGOUT_MINUTES * 60 * 1000
     : 0;
 const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
-  String(import.meta.env.VITE_FORCE_LOGOUT_ON_TAB_CLOSE || "true")
+  String(import.meta.env.VITE_FORCE_LOGOUT_ON_TAB_CLOSE || "false")
     .trim()
     .toLowerCase()
 );
@@ -205,7 +205,6 @@ function ClerkBackedAuthProvider({ children }) {
   const [sessionRefreshing, setSessionRefreshing] = useState(true);
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const { signOut } = useClerk();
-  const tabSignoutInFlightRef = useRef(false);
 
   const clearLocalAuth = useCallback(() => {
     setToken("");
@@ -283,12 +282,6 @@ function ClerkBackedAuthProvider({ children }) {
     if (FORCE_RELOGIN_ON_TAB_CLOSE && !tabSessionExists && !loginIntentExists) {
       clearLocalAuth();
       setSessionRefreshing(false);
-      if (isSignedIn && !tabSignoutInFlightRef.current) {
-        tabSignoutInFlightRef.current = true;
-        signOut().catch(() => {}).finally(() => {
-          tabSignoutInFlightRef.current = false;
-        });
-      }
       return;
     }
 
@@ -312,7 +305,7 @@ function ClerkBackedAuthProvider({ children }) {
     return () => {
       active = false;
     };
-  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession, signOut]);
+  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession]);
 
   const login = useCallback(
     (nextToken, nextUser) => {
