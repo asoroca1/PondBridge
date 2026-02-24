@@ -1,4 +1,5 @@
 import { isAllowedCorsOrigin } from "../config/cors.js";
+import { readAuthTokenFromCookie } from "../utils/authCookie.js";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -31,6 +32,14 @@ export function csrfProtection(req, res, next) {
     return next();
   }
 
+  // CSRF is only relevant when a browser automatically sends an existing
+  // session cookie. Requests without an auth cookie (e.g. initial logins,
+  // server-to-server calls, and tests) should not be blocked by origin checks.
+  const authCookieToken = readAuthTokenFromCookie(req);
+  if (!authCookieToken) {
+    return next();
+  }
+
   // Determine the request origin from the Origin header, falling back to Referer
   const origin = String(req.headers.origin || "").trim();
   const referer = String(req.headers.referer || "").trim();
@@ -44,8 +53,8 @@ export function csrfProtection(req, res, next) {
     }
   }
 
-  // If neither Origin nor Referer is present, reject the request.
-  // Legitimate browser-based mutating requests always include at least one.
+  // If neither Origin nor Referer is present, reject cookie-authenticated
+  // mutating requests.
   if (!effectiveOrigin) {
     return res.status(403).json({ error: "Origin not allowed" });
   }
