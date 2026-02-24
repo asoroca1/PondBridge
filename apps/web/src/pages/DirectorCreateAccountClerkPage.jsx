@@ -77,9 +77,36 @@ export default function DirectorCreateAccountClerkPage() {
             <SignUp
               path={signUpPath}
               routing="path"
+              withSignIn={false}
               fallbackRedirectUrl={callbackPath}
               forceRedirectUrl={callbackPath}
+              localization={{
+                signUp: {
+                  start: {
+                    title: "",
+                    subtitle: ""
+                  },
+                  emailLink: {
+                    title: "Check your email",
+                    subtitle: "Open the secure link to continue director onboarding."
+                  },
+                  emailCode: {
+                    title: "Check your email",
+                    subtitle: "Enter the verification code to continue director onboarding."
+                  }
+                }
+              }}
               appearance={{
+                variables: {
+                  colorPrimary: "#0b2f57",
+                  colorText: "#17375e",
+                  colorTextSecondary: "#5d738d",
+                  colorInputBackground: "#ffffff",
+                  colorInputText: "#17375e",
+                  colorNeutral: "#d4dfec",
+                  borderRadius: "12px",
+                  fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
+                },
                 elements: {
                   rootBox: {
                     width: "100%"
@@ -131,10 +158,30 @@ export default function DirectorCreateAccountClerkPage() {
                   },
                   main: {
                     padding: "0",
-                    gap: "10px"
+                    gap: "12px"
                   },
                   form: {
                     gap: "12px"
+                  },
+                  formFieldLabel: {
+                    color: "#17375e",
+                    fontWeight: "700"
+                  },
+                  formFieldInput: {
+                    minHeight: "46px",
+                    borderRadius: "12px",
+                    border: "1px solid #d4dfec",
+                    boxShadow: "none",
+                    color: "#17375e",
+                    background: "#ffffff"
+                  },
+                  formButtonPrimary: {
+                    minHeight: "48px",
+                    borderRadius: "12px",
+                    background: "#0b2f57",
+                    boxShadow: "none",
+                    fontWeight: "700",
+                    fontSize: "1rem"
                   },
                   headerTitle: {
                     display: "none"

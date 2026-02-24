@@ -192,7 +192,7 @@
 }
 
 .product-director-create-clerk-wrap {
-  width: min(760px, 100%);
+  width: min(780px, 100%);
 }
 
 .product-director-create-card {
@@ -204,7 +204,7 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(251, 253, 255, 0.9));
   box-shadow: 0 18px 42px rgba(13, 34, 66, 0.14);
   backdrop-filter: blur(2px);
-  padding: clamp(24px, 4vw, 36px);
+  padding: clamp(28px, 4vw, 38px);
   width: 100%;
 }
 
@@ -253,7 +253,11 @@
 .product-director-create-clerk-page .cl-dividerRow,
 .product-director-create-clerk-page .cl-footerAction,
 .product-director-create-clerk-page .cl-footer,
-.product-director-create-clerk-page .cl-header {
+.product-director-create-clerk-page .cl-header,
+.product-director-create-clerk-page .cl-headerTitle,
+.product-director-create-clerk-page .cl-headerSubtitle,
+.product-director-create-clerk-page .cl-formHeaderTitle,
+.product-director-create-clerk-page .cl-formHeaderSubtitle {
   display: none !important;
 }
 
@@ -267,11 +271,36 @@
   padding: 0 !important;
 }
 
+.product-director-create-clerk-page .cl-formFieldLabel {
+  color: #17375e;
+  font-weight: 700;
+}
+
+.product-director-create-clerk-page .cl-formFieldInput {
+  min-height: 46px;
+  border-radius: 12px;
+  border: 1px solid #d4dfec;
+  box-shadow: none;
+  color: #17375e;
+  background: #fff;
+}
+
+.product-director-create-clerk-page .cl-formFieldInput:focus {
+  border-color: #174272;
+  box-shadow: 0 0 0 3px rgba(19, 72, 129, 0.12);
+}
+
 .product-director-create-clerk-page .cl-formButtonPrimary {
   min-height: 48px;
   border-radius: 12px;
   font-size: 1rem;
   font-weight: 700;
+  background: #0b2f57;
+  box-shadow: none;
+}
+
+.product-director-create-clerk-page .cl-formButtonPrimary:hover {
+  background: #164377;
 }
 
 .product-director-create-clerk-page .success-text,
