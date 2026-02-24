@@ -33,7 +33,6 @@ import SuperLoginPage from "./pages/SuperLoginPage.jsx";
 import SuperShellLayout from "./pages/super/SuperShellLayout.jsx";
 import {
   SuperBillingFailedPage,
-  SuperBillingOverviewPage,
   SuperBillingTenantsPage,
   SuperEmailTransactionalPage,
   SuperPlatformPulsePage,
@@ -467,7 +466,7 @@ export default function App() {
               <Route path="email/transactional" element={<SuperEmailTransactionalPage />} />
               <Route path="email/broadcast" element={<Navigate to="/super/email/transactional" replace />} />
 
-              <Route path="billing" element={<SuperBillingOverviewPage />} />
+              <Route path="billing" element={<Navigate to="/super/billing/tenants" replace />} />
               <Route path="billing/tenants" element={<SuperBillingTenantsPage />} />
               <Route path="billing/failed" element={<SuperBillingFailedPage />} />
 

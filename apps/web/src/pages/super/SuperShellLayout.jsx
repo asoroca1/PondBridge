@@ -20,7 +20,6 @@ const SUPER_NAV = [
   {
     label: "Billing",
     items: [
-      { to: "/super/billing", label: "Billing Overview" },
       { to: "/super/billing/tenants", label: "Tenant Billing" },
       { to: "/super/billing/failed", label: "Failed Payments" }
     ]
@@ -46,7 +45,6 @@ const FINANCE_NAV = [
   {
     label: "Billing",
     items: [
-      { to: "/super/billing", label: "Billing Overview" },
       { to: "/super/billing/tenants", label: "Tenant Billing" },
       { to: "/super/billing/failed", label: "Failed Payments" }
     ]
@@ -196,7 +194,7 @@ export default function SuperShellLayout() {
   }
 
   if (role === "finance_admin" && !financeRouteAllowed) {
-    return <Navigate to="/super/billing" replace />;
+    return <Navigate to="/super/billing/tenants" replace />;
   }
 
   return (

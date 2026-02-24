@@ -16,7 +16,9 @@ function hasSuperConsoleRole(user) {
 
 function superDestinationFromUser(user) {
   const roles = roleSetFromUser(user);
-  return roles.has("finance_admin") && !roles.has("super_admin") ? "/super/billing" : "/super/tenants";
+  return roles.has("finance_admin") && !roles.has("super_admin")
+    ? "/super/billing/tenants"
+    : "/super/tenants";
 }
 
 function ClerkSuperLoginPage() {
