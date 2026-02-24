@@ -120,7 +120,7 @@ export default function ClerkCreateAccountFlow() {
       <section className="login1-main">
         <div className="login1-card">
           <h1 className="login1-title">Create Profile</h1>
-          <p className="login1-forgot">Sign up with email, Google, Apple, and secure recovery via Clerk.</p>
+          <p className="login1-forgot">Sign up with email and secure account recovery via Clerk.</p>
           {inviteMeta ? (
             <p className="success-text">
               Invite recognized for <strong>{inviteMeta.email || "this account"}</strong>.
@@ -134,6 +134,27 @@ export default function ClerkCreateAccountFlow() {
             forceRedirectUrl={callbackPath}
             appearance={{
               elements: {
+                socialButtons: {
+                  display: "none"
+                },
+                socialButtonsBlock: {
+                  display: "none"
+                },
+                socialButtonsBlockButton: {
+                  display: "none"
+                },
+                socialButtonsIconButton: {
+                  display: "none"
+                },
+                dividerRow: {
+                  display: "none"
+                },
+                dividerLine: {
+                  display: "none"
+                },
+                dividerText: {
+                  display: "none"
+                },
                 card: {
                   boxShadow: "none",
                   border: "none",
@@ -147,4 +168,3 @@ export default function ClerkCreateAccountFlow() {
     </div>
   );
 }
-

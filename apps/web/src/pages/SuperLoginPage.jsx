@@ -96,6 +96,27 @@ function ClerkSuperLoginPage() {
                 rootBox: {
                   width: "100%"
                 },
+                socialButtons: {
+                  display: "none"
+                },
+                socialButtonsBlock: {
+                  display: "none"
+                },
+                socialButtonsBlockButton: {
+                  display: "none"
+                },
+                socialButtonsIconButton: {
+                  display: "none"
+                },
+                dividerRow: {
+                  display: "none"
+                },
+                dividerLine: {
+                  display: "none"
+                },
+                dividerText: {
+                  display: "none"
+                },
                 header: {
                   display: "none"
                 },

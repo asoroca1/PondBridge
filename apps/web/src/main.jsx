@@ -10,6 +10,32 @@ import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";
 
+const clerkNoSocialAppearance = {
+  elements: {
+    socialButtons: {
+      display: "none"
+    },
+    socialButtonsBlock: {
+      display: "none"
+    },
+    socialButtonsBlockButton: {
+      display: "none"
+    },
+    socialButtonsIconButton: {
+      display: "none"
+    },
+    dividerRow: {
+      display: "none"
+    },
+    dividerLine: {
+      display: "none"
+    },
+    dividerText: {
+      display: "none"
+    }
+  }
+};
+
 const baseTree = (
   <BrowserRouter>
     <AuthProvider>
@@ -19,7 +45,9 @@ const baseTree = (
 );
 
 const appTree = clerkUiEnabled() ? (
-  <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>{baseTree}</ClerkProvider>
+  <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} appearance={clerkNoSocialAppearance}>
+    {baseTree}
+  </ClerkProvider>
 ) : (
   baseTree
 );

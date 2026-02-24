@@ -206,7 +206,7 @@ function ClerkLogin() {
         <div className="login1-card">
           <h1 className="login1-title">Login</h1>
           <h2 className="login1-clerk-panel-title">Sign in to {networkName}</h2>
-          <p className="login1-clerk-panel-subtitle">Use email, Google, Apple, and password recovery via Clerk.</p>
+          <p className="login1-clerk-panel-subtitle">Use email sign-in and secure account recovery via Clerk.</p>
           <SignIn
             path={path}
             routing="path"
@@ -237,6 +237,27 @@ function ClerkLogin() {
               elements: {
                 rootBox: {
                   width: "100%"
+                },
+                socialButtons: {
+                  display: "none"
+                },
+                socialButtonsBlock: {
+                  display: "none"
+                },
+                socialButtonsBlockButton: {
+                  display: "none"
+                },
+                socialButtonsIconButton: {
+                  display: "none"
+                },
+                dividerRow: {
+                  display: "none"
+                },
+                dividerLine: {
+                  display: "none"
+                },
+                dividerText: {
+                  display: "none"
                 },
                 card: {
                   boxShadow: "none",

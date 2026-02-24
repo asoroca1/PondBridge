@@ -85,6 +85,27 @@ export default function DirectorCreateAccountClerkPage() {
                   rootBox: {
                     width: "100%"
                   },
+                  socialButtons: {
+                    display: "none"
+                  },
+                  socialButtonsBlock: {
+                    display: "none"
+                  },
+                  socialButtonsBlockButton: {
+                    display: "none"
+                  },
+                  socialButtonsIconButton: {
+                    display: "none"
+                  },
+                  dividerRow: {
+                    display: "none"
+                  },
+                  dividerLine: {
+                    display: "none"
+                  },
+                  dividerText: {
+                    display: "none"
+                  },
                   card: {
                     boxShadow: "0 16px 38px rgba(13, 34, 66, 0.12)",
                     border: "1px solid #d6deeb",
