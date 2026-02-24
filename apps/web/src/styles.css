@@ -5065,6 +5065,10 @@ button.super-stat-card {
   align-items: stretch;
 }
 
+.super-two-col.super-pulse-visual-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .super-visual-card {
   display: flex;
   flex-direction: column;

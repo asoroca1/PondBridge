@@ -252,7 +252,7 @@ export function SuperPlatformPulsePage() {
         </div>
       </Card>
 
-      <div className="super-two-col super-three-split super-equal-height super-pulse-visual-row">
+      <div className="super-two-col super-equal-height super-pulse-visual-row">
         <Card className="super-visual-card">
           <h2 className="pb-section-title">MRR Trend (7d)</h2>
           <SparkBars items={data?.charts?.mrr7d || []} />
