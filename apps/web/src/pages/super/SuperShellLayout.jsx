@@ -34,10 +34,6 @@ const SUPER_NAV = [
       { to: "/super/dashboard", label: "Platform Pulse" },
       { to: "/super/email/transactional", label: "Transactional Email" }
     ]
-  },
-  {
-    label: "Audit Log",
-    items: [{ to: "/super/settings", label: "Audit Log" }]
   }
 ];
 
