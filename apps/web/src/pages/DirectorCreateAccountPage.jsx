@@ -1554,10 +1554,14 @@ function DirectorCreateAccountWizardPage() {
           <div className="director-step-content" key={step}>
           {step === STEP_ACCOUNT ? (
             <>
-              <h1>Create your director account</h1>
-              <p className="product-claim-body director-create-subtitle">
-                This will be your admin login for setting up and managing your camp&apos;s network.
-              </p>
+              <div className="director-design-head director-design-head--styled">
+                <div className="director-design-intro">
+                  <h1>Create your director account</h1>
+                  <p className="product-claim-body director-create-subtitle">
+                    This will be your admin login for setting up and managing your camp&apos;s network.
+                  </p>
+                </div>
+              </div>
 
               <form className="director-create-form" onSubmit={onContinueToDesign} noValidate>
                 <div className="wizard1-grid wizard1-gap director-create-fields">
@@ -1894,8 +1898,8 @@ function DirectorCreateAccountWizardPage() {
 
           {step === STEP_FEATURES ? (
             <>
-              <div className="director-design-head">
-                <div>
+              <div className="director-design-head director-design-head--styled">
+                <div className="director-design-intro">
                   <h1>Choose your features</h1>
                   <p className="product-claim-body director-create-subtitle">
                     All features are on by default. Toggle any off to customize your network.
@@ -1994,8 +1998,8 @@ function DirectorCreateAccountWizardPage() {
 
           {step === STEP_CAMP_SPECIFICS ? (
             <>
-              <div className="director-design-head">
-                <div>
+              <div className="director-design-head director-design-head--styled">
+                <div className="director-design-intro">
                   <h1>Camp specifics</h1>
                   <p className="product-claim-body director-create-subtitle">
                     Set your camp-specific naming for age groups and staff roles.
@@ -2108,8 +2112,8 @@ function DirectorCreateAccountWizardPage() {
 
           {step === STEP_BILLING_PLAN ? (
             <>
-              <div className="director-design-head">
-                <div>
+              <div className="director-design-head director-design-head--styled">
+                <div className="director-design-intro">
                   <h1>Billing and plan</h1>
                   <p className="product-claim-body director-create-subtitle">
                     Confirm your alumni network plan and onboarding fee status before finishing setup.
@@ -2402,8 +2406,8 @@ function DirectorCreateAccountWizardPage() {
 
           {step === STEP_REVIEW_LAUNCH ? (
             <>
-              <div className="director-design-head">
-                <div>
+              <div className="director-design-head director-design-head--styled">
+                <div className="director-design-intro">
                   <h1>Review and launch</h1>
                   <p className="product-claim-body director-create-subtitle">
                     Review your setup details below, then complete onboarding to open your launch center.

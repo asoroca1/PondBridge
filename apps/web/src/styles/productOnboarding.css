@@ -466,7 +466,7 @@
 .director-design-intro {
   display: grid;
   gap: 8px;
-  width: min(760px, 100%);
+  width: 100%;
   border: 1px solid #d5deea;
   border-radius: var(--radius-md);
   background: #f8fbff;
