@@ -454,9 +454,14 @@ export function SuperTenantsPage() {
         {status ? <p className="success-text">{status}</p> : null}
       </Card>
 
-      <Card className="super-tenants-filter-card">
-        <h2 className="pb-section-title">Filters</h2>
-        <div className="super-filter-grid super-filter-grid-tenants">
+      <Card className="super-tenants-table-card">
+        <header className="super-tenant-list-head">
+          <div>
+            <h2 className="pb-section-title">Tenant List</h2>
+            <p className="super-tenant-list-subtitle">Filter camps by status, plan tier, and billing state.</p>
+          </div>
+        </header>
+        <div className="super-filter-grid super-filter-grid-tenants super-filter-grid-tenants-inline">
           <label>
             Search
             <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
@@ -491,10 +496,6 @@ export function SuperTenantsPage() {
             </Select>
           </label>
         </div>
-      </Card>
-
-      <Card>
-        <h2 className="pb-section-title">Tenant List</h2>
         <div className="super-table-wrap">
           <table className="super-data-table">
             <thead>

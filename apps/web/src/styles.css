@@ -5439,6 +5439,51 @@ button.super-stat-card {
   align-content: start;
 }
 
+.super-tenants-table-card {
+  display: grid;
+  gap: 12px;
+}
+
+.super-tenant-list-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.super-tenant-list-head .pb-section-title {
+  margin-bottom: 0;
+}
+
+.super-tenant-list-subtitle {
+  margin: 5px 0 0;
+  color: #607693;
+  font-size: 0.92rem;
+}
+
+.super-filter-grid-tenants-inline {
+  margin-top: 2px;
+  border: 1px solid #dee7f2;
+  background: #f8fbff;
+  padding: 11px;
+  gap: 10px;
+}
+
+.super-filter-grid-tenants-inline label {
+  color: #2b4768;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.super-filter-grid-tenants-inline .pb-input,
+.super-filter-grid-tenants-inline .pb-select {
+  min-height: 44px;
+}
+
+.super-tenants-table-card .super-table-wrap {
+  margin-top: 0;
+}
+
 .super-filter-table-card .super-filter-grid {
   margin-bottom: 4px;
 }
