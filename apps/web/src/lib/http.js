@@ -67,8 +67,8 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     } catch {
       resolvedToken = token || "";
     }
-  } else if (resolvedToken) {
-    const browserToken = await readBrowserClerkToken({ forceRefresh: true });
+  } else if (!resolvedToken) {
+    const browserToken = await readBrowserClerkToken();
     if (browserToken) resolvedToken = browserToken;
   }
 
@@ -107,10 +107,11 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
   }
 
   if (response.status === 401) {
-    const refreshedToken =
-      typeof getToken === "function"
-        ? await getToken().catch(() => "")
-        : await readBrowserClerkToken({ forceRefresh: true });
+    let refreshedToken = typeof getToken === "function" ? await getToken().catch(() => "") : "";
+    if (!refreshedToken || refreshedToken === resolvedToken) {
+      const browserRefreshedToken = await readBrowserClerkToken({ forceRefresh: true });
+      if (browserRefreshedToken) refreshedToken = browserRefreshedToken;
+    }
     if (refreshedToken && refreshedToken !== resolvedToken) {
       resolvedToken = refreshedToken;
       try {

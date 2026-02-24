@@ -99,13 +99,23 @@ function TenantScopeRoutes() {
   const location = useLocation();
   const params = useParams();
   const slug = params.slug || tenantSlug;
+  const membershipSyncKeyRef = useRef("");
 
   useEffect(() => {
-    if (!isReady || !isAuthenticated) return;
-    if (!["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase())) return;
-    if (!slug) return;
-    refreshSession({ tenantSlug: slug }).catch(() => {});
-  }, [authProvider, isAuthenticated, isReady, refreshSession, slug]);
+    const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
+    if (!clerkMode || !isAuthenticated || !slug) {
+      membershipSyncKeyRef.current = "";
+      return;
+    }
+
+    const syncKey = `${String(authProvider || "").toLowerCase()}:${slug}:signed-in`;
+    if (membershipSyncKeyRef.current === syncKey) return;
+    membershipSyncKeyRef.current = syncKey;
+
+    refreshSession({ tenantSlug: slug }).catch(() => {
+      membershipSyncKeyRef.current = "";
+    });
+  }, [authProvider, isAuthenticated, refreshSession, slug]);
 
   if (loading) {
     return (
