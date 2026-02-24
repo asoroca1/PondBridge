@@ -147,6 +147,14 @@ export default function DirectorCreateAccountClerkPage() {
                   header: {
                     display: "none"
                   },
+                  cardBox: {
+                    boxShadow: "none",
+                    border: "none",
+                    width: "100%",
+                    maxWidth: "100%",
+                    background: "transparent",
+                    padding: "0"
+                  },
                   card: {
                     boxShadow: "none",
                     border: "none",

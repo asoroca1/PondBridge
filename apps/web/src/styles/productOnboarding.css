@@ -264,12 +264,14 @@
   display: none !important;
 }
 
+.product-director-create-clerk-page .cl-cardBox,
 .product-director-create-clerk-page .cl-card {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   width: 100% !important;
   max-width: none !important;
+  padding: 0 !important;
 }
 
 .product-director-create-clerk-page .cl-rootBox,
