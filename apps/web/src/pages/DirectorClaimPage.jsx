@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
 import { useTenant } from "../context/TenantContext.jsx";
 
@@ -7,14 +7,12 @@ export default function DirectorClaimPage() {
   const { slug: paramSlug } = useParams();
   const { slug: tenantSlug } = useTenant();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const slug = String(paramSlug || tenantSlug || "").trim().toLowerCase();
-  const token = String(searchParams.get("token") || searchParams.get("inviteToken") || "").trim();
-  const createAccountPath = useMemo(() => {
-    const createAccountBasePath = slug ? `/t/${slug}/director-create-account` : "/director-create-account";
-    return token ? `${createAccountBasePath}?inviteToken=${encodeURIComponent(token)}` : createAccountBasePath;
-  }, [slug, token]);
+  const createAccountPath = useMemo(
+    () => (slug ? `/t/${slug}/director-create-account` : "/director-create-account"),
+    [slug]
+  );
 
   return (
     <section className="product-claim-page product-director-claim-page">

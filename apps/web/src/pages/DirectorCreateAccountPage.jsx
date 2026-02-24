@@ -257,6 +257,15 @@ async function dataUrlToBlob(dataUrl = "") {
   return response.blob();
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Unable to process image preview."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 async function optimizeImageFile(
   file,
   {
@@ -726,17 +735,22 @@ function DirectorCreateAccountWizardPage() {
     setSubmitError("");
   }
 
-  async function uploadBrandingAsset({ blob, fileName, fileType, scope }) {
-    const presign = await requestJson(`/api/t/${slug}/uploads/presign-public`, {
-      method: "POST",
-      body: {
-        fileName,
-        fileType,
-        fileSize: Number(blob?.size || 0),
-        scope,
-        inviteToken
+  async function uploadBrandingAsset({ blob, fileName, fileType, scope, token = "" }) {
+    const authTokenForUpload = String(token || "").trim();
+    const useAuthenticatedUpload = Boolean(authTokenForUpload);
+    const presign = await requestJson(
+      useAuthenticatedUpload ? `/api/t/${slug}/uploads/presign` : `/api/t/${slug}/uploads/presign-public`,
+      {
+        method: "POST",
+        ...(useAuthenticatedUpload ? { token: authTokenForUpload } : {}),
+        body: {
+          fileName,
+          fileType,
+          fileSize: Number(blob?.size || 0),
+          scope
+        }
       }
-    });
+    );
 
     const headers =
       presign?.headers && typeof presign.headers === "object" ? presign.headers : undefined;
@@ -1028,12 +1042,17 @@ function DirectorCreateAccountWizardPage() {
       });
       const finalMime = optimizedLogo.type || preferredMime;
       const extension = finalMime === "image/png" ? "png" : "jpg";
-      const logoUrl = await uploadBrandingAsset({
-        blob: optimizedLogo,
-        fileName: `logo-${Date.now()}.${extension}`,
-        fileType: finalMime,
-        scope: "branding-logo"
-      });
+      const uploadToken = String(authToken || "").trim();
+      const logoUrl =
+        uploadToken
+          ? await uploadBrandingAsset({
+              blob: optimizedLogo,
+              fileName: `logo-${Date.now()}.${extension}`,
+              fileType: finalMime,
+              scope: "branding-logo",
+              token: uploadToken
+            })
+          : await blobToDataUrl(optimizedLogo);
       updateThemeField("logoUrl", logoUrl);
     } catch (error) {
       setSubmitError(error.message || "Unable to process logo image.");
@@ -1067,12 +1086,17 @@ function DirectorCreateAccountWizardPage() {
       });
       const finalMime = optimizedHero.type || "image/jpeg";
       const extension = finalMime === "image/png" ? "png" : "jpg";
-      const heroImageUrl = await uploadBrandingAsset({
-        blob: optimizedHero,
-        fileName: `hero-${Date.now()}.${extension}`,
-        fileType: finalMime,
-        scope: "branding-hero"
-      });
+      const uploadToken = String(authToken || "").trim();
+      const heroImageUrl =
+        uploadToken
+          ? await uploadBrandingAsset({
+              blob: optimizedHero,
+              fileName: `hero-${Date.now()}.${extension}`,
+              fileType: finalMime,
+              scope: "branding-hero",
+              token: uploadToken
+            })
+          : await blobToDataUrl(optimizedHero);
       updateThemeField("heroImageUrl", heroImageUrl);
     } catch (error) {
       setSubmitError(error.message || "Unable to process main photo.");
@@ -1251,7 +1275,6 @@ function DirectorCreateAccountWizardPage() {
             email: String(form.email || "").trim().toLowerCase(),
             password: form.password,
             campName: String(form.campName || "").trim(),
-            inviteToken,
             directorSignup: true
           }
         });
@@ -1281,7 +1304,8 @@ function DirectorCreateAccountWizardPage() {
           blob: logoBlob,
           fileName: `logo-${Date.now()}.${extensionFromMime(logoMime)}`,
           fileType: logoMime,
-          scope: "branding-logo"
+          scope: "branding-logo",
+          token
         });
       }
 
@@ -1292,7 +1316,8 @@ function DirectorCreateAccountWizardPage() {
           blob: heroBlob,
           fileName: `hero-${Date.now()}.${extensionFromMime(heroMime)}`,
           fileType: heroMime,
-          scope: "branding-hero"
+          scope: "branding-hero",
+          token
         });
       }
 

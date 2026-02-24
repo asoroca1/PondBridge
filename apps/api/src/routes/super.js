@@ -27,7 +27,6 @@ import {
 import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
 import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
-import { createInviteRecord } from "../services/invites.js";
 import { deprovisionTenantDomain, provisionTenantDomain } from "../services/cloudflareDomains.js";
 import { getEmailServiceStatus } from "../services/email.js";
 import { getR2ServiceStatus } from "../services/objectStorage.js";
@@ -665,7 +664,6 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   const slugInput = String(req.body.slug || name).trim();
   const slug = normalizeSlug(slugInput);
   const directorEmail = normalizeEmail(req.body.directorEmail || "");
-  const inviteExpiresInDays = Math.min(Math.max(Number(req.body.inviteExpiresInDays || 14), 1), 90);
 
   if (!name || !slug) {
     return res.status(400).json({
@@ -750,10 +748,18 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     }
   });
 
-  let inviteLink = `/t/${tenant.slug}/director-claim`;
-  let directorInvite = null;
-  let directorClaimLink = "";
+  const inviteLink = `/t/${tenant.slug}/director-claim`;
   const network = buildTenantUrls(tenant);
+  const directorClaimLink = network.directorClaimUrl || inviteLink;
+  const directorInvite = directorEmail
+    ? {
+        email: directorEmail,
+        roleToAssign: "tenant_admin",
+        claimUrl: directorClaimLink,
+        onboardingUrl: `/t/${tenant.slug}/onboarding`,
+        mode: "first_signup_bootstrap"
+      }
+    : null;
   let domainProvisioning = { status: "skipped", reason: "not_attempted" };
 
   try {
@@ -762,30 +768,6 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     domainProvisioning = {
       status: "error",
       message: String(error?.message || "Cloudflare provisioning failed")
-    };
-  }
-
-  if (directorEmail) {
-    const { invite, token } = await createInviteRecord({
-      tenantId: tenant._id,
-      email: directorEmail,
-      roleToAssign: "tenant_admin",
-      createdByUserId: req.user.id,
-      expiresInDays: inviteExpiresInDays
-    });
-
-    inviteLink = `/t/${tenant.slug}/director-claim?inviteToken=${encodeURIComponent(token)}`;
-    directorClaimLink = network.directorClaimUrl
-      ? `${network.directorClaimUrl}?inviteToken=${encodeURIComponent(token)}`
-      : inviteLink;
-    directorInvite = {
-      id: String(invite._id),
-      email: invite.email,
-      roleToAssign: invite.roleToAssign,
-      expiresAt: invite.expiresAt,
-      signupUrl: `/t/${tenant.slug}/create-account?inviteToken=${token}`,
-      claimUrl: directorClaimLink,
-      onboardingUrl: `/t/${tenant.slug}/onboarding`
     };
   }
 
@@ -806,13 +788,11 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
       status: "queued_mock",
       message: "Director lifecycle contact sync is scaffolded and can be connected to Loops API."
     },
-    nextSteps: directorInvite
-      ? [
-          "Send the director claim link.",
-          "Director claims access and creates account.",
-          "Director is redirected into onboarding wizard."
-        ]
-      : ["Create or invite a tenant_admin account for this camp, then continue onboarding."]
+    nextSteps: [
+      "Share the director claim link.",
+      "The first verified signup on this camp domain claims director access.",
+      "Director is redirected into onboarding wizard."
+    ]
   });
 });
 

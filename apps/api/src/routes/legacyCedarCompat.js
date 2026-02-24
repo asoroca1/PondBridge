@@ -17,7 +17,6 @@ import {
   CityGeoModel
 } from "../db/models/index.js";
 import { createPresignedUpload } from "../services/objectStorage.js";
-import { findInviteByOpaqueToken } from "../services/invites.js";
 import { cityKey, geocodeCity } from "../utils/geocode.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
 import { sanitizeText } from "../utils/sanitize.js";
@@ -81,6 +80,7 @@ const IMAGE_MIME_TYPES = new Set([
 ]);
 const PUBLIC_UPLOAD_SCOPES = new Set(["avatar"]);
 const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero"]);
+const PRELAUNCH_PUBLIC_BRANDING_SCOPES = new Set(["branding-logo", "branding-hero"]);
 
 function normalizeFileName(fileName = "file") {
   return String(fileName || "file")
@@ -167,20 +167,13 @@ function ensureBrowserOriginAllowed(req) {
 
 async function ensurePublicUploadScopeAllowed(req, scope) {
   if (PUBLIC_UPLOAD_SCOPES.has(scope)) return;
-  const inviteToken = String(req.body?.inviteToken || "").trim();
-  if (!inviteToken) {
-    const error = new Error("A director invite token is required for this upload scope.");
-    error.statusCode = 403;
-    error.code = "INVITE_REQUIRED";
-    throw error;
-  }
-  const invite = await findInviteByOpaqueToken(req.tenant._id, inviteToken);
-  if (!invite || String(invite.roleToAssign || "").trim() !== "tenant_admin") {
-    const error = new Error("A valid director invite token is required for this upload scope.");
-    error.statusCode = 403;
-    error.code = "INVITE_REQUIRED";
-    throw error;
-  }
+  const onboardingStatus = String(req.tenant?.onboardingStatus || "").trim().toLowerCase();
+  if (PRELAUNCH_PUBLIC_BRANDING_SCOPES.has(scope) && onboardingStatus !== "live") return;
+
+  const error = new Error("This upload scope requires an authenticated director session.");
+  error.statusCode = 403;
+  error.code = "AUTH_REQUIRED";
+  throw error;
 }
 
 async function buildPresignedImageUpload(req, { allowPublicScopesOnly = true } = {}) {

@@ -610,7 +610,7 @@ export function SuperTenantCreatePage() {
   async function copyClaim(link) {
     if (!link) return;
     await navigator.clipboard.writeText(link);
-    setStatus("Director claim link copied.");
+    setStatus("Director onboarding link copied.");
   }
 
   return (
@@ -618,7 +618,7 @@ export function SuperTenantCreatePage() {
       <Card className="super-tenants-create-card super-camp-create-form-card">
         <PanelHeader
           title="Create Camp"
-          subtitle="Provision a new tenant and generate director onboarding access in one flow."
+          subtitle="Provision a new tenant and generate a director onboarding link in one flow."
         />
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
@@ -653,7 +653,7 @@ export function SuperTenantCreatePage() {
             />
           </label>
           <label className="full-width">
-            Director email (optional)
+            Director contact email (optional)
             <Input
               type="email"
               value={form.directorEmail}
@@ -704,7 +704,7 @@ export function SuperTenantCreatePage() {
           </div>
 
           <section className="super-create-result">
-            <p className="super-create-result-label">Director claim link</p>
+            <p className="super-create-result-label">Director onboarding link</p>
             {createResult.claimLink ? (
               <div className="super-create-result-link-row">
                 <Input readOnly value={createResult.claimLink} />
@@ -722,7 +722,10 @@ export function SuperTenantCreatePage() {
                 </div>
               </div>
             ) : (
-              <p className="super-create-result-note">Claim link will appear after domain provisioning finishes.</p>
+              <p className="super-create-result-note">
+                Link unavailable until domain provisioning finishes. Use{" "}
+                <code>{`/t/${createResult.slug}/director-claim`}</code> as fallback.
+              </p>
             )}
 
             {createResult.provisioningReason ? (

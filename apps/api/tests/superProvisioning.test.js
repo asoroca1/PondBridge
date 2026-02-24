@@ -71,7 +71,7 @@ describe("Super provisioning", () => {
     expect(createTenant.body.tenant.customDomain).toBe("cedar.pondbridge.test");
   });
 
-  test("super admin can create tenant + director invite and director can register before launch", async () => {
+  test("super admin can create tenant and first director can bootstrap before launch", async () => {
     await createSuperAdmin();
     const superToken = await loginSuper();
 
@@ -83,9 +83,7 @@ describe("Super provisioning", () => {
         slug: "pine-ridge",
         planTier: "premium",
         onboardingFeeAmount: 2500,
-        directorEmail: "director@pineridge.org",
-        directorRole: "tenant_admin",
-        inviteExpiresInDays: 14
+        directorEmail: "director@pineridge.org"
       });
 
     expect(createTenant.status).toBe(201);
@@ -93,18 +91,8 @@ describe("Super provisioning", () => {
     expect(createTenant.body.tenant.onboardingStatus).toBe("not_started");
     expect(createTenant.body.directorInvite?.email).toBe("director@pineridge.org");
     expect(createTenant.body.directorInvite?.roleToAssign).toBe("tenant_admin");
-    expect(createTenant.body.directorInvite?.signupUrl).toContain("/t/pine-ridge/create-account?inviteToken=");
-
-    const inviteToken = createTenant.body.directorInvite.signupUrl.split("inviteToken=")[1];
-    expect(inviteToken).toBeTruthy();
-
-    const verifyInvite = await request(app)
-      .post("/api/t/pine-ridge/auth/invite/verify")
-      .send({ inviteToken });
-
-    expect(verifyInvite.status).toBe(200);
-    expect(verifyInvite.body.valid).toBe(true);
-    expect(verifyInvite.body.invite.email).toBe("director@pineridge.org");
+    expect(createTenant.body.directorInvite?.mode).toBe("first_signup_bootstrap");
+    expect(createTenant.body.directorInvite?.claimUrl).toContain("/director-claim");
 
     const registerDirector = await request(app)
       .post("/api/t/pine-ridge/auth/register")
@@ -113,7 +101,7 @@ describe("Super provisioning", () => {
         lastName: "Director",
         email: "director@pineridge.org",
         password: "DirectorPass123!",
-        inviteToken
+        directorSignup: true
       });
 
     expect(registerDirector.status).toBe(201);

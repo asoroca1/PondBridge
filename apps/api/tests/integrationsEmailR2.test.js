@@ -11,13 +11,13 @@ let Tenant;
 let User;
 let Profile;
 
-async function createTenant({ slug, name }) {
+async function createTenant({ slug, name, onboardingStatus = "live" }) {
   return Tenant.create({
     name: name || `Camp ${slug}`,
     slug,
     status: "active",
     planTier: "premium",
-    onboardingStatus: "live",
+    onboardingStatus,
     settings: { signupMode: "open" },
     modules: { search: true, chat: true, photoStream: true, newsletter: true }
   });
@@ -220,8 +220,8 @@ describe("Email + R2 integration hardening", () => {
     expect(response.body.error?.code).toBe("UPLOAD_ORIGIN_FORBIDDEN");
   });
 
-  test("public presign blocks branding scope without director invite token", async () => {
-    await createTenant({ slug: "r2-branding-camp", name: "R2 Branding Camp" });
+  test("public presign allows prelaunch branding scope without director invite token", async () => {
+    await createTenant({ slug: "r2-branding-camp", name: "R2 Branding Camp", onboardingStatus: "not_started" });
     const response = await request(app)
       .post("/api/t/r2-branding-camp/uploads/presign-public")
       .set("Origin", "http://localhost:5173")
@@ -232,7 +232,10 @@ describe("Email + R2 integration hardening", () => {
         scope: "branding-logo"
       });
 
-    expect(response.status).toBe(403);
-    expect(response.body.error?.code).toBe("INVITE_REQUIRED");
+    expect([200, 413, 503]).toContain(response.status);
+    if (response.status !== 200) {
+      const code = String(response.body?.error?.code || "");
+      expect(["FILE_TOO_LARGE", "R2_NOT_CONFIGURED"]).toContain(code);
+    }
   });
 });

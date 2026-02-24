@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
-import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
@@ -24,56 +23,35 @@ export default function DirectorCreateAccountClerkPage() {
   const usingSlugRoute =
     Boolean(slug) &&
     (location.pathname === `/t/${slug}` || location.pathname.startsWith(`/t/${slug}/`));
-  const [searchParams] = useSearchParams();
-  const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
-  const directorBootstrap = !inviteToken;
   const { isLoaded, isSignedIn } = useClerkAuth();
   const { user, isAuthenticated, logout } = useAuth();
-  const [inviteMeta, setInviteMeta] = useState(null);
-  const [inviteError, setInviteError] = useState("");
   const bootstrapInFlightRef = useRef(false);
-  const callbackPath = inviteToken
-    ? `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?inviteToken=${encodeURIComponent(inviteToken)}`
-    : `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
+  const callbackPath = `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
   const signUpPath = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
   const signInPath = routeWithSlug(slug, "/login", usingSlugRoute);
   const setupPath = routeWithSlug(slug, "/director-create-account?setup=1", usingSlugRoute);
   const hasDirectorMembership = Boolean(
     isAuthenticated && (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"))
   );
-  const showDirectorContinue = Boolean(isLoaded && isSignedIn && directorBootstrap && hasDirectorMembership);
-  const showAccountSwitchPrompt = Boolean(isLoaded && isSignedIn && directorBootstrap && !hasDirectorMembership);
+  const showDirectorContinue = Boolean(isLoaded && isSignedIn && hasDirectorMembership);
+  const showAccountSwitchPrompt = Boolean(
+    isLoaded && isSignedIn && isAuthenticated && user && !hasDirectorMembership
+  );
 
   useEffect(() => {
     if (typeof window === "undefined" || !slug) return;
     const key = directorBootstrapIntentKey(slug);
-    if (directorBootstrap && !(isLoaded && isSignedIn)) {
+    if (!(isLoaded && isSignedIn)) {
       window.sessionStorage.setItem(key, "1");
       return;
     }
     window.sessionStorage.removeItem(key);
-  }, [directorBootstrap, isLoaded, isSignedIn, slug]);
+  }, [isLoaded, isSignedIn, slug]);
 
   useEffect(() => {
-    if (!inviteToken || !slug) return;
-    requestJson(`/api/t/${slug}/auth/invite/verify`, {
-      method: "POST",
-      body: { inviteToken }
-    })
-      .then((payload) => {
-        setInviteMeta(payload?.invite || null);
-        setInviteError("");
-      })
-      .catch((err) => {
-        setInviteMeta(null);
-        setInviteError(String(err?.message || "This invite is invalid or expired."));
-      });
-  }, [inviteToken, slug]);
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || !slug || !inviteToken) return;
+    if (!isLoaded || !isSignedIn || !slug || showAccountSwitchPrompt || hasDirectorMembership) return;
     navigate(callbackPath, { replace: true });
-  }, [callbackPath, inviteToken, isLoaded, isSignedIn, navigate, slug]);
+  }, [callbackPath, hasDirectorMembership, isLoaded, isSignedIn, navigate, showAccountSwitchPrompt, slug]);
 
   useEffect(() => {
     if (!showDirectorContinue) return;
@@ -102,12 +80,6 @@ export default function DirectorCreateAccountClerkPage() {
               Create your director login to start network setup.
             </p>
           </div>
-          {inviteError ? <p className="error-text">{inviteError}</p> : null}
-          {inviteMeta ? (
-            <p className="success-text">
-              Invite verified for <strong>{inviteMeta.email || "director"}</strong>.
-            </p>
-          ) : null}
 
           {showAccountSwitchPrompt ? (
             <div className="director-create-signed-in-gate">
@@ -123,7 +95,7 @@ export default function DirectorCreateAccountClerkPage() {
             </div>
           ) : null}
 
-          {!inviteError && !showAccountSwitchPrompt ? (
+          {!showAccountSwitchPrompt ? (
             <SignUp
               path={signUpPath}
               routing="path"
