@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../lib/http.js";
+import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
 function routeWithSlug(slug, path, useSlugPrefix = true) {
@@ -25,9 +26,11 @@ export default function DirectorCreateAccountClerkPage() {
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const directorBootstrap = !inviteToken;
-  const { isLoaded, isSignedIn } = useClerkAuth();
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { refreshSession } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [inviteError, setInviteError] = useState("");
+  const bootstrapInFlightRef = useRef(false);
   const callbackPath = inviteToken
     ? `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?inviteToken=${encodeURIComponent(inviteToken)}`
     : `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
@@ -67,8 +70,52 @@ export default function DirectorCreateAccountClerkPage() {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !slug || !directorBootstrap) return;
-    navigate(callbackPath, { replace: true });
-  }, [callbackPath, directorBootstrap, isLoaded, isSignedIn, navigate, slug]);
+    if (bootstrapInFlightRef.current) return;
+    let cancelled = false;
+    bootstrapInFlightRef.current = true;
+
+    async function bootstrapDirector() {
+      try {
+        const token = await getToken();
+        if (!token) throw new Error("No authenticated session token from Clerk.");
+
+        await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
+          method: "POST",
+          token,
+          body: {}
+        });
+        await refreshSession({ tenantSlug: slug });
+
+        if (cancelled) return;
+        navigate(routeWithSlug(slug, "/onboarding", usingSlugRoute), { replace: true });
+      } catch (error) {
+        if (cancelled) return;
+        const status = Number(error?.status || 0);
+        if (status === 409) {
+          navigate(callbackPath, { replace: true });
+          return;
+        }
+        setInviteError(String(error?.message || "Unable to claim director access."));
+      } finally {
+        bootstrapInFlightRef.current = false;
+      }
+    }
+
+    bootstrapDirector();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    callbackPath,
+    directorBootstrap,
+    getToken,
+    isLoaded,
+    isSignedIn,
+    navigate,
+    refreshSession,
+    slug,
+    usingSlugRoute
+  ]);
 
   return (
     <section className="product-claim-page product-director-create-page product-director-create-clerk-page">

@@ -1,5 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
+import { requestJson } from "../lib/http.js";
+import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
 export default function DirectorClaimPage() {
@@ -7,6 +11,10 @@ export default function DirectorClaimPage() {
   const { slug: tenantSlug } = useTenant();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isReady, isAuthenticated, authProvider, refreshSession } = useAuth();
+  const { isLoaded: clerkLoaded, isSignedIn, getToken } = useClerkAuth();
+  const bootstrapRef = useRef(false);
+  const [autoClaimError, setAutoClaimError] = useState("");
 
   const slug = String(paramSlug || tenantSlug || "").trim().toLowerCase();
   const token = String(searchParams.get("token") || searchParams.get("inviteToken") || "").trim();
@@ -14,6 +22,54 @@ export default function DirectorClaimPage() {
   const createAccountPath = token
     ? `${createAccountBasePath}?inviteToken=${encodeURIComponent(token)}`
     : createAccountBasePath;
+  const onboardingPath = slug ? `/t/${slug}/onboarding` : "/onboarding";
+
+  useEffect(() => {
+    const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
+    if (!clerkMode || !isReady || !clerkLoaded || !isSignedIn || !isAuthenticated || !slug || token) return;
+    if (bootstrapRef.current) return;
+    let cancelled = false;
+    bootstrapRef.current = true;
+
+    async function autoClaimDirector() {
+      try {
+        const authToken = await getToken();
+        if (!authToken) return;
+        await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
+          method: "POST",
+          token: authToken,
+          body: {}
+        });
+        await refreshSession({ tenantSlug: slug });
+        if (cancelled) return;
+        navigate(onboardingPath, { replace: true });
+      } catch (error) {
+        if (cancelled) return;
+        const status = Number(error?.status || 0);
+        if (status === 409 || status === 403) return;
+        setAutoClaimError(String(error?.message || "Unable to start director onboarding."));
+      } finally {
+        bootstrapRef.current = false;
+      }
+    }
+
+    autoClaimDirector();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authProvider,
+    clerkLoaded,
+    getToken,
+    isAuthenticated,
+    isReady,
+    isSignedIn,
+    navigate,
+    onboardingPath,
+    refreshSession,
+    slug,
+    token
+  ]);
 
   return (
     <section className="product-claim-page product-director-claim-page">
@@ -25,6 +81,7 @@ export default function DirectorClaimPage() {
             Create your director account to start setup. You&apos;ll be guided through branding,
             access settings, alumni import, and launch.
           </p>
+          {autoClaimError ? <p className="error-text">{autoClaimError}</p> : null}
           <div className="product-claim-actions director-claim-actions">
             <Button onClick={() => navigate(createAccountPath)}>Create director account</Button>
           </div>
