@@ -292,6 +292,16 @@
   text-align: center;
 }
 
+.director-create-signed-in-gate {
+  width: min(620px, 100%);
+  border: 1px solid #d9e2ef;
+  background: #f7faff;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  border-radius: 14px;
+}
+
 .product-director-create-clerk-page .cl-socialButtons,
 .product-director-create-clerk-page .cl-socialButtonsBlockButton,
 .product-director-create-clerk-page .cl-socialButtonsIconButton,

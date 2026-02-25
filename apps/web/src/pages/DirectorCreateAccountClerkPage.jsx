@@ -14,6 +14,10 @@ function directorBootstrapIntentKey(slug = "") {
   return `pondbridgeDirectorBootstrapIntent:${String(slug || "").trim().toLowerCase() || "default"}`;
 }
 
+function directorBootstrapCallbackAttemptKey(slug = "") {
+  return `pondbridgeDirectorBootstrapCallbackAttempt:${String(slug || "").trim().toLowerCase() || "default"}`;
+}
+
 export default function DirectorCreateAccountClerkPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,10 +34,13 @@ export default function DirectorCreateAccountClerkPage() {
   const signUpPath = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
   const signInPath = routeWithSlug(slug, "/login", usingSlugRoute);
   const setupPath = routeWithSlug(slug, "/director-create-account?setup=1", usingSlugRoute);
+  const setupPathNoQuery = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
+  const onSetupRoute = location.pathname === setupPathNoQuery && new URLSearchParams(location.search || "").get("setup") === "1";
   const hasDirectorMembership = Boolean(
     isAuthenticated && (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"))
   );
   const showDirectorContinue = Boolean(isLoaded && isSignedIn && hasDirectorMembership);
+  const syncingSignedInState = Boolean(isLoaded && isSignedIn && !isAuthenticated && !hasDirectorMembership);
   const showAccountSwitchPrompt = Boolean(
     isLoaded && isSignedIn && isAuthenticated && user && !hasDirectorMembership
   );
@@ -41,22 +48,31 @@ export default function DirectorCreateAccountClerkPage() {
   useEffect(() => {
     if (typeof window === "undefined" || !slug) return;
     const key = directorBootstrapIntentKey(slug);
+    const callbackAttemptKey = directorBootstrapCallbackAttemptKey(slug);
     if (!(isLoaded && isSignedIn)) {
       window.sessionStorage.setItem(key, "1");
+      window.sessionStorage.removeItem(callbackAttemptKey);
       return;
     }
     window.sessionStorage.removeItem(key);
-  }, [isLoaded, isSignedIn, slug]);
+    if (hasDirectorMembership || showAccountSwitchPrompt) {
+      window.sessionStorage.removeItem(callbackAttemptKey);
+    }
+  }, [hasDirectorMembership, isLoaded, isSignedIn, showAccountSwitchPrompt, slug]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !slug || showAccountSwitchPrompt || hasDirectorMembership) return;
+    if (typeof window === "undefined") return;
+    if (!syncingSignedInState || !slug) return;
+    const callbackAttemptKey = directorBootstrapCallbackAttemptKey(slug);
+    if (window.sessionStorage.getItem(callbackAttemptKey) === "1") return;
+    window.sessionStorage.setItem(callbackAttemptKey, "1");
     navigate(callbackPath, { replace: true });
-  }, [callbackPath, hasDirectorMembership, isLoaded, isSignedIn, navigate, showAccountSwitchPrompt, slug]);
+  }, [callbackPath, navigate, slug, syncingSignedInState]);
 
   useEffect(() => {
-    if (!showDirectorContinue) return;
+    if (!showDirectorContinue || onSetupRoute) return;
     navigate(setupPath, { replace: true });
-  }, [navigate, setupPath, showDirectorContinue]);
+  }, [navigate, onSetupRoute, setupPath, showDirectorContinue]);
 
   async function handleSwitchToDirectorSignup() {
     if (bootstrapInFlightRef.current) return;
@@ -95,10 +111,20 @@ export default function DirectorCreateAccountClerkPage() {
             </div>
           ) : null}
 
-          {!showAccountSwitchPrompt ? (
+          {syncingSignedInState ? (
+            <div className="director-create-signed-in-gate">
+              <p className="product-claim-body">
+                Finalizing your verified session. If this does not continue automatically, proceed below.
+              </p>
+              <div className="product-claim-actions director-claim-actions">
+                <Button onClick={() => navigate(callbackPath, { replace: true })}>Continue setup</Button>
+              </div>
+            </div>
+          ) : null}
+
+          {!showAccountSwitchPrompt && !(isLoaded && isSignedIn) ? (
             <SignUp
-              path={signUpPath}
-              routing="path"
+              routing="virtual"
               withSignIn={false}
               signInUrl={signInPath}
               fallbackRedirectUrl={callbackPath}
