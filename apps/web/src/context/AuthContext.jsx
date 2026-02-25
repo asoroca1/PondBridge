@@ -204,9 +204,10 @@ function ClerkBackedAuthProvider({ children }) {
   const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
   const [sessionRefreshing, setSessionRefreshing] = useState(true);
-  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { isLoaded, isSignedIn, getToken, sessionId } = useClerkAuth();
   const { signOut } = useClerk();
   const userRef = useRef(null);
+  const bootstrappedSessionIdRef = useRef("");
 
   useEffect(() => {
     userRef.current = user;
@@ -289,12 +290,19 @@ function ClerkBackedAuthProvider({ children }) {
 
     if (FORCE_RELOGIN_ON_TAB_CLOSE && !tabSessionExists && !loginIntentExists) {
       clearLocalAuth();
+      bootstrappedSessionIdRef.current = "";
       setSessionRefreshing(false);
       return;
     }
 
     if (!isSignedIn) {
       clearLocalAuth();
+      bootstrappedSessionIdRef.current = "";
+      setSessionRefreshing(false);
+      return;
+    }
+
+    if (sessionId && bootstrappedSessionIdRef.current === sessionId) {
       setSessionRefreshing(false);
       return;
     }
@@ -303,17 +311,21 @@ function ClerkBackedAuthProvider({ children }) {
     refreshSession()
       .then(() => {
         if (!active) return;
+        if (sessionId) {
+          bootstrappedSessionIdRef.current = sessionId;
+        }
       })
       .catch(() => {
         if (!active) return;
         clearLocalAuth();
+        bootstrappedSessionIdRef.current = "";
         setSessionRefreshing(false);
       });
 
     return () => {
       active = false;
     };
-  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession]);
+  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession, sessionId]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return undefined;

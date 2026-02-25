@@ -103,7 +103,7 @@ function TenantScopeRoutes() {
 
   useEffect(() => {
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
-    if (!clerkMode || !isAuthenticated || !slug) {
+    if (!clerkMode || !isAuthenticated || !slug || loading || Boolean(error) || !tenant) {
       membershipSyncKeyRef.current = "";
       return;
     }
@@ -112,16 +112,8 @@ function TenantScopeRoutes() {
     if (membershipSyncKeyRef.current === syncKey) return;
     membershipSyncKeyRef.current = syncKey;
 
-    refreshSession({ tenantSlug: slug })
-      .then((payload) => {
-        if (!payload?.user) {
-          membershipSyncKeyRef.current = "";
-        }
-      })
-      .catch(() => {
-        membershipSyncKeyRef.current = "";
-      });
-  }, [authProvider, isAuthenticated, refreshSession, slug]);
+    refreshSession({ tenantSlug: slug }).catch(() => {});
+  }, [authProvider, error, isAuthenticated, loading, refreshSession, slug, tenant]);
 
   if (loading) {
     return (
