@@ -26,6 +26,7 @@ import {
   resolveNewsletterLabel,
   resolveTenantContent
 } from "../lib/campLabels.js";
+import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "../lib/domain.js";
 import cedarLogo from "../assets/cedar-logo.png";
 import defaultProfile from "../assets/default-profile.png";
 
@@ -50,6 +51,10 @@ function initialsFrom(fullName = "") {
 
 function pathWithCamp(slug, path) {
   const nextPath = String(path || "/").startsWith("/") ? path : `/${path}`;
+  const hostScopedTenant = Boolean(inferCampSlugFromHost() || isPotentialCustomTenantHost());
+  if (hostScopedTenant) {
+    return nextPath;
+  }
   return `/t/${slug}${nextPath}`;
 }
 

@@ -444,6 +444,12 @@ function SuperAliasRedirect() {
   return <Navigate to={`${nextPath}${location.search || ""}${location.hash || ""}`} replace />;
 }
 
+function HostScopedTenantRedirect() {
+  const location = useLocation();
+  const nextPath = String(location.pathname || "/").replace(/^\/t\/[^/]+/, "") || "/";
+  return <Navigate to={`${nextPath}${location.search || ""}${location.hash || ""}`} replace />;
+}
+
 export default function App() {
   const location = useLocation();
   const routeTimerRef = useRef(null);
@@ -470,7 +476,11 @@ export default function App() {
       <div className={`app-route-progress ${isRouting ? "is-active" : ""}`} aria-hidden="true" />
       <div className="app-route-stage">
         <Routes location={location}>
-          <Route path="/t/:slug/*" element={<TenantScopeLayout />} />
+          {hostCampSlug || customDomainHost ? (
+            <Route path="/t/:slug/*" element={<HostScopedTenantRedirect />} />
+          ) : (
+            <Route path="/t/:slug/*" element={<TenantScopeLayout />} />
+          )}
 
           <Route path="/super">
             <Route index element={<Navigate to="login" replace />} />
