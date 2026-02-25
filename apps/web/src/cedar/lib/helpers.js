@@ -7,14 +7,49 @@
 
 /* ===== Auth ===== */
 
-/** Retrieve the stored auth token (prefers PondBridge key, then legacy keys). */
+function parseJwtExpiry(token = "") {
+  const raw = String(token || "").trim();
+  if (!raw.includes(".")) return 0;
+  const parts = raw.split(".");
+  if (parts.length < 2) return 0;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const exp = Number(payload?.exp || 0);
+    return Number.isFinite(exp) ? exp : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Retrieve the best stored auth token and avoid stale/expired values. */
 export function getToken() {
-  return (
-    localStorage.getItem("pondbridgeToken") ||
-    localStorage.getItem("token") ||
-    localStorage.getItem("cedarToken") ||
-    ""
-  );
+  const candidates = [
+    localStorage.getItem("pondbridgeToken") || "",
+    localStorage.getItem("token") || "",
+    localStorage.getItem("cedarToken") || ""
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  if (!candidates.length) return "";
+
+  const now = Math.floor(Date.now() / 1000);
+  const nonExpired = candidates.filter((token) => {
+    const exp = parseJwtExpiry(token);
+    return exp === 0 || exp > now + 15;
+  });
+  const pool = nonExpired.length ? nonExpired : candidates;
+
+  let best = pool[0];
+  let bestExp = parseJwtExpiry(best);
+  for (const token of pool.slice(1)) {
+    const exp = parseJwtExpiry(token);
+    if (exp > bestExp) {
+      best = token;
+      bestExp = exp;
+    }
+  }
+  return best;
 }
 
 /**

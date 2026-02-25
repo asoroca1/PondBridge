@@ -122,9 +122,20 @@
 
 /* Chips + industry row */
 .p1-roles { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 12px 0 12px; }
-.p1-role-chip { background: #eef2f7; color: var(--brand-primary); padding: 6px 12px; border-radius: 999px; font-size: .85rem; }
+.p1-role-chip {
+  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 30%, #d8e5f5);
+  color: var(--brand-primary);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: .85rem;
+}
 .p1-industry-row { display: flex; justify-content: center; margin-top: 8px; }
-.p1-industry-chip { background: #c6d9fd; color: var(--brand-primary); }
+.p1-industry-chip {
+  background: color-mix(in srgb, var(--brand-primary) 18%, #ffffff);
+  border-color: color-mix(in srgb, var(--brand-primary) 40%, #d8e5f5);
+  color: var(--brand-primary);
+}
 
 /* Actions */
 .p1-actions { display: flex; justify-content: center; margin-top: 6px; }
@@ -210,7 +221,11 @@
   min-width: 0;
   overflow: hidden;
 }
-.p1-social-link:hover { background: #f2f6ff; box-shadow: 0 2px 8px rgba(0,0,0,.06); transform: translateX(2px); }
+.p1-social-link:hover {
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transform: translateX(2px);
+}
 .p1-social-link:active { transform: translateX(1px) translateY(1px); }
 .p1-social-link:visited { color: var(--cedar-navy); }
 .p1-social-icon { width: 18px; height: 18px; flex: 0 0 18px; }
@@ -226,10 +241,17 @@
   color: var(--cedar-navy);
   transition: background .18s ease, box-shadow .18s ease, transform .18s ease;
 }
-.p1-contact-link:hover { background: #f2f6ff; box-shadow: 0 2px 8px rgba(0,0,0,.06); transform: translateX(2px); }
+.p1-contact-link:hover {
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transform: translateX(2px);
+}
 .p1-contact-link:active { transform: translateX(1px) translateY(1px); }
 .p1-contact-link:visited { color: var(--cedar-navy); }
-.p1-contact-link:focus-visible { outline: 2px solid #aac6ff; outline-offset: 2px; }
+.p1-contact-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand-primary) 40%, #ffffff);
+  outline-offset: 2px;
+}
 .p1-contact-icon { width: 18px; height: 18px; flex: 0 0 18px; }
 .p1-contact-text{
   flex: 1 1 auto;            /* allow shrink */

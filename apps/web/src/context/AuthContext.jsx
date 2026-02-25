@@ -110,11 +110,27 @@ function normalizeUserShape(user) {
   if (!user) return null;
   const id = String(user.id || user._id || "").trim();
   if (!id) return null;
+  const rawRoles = Array.isArray(user.roles)
+    ? user.roles
+    : user?.roles
+      ? [user.roles]
+      : user?.role
+        ? [user.role]
+        : [];
+  const roleSet = new Set(
+    rawRoles
+      .map((role) => String(role || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (roleSet.has("admin")) roleSet.add("tenant_admin");
+  if ((roleSet.has("tenant_admin") || roleSet.has("admin")) && !roleSet.has("user")) {
+    roleSet.add("user");
+  }
   return {
     ...user,
     id,
     _id: id,
-    roles: Array.isArray(user.roles) ? user.roles : []
+    roles: [...roleSet]
   };
 }
 
@@ -345,6 +361,9 @@ function ClerkBackedAuthProvider({ children }) {
     };
 
     syncTokenToStorage({ force: true }).catch(() => {});
+    const intervalId = window.setInterval(() => {
+      syncTokenToStorage().catch(() => {});
+    }, CLERK_STORAGE_TOKEN_SYNC_INTERVAL_MS);
     const onFocus = () => {
       syncTokenToStorage().catch(() => {});
     };
@@ -359,6 +378,7 @@ function ClerkBackedAuthProvider({ children }) {
 
     return () => {
       disposed = true;
+      window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };

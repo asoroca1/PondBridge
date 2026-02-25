@@ -383,21 +383,82 @@ function mapCityPerson(profile) {
   };
 }
 
-function profileToLegacy(profile) {
+function normalizeIdentityName(value = "") {
+  return String(value || "").trim();
+}
+
+function deriveNameFromEmail(email = "") {
+  const local = String(email || "").trim().toLowerCase().split("@")[0] || "";
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (!parts.length) return { firstName: "", lastName: "" };
+  const cap = (word = "") => word.slice(0, 1).toUpperCase() + word.slice(1);
+  return {
+    firstName: cap(parts[0] || ""),
+    lastName: cap(parts.slice(1).join(" "))
+  };
+}
+
+function resolveLegacyNameFallback(identity = {}, fallbackEmail = "") {
+  const claims = identity?.claims || {};
+  const firstName = normalizeIdentityName(
+    claims.first_name || claims.given_name || claims.firstName || identity.firstName || ""
+  );
+  const lastName = normalizeIdentityName(
+    claims.last_name || claims.family_name || claims.lastName || identity.lastName || ""
+  );
+  if (firstName || lastName) return { firstName, lastName };
+  return deriveNameFromEmail(identity?.email || fallbackEmail || "");
+}
+
+function normalizeCamperYears(value = {}) {
+  const input = value && typeof value === "object" ? value : {};
+  const firstYear = String(input.firstYear || "").trim();
+  const firstGroup = String(input.firstGroup || "").trim();
+  const lastYear = String(input.lastYear || "").trim();
+  const lastGroup = String(input.lastGroup || "").trim();
+  const validYear = (year = "") => (/^\d{4}$/.test(year) ? year : "");
+  return {
+    firstYear: validYear(firstYear),
+    firstGroup,
+    lastYear: validYear(lastYear),
+    lastGroup
+  };
+}
+
+function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
   if (!profile) return null;
   const { city: cityPart, state: statePart } = parseCityState(profile.cityState || "");
+  const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  const camperYears = normalizeCamperYears(socials.camperYears || {});
+  const fallbackNames = resolveLegacyNameFallback(identity, fallbackEmail);
+  const firstName = String(profile.firstName || fallbackNames.firstName || "").trim();
+  const lastName = String(profile.lastName || fallbackNames.lastName || "").trim();
+  const email = String(
+    profile?.emails?.find(Boolean) || fallbackEmail || identity?.email || ""
+  )
+    .trim()
+    .toLowerCase();
+  const phone = String(profile?.phones?.find(Boolean) || "").trim();
 
   return {
     ...profile,
     id: String(profile._id),
-    email: profile.emails?.[0] || "",
+    firstName,
+    lastName,
+    email,
+    phone,
     city: String(cityPart || "").trim(),
     state: String(statePart || "").trim().toUpperCase(),
     uploads: {
       photoUrl: profile.avatarUrl || "",
       pdfs: []
     },
-    social: profile.socials || {},
+    social: {
+      linkedin: String(socials.linkedin || "").trim(),
+      instagram: String(socials.instagram || "").trim(),
+      facebook: String(socials.facebook || "").trim()
+    },
+    camperYears,
     roles: profile.roleAtCamp ? [profile.roleAtCamp] : [],
     education: (profile.colleges || []).map((college, idx) => ({
       college,
@@ -410,10 +471,12 @@ function profileToLegacy(profile) {
 function parseCityStateFromBody(body = {}) {
   const city = String(body.city || "").trim();
   const state = String(body.state || "").trim().toUpperCase();
+  const country = String(body.country || "").trim();
   const direct = String(body.cityState || "").trim();
   if (direct) return direct;
-  if (!city && !state) return "";
-  return [city, state].filter(Boolean).join(", ");
+  if (!city && !state && !country) return "";
+  if (state) return [city, state].filter(Boolean).join(", ");
+  return [city, country].filter(Boolean).join(", ");
 }
 
 function toSet(values = []) {
@@ -761,7 +824,13 @@ router.get("/me", async (req, res) => {
   if (!profile) {
     return res.status(404).json({ error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" } });
   }
-  return res.json(profileToLegacy(profile));
+  const user = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
+  return res.json(
+    profileToLegacy(profile, {
+      identity: req.identity || {},
+      fallbackEmail: user?.email || req.user?.email || ""
+    })
+  );
 });
 
 router.put("/me", async (req, res) => {
@@ -770,6 +839,27 @@ router.put("/me", async (req, res) => {
     return res.status(404).json({ error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" } });
   }
 
+  const incomingPhone = String(req.body?.phone || "").trim();
+  const incomingCamperYears =
+    req.body?.camperYears && typeof req.body.camperYears === "object"
+      ? normalizeCamperYears(req.body.camperYears)
+      : null;
+  const existingSocials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  const hasSocialPatch = Boolean(req.body.social || req.body.socials);
+  const nextSocials = hasSocialPatch || incomingCamperYears
+    ? {
+        ...existingSocials,
+        ...(hasSocialPatch
+          ? {
+              linkedin: String(req.body.social?.linkedin || req.body.socials?.linkedin || "").trim(),
+              instagram: String(req.body.social?.instagram || req.body.socials?.instagram || "").trim(),
+              facebook: String(req.body.social?.facebook || req.body.socials?.facebook || "").trim()
+            }
+          : {}),
+        ...(incomingCamperYears ? { camperYears: incomingCamperYears } : {})
+      }
+    : undefined;
+
   const update = {
     firstName: req.body.firstName !== undefined ? sanitizeText(String(req.body.firstName || "").trim()) : undefined,
     lastName: req.body.lastName !== undefined ? sanitizeText(String(req.body.lastName || "").trim()) : undefined,
@@ -777,18 +867,17 @@ router.put("/me", async (req, res) => {
     roleAtCamp: Array.isArray(req.body.roles)
       ? sanitizeText(String(req.body.roles[0] || "").trim())
       : sanitizeText(String(req.body.roleAtCamp || profile.roleAtCamp || "").trim()),
+    phones:
+      req.body.phone !== undefined
+        ? (incomingPhone ? [incomingPhone] : [])
+        : Array.isArray(req.body.phones)
+        ? req.body.phones.map((item) => String(item || "").trim()).filter(Boolean)
+        : undefined,
     highSchool: req.body.highSchool !== undefined ? sanitizeText(String(req.body.highSchool || "").trim()) : undefined,
     industry: req.body.industry !== undefined ? sanitizeText(String(req.body.industry || "").trim()) : undefined,
     bio: req.body.bio !== undefined ? sanitizeText(String(req.body.bio || "").trim()) : undefined,
     avatarUrl: String(req.body.uploads?.photoUrl || req.body.photoUrl || profile.avatarUrl || "").trim(),
-    socials:
-      req.body.social || req.body.socials
-        ? {
-            linkedin: String(req.body.social?.linkedin || req.body.socials?.linkedin || "").trim(),
-            instagram: String(req.body.social?.instagram || req.body.socials?.instagram || "").trim(),
-            facebook: String(req.body.social?.facebook || req.body.socials?.facebook || "").trim()
-          }
-        : undefined,
+    socials: nextSocials,
     colleges: Array.isArray(req.body.education)
       ? req.body.education.map((row) => String(row?.college || "").trim()).filter(Boolean)
       : undefined,
@@ -828,7 +917,10 @@ router.put("/me", async (req, res) => {
 
   return res.json({
     user: {
-      ...(profileToLegacy(updatedProfile) || {}),
+      ...(profileToLegacy(updatedProfile, {
+        identity: req.identity || {},
+        fallbackEmail: user?.email || req.user?.email || ""
+      }) || {}),
       _id: String(user?._id || req.user.id),
       email: user?.email || updatedProfile.emails?.[0] || ""
     }

@@ -15,6 +15,33 @@ function telHref(s = "") { return `tel:${String(s).replace(/[^\d+]/g, "")}`; }
 
 // ✅ City/State formatting (fixes "City , ST" even if city has trailing spaces)
 function normalizeCity(s = "") { return (s || "").replace(/\s+/g, " ").trim(); }
+function splitCityState(value = "") {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+  if (!parts.length) return { city: "", state: "" };
+  return { city: parts[0] || "", state: (parts[1] || "").toUpperCase() };
+}
+
+function normalizeRoleChips(src = {}) {
+  const roleAtCamp = String(src.roleAtCamp || "").trim();
+  const rawRoles = Array.isArray(src.roles) ? src.roles : src.roles ? [src.roles] : [];
+  const ordered = [];
+  const seen = new Set();
+
+  const add = (value = "") => {
+    const role = String(value || "").trim();
+    const key = role.toLowerCase();
+    if (!role || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(role);
+  };
+
+  add(roleAtCamp);
+  rawRoles.forEach((role) => add(role));
+  return ordered;
+}
 
 function fmtLocation(p) {
   const city = normalizeCity(p?.city || "");
@@ -54,27 +81,30 @@ function topCurrentJob(u = {}) {
   return j ? [j.role, j.company].filter(Boolean).join(" • ") : "";
 }
 function normalizeProfile(src = {}) {
+  const split = splitCityState(src.cityState || "");
+  const normalizedRoles = normalizeRoleChips(src);
   return {
     id: src._id || src.id || "",
     _id: src._id || src.id || "",
     firstName: src.firstName || "",
     lastName: src.lastName || "",
     nickname: src.nickname || "",
-    email: src.email || "",
-    phone: src.phone || "",
-    city: src.city || "",
-    state: src.state || "",
+    email: src.email || src.emails?.[0] || "",
+    phone: src.phone || src.phones?.[0] || "",
+    city: src.city || split.city,
+    state: src.state || split.state,
     country: src.country || "",
     region: src.region || "",
-    roles: Array.isArray(src.roles) ? src.roles : (src.roles ? [src.roles] : []),
-    uploads: src.uploads || { photoUrl: src.photoUrl || "" },
+    roleAtCamp: String(src.roleAtCamp || normalizedRoles[0] || "").trim(),
+    roles: normalizedRoles,
+    uploads: src.uploads || { photoUrl: src.photoUrl || src.avatarUrl || "" },
     camperYears: src.camperYears || {}, // ✅ NEW
     highSchool: src.highSchool || "",
     education: src.education || [],
     industry: src.industry || "",
     currentJobs: src.currentJobs || [],
     pastJobs: src.pastJobs || [],
-    social: src.social || {},
+    social: src.social || src.socials || {},
   };
 }
 
@@ -282,6 +312,11 @@ export default function PublicProfile() {
     ...(profile.currentJobs || []).map(j => ({ ...j, _type: "current" })),
     ...(profile.pastJobs || []).map(j => ({ ...j, _type: "past" })),
   ].filter(j => j && (j.role || j.company || j.years));
+  const roleChips = profile.roles?.length
+    ? profile.roles
+    : profile.roleAtCamp
+      ? [profile.roleAtCamp]
+      : [];
 
   const targetId = profile.id || profile._id;
 
@@ -327,10 +362,10 @@ export default function PublicProfile() {
                     )}
                   </div>
 
-                  {(profile.roles?.length || profile.industry) ? (
+                  {(roleChips.length || profile.industry) ? (
                     <>
                       <div className="p1-roles">
-                        {profile.roles?.map((r) => (
+                        {roleChips.map((r) => (
                           <span key={r} className="p1-role-chip">{r}</span>
                         ))}
                       </div>

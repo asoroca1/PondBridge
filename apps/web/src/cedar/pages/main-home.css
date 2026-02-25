@@ -61,7 +61,7 @@
   /* ---------- Quick actions ---------- */
   .quick-actions{
     max-width: var(--maxw); margin: 6px auto 18px; padding: 0 16px;
-    display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px;
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 12px;
   }
   .qa-btn{
     display:flex; align-items:center; justify-content:center; gap:10px;

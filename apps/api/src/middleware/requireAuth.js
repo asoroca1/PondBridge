@@ -19,6 +19,29 @@ function authUsesClerk() {
   return ["clerk", "hybrid"].includes(env.AUTH_PROVIDER);
 }
 
+function canonicalizeAppRoles(roles = []) {
+  const roleSet = new Set(
+    (Array.isArray(roles) ? roles : [roles])
+      .map((role) => String(role || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (roleSet.has("admin")) roleSet.add("tenant_admin");
+  if ((roleSet.has("admin") || roleSet.has("tenant_admin")) && !roleSet.has("user")) {
+    roleSet.add("user");
+  }
+  return [...roleSet];
+}
+
+function sameRoleSet(a = [], b = []) {
+  const left = new Set((a || []).map((role) => String(role || "").trim().toLowerCase()).filter(Boolean));
+  const right = new Set((b || []).map((role) => String(role || "").trim().toLowerCase()).filter(Boolean));
+  if (left.size !== right.size) return false;
+  for (const role of left) {
+    if (!right.has(role)) return false;
+  }
+  return true;
+}
+
 async function resolveTenantIdForAuth(req) {
   // Resolve tenant from trusted request routing/host context first.
   const context = getTenantContext(req);
@@ -61,7 +84,7 @@ function applyLegacyUser(req, payload, token, source) {
     id: payload.sub,
     _id: payload.sub,
     tenantId: payload.tenantId || null,
-    roles: Array.isArray(payload.roles) ? payload.roles : [],
+    roles: canonicalizeAppRoles(payload.roles || []),
     email: payload.email
   };
   req.token = token;
@@ -74,7 +97,7 @@ function applyAppUser(req, appUser, identity, source) {
     id: String(appUser._id),
     _id: String(appUser._id),
     tenantId: appUser.tenantId ? String(appUser.tenantId) : null,
-    roles: Array.isArray(appUser.roles) ? appUser.roles : [],
+    roles: canonicalizeAppRoles(appUser.roles || []),
     email: appUser.email
   };
   req.token = identity?.token || "";
@@ -122,7 +145,8 @@ export async function requireIdentity(req, res, next) {
 export async function requireAuth(req, res, next) {
   return requireIdentity(req, res, async () => {
     if (req.user) {
-      req.user.roles = applySuperConsoleRolePolicy(req.user.roles || [], req.identity || {}, req.user.email || "");
+      const canonicalRoles = canonicalizeAppRoles(req.user.roles || []);
+      req.user.roles = applySuperConsoleRolePolicy(canonicalRoles, req.identity || {}, req.user.email || "");
       return next();
     }
 
@@ -147,8 +171,9 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    const sanitizedRoles = applySuperConsoleRolePolicy(appUser.roles || [], identity, appUser.email || "");
-    if (sanitizedRoles.length !== (appUser.roles || []).length) {
+    const canonicalRoles = canonicalizeAppRoles(appUser.roles || []);
+    const sanitizedRoles = applySuperConsoleRolePolicy(canonicalRoles, identity, appUser.email || "");
+    if (!sameRoleSet(appUser.roles || [], sanitizedRoles)) {
       if (appUser?._id) {
         appUser = await UserModel.update(appUser._id, { roles: sanitizedRoles });
       } else {

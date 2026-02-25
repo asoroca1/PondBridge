@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import NavBar from "./NavBar.jsx";
-import Footer from "./Footer.jsx";
 import ProductHeader from "./ProductHeader.jsx";
 import ProductFooter from "./ProductFooter.jsx";
+import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
 const STANDARD_OFFSET_MATCHERS = ["/admin", "/onboarding", "/settings", "/super"];
@@ -39,10 +39,12 @@ export default function AppShell({ children }) {
   }
 
   return (
-    <div className="app-shell">
-      <NavBar />
-      <main className={`app-shell-main ${needsOffset ? "page-container" : ""}`.trim()}>{children}</main>
-      <Footer />
+    <div className="app-shell alumni-app-shell">
+      <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
+      <div className="app-shell-content">
+        <NavBar />
+        <main className={`app-shell-main ${needsOffset ? "page-container" : ""}`.trim()}>{children}</main>
+      </div>
     </div>
   );
 }

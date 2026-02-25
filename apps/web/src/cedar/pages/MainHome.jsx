@@ -13,6 +13,9 @@ import {
   MessageSquare,
   ChevronRight,
   BookOpen,
+  Image,
+  TreePine,
+  User,
   Pin as PinIcon,
   X as XIcon,
 } from "lucide-react";
@@ -571,6 +574,57 @@ export default function MainHome() {
   }, [me]);
 
   const locCount = resolveLocations(stats, locationsSummary);
+  const quickActions = useMemo(() => {
+    const preferred = [
+      { key: "search", to: "/search", label: "Advanced Search", icon: Users, enabled: true },
+      { key: "map", to: "/location-map", label: "Alumni Map", icon: MapPin, enabled: modules.map !== false },
+      {
+        key: "chat",
+        to: "/chat-rooms?tab=personal",
+        label: "Chats & Forums",
+        icon: MessageSquare,
+        enabled: modules.chat !== false
+      },
+      {
+        key: "newsletter",
+        to: "/cedar-chest",
+        label: newsletterLabel,
+        icon: BookOpen,
+        enabled: modules.newsletter !== false
+      }
+    ];
+    const fallback = [
+      {
+        key: "photo-stream",
+        to: "/photo-stream",
+        label: "Photo Stream",
+        icon: Image,
+        enabled: modules.photoStream !== false
+      },
+      {
+        key: "family-trees",
+        to: "/family-trees",
+        label: "Family Trees",
+        icon: TreePine,
+        enabled: modules.familyTrees !== false
+      },
+      { key: "my-profile", to: "/my-profile", label: "My Profile", icon: User, enabled: true }
+    ];
+
+    const selected = preferred.filter((action) => action.enabled);
+    for (const action of fallback) {
+      if (selected.length >= 4) break;
+      if (action.enabled) selected.push(action);
+    }
+    return selected;
+  }, [
+    modules.chat,
+    modules.familyTrees,
+    modules.map,
+    modules.newsletter,
+    modules.photoStream,
+    newsletterLabel
+  ]);
 
   // newest-first (API already returns pinned first, then newest)
   const activitySorted = useMemo(() => {
@@ -686,56 +740,46 @@ export default function MainHome() {
 
       {/* ====== QUICK ACTIONS ====== */}
       <section className="quick-actions">
-        <Link to="/search" className="qa-btn">
-          <Users /> Advanced Search
-        </Link>
-        {modules.map !== false ? (
-          <Link to="/location-map" className="qa-btn">
-            <MapPin /> Alumni Map
-          </Link>
-        ) : null}
-
-        {modules.chat !== false ? (
-          <Link
-            to="/chat-rooms?tab=personal"
-            className="qa-btn"
-            style={{ position: "relative" }}
-          >
-            <MessageSquare /> Chats & Forums
-            {unreadChats > 0 && (
-              <span
-                aria-label={`${unreadChats} unread chats`}
-                style={{
-                  position: "absolute",
-                  top: -8,
-                  right: -8,
-                  minWidth: 18,
-                  height: 18,
-                  padding: "0 6px",
-                  borderRadius: 999,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  lineHeight: "18px",
-                  background: "#e11d48",
-                  color: "#fff",
-                  border: "2px solid rgba(255,255,255,0.95)",
-                  boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
-                }}
-              >
-                {unreadChats > 99 ? "99+" : unreadChats}
-              </span>
-            )}
-          </Link>
-        ) : null}
-
-        {modules.newsletter !== false ? (
-          <Link to="/cedar-chest" className="qa-btn">
-            <BookOpen /> {newsletterLabel}
-          </Link>
-        ) : null}
+        {quickActions.map((action) => {
+          const Icon = action.icon;
+          const isChat = action.key === "chat";
+          return (
+            <Link
+              key={action.key}
+              to={action.to}
+              className="qa-btn"
+              style={isChat ? { position: "relative" } : undefined}
+            >
+              <Icon /> {action.label}
+              {isChat && unreadChats > 0 ? (
+                <span
+                  aria-label={`${unreadChats} unread chats`}
+                  style={{
+                    position: "absolute",
+                    top: -8,
+                    right: -8,
+                    minWidth: 18,
+                    height: 18,
+                    padding: "0 6px",
+                    borderRadius: 999,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: "18px",
+                    background: "#e11d48",
+                    color: "#fff",
+                    border: "2px solid rgba(255,255,255,0.95)",
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+                  }}
+                >
+                  {unreadChats > 99 ? "99+" : unreadChats}
+                </span>
+              ) : null}
+            </Link>
+          );
+        })}
       </section>
 
       {/* ====== CONTENT ====== */}
