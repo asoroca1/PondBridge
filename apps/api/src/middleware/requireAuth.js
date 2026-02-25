@@ -28,7 +28,7 @@ async function resolveTenantIdForAuth(req) {
   }
   if (context.host) {
     const tenant = await TenantModel.findByDomain(context.host);
-    return tenant ? String(tenant._id) : "";
+    if (tenant) return String(tenant._id);
   }
 
   // Header fallback is only used on routes that do not encode tenant in the URL/host.

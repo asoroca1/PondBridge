@@ -124,7 +124,8 @@ export default function DirectorCreateAccountClerkPage() {
 
           {!showAccountSwitchPrompt && !(isLoaded && isSignedIn) ? (
             <SignUp
-              routing="virtual"
+              path={signUpPath}
+              routing="path"
               withSignIn={false}
               signInUrl={signInPath}
               fallbackRedirectUrl={callbackPath}

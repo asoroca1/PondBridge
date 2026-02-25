@@ -103,7 +103,12 @@ function TenantScopeRoutes() {
 
   useEffect(() => {
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
-    if (!clerkMode || !isAuthenticated || !slug || loading || Boolean(error) || !tenant) {
+    const path = String(location.pathname || "");
+    const onSyncBlockedRoute =
+      path.includes("/auth/callback") ||
+      path.includes("/director-claim") ||
+      path.includes("/director-create-account");
+    if (!clerkMode || !isAuthenticated || !slug || loading || Boolean(error) || !tenant || onSyncBlockedRoute) {
       membershipSyncKeyRef.current = "";
       return;
     }
@@ -113,7 +118,7 @@ function TenantScopeRoutes() {
     membershipSyncKeyRef.current = syncKey;
 
     refreshSession({ tenantSlug: slug }).catch(() => {});
-  }, [authProvider, error, isAuthenticated, loading, refreshSession, slug, tenant]);
+  }, [authProvider, error, isAuthenticated, loading, location.pathname, refreshSession, slug, tenant]);
 
   if (loading) {
     return (
@@ -180,6 +185,9 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-claim") ||
     currentPath.includes("/director-create-account");
   const inviteToken = new URLSearchParams(location.search || "").get("inviteToken");
+  const onMemberCreateAccountRoute =
+    (currentPath === "/create-account" || currentPath.endsWith("/create-account")) &&
+    !currentPath.includes("/director-create-account");
   const onAuthBootstrapRoute =
     currentPath.includes("/auth/callback") ||
     currentPath.includes("/director-claim") ||
@@ -197,7 +205,7 @@ function TenantScopeRoutes() {
     return <Navigate to={directorSetupPath} replace />;
   }
 
-  if (!isCampDirector && onboardingIncomplete && currentPath.endsWith("/create-account") && !inviteToken) {
+  if (!isCampDirector && onboardingIncomplete && onMemberCreateAccountRoute && !inviteToken) {
     return <Navigate to={slug ? `/t/${slug}/login` : "/login"} replace />;
   }
 
@@ -404,7 +412,7 @@ function TenantScopeRoutes() {
         <Route path="admin/analytics" element={<Navigate to={slug ? `/t/${slug}/admin/analytics` : "/admin/analytics"} replace />} />
         <Route path="admin/billing" element={<Navigate to={slug ? `/t/${slug}/admin/billing` : "/admin/billing"} replace />} />
 
-        <Route path="*" element={<Navigate to="." replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
       </ErrorBoundary>
     </AppShell>
@@ -448,8 +456,8 @@ export default function App() {
   const [isRouting, setIsRouting] = useState(true);
   const hostCampSlug = inferCampSlugFromHost();
   const rememberedSlug = localStorage.getItem("pondbridgeTenantSlug") || "";
-  const legacyRedirectEnabled = Boolean(hostCampSlug || rememberedSlug);
   const customDomainHost = isPotentialCustomTenantHost();
+  const legacyRedirectEnabled = Boolean(!hostCampSlug && !customDomainHost && rememberedSlug);
 
   useEffect(() => {
     setIsRouting(true);

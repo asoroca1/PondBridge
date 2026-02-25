@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
 import { useTenant } from "../context/TenantContext.jsx";
+import { tenantRoute } from "../lib/tenantRouting.js";
 
 export default function DirectorClaimPage() {
   const { slug: paramSlug } = useParams();
@@ -10,7 +11,7 @@ export default function DirectorClaimPage() {
 
   const slug = String(paramSlug || tenantSlug || "").trim().toLowerCase();
   const createAccountPath = useMemo(
-    () => (slug ? `/t/${slug}/director-create-account` : "/director-create-account"),
+    () => tenantRoute(slug, "/director-create-account"),
     [slug]
   );
 

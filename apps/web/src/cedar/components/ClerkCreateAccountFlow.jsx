@@ -5,9 +5,10 @@ import Navbar1 from "./Navbar1";
 import { requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { normalizeTenantRouteForHost, tenantRoute } from "../../lib/tenantRouting.js";
 
 function routeWithSlug(slug, path) {
-  return slug ? `/t/${slug}${path.startsWith("/") ? path : `/${path}`}` : path;
+  return tenantRoute(slug, path);
 }
 
 function truthy(value) {
@@ -70,7 +71,10 @@ export default function ClerkCreateAccountFlow() {
         body: { accessCode: String(accessCode || "").trim() }
       });
       await refreshSession({ tenantSlug: slug });
-      const next = String(payload?.decision?.nextRoute || routeWithSlug(slug, "/home")).trim();
+      const next = normalizeTenantRouteForHost(
+        slug,
+        String(payload?.decision?.nextRoute || routeWithSlug(slug, "/home")).trim()
+      );
       navigate(next, { replace: true });
     } catch (err) {
       setError(String(err?.message || "Unable to complete signup for this network."));

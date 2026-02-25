@@ -8,6 +8,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/authMode.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 
 function normalizeErrorMessage(payload, fallback) {
   if (!payload) return fallback;
@@ -142,7 +143,7 @@ function LegacyLogin() {
       }
 
       login(payload.token, payload.user);
-      navigate(slug ? `/t/${slug}/home` : "/home", { replace: true });
+      navigate(tenantRoute(slug, "/home"), { replace: true });
     } catch (err) {
       setError(String(err?.message || "Unable to login right now. Please try again."));
     } finally {
@@ -191,13 +192,15 @@ function ClerkLogin() {
   const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
-  const path = slug ? `/t/${slug}/login` : "/login";
-  const callbackPath = slug
-    ? `/t/${slug}/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
-    : `/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`;
-  const signUpUrl = slug
-    ? `/t/${slug}/create-account${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
-    : `/create-account${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`;
+  const path = tenantRoute(slug, "/login");
+  const callbackPath = tenantRoute(
+    slug,
+    `/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
+  );
+  const signUpUrl = tenantRoute(
+    slug,
+    `/create-account${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
+  );
 
   return (
     <div className="login1">

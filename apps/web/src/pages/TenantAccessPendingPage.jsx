@@ -4,9 +4,10 @@ import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../lib/http.js";
 import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
+import { normalizeTenantRouteForHost, tenantRoute } from "../lib/tenantRouting.js";
 
 function routeWithSlug(slug, path) {
-  return slug ? `/t/${slug}${path.startsWith("/") ? path : `/${path}`}` : path;
+  return tenantRoute(slug, path);
 }
 
 function LegacyPendingPage() {
@@ -48,7 +49,10 @@ function ClerkPendingPage() {
         const payload = await requestJson(`/api/t/${slug}/access/decision`, { token });
         const decision = payload?.decision || {};
         if (decision.state === "active_member") {
-          navigate(String(decision.nextRoute || routeWithSlug(slug, "/home")), { replace: true });
+          navigate(
+            normalizeTenantRouteForHost(slug, String(decision.nextRoute || routeWithSlug(slug, "/home"))),
+            { replace: true }
+          );
         }
       } catch (err) {
         if (!active) return;

@@ -5,6 +5,7 @@ import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
+import { normalizeTenantRouteForHost, tenantRoute } from "../lib/tenantRouting.js";
 
 function truthy(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -26,7 +27,7 @@ function clearDirectorBootstrapIntent(slug = "") {
 }
 
 function routeWithSlug(slug, path) {
-  return slug ? `/t/${slug}${path.startsWith("/") ? path : `/${path}`}` : path;
+  return tenantRoute(slug, path);
 }
 
 function LegacyAuthCallbackPage() {
@@ -135,7 +136,10 @@ function ClerkAuthCallbackPage() {
         decision = payload?.decision || {};
         await refreshSession({ tenantSlug: slug });
 
-        const next = String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home");
+        const next = normalizeTenantRouteForHost(
+          slug,
+          String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home")
+        );
         navigate(next, { replace: true });
       } catch (err) {
         if (cancelled) return;
