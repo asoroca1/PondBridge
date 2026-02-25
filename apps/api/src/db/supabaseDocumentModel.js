@@ -24,7 +24,7 @@ const TABLES_FOR_CLEANUP = [
   "tenants"
 ];
 
-const DEFAULT_TEST_DB_MARKERS = ["localhost", "127.0.0.1", "test", "staging", "dev"];
+const DEFAULT_TEST_DB_MARKERS = ["localhost", "127.0.0.1", "test"];
 
 function parseMarkers(raw = "") {
   const markers = String(raw || "")
