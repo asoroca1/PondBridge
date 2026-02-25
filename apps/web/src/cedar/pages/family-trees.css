@@ -37,7 +37,7 @@
   height: 28px;
   border-radius: 999px;
   background: #eef3ff;
-  color: #002b5c;
+  color: var(--brand-primary);
   border: 1px solid #d8def0;
 }
 
@@ -150,7 +150,7 @@
 }
 
 .ft-card:focus-visible {
-  outline: 2px solid rgba(30, 78, 147, 0.4);
+  outline: 2px solid var(--brand-primary-focus);
   outline-offset: 2px;
 }
 
@@ -211,14 +211,14 @@
 }
 
 .ft-card-btn-primary {
-  background: var(--brand-primary, #002b5c);
-  border-color: var(--brand-primary, #002b5c);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
   color: #fff;
 }
 
 .ft-card-btn-primary:hover {
-  background: #01244d;
-  border-color: #01244d;
+  background: var(--brand-primary-hover);
+  border-color: var(--brand-primary-hover);
 }
 
 .ft-card-btn-ghost {
@@ -315,7 +315,7 @@
 
 .ft-input:focus {
   border-color: #7f9bc0;
-  box-shadow: 0 0 0 3px rgba(30, 78, 147, 0.14);
+  box-shadow: 0 0 0 3px var(--brand-primary-tint);
 }
 
 select.ft-input {
@@ -435,7 +435,7 @@ select.ft-input {
 
 .ft-you-chip {
   font-size: 11px;
-  color: #002b5c;
+  color: var(--brand-primary);
   background: #e6eefb;
   border: 1px solid #c7d8f7;
   border-radius: 999px;
@@ -522,15 +522,15 @@ select.ft-input {
 }
 
 .ft-head-btn.is-primary {
-  background: var(--brand-primary, #002b5c);
-  border-color: var(--brand-primary, #002b5c);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
   color: #fff;
-  box-shadow: 0 3px 10px rgba(0, 43, 92, 0.22);
+  box-shadow: 0 3px 10px var(--brand-primary-focus);
 }
 
 .ft-head-btn.is-primary:hover {
-  background: #01244d;
-  border-color: #01244d;
+  background: var(--brand-primary-hover);
+  border-color: var(--brand-primary-hover);
 }
 
 .ft-head-btn:disabled {
@@ -613,7 +613,7 @@ select.ft-input {
   display: inline-block;
 }
 
-.ft-leg-parent { border-top-color: #1e4e93; }
+.ft-leg-parent { border-top-color: var(--brand-primary-soft-strong); }
 .ft-leg-spouse { border-top-color: #b45309; border-top-style: dashed; }
 .ft-leg-sibling { border-top-color: #0f766e; border-top-style: dashed; }
 .ft-leg-cousin { border-top-color: #475569; border-top-style: dotted; }
@@ -641,7 +641,7 @@ select.ft-input {
 
 .ft-line-parent {
   fill: none;
-  stroke: #1e4e93;
+  stroke: var(--brand-primary-soft-strong);
   stroke-width: 2.5;
   opacity: 0.82;
 }
@@ -704,7 +704,7 @@ select.ft-input {
 
 .ft-tree-node.is-you {
   border-color: #7fa3d6;
-  box-shadow: 0 0 0 3px rgba(30, 78, 147, 0.12), 0 4px 12px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 0 0 3px var(--brand-primary-tint), 0 4px 12px rgba(15, 23, 42, 0.07);
 }
 
 .ft-tree-node:hover {
@@ -714,7 +714,7 @@ select.ft-input {
 }
 
 .ft-tree-node:focus-visible {
-  outline: 2px solid rgba(30, 78, 147, 0.45);
+  outline: 2px solid var(--brand-primary-focus);
   outline-offset: 2px;
 }
 

@@ -124,12 +124,12 @@ export default function DirectorCreateAccountClerkPage() {
               }}
               appearance={{
                 variables: {
-                  colorPrimary: "#0b2f57",
-                  colorText: "#17375e",
-                  colorTextSecondary: "#5d738d",
+                  colorPrimary: "var(--brand-primary)",
+                  colorText: "var(--text)",
+                  colorTextSecondary: "var(--text-muted)",
                   colorInputBackground: "#ffffff",
-                  colorInputText: "#17375e",
-                  colorNeutral: "#d4dfec",
+                  colorInputText: "var(--text)",
+                  colorNeutral: "var(--card-border)",
                   borderRadius: "12px",
                   fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
                 },
@@ -198,21 +198,21 @@ export default function DirectorCreateAccountClerkPage() {
                     gap: "12px"
                   },
                   formFieldLabel: {
-                    color: "#17375e",
+                    color: "var(--brand-primary-strong)",
                     fontWeight: "700"
                   },
                   formFieldInput: {
                     minHeight: "46px",
                     borderRadius: "12px",
-                    border: "1px solid #d4dfec",
+                    border: "1px solid var(--card-border)",
                     boxShadow: "none",
-                    color: "#17375e",
+                    color: "var(--text)",
                     background: "#ffffff"
                   },
                   formButtonPrimary: {
                     minHeight: "48px",
                     borderRadius: "12px",
-                    background: "#0b2f57",
+                    background: "var(--brand-primary)",
                     boxShadow: "none",
                     fontWeight: "700",
                     fontSize: "1rem"

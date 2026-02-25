@@ -2,7 +2,7 @@
 .wizard2 { padding-top: 91px; }
 .wizard2-main { background:#f7f9fc; min-height:calc(100vh - 91px); padding:2rem 1rem 3rem; }
 .wizard2-container { max-width:1100px; margin:0 auto; }
-.wizard2-title { font:800 2rem/1.2 Inter,sans-serif; color:#0b2f57; margin:0 0 1rem; }
+.wizard2-title { font:800 2rem/1.2 Inter,sans-serif; color:var(--brand-primary); margin:0 0 1rem; }
 
 /* --- STEPPER --- */
 .wizard2-stepper{
@@ -33,14 +33,14 @@
   background:#fff; margin-top:6px;
   box-shadow:0 0 0 6px #f7f9fc;
 }
-.wizard2-active .wizard2-dot{ background:#0b2f57; border-color:#0b2f57; }
-.wizard2-done   .wizard2-dot{ background:#fff;     border-color:#0b2f57; }
-.wizard2-step-title{ margin-top:6px; font-weight:800; color:#0b2f57; }
+.wizard2-active .wizard2-dot{ background:var(--brand-primary); border-color:var(--brand-primary); }
+.wizard2-done   .wizard2-dot{ background:#fff;     border-color:var(--brand-primary); }
+.wizard2-step-title{ margin-top:6px; font-weight:800; color:var(--brand-primary); }
 .wizard2-step-sub{ color:#6d7b8a; font-weight:600; }
 
 /* Card & grid */
 .wizard2-card { background:#fff; border-radius:var(--radius-md); padding:1rem; box-shadow:var(--shadow-lg); }
-.wizard2-h2 { font:800 1.15rem/1.2 Inter,sans-serif; color:#0b2f57; margin:0 0 .75rem; }
+.wizard2-h2 { font:800 1.15rem/1.2 Inter,sans-serif; color:var(--brand-primary); margin:0 0 .75rem; }
 
 .wizard2-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); }
 .wizard2-gap { gap:1rem; }
@@ -51,10 +51,10 @@
 
 /* Fields */
 .wizard2-field{display:flex;flex-direction:column;margin-bottom:.5rem; position:relative;}
-.wizard2-label{font-weight:700;color:#0b2f57;margin-bottom:.35rem;}
+.wizard2-label{font-weight:700;color:var(--brand-primary);margin-bottom:.35rem;}
 .wizard2-label .req{color:#b00020;} .wizard2-label .muted{color:#6d7b8a;font-weight:600;}
 .wizard2-input{height:42px;border:1px solid #dfe3eb;border-radius:8px;padding:0 12px;font-size:.95rem;background:#fff;outline:none;}
-.wizard2-input:focus{border-color:#002b5c;box-shadow:0 0 0 3px rgba(0,43,92,.12);}
+.wizard2-input:focus{border-color:var(--brand-primary);box-shadow:0 0 0 3px var(--brand-primary-tint);}
 .wizard2-input.has-error{border-color:#b00020;box-shadow:0 0 0 2px rgba(176,0,32,.18);}
 .wizard2-error{color:#b00020;font-size:.85rem;margin-top:.25rem;}
 
@@ -97,7 +97,7 @@
 .wizard2-dottedbox{ border:2px dotted #c7d3df; border-radius:12px; background:#fbfdff; padding:14px; margin-bottom:12px; }
 .wizard2-dotted-drop{ text-align:center; cursor:pointer; user-select:none; }
 .wizard2-dotted-drop:hover{ background:#f3f7fb; }
-.wizard2-drop-title{ font-weight:800; color:#0b2f57; margin-bottom:4px; }
+.wizard2-drop-title{ font-weight:800; color:var(--brand-primary); margin-bottom:4px; }
 .wizard2-drop-sub{ color:#455a72; font-weight:600; margin-bottom:2px; }
 
 .wizard2-photo{ display:flex; align-items:center; gap:.75rem; }
@@ -113,11 +113,11 @@
 
 /* Buttons / actions */
 .wizard2-actions{display:flex;justify-content:space-between;margin-top:16px;}
-.wizard2-btn-primary{min-width:140px;height:44px;border-radius:8px;border:2px solid #0b2f57;background:#fff;color:#0b2f57;font-weight:800;font-size: 0.8rem;cursor:pointer;transition:all .2s;}
-.wizard2-btn-primary:hover{background:#002b5c;color:#fff;border-color:gray;}
-.wizard2-btn-secondary{height:40px;border-radius:8px;border:1px solid #cbd6e2;background:#fff;color:#0b2f57;font-weight:700;padding:0 12px;cursor:pointer;transition:all .15s;}
-.wizard2-btn-secondary:hover{border-color:#0b2f57;}
-.wizard2-btn-text{background:transparent;border:0;color:#0b2f57;font-weight:700;padding:4px 6px;border-radius:6px;cursor:pointer;}
+.wizard2-btn-primary{min-width:140px;height:44px;border-radius:8px;border:2px solid var(--brand-primary);background:#fff;color:var(--brand-primary);font-weight:800;font-size: 0.8rem;cursor:pointer;transition:all .2s;}
+.wizard2-btn-primary:hover{background:var(--brand-primary);color:#fff;border-color:gray;}
+.wizard2-btn-secondary{height:40px;border-radius:8px;border:1px solid #cbd6e2;background:#fff;color:var(--brand-primary);font-weight:700;padding:0 12px;cursor:pointer;transition:all .15s;}
+.wizard2-btn-secondary:hover{border-color:var(--brand-primary);}
+.wizard2-btn-text{background:transparent;border:0;color:var(--brand-primary);font-weight:700;padding:4px 6px;border-radius:6px;cursor:pointer;}
 .wizard2-btn-text:hover{text-decoration:underline;}
 
 .wizard2-subtitle { font-weight: 600; margin-bottom: 8px; }

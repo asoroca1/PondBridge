@@ -47,6 +47,11 @@ export default function LocationMap() {
   const [selected, setSelected] = useState(null); // selected city object
   const [people, setPeople] = useState([]);       // people for selected city
   const [loadingPeople, setLoadingPeople] = useState(false);
+  const brandPrimary = useMemo(() => {
+    if (typeof window === "undefined") return "#002b5c";
+    const resolved = window.getComputedStyle(document.documentElement).getPropertyValue("--brand-primary").trim();
+    return resolved || "#002b5c";
+  }, []);
 
   function normalizeCities(raw) {
     return (Array.isArray(raw) ? raw : raw?.cities || [])
@@ -143,7 +148,7 @@ export default function LocationMap() {
       el.style.width = `${size}px`;
       el.style.height = `${size}px`;
       el.style.borderRadius = "999px";
-      el.style.background = "#0b3b68";
+      el.style.background = brandPrimary;
       el.style.border = "2px solid #ffffff";
       el.style.color = "#ffffff";
       el.style.display = "flex";

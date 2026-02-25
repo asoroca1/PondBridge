@@ -57,7 +57,7 @@ export default function ForgotPassword() {
               <p className="success-text" style={{ textAlign: "center", marginBottom: "1rem" }}>
                 Check your email for a sign-in link
               </p>
-              <p style={{ textAlign: "center", color: "#4e6683", fontSize: "0.92rem", marginBottom: "1rem" }}>
+              <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.92rem", marginBottom: "1rem" }}>
                 If an account exists for <strong>{email}</strong>, we sent a magic link you can use to sign in.
               </p>
               <div style={{ textAlign: "center" }}>
@@ -68,7 +68,7 @@ export default function ForgotPassword() {
             </>
           ) : (
             <form className="login1-form" onSubmit={handleSubmit}>
-              <p style={{ color: "#4e6683", fontSize: "0.92rem", margin: "0 0 0.25rem" }}>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: "0 0 0.25rem" }}>
                 Enter your email and we'll send you a magic link to sign in.
               </p>
 

@@ -1,12 +1,12 @@
 /* ===== Advanced Search v2 (namespaced) ===== */
   .as2 {
-    --as2-navy: var(--brand-primary, #002b5c);
+    --as2-navy: var(--brand-primary);
     --as2-bg: var(--bg-warm, #f6f5f2);
     --as2-card: var(--card, #ffffff);
     --as2-border: var(--card-border, #e7e5e4);
     --as2-radius: var(--radius-lg);
     --as2-shadow: var(--shadow-lg);
-    --as2-text: #0b2a5c;
+    --as2-text: var(--brand-primary);
     --as2-mute: var(--text-muted, #8f99a5);
     --as2-chip: #eef2f6;
   
@@ -241,7 +241,7 @@
   text-decoration:none;
   word-break:break-word;
 }
-.as2-name:hover{ color:#08224a; text-decoration:none; }
+.as2-name:hover{ color:var(--brand-primary-hover); text-decoration:none; }
 
 /* Industry: light-blue pill */
 .as2-industry{
@@ -412,8 +412,8 @@
     border: 1px solid var(--as2-navy);
   }
   .as2-card .as2-cta .as2-btn-primary:hover {
-    background: #07346a;                /* darker navy on hover */
-    border-color: #07346a;
+    background: var(--brand-primary-hover);                /* darker navy on hover */
+    border-color: var(--brand-primary-hover);
     color: #fff !important;             /* keep white text on hover */
   }
   
@@ -435,7 +435,7 @@
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background: var(--ps-navy, #002b5c);
+    background: var(--ps-navy, var(--brand-primary));
     color: #fff;
     display: flex;
     align-items: center;

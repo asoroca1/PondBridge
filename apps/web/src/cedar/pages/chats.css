@@ -3,7 +3,7 @@
    ========================= */
 
 :root {
-  --cf-navy: var(--brand-primary, #002b5c);
+  --cf-navy: var(--brand-primary);
   --cf-navy-2: #123f74;
   --cf-bg-soft: #f7f9fd;
   --cf-card: var(--card, #ffffff);

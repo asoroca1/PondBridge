@@ -3,7 +3,7 @@
     --cc-top-pad: 112px;
     --cc-gap: 16px;
 
-    --cc-navy: var(--brand-primary, #002b5c);
+    --cc-navy: var(--brand-primary);
     --cc-gray: var(--text-muted, #6b7280);
     --cc-border: var(--card-border, #e5e7eb);
     --cc-card: var(--card, #ffffff);
@@ -234,7 +234,7 @@
     width:28px; height:28px;
     border-radius:999px;
     background:#eef3ff;
-    color:#002b5c;
+    color:var(--brand-primary);
     border:1px solid #d8def0;
   }
   

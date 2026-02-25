@@ -1,7 +1,7 @@
 /* ========== Photo Stream (v1, surface + background) ========== */
 :root{
-    --ps-navy: var(--brand-primary, #002b5c);
-    --ps-blue-600:#0b3b7a;
+    --ps-navy: var(--brand-primary);
+    --ps-blue-600:var(--brand-primary-hover);
     --ps-gray-50:#f8fafc;
     --ps-gray-100:#f1f5f9;
     --ps-gray-200: var(--card-border, #e2e8f0);
@@ -59,7 +59,7 @@
       no-repeat right 8px center;
     color:#0f172a;
   }
-  .ps-select:focus{ outline:2px solid rgba(0,43,92,.25); }
+  .ps-select:focus{ outline:2px solid var(--brand-primary-focus); }
   
   /* buttons */
   .ps-btn{
@@ -403,7 +403,7 @@
   
   /* focus */
   .ps-select:focus, .ps-btn:focus, .ps-btn-icon:focus, .ps-input:focus, .ps-textarea:focus{
-    outline:2px solid rgba(0,43,92,.25); outline-offset:1px;
+    outline:2px solid var(--brand-primary-focus); outline-offset:1px;
   }
 
 /* fix spacing for sort + upload buttons */

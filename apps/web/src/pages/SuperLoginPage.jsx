@@ -100,11 +100,11 @@ function ClerkSuperLoginPage() {
               }}
               appearance={{
                 variables: {
-                  colorPrimary: "#0b2f57",
-                  colorText: "#17375e",
-                  colorTextSecondary: "#5d738d",
+                  colorPrimary: "var(--brand-primary)",
+                  colorText: "var(--text)",
+                  colorTextSecondary: "var(--text-muted)",
                   colorInputBackground: "#ffffff",
-                  colorInputText: "#17375e",
+                  colorInputText: "var(--text)",
                   colorNeutral: "#d4dfec",
                   borderRadius: "12px",
                   fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"

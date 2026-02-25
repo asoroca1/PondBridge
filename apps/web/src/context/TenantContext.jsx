@@ -18,14 +18,73 @@ const FONT_TOKEN_MAP = {
   }
 };
 
+function normalizeHexColor(value = "", fallback = "#002b5c") {
+  const raw = String(value || "").trim();
+  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) return `#${hex.toLowerCase()}`;
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    const expanded = hex
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("");
+    return `#${expanded.toLowerCase()}`;
+  }
+  return fallback;
+}
+
+function hexToRgb(hex = "#002b5c") {
+  const normalized = normalizeHexColor(hex).replace("#", "");
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16)
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  const clamp = (channel) => Math.max(0, Math.min(255, Math.round(channel)));
+  const toHex = (channel) => clamp(channel).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function mixHex(baseHex, mixHexColor, ratio = 0.2) {
+  const base = hexToRgb(baseHex);
+  const mix = hexToRgb(mixHexColor);
+  const weight = Math.max(0, Math.min(1, Number(ratio) || 0));
+  return rgbToHex({
+    r: base.r + (mix.r - base.r) * weight,
+    g: base.g + (mix.g - base.g) * weight,
+    b: base.b + (mix.b - base.b) * weight
+  });
+}
+
+function rgbaFromHex(hex, alpha = 1) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
+}
+
 function applyTheme(config = {}) {
   const root = document.documentElement;
   const branding = config?.branding || config?.theme || {};
   const fontToken = String(branding.fontToken || "cedar_default");
   const font = FONT_TOKEN_MAP[fontToken] || FONT_TOKEN_MAP.cedar_default;
   const heroImage = branding.heroImageUrl || "";
+  const brandPrimary = normalizeHexColor(branding.brandPrimary || "#002b5c");
+  const brandPrimaryHover = mixHex(brandPrimary, "#000000", 0.16);
+  const brandPrimaryStrong = mixHex(brandPrimary, "#000000", 0.24);
+  const brandPrimarySoft = mixHex(brandPrimary, "#ffffff", 0.46);
+  const brandPrimarySoftStrong = mixHex(brandPrimary, "#ffffff", 0.28);
+  const brandPrimaryRgb = hexToRgb(brandPrimary);
 
-  root.style.setProperty("--brand-primary", branding.brandPrimary || "#002b5c");
+  root.style.setProperty("--brand-primary", brandPrimary);
+  root.style.setProperty("--brand-primary-hover", brandPrimaryHover);
+  root.style.setProperty("--brand-primary-strong", brandPrimaryStrong);
+  root.style.setProperty("--brand-primary-soft", brandPrimarySoft);
+  root.style.setProperty("--brand-primary-soft-strong", brandPrimarySoftStrong);
+  root.style.setProperty("--brand-primary-rgb", `${brandPrimaryRgb.r}, ${brandPrimaryRgb.g}, ${brandPrimaryRgb.b}`);
+  root.style.setProperty("--brand-primary-shadow", rgbaFromHex(brandPrimary, 0.2));
+  root.style.setProperty("--brand-primary-focus", rgbaFromHex(brandPrimary, 0.22));
+  root.style.setProperty("--brand-primary-tint", rgbaFromHex(brandPrimary, 0.12));
   root.style.setProperty("--brand-secondary", branding.brandSecondary || "#d3dde8");
   root.style.setProperty("--brand-accent", branding.brandAccent || "#f2b134");
   root.style.setProperty("--bg", branding.bg || "#f5f7fa");

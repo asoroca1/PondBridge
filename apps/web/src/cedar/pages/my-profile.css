@@ -2,7 +2,7 @@
 
 /* --------- BASE (safe defaults) --------- */
 :root{
-  --cedar-navy: var(--brand-primary, #002b5c);
+  --cedar-navy: var(--brand-primary);
   --gap: 18px;
   --p1-mobile-gap: 16px;
   --p1-card-pad: 14px;
@@ -122,13 +122,13 @@
 
 /* Chips + industry row */
 .p1-roles { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 12px 0 12px; }
-.p1-role-chip { background: #eef2f7; color: #0b2a5c; padding: 6px 12px; border-radius: 999px; font-size: .85rem; }
+.p1-role-chip { background: #eef2f7; color: var(--brand-primary); padding: 6px 12px; border-radius: 999px; font-size: .85rem; }
 .p1-industry-row { display: flex; justify-content: center; margin-top: 8px; }
-.p1-industry-chip { background: #c6d9fd; color: #0b2a5c; }
+.p1-industry-chip { background: #c6d9fd; color: var(--brand-primary); }
 
 /* Actions */
 .p1-actions { display: flex; justify-content: center; margin-top: 6px; }
-.profile1-btn { background: var(--brand-primary, #0b2a5c); color:#fff; border: none; border-radius: var(--radius-sm); padding: 8px 14px; cursor: pointer; }
+.profile1-btn { background: var(--brand-primary); color:#fff; border: none; border-radius: var(--radius-sm); padding: 8px 14px; cursor: pointer; }
 
 .profile1-loading,
 .profile1-empty {
@@ -164,7 +164,7 @@
   content: ""; position: absolute; left: -20px; top: 4px;
   width: 10px; height: 10px; border-radius: 999px; background: #cbd5e1; border: 2px solid #fff; box-shadow: 0 0 0 2px #e5e7eb;
 }
-.p1-tl-item.is-current::before { background: #0b2a5c; }
+.p1-tl-item.is-current::before { background: var(--brand-primary); }
 .p1-job-title { font-weight: 600; line-height: 1.15; }
 .p1-job-sub { color: #4a5568; }
 
@@ -268,7 +268,7 @@
 }
 .p1-suggest-name:hover {
   text-decoration: none;
-  color: #0b2a5c;
+  color: var(--brand-primary);
   background: #f2f6ff;
   box-shadow: 0 2px 8px rgba(0,0,0,.06);
   transform: translateX(2px);
