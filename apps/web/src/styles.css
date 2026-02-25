@@ -5429,6 +5429,74 @@ button.super-stat-card {
   gap: 5px;
 }
 
+.super-camp-create-network-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.super-camp-create-network-preview-frame {
+  border: 1px solid #d9e5f2;
+  background: #f8fbff;
+  display: grid;
+  overflow: hidden;
+}
+
+.super-camp-create-network-preview-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(90deg, #103766 0%, #1f4f89 100%);
+  color: #f6fbff;
+}
+
+.super-camp-create-network-preview-nav strong {
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+
+.super-camp-create-network-preview-nav span {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.super-camp-create-network-preview-body {
+  padding: 16px 14px 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.super-camp-create-network-preview-body h3 {
+  margin: 0;
+  color: #153155;
+  font-size: 1.15rem;
+  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+}
+
+.super-camp-create-network-preview-body p {
+  margin: 0;
+  color: #5a7290;
+  font-size: 0.92rem;
+}
+
+.super-camp-create-network-preview-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.super-camp-create-network-preview-actions span {
+  padding: 6px 12px;
+  border: 1px solid #b8cce4;
+  color: #1f4f89;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: #fff;
+}
+
 .super-tenants-create-card,
 .super-tenants-filter-card {
   display: flex;
@@ -5505,6 +5573,11 @@ button.super-stat-card {
 
   .super-camp-create-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .super-camp-create-network-preview-nav {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

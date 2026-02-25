@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card, Input, Select } from "@pondbridge/ui";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -559,6 +559,7 @@ export function SuperTenantCreatePage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [createResult, setCreateResult] = useState(null);
+  const createResultRef = useRef(null);
   const [form, setForm] = useState({
     name: "",
     slug: "",
@@ -614,6 +615,11 @@ export function SuperTenantCreatePage() {
       setError(createError.message || "Could not create camp.");
     }
   }
+
+  useEffect(() => {
+    if (!createResultRef.current || !createResult) return;
+    createResultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [createResult]);
 
   async function copyClaim(link) {
     if (!link) return;
@@ -676,7 +682,8 @@ export function SuperTenantCreatePage() {
       </Card>
 
       {createResult ? (
-        <Card className="super-camp-create-summary-card" role="status">
+        <div ref={createResultRef}>
+          <Card className="super-camp-create-summary-card" role="status">
           <header className="super-camp-create-summary-header">
             <h2>Camp Ready</h2>
             <p>
@@ -751,17 +758,36 @@ export function SuperTenantCreatePage() {
             ) : null}
           </section>
 
-          {createResult.nextSteps.length ? (
-            <section className="super-camp-create-next-steps">
-              <h3>Next steps</h3>
-              <ol>
-                {createResult.nextSteps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </section>
-          ) : null}
-        </Card>
+          <section className="super-camp-create-network-preview" aria-label="Camp preview">
+            <p className="super-create-result-label">Network preview</p>
+            <div className="super-camp-create-network-preview-frame">
+              <header className="super-camp-create-network-preview-nav">
+                <strong>{createResult.campName} Alumni Network</strong>
+                <span>{createResult.domain || `${createResult.slug}.pondbridgealumni.com`}</span>
+              </header>
+              <div className="super-camp-create-network-preview-body">
+                <h3>{`Welcome to ${createResult.campName} Alumni Network`}</h3>
+                <p>Reconnect with alumni, staff, and directors from every era.</p>
+                <div className="super-camp-create-network-preview-actions">
+                  <span>Sign in</span>
+                  <span>Create account</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+            {createResult.nextSteps.length ? (
+              <section className="super-camp-create-next-steps">
+                <h3>Next steps</h3>
+                <ol>
+                  {createResult.nextSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
+          </Card>
+        </div>
       ) : null}
     </div>
   );
