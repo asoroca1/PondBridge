@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   BookOpen,
   Home,
+  Image,
   LogOut,
   Map,
   MessageSquare,
@@ -167,6 +168,14 @@ export default function NavBar() {
     }
 
     const communityItems = [];
+    if (modules.photoStream !== false) {
+      communityItems.push({
+        id: "photos",
+        icon: Image,
+        label: "Photo Stream",
+        to: pathWithCamp(slug, "/photo-stream")
+      });
+    }
     if (modules.chat !== false) {
       communityItems.push({
         id: "chat",
@@ -233,6 +242,7 @@ export default function NavBar() {
     canSearch,
     modules.chat,
     modules.map,
+    modules.photoStream,
     modules.newsletter,
     canFamilyTrees,
     modules.merchShop,
