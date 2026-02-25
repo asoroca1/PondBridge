@@ -468,7 +468,7 @@ export default function App() {
   return (
     <div className={`app-route-shell ${isRouting ? "is-routing" : ""}`}>
       <div className={`app-route-progress ${isRouting ? "is-active" : ""}`} aria-hidden="true" />
-      <div key={`${location.pathname}${location.search}${location.hash}`} className="app-route-stage">
+      <div className="app-route-stage">
         <Routes location={location}>
           <Route path="/t/:slug/*" element={<TenantScopeLayout />} />
 
