@@ -7,7 +7,7 @@ import ProductFooter from "./ProductFooter.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
 const STANDARD_OFFSET_MATCHERS = ["/admin", "/onboarding", "/settings", "/super"];
-const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account"];
+const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account", "/auth/callback"];
 
 export default function AppShell({ children }) {
   const location = useLocation();
