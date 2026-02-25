@@ -206,6 +206,11 @@ function ClerkBackedAuthProvider({ children }) {
   const [sessionRefreshing, setSessionRefreshing] = useState(true);
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const { signOut } = useClerk();
+  const userRef = useRef(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const clearLocalAuth = useCallback(() => {
     setToken("");
@@ -220,11 +225,11 @@ function ClerkBackedAuthProvider({ children }) {
       const nextToken = (await getToken(forceRefresh ? { skipCache: true } : undefined)) || "";
       if (nextToken) {
         setToken(nextToken);
-        writeAuthToStorage(nextToken, normalizeUserShape(user));
+        writeAuthToStorage(nextToken, normalizeUserShape(userRef.current));
       }
       return nextToken;
     },
-    [getToken, isLoaded, isSignedIn, user]
+    [getToken, isLoaded, isSignedIn]
   );
 
   const refreshSession = useCallback(
@@ -258,6 +263,7 @@ function ClerkBackedAuthProvider({ children }) {
         return payload;
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
+          setToken("");
           writeAuthToStorage(clerkToken, null);
           setUser(null);
           clearTabSessionAuthenticated();
