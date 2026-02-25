@@ -24,6 +24,50 @@ const TABLES_FOR_CLEANUP = [
   "tenants"
 ];
 
+const DEFAULT_TEST_DB_MARKERS = ["localhost", "127.0.0.1", "test", "staging", "dev"];
+
+function parseMarkers(raw = "") {
+  const markers = String(raw || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  return markers.length ? markers : DEFAULT_TEST_DB_MARKERS;
+}
+
+function looksLikeSafeTestDatabase(markers = DEFAULT_TEST_DB_MARKERS) {
+  const haystack = [
+    String(env.SUPABASE_URL || "").toLowerCase(),
+    String(env.SUPABASE_DB_URL || "").toLowerCase()
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!haystack) return false;
+  return markers.some((marker) => haystack.includes(marker));
+}
+
+function assertDestructiveResetAllowed() {
+  const isTestEnv = String(process.env.NODE_ENV || "").toLowerCase() === "test";
+  const explicitOptIn = ["1", "true", "yes", "on"].includes(
+    String(process.env.PONDBRIDGE_ALLOW_DB_RESET || "")
+      .trim()
+      .toLowerCase()
+  );
+  const markerGuardDisabled = ["1", "true", "yes", "on"].includes(
+    String(process.env.PONDBRIDGE_DISABLE_DB_MARKER_GUARD || "")
+      .trim()
+      .toLowerCase()
+  );
+  const markers = parseMarkers(process.env.PONDBRIDGE_TEST_DB_MARKERS || "");
+  const safeByMarker = markerGuardDisabled || looksLikeSafeTestDatabase(markers);
+
+  if (!isTestEnv || !explicitOptIn || !safeByMarker) {
+    throw new Error(
+      "Refusing destructive database reset. Require NODE_ENV=test, PONDBRIDGE_ALLOW_DB_RESET=1, and a non-production database marker match."
+    );
+  }
+}
+
 function needsSsl(connectionString = "") {
   return !/localhost|127\.0\.0\.1/i.test(String(connectionString || ""));
 }
@@ -76,6 +120,8 @@ async function truncateViaSupabaseApi() {
 }
 
 export async function clearAllDocuments() {
+  assertDestructiveResetAllowed();
+
   try {
     const usedSql = await truncateViaDirectSql();
     if (usedSql) return;

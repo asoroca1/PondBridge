@@ -8,7 +8,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "lint": "eslint src scripts",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules NODE_ENV=test PONDBRIDGE_ALLOW_DB_RESET=1 jest --runInBand",
     "seed": "node scripts/seed.js",
     "dev:provision-test-camp": "node scripts/devProvisionTestCampFlow.js",
     "supabase:apply-schema": "node scripts/applySupabaseSchema.js",
