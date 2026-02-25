@@ -1,6 +1,7 @@
 // src/lib/unreadChats.js
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "./api";
+import { getToken } from "./helpers";
 
 const READ_KEY = "cedarChatLastRead_v1"; // { [conversationId]: isoString }
 
@@ -61,7 +62,7 @@ export function computeUnreadCount(conversations = []) {
 }
 
 function authHeaders() {
-  const t = localStorage.getItem("token");
+  const t = getToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
@@ -71,10 +72,10 @@ function authHeaders() {
  */
 export function useUnreadChatsCount({ pollMs = 25000 } = {}) {
   const [count, setCount] = useState(0);
-  const token = useMemo(() => localStorage.getItem("token") || "", []);
+  const token = useMemo(() => getToken() || "", []);
 
   const refresh = useCallback(async () => {
-    if (!localStorage.getItem("token")) {
+    if (!getToken()) {
       setCount(0);
       return;
     }

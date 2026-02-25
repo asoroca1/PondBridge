@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { API_BASE } from "../lib/api";
+import { getToken } from "../lib/helpers.js";
 import defaultProfile from "../assets/default-profile.png";
 
 /* ------------ helpers (keep OUTSIDE the component) ------------ */
@@ -75,7 +76,7 @@ export default function SearchResults() {
         setState((s) => ({ ...s, loading: true, error: null }));
         const res = await fetch(
           `${API_BASE}/search/users?q=${encodeURIComponent(q)}&limit=48`,
-          { headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` } }
+          { headers: { Authorization: `Bearer ${getToken()}` } }
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();

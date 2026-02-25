@@ -24,6 +24,7 @@ const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
     .trim()
     .toLowerCase()
 );
+const CLERK_STORAGE_TOKEN_SYNC_INTERVAL_MS = 15_000;
 
 function markTabSessionAuthenticated() {
   if (typeof window === "undefined") return;
@@ -219,10 +220,11 @@ function ClerkBackedAuthProvider({ children }) {
       const nextToken = (await getToken(forceRefresh ? { skipCache: true } : undefined)) || "";
       if (nextToken) {
         setToken(nextToken);
+        writeAuthToStorage(nextToken, normalizeUserShape(user));
       }
       return nextToken;
     },
-    [getToken, isLoaded, isSignedIn]
+    [getToken, isLoaded, isSignedIn, user]
   );
 
   const refreshSession = useCallback(
@@ -306,6 +308,43 @@ function ClerkBackedAuthProvider({ children }) {
       active = false;
     };
   }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return undefined;
+    let disposed = false;
+    let lastSyncedAt = 0;
+
+    const syncTokenToStorage = async ({ force = false } = {}) => {
+      if (disposed) return;
+      const now = Date.now();
+      if (!force && now - lastSyncedAt < CLERK_STORAGE_TOKEN_SYNC_INTERVAL_MS) {
+        return;
+      }
+      lastSyncedAt = now;
+      const nextToken = await getAuthToken().catch(() => "");
+      if (!nextToken) return;
+      writeAuthToStorage(nextToken, normalizeUserShape(user));
+    };
+
+    syncTokenToStorage({ force: true }).catch(() => {});
+    const onFocus = () => {
+      syncTokenToStorage().catch(() => {});
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncTokenToStorage().catch(() => {});
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [getAuthToken, isLoaded, isSignedIn, user]);
 
   const login = useCallback(
     (nextToken, nextUser) => {

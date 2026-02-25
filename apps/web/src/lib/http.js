@@ -2,6 +2,10 @@ import { inferCampSlugFromHost } from "./domain.js";
 
 const rawBase = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 export const API_BASE = rawBase.replace(/\/+$/, "");
+const CLERK_FORCED_REFRESH_COOLDOWN_MS = 1500;
+
+let forcedRefreshPromise = null;
+let lastForcedRefreshAt = 0;
 
 function isNetworkFailure(error) {
   const msg = String(error?.message || "").toLowerCase();
@@ -35,6 +39,20 @@ async function readBrowserClerkToken({ forceRefresh = false } = {}) {
   } catch {
     return "";
   }
+}
+
+async function readBrowserClerkTokenWithSharedForceRefresh() {
+  const now = Date.now();
+  if (forcedRefreshPromise) return forcedRefreshPromise;
+  if (now - lastForcedRefreshAt < CLERK_FORCED_REFRESH_COOLDOWN_MS) {
+    return readBrowserClerkToken();
+  }
+
+  lastForcedRefreshAt = now;
+  forcedRefreshPromise = readBrowserClerkToken({ forceRefresh: true }).finally(() => {
+    forcedRefreshPromise = null;
+  });
+  return forcedRefreshPromise;
 }
 
 async function performJsonRequest(url, { method, headers, signal, body }) {
@@ -107,9 +125,10 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
   }
 
   if (response.status === 401) {
-    let refreshedToken = typeof getToken === "function" ? await getToken().catch(() => "") : "";
+    let refreshedToken =
+      typeof getToken === "function" ? await getToken({ forceRefresh: true }).catch(() => "") : "";
     if (!refreshedToken || refreshedToken === resolvedToken) {
-      const browserRefreshedToken = await readBrowserClerkToken({ forceRefresh: true });
+      const browserRefreshedToken = await readBrowserClerkTokenWithSharedForceRefresh();
       if (browserRefreshedToken) refreshedToken = browserRefreshedToken;
     }
     if (refreshedToken && refreshedToken !== resolvedToken) {

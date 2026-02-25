@@ -6,7 +6,7 @@ import coverPhoto from "../assets/profile-cover.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
 import { API_BASE } from "../lib/api";
-import { authHeaders, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
+import { authHeaders, displayName, initialsOf, avatarUrl, getToken } from "../lib/helpers.js";
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
 
@@ -218,7 +218,7 @@ export default function PublicProfile() {
       try {
         setLoading(true);
         setError("");
-        const token = localStorage.getItem("token") || "";
+        const token = getToken();
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch(`${API_BASE}/search/user/${encodeURIComponent(id)}`, { headers });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

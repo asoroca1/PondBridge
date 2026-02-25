@@ -1,10 +1,9 @@
 // src/components/chat/PeoplePicker.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
+import { getToken } from "../../lib/helpers.js";
 import defaultProfile from "../../assets/default-profile.png";
 import { Search } from "lucide-react";
-
-function getToken() { return localStorage.getItem("token"); }
 
 export default function PeoplePicker({ onSelect, selected = [], multi = false }) {
   const [q, setQ] = useState("");

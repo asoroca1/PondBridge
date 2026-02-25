@@ -26,6 +26,9 @@ export function writeAuthToStorage(token, user) {
     const serialized = JSON.stringify(user);
     localStorage.setItem(STORAGE_KEYS.user, serialized);
     localStorage.setItem(STORAGE_KEYS.legacyUser, serialized);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.user);
+    localStorage.removeItem(STORAGE_KEYS.legacyUser);
   }
   window.dispatchEvent(new CustomEvent("pondbridge-auth-updated"));
 }

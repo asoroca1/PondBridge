@@ -6,7 +6,7 @@ import { resolveNewsletterLabel, resolveTenantContent } from "../../lib/campLabe
 import CedarBackground from "../components/CedarBackground";
 import cedarField from "../assets/cedar-field.jpeg";
 import { API_BASE, getMe } from "../lib/api";
-import { authHeaders, initialsOf, displayName, avatarUrl } from "../lib/helpers.js";
+import { authHeaders, initialsOf, displayName, avatarUrl, getToken } from "../lib/helpers.js";
 import {
   Users,
   MapPin,
@@ -82,7 +82,7 @@ function useUnreadChatsCount({ pollMs = 25000 } = {}) {
   const [count, setCount] = useState(0);
 
   async function refresh() {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) {
       setCount(0);
       return;
@@ -505,7 +505,7 @@ export default function MainHome() {
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = getToken();
         if (!token) return navigate("/login");
         const data = await getMe(token);
         setMe(data?.user || data?.profile || data || null);

@@ -6,7 +6,7 @@ import coverPhoto from "../assets/profile-cover.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
 import { getMe, API_BASE } from "../lib/api";
-import { authHeaders, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
+import { authHeaders, displayName, initialsOf, avatarUrl, getToken } from "../lib/helpers.js";
 import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
@@ -190,7 +190,7 @@ export default function MyProfile() {
       try {
         setLoading(true);
         setError("");
-        const token = localStorage.getItem("token");
+        const token = getToken();
         let fresh = null;
         if (token) {
           try {

@@ -7,7 +7,7 @@ import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { MapPin } from "lucide-react";
 import { API_BASE } from "../lib/api";
-import { initialsOf } from "../lib/helpers.js";
+import { getToken, initialsOf } from "../lib/helpers.js";
 import "./location-map.css";
 
 function nameOf(p) {
@@ -110,16 +110,6 @@ export default function LocationMap() {
       // ignore cache write failures
     }
   }
-
-  // Try common token keys so this works regardless of which one you ended up using
-  const token = useMemo(() => {
-    return (
-      localStorage.getItem("token") ||
-      localStorage.getItem("cedarToken") ||
-      localStorage.getItem("adminToken") ||
-      ""
-    );
-  }, []);
 
   function clearMarkers() {
     for (const m of markersRef.current) {
@@ -314,6 +304,7 @@ export default function LocationMap() {
       }
 
       try {
+        const token = getToken() || localStorage.getItem("adminToken") || "";
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
         const res = await fetch(`${API_BASE}/map/cities`, { headers });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -352,7 +343,7 @@ export default function LocationMap() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, []);
 
   /* ------------------------------ Load people list ----------------------------- */
   async function loadPeople(citySel) {
@@ -374,6 +365,7 @@ export default function LocationMap() {
     try {
       setLoadingPeople(true);
       setPeople([]);
+      const token = getToken() || localStorage.getItem("adminToken") || "";
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
       const params = new URLSearchParams();

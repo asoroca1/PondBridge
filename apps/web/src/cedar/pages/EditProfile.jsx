@@ -8,6 +8,7 @@ import {
 import AvatarCropper from "../components/AvatarCropper";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE, getMe } from "../lib/api";
+import { getToken } from "../lib/helpers";
 import { useNavigate } from "react-router-dom";
 
 /* Data */
@@ -293,11 +294,6 @@ function Stepper({ activeStep = 0 }) {
       </div>
     </div>
   );
-}
-
-/** ✅ FIX: single source of truth (no duplicate token || token) */
-function getToken() {
-  return localStorage.getItem("token") || "";
 }
 
 function formatPhoneNumber(value) {

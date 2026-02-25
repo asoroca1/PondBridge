@@ -7,11 +7,12 @@
 
 /* ===== Auth ===== */
 
-/** Retrieve the stored auth token (checks legacy cedarToken then token). */
+/** Retrieve the stored auth token (prefers PondBridge key, then legacy keys). */
 export function getToken() {
   return (
-    localStorage.getItem("cedarToken") ||
+    localStorage.getItem("pondbridgeToken") ||
     localStorage.getItem("token") ||
+    localStorage.getItem("cedarToken") ||
     ""
   );
 }

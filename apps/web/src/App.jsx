@@ -112,9 +112,15 @@ function TenantScopeRoutes() {
     if (membershipSyncKeyRef.current === syncKey) return;
     membershipSyncKeyRef.current = syncKey;
 
-    refreshSession({ tenantSlug: slug }).catch(() => {
-      membershipSyncKeyRef.current = "";
-    });
+    refreshSession({ tenantSlug: slug })
+      .then((payload) => {
+        if (!payload?.user) {
+          membershipSyncKeyRef.current = "";
+        }
+      })
+      .catch(() => {
+        membershipSyncKeyRef.current = "";
+      });
   }, [authProvider, isAuthenticated, refreshSession, slug]);
 
   if (loading) {
@@ -191,14 +197,8 @@ function TenantScopeRoutes() {
     currentPath.includes("/request-access");
 
   if (clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute) {
-    return (
-      <section className="app-status-shell">
-        <div className="app-status-card">
-          <h1>Loading your membership...</h1>
-          <p>We are syncing your account for this network.</p>
-        </div>
-      </section>
-    );
+    const callbackPath = slug ? `/t/${slug}/auth/callback` : "/auth/callback";
+    return <Navigate to={callbackPath} replace />;
   }
 
   if (isCampDirector && onboardingIncomplete && !onOnboardingRoute) {

@@ -23,7 +23,7 @@ function getCurrentUserId() {
 /** Fetch a user by id (re-uses your search endpoint) */
 async function fetchUser(id) {
   const r = await fetch(`${API}/search/user/${id}`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!r.ok) throw new Error("user not found");
   const data = await r.json();

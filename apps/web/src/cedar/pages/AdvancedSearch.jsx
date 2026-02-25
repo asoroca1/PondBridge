@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { API_BASE } from "../lib/api";
+import { getToken } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
 import defaultProfile from "../assets/default-profile.png";
 import "./advanced-search.css";
@@ -132,11 +133,6 @@ function initials(first = "", last = "") {
   const f = first?.trim()[0] || "";
   const l = last?.trim()[0] || "";
   return (f + l).toUpperCase();
-}
-
-function getToken() {
-  // prefer cedarToken, fall back to token
-  return localStorage.getItem("cedarToken") || localStorage.getItem("token") || "";
 }
 
 /* =================== PAGE =================== */

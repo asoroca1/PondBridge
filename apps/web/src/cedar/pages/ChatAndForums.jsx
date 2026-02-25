@@ -173,7 +173,7 @@ function hasId(arr, id) {
 
 async function fetchUser(id) {
   const res = await fetch(`${API_BASE}/search/user/${id}`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error("bad user");
   const data = await res.json();
@@ -183,7 +183,7 @@ async function fetchUser(id) {
 /* ==== auth/ownership helpers (flexible + admin support) ==== */
 function getJwtPayload() {
   try {
-    const t = localStorage.getItem("token");
+    const t = getToken();
     return t ? JSON.parse(atob(t.split(".")[1])) : {};
   } catch {
     return {};
@@ -284,7 +284,7 @@ export default function ChatAndForums() {
   const tabParam = searchParams.get("tab");
   const initialTab = tabParam === "groups" || tabParam === "forums" ? tabParam : "personal";
   const [tab, setTab] = useState(initialTab); // personal | groups | forums
-  const [socket] = useState(() => createSocket(localStorage.getItem("token") || ""));
+  const [socket] = useState(() => createSocket(getToken() || ""));
 
   useEffect(() => {
     socket.connect();
