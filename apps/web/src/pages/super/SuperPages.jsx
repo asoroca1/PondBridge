@@ -584,7 +584,14 @@ export function SuperTenantCreatePage() {
       const fallbackClaimPath = String(payload?.inviteLink || "").trim();
       const fallbackClaimLink =
         fallbackClaimPath && fallbackClaimPath.startsWith("/") ? `${window.location.origin}${fallbackClaimPath}` : "";
-      const claimLink = payload?.directorClaimLink || directorInvite?.claimUrl || fallbackClaimLink;
+      const rawClaimLink = payload?.directorClaimLink || directorInvite?.claimUrl || fallbackClaimLink;
+      const claimLink = rawClaimLink && rawClaimLink.startsWith("/")
+        ? `${window.location.origin}${rawClaimLink}`
+        : rawClaimLink;
+      const rawNetworkClaimLink = String(payload?.networkDirectorClaimLink || "").trim();
+      const networkClaimLink = rawNetworkClaimLink && rawNetworkClaimLink.startsWith("/")
+        ? `${window.location.origin}${rawNetworkClaimLink}`
+        : rawNetworkClaimLink;
       const domain = payload?.tenant?.customDomain || payload?.network?.domain || "";
 
       setCreateResult({
@@ -594,6 +601,7 @@ export function SuperTenantCreatePage() {
         onboardingFeeAmount: Number(payload?.tenant?.onboardingFeeAmount ?? form.onboardingFeeAmount ?? 0),
         domain,
         claimLink,
+        networkClaimLink,
         provisioningStatus: String(provisioning?.status || ""),
         provisioningReason: String(provisioning?.reason || provisioning?.message || ""),
         directorEmail: directorInvite?.email || form.directorEmail || "",
@@ -731,6 +739,14 @@ export function SuperTenantCreatePage() {
             {createResult.provisioningReason ? (
               <p className="super-create-result-note">
                 Provisioning detail: <strong>{createResult.provisioningReason}</strong>
+              </p>
+            ) : null}
+            {createResult.provisioningStatus !== "ok" && createResult.networkClaimLink ? (
+              <p className="super-create-result-note">
+                Camp domain is still activating. Use the link above now. Direct domain when ready:{" "}
+                <a href={createResult.networkClaimLink} target="_blank" rel="noreferrer">
+                  {createResult.networkClaimLink}
+                </a>
               </p>
             ) : null}
           </section>

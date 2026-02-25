@@ -92,6 +92,8 @@ const appBaseDomain =
   String(process.env.APP_BASE_DOMAIN || "pondbridgealumni.com")
     .trim()
     .toLowerCase() || "pondbridgealumni.com";
+const cloudflareWebProxied =
+  process.env.CLOUDFLARE_WEB_PROXIED ?? process.env.CLOUDFLARE_PROXIED ?? "true";
 const cloudflareAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
 const r2Endpoint = normalizeUrl(
   process.env.R2_ENDPOINT ||
@@ -174,8 +176,20 @@ export const env = {
   CLOUDFLARE_ZONE_ID: String(process.env.CLOUDFLARE_ZONE_ID || "").trim(),
   CLOUDFLARE_PAGES_PROJECT_NAME: String(process.env.CLOUDFLARE_PAGES_PROJECT_NAME || "").trim(),
   CLOUDFLARE_WEB_CNAME_TARGET: String(process.env.CLOUDFLARE_WEB_CNAME_TARGET || "").trim(),
-  CLOUDFLARE_WEB_PROXIED: process.env.CLOUDFLARE_WEB_PROXIED || "true",
+  CLOUDFLARE_WEB_PROXIED: String(cloudflareWebProxied),
   CLOUDFLARE_TTL: process.env.CLOUDFLARE_TTL || "1",
+  CLOUDFLARE_DOMAIN_READY_TIMEOUT_MS: toBoundedInt(
+    process.env.CLOUDFLARE_DOMAIN_READY_TIMEOUT_MS,
+    25000,
+    0,
+    180000
+  ),
+  CLOUDFLARE_DOMAIN_READY_POLL_MS: toBoundedInt(
+    process.env.CLOUDFLARE_DOMAIN_READY_POLL_MS,
+    1200,
+    250,
+    10000
+  ),
   R2_BUCKET_NAME: String(process.env.R2_BUCKET_NAME || "").trim(),
   R2_ACCESS_KEY_ID: String(process.env.R2_ACCESS_KEY_ID || "").trim(),
   R2_SECRET_ACCESS_KEY: String(process.env.R2_SECRET_ACCESS_KEY || "").trim(),

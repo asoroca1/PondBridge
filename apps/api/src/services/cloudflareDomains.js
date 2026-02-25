@@ -29,6 +29,19 @@ function webCnameTarget() {
   return `${env.CLOUDFLARE_PAGES_PROJECT_NAME}.pages.dev`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function withTimeout(ms) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return AbortSignal.timeout(ms);
+  }
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
 async function cfRequest(method, endpoint, body) {
   const response = await fetch(`${CLOUDFLARE_API_BASE}${endpoint}`, {
     method,
@@ -93,6 +106,104 @@ async function bindPagesDomain(domain) {
   }
 }
 
+async function listPagesDomains() {
+  const payload = await cfRequest(
+    "GET",
+    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${env.CLOUDFLARE_PAGES_PROJECT_NAME}/domains`
+  );
+  return Array.isArray(payload?.result) ? payload.result : [];
+}
+
+async function getPagesDomainStatus(domain) {
+  try {
+    const domains = await listPagesDomains();
+    const matched = domains.find((item) => sanitizeDomain(item?.name) === domain);
+    if (!matched) {
+      return {
+        status: "not_found",
+        validationStatus: "",
+        verificationStatus: ""
+      };
+    }
+    return {
+      status: String(matched?.status || "").toLowerCase(),
+      validationStatus: String(matched?.validation_data?.status || "").toLowerCase(),
+      verificationStatus: String(matched?.verification_data?.status || "").toLowerCase()
+    };
+  } catch {
+    return {
+      status: "unknown",
+      validationStatus: "",
+      verificationStatus: ""
+    };
+  }
+}
+
+async function isDomainHttpReady(domain) {
+  try {
+    const response = await fetch(`https://${domain}`, {
+      method: "GET",
+      redirect: "manual",
+      signal: withTimeout(7000)
+    });
+    return response.status >= 200 && response.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+function pagesDomainLooksReady(snapshot = {}) {
+  if (!snapshot) return false;
+  const status = String(snapshot.status || "").toLowerCase();
+  const validationStatus = String(snapshot.validationStatus || "").toLowerCase();
+  const verificationStatus = String(snapshot.verificationStatus || "").toLowerCase();
+  return status === "active" && validationStatus === "active" && verificationStatus === "active";
+}
+
+async function waitForDomainReadiness(domain) {
+  const timeoutMs = Number(env.CLOUDFLARE_DOMAIN_READY_TIMEOUT_MS || 0);
+  const pollMs = Number(env.CLOUDFLARE_DOMAIN_READY_POLL_MS || 1000);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return {
+      ready: false,
+      reason: "readiness_check_disabled",
+      elapsedMs: 0,
+      pagesStatus: await getPagesDomainStatus(domain),
+      httpReady: false
+    };
+  }
+
+  const startedAt = Date.now();
+  let lastPagesStatus = { status: "unknown", validationStatus: "", verificationStatus: "" };
+  let lastHttpReady = false;
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    lastPagesStatus = await getPagesDomainStatus(domain);
+    const pagesReady = pagesDomainLooksReady(lastPagesStatus);
+    lastHttpReady = pagesReady ? await isDomainHttpReady(domain) : false;
+
+    if (pagesReady && lastHttpReady) {
+      return {
+        ready: true,
+        reason: "domain_active",
+        elapsedMs: Date.now() - startedAt,
+        pagesStatus: lastPagesStatus,
+        httpReady: true
+      };
+    }
+
+    await sleep(pollMs);
+  }
+
+  return {
+    ready: false,
+    reason: "domain_activation_pending",
+    elapsedMs: Date.now() - startedAt,
+    pagesStatus: lastPagesStatus,
+    httpReady: lastHttpReady
+  };
+}
+
 export async function provisionTenantDomain(domain = "") {
   const safeDomain = sanitizeDomain(domain);
   if (!safeDomain) return { status: "skipped", reason: "missing_domain" };
@@ -107,15 +218,18 @@ export async function provisionTenantDomain(domain = "") {
 
   const dnsAction = await upsertCnameRecord(safeDomain, cnameTarget, proxied, ttl);
   const pagesAction = await bindPagesDomain(safeDomain);
+  const readiness = await waitForDomainReadiness(safeDomain);
+  const ready = Boolean(readiness?.ready);
 
   return {
-    status: "ok",
+    status: ready ? "ok" : "pending",
     domain: safeDomain,
     dnsAction,
     pagesAction,
     cnameTarget,
     proxied,
-    ttl
+    ttl,
+    readiness
   };
 }
 

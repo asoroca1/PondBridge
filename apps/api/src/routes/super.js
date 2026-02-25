@@ -750,16 +750,6 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
 
   const inviteLink = `/t/${tenant.slug}/director-claim`;
   const network = buildTenantUrls(tenant);
-  const directorClaimLink = network.directorClaimUrl || inviteLink;
-  const directorInvite = directorEmail
-    ? {
-        email: directorEmail,
-        roleToAssign: "tenant_admin",
-        claimUrl: directorClaimLink,
-        onboardingUrl: `/t/${tenant.slug}/onboarding`,
-        mode: "first_signup_bootstrap"
-      }
-    : null;
   let domainProvisioning = { status: "skipped", reason: "not_attempted" };
 
   try {
@@ -770,6 +760,19 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
       message: String(error?.message || "Cloudflare provisioning failed")
     };
   }
+
+  const domainReady = String(domainProvisioning?.status || "") === "ok";
+  const networkDirectorClaimLink = network.directorClaimUrl || "";
+  const directorClaimLink = domainReady ? networkDirectorClaimLink || inviteLink : inviteLink;
+  const directorInvite = directorEmail
+    ? {
+        email: directorEmail,
+        roleToAssign: "tenant_admin",
+        claimUrl: directorClaimLink,
+        onboardingUrl: `/t/${tenant.slug}/onboarding`,
+        mode: "first_signup_bootstrap"
+      }
+    : null;
 
   await writeAudit(tenant._id, req.user.id, "super_tenant_created", {
     slug: tenant.slug,
@@ -783,13 +786,16 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     domainProvisioning,
     inviteLink,
     directorClaimLink,
+    networkDirectorClaimLink,
     directorInvite,
     loopsSync: {
       status: "queued_mock",
       message: "Director lifecycle contact sync is scaffolded and can be connected to Loops API."
     },
     nextSteps: [
-      "Share the director claim link.",
+      domainReady
+        ? "Share the director claim link."
+        : "Share the fallback claim link now while camp domain activation completes in Cloudflare.",
       "The first verified signup on this camp domain claims director access.",
       "Director is redirected into onboarding wizard."
     ]
