@@ -1,13 +1,16 @@
 // src/pages/LocationMap.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { useParams } from "react-router-dom";
 
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { MapPin } from "lucide-react";
 import { API_BASE } from "../lib/api";
 import { getToken, initialsOf } from "../lib/helpers.js";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import "./location-map.css";
 
 function nameOf(p) {
@@ -34,6 +37,8 @@ const PEOPLE_CACHE_PREFIX = "map:city:people:v1:";
 const PEOPLE_CACHE_TTL_MS = 2 * 60 * 1000;
 
 export default function LocationMap() {
+  const { slug = "" } = useParams();
+  const { getAuthToken } = useAuth();
   const mapRef = useRef(null);
   const mapEl = useRef(null);
 
@@ -47,11 +52,24 @@ export default function LocationMap() {
   const [selected, setSelected] = useState(null); // selected city object
   const [people, setPeople] = useState([]);       // people for selected city
   const [loadingPeople, setLoadingPeople] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(true);
   const brandPrimary = useMemo(() => {
     if (typeof window === "undefined") return "#002b5c";
     const resolved = window.getComputedStyle(document.documentElement).getPropertyValue("--brand-primary").trim();
     return resolved || "#002b5c";
   }, []);
+
+  async function resolveToken() {
+    if (typeof getAuthToken === "function") {
+      try {
+        const fresh = await getAuthToken();
+        if (fresh) return String(fresh).trim();
+      } catch {
+        // fall through to local storage token fallback
+      }
+    }
+    return getToken() || localStorage.getItem("adminToken") || "";
+  }
 
   function normalizeCities(raw) {
     return (Array.isArray(raw) ? raw : raw?.cities || [])
@@ -149,7 +167,7 @@ export default function LocationMap() {
       el.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.18)";
       el.style.cursor = "pointer";
       el.style.userSelect = "none";
-      el.textContent = ""
+      el.textContent = count > 99 ? "99+" : String(count);
 
       const marker = new maplibregl.Marker({ element: el, anchor: "center" })
         .setLngLat([lng, lat])
@@ -285,6 +303,7 @@ export default function LocationMap() {
     let cancelled = false;
 
     (async () => {
+      setLoadingCities(true);
       try {
         const cachedRaw = sessionStorage.getItem(CITIES_CACHE_KEY);
         if (cachedRaw) {
@@ -304,7 +323,7 @@ export default function LocationMap() {
       }
 
       try {
-        const token = getToken() || localStorage.getItem("adminToken") || "";
+        const token = await resolveToken();
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
         const res = await fetch(`${API_BASE}/map/cities`, { headers });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -337,6 +356,8 @@ export default function LocationMap() {
           citiesRef.current = [];
           if (loadedRef.current) renderMarkers([]);
         }
+      } finally {
+        if (!cancelled) setLoadingCities(false);
       }
     })();
 
@@ -365,7 +386,7 @@ export default function LocationMap() {
     try {
       setLoadingPeople(true);
       setPeople([]);
-      const token = getToken() || localStorage.getItem("adminToken") || "";
+      const token = await resolveToken();
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
       const params = new URLSearchParams();
@@ -400,6 +421,12 @@ export default function LocationMap() {
     // don’t need to change markers; user can click another
   }
 
+  const emptySelectionMessage = loadingCities
+    ? "Loading alumni location data..."
+    : cities.length === 0
+      ? "No alumni locations available yet. Add location details to member profiles and this map will populate automatically."
+      : "Click a city circle on the map to see alumni there.";
+
   return (
     <div className="lm-wrap" style={{ position: "relative", minHeight: "100vh" }}>
       <CedarBackground behavior="scroll" opacity={0.9} zIndex={0} />
@@ -417,7 +444,7 @@ export default function LocationMap() {
 
         <section className="lm-results">
           {!selected ? (
-            <div className="lm-empty">Click a city circle on the map to see alumni there.</div>
+            <div className="lm-empty">{emptySelectionMessage}</div>
           ) : (
             <>
               <div className="lm-results-head">
@@ -449,6 +476,8 @@ export default function LocationMap() {
                     if (!profileId || profileId === "undefined" || profileId === "null") return null;
                     const photo = p.uploads?.photoUrl || p.photoUrl || "";
                     const initials = initialsOf(p);
+                    const profileHref = tenantRoute(slug, `/profile/${profileId}`);
+                    const dmHref = tenantRoute(slug, `/chat-rooms?to=${encodeURIComponent(profileId)}`);
                     return (
                       <article key={profileId} className="lm-card">
                         {photo ? (
@@ -460,10 +489,10 @@ export default function LocationMap() {
                         )}
                         <div className="lm-name">{nameOf(p)}</div>
                         <div className="lm-actions">
-                          <a className="lm-btn primary" href={`/profile/${profileId}`}>
+                          <a className="lm-btn primary" href={profileHref}>
                             View Profile
                           </a>
-                          <a className="lm-btn" href={`/chat-rooms?to=${encodeURIComponent(profileId)}`}>
+                          <a className="lm-btn" href={dmHref}>
                             Message
                           </a>
                         </div>

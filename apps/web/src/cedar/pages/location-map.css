@@ -2,7 +2,7 @@
 .lm-main{
     max-width: 1280px;
     margin: 0 auto;
-    padding: 110px 16px 32px; /* under Navbar2 */
+    padding: 0 16px 32px;
   }
   
 /* Title */
@@ -223,7 +223,7 @@
   }
 
   /* Initials fallback matches our standard navy avatar */
-.lm-avatar.lm-initials{
+  .lm-avatar.lm-initials{
     display:flex; align-items:center; justify-content:center;
     width:72px; height:72px;
     border-radius:999px;
@@ -235,4 +235,15 @@
     border:1px solid #e5e7eb;     /* keep same ring as photos */
     user-select:none;
   }
+
+@media (max-width: 900px){
+  .lm-map{
+    height: 52vh;
+    min-height: 320px;
+  }
+  .lm-results-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
   
