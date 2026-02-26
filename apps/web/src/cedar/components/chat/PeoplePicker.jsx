@@ -1,5 +1,5 @@
 // src/components/chat/PeoplePicker.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
 import { getToken, initialsOf, avatarUrl } from "../../lib/helpers.js";
 import { Search } from "lucide-react";
@@ -10,8 +10,23 @@ function normalizeEntityId(value = "") {
   return id;
 }
 
+function isObjectIdLike(value = "") {
+  return /^[a-f0-9]{24}$/i.test(normalizeEntityId(value));
+}
+
 function toPickerId(user = {}) {
-  return normalizeEntityId(user?.id || user?._id);
+  return normalizeEntityId(user?.userId);
+}
+
+function myUserIdFromToken() {
+  const token = String(getToken() || "").trim();
+  if (!token.includes(".")) return "";
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return normalizeEntityId(payload?.sub);
+  } catch {
+    return "";
+  }
 }
 
 function PickerAvatar({ photo = "", firstName = "", lastName = "", name = "" }) {
@@ -38,6 +53,7 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const debounce = useRef(null);
+  const myUserId = useMemo(() => myUserIdFromToken(), []);
 
   function displaySelectedCount() {
     return multi && selected.length ? <span className="pp-count">{selected.length} selected</span> : null;
@@ -64,9 +80,9 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
       const seen = new Set();
       rawItems.forEach((user) => {
         const id = toPickerId(user);
-        if (!id || seen.has(id)) return;
+        if (!isObjectIdLike(id) || id === myUserId || seen.has(id)) return;
         seen.add(id);
-        next.push({ ...user, id, _id: id });
+        next.push({ ...user, id, _id: id, userId: id });
       });
       setItems(next);
     } catch {
@@ -98,12 +114,12 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
           const pic = avatarUrl(u);
           const name = `${u.firstName || ""} ${u.lastName || ""}`.trim();
           const job  = u.currentJob || "";
-          const isSel = selected.some((s) => normalizeEntityId(s?.id) === id);
+          const isSel = selected.some((s) => normalizeEntityId(s?.id || s?.userId) === id);
           return (
             <li
               key={id}
               className={`pp-item ${isSel?"is-selected":""}`}
-              onClick={() => onSelect && onSelect({ id, _id: id, ...u })}
+              onClick={() => onSelect && onSelect({ ...u, id, _id: id, userId: id })}
             >
               <PickerAvatar photo={pic} firstName={u.firstName} lastName={u.lastName} name={name} />
               <div className="pp-text">

@@ -642,6 +642,22 @@ function asObjectId(id) {
   return isValidObjectId(value) ? value : null;
 }
 
+async function resolveTenantUserId(tenantId, candidateId = "") {
+  const id = asObjectId(candidateId);
+  if (!id) return null;
+
+  const directUser = await UserModel.findOne(tenantId, { _id: id });
+  if (directUser?._id) return String(directUser._id);
+
+  const profile = await ProfileModel.findOne(tenantId, { _id: id });
+  const profileUserId = asObjectId(profile?.userId);
+  if (!profileUserId) return null;
+
+  const mappedUser = await UserModel.findOne(tenantId, { _id: profileUserId });
+  if (!mappedUser?._id) return null;
+  return String(mappedUser._id);
+}
+
 function asMedia(body = {}) {
   if (!body || typeof body !== "object") return null;
   const url = String(body.url || "").trim();
@@ -1023,10 +1039,12 @@ router.get("/search/names", async (req, res) => {
   const mapped = items
     .map((profile) => {
       const id = normalizeEntityId(profile?._id || profile?.id);
+      const userId = normalizeEntityId(profile?.userId);
       if (!id) return null;
       return {
         id,
         _id: id,
+        userId,
         name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown",
         firstName: profile.firstName,
         lastName: profile.lastName,
@@ -1416,7 +1434,8 @@ router.delete("/photos/:id", async (req, res) => {
 
 router.post("/conversations/dm", async (req, res) => {
   const meId = asObjectId(req.user.id);
-  const otherId = asObjectId(req.body?.userId);
+  const resolvedOtherId = await resolveTenantUserId(req.tenant._id, req.body?.userId);
+  const otherId = asObjectId(resolvedOtherId);
   if (!meId || !otherId) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "userId is required" } });
   }
@@ -1468,7 +1487,8 @@ router.post("/conversations/group", async (req, res) => {
   }
 
   const ids = Array.isArray(req.body?.participantIds) ? req.body.participantIds : [];
-  const unique = [...new Set([String(meId), ...ids.map((value) => String(value || "").trim())])].filter((id) =>
+  const resolved = await Promise.all(ids.map((value) => resolveTenantUserId(req.tenant._id, value)));
+  const unique = [...new Set([String(meId), ...resolved.filter(Boolean).map((id) => String(id))])].filter((id) =>
     isValidObjectId(id)
   );
   if (unique.length < 3) {
@@ -1560,7 +1580,8 @@ router.patch("/conversations/:id", async (req, res) => {
 
 router.post("/conversations/:id/members", async (req, res) => {
   const id = String(req.params.id || "");
-  const targetId = asObjectId(req.body?.userId);
+  const resolvedTargetId = await resolveTenantUserId(req.tenant._id, req.body?.userId);
+  const targetId = asObjectId(resolvedTargetId);
   if (!isValidObjectId(id) || !targetId) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Valid conversation id and userId required" } });
   }
@@ -1600,7 +1621,8 @@ router.post("/conversations/:id/members", async (req, res) => {
 
 router.delete("/conversations/:id/members", async (req, res) => {
   const id = String(req.params.id || "");
-  const targetId = asObjectId(req.body?.userId);
+  const resolvedTargetId = await resolveTenantUserId(req.tenant._id, req.body?.userId);
+  const targetId = asObjectId(resolvedTargetId);
   if (!isValidObjectId(id) || !targetId) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Valid conversation id and userId required" } });
   }
