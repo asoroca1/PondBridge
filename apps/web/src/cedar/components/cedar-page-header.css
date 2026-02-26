@@ -44,8 +44,10 @@
   height: 28px;
   border-radius: var(--radius-pill);
   background: #eef3ff;
+  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
   color: var(--brand-primary);
   border: 1px solid #d8def0;
+  border-color: color-mix(in srgb, var(--brand-primary) 24%, #d8def0);
 }
 
 .cedar-ph-sub {

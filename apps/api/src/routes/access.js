@@ -94,24 +94,100 @@ function tenantJoinMode(tenant) {
   return "open_join";
 }
 
+function normalizeCamperYears(value = {}) {
+  const input = value && typeof value === "object" ? value : {};
+  const validYear = (year = "") => {
+    const normalized = String(year || "").trim();
+    return /^\d{4}$/.test(normalized) ? normalized : "";
+  };
+  return {
+    firstYear: validYear(input.firstYear),
+    firstGroup: String(input.firstGroup || "").trim(),
+    lastYear: validYear(input.lastYear),
+    lastGroup: String(input.lastGroup || "").trim()
+  };
+}
+
+function normalizeRoleList(value = []) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const seen = new Set();
+  const ordered = [];
+  values.forEach((entry) => {
+    const role = String(entry || "").trim();
+    const key = role.toLowerCase();
+    if (!role || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(role);
+  });
+  return ordered;
+}
+
+function normalizeCityStateFromBody(body = {}) {
+  const direct = String(body.cityState || "").trim();
+  if (direct) return direct;
+  const city = String(body.city || "").trim();
+  const state = String(body.state || "").trim().toUpperCase();
+  const country = String(body.country || "").trim();
+  if (!city && !state && !country) return "";
+  if (state) return [city, state].filter(Boolean).join(", ");
+  return [city, country].filter(Boolean).join(", ");
+}
+
+function normalizeSocialsFromBody(body = {}, roleList = []) {
+  const fromSocials = body.socials && typeof body.socials === "object" ? body.socials : {};
+  const fromSocial = body.social && typeof body.social === "object" ? body.social : {};
+  const merged = { ...fromSocials, ...fromSocial };
+  const normalizedCamperYears = normalizeCamperYears(
+    body.camperYears && typeof body.camperYears === "object" ? body.camperYears : merged.camperYears || {}
+  );
+  const normalizedRoles = normalizeRoleList(
+    roleList.length ? roleList : Array.isArray(merged.roles) ? merged.roles : []
+  );
+  return {
+    ...merged,
+    camperYears: normalizedCamperYears,
+    roles: normalizedRoles
+  };
+}
+
+function normalizeJobRows(rows = []) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    role: String(row?.role || "").trim(),
+    company: String(row?.company || "").trim(),
+    years: String(row?.years || "").trim()
+  }));
+}
+
 function profilePayloadFromBody(body = {}, identity = {}) {
   const email = normalizeEmail(identity.email || body.email || "");
+  const education = Array.isArray(body.education) ? body.education : [];
+  const roles = normalizeRoleList(Array.isArray(body.roles) ? body.roles : [body.roleAtCamp]);
+  const phones = Array.isArray(body.phones)
+    ? body.phones.map((entry) => String(entry || "").trim()).filter(Boolean)
+    : body.phone
+    ? [String(body.phone).trim()]
+    : [];
   return {
     firstName: String(body.firstName || "").trim(),
     lastName: String(body.lastName || "").trim(),
     emails: email ? [email] : [],
-    phones: body.phone ? [String(body.phone).trim()] : [],
-    cityState: String(body.cityState || "").trim(),
-    roleAtCamp: String(body.roleAtCamp || "").trim(),
+    phones,
+    cityState: normalizeCityStateFromBody(body),
+    roleAtCamp: String(roles[0] || "").trim(),
     highSchool: String(body.highSchool || "").trim(),
-    colleges: Array.isArray(body.colleges) ? body.colleges : [],
-    collegeYears: Array.isArray(body.collegeYears) ? body.collegeYears : [],
-    currentJobs: Array.isArray(body.currentJobs) ? body.currentJobs : [],
-    pastJobs: Array.isArray(body.pastJobs) ? body.pastJobs : [],
+    colleges: Array.isArray(body.colleges)
+      ? body.colleges
+      : education.map((row) => String(row?.college || "").trim()).filter(Boolean),
+    collegeYears: Array.isArray(body.collegeYears)
+      ? body.collegeYears
+      : education.map((row) => String(row?.year || "").trim()).filter(Boolean),
+    currentJobs: normalizeJobRows(body.currentJobs),
+    pastJobs: normalizeJobRows(body.pastJobs),
     industry: String(body.industry || "").trim(),
-    socials: body.socials && typeof body.socials === "object" ? body.socials : {},
+    socials: normalizeSocialsFromBody(body, roles),
     bio: String(body.bio || "").trim(),
-    avatarUrl: String(body.avatarUrl || "").trim()
+    avatarUrl: String(body.uploads?.photoUrl || body.avatarUrl || body.photoUrl || "").trim()
   };
 }
 
@@ -550,12 +626,17 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
 
   const existingPending = await findPendingRequest(req.tenant._id, email);
   const profilePayload = profilePayloadFromBody(req.body || {}, identity);
+  const selfReportedRole = String(
+    profilePayload.roleAtCamp ||
+      (Array.isArray(req.body?.roles) ? req.body.roles[0] : req.body?.roleAtCamp) ||
+      ""
+  ).trim();
   let requestRow = existingPending;
   if (existingPending) {
     requestRow = await AccessRequestModel.update(existingPending._id, {
       firstName: profilePayload.firstName,
       lastName: profilePayload.lastName,
-      selfReportedRole: String(req.body?.roleAtCamp || "").trim(),
+      selfReportedRole,
       requestMessage: String(req.body?.requestMessage || "").trim(),
       profilePayload,
       status: "pending",
@@ -572,7 +653,7 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
         firstName: profilePayload.firstName,
         lastName: profilePayload.lastName,
         passwordHash: "clerk_managed",
-        selfReportedRole: String(req.body?.roleAtCamp || "").trim(),
+        selfReportedRole,
         requestMessage: String(req.body?.requestMessage || "").trim(),
         profilePayload,
         status: "pending",

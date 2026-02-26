@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { requestJson } from "../lib/http.js";
 
 const TenantContext = createContext(null);
+const TENANT_THEME_CACHE_PREFIX = "pondbridgeTenantTheme:";
 
 const FONT_TOKEN_MAP = {
   cedar_default: {
@@ -97,6 +98,36 @@ function applyTheme(config = {}) {
   else root.style.removeProperty("--hero-image-url");
 }
 
+function tenantThemeCacheKey({ slug = "", host = "" } = {}) {
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  const normalizedHost = String(host || "").trim().toLowerCase();
+  const key = normalizedSlug || normalizedHost;
+  return key ? `${TENANT_THEME_CACHE_PREFIX}${key}` : "";
+}
+
+function readCachedThemeConfig({ slug = "", host = "" } = {}) {
+  const key = tenantThemeCacheKey({ slug, host });
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedThemeConfig({ slug = "", host = "", config = null } = {}) {
+  const key = tenantThemeCacheKey({ slug, host });
+  if (!key || !config || typeof config !== "object") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(config));
+  } catch {
+    // Ignore storage quota/private mode errors.
+  }
+}
+
 export function TenantProvider({ slug = "", children }) {
   const [state, setState] = useState({ loading: true, error: "", tenant: null });
 
@@ -107,12 +138,19 @@ export function TenantProvider({ slug = "", children }) {
       ? `slug=${encodeURIComponent(normalizedSlug)}`
       : `host=${encodeURIComponent(host)}`;
 
+    const cachedConfig = readCachedThemeConfig({ slug: normalizedSlug, host });
+    if (cachedConfig) {
+      applyTheme(cachedConfig);
+    }
+
     setState((prev) => ({ ...prev, loading: true, error: "" }));
     try {
       const tenant = await requestJson(`/api/public/tenant-config?${query}`);
       const config = tenant?.config || {};
       const resolvedSlug = String(tenant?.slug || normalizedSlug).trim().toLowerCase();
       applyTheme(config);
+      writeCachedThemeConfig({ slug: resolvedSlug, config });
+      writeCachedThemeConfig({ host, config });
       if (resolvedSlug) localStorage.setItem("pondbridgeTenantSlug", resolvedSlug);
       setState({
         loading: false,

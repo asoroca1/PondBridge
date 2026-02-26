@@ -6,7 +6,6 @@ import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { API_BASE } from "../lib/api";
 import { getToken } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
-import defaultProfile from "../assets/default-profile.png";
 import "./advanced-search.css";
 
 /* ---------- helpers ---------- */
@@ -606,7 +605,8 @@ export default function AdvancedSearch() {
                       <>
                         <div className="as2-grid">
                           {state.items.map((p) => {
-                            const id = p.id || p._id;
+                            const id = String(p.id || p._id || p.profileId || p.userId || "").trim();
+                            if (!id || id === "undefined" || id === "null") return null;
                             const photo = p.photoUrl || p?.uploads?.photoUrl || null;
                             const industry =
                               p.industry ||

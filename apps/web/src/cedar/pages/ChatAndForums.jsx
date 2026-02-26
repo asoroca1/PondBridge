@@ -9,7 +9,16 @@ import { MessageSquare, Users, Megaphone, Plus, Paperclip, Shield, ChevronLeft, 
 import PeoplePicker from "../components/chat/PeoplePicker";
 import MessageComposer from "../components/chat/MessageComposer";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
-import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDateTime, relativeTime } from "../lib/helpers.js";
+import {
+  getToken,
+  authHeaders,
+  displayName,
+  initialsOf,
+  avatarUrl,
+  fmtDateTime,
+  relativeTime,
+  isPlaceholderAvatarUrl
+} from "../lib/helpers.js";
 
 /* ======================= Helpers ======================= */
 
@@ -71,7 +80,54 @@ function persistLocalRead(conversationId, iso) {
 }
 
 /** Person profile route */
-const profilePath = (userId) => `/profile/${userId}`;
+function normalizeEntityId(value = "") {
+  const id = String(value || "").trim();
+  if (!id || id === "undefined" || id === "null") return "";
+  return id;
+}
+
+function isObjectIdLike(value = "") {
+  return /^[a-f0-9]{24}$/i.test(normalizeEntityId(value));
+}
+
+function normalizeConversationEntity(conversation = null) {
+  if (!conversation || typeof conversation !== "object") return null;
+  const id = normalizeEntityId(conversation?._id || conversation?.id);
+  if (!isObjectIdLike(id)) return null;
+  const participantIds = Array.isArray(conversation.participantIds)
+    ? conversation.participantIds.map((entry) => normalizeEntityId(entry)).filter(isObjectIdLike)
+    : [];
+  return { ...conversation, _id: id, id, participantIds };
+}
+
+function normalizeForumEntity(forum = null) {
+  if (!forum || typeof forum !== "object") return null;
+  const id = normalizeEntityId(forum?._id || forum?.id);
+  if (!isObjectIdLike(id)) return null;
+  const memberIds = Array.isArray(forum.memberIds)
+    ? forum.memberIds.map((entry) => normalizeEntityId(entry)).filter(isObjectIdLike)
+    : [];
+  return { ...forum, _id: id, id, memberIds };
+}
+
+const profilePath = (userId) => `/profile/${normalizeEntityId(userId)}`;
+
+function apiErrorMessage(payload, fallback = "Request failed.") {
+  if (!payload) return fallback;
+  if (typeof payload === "string") return payload;
+  if (typeof payload?.error?.message === "string") return payload.error.message;
+  if (typeof payload?.error === "string") return payload.error;
+  if (typeof payload?.message === "string") return payload.message;
+  return fallback;
+}
+
+async function readJsonSafe(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
 function conversationSnippet(item) {
   const text =
@@ -172,11 +228,18 @@ function hasId(arr, id) {
 }
 
 async function fetchUser(id) {
-  const res = await fetch(`${API_BASE}/search/user/${id}`, {
+  const safeId = normalizeEntityId(id);
+  if (!isObjectIdLike(safeId)) {
+    throw new Error("Invalid user id");
+  }
+  const res = await fetch(`${API_BASE}/search/user/${safeId}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
-  if (!res.ok) throw new Error("bad user");
-  const data = await res.json();
+  if (!res.ok) {
+    const payload = await readJsonSafe(res);
+    throw new Error(apiErrorMessage(payload, "Unable to load user."));
+  }
+  const data = await readJsonSafe(res);
   return data.user;
 }
 
@@ -222,10 +285,16 @@ function Avatar({ name, url, size = "md", userId, linkTo }) {
   const cls = ["cf-avatar", size === "sm" ? "cf-sm" : "", size === "lg" ? "cf-lg" : ""]
     .filter(Boolean)
     .join(" ");
+  const safeUrl = isPlaceholderAvatarUrl(url) ? "" : url;
 
-  const showInitials = !url || broken;
+  useEffect(() => {
+    setBroken(false);
+  }, [safeUrl]);
+
+  const showInitials = !safeUrl || broken;
   const initials = initialsOf(name);
-  const clickable = !!(userId || linkTo);
+  const safeUserId = normalizeEntityId(userId);
+  const clickable = !!(safeUserId || linkTo);
 
   const base = showInitials ? (
     <div className={cls} style={{ cursor: clickable ? "pointer" : undefined }}>
@@ -234,14 +303,14 @@ function Avatar({ name, url, size = "md", userId, linkTo }) {
   ) : (
     <img
       className={`${cls} cf-avatar-img`}
-      src={url}
+      src={safeUrl}
       alt={name || "avatar"}
       onError={() => setBroken(true)}
       style={{ cursor: clickable ? "pointer" : undefined }}
     />
   );
 
-  const href = linkTo || (userId ? profilePath(userId) : null);
+  const href = linkTo || (safeUserId ? profilePath(safeUserId) : null);
   if (!href) return base;
 
   return (
@@ -410,6 +479,7 @@ function PersonalTab({ socket }) {
   const [lastReadISO, setLastReadISO] = useState(null);
   const [other, setOther] = useState({ name: "", avatar: "" }); // header display
   const [search, setSearch] = useState("");
+  const [actionError, setActionError] = useState("");
   const scrollRef = useRef(null);
 
   // stick-to-bottom state
@@ -425,26 +495,43 @@ function PersonalTab({ socket }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    let targetId = searchParams.get("to") || searchParams.get("dm") || "";
+    let targetId = normalizeEntityId(searchParams.get("to") || searchParams.get("dm") || "");
     if (!targetId) {
       const m = location.pathname.match(/\/chat\/([^/?#]+)/i);
-      if (m && m[1]) targetId = m[1];
+      if (m && m[1]) targetId = normalizeEntityId(m[1]);
     }
     if (!targetId) return;
+    if (!isObjectIdLike(targetId)) {
+      searchParams.delete("to");
+      searchParams.delete("dm");
+      setSearchParams(searchParams, { replace: true });
+      if (/\/chat\/[^/]+/i.test(location.pathname)) {
+        navigate("/chat-rooms", { replace: true });
+      }
+      return;
+    }
 
     (async () => {
       try {
+        setActionError("");
         const res = await fetch(`${API_BASE}/conversations/dm`, {
           method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({ userId: targetId }),
         });
-        const convo = await res.json();
+        const convo = await readJsonSafe(res);
+        if (!res.ok) {
+          throw new Error(apiErrorMessage(convo, "Failed to start DM."));
+        }
+        const convoId = normalizeEntityId(convo?._id || convo?.id);
+        if (!isObjectIdLike(convoId)) {
+          throw new Error("Failed to start DM.");
+        }
 
         await loadList();
         await onOpen(convo);
       } catch (e) {
-        console.error("Failed to start DM from deep-link", e);
+        setActionError(String(e?.message || "Failed to start DM."));
       } finally {
         searchParams.delete("to");
         searchParams.delete("dm");
@@ -530,25 +617,41 @@ function PersonalTab({ socket }) {
   async function loadList() {
     try {
       setLoadingList(true);
+      setActionError("");
       const res = await fetch(`${API_BASE}/conversations`, { headers: authHeaders() });
-      const data = await res.json();
-      const dms = (data.items || []).filter((c) => c.type === "dm");
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(apiErrorMessage(data, "Unable to load conversations."));
+      }
+      const dms = (data?.items || [])
+        .map((conversation) => normalizeConversationEntity(conversation))
+        .filter((conversation) => conversation?.type === "dm");
       setList(dms);
       computeDMTitles(dms);
+    } catch (error) {
+      setList([]);
+      setActionError(String(error?.message || "Unable to load conversations."));
     } finally {
       setLoadingList(false);
     }
   }
 
   async function loadMessages(convoId, cursor) {
+    const safeConvoId = normalizeEntityId(convoId);
+    if (!isObjectIdLike(safeConvoId)) {
+      throw new Error("Invalid conversation id");
+    }
     const el = scrollRef.current;
     const prevBottom = el ? el.scrollHeight - el.scrollTop : 0;
 
-    const url = new URL(`${API_BASE}/conversations/${convoId}/messages`);
+    const url = new URL(`${API_BASE}/conversations/${safeConvoId}/messages`);
     if (cursor) url.searchParams.set("cursor", cursor);
 
     const res = await fetch(url, { headers: authHeaders() });
-    const data = await res.json();
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(apiErrorMessage(data, "Unable to load messages."));
+    }
     const items = data.items || [];
 
     if (cursor) {
@@ -573,7 +676,9 @@ function PersonalTab({ socket }) {
   }
 
   async function primeUserCache(items) {
-    const ids = [...new Set((items || []).map((m) => String(m.senderId)))];
+    const ids = [
+      ...new Set((items || []).map((m) => normalizeEntityId(m?.senderId)).filter(isObjectIdLike))
+    ];
     const unknowns = ids.filter((id) => !userCache[id]);
     for (const id of unknowns) {
       try {
@@ -584,11 +689,20 @@ function PersonalTab({ socket }) {
   }
 
   async function onOpen(convo) {
+    const convoId = normalizeEntityId(convo?._id || convo?.id);
+    if (!isObjectIdLike(convoId)) {
+      setActionError("Unable to open this conversation.");
+      return;
+    }
+    setActionError("");
     if (active?._id) socket.emit("leave", `conversation:${active._id}`);
-    setActive(convo);
+    const normalizedConvo = { ...convo, _id: convoId, id: convoId };
+    setActive(normalizedConvo);
     setStickBottom(true);
 
-    const otherId = (convo.participantIds || []).map(String).find((id) => id !== String(meId));
+    const otherId = (normalizedConvo.participantIds || [])
+      .map((id) => normalizeEntityId(id))
+      .find((id) => id && id !== String(meId));
     if (otherId) {
       if (userCache[otherId]) {
         setOther(userCache[otherId]);
@@ -599,31 +713,32 @@ function PersonalTab({ socket }) {
           setUserCache((prev) => ({ ...prev, [otherId]: info }));
           setOther(info);
         } catch {
-          setOther({ name: titles[convo._id] || "Direct Message", avatar: "" });
+          setOther({ name: titles[convoId] || "Direct Message", avatar: "" });
         }
       }
     } else {
-      setOther({ name: titles[convo._id] || "Direct Message", avatar: "" });
+      setOther({ name: titles[convoId] || "Direct Message", avatar: "" });
     }
 
-    socket.emit("join", `conversation:${convo._id}`);
+    socket.emit("join", `conversation:${convoId}`);
 
-    const items = await loadMessages(convo._id);
+    const items = await loadMessages(convoId);
     const lastMsgIso = items?.[items.length - 1]?.createdAt || null;
 
     // IMPORTANT: read timestamp should be >= conversation.lastMessageAt
-    const readIso = maxIso(lastMsgIso, convo?.lastMessageAt);
-    if (readIso) await markRead(convo._id, readIso, convo?.lastMessageAt);
-    else clearUnreadLocally(convo._id);
+    const readIso = maxIso(lastMsgIso, normalizedConvo?.lastMessageAt);
+    if (readIso) await markRead(convoId, readIso, normalizedConvo?.lastMessageAt);
+    else clearUnreadLocally(convoId);
   }
 
   async function onSend({ kind, text, media }) {
-    if (!active) return;
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) return;
     const clientMessageId = createClientMessageId();
 
     const optimistic = {
       _id: `tmp_${Date.now()}`,
-      conversationId: active._id,
+      conversationId: activeId,
       senderId: meId,
       kind,
       text,
@@ -641,7 +756,7 @@ function PersonalTab({ socket }) {
         try {
           const ack = await sendConversationViaSocket({
             socket,
-            conversationId: active._id,
+            conversationId: activeId,
             kind,
             text,
             media,
@@ -654,7 +769,7 @@ function PersonalTab({ socket }) {
       }
 
       if (!saved) {
-        const res = await fetch(`${API_BASE}/conversations/${active._id}/messages`, {
+        const res = await fetch(`${API_BASE}/conversations/${activeId}/messages`, {
           method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({ kind, text, media, clientMessageId }),
@@ -676,7 +791,7 @@ function PersonalTab({ socket }) {
       });
 
       const lastIso = saved?.createdAt || new Date().toISOString();
-      await markRead(active._id, lastIso, active?.lastMessageAt);
+      await markRead(activeId, lastIso, active?.lastMessageAt);
 
       queueMicrotask(() => forceScrollToBottom(scrollRef));
     } catch {
@@ -726,8 +841,9 @@ function PersonalTab({ socket }) {
     };
 
     const onConvoDeleted = ({ id }) => {
-      if (active && String(active._id) === String(id)) setActive(null);
-      setList((ls) => ls.filter((c) => String(c._id) !== String(id)));
+      const deletedId = normalizeEntityId(id);
+      if (active && normalizeEntityId(active?._id || active?.id) === deletedId) setActive(null);
+      setList((ls) => ls.filter((c) => normalizeEntityId(c?._id || c?.id) !== deletedId));
     };
 
     socket.on("message:new", onNew);
@@ -773,12 +889,18 @@ function PersonalTab({ socket }) {
   }, [typing, lastReadISO, active?._id, stickBottom]);
 
   async function deleteDM() {
-    if (!active) return;
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) return;
     if (!window.confirm("Delete this DM thread for everyone? This cannot be undone.")) return;
-    await fetch(`${API_BASE}/conversations/${active._id}`, {
+    const res = await fetch(`${API_BASE}/conversations/${activeId}`, {
       method: "DELETE",
       headers: authHeaders(),
     });
+    if (!res.ok) {
+      const payload = await readJsonSafe(res);
+      setActionError(apiErrorMessage(payload, "Unable to delete conversation."));
+      return;
+    }
     setActive(null);
     loadList();
   }
@@ -818,6 +940,7 @@ function PersonalTab({ socket }) {
             placeholder="Search conversations..."
           />
         </label>
+        {actionError ? <div className="cf-loading">{actionError}</div> : null}
 
         {loadingList ? (
           <div className="cf-loading">Loading…</div>
@@ -843,7 +966,7 @@ function PersonalTab({ socket }) {
                   key={c._id}
                   className={`cf-list-item ${active?._id === c._id ? "is-active" : ""}`}
                 >
-                  <button className="cf-li-btn" onClick={() => onOpen(c)}>
+                  <button className="cf-li-btn" onClick={() => onOpen(c).catch(() => {})}>
                     <div className="cf-li-row">
                       <Avatar name={title} url={info?.avatar} size="md" userId={otherId} />
                       <div className="cf-li-text">
@@ -892,7 +1015,11 @@ function PersonalTab({ socket }) {
               style={{ scrollBehavior: "auto" }}
               onScroll={(e) => {
                 const el = e.currentTarget;
-                if (el.scrollTop < 40 && nextCursor) loadMessages(active._id, nextCursor);
+                if (el.scrollTop < 40 && nextCursor) {
+                  loadMessages(active._id, nextCursor).catch((error) => {
+                    setActionError(String(error?.message || "Unable to load messages."));
+                  });
+                }
                 setStickBottom(isNearBottom(el));
               }}
             >
@@ -936,20 +1063,37 @@ function StartDMButton({ onStarted }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [error, setError] = useState("");
 
   async function start() {
     if (!selected) return;
     try {
       setBusy(true);
+      setError("");
+      const targetId = normalizeEntityId(selected.id);
+      if (!isObjectIdLike(targetId)) {
+        setError("Pick a valid profile to start a DM.");
+        return;
+      }
       const res = await fetch(`${API_BASE}/conversations/dm`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ userId: selected.id }),
+        body: JSON.stringify({ userId: targetId }),
       });
-      const convo = await res.json();
-      onStarted && onStarted(convo);
+      const convo = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(apiErrorMessage(convo, "Unable to create DM."));
+      }
+      const convoId = normalizeEntityId(convo?._id || convo?.id);
+      if (!isObjectIdLike(convoId)) {
+        throw new Error("Unable to create DM.");
+      }
+      onStarted && onStarted({ ...convo, _id: convoId, id: convoId });
       setOpen(false);
       setSelected(null);
+      setError("");
+    } catch (err) {
+      setError(String(err?.message || "Unable to create DM."));
     } finally {
       setBusy(false);
     }
@@ -971,6 +1115,7 @@ function StartDMButton({ onStarted }) {
             </div>
             <div className="cf-modal-body">
               <PeoplePicker onSelect={(u) => setSelected(u)} selected={selected ? [selected] : []} multi={false} />
+              {error ? <div className="cf-loading">{error}</div> : null}
             </div>
             <div className="cf-modal-foot">
               <button className="cf-btn" disabled={!selected || busy} onClick={start}>
@@ -996,28 +1141,49 @@ function GroupsTab({ socket }) {
   const [renameValue, setRenameValue] = useState("");
   const [memberInfo, setMemberInfo] = useState({});
   const [search, setSearch] = useState("");
+  const [actionError, setActionError] = useState("");
   const scrollRef = useRef(null);
 
   const { id: meId, roles: meRoles } = useMemo(() => myIdentity(), []);
 
   async function loadList() {
-    const res = await fetch(`${API_BASE}/conversations`, { headers: authHeaders() });
-    const data = await res.json();
-    setList((data.items || []).filter((c) => c.type === "group"));
+    try {
+      setActionError("");
+      const res = await fetch(`${API_BASE}/conversations`, { headers: authHeaders() });
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(apiErrorMessage(data, "Unable to load groups."));
+      }
+      setList(
+        (data?.items || [])
+          .map((conversation) => normalizeConversationEntity(conversation))
+          .filter((conversation) => conversation?.type === "group")
+      );
+    } catch (error) {
+      setList([]);
+      setActionError(String(error?.message || "Unable to load groups."));
+    }
   }
   useEffect(() => {
     loadList();
   }, []);
 
   async function loadMessages(id, cursor) {
+    const convoId = normalizeEntityId(id);
+    if (!isObjectIdLike(convoId)) {
+      throw new Error("Invalid conversation id");
+    }
     const el = scrollRef.current;
     const prevBottom = el ? el.scrollHeight - el.scrollTop : 0;
 
-    const url = new URL(`${API_BASE}/conversations/${id}/messages`);
+    const url = new URL(`${API_BASE}/conversations/${convoId}/messages`);
     if (cursor) url.searchParams.set("cursor", cursor);
     const res = await fetch(url, { headers: authHeaders() });
-    const data = await res.json();
-    const items = data.items || [];
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(apiErrorMessage(data, "Unable to load messages."));
+    }
+    const items = data?.items || [];
 
     if (cursor) {
       setMessages((m) => {
@@ -1033,9 +1199,11 @@ function GroupsTab({ socket }) {
       queueMicrotask(() => forceScrollToBottom(scrollRef));
     }
 
-    setNextCursor(data.nextCursor);
+    setNextCursor(data?.nextCursor || null);
 
-    const unknowns = [...new Set(items.map((m) => String(m.senderId)))].filter((uid) => !nameCache[uid]);
+    const unknowns = [
+      ...new Set(items.map((m) => normalizeEntityId(m?.senderId)).filter(isObjectIdLike))
+    ].filter((uid) => !nameCache[uid]);
     for (const uid of unknowns) {
       try {
         const u = await fetchUser(uid);
@@ -1047,23 +1215,35 @@ function GroupsTab({ socket }) {
   }
 
   async function openGroup(g) {
+    const normalizedGroup = normalizeConversationEntity(g);
+    if (!normalizedGroup) {
+      setActionError("Unable to open this group.");
+      return;
+    }
+    const convoId = normalizedGroup._id;
+    setActionError("");
     if (active?._id) socket.emit("leave", `conversation:${active._id}`);
-    setActive(g);
-    socket.emit("join", `conversation:${g._id}`);
+    setActive(normalizedGroup);
+    socket.emit("join", `conversation:${convoId}`);
 
-    const items = await loadMessages(g._id);
-    const lastMsgIso = items?.[items.length - 1]?.createdAt || null;
-    const readIso = maxIso(lastMsgIso, g?.lastMessageAt);
-    if (readIso) persistLocalRead(g._id, readIso);
+    try {
+      const items = await loadMessages(convoId);
+      const lastMsgIso = items?.[items.length - 1]?.createdAt || null;
+      const readIso = maxIso(lastMsgIso, normalizedGroup?.lastMessageAt);
+      if (readIso) persistLocalRead(convoId, readIso);
+    } catch (error) {
+      setActionError(String(error?.message || "Unable to load group messages."));
+    }
   }
 
   async function onSend({ kind, text, media }) {
-    if (!active) return;
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) return;
     const clientMessageId = createClientMessageId();
 
     const optimistic = {
       _id: `tmp_${Date.now()}`,
-      conversationId: active._id,
+      conversationId: activeId,
       senderId: meId,
       kind,
       text,
@@ -1081,7 +1261,7 @@ function GroupsTab({ socket }) {
         try {
           const ack = await sendConversationViaSocket({
             socket,
-            conversationId: active._id,
+            conversationId: activeId,
             kind,
             text,
             media,
@@ -1094,7 +1274,7 @@ function GroupsTab({ socket }) {
       }
 
       if (!saved) {
-        const res = await fetch(`${API_BASE}/conversations/${active._id}/messages`, {
+        const res = await fetch(`${API_BASE}/conversations/${activeId}/messages`, {
           method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({ kind, text, media, clientMessageId }),
@@ -1115,35 +1295,94 @@ function GroupsTab({ socket }) {
         );
       });
 
-      persistLocalRead(active._id, maxIso(saved?.createdAt, active?.lastMessageAt) || new Date().toISOString());
+      persistLocalRead(activeId, maxIso(saved?.createdAt, active?.lastMessageAt) || new Date().toISOString());
       queueMicrotask(() => forceScrollToBottom(scrollRef));
     } catch {
+      setActionError("Unable to send message.");
       setMessages((m) => m.filter((x) => x._id !== optimistic._id));
     }
   }
 
   async function addMember(user) {
     if (!active) return;
-    await fetch(`${API_BASE}/conversations/${active._id}/members`, {
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) {
+      setActionError("Invalid group id.");
+      return;
+    }
+    const targetId = normalizeEntityId(user?.id);
+    if (!isObjectIdLike(targetId)) {
+      setActionError("Pick a valid member.");
+      return;
+    }
+    const res = await fetch(`${API_BASE}/conversations/${activeId}/members`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ userId: user.id }),
+      body: JSON.stringify({ userId: targetId }),
     });
-    const fresh = await (await fetch(`${API_BASE}/conversations/${active._id}`, { headers: authHeaders() })).json();
-    setActive(fresh);
-    setList((ls) => ls.map((c) => (c._id === fresh._id ? fresh : c)));
+    const payload = await readJsonSafe(res);
+    if (!res.ok) {
+      setActionError(apiErrorMessage(payload, "Unable to add member."));
+      return;
+    }
+    const freshRes = await fetch(`${API_BASE}/conversations/${activeId}`, { headers: authHeaders() });
+    const fresh = await readJsonSafe(freshRes);
+    if (!freshRes.ok) {
+      setActionError(apiErrorMessage(fresh, "Unable to refresh group."));
+      return;
+    }
+    const freshId = normalizeEntityId(fresh?._id || fresh?.id);
+    if (!isObjectIdLike(freshId)) {
+      setActionError("Unable to refresh group.");
+      return;
+    }
+    const normalizedFresh = { ...fresh, _id: freshId, id: freshId };
+    setActionError("");
+    setActive(normalizedFresh);
+    setList((ls) =>
+      ls.map((c) => (normalizeEntityId(c?._id || c?.id) === freshId ? normalizedFresh : c))
+    );
   }
 
   async function removeMember(userId) {
     if (!active) return;
-    await fetch(`${API_BASE}/conversations/${active._id}/members`, {
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) {
+      setActionError("Invalid group id.");
+      return;
+    }
+    const targetId = normalizeEntityId(userId);
+    if (!isObjectIdLike(targetId)) {
+      setActionError("Invalid member id.");
+      return;
+    }
+    const res = await fetch(`${API_BASE}/conversations/${activeId}/members`, {
       method: "DELETE",
       headers: authHeaders(),
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId: targetId }),
     });
-    const fresh = await (await fetch(`${API_BASE}/conversations/${active._id}`, { headers: authHeaders() })).json();
-    setActive(fresh);
-    setList((ls) => ls.map((c) => (c._id === fresh._id ? fresh : c)));
+    const payload = await readJsonSafe(res);
+    if (!res.ok) {
+      setActionError(apiErrorMessage(payload, "Unable to remove member."));
+      return;
+    }
+    const freshRes = await fetch(`${API_BASE}/conversations/${activeId}`, { headers: authHeaders() });
+    const fresh = await readJsonSafe(freshRes);
+    if (!freshRes.ok) {
+      setActionError(apiErrorMessage(fresh, "Unable to refresh group."));
+      return;
+    }
+    const freshId = normalizeEntityId(fresh?._id || fresh?.id);
+    if (!isObjectIdLike(freshId)) {
+      setActionError("Unable to refresh group.");
+      return;
+    }
+    const normalizedFresh = { ...fresh, _id: freshId, id: freshId };
+    setActionError("");
+    setActive(normalizedFresh);
+    setList((ls) =>
+      ls.map((c) => (normalizeEntityId(c?._id || c?.id) === freshId ? normalizedFresh : c))
+    );
   }
 
   function openSettings() {
@@ -1162,15 +1401,36 @@ function GroupsTab({ socket }) {
 
   async function saveGroupName() {
     if (!active) return;
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) {
+      setActionError("Invalid group id.");
+      return;
+    }
     const name = renameValue.trim();
-    await fetch(`${API_BASE}/conversations/${active._id}`, {
+    const res = await fetch(`${API_BASE}/conversations/${activeId}`, {
       method: "PATCH",
       headers: authHeaders(),
       body: JSON.stringify({ name: name || undefined }),
     });
+    const payload = await readJsonSafe(res);
+    if (!res.ok) {
+      setActionError(apiErrorMessage(payload, "Unable to update group name."));
+      return;
+    }
     await loadList();
-    const fresh = await (await fetch(`${API_BASE}/conversations/${active._id}`, { headers: authHeaders() })).json();
-    setActive(fresh);
+    const freshRes = await fetch(`${API_BASE}/conversations/${activeId}`, { headers: authHeaders() });
+    const fresh = await readJsonSafe(freshRes);
+    if (!freshRes.ok) {
+      setActionError(apiErrorMessage(fresh, "Unable to refresh group."));
+      return;
+    }
+    const freshId = normalizeEntityId(fresh?._id || fresh?.id);
+    if (!isObjectIdLike(freshId)) {
+      setActionError("Unable to refresh group.");
+      return;
+    }
+    setActive({ ...fresh, _id: freshId, id: freshId });
+    setActionError("");
     setShowSettings(false);
   }
 
@@ -1194,8 +1454,9 @@ function GroupsTab({ socket }) {
     };
 
     const onConvoDeleted = ({ id }) => {
-      if (active && String(active._id) === String(id)) setActive(null);
-      setList((ls) => ls.filter((c) => String(c._id) !== String(id)));
+      const deletedId = normalizeEntityId(id);
+      if (active && normalizeEntityId(active?._id || active?.id) === deletedId) setActive(null);
+      setList((ls) => ls.filter((c) => normalizeEntityId(c?._id || c?.id) !== deletedId));
     };
 
     socket.on("message:new", onNew);
@@ -1218,13 +1479,24 @@ function GroupsTab({ socket }) {
 
   async function confirmDeleteGroup() {
     if (!active) return;
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) {
+      setActionError("Invalid group id.");
+      return;
+    }
     const ok = window.confirm("Delete this group chat and all its messages? This cannot be undone.");
     if (!ok) return;
-    await fetch(`${API_BASE}/conversations/${active._id}`, {
+    const res = await fetch(`${API_BASE}/conversations/${activeId}`, {
       method: "DELETE",
       headers: authHeaders(),
     });
+    if (!res.ok) {
+      const payload = await readJsonSafe(res);
+      setActionError(apiErrorMessage(payload, "Unable to delete group."));
+      return;
+    }
     setActive(null);
+    setActionError("");
     loadList();
   }
 
@@ -1245,7 +1517,7 @@ function GroupsTab({ socket }) {
           <CreateGroupButton
             onCreated={(g) => {
               loadList();
-              openGroup(g);
+              openGroup(g).catch(() => {});
             }}
           />
         </div>
@@ -1258,13 +1530,14 @@ function GroupsTab({ socket }) {
             placeholder="Search groups..."
           />
         </label>
+        {actionError ? <div className="cf-loading">{actionError}</div> : null}
 
         {list.length === 0 ? (
           <EmptyState
             icon={Users}
             title="No groups yet"
             subtitle="Create a private chat for your crew."
-            action={<CreateGroupButton onCreated={(g) => { loadList(); openGroup(g); }} />}
+            action={<CreateGroupButton onCreated={(g) => { loadList(); openGroup(g).catch(() => {}); }} />}
           />
         ) : filteredGroups.length === 0 ? (
           <div className="cf-loading">No matches found.</div>
@@ -1272,7 +1545,7 @@ function GroupsTab({ socket }) {
           <ul className="cf-list">
             {filteredGroups.map((g) => (
               <li key={g._id} className={`cf-list-item ${active?._id === g._id ? "is-active" : ""}`}>
-                <button className="cf-li-btn" onClick={() => openGroup(g)}>
+                <button className="cf-li-btn" onClick={() => openGroup(g).catch(() => {})}>
                   <div className="cf-li-row">
                     <div className="cf-group-avatar">
                       <span>{initialsOf(g.name || "G")}</span>
@@ -1321,7 +1594,11 @@ function GroupsTab({ socket }) {
               className="cf-thread-body"
               ref={scrollRef}
               onScroll={(e) => {
-                if (e.currentTarget.scrollTop < 40 && nextCursor) loadMessages(active._id, nextCursor);
+                if (e.currentTarget.scrollTop < 40 && nextCursor) {
+                  loadMessages(active._id, nextCursor).catch((error) => {
+                    setActionError(String(error?.message || "Unable to load messages."));
+                  });
+                }
               }}
             >
               {messages.map((m) => (
@@ -1375,7 +1652,7 @@ function GroupsTab({ socket }) {
                         placeholder="e.g., 2015 Counselors"
                       />
                       <div>
-                        <button className="cf-btn" onClick={saveGroupName}>
+                        <button className="cf-btn" onClick={() => saveGroupName().catch(() => {})}>
                           Save Name
                         </button>
                       </div>
@@ -1397,7 +1674,7 @@ function GroupsTab({ socket }) {
                                 <div className="pp-name">{nm}</div>
                               </div>
                               {canKick && (
-                                <button className="cf-ghost-btn" onClick={() => removeMember(id)}>
+                                <button className="cf-ghost-btn" onClick={() => removeMember(id).catch(() => {})}>
                                   Remove
                                 </button>
                               )}
@@ -1409,7 +1686,7 @@ function GroupsTab({ socket }) {
 
                     <div className="cf-field">
                       <div className="cf-label">Add People</div>
-                      <PeoplePicker multi onSelect={(u) => addMember(u)} />
+                      <PeoplePicker multi onSelect={(u) => addMember(u).catch(() => {})} />
                       <div className="pp-sub">Selecting a person adds them immediately.</div>
                     </div>
                   </div>
@@ -1434,21 +1711,44 @@ function CreateGroupButton({ onCreated }) {
   const [selected, setSelected] = useState([]);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   async function create() {
     if (selected.length < 2) return;
     setBusy(true);
     try {
+      setError("");
+      const participantIds = [
+        ...new Set(
+          selected
+            .map((person) => normalizeEntityId(person?.id))
+            .filter((id) => isObjectIdLike(id))
+        )
+      ];
+      if (participantIds.length < 2) {
+        setError("Select at least 2 valid members.");
+        return;
+      }
       const res = await fetch(`${API_BASE}/conversations/group`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ name: name.trim() || undefined, participantIds: selected.map((s) => s.id) }),
+        body: JSON.stringify({ name: name.trim() || undefined, participantIds }),
       });
-      const data = await res.json();
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(apiErrorMessage(data, "Unable to create group."));
+      }
+      const convoId = normalizeEntityId(data?._id || data?.id);
+      if (!isObjectIdLike(convoId)) {
+        throw new Error("Unable to create group.");
+      }
       onCreated && onCreated(data);
       setOpen(false);
       setSelected([]);
       setName("");
+      setError("");
+    } catch (err) {
+      setError(String(err?.message || "Unable to create group."));
     } finally {
       setBusy(false);
     }
@@ -1483,11 +1783,16 @@ function CreateGroupButton({ onCreated }) {
                 multi
                 selected={selected}
                 onSelect={(u) => {
+                  const targetId = normalizeEntityId(u?.id || u?._id);
+                  if (!targetId) return;
                   setSelected((prev) =>
-                    prev.some((p) => p.id === u.id) ? prev.filter((p) => p.id !== u.id) : [...prev, u]
+                    prev.some((p) => normalizeEntityId(p?.id || p?._id) === targetId)
+                      ? prev.filter((p) => normalizeEntityId(p?.id || p?._id) !== targetId)
+                      : [...prev, { ...u, id: targetId, _id: targetId }]
                   );
                 }}
               />
+              {error ? <div className="cf-loading">{error}</div> : null}
             </div>
             <div className="cf-modal-foot">
               <button className="cf-btn" disabled={busy || selected.length < 2} onClick={create}>
@@ -1513,6 +1818,7 @@ function ForumsTab({ socket }) {
   const [newName, setNewName] = useState("");
   const [authorInfo, setAuthorInfo] = useState({}); // { userId: {name, avatar} }
   const [search, setSearch] = useState("");
+  const [actionError, setActionError] = useState("");
 
   // members modal state/cache
   const [showMembers, setShowMembers] = useState(false);
@@ -1536,26 +1842,54 @@ function ForumsTab({ socket }) {
   };
 
   async function loadList() {
-    const url = new URL(`${API_BASE}/forums`);
-    url.searchParams.set("mine", String(mine));
-    const res = await fetch(url, { headers: authHeaders() });
-    const data = await res.json();
-    setList(mine ? (data.items || []) : sortByForumName(data.items || []));
+    try {
+      setActionError("");
+      const url = new URL(`${API_BASE}/forums`);
+      url.searchParams.set("mine", String(mine));
+      const res = await fetch(url, { headers: authHeaders() });
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(apiErrorMessage(data, "Unable to load forums."));
+      }
+      const normalizedItems = (data?.items || [])
+        .map((forum) => normalizeForumEntity(forum))
+        .filter(Boolean);
+      setList(mine ? normalizedItems : sortByForumName(normalizedItems));
+    } catch (error) {
+      setList([]);
+      setActionError(String(error?.message || "Unable to load forums."));
+    }
   }
   useEffect(() => {
     loadList();
   }, [mine]);
 
-  function openForum(f) {
+  async function openForum(f) {
+    const forumId = normalizeEntityId(f?._id || f?.id);
+    if (!isObjectIdLike(forumId)) {
+      setActionError("Unable to open this forum.");
+      return;
+    }
+    setActionError("");
     if (active?._id) socket.emit("leave", `forum:${active._id}`);
-    setActive(f);
-    socket.emit("join", `forum:${f._id}`);
-    loadPosts(f._id);
+    const normalizedForum = { ...f, _id: forumId, id: forumId };
+    setActive(normalizedForum);
+    socket.emit("join", `forum:${forumId}`);
+    try {
+      await loadPosts(forumId);
+    } catch (error) {
+      setPosts([]);
+      setActionError(String(error?.message || "Unable to load forum posts."));
+    }
   }
 
   async function primeAuthorCache(items) {
     const ids = [
-      ...new Set((items || []).map((p) => String(p.authorId ?? p.userId ?? p.createdBy)).filter(Boolean)),
+      ...new Set(
+        (items || [])
+          .map((p) => normalizeEntityId(p.authorId ?? p.userId ?? p.createdBy))
+          .filter(Boolean)
+      ),
     ];
 
     // Optimistic fill for me (no network)
@@ -1577,45 +1911,92 @@ function ForumsTab({ socket }) {
   }
 
   async function loadPosts(id, cursor) {
+    const forumId = normalizeEntityId(id);
+    if (!isObjectIdLike(forumId)) {
+      throw new Error("Invalid forum id");
+    }
     const el = scrollRef.current;
     const prevBottom = el ? el.scrollHeight - el.scrollTop : 0;
 
-    const url = new URL(`${API_BASE}/forums/${id}/posts`);
+    const url = new URL(`${API_BASE}/forums/${forumId}/posts`);
     if (cursor) url.searchParams.set("cursor", cursor);
     const res = await fetch(url, { headers: authHeaders() });
-    const data = await res.json();
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(apiErrorMessage(data, "Unable to load posts."));
+    }
+
+    const nextItems = (data?.items || []).filter((item) => normalizeEntityId(item?._id || item?.id));
 
     if (cursor) {
       setPosts((p) => {
-        const older = (data.items || []).filter((x) => !hasId(p, x._id));
+        const older = nextItems.filter((x) => !hasId(p, x._id));
         return [...older, ...p];
       });
-      primeAuthorCache(data.items || []);
+      primeAuthorCache(nextItems);
       queueMicrotask(() => {
         const el2 = scrollRef.current;
         if (el2) el2.scrollTop = el2.scrollHeight - prevBottom;
       });
     } else {
-      setPosts(data.items || []);
-      primeAuthorCache(data.items || []);
+      setPosts(nextItems);
+      primeAuthorCache(nextItems);
       queueMicrotask(() => forceScrollToBottom(scrollRef));
     }
 
-    setNextCursor(data.nextCursor);
+    setNextCursor(data?.nextCursor || null);
   }
 
   async function join(id) {
-    await fetch(`${API_BASE}/forums/${id}/join`, { method: "POST", headers: authHeaders() });
-    const fresh = await (await fetch(`${API_BASE}/forums/${id}`, { headers: authHeaders() })).json();
-    setActive(fresh);
+    const forumId = normalizeEntityId(id);
+    if (!isObjectIdLike(forumId)) {
+      setActionError("Invalid forum id.");
+      return;
+    }
+    const joinRes = await fetch(`${API_BASE}/forums/${forumId}/join`, {
+      method: "POST",
+      headers: authHeaders()
+    });
+    const joinPayload = await readJsonSafe(joinRes);
+    if (!joinRes.ok) {
+      setActionError(apiErrorMessage(joinPayload, "Unable to join forum."));
+      return;
+    }
+    const freshRes = await fetch(`${API_BASE}/forums/${forumId}`, { headers: authHeaders() });
+    const fresh = await readJsonSafe(freshRes);
+    if (!freshRes.ok) {
+      setActionError(apiErrorMessage(fresh, "Unable to refresh forum."));
+      return;
+    }
+    setActionError("");
+    const normalizedFresh = normalizeForumEntity(fresh);
+    if (!normalizedFresh) {
+      setActionError("Unable to refresh forum.");
+      return;
+    }
+    setActive(normalizedFresh);
     loadList();
-    socket.emit("join", `forum:${id}`);
+    socket.emit("join", `forum:${forumId}`);
   }
   async function leave(id) {
-    await fetch(`${API_BASE}/forums/${id}/leave`, { method: "POST", headers: authHeaders() });
+    const forumId = normalizeEntityId(id);
+    if (!isObjectIdLike(forumId)) {
+      setActionError("Invalid forum id.");
+      return;
+    }
+    const leaveRes = await fetch(`${API_BASE}/forums/${forumId}/leave`, {
+      method: "POST",
+      headers: authHeaders()
+    });
+    const leavePayload = await readJsonSafe(leaveRes);
+    if (!leaveRes.ok) {
+      setActionError(apiErrorMessage(leavePayload, "Unable to leave forum."));
+      return;
+    }
+    setActionError("");
     setActive(null);
     loadList();
-    socket.emit("leave", `forum:${id}`);
+    socket.emit("leave", `forum:${forumId}`);
   }
 
   async function createForum() {
@@ -1625,23 +2006,52 @@ function ForumsTab({ socket }) {
       headers: authHeaders(),
       body: JSON.stringify({ name: newName.trim() }),
     });
-    const f = await res.json();
+    const f = await readJsonSafe(res);
+    if (!res.ok) {
+      setActionError(apiErrorMessage(f, "Unable to create forum."));
+      return;
+    }
+    const forumId = normalizeEntityId(f?._id || f?.id);
+    if (!isObjectIdLike(forumId)) {
+      setActionError("Unable to create forum.");
+      return;
+    }
+    const normalizedForum = normalizeForumEntity({ ...f, _id: forumId, id: forumId });
+    if (!normalizedForum) {
+      setActionError("Unable to create forum.");
+      return;
+    }
+    setActionError("");
     setCreating(false);
     setNewName("");
     loadList();
-    openForum(f);
+    openForum(normalizedForum).catch(() => {});
   }
 
   async function onSend({ kind, text, media }) {
     if (!active) return;
-    const res = await fetch(`${API_BASE}/forums/${active._id}/posts`, {
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) {
+      setActionError("Invalid forum id.");
+      return;
+    }
+    const res = await fetch(`${API_BASE}/forums/${activeId}/posts`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ kind, text, media }),
     });
-    const saved = await res.json();
+    const saved = await readJsonSafe(res);
+    if (!res.ok) {
+      setActionError(apiErrorMessage(saved, "Unable to post message."));
+      return;
+    }
+    setActionError("");
 
     // Immediately cache author (fixes "Unknown" on first paint)
+    if (!normalizeEntityId(saved?._id || saved?.id)) {
+      setActionError("Unable to post message.");
+      return;
+    }
     primeAuthorCache([saved]);
 
     setPosts((p) => (hasId(p, saved._id) ? p : [...p, saved]));
@@ -1652,7 +2062,7 @@ function ForumsTab({ socket }) {
   // open members modal & prime member cache
   function openMembers() {
     if (!active) return;
-    const ids = (active.memberIds || []).map(String);
+    const ids = (active.memberIds || []).map((id) => normalizeEntityId(id)).filter(Boolean);
     ids.forEach(async (id) => {
       if (forumMemberInfo[id]) return;
       try {
@@ -1667,15 +2077,20 @@ function ForumsTab({ socket }) {
   useEffect(() => {
     if (!socket) return;
     const onForumPost = (post) => {
-      if (active && String(post.forumId) === String(active._id)) {
+      if (
+        active &&
+        normalizeEntityId(post?.forumId) === normalizeEntityId(active?._id) &&
+        normalizeEntityId(post?._id || post?.id)
+      ) {
         primeAuthorCache([post]);
         setPosts((p) => (hasId(p, post._id) ? p : [...p, post]));
         queueMicrotask(() => forceScrollToBottom(scrollRef));
       }
     };
     const onForumDeleted = ({ id }) => {
-      if (active && String(active._id) === String(id)) setActive(null);
-      setList((ls) => ls.filter((f) => String(f._id) !== String(id)));
+      const deletedId = normalizeEntityId(id);
+      if (active && normalizeEntityId(active?._id) === deletedId) setActive(null);
+      setList((ls) => ls.filter((f) => normalizeEntityId(f?._id || f?.id) !== deletedId));
     };
     socket.on("forum:post:new", onForumPost);
     socket.on("forum:deleted", onForumDeleted);
@@ -1695,11 +2110,22 @@ function ForumsTab({ socket }) {
 
   async function deleteForum() {
     if (!active) return;
+    const activeId = normalizeEntityId(active?._id || active?.id);
+    if (!isObjectIdLike(activeId)) {
+      setActionError("Invalid forum id.");
+      return;
+    }
     if (!window.confirm(`Delete the forum "${active.name}" and all its posts? This cannot be undone.`)) return;
-    await fetch(`${API_BASE}/forums/${active._id}`, {
+    const res = await fetch(`${API_BASE}/forums/${activeId}`, {
       method: "DELETE",
       headers: authHeaders(),
     });
+    if (!res.ok) {
+      const payload = await readJsonSafe(res);
+      setActionError(apiErrorMessage(payload, "Unable to delete forum."));
+      return;
+    }
+    setActionError("");
     setActive(null);
     loadList();
   }
@@ -1742,6 +2168,7 @@ function ForumsTab({ socket }) {
             placeholder="Search forums..."
           />
         </label>
+        {actionError ? <div className="cf-loading">{actionError}</div> : null}
 
         {list.length === 0 ? (
           <EmptyState
@@ -1758,7 +2185,7 @@ function ForumsTab({ socket }) {
                 key={f._id}
                 className={`cf-list-item ${active?._id === f._id ? "is-active" : ""}`}
               >
-                <button className="cf-li-btn" onClick={() => openForum(f)}>
+                <button className="cf-li-btn" onClick={() => openForum(f).catch(() => {})}>
                   <div className="cf-li-row">
                     <div className="cf-forum-badge">
                       <Megaphone size={14} />
@@ -1798,11 +2225,11 @@ function ForumsTab({ socket }) {
                   </button>
 
                   {isMember(active) ? (
-                    <button className="cf-ghost-btn" onClick={() => leave(active._id)}>
+                    <button className="cf-ghost-btn" onClick={() => leave(active._id).catch(() => {})}>
                       Leave
                     </button>
                   ) : (
-                    <button className="cf-ghost-btn" onClick={() => join(active._id)}>
+                    <button className="cf-ghost-btn" onClick={() => join(active._id).catch(() => {})}>
                       Join
                     </button>
                   )}
@@ -1820,7 +2247,11 @@ function ForumsTab({ socket }) {
               className="cf-thread-body feed"
               ref={scrollRef}
               onScroll={(e) => {
-                if (e.currentTarget.scrollTop < 40 && nextCursor) loadPosts(active._id, nextCursor);
+                if (e.currentTarget.scrollTop < 40 && nextCursor) {
+                  loadPosts(active._id, nextCursor).catch((error) => {
+                    setActionError(String(error?.message || "Unable to load posts."));
+                  });
+                }
               }}
             >
               {posts.map((p) => {
@@ -1904,11 +2335,15 @@ function ForumsTab({ socket }) {
                         const id = String(uid);
                         const info = forumMemberInfo[id];
                         const nm = info?.name || "Member";
-                        return (
+                    return (
                           <li
                             key={id}
                             className="pp-item"
-                            onClick={() => navigate(profilePath(id))}
+                            onClick={() => {
+                              const safeId = normalizeEntityId(id);
+                              if (!safeId) return;
+                              navigate(profilePath(safeId));
+                            }}
                             title="View profile"
                             style={{ cursor: "pointer" }}
                           >
@@ -1955,6 +2390,7 @@ function ForumsTab({ socket }) {
                   Create
                 </button>
               </div>
+              {actionError ? <div className="cf-loading" style={{ padding: "0 20px 16px" }}>{actionError}</div> : null}
             </div>
           </div>
         )}

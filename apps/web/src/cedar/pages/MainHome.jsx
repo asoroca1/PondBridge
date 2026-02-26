@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { useAuth } from "../../context/AuthContext.jsx";
 import { resolveNewsletterLabel, resolveTenantContent } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import cedarField from "../assets/cedar-field.jpeg";
@@ -147,8 +148,33 @@ function topCurrentJob(u = {}) {
   return j ? [j.role, j.company].filter(Boolean).join(" • ") : "";
 }
 
-/* admin allow-list (UI-only; server still enforces) */
-const ADMIN_EMAILS = ["aden@sorocafamily.com"];
+function normalizedRoleSet(value = {}) {
+  const rawRoles = Array.isArray(value?.roles)
+    ? value.roles
+    : value?.roles
+      ? [value.roles]
+      : value?.role
+        ? [value.role]
+        : [];
+
+  return new Set(
+    rawRoles
+      .map((role) => String(role || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function hasDirectorPrivileges(...sources) {
+  const allowed = new Set(["tenant_admin", "super_admin", "admin"]);
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const roles = normalizedRoleSet(source);
+    for (const role of roles) {
+      if (allowed.has(role)) return true;
+    }
+  }
+  return false;
+}
 
 /* ============= Related Profiles ============= */
 function RelatedProfilesCard({ targetUserId }) {
@@ -193,7 +219,8 @@ function RelatedProfilesCard({ targetUserId }) {
       {!!items.length && (
         <ul className="p1-suggest-list">
           {items.map((u) => {
-            const id = u._id || u.id;
+            const id = String(u._id || u.id || u.profileId || u.userId || "").trim();
+            if (!id || id === "undefined" || id === "null") return null;
             const name = displayName(u);
             const job = topCurrentJob(u);
             const url = avatarUrl(u);
@@ -315,7 +342,7 @@ function AnnouncementForm({ onPosted }) {
 }
 
 /* ============ feed list ============ */
-function ActivityList({ items = [], me, isAdmin, onChanged }) {
+function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
   if (!items.length) {
     return (
       <EmptyHint
@@ -325,7 +352,7 @@ function ActivityList({ items = [], me, isAdmin, onChanged }) {
     );
   }
 
-  const myId = me?._id || me?.id;
+  const myId = String(currentUserId || "").trim();
 
   async function doDelete(id) {
     if (!id) return;
@@ -356,7 +383,8 @@ function ActivityList({ items = [], me, isAdmin, onChanged }) {
   return (
     <ul className="activity-list">
       {items.map((it) => {
-        const isMine = String(it.actor?.id) === String(myId);
+        const actorId = String(it.actor?.id || it.actorUserId || "").trim();
+        const isMine = !!myId && actorId === myId;
         const canDelete = isMine || !!isAdmin;
 
         return (
@@ -486,6 +514,7 @@ function EmptyHint({ icon, title, desc, cta }) {
 export default function MainHome() {
   const navigate = useNavigate();
   const { tenant } = useTenant();
+  const { user: authUser } = useAuth();
   const [me, setMe] = useState(null);
   const [activity, setActivity] = useState([]);
   const [stats, setStats] = useState(null);
@@ -568,10 +597,21 @@ export default function MainHome() {
     }
   }
 
-  const isAdmin = useMemo(() => {
-    const email = me?.email || me?.user?.email || me?.profile?.email;
-    return email ? ADMIN_EMAILS.includes(email.toLowerCase()) : false;
-  }, [me]);
+  const currentUserId = useMemo(
+    () => String(authUser?.id || me?.userId || me?.id || me?._id || "").trim(),
+    [authUser?.id, me?.userId, me?.id, me?._id]
+  );
+  const isAdmin = useMemo(
+    () =>
+      hasDirectorPrivileges(
+        authUser,
+        me,
+        me?.user,
+        me?.profile,
+        { roles: me?.accountRoles }
+      ),
+    [authUser, me]
+  );
 
   const locCount = resolveLocations(stats, locationsSummary);
   const quickActions = useMemo(() => {
@@ -802,7 +842,7 @@ export default function MainHome() {
             >
               <ActivityList
                 items={activitySorted}
-                me={me}
+                currentUserId={currentUserId}
                 isAdmin={isAdmin}
                 onChanged={onActivityChanged}
               />

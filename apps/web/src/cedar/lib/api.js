@@ -33,7 +33,7 @@ export const API_BASE = new Proxy(
 );
 
 export async function getMe(token) {
-  const r = await fetch(`${API_BASE}/profiles/me`, {
+  const r = await fetch(`${API_BASE}/me`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!r.ok) throw new Error("Failed to fetch profile");

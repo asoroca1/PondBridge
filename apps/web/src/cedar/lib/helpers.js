@@ -111,13 +111,25 @@ export function initialsOf(firstOrUser = "", last = "", nick = "") {
   return `${first}${lastInit}`;
 }
 
+export function isPlaceholderAvatarUrl(value = "") {
+  const url = String(value || "").trim().toLowerCase();
+  if (!url) return true;
+  return (
+    url.includes("default-profile") ||
+    url.includes("default_avatar") ||
+    url.includes("avatar-placeholder") ||
+    url.includes("placeholder-avatar") ||
+    url.includes("no-avatar")
+  );
+}
+
 /**
  * Resolve the best available avatar/photo URL from a user object.
  * Checks nested `uploads` bag, flat fields, and common legacy keys.
  */
 export function avatarUrl(u = {}) {
   const up = u?.uploads || {};
-  return (
+  const resolved =
     up.photoUrl ||
     up.profilePhoto?.url ||
     u?.photoUrl ||
@@ -125,8 +137,8 @@ export function avatarUrl(u = {}) {
     u?.avatarUrl ||
     u?.imageUrl ||
     u?.profilePhoto ||
-    ""
-  );
+    "";
+  return isPlaceholderAvatarUrl(resolved) ? "" : resolved;
 }
 
 /* ===== Date helpers ===== */

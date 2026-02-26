@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { API_BASE } from "../lib/api";
 import { getToken } from "../lib/helpers.js";
-import defaultProfile from "../assets/default-profile.png";
 
 /* ------------ helpers (keep OUTSIDE the component) ------------ */
 function pickCurrentJob(p = {}) {
@@ -51,6 +50,29 @@ function pickCurrentJob(p = {}) {
   const company = singleCompany || arrayCompany || "";
 
   return { role, company };
+}
+
+function initials(first = "", last = "") {
+  return `${String(first || "").trim()[0] || ""}${String(last || "").trim()[0] || ""}`.toUpperCase() || "?";
+}
+
+function ResultAvatar({ photo = "", first = "", last = "", name = "" }) {
+  const [errored, setErrored] = useState(false);
+  const src = String(photo || "").trim();
+
+  useEffect(() => {
+    setErrored(false);
+  }, [src]);
+
+  if (src && !errored) {
+    return <img className="sr-avatar" src={src} alt={name} onError={() => setErrored(true)} />;
+  }
+
+  return (
+    <div className="sr-avatar sr-avatar-fallback" aria-hidden="true">
+      {initials(first, last)}
+    </div>
+  );
 }
 
 export default function SearchResults() {
@@ -152,11 +174,11 @@ export default function SearchResults() {
             ) : (
               <div className="sr-grid">
                 {state.items.map((p) => {
-                  const id = p.id || p._id;
+                  const id = String(p.id || p._id || p.profileId || p.userId || "").trim();
+                  if (!id || id === "undefined" || id === "null") return null;
 
                   // Photo
-                  const photo =
-                    p.photoUrl || p?.uploads?.photoUrl || defaultProfile;
+                  const photo = p.photoUrl || p?.uploads?.photoUrl || "";
 
                   // Industry chip (several fallbacks)
                   const industry =
@@ -189,7 +211,7 @@ export default function SearchResults() {
                         className="sr-card-link"
                         aria-label={`${first} ${last} profile`}
                       >
-                        <img className="sr-avatar" src={photo} alt="" />
+                        <ResultAvatar photo={photo} first={first} last={last} name={`${first} ${last}`.trim()} />
                       </Link>
 
                       <Link to={`/profile/${id}`} className="sr-name">

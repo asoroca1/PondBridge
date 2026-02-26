@@ -445,10 +445,12 @@ export default function LocationMap() {
               ) : (
                 <div className="lm-grid">
                   {people.map((p) => {
+                    const profileId = String(p.id || p._id || p.profileId || p.userId || "").trim();
+                    if (!profileId || profileId === "undefined" || profileId === "null") return null;
                     const photo = p.uploads?.photoUrl || p.photoUrl || "";
                     const initials = initialsOf(p);
                     return (
-                      <article key={p.id} className="lm-card">
+                      <article key={profileId} className="lm-card">
                         {photo ? (
                           <img className="lm-avatar" src={photo} alt={nameOf(p)} />
                         ) : (
@@ -458,10 +460,10 @@ export default function LocationMap() {
                         )}
                         <div className="lm-name">{nameOf(p)}</div>
                         <div className="lm-actions">
-                          <a className="lm-btn primary" href={`/profile/${p.id}`}>
+                          <a className="lm-btn primary" href={`/profile/${profileId}`}>
                             View Profile
                           </a>
-                          <a className="lm-btn" href={`/chat-rooms?to=${encodeURIComponent(p.id)}`}>
+                          <a className="lm-btn" href={`/chat-rooms?to=${encodeURIComponent(profileId)}`}>
                             Message
                           </a>
                         </div>

@@ -4,11 +4,20 @@
 
 :root {
   --cf-navy: var(--brand-primary);
-  --cf-navy-2: #123f74;
+  --cf-navy-2: color-mix(in srgb, var(--brand-primary) 82%, #0f172a);
+  --cf-accent-soft: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
+  --cf-accent-soft-strong: color-mix(in srgb, var(--brand-primary) 14%, #ffffff);
+  --cf-accent-border: color-mix(in srgb, var(--brand-primary) 24%, #e5e7eb);
+  --cf-accent-border-strong: color-mix(in srgb, var(--brand-primary) 30%, #d1d5db);
+  --cf-accent-text: color-mix(in srgb, var(--brand-primary) 88%, #1e293b);
+  --cf-hover-bg: color-mix(in srgb, var(--brand-primary) 6%, #ffffff);
+  --cf-active-bg: color-mix(in srgb, var(--brand-primary) 12%, #ffffff);
+  --cf-active-border: color-mix(in srgb, var(--brand-primary) 38%, #c7d2e2);
+  --cf-focus-ring: color-mix(in srgb, var(--brand-primary) 28%, #ffffff);
   --cf-bg-soft: #f7f9fd;
   --cf-card: var(--card, #ffffff);
   --cf-border: var(--card-border, #e1e6f0);
-  --cf-border-strong: #cad5e8;
+  --cf-border-strong: color-mix(in srgb, var(--brand-primary) 18%, #d1d5db);
   --cf-text: var(--text, #0f172a);
   --cf-muted: var(--text-muted, #64748b);
   --cf-shadow: var(--shadow-lg);
@@ -62,8 +71,10 @@
   height: 30px;
   border-radius: 999px;
   background: #edf3ff;
+  background: var(--cf-accent-soft);
   color: var(--cf-navy);
   border: 1px solid #d7e2f7;
+  border-color: var(--cf-accent-border);
 }
 
 .cf-subtitle {
@@ -151,9 +162,11 @@
 .cf-sidebar-count {
   font-size: 12px;
   font-weight: 700;
-  color: var(--cf-muted);
+  color: var(--cf-accent-text);
   background: #f2f6ff;
+  background: var(--cf-accent-soft-strong);
   border: 1px solid #d9e4fb;
+  border-color: var(--cf-accent-border);
   border-radius: 999px;
   padding: 2px 8px;
 }
@@ -177,10 +190,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--cf-border-strong);
+  border: 1px solid var(--cf-accent-border);
   border-radius: 12px;
   background: #fff;
   padding: 8px 10px;
+}
+
+.cf-sidebar-search:focus-within {
+  border-color: var(--cf-active-border);
+  box-shadow: 0 0 0 2px var(--cf-focus-ring);
 }
 
 .cf-sidebar-search input {
@@ -219,21 +237,21 @@
 }
 
 .cf-list-item {
-  border: 1px solid #e7edf8;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 14%, #e7edf8);
   border-radius: 13px;
   background: #fff;
   overflow: hidden;
 }
 
 .cf-list-item:hover {
-  border-color: #d3def3;
-  background: #f9fbff;
+  border-color: color-mix(in srgb, var(--brand-primary) 24%, #d3def3);
+  background: var(--cf-hover-bg);
 }
 
 .cf-list-item.is-active {
-  border-color: #b8cdf3;
-  background: #f2f7ff;
-  box-shadow: inset 0 0 0 1px #dbe8ff;
+  border-color: var(--cf-active-border);
+  background: var(--cf-active-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-primary) 24%, #dbe8ff);
 }
 
 .cf-li-btn {
@@ -308,7 +326,7 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: #2563eb;
+  background: var(--brand-primary);
   margin-left: 6px;
   vertical-align: middle;
 }
@@ -316,7 +334,7 @@
 /* ===== Thread ===== */
 .cf-thread-header {
   padding: 12px 14px;
-  border-bottom: 1px solid #ebf0f9;
+  border-bottom: 1px solid color-mix(in srgb, var(--brand-primary) 10%, #ebf0f9);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -358,8 +376,10 @@
 
 .cf-thread-chip {
   border: 1px solid #d8e5ff;
+  border-color: var(--cf-accent-border-strong);
   background: #f2f7ff;
-  color: #0b3a77;
+  background: var(--cf-accent-soft-strong);
+  color: var(--cf-accent-text);
   font-weight: 700;
   font-size: 12px;
   border-radius: 999px;
@@ -390,8 +410,8 @@
 }
 
 .cf-ghost-btn:hover {
-  background: #f8fbff;
-  border-color: #c0cce2;
+  background: var(--cf-hover-bg);
+  border-color: var(--cf-accent-border-strong);
 }
 
 /* ===== Avatars ===== */
@@ -403,9 +423,11 @@
   align-items: center;
   justify-content: center;
   background: #eef3ff;
+  background: var(--cf-accent-soft);
   color: var(--cf-navy);
   font-weight: 800;
   border: 1px solid #d8def0;
+  border-color: var(--cf-accent-border);
   user-select: none;
   font-size: 16px;
   letter-spacing: 0.02em;
@@ -418,7 +440,7 @@
   border-radius: 999px;
   object-fit: cover;
   display: block;
-  border: 1px solid #d8def0;
+  border: 2px solid color-mix(in srgb, var(--brand-primary) 18%, #d8def0);
   background: #f3f4f6;
   flex: 0 0 auto;
 }
@@ -452,7 +474,7 @@
   width: 36px;
   height: 36px;
   border-radius: 999px;
-  border: 1px solid #dbe3f4;
+  border: 1px solid var(--cf-accent-border);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -460,14 +482,15 @@
 }
 
 .cf-group-avatar {
-  background: #eef2f7;
-  color: #1f2a44;
+  background: var(--cf-accent-soft);
+  color: var(--cf-accent-text);
   font-weight: 800;
 }
 
 .cf-forum-badge {
-  background: #edf3ff;
-  color: #1d4f8f;
+  background: var(--cf-accent-soft-strong);
+  color: var(--cf-accent-text);
+  border-color: var(--cf-accent-border-strong);
 }
 
 /* ===== Messages ===== */
@@ -479,13 +502,21 @@
   display: flex;
   flex-direction: column;
   gap: 11px;
-  background: linear-gradient(to bottom, #fbfcff, #f8fafe);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--brand-primary) 3%, #ffffff),
+    color-mix(in srgb, var(--brand-primary) 6%, #f8fafe)
+  );
   scroll-behavior: auto;
 }
 
 .cf-thread-body.feed {
   gap: 12px;
-  background: linear-gradient(to bottom, #fcfdff, #f9fbff);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--brand-primary) 3%, #ffffff),
+    color-mix(in srgb, var(--brand-primary) 5%, #f9fbff)
+  );
 }
 
 .cf-row {
@@ -587,7 +618,7 @@
 .cf-bubble-file a,
 .cf-bubble-media a,
 .cf-post a {
-  color: #1d4ed8;
+  color: var(--brand-primary);
   text-decoration: underline;
 }
 
@@ -784,12 +815,12 @@
 }
 
 .pp-item:hover {
-  background: #f7f8fb;
+  background: var(--cf-hover-bg);
 }
 
 .pp-item.is-selected {
-  background: #e9f0fb;
-  border: 1px solid #cfe0ff;
+  background: var(--cf-active-bg);
+  border: 1px solid var(--cf-active-border);
 }
 
 .pp-item.muted {
@@ -801,8 +832,18 @@
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid #e5e7eb;
+  border: 2px solid color-mix(in srgb, var(--brand-primary) 20%, #ffffff);
   flex: 0 0 36px;
+}
+.pp-avatar-fallback{
+  display:grid;
+  place-items:center;
+  background: var(--brand-primary);
+  color:#fff;
+  font-weight:800;
+  font-size:.82rem;
+  letter-spacing:.01em;
+  text-transform:uppercase;
 }
 
 .pp-name {
@@ -891,9 +932,15 @@
   border: 1px solid var(--cf-border-strong);
   border-radius: 999px;
   background: #fff;
+  color: var(--cf-accent-text);
   cursor: pointer;
   font-weight: 700;
   font-size: 12px;
+}
+
+.cf-pill:hover {
+  background: var(--cf-hover-bg);
+  border-color: var(--cf-accent-border-strong);
 }
 
 .cf-pill.is-active {

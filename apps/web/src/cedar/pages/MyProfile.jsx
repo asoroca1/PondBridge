@@ -1,7 +1,6 @@
 // src/pages/MyProfile.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import defaultProfile from "../assets/default-profile.png";
 import coverPhoto from "../assets/profile-cover.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
@@ -28,6 +27,11 @@ function splitCityState(value = "") {
 function normalizeRoleChips(src = {}) {
   const roleAtCamp = String(src.roleAtCamp || "").trim();
   const rawRoles = Array.isArray(src.roles) ? src.roles : src.roles ? [src.roles] : [];
+  const socialRoles = Array.isArray(src?.social?.roles)
+    ? src.social.roles
+    : Array.isArray(src?.socials?.roles)
+    ? src.socials.roles
+    : [];
   const ordered = [];
   const seen = new Set();
 
@@ -40,8 +44,24 @@ function normalizeRoleChips(src = {}) {
   };
 
   add(roleAtCamp);
+  add(src.role);
   rawRoles.forEach((role) => add(role));
+  socialRoles.forEach((role) => add(role));
   return ordered;
+}
+
+function normalizeCamperYears(value = {}) {
+  const input = value && typeof value === "object" ? value : {};
+  const normalizeYear = (raw = "") => {
+    const year = String(raw || "").trim();
+    return /^\d{4}$/.test(year) ? year : "";
+  };
+  return {
+    firstYear: normalizeYear(input.firstYear),
+    firstGroup: String(input.firstGroup || "").trim(),
+    lastYear: normalizeYear(input.lastYear),
+    lastGroup: String(input.lastGroup || "").trim()
+  };
 }
 
 function fmtLocation(p) {
@@ -178,7 +198,8 @@ function RelatedProfilesCard({ targetUserId }) {
       {!!items.length && (
         <ul className="p1-suggest-list">
           {items.map(u => {
-            const id = u._id || u.id;
+            const id = String(u._id || u.id || u.profileId || u.userId || "").trim();
+            if (!id || id === "undefined" || id === "null") return null;
             const name = displayName(u);
             const job  = topCurrentJob(u);
             const url  = avatarUrl(u);
@@ -210,6 +231,7 @@ export default function MyProfile() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
+  const [avatarErrored, setAvatarErrored] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,6 +278,15 @@ export default function MyProfile() {
     () => sortEducationNewest(profile?.education || []),
     [profile?.education]
   );
+  const profilePhotoUrl = useMemo(() => avatarUrl(profile || {}), [profile]);
+  const profileInitials = useMemo(
+    () => initialsOf(profile?.firstName, profile?.lastName, profile?.nickname) || "?",
+    [profile?.firstName, profile?.lastName, profile?.nickname]
+  );
+
+  useEffect(() => {
+    setAvatarErrored(false);
+  }, [profilePhotoUrl]);
 
   if (loading) {
     return (
@@ -323,11 +354,20 @@ export default function MyProfile() {
 
                   <div className="p1-avatar-shell">
                     <div className="p1-avatar-ring">
-                        <img
-                          className="p1-avatar-img"
-                          src={profile.uploads?.photoUrl || defaultProfile}
-                          alt={fullName || "Profile"}
-                        />
+                      <div className="p1-avatar-clip">
+                        {profilePhotoUrl && !avatarErrored ? (
+                          <img
+                            className="p1-avatar-img"
+                            src={profilePhotoUrl}
+                            alt={fullName || "Profile"}
+                            onError={() => setAvatarErrored(true)}
+                          />
+                        ) : (
+                          <div className="p1-avatar-fallback" aria-hidden="true">
+                            {profileInitials}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -486,6 +526,23 @@ export default function MyProfile() {
 function normalizeProfile(src = {}) {
   const split = splitCityState(src.cityState || "");
   const normalizedRoles = normalizeRoleChips(src);
+  const socialSource = src.social || src.socials || {};
+  const normalizedEducation =
+    Array.isArray(src.education) && src.education.length
+      ? src.education
+      : Array.isArray(src.colleges)
+      ? src.colleges.map((college, idx) => ({
+          college: String(college || "").trim(),
+          year: String(src.collegeYears?.[idx] || "").trim(),
+          major: ""
+        }))
+      : [];
+  const camperYearsSource =
+    src.camperYears && typeof src.camperYears === "object"
+      ? src.camperYears
+      : socialSource?.camperYears && typeof socialSource.camperYears === "object"
+      ? socialSource.camperYears
+      : {};
   return {
     id: src._id || src.id || "",
     _id: src._id || src.id || "",
@@ -501,12 +558,12 @@ function normalizeProfile(src = {}) {
     roleAtCamp: String(src.roleAtCamp || normalizedRoles[0] || "").trim(),
     roles: normalizedRoles,
     uploads: src.uploads || { photoUrl: src.photoUrl || src.avatarUrl || "" },
-    camperYears: src.camperYears || {}, // ✅ NEW
+    camperYears: normalizeCamperYears(camperYearsSource),
     highSchool: src.highSchool || "",
-    education: src.education || [],
+    education: normalizedEducation,
     industry: src.industry || "",
     currentJobs: src.currentJobs || [],
     pastJobs: src.pastJobs || [],
-    social: src.social || src.socials || {},
+    social: socialSource,
   };
 }

@@ -501,7 +501,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/super/dashboard" replace />} />
             </Route>
           </Route>
-          <Route path="/admin/*" element={<SuperAliasRedirect />} />
+          {!hostCampSlug && !customDomainHost ? <Route path="/admin/*" element={<SuperAliasRedirect />} /> : null}
 
           {legacyRedirectEnabled ? <Route path="/:legacy/*" element={<LegacyRootRedirect />} /> : null}
 

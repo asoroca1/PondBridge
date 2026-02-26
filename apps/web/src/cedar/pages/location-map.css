@@ -81,7 +81,10 @@
     background: transparent; border: 1px solid #cbd5e1; color:var(--brand-primary);
     border-radius: 10px; padding: 8px 12px; font-weight:600; cursor: pointer;
   }
-  .lm-clear-btn:hover{ background:#f1f5f9; }
+  .lm-clear-btn:hover{
+    background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+    border-color: color-mix(in srgb, var(--brand-primary) 30%, #cbd5e1);
+  }
   
   /* Grid cards */
   .lm-grid{
@@ -122,7 +125,10 @@
     font-weight:600; font-size: 13px;
     text-decoration: none;
   }
-  .lm-btn:hover{ background:#f1f5f9; }
+  .lm-btn:hover{
+    background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+    border-color: color-mix(in srgb, var(--brand-primary) 30%, #cbd5e1);
+  }
   .lm-btn.primary{
     border-color:var(--brand-primary); background:var(--brand-primary); color:#fff;
   }

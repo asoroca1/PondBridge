@@ -360,7 +360,19 @@ select.ft-input {
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid #d8dee8;
+  border: 2px solid color-mix(in srgb, var(--brand-primary) 20%, #ffffff);
+  flex: 0 0 36px;
+}
+
+.ft-result-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--brand-primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
 }
 
 .ft-result-main {
@@ -723,8 +735,19 @@ select.ft-input {
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid #d4dde9;
+  border: 2px solid color-mix(in srgb, var(--brand-primary) 20%, #ffffff);
   flex: 0 0 44px;
+}
+
+.ft-tree-node-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--brand-primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
 }
 
 .ft-tree-node-main {

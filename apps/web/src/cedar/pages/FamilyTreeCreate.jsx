@@ -3,8 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
-import { getToken, displayName } from "../lib/helpers.js";
-import defaultProfile from "../assets/default-profile.png";
+import { getToken, displayName, initialsOf } from "../lib/helpers.js";
 import "./family-trees.css";
 
 const REL_TYPES = [
@@ -62,6 +61,25 @@ function makeEdgeRow(a = "", b = "") {
     type: "sibling_of",
     toProfileId: b,
   };
+}
+
+function ResultAvatar({ person = {} }) {
+  const [errored, setErrored] = useState(false);
+  const src = String(person.photoUrl || "").trim();
+
+  useEffect(() => {
+    setErrored(false);
+  }, [src]);
+
+  if (src && !errored) {
+    return <img src={src} alt={displayName(person)} className="ft-result-avatar" onError={() => setErrored(true)} />;
+  }
+
+  return (
+    <div className="ft-result-avatar ft-result-avatar-fallback" aria-hidden="true">
+      {initialsOf(person.firstName, person.lastName, person.nickname) || "?"}
+    </div>
+  );
 }
 
 export default function FamilyTreeCreate() {
@@ -262,7 +280,7 @@ export default function FamilyTreeCreate() {
                   const selected = memberLookup.has(person.id);
                   return (
                     <li key={person.id} className={`ft-result ${selected ? "is-selected" : ""}`}>
-                      <img src={person.photoUrl || defaultProfile} alt="" className="ft-result-avatar" />
+                      <ResultAvatar person={person} />
                       <div className="ft-result-main">
                         <div className="ft-result-name">{displayName(person)}</div>
                         {person.currentJob && <div className="ft-result-job">{person.currentJob}</div>}

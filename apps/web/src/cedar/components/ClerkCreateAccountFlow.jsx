@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
-import Navbar1 from "./Navbar1";
 import { requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { normalizeTenantRouteForHost, tenantRoute } from "../../lib/tenantRouting.js";
+import { resolveNetworkDisplayName } from "../lib/campLabels.js";
 
 function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
@@ -19,8 +19,9 @@ function truthy(value) {
 export default function ClerkCreateAccountFlow() {
   const navigate = useNavigate();
   const params = useParams();
-  const { slug: contextSlug } = useTenant();
+  const { slug: contextSlug, tenant } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
+  const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const completeJoin = truthy(searchParams.get("completeJoin"));
@@ -85,13 +86,17 @@ export default function ClerkCreateAccountFlow() {
 
   if (isLoaded && isSignedIn && completeJoin) {
     return (
-      <div className="login1">
-        <Navbar1 />
-        <section className="login1-main">
-          <div className="login1-card">
-            <h1 className="login1-title">Complete Signup</h1>
-            <p className="login1-forgot">This camp requires an access code to join.</p>
-            <form className="login1-form" onSubmit={onCompleteJoin}>
+      <section className="product-claim-page product-director-create-page product-director-create-clerk-page alumni-create-clerk-page">
+        <div className="product-claim-wrap product-director-create-wrap product-director-create-clerk-wrap">
+          <article className="product-claim-card product-director-create-card product-director-create-clerk-card alumni-create-clerk-card">
+            <div className="product-director-create-clerk-intro alumni-create-clerk-intro">
+              <p className="product-director-create-kicker">Camp Access</p>
+              <h1>Complete Signup</h1>
+              <p className="product-claim-body director-create-subtitle">
+                This camp requires an access code to finish joining {networkName}.
+              </p>
+            </div>
+            <form className="login1-form alumni-create-join-form" onSubmit={onCompleteJoin}>
               <input
                 className="login1-input"
                 type="text"
@@ -105,9 +110,9 @@ export default function ClerkCreateAccountFlow() {
                 {submittingJoin ? "Joining..." : "Join Network"}
               </button>
             </form>
-          </div>
-        </section>
-      </div>
+          </article>
+        </div>
+      </section>
     );
   }
 
@@ -119,56 +124,159 @@ export default function ClerkCreateAccountFlow() {
   const signInUrl = routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
 
   return (
-    <div className="login1">
-      <Navbar1 />
-      <section className="login1-main">
-        <div className="login1-card">
-          <h1 className="login1-title">Create Profile</h1>
-          <p className="login1-forgot">Sign up with email and secure account recovery via Clerk.</p>
+    <section className="product-claim-page product-director-create-page product-director-create-clerk-page alumni-create-clerk-page">
+      <div className="product-claim-wrap product-director-create-wrap product-director-create-clerk-wrap">
+        <article className="product-claim-card product-director-create-card product-director-create-clerk-card alumni-create-clerk-card">
+          <div className="product-director-create-clerk-intro alumni-create-clerk-intro">
+            <p className="product-director-create-kicker">Camp Access</p>
+            <h1>Create Account</h1>
+            <p className="product-claim-body director-create-subtitle">
+              Sign up with email to join {networkName}.
+            </p>
+          </div>
           {inviteMeta ? (
             <p className="success-text">
               Invite recognized for <strong>{inviteMeta.email || "this account"}</strong>.
             </p>
           ) : null}
-          <SignUp
-            path={path}
-            routing="path"
-            signInUrl={signInUrl}
-            fallbackRedirectUrl={callbackPath}
-            forceRedirectUrl={callbackPath}
-            appearance={{
-              elements: {
-                socialButtons: {
-                  display: "none"
-                },
-                socialButtonsBlock: {
-                  display: "none"
-                },
-                socialButtonsBlockButton: {
-                  display: "none"
-                },
-                socialButtonsIconButton: {
-                  display: "none"
-                },
-                dividerRow: {
-                  display: "none"
-                },
-                dividerLine: {
-                  display: "none"
-                },
-                dividerText: {
-                  display: "none"
-                },
-                card: {
-                  boxShadow: "none",
-                  border: "none",
-                  width: "100%"
+          <div className="alumni-create-clerk-host">
+            <SignUp
+              path={path}
+              routing="path"
+              withSignIn={false}
+              signInUrl={signInUrl}
+              fallbackRedirectUrl={callbackPath}
+              forceRedirectUrl={callbackPath}
+              signInFallbackRedirectUrl={callbackPath}
+              signInForceRedirectUrl={callbackPath}
+              afterSignUpUrl={callbackPath}
+              localization={{
+                signUp: {
+                  start: {
+                    title: "",
+                    subtitle: ""
+                  },
+                  emailLink: {
+                    title: "Check your email",
+                    subtitle: `Open the secure sign-up link to continue to ${networkName}.`
+                  },
+                  emailCode: {
+                    title: "Check your email",
+                    subtitle: `Enter the verification code to continue to ${networkName}.`
+                  }
                 }
-              }
-            }}
-          />
-        </div>
-      </section>
-    </div>
+              }}
+              appearance={{
+                variables: {
+                  colorPrimary: "var(--brand-primary)",
+                  colorText: "var(--text)",
+                  colorTextSecondary: "var(--text-muted)",
+                  colorInputBackground: "#ffffff",
+                  colorInputText: "var(--text)",
+                  colorNeutral: "var(--card-border)",
+                  borderRadius: "12px",
+                  fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
+                },
+                elements: {
+                  rootBox: {
+                    width: "100%"
+                  },
+                  socialButtons: {
+                    display: "none"
+                  },
+                  socialButtonsBlock: {
+                    display: "none"
+                  },
+                  socialButtonsBlockButton: {
+                    display: "none"
+                  },
+                  socialButtonsIconButton: {
+                    display: "none"
+                  },
+                  dividerRow: {
+                    display: "none"
+                  },
+                  dividerLine: {
+                    display: "none"
+                  },
+                  dividerText: {
+                    display: "none"
+                  },
+                  footerAction: {
+                    display: "none"
+                  },
+                  footerActionText: {
+                    display: "none"
+                  },
+                  footerActionLink: {
+                    display: "none"
+                  },
+                  footer: {
+                    display: "none"
+                  },
+                  header: {
+                    display: "none"
+                  },
+                  headerTitle: {
+                    display: "none"
+                  },
+                  headerSubtitle: {
+                    display: "none"
+                  },
+                  cardBox: {
+                    boxShadow: "none",
+                    border: "none",
+                    width: "100%",
+                    maxWidth: "100%",
+                    background: "transparent",
+                    padding: "0"
+                  },
+                  card: {
+                    boxShadow: "none",
+                    border: "none",
+                    width: "100%",
+                    maxWidth: "100%",
+                    borderRadius: "0",
+                    background: "transparent",
+                    padding: "0"
+                  },
+                  main: {
+                    padding: "0",
+                    gap: "12px"
+                  },
+                  form: {
+                    gap: "12px"
+                  },
+                  formFieldLabel: {
+                    color: "var(--brand-primary-strong)",
+                    fontWeight: "700"
+                  },
+                  formFieldInput: {
+                    minHeight: "46px",
+                    borderRadius: "12px",
+                    border: "1px solid var(--card-border)",
+                    boxShadow: "none",
+                    color: "var(--text)",
+                    background: "#ffffff"
+                  },
+                  formFieldInputShowPasswordButton: {
+                    color: "var(--text-muted)"
+                  },
+                  formButtonPrimary: {
+                    minHeight: "48px",
+                    borderRadius: "12px",
+                    background: "var(--brand-primary)",
+                    boxShadow: "none",
+                    fontWeight: "700",
+                    fontSize: "1rem"
+                  }
+                }
+              }}
+              unsafe_disableDevelopmentModeWarnings
+            />
+          </div>
+        </article>
+      </div>
+    </section>
   );
 }

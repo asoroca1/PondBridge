@@ -87,7 +87,9 @@
 @media (min-width:1024px){ .wizard2-menu{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
 .wizard2-menu.drop-up{ top:auto; bottom: calc(100% + 6px); }
 .wizard2-option{ display:flex; align-items:center; gap:10px; padding:8px 6px; border-radius:6px; }
-.wizard2-option:hover{ background:#f6f8fc; }
+.wizard2-option:hover{
+  background: color-mix(in srgb, var(--brand-primary) 7%, #ffffff);
+}
 .wizard2-tags{ display:flex; flex-wrap:wrap; gap:6px; }
 .wizard2-tag{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:#edf2ff; font-size:12px; line-height:1; user-select:none; }
 .wizard2-tag-x{ font-weight:600; }
@@ -96,7 +98,9 @@
 /* Dotted boxes */
 .wizard2-dottedbox{ border:2px dotted #c7d3df; border-radius:12px; background:#fbfdff; padding:14px; margin-bottom:12px; }
 .wizard2-dotted-drop{ text-align:center; cursor:pointer; user-select:none; }
-.wizard2-dotted-drop:hover{ background:#f3f7fb; }
+.wizard2-dotted-drop:hover{
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+}
 .wizard2-drop-title{ font-weight:800; color:var(--brand-primary); margin-bottom:4px; }
 .wizard2-drop-sub{ color:#455a72; font-weight:600; margin-bottom:2px; }
 

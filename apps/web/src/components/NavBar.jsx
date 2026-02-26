@@ -28,7 +28,8 @@ import {
 } from "../lib/campLabels.js";
 import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "../lib/domain.js";
 import cedarLogo from "../assets/cedar-logo.png";
-import defaultProfile from "../assets/default-profile.png";
+
+const MIN_SEARCH_CHARS = 1;
 
 function getPhotoUrl(user = {}) {
   return (
@@ -47,6 +48,14 @@ function initialsFrom(fullName = "") {
     .slice(0, 2)
     .map((word) => (word[0] || "").toUpperCase())
     .join("") || "?";
+}
+
+function fullNameFrom(user = {}) {
+  return (
+    String(user?.fullName || "").trim() ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+    String(user?.name || "").trim()
+  );
 }
 
 function pathWithCamp(slug, path) {
@@ -81,15 +90,35 @@ function normalizedRoleSet(user = {}) {
   return new Set(rawRoles.map((role) => String(role || "").trim().toLowerCase()).filter(Boolean));
 }
 
-function ListAvatar({ person }) {
-  const src = person?.avatarUrl || "";
-  if (src) {
-    return <img src={src} alt="" className="nav2-ac-avatar" onError={(e) => (e.currentTarget.src = defaultProfile)} />;
+function SmartAvatar({ src = "", initials = "?", alt = "", className = "", fallbackClassName = "" }) {
+  const [errored, setErrored] = useState(false);
+  const normalizedSrc = String(src || "").trim();
+  const showImage = Boolean(normalizedSrc) && !errored;
+
+  useEffect(() => {
+    setErrored(false);
+  }, [normalizedSrc]);
+
+  if (showImage) {
+    return <img src={normalizedSrc} alt={alt} className={className} onError={() => setErrored(true)} />;
   }
+
   return (
-    <div className="nav2-ac-avatar nav2-ac-initials" aria-hidden="true">
-      {initialsFrom(person?.name || "")}
+    <div className={`${className} nav2-avatar-fallback ${fallbackClassName}`.trim()} aria-hidden="true">
+      {initials || "?"}
     </div>
+  );
+}
+
+function ListAvatar({ person }) {
+  return (
+    <SmartAvatar
+      src={person?.avatarUrl || ""}
+      initials={initialsFrom(person?.name || "")}
+      alt=""
+      className="nav2-ac-avatar"
+      fallbackClassName="nav2-ac-initials"
+    />
   );
 }
 
@@ -99,7 +128,7 @@ export default function NavBar() {
   const slug = params.slug || contextSlug || "cedar";
   const location = useLocation();
   const navigate = useNavigate();
-  const { token, user, isAuthenticated, logout } = useAuth();
+  const { token, user, isAuthenticated, logout, getAuthToken } = useAuth();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -129,7 +158,8 @@ export default function NavBar() {
   const merchShopUrl = String(content.merchShopUrl || "").trim() || "https://thecampspot.com/camphome.aspx";
   const logoUrl = branding.logoUrl || (slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "");
   const fallbackLogoInitial = initialsFrom(tenant?.name || "Camp");
-  const avatarSrc = getPhotoUrl(user) || defaultProfile;
+  const avatarSrc = getPhotoUrl(user);
+  const profileInitials = initialsFrom(fullNameFrom(user) || user?.email || "");
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
   const canFamilyTrees = Boolean(modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees"));
   const loginPath = pathWithCamp(slug, "/login");
@@ -323,7 +353,7 @@ export default function NavBar() {
 
   async function fetchNames(term) {
     const normalized = String(term || "").trim();
-    if (!normalized || normalized.length < 2 || !canSearch) {
+    if (!normalized || normalized.length < MIN_SEARCH_CHARS || !canSearch) {
       if (searchAbortRef.current) {
         searchAbortRef.current.abort();
         searchAbortRef.current = null;
@@ -346,7 +376,17 @@ export default function NavBar() {
       const fallbackToken = readAuthFromStorage().token || "";
       const payload = await requestJson(
         `/api/t/${slug}/search/names?q=${encodeURIComponent(normalized)}&limit=8`,
-        { token: token || fallbackToken, signal: controller.signal }
+        {
+          token: token || fallbackToken,
+          getToken: async ({ forceRefresh = false } = {}) => {
+            if (typeof getAuthToken === "function") {
+              const next = await getAuthToken({ forceRefresh });
+              if (next) return next;
+            }
+            return readAuthFromStorage().token || token || fallbackToken || "";
+          },
+          signal: controller.signal
+        }
       );
       if (searchRequestIdRef.current !== requestId) return;
       const list = Array.isArray(payload?.items)
@@ -367,7 +407,7 @@ export default function NavBar() {
             avatarUrl: entry?.uploads?.photoUrl || entry?.avatarUrl || entry?.profilePhotoUrl || ""
           }))
           .filter((entry) => {
-            if (!entry.id || seen.has(entry.id)) return false;
+            if (!entry.id || entry.id === "undefined" || entry.id === "null" || seen.has(entry.id)) return false;
             seen.add(entry.id);
             return true;
           })
@@ -389,7 +429,7 @@ export default function NavBar() {
     const value = event.target.value;
     const trimmed = value.trim();
     setQ(value);
-    setAcOpen(trimmed.length >= 2);
+    setAcOpen(trimmed.length >= MIN_SEARCH_CHARS);
     setActive(-1);
     window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
@@ -454,7 +494,11 @@ export default function NavBar() {
           {logoUrl ? (
             <img src={logoUrl} alt={`${tenant?.name || "Camp"} logo`} className="navbar2-logo" />
           ) : (
-            <div className="nav2-ac-avatar nav2-ac-initials" aria-hidden="true" style={{ width: 60, height: 60 }}>
+            <div
+              className="nav2-ac-avatar nav2-avatar-fallback nav2-ac-initials"
+              aria-hidden="true"
+              style={{ width: 60, height: 60 }}
+            >
               {fallbackLogoInitial}
             </div>
           )}
@@ -470,7 +514,7 @@ export default function NavBar() {
                 type="text"
                 value={q}
                 onChange={onInput}
-                onFocus={() => setAcOpen(q.trim().length >= 2)}
+                onFocus={() => setAcOpen(q.trim().length >= MIN_SEARCH_CHARS)}
                 onKeyDown={onKeyDown}
                 placeholder="Search names..."
                 className="navbar2-search-input"
@@ -480,7 +524,7 @@ export default function NavBar() {
                 <Search size={16} />
               </button>
 
-              {acOpen && q.trim().length >= 2 ? (
+              {acOpen && q.trim().length >= MIN_SEARCH_CHARS ? (
                 <ul className="nav2-ac-list" role="listbox">
                   {loading ? <li className="nav2-ac-item muted">Searching...</li> : null}
                   {!loading
@@ -549,15 +593,20 @@ export default function NavBar() {
 
         {showPrivateTools ? (
           <>
-            <img
-              src={avatarSrc}
-              alt="Profile"
-              className="navbar2-profile"
+            <button
+              type="button"
+              className="navbar2-profile-btn"
               onClick={() => navigate(pathWithCamp(slug, "/my-profile"))}
-              onError={(event) => {
-                event.currentTarget.src = defaultProfile;
-              }}
-            />
+              aria-label="Open my profile"
+            >
+              <SmartAvatar
+                src={avatarSrc}
+                initials={profileInitials}
+                alt="Profile"
+                className="navbar2-profile"
+                fallbackClassName="navbar2-profile-initials"
+              />
+            </button>
 
             <div className="navbar2-menuWrap">
               <button

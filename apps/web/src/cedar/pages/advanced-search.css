@@ -131,7 +131,10 @@
   font-size: 15px;
 }
 .as2-option span{ color: var(--as2-text); }
-.as2-option:hover{ background: rgba(2,132,199,.06); border-radius: 8px; }
+.as2-option:hover{
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  border-radius: 8px;
+}
 .as2-option input{ accent-color: var(--as2-navy); }
 
 .as2-menu-clear{ width:100%; margin-top:4px; }
@@ -170,15 +173,23 @@
   .as2-btn-outline{
     background:#fff; color: var(--as2-navy); border-color: var(--as2-navy);
   }
-  .as2-btn-outline:hover{ background:#f1f5f9; }
+  .as2-btn-outline:hover{
+    background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  }
   
   .as2-btn-ghost{
     background:#fff; color:#0f172a;
   }
-  .as2-btn-ghost:hover{ background:#f8fafc; }
+  .as2-btn-ghost:hover{
+    background: color-mix(in srgb, var(--brand-primary) 6%, #ffffff);
+  }
   
   .as2-link{
-    appearance:none; background:transparent; border:0; color:#0369a1; cursor:pointer;
+    appearance:none;
+    background:transparent;
+    border:0;
+    color: var(--brand-primary);
+    cursor:pointer;
   }
   .as2-link:hover{ text-decoration: underline; }
   

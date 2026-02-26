@@ -20,6 +20,7 @@ import { createPresignedUpload } from "../services/objectStorage.js";
 import { cityKey, geocodeCity } from "../utils/geocode.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
 import { sanitizeText } from "../utils/sanitize.js";
+import { ensureProfileForUser } from "../services/profileCompletion.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
@@ -64,7 +65,7 @@ const CITY_STATE_PARSE_CACHE_LIMIT = Math.max(
   1000,
   Number(process.env.MAP_CITY_STATE_PARSE_CACHE_LIMIT || 6000)
 );
-const MAP_CITY_PROFILE_SELECT = ["firstName", "lastName", "avatarUrl", "cityState"];
+const MAP_CITY_PROFILE_SELECT = ["id", "firstName", "lastName", "avatarUrl", "cityState"];
 const citiesCacheByTenant = new Map(); // tenantId -> { data, expiresAt, inflight }
 const cityPeopleCacheByTenant = new Map(); // tenantId -> Map(cityKey -> { data, expiresAt, inflight })
 const geocodeQueue = new Map();
@@ -374,8 +375,11 @@ async function loadMapProfilesForCity(tenantId, { city = "", state = "" } = {}) 
 }
 
 function mapCityPerson(profile) {
+  const id = String(profile._id || profile.id || "").trim();
+  if (!id) return null;
   return {
-    _id: String(profile._id),
+    _id: id,
+    id,
     firstName: profile.firstName || "",
     lastName: profile.lastName || "",
     uploads: { photoUrl: profile.avatarUrl || "" },
@@ -425,11 +429,27 @@ function normalizeCamperYears(value = {}) {
   };
 }
 
+function normalizeRoleList(value = []) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const ordered = [];
+  const seen = new Set();
+  values.forEach((entry) => {
+    const role = String(entry || "").trim();
+    const key = role.toLowerCase();
+    if (!role || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(role);
+  });
+  return ordered;
+}
+
 function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
   if (!profile) return null;
   const { city: cityPart, state: statePart } = parseCityState(profile.cityState || "");
   const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
-  const camperYears = normalizeCamperYears(socials.camperYears || {});
+  const roleList = normalizeRoleList([profile.roleAtCamp, ...(Array.isArray(socials.roles) ? socials.roles : [])]);
+  const primaryRole = roleList[0] || "";
+  const camperYears = normalizeCamperYears(socials.camperYears || profile.camperYears || {});
   const fallbackNames = resolveLegacyNameFallback(identity, fallbackEmail);
   const firstName = String(profile.firstName || fallbackNames.firstName || "").trim();
   const lastName = String(profile.lastName || fallbackNames.lastName || "").trim();
@@ -449,6 +469,7 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
     phone,
     city: String(cityPart || "").trim(),
     state: String(statePart || "").trim().toUpperCase(),
+    roleAtCamp: primaryRole,
     uploads: {
       photoUrl: profile.avatarUrl || "",
       pdfs: []
@@ -459,7 +480,7 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
       facebook: String(socials.facebook || "").trim()
     },
     camperYears,
-    roles: profile.roleAtCamp ? [profile.roleAtCamp] : [],
+    roles: roleList,
     education: (profile.colleges || []).map((college, idx) => ({
       college,
       year: profile.collegeYears?.[idx] || "",
@@ -548,9 +569,11 @@ function scoreSimilarity(target, candidate) {
 }
 
 function profileToSuggestion(profile = {}) {
+  const id = String(profile._id || profile.id || "").trim();
+  if (!id) return null;
   return {
-    _id: String(profile._id),
-    id: String(profile._id),
+    _id: id,
+    id,
     firstName: profile.firstName || "",
     lastName: profile.lastName || "",
     nickname: "",
@@ -638,6 +661,12 @@ function normalizeMessageKind(raw = "") {
   return "text";
 }
 
+function normalizeEntityId(value = "") {
+  const id = String(value || "").trim();
+  if (!id || id === "undefined" || id === "null") return "";
+  return id;
+}
+
 function readAtFor(conversation = {}, userId = "") {
   const rows = Array.isArray(conversation.readBy) ? conversation.readBy : [];
   const found = rows.find((row) => String(row?.userId || "") === String(userId || ""));
@@ -647,6 +676,8 @@ function readAtFor(conversation = {}, userId = "") {
 }
 
 function conversationToClient(conversation = {}, userId = "") {
+  const conversationId = normalizeEntityId(conversation?._id || conversation?.id);
+  if (!conversationId) return null;
   const lastMessage = conversation?.lastMessage || null;
   const lastMessageAt = conversation?.lastMessageAt || lastMessage?.createdAt || conversation?.updatedAt || new Date();
   const readAt = readAtFor(conversation, userId);
@@ -657,20 +688,20 @@ function conversationToClient(conversation = {}, userId = "") {
   ).trim();
 
   return {
-    _id: String(conversation._id),
-    id: String(conversation._id),
+    _id: conversationId,
+    id: conversationId,
     type: String(conversation.type || "dm"),
     participantIds: Array.isArray(conversation.participantIds)
-      ? conversation.participantIds.map((entry) => String(entry))
+      ? conversation.participantIds.map((entry) => normalizeEntityId(entry)).filter(Boolean)
       : [],
     members: Array.isArray(conversation.members)
       ? conversation.members.map((member) => ({
-          userId: String(member.userId || ""),
+          userId: normalizeEntityId(member.userId || ""),
           role: member.role || "member"
-        }))
+        })).filter((member) => member.userId)
       : [],
     name: String(conversation.name || ""),
-    createdBy: String(conversation.createdBy || ""),
+    createdBy: normalizeEntityId(conversation.createdBy || ""),
     lastMessageAt: new Date(lastMessageAt).toISOString(),
     lastMessage: lastMessage
       ? {
@@ -693,14 +724,20 @@ function conversationToClient(conversation = {}, userId = "") {
 }
 
 function forumToClient(forum = {}) {
+  const forumId = normalizeEntityId(forum?._id || forum?.id);
+  if (!forumId) return null;
   return {
-    _id: String(forum._id),
-    id: String(forum._id),
+    _id: forumId,
+    id: forumId,
     name: String(forum.name || ""),
-    creatorId: String(forum.creatorId || forum.createdBy || ""),
-    createdBy: String(forum.createdBy || forum.creatorId || ""),
-    memberIds: Array.isArray(forum.memberIds) ? forum.memberIds.map((id) => String(id)) : [],
-    moderators: Array.isArray(forum.moderators) ? forum.moderators.map((id) => String(id)) : [],
+    creatorId: normalizeEntityId(forum.creatorId || forum.createdBy || ""),
+    createdBy: normalizeEntityId(forum.createdBy || forum.creatorId || ""),
+    memberIds: Array.isArray(forum.memberIds)
+      ? forum.memberIds.map((id) => normalizeEntityId(id)).filter(Boolean)
+      : [],
+    moderators: Array.isArray(forum.moderators)
+      ? forum.moderators.map((id) => normalizeEntityId(id)).filter(Boolean)
+      : [],
     postsCount: Number(forum.postsCount || 0),
     lastActivityAt: forum.lastActivityAt ? new Date(forum.lastActivityAt).toISOString() : null,
     createdAt: forum.createdAt ? new Date(forum.createdAt).toISOString() : null,
@@ -709,11 +746,13 @@ function forumToClient(forum = {}) {
 }
 
 function messageToClient(message = {}) {
+  const messageId = normalizeEntityId(message?._id || message?.id);
+  if (!messageId) return null;
   return {
-    _id: String(message._id),
-    id: String(message._id),
-    conversationId: String(message.conversationId || ""),
-    senderId: String(message.senderId || ""),
+    _id: messageId,
+    id: messageId,
+    conversationId: normalizeEntityId(message.conversationId || ""),
+    senderId: normalizeEntityId(message.senderId || ""),
     kind: normalizeMessageKind(message.kind),
     text: String(message.text || ""),
     media: message.media || null,
@@ -723,13 +762,15 @@ function messageToClient(message = {}) {
 }
 
 function forumPostToClient(post = {}) {
+  const postId = normalizeEntityId(post?._id || post?.id);
+  if (!postId) return null;
   return {
-    _id: String(post._id),
-    id: String(post._id),
-    forumId: String(post.forumId || ""),
-    authorId: String(post.authorId || ""),
-    createdBy: String(post.authorId || ""),
-    userId: String(post.authorId || ""),
+    _id: postId,
+    id: postId,
+    forumId: normalizeEntityId(post.forumId || ""),
+    authorId: normalizeEntityId(post.authorId || ""),
+    createdBy: normalizeEntityId(post.authorId || ""),
+    userId: normalizeEntityId(post.authorId || ""),
     kind: normalizeMessageKind(post.kind),
     text: String(post.text || ""),
     media: post.media || null,
@@ -820,11 +861,17 @@ router.post("/uploads/presign", privateUploadPresignLimiter, async (req, res, ne
 });
 
 router.get("/me", async (req, res) => {
-  const profile = await ProfileModel.findOne(req.tenant._id, { userId: req.user.id });
+  const user = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
+  const profile = user
+    ? await ensureProfileForUser({
+        tenantId: req.tenant._id,
+        user,
+        identity: req.identity || {}
+      })
+    : await ProfileModel.findOne(req.tenant._id, { userId: req.user.id });
   if (!profile) {
     return res.status(404).json({ error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" } });
   }
-  const user = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   return res.json(
     profileToLegacy(profile, {
       identity: req.identity || {},
@@ -844,9 +891,13 @@ router.put("/me", async (req, res) => {
     req.body?.camperYears && typeof req.body.camperYears === "object"
       ? normalizeCamperYears(req.body.camperYears)
       : null;
+  const incomingRolesProvided = Array.isArray(req.body?.roles) || req.body?.roleAtCamp !== undefined;
+  const incomingRoles = incomingRolesProvided
+    ? normalizeRoleList(Array.isArray(req.body?.roles) ? req.body.roles : [req.body?.roleAtCamp])
+    : [];
   const existingSocials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
   const hasSocialPatch = Boolean(req.body.social || req.body.socials);
-  const nextSocials = hasSocialPatch || incomingCamperYears
+  const nextSocials = hasSocialPatch || incomingCamperYears || incomingRolesProvided
     ? {
         ...existingSocials,
         ...(hasSocialPatch
@@ -856,7 +907,8 @@ router.put("/me", async (req, res) => {
               facebook: String(req.body.social?.facebook || req.body.socials?.facebook || "").trim()
             }
           : {}),
-        ...(incomingCamperYears ? { camperYears: incomingCamperYears } : {})
+        ...(incomingCamperYears ? { camperYears: incomingCamperYears } : {}),
+        ...(incomingRolesProvided ? { roles: incomingRoles } : {})
       }
     : undefined;
 
@@ -864,9 +916,9 @@ router.put("/me", async (req, res) => {
     firstName: req.body.firstName !== undefined ? sanitizeText(String(req.body.firstName || "").trim()) : undefined,
     lastName: req.body.lastName !== undefined ? sanitizeText(String(req.body.lastName || "").trim()) : undefined,
     cityState: sanitizeText(parseCityStateFromBody(req.body)),
-    roleAtCamp: Array.isArray(req.body.roles)
-      ? sanitizeText(String(req.body.roles[0] || "").trim())
-      : sanitizeText(String(req.body.roleAtCamp || profile.roleAtCamp || "").trim()),
+    roleAtCamp: incomingRolesProvided
+      ? sanitizeText(String(incomingRoles[0] || "").trim())
+      : sanitizeText(String(profile.roleAtCamp || "").trim()),
     phones:
       req.body.phone !== undefined
         ? (incomingPhone ? [incomingPhone] : [])
@@ -968,18 +1020,24 @@ router.get("/search/names", async (req, res) => {
 
   const items = await ProfileModel.search(req.tenant._id, q || "", { limit });
 
-  const mapped = items.map((profile) => ({
-    id: String(profile._id),
-    _id: String(profile._id),
-    name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown",
-    firstName: profile.firstName,
-    lastName: profile.lastName,
-    cityState: profile.cityState || "",
-    roleAtCamp: profile.roleAtCamp || "",
-    industry: profile.industry || "",
-    uploads: { photoUrl: profile.avatarUrl || "" },
-    currentJobs: profile.currentJobs || []
-  }));
+  const mapped = items
+    .map((profile) => {
+      const id = normalizeEntityId(profile?._id || profile?.id);
+      if (!id) return null;
+      return {
+        id,
+        _id: id,
+        name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown",
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        cityState: profile.cityState || "",
+        roleAtCamp: profile.roleAtCamp || "",
+        industry: profile.industry || "",
+        uploads: { photoUrl: profile.avatarUrl || "" },
+        currentJobs: profile.currentJobs || []
+      };
+    })
+    .filter(Boolean);
 
   return res.json({ items: mapped, results: mapped });
 });
@@ -1005,7 +1063,7 @@ router.get("/suggestions", async (req, res) => {
   }
 
   const candidates = await ProfileModel.find(req.tenant._id, { _id: { $ne: targetProfile._id } }, {
-    select: ["firstName", "lastName", "avatarUrl", "currentJobs", "roleAtCamp", "industry", "cityState", "colleges", "highSchool", "createdAt"],
+    select: ["id", "firstName", "lastName", "avatarUrl", "currentJobs", "roleAtCamp", "industry", "cityState", "colleges", "highSchool", "createdAt"],
     limit: 800
   });
 
@@ -1024,7 +1082,10 @@ router.get("/suggestions", async (req, res) => {
       return new Date(b.profile.createdAt || 0).getTime() - new Date(a.profile.createdAt || 0).getTime();
     });
 
-  const ranked = scored.slice(0, limit).map((item) => profileToSuggestion(item.profile));
+  const ranked = scored
+    .slice(0, limit)
+    .map((item) => profileToSuggestion(item.profile))
+    .filter(Boolean);
   if (ranked.length > 0) {
     return res.json({ items: ranked, forUserId: String(targetProfile._id) });
   }
@@ -1032,7 +1093,8 @@ router.get("/suggestions", async (req, res) => {
   const fallback = candidates
     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
     .slice(0, limit)
-    .map((profile) => profileToSuggestion(profile));
+    .map((profile) => profileToSuggestion(profile))
+    .filter(Boolean);
 
   return res.json({ items: fallback, forUserId: String(targetProfile._id) });
 });
@@ -1122,8 +1184,7 @@ router.delete("/activity/:id", async (req, res) => {
   }
 
   const isOwner = String(existing.actorUserId || "") === String(req.user.id || "");
-  const isAdmin =
-    req.user.roles?.includes("tenant_admin") || req.user.roles?.includes("super_admin");
+  const isAdmin = isCampAdmin(req.user);
   if (!isOwner && !isAdmin) {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Cannot delete this activity item" } });
   }
@@ -1138,8 +1199,7 @@ router.patch("/activity/:id/pin", async (req, res) => {
     return res.status(400).json({ error: { code: "INVALID_ID", message: "Invalid activity id" } });
   }
 
-  const isAdmin =
-    req.user.roles?.includes("tenant_admin") || req.user.roles?.includes("super_admin");
+  const isAdmin = isCampAdmin(req.user);
   if (!isAdmin) {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Admin access required" } });
   }
@@ -1388,10 +1448,17 @@ router.post("/conversations/dm", async (req, res) => {
         { userId: otherId, lastReadAt: new Date(0) }
       ]
     });
-    return res.status(201).json(conversationToClient(convo, req.user.id));
+    const payload = conversationToClient(convo, req.user.id);
+    if (!payload) {
+      return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create DM" } });
+    }
+    return res.status(201).json(payload);
   }
-
-  return res.json(conversationToClient(convo, req.user.id));
+  const payload = conversationToClient(convo, req.user.id);
+  if (!payload) {
+    return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to load DM" } });
+  }
+  return res.json(payload);
 });
 
 router.post("/conversations/group", async (req, res) => {
@@ -1428,7 +1495,11 @@ router.post("/conversations/group", async (req, res) => {
     readBy: unique.map((id) => ({ userId: id, lastReadAt: String(id) === String(meId) ? now : new Date(0) }))
   });
 
-  return res.status(201).json(conversationToClient(convo, req.user.id));
+  const payload = conversationToClient(convo, req.user.id);
+  if (!payload) {
+    return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create group" } });
+  }
+  return res.status(201).json(payload);
 });
 
 router.get("/conversations", async (req, res) => {
@@ -1437,7 +1508,7 @@ router.get("/conversations", async (req, res) => {
 
   const items = await ConversationModel.findByParticipant(req.tenant._id, meId, { limit: 200 });
 
-  return res.json({ items: items.map((item) => conversationToClient(item, req.user.id)) });
+  return res.json({ items: items.map((item) => conversationToClient(item, req.user.id)).filter(Boolean) });
 });
 
 router.get("/conversations/:id", async (req, res) => {
@@ -1451,7 +1522,11 @@ router.get("/conversations/:id", async (req, res) => {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found" } });
   }
 
-  return res.json(conversationToClient(convo, req.user.id));
+  const payload = conversationToClient(convo, req.user.id);
+  if (!payload) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found" } });
+  }
+  return res.json(payload);
 });
 
 router.patch("/conversations/:id", async (req, res) => {
@@ -1476,7 +1551,11 @@ router.patch("/conversations/:id", async (req, res) => {
   const name = sanitizeText(String(req.body?.name || "").trim());
   const updated = await ConversationModel.update(convo._id, { name: name || convo.name });
 
-  return res.json(conversationToClient(updated, req.user.id));
+  const payload = conversationToClient(updated, req.user.id);
+  if (!payload) {
+    return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to rename group" } });
+  }
+  return res.json(payload);
 });
 
 router.post("/conversations/:id/members", async (req, res) => {
@@ -1506,10 +1585,17 @@ router.post("/conversations/:id/members", async (req, res) => {
       readBy.push({ userId: targetId, lastReadAt: new Date(0) });
     }
     const updated = await ConversationModel.update(convo._id, { participantIds, members, readBy });
-    return res.json(conversationToClient(updated, req.user.id));
+    const payload = conversationToClient(updated, req.user.id);
+    if (!payload) {
+      return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to add member" } });
+    }
+    return res.json(payload);
   }
-
-  return res.json(conversationToClient(convo, req.user.id));
+  const payload = conversationToClient(convo, req.user.id);
+  if (!payload) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found" } });
+  }
+  return res.json(payload);
 });
 
 router.delete("/conversations/:id/members", async (req, res) => {
@@ -1538,7 +1624,11 @@ router.delete("/conversations/:id/members", async (req, res) => {
   const readBy = (convo.readBy || []).filter((entry) => String(entry.userId || "") !== String(targetId));
   const updated = await ConversationModel.update(convo._id, { participantIds, members, readBy });
 
-  return res.json(conversationToClient(updated, req.user.id));
+  const payload = conversationToClient(updated, req.user.id);
+  if (!payload) {
+    return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to remove member" } });
+  }
+  return res.json(payload);
 });
 
 router.get("/conversations/:id/messages", async (req, res) => {
@@ -1556,7 +1646,7 @@ router.get("/conversations/:id/messages", async (req, res) => {
   if (cursor && Number.isFinite(cursor.getTime())) where.createdAt = { $lt: cursor };
 
   const docs = await MessageModel.find(req.tenant._id, where, { sort: { createdAt: -1 }, limit });
-  const items = docs.slice().reverse().map((doc) => messageToClient(doc));
+  const items = docs.slice().reverse().map((doc) => messageToClient(doc)).filter(Boolean);
   const nextCursor = docs.length ? new Date(docs[docs.length - 1].createdAt).toISOString() : null;
 
   return res.json({ items, nextCursor });
@@ -1588,7 +1678,13 @@ router.post("/conversations/:id/messages", async (req, res) => {
       senderId: req.user.id,
       clientMessageId
     });
-    if (existing) return res.json(messageToClient(existing));
+    if (existing) {
+      const payload = messageToClient(existing);
+      if (!payload) {
+        return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to load message" } });
+      }
+      return res.json(payload);
+    }
   }
 
   const created = await MessageModel.create({
@@ -1614,7 +1710,11 @@ router.post("/conversations/:id/messages", async (req, res) => {
     }
   });
 
-  return res.status(201).json(messageToClient(created));
+  const payload = messageToClient(created);
+  if (!payload) {
+    return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create message" } });
+  }
+  return res.status(201).json(payload);
 });
 
 router.post("/conversations/:id/read", async (req, res) => {
@@ -1711,7 +1811,11 @@ router.post("/forums", async (req, res) => {
       postsCount: 0,
       lastActivityAt: new Date()
     });
-    return res.status(201).json(forumToClient(created));
+    const payload = forumToClient(created);
+    if (!payload) {
+      return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create forum" } });
+    }
+    return res.status(201).json(payload);
   } catch (error) {
     if (error?.code === 11000 || error?.code === "23505") {
       return res.status(409).json({ error: { code: "CONFLICT", message: "Forum name already exists" } });
@@ -1737,7 +1841,7 @@ router.get("/forums", async (req, res) => {
     items = await ForumModel.find(req.tenant._id, filter, { sort: { name: 1 }, limit: 200 });
   }
 
-  return res.json({ items: items.map((item) => forumToClient(item)) });
+  return res.json({ items: items.map((item) => forumToClient(item)).filter(Boolean) });
 });
 
 router.get("/forums/:id", async (req, res) => {
@@ -1748,7 +1852,9 @@ router.get("/forums/:id", async (req, res) => {
 
   const forum = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!forum) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
-  return res.json(forumToClient(forum));
+  const payload = forumToClient(forum);
+  if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+  return res.json(payload);
 });
 
 router.post("/forums/:id/join", async (req, res) => {
@@ -1762,7 +1868,9 @@ router.post("/forums/:id/join", async (req, res) => {
 
   await ForumModel.addMember(existing._id, req.user.id);
   const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
-  return res.json(forumToClient(forum));
+  const payload = forumToClient(forum);
+  if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+  return res.json(payload);
 });
 
 router.post("/forums/:id/leave", async (req, res) => {
@@ -1776,7 +1884,9 @@ router.post("/forums/:id/leave", async (req, res) => {
 
   await ForumModel.removeMember(existing._id, req.user.id);
   const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
-  return res.json(forumToClient(forum));
+  const payload = forumToClient(forum);
+  if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+  return res.json(payload);
 });
 
 router.get("/forums/:id/posts", async (req, res) => {
@@ -1794,7 +1904,7 @@ router.get("/forums/:id/posts", async (req, res) => {
   if (cursor && Number.isFinite(cursor.getTime())) where.createdAt = { $lt: cursor };
 
   const docs = await ForumPostModel.find(req.tenant._id, where, { sort: { createdAt: -1 }, limit });
-  const items = docs.slice().reverse().map((post) => forumPostToClient(post));
+  const items = docs.slice().reverse().map((post) => forumPostToClient(post)).filter(Boolean);
   const nextCursor = docs.length ? new Date(docs[docs.length - 1].createdAt).toISOString() : null;
   return res.json({ items, nextCursor });
 });
@@ -1838,7 +1948,11 @@ router.post("/forums/:id/posts", async (req, res) => {
     lastActivityAt: new Date()
   });
 
-  return res.status(201).json(forumPostToClient(created));
+  const payload = forumPostToClient(created);
+  if (!payload) {
+    return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create post" } });
+  }
+  return res.status(201).json(payload);
 });
 
 router.post("/forums/:id/presign", async (req, res, next) => {
@@ -2120,7 +2234,7 @@ router.get("/map/city/:key", async (req, res) => {
         });
       }
 
-      return people.map((profile) => mapCityPerson(profile));
+      return people.map((profile) => mapCityPerson(profile)).filter(Boolean);
     })();
 
     setTenantPeopleCacheEntry(tenantId, key, {

@@ -3,8 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
-import { getToken, displayName } from "../lib/helpers.js";
-import defaultProfile from "../assets/default-profile.png";
+import { getToken, displayName, initialsOf } from "../lib/helpers.js";
 import "./family-trees.css";
 
 const REL_TYPES = [
@@ -64,6 +63,25 @@ function makeEdgeRow(a = "", b = "") {
     type: "sibling_of",
     toProfileId: b,
   };
+}
+
+function MemberAvatar({ member = {}, className = "", fallbackClassName = "" }) {
+  const [errored, setErrored] = useState(false);
+  const src = String(member.photoUrl || "").trim();
+
+  useEffect(() => {
+    setErrored(false);
+  }, [src]);
+
+  if (src && !errored) {
+    return <img src={src} alt={displayName(member)} className={className} onError={() => setErrored(true)} />;
+  }
+
+  return (
+    <div className={`${className} ${fallbackClassName}`.trim()} aria-hidden="true">
+      {initialsOf(member.firstName, member.lastName, member.nickname) || "?"}
+    </div>
+  );
 }
 
 function pairKey(a, b) {
@@ -629,10 +647,10 @@ export default function FamilyTreeView() {
                               aria-label={`Open ${displayName(member)} profile`}
                               className={`ft-tree-node ${memberId === currentUserId ? "is-you" : ""}`}
                             >
-                              <img
-                                src={member.photoUrl || defaultProfile}
-                                alt=""
+                              <MemberAvatar
+                                member={member}
                                 className="ft-tree-node-avatar"
+                                fallbackClassName="ft-tree-node-avatar-fallback"
                               />
                               <div className="ft-tree-node-main">
                                 <div className="ft-tree-node-name">{displayName(member)}</div>
@@ -696,7 +714,11 @@ export default function FamilyTreeView() {
                         const selected = draft.members.some((m) => m.id === person.id);
                         return (
                           <li key={person.id} className={`ft-result ${selected ? "is-selected" : ""}`}>
-                            <img src={person.photoUrl || defaultProfile} alt="" className="ft-result-avatar" />
+                            <MemberAvatar
+                              member={person}
+                              className="ft-result-avatar"
+                              fallbackClassName="ft-result-avatar-fallback"
+                            />
                             <div className="ft-result-main">
                               <div className="ft-result-name">{displayName(person)}</div>
                               {person.currentJob && <div className="ft-result-job">{person.currentJob}</div>}
