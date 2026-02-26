@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
+import { EmailSuppressionModel } from "../db/models/index.js";
 import {
   inviteTemplate,
   magicLinkTemplate,
@@ -12,6 +13,8 @@ let transport = null;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RESEND_TRANSIENT_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const RESEND_TRANSIENT_ERROR_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND"]);
+const RESEND_TAG_TOKEN_REGEX = /^[A-Za-z0-9_-]+$/;
+const RESEND_HEADER_NAME_REGEX = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 function toBoundedInt(value, fallback, min, max) {
   const parsed = Number(value);
@@ -31,6 +34,10 @@ function getEmailMode() {
 
 function normalizeEmailAddress(value = "") {
   return String(value || "").trim().toLowerCase();
+}
+
+function suppressionsEnabled() {
+  return Boolean(env.EMAIL_SUPPRESSION_ENABLED !== false);
 }
 
 function extractEmailAddress(value = "") {
@@ -60,6 +67,10 @@ function dedupeList(values = []) {
   return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))];
 }
 
+function normalizeString(value = "") {
+  return String(value || "").trim();
+}
+
 function toAddressList(value) {
   const values = Array.isArray(value) ? value : String(value || "").split(",");
   return dedupeList(values.map((item) => normalizeEmailAddress(item)).filter(Boolean));
@@ -71,6 +82,36 @@ function createEmailError(message, code = "EMAIL_SEND_FAILED", statusCode = 502,
   error.statusCode = statusCode;
   if (details) error.details = details;
   return error;
+}
+
+async function findSuppressedRecipients(recipients = []) {
+  if (!suppressionsEnabled()) return [];
+  const normalized = dedupeList((Array.isArray(recipients) ? recipients : [])
+    .map((value) => normalizeEmailAddress(value))
+    .filter(Boolean));
+  if (normalized.length === 0) return [];
+  try {
+    return await EmailSuppressionModel.findActiveByEmails(normalized);
+  } catch (error) {
+    console.warn("[email] suppression lookup failed", {
+      message: String(error?.message || "unknown")
+    });
+    return [];
+  }
+}
+
+async function assertRecipientsNotSuppressed(recipients = []) {
+  const suppressedRows = await findSuppressedRecipients(recipients);
+  if (suppressedRows.length === 0) return;
+  const blocked = suppressedRows
+    .map((item) => normalizeEmailAddress(item?.email || ""))
+    .filter(Boolean);
+  throw createEmailError(
+    `Recipient is suppressed: ${blocked.join(", ")}`,
+    "RECIPIENT_SUPPRESSED",
+    409,
+    { recipients: blocked }
+  );
 }
 
 function validateAddressList(values = [], fieldName = "recipients") {
@@ -104,8 +145,93 @@ function normalizeRecipients({ to, cc, bcc, replyTo }) {
     to: toList,
     cc: ccFiltered,
     bcc: bccFiltered,
-    replyTo: replyToList[0] || ""
+    replyTo: replyToList[0] || "",
+    replyToList
   };
+}
+
+function normalizeIdempotencyKey(value = "", fieldName = "idempotencyKey") {
+  const key = normalizeString(value);
+  if (!key) return "";
+  if (key.length > 256) {
+    throw createEmailError(
+      `${fieldName} must be 256 characters or less.`,
+      "INVALID_IDEMPOTENCY_KEY",
+      400
+    );
+  }
+  return key;
+}
+
+function buildScopedIdempotencyKey(baseKey = "", suffix = "") {
+  const normalizedBase = normalizeIdempotencyKey(baseKey, "idempotencyKey");
+  if (!normalizedBase) return "";
+  const normalizedSuffix = normalizeString(suffix)
+    .replace(/\s+/g, "-")
+    .replace(/[^\w.\-/:]/g, "")
+    .slice(0, 96);
+  if (!normalizedSuffix) return normalizedBase;
+  const delimiter = normalizedBase.includes("/") ? ":" : "/";
+  const full = `${normalizedBase}${delimiter}${normalizedSuffix}`;
+  return full.length <= 256 ? full : full.slice(0, 256);
+}
+
+function normalizeResendHeaders(headers = {}) {
+  if (!headers || typeof headers !== "object" || Array.isArray(headers)) return {};
+  const normalized = {};
+  for (const [rawName, rawValue] of Object.entries(headers)) {
+    const name = normalizeString(rawName);
+    const value = normalizeString(rawValue);
+    if (!name || !value) continue;
+    if (!RESEND_HEADER_NAME_REGEX.test(name)) {
+      throw createEmailError(
+        `Invalid header name "${name}".`,
+        "INVALID_EMAIL_HEADER",
+        400
+      );
+    }
+    const lowered = name.toLowerCase();
+    if (["authorization", "content-type", "idempotency-key"].includes(lowered)) continue;
+    normalized[name] = value;
+  }
+  return normalized;
+}
+
+function normalizeResendTags(tags = []) {
+  let list = [];
+  if (Array.isArray(tags)) list = tags;
+  else if (tags && typeof tags === "object") {
+    list = Object.entries(tags).map(([name, value]) => ({ name, value }));
+  }
+  if (list.length === 0) return [];
+
+  const toTagToken = (value, fallback = "tag") => {
+    const token = normalizeString(value)
+      .replace(/[^A-Za-z0-9_-]/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 256);
+    return token || fallback;
+  };
+
+  return list
+    .map((item = {}) => {
+      const rawName = normalizeString(item.name);
+      const rawValue = normalizeString(item.value);
+      if (!rawName || !rawValue) return null;
+      const name = toTagToken(rawName, "tag");
+      const value = toTagToken(rawValue, "value");
+      if (!RESEND_TAG_TOKEN_REGEX.test(name) || !RESEND_TAG_TOKEN_REGEX.test(value)) return null;
+      return { name, value };
+    })
+    .filter(Boolean);
+}
+
+function normalizeTopicId(value = "") {
+  return normalizeString(value);
+}
+
+function normalizeScheduledAt(value = "") {
+  return normalizeString(value);
 }
 
 function normalizeAttachmentFilename(value = "", fallback = "attachment.pdf") {
@@ -131,6 +257,7 @@ function normalizeAttachments(attachments = []) {
       const contentType = String(
         item?.contentType || item?.mimeType || item?.type || "application/octet-stream"
       ).trim();
+      const contentId = String(item?.contentId || item?.content_id || "").trim();
 
       const rawContent = item?.content;
       let content = null;
@@ -154,7 +281,8 @@ function normalizeAttachments(attachments = []) {
       return {
         filename,
         contentType,
-        content
+        content,
+        contentId
       };
     })
     .filter(Boolean);
@@ -183,27 +311,41 @@ function sleep(ms) {
 async function sendResendRequest(payload) {
   const maxRetries = toBoundedInt(env.RESEND_MAX_RETRIES, 2, 0, 5);
   const timeoutMs = toBoundedInt(env.RESEND_REQUEST_TIMEOUT_MS, 12_000, 1000, 60_000);
+  const resendUserAgent = normalizeString(env.RESEND_USER_AGENT || "pondbridge-api/1.0");
+  const endpointPath = normalizeString(payload?.endpointPath || "/emails") || "/emails";
+  const idempotencyKey = normalizeIdempotencyKey(payload?.idempotencyKey || "");
+  const requestHeaders = normalizeResendHeaders(payload?.headers || {});
+  const requestPayload = payload?.body;
   let lastError = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(`${env.RESEND_API_BASE_URL}/emails`, {
+      const response = await fetch(`${env.RESEND_API_BASE_URL}${endpointPath}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${env.RESEND_API_KEY}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "User-Agent": resendUserAgent,
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+          ...requestHeaders
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestPayload),
         signal: controller.signal
       });
 
       const responseBody = await response.json().catch(() => ({}));
       if (response.ok) {
+        const messageIds = Array.isArray(responseBody?.data)
+          ? responseBody.data
+              .map((item) => String(item?.id || "").trim())
+              .filter(Boolean)
+          : [];
         return {
           ok: true,
-          messageId: String(responseBody?.id || ""),
+          messageId: String(responseBody?.id || messageIds[0] || ""),
+          messageIds,
           responseBody
         };
       }
@@ -218,7 +360,7 @@ async function sendResendRequest(payload) {
         `Resend email send failed (${response.status}): ${message || "Unknown API error."}`,
         retryable ? "EMAIL_PROVIDER_TEMPORARY" : "EMAIL_PROVIDER_REJECTED",
         retryable ? 503 : 502,
-        { status: response.status, code, retryable }
+        { status: response.status, code, retryable, endpointPath }
       );
       lastError = error;
       if (!retryable || attempt >= maxRetries) throw error;
@@ -334,14 +476,33 @@ function getTransport() {
   return transport;
 }
 
-async function sendResendEmail({ to, cc, bcc, replyTo, subject, text, html, attachments }) {
+async function sendResendEmail({
+  to,
+  cc,
+  bcc,
+  replyTo,
+  subject,
+  text,
+  html,
+  attachments,
+  headers,
+  tags,
+  scheduledAt,
+  topicId,
+  idempotencyKey
+}) {
   ensureConfiguredForMode("resend");
 
   const normalized = normalizeRecipients({ to, cc, bcc, replyTo });
   const normalizedAttachments = normalizeAttachments(attachments);
+  const normalizedHeaders = normalizeResendHeaders(headers);
+  const normalizedTags = normalizeResendTags(tags);
+  const normalizedTopicId = normalizeTopicId(topicId);
+  const normalizedScheduledAt = normalizeScheduledAt(scheduledAt);
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
+  await assertRecipientsNotSuppressed(normalized.to);
   const cleanSubject = String(subject || "").trim();
   if (!cleanSubject) {
     throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -355,34 +516,67 @@ async function sendResendEmail({ to, cc, bcc, replyTo, subject, text, html, atta
 
   if (normalized.cc.length > 0) payload.cc = normalized.cc;
   if (normalized.bcc.length > 0) payload.bcc = normalized.bcc;
-  if (normalized.replyTo) payload.reply_to = normalized.replyTo;
+  if (normalized.replyToList.length > 0) {
+    payload.reply_to = normalized.replyToList.length === 1
+      ? normalized.replyToList[0]
+      : normalized.replyToList;
+  }
+  if (Object.keys(normalizedHeaders).length > 0) payload.headers = normalizedHeaders;
+  if (normalizedTags.length > 0) payload.tags = normalizedTags;
+  if (normalizedTopicId) payload.topic_id = normalizedTopicId;
+  if (normalizedScheduledAt) payload.scheduled_at = normalizedScheduledAt;
   if (html) payload.html = html;
   if (text) payload.text = text;
   if (!payload.html && !payload.text) payload.text = " ";
   if (normalizedAttachments.length > 0) {
     payload.attachments = normalizedAttachments.map((item) => ({
       filename: item.filename,
-      content: item.content.toString("base64")
+      content: item.content.toString("base64"),
+      content_type: item.contentType || undefined,
+      ...(item.contentId ? { content_id: item.contentId } : {})
     }));
   }
 
-  const result = await sendResendRequest(payload);
+  const result = await sendResendRequest({
+    endpointPath: "/emails",
+    idempotencyKey,
+    body: payload
+  });
 
   return { ok: true, mode: "resend", messageId: String(result.messageId || "") };
 }
 
-async function sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html, attachments }) {
+async function sendSmtpEmail({
+  to,
+  cc,
+  bcc,
+  replyTo,
+  subject,
+  text,
+  html,
+  attachments,
+  headers,
+  idempotencyKey
+}) {
   ensureConfiguredForMode("smtp");
   const normalized = normalizeRecipients({ to, cc, bcc, replyTo });
   const normalizedAttachments = normalizeAttachments(attachments);
+  const normalizedHeaders = normalizeResendHeaders(headers);
+  const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey || "");
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
+  await assertRecipientsNotSuppressed(normalized.to);
 
   const cleanSubject = String(subject || "").trim();
   if (!cleanSubject) {
     throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
   }
+
+  const smtpHeaders = {
+    ...normalizedHeaders,
+    ...(normalizedIdempotencyKey ? { "Resend-Idempotency-Key": normalizedIdempotencyKey } : {})
+  };
 
   const result = await getTransport().sendMail({
     from: env.EMAIL_FROM,
@@ -393,6 +587,7 @@ async function sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html, attach
     subject: cleanSubject,
     text,
     html,
+    headers: Object.keys(smtpHeaders).length > 0 ? smtpHeaders : undefined,
     attachments:
       normalizedAttachments.length > 0
         ? normalizedAttachments.map((item) => ({
@@ -425,6 +620,11 @@ export async function sendTransactionalEmail({
   text,
   html,
   attachments,
+  headers,
+  tags,
+  scheduledAt,
+  topicId,
+  idempotencyKey,
   modeOverride = ""
 }) {
   const mode = String(modeOverride || getEmailMode()).trim().toLowerCase();
@@ -435,6 +635,7 @@ export async function sendTransactionalEmail({
     if (normalized.to.length === 0) {
       throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
     }
+    await assertRecipientsNotSuppressed(normalized.to);
     const cleanSubject = String(subject || "").trim();
     if (!cleanSubject) {
       throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -444,17 +645,47 @@ export async function sendTransactionalEmail({
       cc: normalized.cc,
       bcc: normalized.bcc,
       subject: cleanSubject,
+      headers: normalizeResendHeaders(headers),
+      tags: normalizeResendTags(tags),
+      topicId: normalizeTopicId(topicId),
+      scheduledAt: normalizeScheduledAt(scheduledAt),
+      idempotencyKey: normalizeIdempotencyKey(idempotencyKey || ""),
       attachments: normalizeAttachments(attachments).map((item) => item.filename)
     });
     return { ok: true, mode: "mock", messageId: "mock-message" };
   }
 
   if (mode === "resend") {
-    return sendResendEmail({ to, cc, bcc, replyTo, subject, text, html, attachments });
+    return sendResendEmail({
+      to,
+      cc,
+      bcc,
+      replyTo,
+      subject,
+      text,
+      html,
+      attachments,
+      headers,
+      tags,
+      scheduledAt,
+      topicId,
+      idempotencyKey
+    });
   }
 
   if (mode === "smtp") {
-    return sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html, attachments });
+    return sendSmtpEmail({
+      to,
+      cc,
+      bcc,
+      replyTo,
+      subject,
+      text,
+      html,
+      attachments,
+      headers,
+      idempotencyKey
+    });
   }
 
   throw createEmailError("Unsupported EMAIL_MODE. Use one of: mock, smtp, resend.", "EMAIL_MODE_INVALID", 500);
@@ -483,6 +714,11 @@ export async function sendBulkTransactionalEmail({
   text,
   html,
   attachments,
+  headers,
+  tags,
+  scheduledAt,
+  topicId,
+  idempotencyKey,
   modeOverride = "",
   strategy = "per-recipient",
   batchSize = env.EMAIL_BROADCAST_BATCH_SIZE,
@@ -506,32 +742,130 @@ export async function sendBulkTransactionalEmail({
     );
   }
 
+  const cleanSubject = String(subject || "").trim();
+  if (!cleanSubject) {
+    throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
+  }
+
+  const mode = String(modeOverride || getEmailMode()).trim().toLowerCase();
+  assertEmailMode(mode);
+  const suppressedRows = await findSuppressedRecipients(recipientList);
+  const suppressedSet = new Set(
+    suppressedRows.map((item) => normalizeEmailAddress(item?.email || "")).filter(Boolean)
+  );
+  const deliverableRecipients = recipientList.filter((email) => !suppressedSet.has(email));
   const normalizedBatchSize = toBoundedInt(batchSize, 40, 1, 200);
-  const batches = chunk(recipientList, normalizedBatchSize);
+  const normalizedAttachments = normalizeAttachments(attachments);
+  const normalizedHeaders = normalizeResendHeaders(headers);
+  const normalizedTags = normalizeResendTags(tags);
+  const normalizedScheduledAt = normalizeScheduledAt(scheduledAt);
+  const normalizedTopicId = normalizeTopicId(topicId);
+  const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey || "");
   const normalizedStrategy = String(strategy || "per-recipient").trim().toLowerCase();
+  const resendBatchEnabled = asBoolean(env.RESEND_BATCH_ENABLED, true);
+
+  const canUseResendBatchApi =
+    mode === "resend" &&
+    resendBatchEnabled &&
+    normalizedStrategy === "per-recipient" &&
+    normalizedAttachments.length === 0 &&
+    !normalizedScheduledAt;
+
+  const effectiveBatchSize = canUseResendBatchApi
+    ? Math.min(normalizedBatchSize, 100)
+    : normalizedBatchSize;
+  const batches = chunk(deliverableRecipients, effectiveBatchSize);
   const failures = [];
   const messageIds = [];
   let sentCount = 0;
   let batchesSucceeded = 0;
+  let attemptedCursor = 0;
+
+  const ccList = toAddressList(cc);
+  const bccList = toAddressList(bcc);
+  const replyToList = toAddressList(replyTo);
+  validateAddressList(ccList, "cc");
+  validateAddressList(bccList, "bcc");
+  validateAddressList(replyToList, "replyTo");
 
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
     let batchHadFailure = false;
 
+    if (canUseResendBatchApi) {
+      const batchPayload = batch.map((recipient) => {
+        const ccFiltered = ccList.filter((email) => email !== recipient);
+        const ccSet = new Set(ccFiltered);
+        const bccFiltered = bccList.filter((email) => email !== recipient && !ccSet.has(email));
+        const item = {
+          from: env.EMAIL_FROM,
+          to: [recipient],
+          subject: cleanSubject
+        };
+        if (ccFiltered.length > 0) item.cc = ccFiltered;
+        if (bccFiltered.length > 0) item.bcc = bccFiltered;
+        if (replyToList.length > 0) {
+          item.reply_to = replyToList.length === 1 ? replyToList[0] : replyToList;
+        }
+        if (Object.keys(normalizedHeaders).length > 0) item.headers = normalizedHeaders;
+        if (normalizedTags.length > 0) item.tags = normalizedTags;
+        if (normalizedTopicId) item.topic_id = normalizedTopicId;
+        if (html) item.html = html;
+        if (text) item.text = text;
+        if (!item.html && !item.text) item.text = " ";
+        return item;
+      });
+
+      try {
+        const result = await sendResendRequest({
+          endpointPath: "/emails/batch",
+          idempotencyKey: buildScopedIdempotencyKey(
+            normalizedIdempotencyKey,
+            `batch-${index + 1}`
+          ),
+          body: batchPayload
+        });
+        sentCount += batch.length;
+        if (Array.isArray(result.messageIds) && result.messageIds.length > 0) {
+          messageIds.push(...result.messageIds.map((id) => String(id)));
+        }
+      } catch (error) {
+        batchHadFailure = true;
+        failures.push({
+          batch: index + 1,
+          recipients: batch,
+          code: String(error?.code || "EMAIL_SEND_FAILED"),
+          message: String(error?.message || "Email send failed.")
+        });
+      }
+      if (!batchHadFailure) {
+        batchesSucceeded += 1;
+      }
+      continue;
+    }
+
     if (normalizedStrategy === "bcc-batch") {
       const to = batch[0];
-      const batchBcc = dedupeList([...(batch.slice(1) || []), ...toAddressList(bcc)]);
+      const batchBcc = dedupeList([...(batch.slice(1) || []), ...bccList]);
       try {
         const result = await sendTransactionalEmail({
           to,
           cc,
           bcc: batchBcc.length > 0 ? batchBcc : undefined,
           replyTo,
-          subject,
+          subject: cleanSubject,
           text,
           html,
-          attachments,
-          modeOverride
+          attachments: normalizedAttachments,
+          headers: normalizedHeaders,
+          tags: normalizedTags,
+          topicId: normalizedTopicId,
+          scheduledAt: normalizedScheduledAt,
+          idempotencyKey: buildScopedIdempotencyKey(
+            normalizedIdempotencyKey,
+            `bcc-batch-${index + 1}`
+          ),
+          modeOverride: mode
         });
         sentCount += batch.length;
         if (result?.messageId) messageIds.push(String(result.messageId));
@@ -546,17 +880,26 @@ export async function sendBulkTransactionalEmail({
       }
     } else {
       for (const recipient of batch) {
+        attemptedCursor += 1;
         try {
           const result = await sendTransactionalEmail({
             to: recipient,
             cc,
             bcc,
             replyTo,
-            subject,
+            subject: cleanSubject,
             text,
             html,
-            attachments,
-            modeOverride
+            attachments: normalizedAttachments,
+            headers: normalizedHeaders,
+            tags: normalizedTags,
+            topicId: normalizedTopicId,
+            scheduledAt: normalizedScheduledAt,
+            idempotencyKey: buildScopedIdempotencyKey(
+              normalizedIdempotencyKey,
+              `recipient-${attemptedCursor}`
+            ),
+            modeOverride: mode
           });
           sentCount += 1;
           if (result?.messageId) messageIds.push(String(result.messageId));
@@ -578,10 +921,12 @@ export async function sendBulkTransactionalEmail({
   }
 
   return {
-    ok: failures.length === 0,
+    ok: failures.length === 0 && suppressedSet.size === 0,
     attemptedCount: recipientList.length,
     sentCount,
     failedCount: Math.max(0, recipientList.length - sentCount),
+    suppressedCount: suppressedSet.size,
+    suppressedRecipients: [...suppressedSet].slice(0, 100),
     batchesAttempted: batches.length,
     batchesSucceeded,
     batchesFailed: Math.max(0, batches.length - batchesSucceeded),
@@ -609,7 +954,17 @@ export async function sendInviteEmail({
     lastName
   });
 
-  return sendTransactionalEmail({ to: email, subject, text, html });
+  return sendTransactionalEmail({
+    to: email,
+    subject,
+    text,
+    html,
+    idempotencyKey: buildScopedIdempotencyKey(`invite/${tenant.slug}`, token),
+    tags: [
+      { name: "category", value: "invite" },
+      { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  });
 }
 
 export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
@@ -620,7 +975,17 @@ export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
     expiresAt
   });
 
-  return sendTransactionalEmail({ to: email, subject, text, html });
+  return sendTransactionalEmail({
+    to: email,
+    subject,
+    text,
+    html,
+    idempotencyKey: buildScopedIdempotencyKey(`magic-link/${tenant.slug}`, token),
+    tags: [
+      { name: "category", value: "magic_link" },
+      { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  });
 }
 
 export async function sendWelcomeEmail({ tenant, firstName, email }) {
@@ -629,7 +994,17 @@ export async function sendWelcomeEmail({ tenant, firstName, email }) {
     firstName
   });
 
-  return sendTransactionalEmail({ to: email, subject, text, html });
+  return sendTransactionalEmail({
+    to: email,
+    subject,
+    text,
+    html,
+    idempotencyKey: buildScopedIdempotencyKey(`welcome/${tenant.slug}`, email),
+    tags: [
+      { name: "category", value: "welcome" },
+      { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  });
 }
 
 export async function sendAccessDecisionEmail({ tenant, email, firstName, approved, reason, loginUrl }) {
@@ -640,7 +1015,16 @@ export async function sendAccessDecisionEmail({ tenant, email, firstName, approv
       firstName,
       loginUrl: resolvedLoginUrl
     });
-    return sendTransactionalEmail({ to: email, subject, text, html });
+    return sendTransactionalEmail({
+      to: email,
+      subject,
+      text,
+      html,
+      tags: [
+        { name: "category", value: "access_approved" },
+        { name: "tenant", value: tenant.slug || "tenant" }
+      ]
+    });
   }
 
   const { subject, text, html } = accessDeniedTemplate({
@@ -648,5 +1032,14 @@ export async function sendAccessDecisionEmail({ tenant, email, firstName, approv
     firstName,
     reason
   });
-  return sendTransactionalEmail({ to: email, subject, text, html });
+  return sendTransactionalEmail({
+    to: email,
+    subject,
+    text,
+    html,
+    tags: [
+      { name: "category", value: "access_denied" },
+      { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  });
 }

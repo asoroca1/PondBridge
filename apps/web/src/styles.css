@@ -682,6 +682,17 @@ body{
     radial-gradient(circle at 86% 16%, color-mix(in srgb, var(--brand-primary) 14%, transparent), transparent 36%);
 }
 
+/* Keep alumni login background identical to the alumni create-account background. */
+.login1-main-create-bg {
+  background: transparent;
+}
+
+.login1-main-create-bg::before {
+  opacity: 0.28;
+  filter: grayscale(100%) contrast(1.05) brightness(0.96);
+  background-position: center top;
+}
+
 .login1-wrap {
   width: min(860px, 100%);
   position: relative;
@@ -1721,10 +1732,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .navbar2-burger{
   background: transparent;
   border: 0;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-  padding:10px 6px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  padding: 0;
   cursor:pointer;
   border-radius:10px;
   transition: background-color .16s ease, box-shadow .16s ease;
@@ -1759,7 +1773,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   content:"";
   position:absolute;
   top:-7px;
-  right:22px;
+  right: var(--menu-caret-right, 22px);
   width:12px;
   height:12px;
   background:#fff;
@@ -1929,7 +1943,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   .navbar2.is-auth-route .navbar2-left{
     flex: 1 1 auto;
     min-width: 0;
-    gap: 4px;
+    gap: 6px;
   }
 
   .navbar2-right{
@@ -1965,6 +1979,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
     padding: 6px 10px;
     font-size: .8rem;
     border-radius: 8px;
+    white-space: nowrap;
   }
 
   .navbar2-profile{
@@ -1976,16 +1991,39 @@ img[draggable="false"] { -webkit-user-drag: none; }
     width: 42px;
     height: 42px;
     border-radius: 12px;
+    padding: 0;
   }
 
   .navbar2-burger-line{
     width: 20px;
   }
 
+  .navbar2.is-auth-route .navbar2-right{
+    flex: 0 0 auto;
+    min-width: auto;
+    max-width: none;
+    gap: 5px;
+  }
+
+  .navbar2.is-auth-route .navbar2-auth-actions{
+    gap: 5px;
+  }
+
+  .navbar2.is-auth-route .navbar2-auth-btn{
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: .75rem;
+  }
+
   .navbar2.is-auth-route .navbar2-logo{
-    height: 54px;
+    height: 50px;
     margin-left: 0;
     margin-right: 0;
+  }
+
+  .navbar2.is-auth-route .navbar2-title{
+    font-size: clamp(.98rem, 4vw, 1.16rem);
+    max-width: min(34vw, 140px);
   }
 }
 
@@ -1996,9 +2034,16 @@ img[draggable="false"] { -webkit-user-drag: none; }
   .navbar2-logo{ height:64px; margin-left:-4px; margin-right:0; }
   .navbar2-profile{ width:40px; height:40px; }
   .navbar2.is-auth-route .navbar2-title{
-    font-size: clamp(.96rem, 3.8vw, 1.2rem);
-    max-width: min(45vw, 170px);
+    font-size: clamp(.88rem, 3.7vw, 1.05rem);
+    max-width: min(32vw, 120px);
   }
+
+  .navbar2.is-auth-route .navbar2-auth-btn{
+    min-height: 29px;
+    padding: 5px 7px;
+    font-size: .71rem;
+  }
+
   .navbar2-dropdown{
     --menu-caret-right: 22px;
     right: calc(env(safe-area-inset-right) + 2px);
@@ -2013,8 +2058,19 @@ img[draggable="false"] { -webkit-user-drag: none; }
     width: 36px;
     height: 36px;
     border-radius: 10px;
+    padding: 0;
   }
   .navbar2-burger-line{ width:18px; }
+
+  .navbar2.is-auth-route .navbar2-title{
+    max-width: min(30vw, 104px);
+  }
+
+  .navbar2.is-auth-route .navbar2-auth-btn{
+    min-height: 28px;
+    padding: 4px 6px;
+    font-size: .68rem;
+  }
 }
 
 /* scale up gently on wider desktops */

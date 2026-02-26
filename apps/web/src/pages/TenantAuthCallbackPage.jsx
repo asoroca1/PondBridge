@@ -65,10 +65,12 @@ function ClerkAuthCallbackPage() {
   useEffect(() => {
     if (!isLoaded || !slug) return;
     let cancelled = false;
+    let redirected = false;
 
     async function run() {
       try {
         if (!isSignedIn) {
+          redirected = true;
           navigate(routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`), {
             replace: true
           });
@@ -108,6 +110,7 @@ function ClerkAuthCallbackPage() {
         } else if (decision.action === "join_network") {
           clearDirectorBootstrapIntent(slug);
           if (String(decision.signupMode || "").toLowerCase() === "code" && !completeJoin) {
+            redirected = true;
             navigate(
               routeWithSlug(
                 slug,
@@ -140,12 +143,13 @@ function ClerkAuthCallbackPage() {
           slug,
           String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home")
         );
+        redirected = true;
         navigate(next, { replace: true });
       } catch (err) {
         if (cancelled) return;
         setError(String(err?.message || "Unable to finish authentication."));
       } finally {
-        if (!cancelled) setWorking(false);
+        if (!cancelled && !redirected) setWorking(false);
       }
     }
 

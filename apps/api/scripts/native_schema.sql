@@ -440,6 +440,55 @@ CREATE TABLE IF NOT EXISTS public.activity_items (
 
 CREATE INDEX IF NOT EXISTS idx_activity_items_tenant ON public.activity_items (tenant_id, pinned DESC, pinned_at DESC, ts DESC);
 
+-- 21. RESEND WEBHOOK EVENTS
+CREATE TABLE IF NOT EXISTS public.resend_webhook_events (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  svix_id text NOT NULL,
+  event_type text NOT NULL DEFAULT '',
+  email_id text NOT NULL DEFAULT '',
+  broadcast_id text NOT NULL DEFAULT '',
+  recipient_email text NOT NULL DEFAULT '',
+  tenant_id text REFERENCES public.tenants(id),
+  tenant_slug text NOT NULL DEFAULT '',
+  occurred_at timestamptz,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (svix_id, recipient_email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_event_type
+  ON public.resend_webhook_events (event_type, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_tenant
+  ON public.resend_webhook_events (tenant_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_email_id
+  ON public.resend_webhook_events (email_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_recipient
+  ON public.resend_webhook_events (recipient_email, occurred_at DESC);
+
+-- 22. EMAIL SUPPRESSIONS
+CREATE TABLE IF NOT EXISTS public.email_suppressions (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  email text NOT NULL UNIQUE,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'lifted')),
+  reason text NOT NULL DEFAULT '',
+  source_event_type text NOT NULL DEFAULT '',
+  first_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_email_id text NOT NULL DEFAULT '',
+  last_broadcast_id text NOT NULL DEFAULT '',
+  tenant_id text REFERENCES public.tenants(id),
+  tenant_slug text NOT NULL DEFAULT '',
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_suppressions_status
+  ON public.email_suppressions (status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_email_suppressions_tenant
+  ON public.email_suppressions (tenant_id, updated_at DESC);
+
 -- ============================================================
 -- RPC Functions
 -- ============================================================
@@ -618,7 +667,7 @@ BEGIN
       'magic_link_tokens', 'conversations', 'forums', 'photos',
       'newsletters', 'email_broadcasts', 'family_trees', 'analytics_events',
       'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
-      'city_geo', 'activity_items'
+      'city_geo', 'activity_items', 'resend_webhook_events', 'email_suppressions'
     ])
   LOOP
     EXECUTE format(
@@ -645,7 +694,8 @@ BEGIN
       'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
       'photos', 'newsletters', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
-      'resume_parse_results', 'city_geo', 'activity_items'
+      'resume_parse_results', 'city_geo', 'activity_items',
+      'resend_webhook_events', 'email_suppressions'
     ])
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
@@ -665,7 +715,8 @@ BEGIN
       'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
       'photos', 'newsletters', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
-      'resume_parse_results', 'city_geo', 'activity_items'
+      'resume_parse_results', 'city_geo', 'activity_items',
+      'resend_webhook_events', 'email_suppressions'
     ])
   LOOP
     policy_name := format('%s_service_role_all', tbl);

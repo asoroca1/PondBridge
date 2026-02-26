@@ -2405,6 +2405,11 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
           text,
           html,
           replyTo: isValidEmail(req.user?.email || "") ? normalizeEmail(req.user.email) : undefined,
+          tags: [
+            { name: "category", value: "newsletter_pdf" },
+            { name: "tenant", value: req.tenant.slug || "tenant" }
+          ],
+          idempotencyKey: `newsletter/${req.tenant.slug || "tenant"}/${created._id}`,
           attachments: [
             {
               filename: normalizeAttachmentFileName(file.originalname || `${season}-${year}.pdf`),

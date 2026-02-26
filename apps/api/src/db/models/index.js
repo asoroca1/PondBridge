@@ -18,3 +18,5 @@ export { TenantAdminAuditLogModel } from "./TenantAdminAuditLogModel.js";
 export { ResumeParseResultModel } from "./ResumeParseResultModel.js";
 export { CityGeoModel } from "./CityGeoModel.js";
 export { ActivityItemModel } from "./ActivityItemModel.js";
+export { ResendWebhookEventModel } from "./ResendWebhookEventModel.js";
+export { EmailSuppressionModel } from "./EmailSuppressionModel.js";

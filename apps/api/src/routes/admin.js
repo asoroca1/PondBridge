@@ -1381,6 +1381,11 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       subject,
       text: body,
       ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {}),
+      tags: [
+        { name: "category", value: "director_broadcast" },
+        { name: "tenant", value: req.tenant.slug || "tenant" }
+      ],
+      idempotencyKey: `director-broadcast/${req.tenant.slug || "tenant"}/${broadcast._id}`,
       batchSize: env.EMAIL_BROADCAST_BATCH_SIZE,
       maxRecipients: env.EMAIL_BROADCAST_MAX_RECIPIENTS
     });
@@ -1554,6 +1559,10 @@ router.get("/analytics/network", async (req, res, next) => {
         recipientCount: Number(item.recipientCount || 0),
         openRate: Number(item.stats?.openRate || 0),
         clickRate: Number(item.stats?.clickRate || 0),
+        deliveredCount: Number(item.stats?.webhook?.delivered || 0),
+        bouncedCount: Number(item.stats?.webhook?.bounced || 0),
+        complaintCount: Number(item.stats?.webhook?.complained || 0),
+        clickedCount: Number(item.stats?.webhook?.clicked || 0),
         status: item.status
       }))
     });
