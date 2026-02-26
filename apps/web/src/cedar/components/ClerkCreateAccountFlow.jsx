@@ -5,7 +5,7 @@ import { requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { normalizeTenantRouteForHost, tenantRoute } from "../../lib/tenantRouting.js";
-import { resolveNetworkDisplayName } from "../lib/campLabels.js";
+import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 
 function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
