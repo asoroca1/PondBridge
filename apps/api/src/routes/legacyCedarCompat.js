@@ -17,9 +17,18 @@ import {
   CityGeoModel
 } from "../db/models/index.js";
 import { createPresignedUpload } from "../services/objectStorage.js";
+import { sendBulkTransactionalEmail } from "../services/email.js";
+import { broadcastTemplate } from "../services/emailTemplates.js";
 import { cityKey, geocodeCity } from "../utils/geocode.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
 import { sanitizeText } from "../utils/sanitize.js";
+import {
+  canonicalizeCityName,
+  canonicalizeCountryName,
+  composeCityState,
+  normalizeLocationToken,
+  parseCityStateDetailed
+} from "../utils/location.js";
 import { ensureProfileForUser } from "../services/profileCompletion.js";
 
 const router = Router({ mergeParams: true });
@@ -82,6 +91,7 @@ const IMAGE_MIME_TYPES = new Set([
 const PUBLIC_UPLOAD_SCOPES = new Set(["avatar"]);
 const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero"]);
 const PRELAUNCH_PUBLIC_BRANDING_SCOPES = new Set(["branding-logo", "branding-hero"]);
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normalizeFileName(fileName = "file") {
   return String(fileName || "file")
@@ -205,12 +215,83 @@ function asRegex(value = "") {
   return new RegExp(safe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 }
 
-function esc(value = "") {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function norm(value = "") {
   return String(value || "").trim();
+}
+
+function parseBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+function normalizeEmail(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value = "") {
+  return EMAIL_REGEX.test(normalizeEmail(value));
+}
+
+function escapeHtml(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeAttachmentFileName(fileName = "newsletter.pdf") {
+  const base = String(fileName || "newsletter.pdf")
+    .trim()
+    .replace(/[\/\\]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[^\w.\- ()]/g, "");
+  return base || "newsletter.pdf";
+}
+
+async function resolveNetworkRecipientEmails(tenantId) {
+  const [users, profiles] = await Promise.all([
+    UserModel.find(tenantId, {}, { select: ["id", "email"] }),
+    ProfileModel.find(tenantId, { status: { $ne: "removed" } }, { select: ["id", "userId", "emails"] })
+  ]);
+
+  const userEmailById = new Map();
+  for (const user of users) {
+    const userId = String(user?._id || user?.id || "").trim();
+    const email = normalizeEmail(user?.email || "");
+    if (userId && isValidEmail(email)) {
+      userEmailById.set(userId, email);
+    }
+  }
+
+  const recipients = new Set();
+  for (const profile of profiles) {
+    const profileEmails = Array.isArray(profile?.emails) ? profile.emails : [];
+    const firstValidProfileEmail = profileEmails
+      .map((item) => normalizeEmail(item))
+      .find((email) => isValidEmail(email));
+
+    if (firstValidProfileEmail) {
+      recipients.add(firstValidProfileEmail);
+      continue;
+    }
+
+    const userId = String(profile?.userId || "").trim();
+    const userEmail = userId ? userEmailById.get(userId) : "";
+    if (userEmail && isValidEmail(userEmail)) {
+      recipients.add(userEmail);
+    }
+  }
+
+  // Include any remaining tenant users that may not have a profile row yet.
+  for (const email of userEmailById.values()) {
+    if (isValidEmail(email)) recipients.add(email);
+  }
+
+  return [...recipients];
 }
 
 function parseCityState(raw = "") {
@@ -443,10 +524,38 @@ function normalizeRoleList(value = []) {
   return ordered;
 }
 
+function resolveProfileNickname(profile = {}) {
+  const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  return String(profile?.nickname || socials?.nickname || socials?.campNickname || "").trim();
+}
+
+function normalizeCollegeMajors(value = []) {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => sanitizeText(String(entry || "").trim()));
+}
+
+function extractEducationRows(value = []) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((row) => ({
+      college: sanitizeText(String(row?.college || "").trim()),
+      major: sanitizeText(String(row?.major || "").trim()),
+      year: sanitizeText(String(row?.year || "").trim())
+    }))
+    .filter((row) => row.college || row.major || row.year);
+}
+
 function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
   if (!profile) return null;
   const { city: cityPart, state: statePart } = parseCityState(profile.cityState || "");
   const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  const collegeMajors = normalizeCollegeMajors(
+    Array.isArray(socials.collegeMajors)
+      ? socials.collegeMajors
+      : Array.isArray(socials.educationMajors)
+      ? socials.educationMajors
+      : []
+  );
   const roleList = normalizeRoleList([profile.roleAtCamp, ...(Array.isArray(socials.roles) ? socials.roles : [])]);
   const primaryRole = roleList[0] || "";
   const camperYears = normalizeCamperYears(socials.camperYears || profile.camperYears || {});
@@ -465,6 +574,7 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
     id: String(profile._id),
     firstName,
     lastName,
+    nickname: resolveProfileNickname(profile),
     email,
     phone,
     city: String(cityPart || "").trim(),
@@ -481,23 +591,27 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
     },
     camperYears,
     roles: roleList,
+    collegeMajors,
     education: (profile.colleges || []).map((college, idx) => ({
       college,
       year: profile.collegeYears?.[idx] || "",
-      major: ""
+      major: collegeMajors?.[idx] || ""
     }))
   };
 }
 
 function parseCityStateFromBody(body = {}) {
-  const city = String(body.city || "").trim();
-  const state = String(body.state || "").trim().toUpperCase();
-  const country = String(body.country || "").trim();
   const direct = String(body.cityState || "").trim();
-  if (direct) return direct;
-  if (!city && !state && !country) return "";
-  if (state) return [city, state].filter(Boolean).join(", ");
-  return [city, country].filter(Boolean).join(", ");
+  if (direct) {
+    return composeCityState(parseCityStateDetailed(direct));
+  }
+  const state = String(body.state || "").trim().toUpperCase();
+  const country = canonicalizeCountryName(String(body.country || "").trim());
+  const city = canonicalizeCityName(String(body.city || "").trim(), {
+    state,
+    country
+  });
+  return composeCityState({ city, state, country });
 }
 
 function toSet(values = []) {
@@ -576,7 +690,7 @@ function profileToSuggestion(profile = {}) {
     id,
     firstName: profile.firstName || "",
     lastName: profile.lastName || "",
-    nickname: "",
+    nickname: resolveProfileNickname(profile),
     uploads: { photoUrl: profile.avatarUrl || "" },
     photoUrl: profile.avatarUrl || "",
     currentJobs: Array.isArray(profile.currentJobs) ? profile.currentJobs : []
@@ -796,21 +910,83 @@ function forumPostToClient(post = {}) {
 
 router.use(requireTenant);
 
-router.get("/locations/cities/:state", async (req, res) => {
-  const state = String(req.params.state || "").trim().toUpperCase();
-  if (!state) return res.json([]);
+async function loadCitySuggestionsForTenant(tenantId, { state = "", country = "", q = "", limit = 25 } = {}) {
+  const normalizedState = String(state || "").trim().toUpperCase();
+  const normalizedCountry = canonicalizeCountryName(String(country || "").trim());
+  const queryToken = normalizeLocationToken(q);
+  const effectiveLimit = Math.min(Math.max(Number(limit || 25), 1), 100);
 
-  const rows = await ProfileModel.find(req.tenant._id, { cityState: { $ilike: `%, ${esc(state)}` } }, { select: ["cityState"] });
+  let filter = { cityState: { $ne: "" } };
+  if (normalizedState) {
+    filter = { cityState: { $ilike: `%, ${sanitizeLikeToken(normalizedState)}` } };
+  } else if (normalizedCountry) {
+    filter = { cityState: { $ilike: `%${sanitizeLikeToken(normalizedCountry)}%` } };
+  }
 
-  const cities = new Set();
+  const rows = await ProfileModel.find(tenantId, filter, {
+    select: ["cityState"],
+    limit: 5000
+  });
+
+  const seen = new Set();
+  const candidates = [];
   for (const row of rows) {
-    const parsed = parseCityState(row?.cityState || "");
-    if (parsed.city && String(parsed.state || "").toUpperCase() === state) {
-      cities.add(String(parsed.city).trim());
+    const parsed = parseCityStateDetailed(row?.cityState || "");
+    if (!parsed.city) continue;
+    if (normalizedState && String(parsed.state || "").toUpperCase() !== normalizedState) continue;
+    if (
+      normalizedCountry &&
+      normalizeLocationToken(parsed.country || "") !== normalizeLocationToken(normalizedCountry)
+    ) {
+      continue;
+    }
+
+    const city = canonicalizeCityName(parsed.city, {
+      state: normalizedState || parsed.state,
+      country: normalizedCountry || parsed.country
+    });
+    const cityKeyToken = normalizeLocationToken(city);
+    if (!cityKeyToken || seen.has(cityKeyToken)) continue;
+    if (queryToken && !cityKeyToken.includes(queryToken)) continue;
+    seen.add(cityKeyToken);
+    candidates.push(city);
+  }
+
+  if (queryToken) {
+    const aliased = canonicalizeCityName(q, { state: normalizedState, country: normalizedCountry });
+    const aliasKey = normalizeLocationToken(aliased);
+    if (aliasKey && !seen.has(aliasKey)) {
+      seen.add(aliasKey);
+      candidates.unshift(aliased);
     }
   }
 
-  return res.json([...cities].sort((a, b) => a.localeCompare(b)));
+  candidates.sort((left, right) => {
+    const l = normalizeLocationToken(left);
+    const r = normalizeLocationToken(right);
+    const lp = queryToken ? Number(!l.startsWith(queryToken)) : 0;
+    const rp = queryToken ? Number(!r.startsWith(queryToken)) : 0;
+    if (lp !== rp) return lp - rp;
+    return left.localeCompare(right);
+  });
+
+  return candidates.slice(0, effectiveLimit);
+}
+
+router.get("/locations/cities", async (req, res) => {
+  const state = String(req.query.state || "").trim().toUpperCase();
+  const country = String(req.query.country || "").trim();
+  const q = String(req.query.q || "").trim();
+  const limit = Number(req.query.limit || 25);
+  const items = await loadCitySuggestionsForTenant(req.tenant._id, { state, country, q, limit });
+  return res.json(items);
+});
+
+router.get("/locations/cities/:state", async (req, res) => {
+  const state = String(req.params.state || "").trim().toUpperCase();
+  if (!state) return res.json([]);
+  const items = await loadCitySuggestionsForTenant(req.tenant._id, { state, limit: 100 });
+  return res.json(items);
 });
 
 router.post("/locations/cities", (_req, res) => {
@@ -911,9 +1087,55 @@ router.put("/me", async (req, res) => {
   const incomingRoles = incomingRolesProvided
     ? normalizeRoleList(Array.isArray(req.body?.roles) ? req.body.roles : [req.body?.roleAtCamp])
     : [];
+  const incomingNicknameProvided =
+    req.body?.nickname !== undefined ||
+    req.body?.campNickname !== undefined ||
+    req.body?.social?.nickname !== undefined ||
+    req.body?.socials?.nickname !== undefined ||
+    req.body?.socials?.campNickname !== undefined;
+  const incomingNickname = incomingNicknameProvided
+    ? sanitizeText(
+        String(
+          req.body?.nickname ??
+            req.body?.campNickname ??
+            req.body?.social?.nickname ??
+            req.body?.socials?.nickname ??
+            req.body?.socials?.campNickname ??
+            ""
+        ).trim()
+      )
+    : "";
+  const incomingEducationRows = Array.isArray(req.body?.education) ? extractEducationRows(req.body.education) : [];
+  const incomingCollegeMajorsProvided =
+    Array.isArray(req.body?.education) ||
+    Array.isArray(req.body?.collegeMajors) ||
+    Array.isArray(req.body?.social?.collegeMajors) ||
+    Array.isArray(req.body?.socials?.collegeMajors) ||
+    Array.isArray(req.body?.social?.educationMajors) ||
+    Array.isArray(req.body?.socials?.educationMajors);
+  const incomingCollegeMajors = normalizeCollegeMajors(
+    Array.isArray(req.body?.collegeMajors)
+      ? req.body.collegeMajors
+      : incomingEducationRows.length
+      ? incomingEducationRows.map((row) => row.major)
+      : Array.isArray(req.body?.social?.collegeMajors)
+      ? req.body.social.collegeMajors
+      : Array.isArray(req.body?.socials?.collegeMajors)
+      ? req.body.socials.collegeMajors
+      : Array.isArray(req.body?.social?.educationMajors)
+      ? req.body.social.educationMajors
+      : Array.isArray(req.body?.socials?.educationMajors)
+      ? req.body.socials.educationMajors
+      : []
+  );
   const existingSocials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
   const hasSocialPatch = Boolean(req.body.social || req.body.socials);
-  const nextSocials = hasSocialPatch || incomingCamperYears || incomingRolesProvided
+  const nextSocials =
+    hasSocialPatch ||
+    incomingCamperYears ||
+    incomingRolesProvided ||
+    incomingNicknameProvided ||
+    incomingCollegeMajorsProvided
     ? {
         ...existingSocials,
         ...(hasSocialPatch
@@ -924,7 +1146,11 @@ router.put("/me", async (req, res) => {
             }
           : {}),
         ...(incomingCamperYears ? { camperYears: incomingCamperYears } : {}),
-        ...(incomingRolesProvided ? { roles: incomingRoles } : {})
+        ...(incomingRolesProvided ? { roles: incomingRoles } : {}),
+        ...(incomingNicknameProvided ? { nickname: incomingNickname, campNickname: incomingNickname } : {}),
+        ...(incomingCollegeMajorsProvided
+          ? { collegeMajors: incomingCollegeMajors, educationMajors: incomingCollegeMajors }
+          : {})
       }
     : undefined;
 
@@ -947,10 +1173,10 @@ router.put("/me", async (req, res) => {
     avatarUrl: String(req.body.uploads?.photoUrl || req.body.photoUrl || profile.avatarUrl || "").trim(),
     socials: nextSocials,
     colleges: Array.isArray(req.body.education)
-      ? req.body.education.map((row) => String(row?.college || "").trim()).filter(Boolean)
+      ? incomingEducationRows.map((row) => row.college)
       : undefined,
     collegeYears: Array.isArray(req.body.education)
-      ? req.body.education.map((row) => String(row?.year || "").trim()).filter(Boolean)
+      ? incomingEducationRows.map((row) => row.year)
       : undefined,
     currentJobs: Array.isArray(req.body.currentJobs)
       ? req.body.currentJobs.map((job) => ({
@@ -1022,12 +1248,33 @@ router.get("/search/user/:id", async (req, res) => {
     return res.status(400).json({ error: { code: "INVALID_ID", message: "Invalid id" } });
   }
 
-  const item = await ProfileModel.findOne(req.tenant._id, { _id: id });
+  // Support both profile IDs and app user IDs.
+  let item = await ProfileModel.findOne(req.tenant._id, { _id: id });
+  let user = null;
+  if (!item) {
+    item = await ProfileModel.findOne(req.tenant._id, { userId: id });
+  }
+  if (!item) {
+    user = await UserModel.findOne(req.tenant._id, { _id: id });
+    const profileId = asObjectId(user?.profileId);
+    if (profileId) {
+      item = await ProfileModel.findOne(req.tenant._id, { _id: profileId });
+    }
+  }
+  if (!user && item?.userId) {
+    user = await UserModel.findOne(req.tenant._id, { _id: item.userId });
+  }
+
   if (!item) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Profile not found" } });
   }
 
-  return res.json({ user: profileToLegacy(item) });
+  return res.json({
+    user: profileToLegacy(item, {
+      identity: req.identity || {},
+      fallbackEmail: user?.email || req.user?.email || ""
+    })
+  });
 });
 
 router.get("/search/names", async (req, res) => {
@@ -1048,6 +1295,7 @@ router.get("/search/names", async (req, res) => {
         name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown",
         firstName: profile.firstName,
         lastName: profile.lastName,
+        nickname: resolveProfileNickname(profile),
         cityState: profile.cityState || "",
         roleAtCamp: profile.roleAtCamp || "",
         industry: profile.industry || "",
@@ -2074,7 +2322,7 @@ router.get("/newsletters/:id/file", async (req, res) => {
 });
 
 router.post("/newsletters", upload.single("file"), async (req, res) => {
-  const isAdmin = req.user.roles?.includes("tenant_admin") || req.user.roles?.includes("super_admin");
+  const isAdmin = isCampAdmin(req.user);
   if (!isAdmin) {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Admin access required" } });
   }
@@ -2096,6 +2344,7 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
   const newsletterLabel =
     String(req.tenant?.content?.newsletterName || "Newsletter").trim() || "Newsletter";
   const title = sanitizeText(String(req.body?.title || "").trim()) || `${season} ${year} ${newsletterLabel}`;
+  const emailToNetwork = parseBoolean(req.body?.emailToNetwork || req.body?.sendEmailToNetwork, false);
   const created = await NewsletterModel.create({
     tenantId: req.tenant._id,
     title,
@@ -2106,6 +2355,89 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     pdfData: file.buffer
   });
 
+  let emailDelivery = {
+    requested: emailToNetwork,
+    attempted: 0,
+    sent: 0,
+    failed: 0,
+    status: "not_requested",
+    message: ""
+  };
+
+  if (emailToNetwork) {
+    const recipients = await resolveNetworkRecipientEmails(req.tenant._id);
+    if (recipients.length === 0) {
+      emailDelivery = {
+        ...emailDelivery,
+        status: "skipped_no_recipients",
+        message: "No member emails found in this network."
+      };
+    } else {
+      const networkUrl = `${req.protocol}://${req.get("host")}/t/${req.tenant.slug}/cedar-chest`;
+      const pdfUrl = `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${created._id}/file`;
+      const emailSubject = `New ${newsletterLabel}: ${title}`;
+      const bodyHtml = `
+        <p style="margin:0 0 12px;">A new <strong>${escapeHtml(newsletterLabel)}</strong> has been published for <strong>${escapeHtml(req.tenant.name || "your network")}</strong>.</p>
+        <p style="margin:0 0 14px;">We've attached the newsletter PDF to this email so members can open it directly.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid #e5e7eb;border-radius:8px;">
+          <tr>
+            <td style="padding:12px 14px;font-size:14px;color:#1f2937;">
+              <div style="margin:0 0 6px;"><strong>Title:</strong> ${escapeHtml(title)}</div>
+              <div style="margin:0 0 6px;"><strong>Season:</strong> ${escapeHtml(season)}</div>
+              <div style="margin:0;"><strong>Year:</strong> ${escapeHtml(year)}</div>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:0 0 10px;">Prefer to view it inside PondBridge?</p>
+        <p style="margin:0 0 8px;"><a href="${escapeHtml(networkUrl)}" style="color:#1e5cb3;text-decoration:underline;">Open newsletter archive</a></p>
+        <p style="margin:0;font-size:13px;color:#6b7280;">Direct PDF link: <a href="${escapeHtml(pdfUrl)}" style="color:#1e5cb3;text-decoration:underline;">${escapeHtml(pdfUrl)}</a></p>
+      `;
+      const { subject, text, html } = broadcastTemplate({
+        tenantName: req.tenant.name || "PondBridge Network",
+        subject: emailSubject,
+        bodyHtml
+      });
+
+      try {
+        const delivery = await sendBulkTransactionalEmail({
+          recipients,
+          subject,
+          text,
+          html,
+          replyTo: isValidEmail(req.user?.email || "") ? normalizeEmail(req.user.email) : undefined,
+          attachments: [
+            {
+              filename: normalizeAttachmentFileName(file.originalname || `${season}-${year}.pdf`),
+              contentType: "application/pdf",
+              content: file.buffer
+            }
+          ]
+        });
+
+        emailDelivery = {
+          ...emailDelivery,
+          attempted: Number(delivery?.attemptedCount || recipients.length),
+          sent: Number(delivery?.sentCount || 0),
+          failed: Number(delivery?.failedCount || 0),
+          status: delivery?.ok ? "sent" : "partial_failure",
+          message:
+            delivery?.ok
+              ? `Newsletter emailed to ${Number(delivery?.sentCount || 0)} members.`
+              : `Newsletter emailed to ${Number(delivery?.sentCount || 0)} members with ${Number(delivery?.failedCount || 0)} failures.`
+        };
+      } catch (error) {
+        emailDelivery = {
+          ...emailDelivery,
+          attempted: recipients.length,
+          sent: 0,
+          failed: recipients.length,
+          status: "failed",
+          message: String(error?.message || "Email delivery failed.")
+        };
+      }
+    }
+  }
+
   return res.status(201).json({
     _id: String(created._id),
     id: String(created._id),
@@ -2113,12 +2445,13 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     season: created.season,
     year: created.year,
     pdfUrl: `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${created._id}/file`,
-    createdAt: created.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString()
+    createdAt: created.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString(),
+    emailDelivery
   });
 });
 
 router.delete("/newsletters/:id", async (req, res) => {
-  const isAdmin = req.user.roles?.includes("tenant_admin") || req.user.roles?.includes("super_admin");
+  const isAdmin = isCampAdmin(req.user);
   if (!isAdmin) {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Admin access required" } });
   }

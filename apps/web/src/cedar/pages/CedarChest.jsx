@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { useAuth } from "../../context/AuthContext.jsx";
 import {
   resolveNetworkDisplayName,
   resolveNewsletterLabel
@@ -15,44 +16,62 @@ import { Newspaper } from "lucide-react";
 
 const API = API_BASE;
 
-// ===== config =====
-// Temporary: single-account admin allow-list
-const ADMIN_EMAILS = [
-  "aden@sorocafamily.com", // change/remove as needed
-];
+function normalizeRoleSet(value = {}) {
+  const rawRoles = Array.isArray(value?.roles)
+    ? value.roles
+    : value?.roles
+      ? [value.roles]
+      : value?.role
+        ? [value.role]
+        : [];
+  return new Set(
+    rawRoles
+      .map((role) => String(role || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function hasDirectorPrivileges(...sources) {
+  const allowed = new Set(["tenant_admin", "super_admin", "admin"]);
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const roles = normalizeRoleSet(source);
+    for (const role of roles) {
+      if (allowed.has(role)) return true;
+    }
+  }
+  return false;
+}
+
+function readJwtRoles() {
+  try {
+    const token = getToken();
+    if (!token) return [];
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return Array.isArray(payload?.roles)
+      ? payload.roles
+      : payload?.role
+        ? [payload.role]
+        : [];
+  } catch {
+    return [];
+  }
+}
 
 // ===== main page =====
 export default function CedarChest() {
   const { tenant } = useTenant();
+  const { user: authUser } = useAuth();
   const [newsletters, setNewsletters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [season, setSeason] = useState("");
   const [year, setYear] = useState("");
-  const [me, setMe] = useState(null);
   const [subEmail, setSubEmail] = useState("");
   const [subMsg, setSubMsg] = useState("");
+  const [adminProbeAllowed, setAdminProbeAllowed] = useState(false);
   const networkDisplayName = resolveNetworkDisplayName(tenant);
   const newsletterLabel = resolveNewsletterLabel(tenant);
-
-  // Fetch current user (for admin check)
-  useEffect(() => {
-    let ignore = false;
-    async function run() {
-      try {
-        const res = await fetch(`${API}/me`, { headers: authHeaders() });
-        if (!res.ok) throw new Error("Failed to load user");
-        const j = await res.json();
-        if (!ignore) setMe(j);
-      } catch {
-        if (!ignore) setMe(null); // not signed in is fine
-      }
-    }
-    run();
-    return () => {
-      ignore = true;
-    };
-  }, []);
 
   // Fetch newsletters
   useEffect(() => {
@@ -81,11 +100,38 @@ export default function CedarChest() {
     };
   }, []);
 
-  // Admin check
-  const isAdmin = useMemo(() => {
-    const email = me?.email || me?.user?.email || me?.profile?.email;
-    return email ? ADMIN_EMAILS.includes(email.toLowerCase()) : false;
-  }, [me]);
+  const roleBasedAdmin = useMemo(
+    () =>
+      hasDirectorPrivileges(authUser, {
+        roles: readJwtRoles()
+      }),
+    [authUser]
+  );
+
+  // Fallback permission probe keeps admin UI available even if local role payload is stale.
+  useEffect(() => {
+    let ignore = false;
+    if (roleBasedAdmin) {
+      setAdminProbeAllowed(true);
+      return () => {
+        ignore = true;
+      };
+    }
+    async function probe() {
+      try {
+        const res = await fetch(`${API}/admin/overview`, { headers: authHeaders(false) });
+        if (!ignore) setAdminProbeAllowed(res.ok);
+      } catch {
+        if (!ignore) setAdminProbeAllowed(false);
+      }
+    }
+    probe();
+    return () => {
+      ignore = true;
+    };
+  }, [roleBasedAdmin]);
+
+  const isAdmin = roleBasedAdmin || adminProbeAllowed;
 
   // Distinct season/year options from data
   const seasonsInData = useMemo(() => {
@@ -310,6 +356,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
   const [season, setSeason] = useState("");
   const [year, setYear] = useState(new Date().getFullYear());
   const [pdf, setPdf] = useState(null);
+  const [emailToNetwork, setEmailToNetwork] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -331,6 +378,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
       if (title) fd.append("title", title);
       fd.append("season", season);
       fd.append("year", String(year));
+      fd.append("emailToNetwork", String(emailToNetwork));
       fd.append("file", pdf);
 
       const res = await fetch(`${API}/newsletters`, {
@@ -340,11 +388,29 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
       });
       if (!res.ok) throw new Error((await res.text()) || "Upload failed");
       const created = await res.json();
-      setMsg("Uploaded!");
+      const delivery = created?.emailDelivery || null;
+      if (delivery?.requested) {
+        if (delivery.status === "sent") {
+          setMsg(`Uploaded and emailed to ${Number(delivery?.sent || 0)} members.`);
+        } else if (delivery.status === "partial_failure") {
+          setMsg(
+            `Uploaded. Email sent to ${Number(delivery?.sent || 0)} members with ${Number(delivery?.failed || 0)} failures.`
+          );
+        } else if (delivery.status === "skipped_no_recipients") {
+          setMsg("Uploaded. No member emails were found, so no broadcast was sent.");
+        } else if (delivery.status === "failed") {
+          setMsg(`Uploaded. Email delivery failed: ${delivery.message || "Unknown error."}`);
+        } else {
+          setMsg("Uploaded.");
+        }
+      } else {
+        setMsg("Uploaded!");
+      }
       setTitle("");
       setSeason("");
       setYear(new Date().getFullYear());
       setPdf(null);
+      setEmailToNetwork(false);
       onUploaded?.(created);
     } catch (e) {
       setMsg(e.message || "Upload failed");
@@ -399,6 +465,17 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
         />
       </div>
 
+      <div className="cc-row">
+        <label className="cc-inline-check">
+          <input
+            type="checkbox"
+            checked={emailToNetwork}
+            onChange={(event) => setEmailToNetwork(event.target.checked)}
+          />
+          <span>Email this newsletter to everyone in the network (PDF attached)</span>
+        </label>
+      </div>
+
       <div className="cc-actions">
         <button type="submit" disabled={busy}>
           {busy ? "Uploading…" : "Upload Newsletter"}
@@ -408,7 +485,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
 
       {!compact && (
         <p className="cc-note">
-          This panel is visible only to the admin email(s). Regular users won’t see it.
+          This panel is visible only to directors/admins. Regular users won’t see it.
         </p>
       )}
     </form>

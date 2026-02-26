@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../../lib/http.js";
@@ -89,9 +89,9 @@ export default function ClerkCreateAccountFlow() {
       <section className="product-claim-page product-director-create-page product-director-create-clerk-page alumni-create-clerk-page">
         <div className="product-claim-wrap product-director-create-wrap product-director-create-clerk-wrap">
           <article className="product-claim-card product-director-create-card product-director-create-clerk-card alumni-create-clerk-card">
-            <div className="product-director-create-clerk-intro alumni-create-clerk-intro">
-              <p className="product-director-create-kicker">Camp Access</p>
-              <h1>Complete Signup</h1>
+          <div className="product-director-create-clerk-intro alumni-create-clerk-intro">
+            <p className="product-director-create-kicker">Camp Access</p>
+            <h1 className="auth-entry-title">Complete Signup</h1>
               <p className="product-claim-body director-create-subtitle">
                 This camp requires an access code to finish joining {networkName}.
               </p>
@@ -129,10 +129,7 @@ export default function ClerkCreateAccountFlow() {
         <article className="product-claim-card product-director-create-card product-director-create-clerk-card alumni-create-clerk-card">
           <div className="product-director-create-clerk-intro alumni-create-clerk-intro">
             <p className="product-director-create-kicker">Camp Access</p>
-            <h1>Create Account</h1>
-            <p className="product-claim-body director-create-subtitle">
-              Sign up with email to join {networkName}.
-            </p>
+            <h1 className="auth-entry-title">Create Account</h1>
           </div>
           {inviteMeta ? (
             <p className="success-text">

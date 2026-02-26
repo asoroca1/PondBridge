@@ -158,16 +158,22 @@ export default function LocationMap() {
       el.style.borderRadius = "999px";
       el.style.background = brandPrimary;
       el.style.border = "2px solid #ffffff";
-      el.style.color = "#ffffff";
       el.style.display = "flex";
       el.style.alignItems = "center";
       el.style.justifyContent = "center";
-      el.style.fontWeight = "800";
-      el.style.fontSize = count >= 10 ? "12px" : "13px";
       el.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.18)";
       el.style.cursor = "pointer";
       el.style.userSelect = "none";
-      el.textContent = count > 99 ? "99+" : String(count);
+
+      // Keep markers clean: no numeric badge over the map.
+      const core = document.createElement("span");
+      const coreSize = Math.max(6, Math.round(size * 0.28));
+      core.style.width = `${coreSize}px`;
+      core.style.height = `${coreSize}px`;
+      core.style.borderRadius = "999px";
+      core.style.background = "#ffffff";
+      core.style.opacity = "0.95";
+      el.appendChild(core);
 
       const marker = new maplibregl.Marker({ element: el, anchor: "center" })
         .setLngLat([lng, lat])

@@ -6,11 +6,12 @@ export default function ProtectedRoute({ children, role }) {
   const { slug } = useParams();
   const { slug: tenantSlug } = useTenant();
   const { isAuthenticated, isReady, user } = useAuth();
+  const hasResolvedUser = Boolean(String(user?.id || user?._id || "").trim());
   const effectiveSlug = slug || tenantSlug;
   const loginPath = effectiveSlug ? `/t/${effectiveSlug}/login` : "/login";
   const fallbackPath = effectiveSlug ? `/t/${effectiveSlug}/home` : "/home";
 
-  if (!isReady) {
+  if (!isReady && !hasResolvedUser) {
     return null;
   }
 

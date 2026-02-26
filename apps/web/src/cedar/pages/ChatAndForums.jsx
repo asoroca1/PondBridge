@@ -19,6 +19,7 @@ import {
   relativeTime,
   isPlaceholderAvatarUrl
 } from "../lib/helpers.js";
+import { readAuthFromStorage } from "../../lib/storage.js";
 
 /* ======================= Helpers ======================= */
 
@@ -253,8 +254,21 @@ function getJwtPayload() {
   }
 }
 function myIdentity() {
+  const stored = readAuthFromStorage();
+  const storedUser = stored?.user || {};
+  const storedId = normalizeEntityId(storedUser?.id || storedUser?._id || storedUser?.userId || "");
+  const storedRoles = Array.isArray(storedUser?.roles)
+    ? storedUser.roles
+    : storedUser?.roles
+      ? [storedUser.roles]
+      : [];
   const p = getJwtPayload();
-  return { id: p.sub, roles: Array.isArray(p.roles) ? p.roles : [] };
+  const jwtRoles = Array.isArray(p.roles) ? p.roles : p?.role ? [p.role] : [];
+  const jwtId = normalizeEntityId(p?.sub || p?.userId || "");
+  return {
+    id: storedId || jwtId,
+    roles: [...new Set([...storedRoles, ...jwtRoles])]
+  };
 }
 function resourceCreatorId(resource) {
   return (

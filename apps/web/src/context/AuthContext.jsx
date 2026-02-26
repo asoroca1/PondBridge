@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth as useClerkAuth, useClerk } from "@clerk/clerk-react";
 import { clearAuthStorage, readAuthFromStorage, writeAuthToStorage } from "../lib/storage.js";
 import { requestJson } from "../lib/http.js";
+import { inferCampSlugFromHost } from "../lib/domain.js";
 import {
   AUTH_PROVIDER,
   clerkConfigError,
@@ -25,6 +26,14 @@ const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
     .toLowerCase()
 );
 const CLERK_STORAGE_TOKEN_SYNC_INTERVAL_MS = 15_000;
+
+function inferTenantSlugForSessionRequest() {
+  if (typeof window === "undefined") return "";
+  const fromPath = String(window.location.pathname || "").match(/^\/t\/([^/]+)/i)?.[1] || "";
+  const fromHost = inferCampSlugFromHost(window.location.hostname || "");
+  const remembered = String(localStorage.getItem("pondbridgeTenantSlug") || "").trim().toLowerCase();
+  return String(fromPath || fromHost || remembered || "").trim().toLowerCase();
+}
 
 function markTabSessionAuthenticated() {
   if (typeof window === "undefined") return;
@@ -324,7 +333,8 @@ function ClerkBackedAuthProvider({ children }) {
     }
 
     let active = true;
-    refreshSession()
+    const tenantSlug = inferTenantSlugForSessionRequest();
+    refreshSession({ tenantSlug })
       .then(() => {
         if (!active) return;
         if (sessionId) {
@@ -395,7 +405,7 @@ function ClerkBackedAuthProvider({ children }) {
         clearTabLoginIntent();
         return;
       }
-      refreshSession().catch(() => {});
+      refreshSession({ tenantSlug: inferTenantSlugForSessionRequest() }).catch(() => {});
     },
     [refreshSession]
   );

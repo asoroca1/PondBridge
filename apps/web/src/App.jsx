@@ -19,7 +19,7 @@ import {
   DirectorAdminEmailComposePage,
   DirectorAdminEmailHistoryPage,
   DirectorAdminFeaturesPage,
-  DirectorAdminImportPage,
+  DirectorAdminInvitesPage,
   DirectorAdminMembersPage,
   DirectorAdminSettingsAccessPage,
   DirectorAdminSettingsAdminsPage,
@@ -115,10 +115,22 @@ function TenantScopeRoutes() {
 
     const syncKey = `${String(authProvider || "").toLowerCase()}:${slug}:signed-in`;
     if (membershipSyncKeyRef.current === syncKey) return;
+
+    const tenantId = String(tenant?.id || tenant?._id || "").trim();
+    const userTenantId = String(user?.tenantId || "").trim();
+    const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
+    const alreadyScopedToTenant = Boolean(
+      user && (isSuperAdmin || (tenantId && userTenantId && userTenantId === tenantId))
+    );
+    if (alreadyScopedToTenant) {
+      membershipSyncKeyRef.current = syncKey;
+      return;
+    }
+
     membershipSyncKeyRef.current = syncKey;
 
     refreshSession({ tenantSlug: slug }).catch(() => {});
-  }, [authProvider, error, isAuthenticated, loading, location.pathname, refreshSession, slug, tenant]);
+  }, [authProvider, error, isAuthenticated, loading, location.pathname, refreshSession, slug, tenant, user]);
 
   if (loading) {
     return (
@@ -131,7 +143,9 @@ function TenantScopeRoutes() {
     );
   }
 
-  if (!isReady) {
+  const hasResolvedUser = Boolean(String(user?.id || user?._id || "").trim());
+
+  if (!isReady && !hasResolvedUser) {
     return (
       <section className="app-status-shell">
         <div className="app-status-card">
@@ -349,7 +363,8 @@ function TenantScopeRoutes() {
           <Route path="dashboard" element={<DirectorAdminDashboardPage />} />
           <Route path="members" element={<DirectorAdminMembersPage />} />
           <Route path="members/approvals" element={<DirectorAdminApprovalsPage />} />
-          <Route path="members/import" element={<DirectorAdminImportPage />} />
+          <Route path="members/import" element={<Navigate to="../invites" replace />} />
+          <Route path="invites" element={<DirectorAdminInvitesPage />} />
           <Route path="directory" element={<Navigate to="../members" replace />} />
           <Route path="family-trees" element={<Navigate to="../features" replace />} />
           <Route path="events" element={<Navigate to="../analytics" replace />} />
@@ -399,7 +414,7 @@ function TenantScopeRoutes() {
         />
         <Route
           path="settings/imports"
-          element={<Navigate to={slug ? `/t/${slug}/admin/members/import` : "/admin/members/import"} replace />}
+          element={<Navigate to={slug ? `/t/${slug}/admin/invites` : "/admin/invites"} replace />}
         />
 
         <Route path="main-home" element={<Navigate to={slug ? `/t/${slug}/home` : "/home"} replace />} />
@@ -407,8 +422,7 @@ function TenantScopeRoutes() {
         <Route path="directory" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
         <Route path="search-old" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
         <Route path="admin/onboarding" element={<Navigate to={slug ? `/t/${slug}/onboarding` : "/onboarding"} replace />} />
-        <Route path="admin/import" element={<Navigate to={slug ? `/t/${slug}/admin/members/import` : "/admin/members/import"} replace />} />
-        <Route path="admin/invites" element={<Navigate to={slug ? `/t/${slug}/admin/settings/admins` : "/admin/settings/admins"} replace />} />
+        <Route path="admin/import" element={<Navigate to={slug ? `/t/${slug}/admin/invites` : "/admin/invites"} replace />} />
         <Route path="admin/analytics" element={<Navigate to={slug ? `/t/${slug}/admin/analytics` : "/admin/analytics"} replace />} />
         <Route path="admin/billing" element={<Navigate to={slug ? `/t/${slug}/admin/billing` : "/admin/billing"} replace />} />
 

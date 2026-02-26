@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { requestBlob, requestJson } from "../../lib/http.js";
@@ -37,7 +37,7 @@ function formatMoney(value = 0) {
 
 function statusTone(status = "") {
   const key = String(status || "").trim().toLowerCase();
-  if (["active", "sent", "live", "approved", "paid"].includes(key)) return "success";
+  if (["active", "sent", "used", "live", "approved", "paid"].includes(key)) return "success";
   if (["pending", "scheduled", "trialing", "in_setup", "in_progress"].includes(key)) return "warning";
   if (["failed", "denied", "past_due", "removed", "flagged", "canceled"].includes(key)) return "danger";
   return "neutral";
@@ -48,6 +48,22 @@ function billingPlanLabel(code = "") {
   if (normalized === "founders") return "Founders";
   if (normalized === "institutional") return "Institutional";
   return "Legacy";
+}
+
+const DEFAULT_BRAND_PRIMARY = "#002b5c";
+
+function normalizeBrandHex(value = "", fallback = DEFAULT_BRAND_PRIMARY) {
+  const raw = String(value || "").trim();
+  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) return `#${hex.toLowerCase()}`;
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    const expanded = hex
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("");
+    return `#${expanded.toLowerCase()}`;
+  }
+  return fallback;
 }
 
 function downloadTextAsFile(text, filename, mime = "text/plain;charset=utf-8") {
@@ -67,6 +83,29 @@ function parseIdsParam(value = "") {
       .map((item) => String(item || "").trim())
       .filter(Boolean)
   )];
+}
+
+const INVITE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function createInviteRow() {
+  return {
+    id: `invite_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    firstName: "",
+    lastName: "",
+    email: ""
+  };
+}
+
+function normalizeInviteName(value = "") {
+  return String(value || "").trim().slice(0, 80);
+}
+
+function normalizeInviteEmail(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidInviteEmail(value = "") {
+  return INVITE_EMAIL_REGEX.test(normalizeInviteEmail(value));
 }
 
 function useAdminApi() {
@@ -200,9 +239,9 @@ export function DirectorAdminDashboardPage() {
     }
   ];
   const quickActions = [
-    { to: `/t/${slug}/admin/settings/admins`, label: "Invite Member" },
+    { to: `/t/${slug}/admin/settings/admins`, label: "Manage Admins" },
     { to: `/t/${slug}/admin/members`, label: "Export Directory" },
-    { to: `/t/${slug}/admin/members/import`, label: "Add Camper" },
+    { to: `/t/${slug}/admin/invites`, label: "Invite Members" },
     { to: `/t/${slug}/admin/events`, label: "Create Event" }
   ];
 
@@ -211,7 +250,6 @@ export function DirectorAdminDashboardPage() {
       <Card>
         <AdminPageHeader
           title="Admin Overview"
-          subtitle={`${tenant.name || "Your Network"} management summary`}
           className="director-admin-page-head"
           actions={
             <>
@@ -224,11 +262,6 @@ export function DirectorAdminDashboardPage() {
             </>
           }
         />
-        <p className="muted">
-          {`${tenant.status || "in_setup"}${
-            tenant.launchedAt ? ` · Live since ${formatDate(tenant.launchedAt)}` : ""
-          }`}
-        </p>
         {error ? <p className="error-text">{error}</p> : null}
         <div className="director-admin-stat-grid">
           {statCards.map((item) => (
@@ -283,21 +316,6 @@ export function DirectorAdminDashboardPage() {
         </Card>
       </div>
 
-      <Card>
-        <h2 className="pb-section-title">Recent Activity</h2>
-        {!payload?.recentActivity?.length ? (
-          <p className="muted">No recent activity yet. Invite your first members to get started.</p>
-        ) : (
-          <ul className="director-admin-activity-list">
-            {payload.recentActivity.map((item) => (
-              <li key={item.id}>
-                <span>{item.label}</span>
-                <small>{formatDateTime(item.createdAt)}</small>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
     </div>
   );
 }
@@ -305,6 +323,7 @@ export function DirectorAdminDashboardPage() {
 export function DirectorAdminMembersPage() {
   const navigate = useNavigate();
   const { slug, request, download } = useAdminApi();
+  const requestRef = useRef(request);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({
     role: "all",
@@ -323,6 +342,10 @@ export function DirectorAdminMembersPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
+  useEffect(() => {
+    requestRef.current = request;
+  }, [request]);
+
   const totalPages = Math.max(1, Math.ceil(Number(payload?.total || 0) / Number(payload?.pageSize || 25)));
 
   const loadMembers = useCallback(async () => {
@@ -339,14 +362,14 @@ export function DirectorAdminMembersPage() {
         completion: filters.completion,
         sort: filters.sort
       });
-      const response = await request(`/members?${params.toString()}`);
+      const response = await requestRef.current(`/members?${params.toString()}`);
       setPayload(response);
     } catch (requestError) {
       setError(requestError.message || "Failed to load members.");
     } finally {
       setLoading(false);
     }
-  }, [filters.completion, filters.role, filters.sort, filters.status, filters.year, page, query, request]);
+  }, [filters.completion, filters.role, filters.sort, filters.status, filters.year, page, query, slug]);
 
   useEffect(() => {
     loadMembers();
@@ -474,11 +497,8 @@ export function DirectorAdminMembersPage() {
           className="director-admin-page-head"
           actions={
             <>
-              <Link className="link-button" to={`/t/${slug}/admin/settings/admins`}>
+              <Link className="link-button" to={`/t/${slug}/admin/invites`}>
                 Invite Members
-              </Link>
-              <Link className="link-button secondary" to={`/t/${slug}/admin/members/import`}>
-                Import Data
               </Link>
               <button type="button" className="link-button secondary" onClick={downloadCsv}>
                 Export CSV
@@ -986,83 +1006,159 @@ export function DirectorAdminApprovalsPage() {
   );
 }
 
-export function DirectorAdminImportPage() {
-  const { slug, token, request, download } = useAdminApi();
+export function DirectorAdminInvitesPage() {
+  const { slug, request, download } = useAdminApi();
+  const [rows, setRows] = useState([createInviteRow()]);
   const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [loadingInvites, setLoadingInvites] = useState(true);
+  const [inviteStatusFilter, setInviteStatusFilter] = useState("pending");
+  const [invites, setInvites] = useState([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [result, setResult] = useState(null);
-  const [history, setHistory] = useState([]);
 
-  const loadHistory = useCallback(async () => {
+  const loadInvites = useCallback(async () => {
+    setLoadingInvites(true);
+    setError("");
     try {
-      const payload = await requestJson("/api/tenants/me/import/history", { token });
-      setHistory(payload.items || []);
-    } catch {
-      setHistory([]);
+      const filter = String(inviteStatusFilter || "pending").trim();
+      const query = filter === "all" ? "" : `?status=${encodeURIComponent(filter)}`;
+      const payload = await request(`/invites${query}`);
+      setInvites(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (requestError) {
+      setError(requestError.message || "Unable to load invites.");
+    } finally {
+      setLoadingInvites(false);
     }
-  }, [token]);
+  }, [inviteStatusFilter, request]);
 
   useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+    loadInvites();
+  }, [loadInvites]);
 
-  async function runImport() {
-    if (!file) {
-      setError("Choose a CSV file first.");
-      return;
-    }
+  function updateRow(rowId, key, value) {
+    setRows((current) =>
+      current.map((row) =>
+        row.id === rowId
+          ? {
+              ...row,
+              [key]: key === "email" ? normalizeInviteEmail(value) : normalizeInviteName(value)
+            }
+          : row
+      )
+    );
+  }
 
-    setLoading(true);
-    setError("");
-    setStatus("");
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("enableFuzzyMatch", "true");
-      formData.append("fuzzyDistance", "1");
-      const payload = await request("/import-csv", {
-        method: "POST",
-        body: formData
-      });
-      setResult(payload.report || null);
-      setStatus("Import completed.");
-      await loadHistory();
-    } catch (requestError) {
-      setError(requestError.message || "Import failed.");
-    } finally {
-      setLoading(false);
-    }
+  function addRow() {
+    setRows((current) => [...current, createInviteRow()]);
+  }
+
+  function removeRow(rowId) {
+    setRows((current) => {
+      if (current.length <= 1) return [createInviteRow()];
+      return current.filter((row) => row.id !== rowId);
+    });
   }
 
   async function downloadTemplate() {
     setError("");
     try {
-      const blob = await download("/members/template.csv");
+      const blob = await download("/invites/template.csv");
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "pondbridge-members-template.csv";
+      anchor.download = "pondbridge-invites-template.csv";
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (requestError) {
-      setError(requestError.message || "Unable to download template.");
+      setError(requestError.message || "Unable to download invite template.");
     }
   }
 
-  async function downloadFailures() {
-    if (!result?.failureCsvDownloadPath) return;
+  async function sendInvites(event) {
+    event.preventDefault();
+    setError("");
+    setStatus("");
+    setResult(null);
+
+    const enteredRows = rows
+      .map((row) => ({
+        firstName: normalizeInviteName(row.firstName),
+        lastName: normalizeInviteName(row.lastName),
+        email: normalizeInviteEmail(row.email)
+      }))
+      .filter((row) => row.firstName || row.lastName || row.email);
+
+    const missingEmailRows = enteredRows.filter(
+      (row) => !row.email && (row.firstName || row.lastName)
+    );
+    if (missingEmailRows.length > 0) {
+      setError("Every row with a name must include an email address.");
+      return;
+    }
+
+    const invalidEmailRows = enteredRows.filter((row) => row.email && !isValidInviteEmail(row.email));
+    if (invalidEmailRows.length > 0) {
+      setError("One or more emails are invalid. Please fix and retry.");
+      return;
+    }
+
+    const dedupedRecipients = Array.from(
+      enteredRows
+        .filter((row) => row.email)
+        .reduce((map, row) => {
+          const existing = map.get(row.email);
+          if (!existing) {
+            map.set(row.email, row);
+            return map;
+          }
+          map.set(row.email, {
+            email: row.email,
+            firstName: existing.firstName || row.firstName,
+            lastName: existing.lastName || row.lastName
+          });
+          return map;
+        }, new Map())
+        .values()
+    );
+
+    if (!file && dedupedRecipients.length === 0) {
+      setError("Add at least one invite row or upload a CSV file.");
+      return;
+    }
+
+    setSending(true);
     try {
-      const blob = await requestBlob(result.failureCsvDownloadPath, { token });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${slug}-import-errors.csv`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      const formData = new FormData();
+      formData.append("roleToAssign", "user");
+      if (dedupedRecipients.length > 0) {
+        formData.append("recipients", JSON.stringify(dedupedRecipients));
+      }
+      if (file) {
+        formData.append("file", file);
+      }
+
+      const response = await request("/invites/send", {
+        method: "POST",
+        body: formData
+      });
+
+      setResult(response);
+      setStatus(
+        `Invites processed. Created ${response.createdCount || 0}, sent ${response.sentCount || 0}, skipped ${
+          Array.isArray(response.skipped) ? response.skipped.length : 0
+        }.`
+      );
+      setRows([createInviteRow()]);
+      setFile(null);
+      setFileInputKey((value) => value + 1);
+      await loadInvites();
     } catch (requestError) {
-      setError(requestError.message || "Unable to download error report.");
+      setError(requestError.message || "Failed to send invites.");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -1070,98 +1166,165 @@ export function DirectorAdminImportPage() {
     <div className="director-admin-stack">
       <Card>
         <AdminPageHeader
-          title="Import Members"
-          subtitle="Upload a spreadsheet to add or update members in your network."
+          title="Invite Members"
+          subtitle="Invite people with first name, last name, and email. Accounts are created only when they accept and sign up."
           actions={
-            <button type="button" className="link-button secondary" onClick={downloadTemplate}>
+            <Button variant="secondary" onClick={downloadTemplate}>
               Download Template CSV
-            </button>
+            </Button>
           }
         />
-        <div className="director-admin-import-steps">
-          <span className={`director-admin-step-pill ${file ? "done" : "active"}`}>1. Upload</span>
-          <span className={`director-admin-step-pill ${result ? "done" : file ? "active" : ""}`}>2. Validate</span>
-          <span className={`director-admin-step-pill ${result ? "active" : ""}`}>3. Results</span>
-        </div>
-        <div className="director-admin-upload-box">
-          <p>Drag and drop your CSV file here, or browse to upload.</p>
-          <Input
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
-          />
-          {file ? (
-            <p className="muted">
-              Selected file: <strong>{file.name}</strong>
-            </p>
-          ) : null}
-        </div>
-        <div className="inline-actions">
-          <Button onClick={runImport} disabled={loading || !file}>
-            {loading ? "Importing..." : "Start Import"}
-          </Button>
-          <Link className="link-button secondary" to={`/t/${slug}/admin/members`}>
-            View Members
-          </Link>
-        </div>
+        <form onSubmit={sendInvites}>
+          <div className="director-admin-table-wrap">
+            <table className="director-admin-table" style={{ minWidth: 720 }}>
+              <thead>
+                <tr>
+                  <th>First Name</th>
+                  <th>Last Name</th>
+                  <th>Email</th>
+                  <th aria-label="Row actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <Input
+                        value={row.firstName}
+                        placeholder="First name"
+                        onChange={(event) => updateRow(row.id, "firstName", event.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <Input
+                        value={row.lastName}
+                        placeholder="Last name"
+                        onChange={(event) => updateRow(row.id, "lastName", event.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <Input
+                        type="email"
+                        value={row.email}
+                        placeholder="name@email.com"
+                        onChange={(event) => updateRow(row.id, "email", event.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <Button type="button" variant="secondary" size="sm" onClick={() => removeRow(row.id)}>
+                        Remove
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="inline-actions">
+            <Button type="button" variant="secondary" onClick={addRow}>
+              Add Row
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setRows([createInviteRow()])}>
+              Clear Rows
+            </Button>
+          </div>
+
+          <div className="director-admin-upload-box">
+            <p>Optional: upload CSV with `firstName`, `lastName`, and `email` columns.</p>
+            <Input
+              key={fileInputKey}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => setFile(event.target.files?.[0] || null)}
+            />
+            {file ? (
+              <p className="muted">
+                CSV selected: <strong>{file.name}</strong>
+              </p>
+            ) : null}
+          </div>
+
+          <div className="inline-actions">
+            <Button type="submit" disabled={sending}>
+              {sending ? "Sending Invites..." : "Send Invites"}
+            </Button>
+            <Link className="link-button secondary" to={`/t/${slug}/admin/members`}>
+              View Members
+            </Link>
+          </div>
+        </form>
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
       </Card>
 
-      {result ? (
+      {result?.skipped?.length ? (
         <Card>
-          <h2 className="pb-section-title">Import Results</h2>
-          <div className="director-admin-import-summary">
-            <p>
-              <strong>Rows read:</strong> {result.rowsRead || 0}
-            </p>
-            <p>
-              <strong>Added:</strong> {result.createdCount || 0}
-            </p>
-            <p>
-              <strong>Updated:</strong> {result.updatedCount || 0}
-            </p>
-            <p>
-              <strong>Skipped duplicates:</strong> {result.skippedDuplicates || 0}
-            </p>
-            <p>
-              <strong>Errors:</strong> {result.errorCount || 0}
-            </p>
+          <h2 className="pb-section-title">Skipped Invites</h2>
+          <div className="director-admin-table-wrap">
+            <table className="director-admin-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.skipped.map((item) => (
+                  <tr key={`${item.email}_${item.reason}`}>
+                    <td>{item.email || "-"}</td>
+                    <td>{item.reason || "Skipped"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          {result.hasFailureCsv ? (
-            <Button variant="secondary" onClick={downloadFailures}>
-              Download Error Report
-            </Button>
-          ) : null}
         </Card>
       ) : null}
 
       <Card>
-        <h2 className="pb-section-title">Past Imports</h2>
-        {!history.length ? (
-          <p className="muted">No past imports yet.</p>
+        <div className="director-admin-page-actions">
+          <h2 className="pb-section-title">Invite Status</h2>
+          <Select value={inviteStatusFilter} onChange={(event) => setInviteStatusFilter(event.target.value)}>
+            <option value="pending">Pending</option>
+            <option value="used">Used</option>
+            <option value="expired">Expired</option>
+            <option value="all">All</option>
+          </Select>
+        </div>
+        {loadingInvites ? (
+          <p className="muted">Loading invites...</p>
+        ) : invites.length === 0 ? (
+          <p className="muted">No invites found for this filter.</p>
         ) : (
           <div className="director-admin-table-wrap">
             <table className="director-admin-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>File</th>
-                  <th>Added</th>
-                  <th>Updated</th>
-                  <th>Errors</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Created</th>
+                  <th>Expires</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map((item) => (
-                  <tr key={item.id}>
-                    <td>{formatDateTime(item.createdAt)}</td>
-                    <td>{item.fileName}</td>
-                    <td>{item.summary?.createdCount || 0}</td>
-                    <td>{item.summary?.updatedCount || 0}</td>
-                    <td>{item.summary?.errorCount || 0}</td>
-                  </tr>
-                ))}
+                {invites.map((invite) => {
+                  const expired = invite?.expiresAt ? new Date(invite.expiresAt) <= new Date() : false;
+                  const inviteStatus = invite?.usedAt ? "used" : expired ? "expired" : "pending";
+                  return (
+                    <tr key={invite.id}>
+                      <td>{invite.email || "-"}</td>
+                      <td>{invite.roleToAssign === "tenant_admin" ? "Admin" : "Member"}</td>
+                      <td>{formatDateTime(invite.createdAt)}</td>
+                      <td>{formatDateTime(invite.expiresAt)}</td>
+                      <td>
+                        <Badge tone={statusTone(inviteStatus)}>
+                          {inviteStatus.charAt(0).toUpperCase() + inviteStatus.slice(1)}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2149,6 +2312,7 @@ export function DirectorAdminSettingsNetworkPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [form, setForm] = useState({
+    campName: "",
     networkName: "",
     tagline: "",
     aboutText: "",
@@ -2158,21 +2322,24 @@ export function DirectorAdminSettingsNetworkPage() {
 
   useEffect(() => {
     if (!payload?.identity) return;
+    const campName = String(payload.identity.campName || payload.tenant?.name || "").trim();
     setForm({
-      networkName: payload.identity.networkName || "",
+      campName,
+      networkName: payload.identity.networkName || (campName ? `${campName} Alumni Network` : ""),
       tagline: payload.identity.tagline || "",
       aboutText: payload.identity.aboutText || "",
       contactEmail: payload.identity.contactEmail || "",
-      websiteUrl: payload.identity.websiteUrl || ""
+      websiteUrl: payload.identity.websiteUrl || payload.tenant?.appUrl || ""
     });
-  }, [payload?.identity]);
+  }, [payload?.identity, payload?.tenant?.name, payload?.tenant?.appUrl]);
 
   async function saveIdentity(event) {
     event.preventDefault();
     setSaving(true);
     setStatus("");
     try {
-      await request("/settings/identity", { method: "PATCH", body: form });
+      const { campName: _unusedCampName, ...identityPayload } = form;
+      await request("/settings/identity", { method: "PATCH", body: identityPayload });
       setStatus("Network identity saved.");
       await load();
     } finally {
@@ -2188,6 +2355,10 @@ export function DirectorAdminSettingsNetworkPage() {
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
       <form className="director-admin-form-grid" onSubmit={saveIdentity}>
+        <label>
+          Camp Name
+          <Input value={form.campName} readOnly />
+        </label>
         <label>
           Network Name
           <Input value={form.networkName} onChange={(event) => setForm((prev) => ({ ...prev, networkName: event.target.value }))} />
@@ -2226,7 +2397,7 @@ export function DirectorAdminSettingsBrandingPage() {
   const [uploadError, setUploadError] = useState("");
   const [uploadingField, setUploadingField] = useState("");
   const [form, setForm] = useState({
-    brandPrimary: "#002b5c",
+    brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
     heroImageUrl: ""
   });
@@ -2234,7 +2405,7 @@ export function DirectorAdminSettingsBrandingPage() {
   useEffect(() => {
     if (!payload?.branding) return;
     setForm({
-      brandPrimary: payload.branding.brandPrimary || "#002b5c",
+      brandPrimary: normalizeBrandHex(payload.branding.brandPrimary, DEFAULT_BRAND_PRIMARY),
       logoUrl: payload.branding.logoUrl || "",
       heroImageUrl: payload.branding.heroImageUrl || ""
     });
@@ -2290,6 +2461,9 @@ export function DirectorAdminSettingsBrandingPage() {
     setUploadError("");
     try {
       const payloadToSave = { ...form };
+      payloadToSave.brandPrimary = normalizeBrandHex(payloadToSave.brandPrimary, DEFAULT_BRAND_PRIMARY);
+      const currentBrandPrimary = normalizeBrandHex(payload?.branding?.brandPrimary, DEFAULT_BRAND_PRIMARY);
+      const brandColorChanged = currentBrandPrimary !== payloadToSave.brandPrimary;
       if (String(payloadToSave.logoUrl || "").startsWith("data:")) {
         const blob = await fetch(payloadToSave.logoUrl).then((response) => response.blob());
         payloadToSave.logoUrl = await uploadBrandingBlob({
@@ -2309,6 +2483,10 @@ export function DirectorAdminSettingsBrandingPage() {
 
       await request("/settings/branding", { method: "PATCH", body: payloadToSave });
       setForm(payloadToSave);
+      if (brandColorChanged) {
+        window.location.reload();
+        return;
+      }
       setStatus("Branding saved.");
       await load();
     } catch (saveError) {
@@ -2345,6 +2523,7 @@ export function DirectorAdminSettingsBrandingPage() {
   }
 
   if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
+  const previewBrandPrimary = normalizeBrandHex(form.brandPrimary, DEFAULT_BRAND_PRIMARY);
 
   return (
     <Card>
@@ -2363,14 +2542,37 @@ export function DirectorAdminSettingsBrandingPage() {
         </label>
         <label>
           Primary Color
-          <Input type="color" value={form.brandPrimary} onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))} />
+          <div className="director-admin-color-field">
+            <span
+              className="director-admin-color-swatch"
+              style={{ background: previewBrandPrimary }}
+              aria-hidden="true"
+            />
+            <Input
+              type="color"
+              className="director-admin-color-picker"
+              value={previewBrandPrimary}
+              aria-label="Pick primary color"
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(event.target.value, DEFAULT_BRAND_PRIMARY) }))
+              }
+            />
+            <span className="director-admin-color-value">{previewBrandPrimary.toUpperCase()}</span>
+          </div>
         </label>
         <label>
           Primary Color Hex
-          <Input value={form.brandPrimary} onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))} />
+          <Input
+            value={form.brandPrimary}
+            placeholder={DEFAULT_BRAND_PRIMARY}
+            onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))}
+            onBlur={() =>
+              setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(prev.brandPrimary, DEFAULT_BRAND_PRIMARY) }))
+            }
+          />
         </label>
-        <div className="director-admin-brand-preview full-width" style={{ borderColor: form.brandPrimary }}>
-          <div className="director-admin-brand-preview-head" style={{ background: form.brandPrimary }}>
+        <div className="director-admin-brand-preview full-width" style={{ borderColor: previewBrandPrimary }}>
+          <div className="director-admin-brand-preview-head" style={{ background: previewBrandPrimary }}>
             {form.logoUrl ? <img src={form.logoUrl} alt="" /> : <span>PB</span>}
             <strong>Preview — network header</strong>
           </div>
@@ -2486,11 +2688,13 @@ export function DirectorAdminSettingsAccessPage() {
 export function DirectorAdminSettingsAdminsPage() {
   const { request } = useAdminApi();
   const [payload, setPayload] = useState({ admins: [], pendingInvites: [] });
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [promotingUserId, setPromotingUserId] = useState("");
   const [removing, setRemoving] = useState(false);
   const [adminToRemove, setAdminToRemove] = useState(null);
-  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
@@ -2511,23 +2715,61 @@ export function DirectorAdminSettingsAdminsPage() {
     loadAdmins();
   }, [loadAdmins]);
 
-  async function inviteAdmin(event) {
-    event.preventDefault();
-    setSaving(true);
+  useEffect(() => {
+    const term = String(query || "").trim();
+    if (!term) {
+      setResults([]);
+      setSearching(false);
+      return undefined;
+    }
+    let active = true;
+    const timerId = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        const response = await request(`/settings/admins/search?q=${encodeURIComponent(term)}&limit=8`);
+        if (!active) return;
+        setResults(Array.isArray(response?.items) ? response.items : []);
+      } catch (requestError) {
+        if (!active) return;
+        setResults([]);
+        setError(requestError.message || "Failed to search members.");
+      } finally {
+        if (active) setSearching(false);
+      }
+    }, 180);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timerId);
+    };
+  }, [query, request]);
+
+  async function grantAdmin(member) {
+    if (!member?.userId && !member?.email) return;
+    setPromotingUserId(String(member.userId || member.email || ""));
     setStatus("");
     setError("");
     try {
-      await request("/settings/admins/invite", {
+      await request("/settings/admins/grant", {
         method: "POST",
-        body: { email }
+        body: {
+          userId: member.userId,
+          email: member.email
+        }
       });
-      setStatus("Admin invite sent.");
-      setEmail("");
+      setStatus(`${member.fullName || member.email || "Member"} now has admin access.`);
+      setResults((prev) =>
+        prev.map((item) =>
+          String(item.userId || "") === String(member.userId || "")
+            ? { ...item, isAdmin: true }
+            : item
+        )
+      );
       await loadAdmins();
     } catch (requestError) {
-      setError(requestError.message || "Failed to send invite.");
+      setError(requestError.message || "Failed to grant admin access.");
     } finally {
-      setSaving(false);
+      setPromotingUserId("");
     }
   }
 
@@ -2554,6 +2796,7 @@ export function DirectorAdminSettingsAdminsPage() {
         <table className="director-admin-table">
           <thead>
             <tr>
+              <th>Name</th>
               <th>Email</th>
               <th>Role</th>
               <th>Added</th>
@@ -2563,13 +2806,14 @@ export function DirectorAdminSettingsAdminsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={5} className="muted">
                   Loading admins...
                 </td>
               </tr>
             ) : (
               payload.admins.map((item) => (
                 <tr key={item.id}>
+                  <td>{item.name || "-"}</td>
                   <td>{item.email}</td>
                   <td>{item.role}</td>
                   <td>{formatDate(item.addedAt)}</td>
@@ -2593,31 +2837,49 @@ export function DirectorAdminSettingsAdminsPage() {
         </table>
       </div>
 
-      <form className="director-admin-inline-form" onSubmit={inviteAdmin}>
+      <div className="director-admin-admin-search">
+        <h3 className="pb-section-title">Add Admin</h3>
+        <p className="muted">Search any member in this network and grant admin access.</p>
         <Input
-          type="email"
-          value={email}
-          placeholder="director2@yourcamp.org"
-          onChange={(event) => setEmail(event.target.value)}
+          value={query}
+          placeholder="Search by name or email"
+          onChange={(event) => setQuery(event.target.value)}
         />
-        <Button type="submit" disabled={saving || !email.trim()}>
-          {saving ? "Sending..." : "Send Invite"}
-        </Button>
-      </form>
-
-      {payload.pendingInvites.length ? (
-        <>
-          <h3 className="pb-section-title">Pending Invites</h3>
-          <ul className="director-admin-simple-list">
-            {payload.pendingInvites.map((item) => (
-              <li key={item.id}>
-                <span>{item.email}</span>
-                <small>Expires {formatDate(item.expiresAt)}</small>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
+        <div className="director-admin-admin-search-results">
+          {searching ? <p className="muted">Searching members...</p> : null}
+          {!searching && query.trim() && results.length === 0 ? (
+            <p className="muted">No matching members found.</p>
+          ) : null}
+          {!searching && results.length > 0 ? (
+            <ul className="director-admin-simple-list">
+              {results.map((item) => {
+                const rowKey = String(item.userId || item.email || item.id || "");
+                const alreadyAdmin = Boolean(item.isAdmin);
+                const busy = promotingUserId === rowKey;
+                return (
+                  <li key={rowKey}>
+                    <div className="director-admin-search-item-main">
+                      <strong>{item.fullName || "-"}</strong>
+                      <span>{item.email || "-"}</span>
+                    </div>
+                    {alreadyAdmin ? (
+                      <Badge tone="success">Admin</Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => grantAdmin(item)}
+                      >
+                        {busy ? "Adding..." : "Make Admin"}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </div>
+      </div>
 
       <ModalConfirm
         open={Boolean(adminToRemove)}

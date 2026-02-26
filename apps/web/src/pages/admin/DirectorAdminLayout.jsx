@@ -5,11 +5,11 @@ import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
 
 const ADMIN_NAV = [
   { key: "overview", to: "dashboard", label: "Overview" },
-  { key: "members", to: "members", label: "Members", end: true },
-  { key: "directory", to: "directory", label: "Camper Directory" },
-  { key: "trees", to: "family-trees", label: "Family Trees" },
-  { key: "events", to: "events", label: "Events" },
-  { key: "communications", to: "communications", label: "Communications" },
+  { key: "members", to: "members", label: "Members & Directory", end: true },
+  { key: "invites", to: "invites", label: "Invite Members" },
+  { key: "features", to: "features", label: "Features & Modules" },
+  { key: "analytics", to: "analytics", label: "Analytics" },
+  { key: "email", to: "email/compose", label: "Email" },
   { key: "billing", to: "billing", label: "Billing" }
 ];
 
@@ -54,7 +54,7 @@ export default function DirectorAdminLayout() {
       }
     }
 
-    base.splice(6, 0, {
+    base.push({
       key: "settings",
       label: "Settings",
       children: SETTINGS_NAV,

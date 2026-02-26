@@ -482,6 +482,10 @@ body{
     /* Soft drop shadow for legibility over images */
     text-shadow: 0 2px 12px rgba(var(--brand-primary-rgb), 0.55);
   }
+
+.home1-title-line {
+  display: block;
+}
   
   
   /* Subhead */
@@ -667,6 +671,17 @@ body{
   pointer-events: none;
 }
 
+.login1-main-create-bg::after {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--brand-primary) 8%, rgba(239, 242, 246, 0.84)) 0%,
+      color-mix(in srgb, var(--brand-primary) 6%, rgba(239, 242, 246, 0.9)) 100%
+    ),
+    radial-gradient(circle at 14% 18%, color-mix(in srgb, var(--brand-primary) 18%, transparent), transparent 42%),
+    radial-gradient(circle at 86% 16%, color-mix(in srgb, var(--brand-primary) 14%, transparent), transparent 36%);
+}
+
 .login1-wrap {
   width: min(860px, 100%);
   position: relative;
@@ -710,6 +725,17 @@ body{
   font-size: clamp(1.85rem, 2.7vw, 2.4rem);
   line-height: 1.15;
   margin: 0;
+}
+
+.auth-entry-title {
+  margin: 0;
+  text-align: center;
+  color: var(--brand-primary);
+  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-weight: 800;
+  font-size: clamp(1.75rem, 2.4vw, 2.2rem);
+  line-height: 1.18;
+  letter-spacing: -0.008em;
 }
 
 .login1-clerk-panel-title {
@@ -835,6 +861,50 @@ body{
   overflow: visible !important;
   height: auto !important;
   min-height: 0 !important;
+}
+
+.login1-clerk-page .cl-main {
+  padding: 0 !important;
+}
+
+.login1-clerk-page .cl-form {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+}
+
+.login1-clerk-page .cl-formFieldLabel {
+  color: var(--brand-primary);
+  font-weight: 700;
+}
+
+.login1-clerk-page .cl-formFieldInput {
+  min-height: 46px;
+  border-radius: 12px;
+  border: 1px solid #d4dfec;
+  box-shadow: none;
+  color: var(--brand-primary);
+  background: #fff;
+}
+
+.login1-clerk-page .cl-formFieldInput:focus {
+  border-color: var(--brand-primary-hover);
+  box-shadow: 0 0 0 3px var(--brand-primary-focus);
+}
+
+.login1-clerk-page .cl-formButtonPrimary {
+  display: block !important;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  background: var(--brand-primary);
+  box-shadow: none;
+}
+
+.login1-clerk-page .cl-formButtonPrimary:hover {
+  background: var(--brand-primary-hover);
 }
 
 .alumni-create-clerk-page {
@@ -2936,6 +3006,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
   align-items: stretch;
 }
 
+.pb-cedar-page .director-admin-scope{
+  margin-top: calc(var(--page-shell-gap) * -1);
+}
+
 .pb-cedar-page .director-admin-scope .pb-admin-ui-main{
   min-width: 0;
   padding: 22px 24px 30px;
@@ -3857,6 +3931,31 @@ img[draggable="false"] { -webkit-user-drag: none; }
   flex: 1;
 }
 
+.pb-cedar-page .director-admin-admin-search{
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-admin-search-results{
+  display: grid;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-search-item-main{
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pb-cedar-page .director-admin-search-item-main span{
+  color: #5f7187;
+  font-size: 0.84rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pb-cedar-page .director-admin-simple-list{
   list-style: none;
   margin: 8px 0 0;
@@ -3886,6 +3985,60 @@ img[draggable="false"] { -webkit-user-drag: none; }
   height: 16px;
   margin: 0;
   accent-color: var(--brand-primary);
+}
+
+.pb-cedar-page .director-admin-color-field{
+  width: 100%;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+}
+
+.pb-cedar-page .director-admin-color-swatch{
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid #cfd9e8;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  flex: 0 0 auto;
+}
+
+.pb-cedar-page .director-admin-color-picker{
+  width: 42px;
+  min-width: 42px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.pb-cedar-page .director-admin-color-picker::-webkit-color-swatch-wrapper{
+  padding: 0;
+}
+
+.pb-cedar-page .director-admin-color-picker::-webkit-color-swatch{
+  border: 1px solid #cfd9e8;
+  border-radius: 8px;
+}
+
+.pb-cedar-page .director-admin-color-picker::-moz-color-swatch{
+  border: 1px solid #cfd9e8;
+  border-radius: 8px;
+}
+
+.pb-cedar-page .director-admin-color-value{
+  font-weight: 700;
+  color: #34495f;
+  font-size: .9rem;
+  letter-spacing: .02em;
 }
 
 .pb-cedar-page .director-admin-brand-preview{

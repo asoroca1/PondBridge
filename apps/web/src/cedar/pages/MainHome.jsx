@@ -1,5 +1,5 @@
 // src/pages/MainHome.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -49,6 +49,51 @@ function normalizeActorName(name) {
 
 /* ---------- unread chats (localStorage) ---------- */
 const CHAT_READ_KEY = "cedarChatLastRead_v1"; // { [conversationId]: isoString }
+const PROFILE_PROMPT_SEEN_KEY_PREFIX = "cedarProfilePromptSeen:v1";
+
+function nonEmpty(value) {
+  return String(value || "").trim();
+}
+
+function hasListValue(list = [], keys = []) {
+  if (!Array.isArray(list)) return false;
+  return list.some((entry) => {
+    if (typeof entry === "string") return Boolean(nonEmpty(entry));
+    if (!entry || typeof entry !== "object") return false;
+    if (!keys.length) return Object.values(entry).some((value) => Boolean(nonEmpty(value)));
+    return keys.some((key) => Boolean(nonEmpty(entry?.[key])));
+  });
+}
+
+function completionPercentForProfile(profile = {}, authUser = null) {
+  const hasEmail =
+    hasListValue(profile?.emails || []) ||
+    Boolean(nonEmpty(profile?.email)) ||
+    Boolean(nonEmpty(authUser?.email)) ||
+    Boolean(nonEmpty(authUser?.primaryEmailAddress?.emailAddress));
+  const hasPhone =
+    hasListValue(profile?.phones || []) ||
+    Boolean(nonEmpty(profile?.phone));
+  const hasLocation =
+    Boolean(nonEmpty(profile?.cityState)) ||
+    Boolean(nonEmpty(profile?.city) && (nonEmpty(profile?.state) || nonEmpty(profile?.country)));
+
+  const checks = [
+    Boolean(nonEmpty(profile?.firstName)),
+    Boolean(nonEmpty(profile?.lastName)),
+    hasEmail,
+    hasPhone,
+    hasLocation,
+    Boolean(nonEmpty(profile?.roleAtCamp)),
+    Boolean(nonEmpty(profile?.highSchool)),
+    hasListValue(profile?.colleges || [], ["college", "major", "gradYear", "year"]),
+    hasListValue(profile?.currentJobs || [], ["role", "company", "years"]),
+    Boolean(nonEmpty(profile?.bio))
+  ];
+
+  const filled = checks.filter(Boolean).length;
+  return Math.round((filled / checks.length) * 100);
+}
 
 function safeParse(json, fallback) {
   try {
@@ -121,7 +166,6 @@ function useUnreadChatsCount({ pollMs = 25000 } = {}) {
       document.removeEventListener("visibilitychange", onVis);
       if (timer) window.clearInterval(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return count;
@@ -533,6 +577,8 @@ export default function MainHome() {
   const sideColHeight = useElementHeight(sideColRef);
   const feedScrollRef = useRef(null);
   const [mobileFeedMaxHeight, setMobileFeedMaxHeight] = useState(null);
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [profileCompletion, setProfileCompletion] = useState(100);
 
   useEffect(() => {
     (async () => {
@@ -601,6 +647,11 @@ export default function MainHome() {
     () => String(authUser?.id || me?.userId || me?.id || me?._id || "").trim(),
     [authUser?.id, me?.userId, me?.id, me?._id]
   );
+  const profilePromptSeenKey = useMemo(() => {
+    const tenantSlug = String(tenant?.slug || "").trim().toLowerCase();
+    if (!tenantSlug || !currentUserId) return "";
+    return `${PROFILE_PROMPT_SEEN_KEY_PREFIX}:${tenantSlug}:${currentUserId}`;
+  }, [currentUserId, tenant?.slug]);
   const isAdmin = useMemo(
     () =>
       hasDirectorPrivileges(
@@ -612,6 +663,43 @@ export default function MainHome() {
       ),
     [authUser, me]
   );
+
+  const dismissProfilePrompt = useCallback(() => {
+    setShowProfilePrompt(false);
+    if (!profilePromptSeenKey) return;
+    try {
+      localStorage.setItem(profilePromptSeenKey, "1");
+    } catch {
+      // ignore private mode/storage quota issues
+    }
+  }, [profilePromptSeenKey]);
+
+  const openEditProfileFromPrompt = useCallback(() => {
+    dismissProfilePrompt();
+    navigate("/edit-profile");
+  }, [dismissProfilePrompt, navigate]);
+
+  useEffect(() => {
+    if (!me || !currentUserId) return;
+    const completion = completionPercentForProfile(me, authUser);
+    setProfileCompletion(completion);
+    if (completion >= 100 || !profilePromptSeenKey) return;
+    try {
+      if (localStorage.getItem(profilePromptSeenKey) === "1") return;
+    } catch {
+      // ignore private mode/storage quota issues
+    }
+    setShowProfilePrompt(true);
+  }, [authUser, currentUserId, me, profilePromptSeenKey]);
+
+  useEffect(() => {
+    if (!showProfilePrompt) return;
+    function onEsc(event) {
+      if (event.key === "Escape") dismissProfilePrompt();
+    }
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [dismissProfilePrompt, showProfilePrompt]);
 
   const locCount = resolveLocations(stats, locationsSummary);
   const quickActions = useMemo(() => {
@@ -855,6 +943,26 @@ export default function MainHome() {
           <RelatedProfilesCard targetUserId={me?._id || me?.id} />
         </aside>
       </main>
+
+      {showProfilePrompt ? (
+        <div className="profile-prompt-overlay" role="dialog" aria-modal="true" aria-labelledby="profile-prompt-title">
+          <div className="profile-prompt-card">
+            <h2 id="profile-prompt-title">Complete Your Profile</h2>
+            <p>
+              Add your profile details so camp alumni can find you and connect.
+              <strong> You are {profileCompletion}% complete.</strong>
+            </p>
+            <div className="profile-prompt-actions">
+              <button type="button" className="profile-prompt-secondary" onClick={dismissProfilePrompt}>
+                Maybe Later
+              </button>
+              <button type="button" className="profile-prompt-primary" onClick={openEditProfileFromPrompt}>
+                Open Edit Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

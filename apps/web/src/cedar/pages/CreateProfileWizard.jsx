@@ -18,6 +18,21 @@ const US_STATES = [
   "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
 ];
+const US_STATE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
+  IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine",
+  MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon",
+  PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee",
+  TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia",
+  WI: "Wisconsin", WY: "Wyoming"
+};
+const US_STATE_OPTIONS = US_STATES.map((code) => ({
+  code,
+  label: `${US_STATE_NAMES[code] || code} (${code})`
+}));
 
 const INDUSTRIES = [
   "Accounting", "Advertising", "Aerospace", "Agriculture",
@@ -48,6 +63,39 @@ const LOCATION_MODES = {
   US: "US",
   INTL: "INTL",
 };
+
+const COUNTRY_ALIASES = new Map([
+  ["usa", "United States"],
+  ["u s a", "United States"],
+  ["us", "United States"],
+  ["u s", "United States"],
+  ["united states of america", "United States"],
+  ["uk", "United Kingdom"],
+  ["u k", "United Kingdom"],
+  ["great britain", "United Kingdom"],
+  ["uae", "United Arab Emirates"],
+  ["u a e", "United Arab Emirates"]
+]);
+
+const CITY_ALIASES_GLOBAL = new Map([
+  ["nyc", "New York"],
+  ["new york city", "New York"],
+  ["san fran", "San Francisco"],
+  ["sf", "San Francisco"],
+  ["philly", "Philadelphia"],
+  ["vegas", "Las Vegas"],
+  ["nola", "New Orleans"]
+]);
+
+const CITY_ALIASES_BY_STATE = new Map([
+  ["CA|la", "Los Angeles"],
+  ["CA|l a", "Los Angeles"],
+  ["CA|l.a.", "Los Angeles"],
+  ["DC|washington dc", "Washington"],
+  ["DC|washington d c", "Washington"],
+  ["DC|d c", "Washington"],
+  ["DC|d.c.", "Washington"]
+]);
 
 // --- Countries (from your list; we’ll display without trailing *) ---
 const cleanCountryName = (s = "") => String(s || "").trim().replace(/\*+$/g, "").trim();
@@ -130,13 +178,80 @@ const normalizeUrl = (s) => {
 const ensureUrl = (s) => normalizeUrl(s);
 
 /* ================= City/State/Country normalizers + helpers ================= */
-const normalizeCity = (s = "") => (s || "").replace(/\s+/g, " ").trim();
-const normalizeCountry = (s = "") => (s || "").replace(/\s+/g, " ").trim();
+const normalizeLocationToken = (value = "") =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-const cityInList = (city, list) => {
-  const c = (city || "").trim().toLowerCase();
-  if (!c) return true;
-  return (list || []).some((x) => String(x).trim().toLowerCase() === c);
+const toTitleCase = (value = "") => {
+  const smallWords = new Set(["and", "or", "the", "of", "de", "da", "la", "le"]);
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+      if (index > 0 && smallWords.has(lower)) return lower;
+      return lower.slice(0, 1).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+};
+
+const normalizeCity = (s = "") => (s || "").replace(/\s+/g, " ").trim();
+
+const canonicalizeCountry = (value = "") => {
+  const raw = normalizeCity(value);
+  if (!raw) return "";
+  const token = normalizeLocationToken(raw);
+  const aliased = COUNTRY_ALIASES.get(token) || raw;
+  const matchedCountry = COUNTRIES.find((country) => normalizeLocationToken(country) === normalizeLocationToken(aliased));
+  if (matchedCountry) return matchedCountry;
+  return toTitleCase(aliased);
+};
+
+const normalizeCountry = (s = "") => canonicalizeCountry(s);
+
+const canonicalizeCity = (value = "", { state = "", country = "", options = [] } = {}) => {
+  const raw = normalizeCity(value);
+  if (!raw) return "";
+  const stateCode = String(state || "").trim().toUpperCase();
+  const countryName = canonicalizeCountry(country);
+  const token = normalizeLocationToken(raw);
+
+  const matchedOption = (Array.isArray(options) ? options : []).find(
+    (option) => normalizeLocationToken(option) === token
+  );
+  if (matchedOption) return matchedOption;
+
+  const stateAliasKey = `${stateCode}|${token}`;
+  if (CITY_ALIASES_BY_STATE.has(stateAliasKey)) return CITY_ALIASES_BY_STATE.get(stateAliasKey) || "";
+  if (CITY_ALIASES_GLOBAL.has(token)) return CITY_ALIASES_GLOBAL.get(token) || "";
+
+  if (
+    countryName === "United States" &&
+    stateCode === "DC" &&
+    (token === "washington dc" || token === "washington d c" || token === "d c")
+  ) {
+    return "Washington";
+  }
+
+  return toTitleCase(raw);
+};
+
+const mergeCityOptions = (...sources) => {
+  const seen = new Set();
+  const merged = [];
+  for (const source of sources) {
+    for (const city of Array.isArray(source) ? source : []) {
+      const normalized = normalizeCity(city);
+      const key = normalizeLocationToken(normalized);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(normalized);
+    }
+  }
+  return merged.sort((a, b) => a.localeCompare(b));
 };
 
 // --- City/State/Country splitter ---
@@ -233,9 +348,9 @@ const mapResumeToForm = (prev, parsed) => {
     phone:     parsed.phone ? normalizePhoneInput(parsed.phone) : prev.phone,
 
     locationMode,
-    city: normalizeCity(city) || prev.city,
+    city: canonicalizeCity(city, { state, country }) || prev.city,
     state: state ? state.trim().toUpperCase() : "",
-    country: country ? normalizeCountry(country) : (locationMode === LOCATION_MODES.INTL ? (prev.country || "") : ""),
+    country: country ? canonicalizeCountry(country) : (locationMode === LOCATION_MODES.INTL ? (prev.country || "") : ""),
 
     highSchool: parsed.highSchool || prev.highSchool,
     education:  education.length ? education : prev.education,
@@ -520,6 +635,8 @@ export default function CreateProfileWizard() {
 
   const [cityOptions, setCityOptions] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
+  const staticUsCitiesCache = useRef(new Map());
+  const [citySearchTerm, setCitySearchTerm] = useState("");
 
   const presignAndUploadProfile = React.useCallback(async (blob) => {
     const fileName = `avatar-${Date.now()}.png`;
@@ -867,16 +984,25 @@ export default function CreateProfileWizard() {
     };
   }, [inviteToken]);
 
-  // --- Load US cities (only when US mode + state selected), and merge base + custom ---
   useEffect(() => {
-    if (form.locationMode !== LOCATION_MODES.US) {
+    const timer = window.setTimeout(() => {
+      setCitySearchTerm(normalizeCity(form.city));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [form.city]);
+
+  // --- Load city options for US state or international country ---
+  useEffect(() => {
+    const mode = form.locationMode || LOCATION_MODES.US;
+    const state = String(form.state || "").trim().toUpperCase();
+    const country = canonicalizeCountry(form.country);
+
+    if (mode === LOCATION_MODES.US && !state) {
       setCityOptions([]);
       setCitiesLoading(false);
       return;
     }
-
-    const st = (form.state || "").trim().toUpperCase();
-    if (!st) {
+    if (mode === LOCATION_MODES.INTL && !country) {
       setCityOptions([]);
       setCitiesLoading(false);
       return;
@@ -884,35 +1010,45 @@ export default function CreateProfileWizard() {
 
     let alive = true;
     setCitiesLoading(true);
+    const q = citySearchTerm;
+    const params = new URLSearchParams();
+    params.set("limit", "150");
+    if (q.length >= 2) params.set("q", q);
+    if (mode === LOCATION_MODES.US) {
+      params.set("state", state);
+    } else {
+      params.set("country", country);
+    }
 
-    Promise.all([
-      fetch(`/cities/${st}.json`).then((r) => (r.ok ? r.json() : [])),
-      fetch(`${API_BASE}/locations/cities/${st}`).then((r) => (r.ok ? r.json() : [])),
-    ])
-      .then(([base, custom]) => {
+    const remotePromise = fetch(`${API_BASE}/locations/cities?${params.toString()}`)
+      .then((response) => (response.ok ? response.json() : []))
+      .catch(() => []);
+
+    const staticPromise =
+      mode === LOCATION_MODES.US
+        ? (async () => {
+            if (staticUsCitiesCache.current.has(state)) {
+              return staticUsCitiesCache.current.get(state) || [];
+            }
+            const response = await fetch(`/cities/${state}.json`);
+            const items = response.ok ? await response.json() : [];
+            const normalized = Array.isArray(items) ? items : [];
+            staticUsCitiesCache.current.set(state, normalized);
+            return normalized;
+          })().catch(() => [])
+        : Promise.resolve([]);
+
+    Promise.all([staticPromise, remotePromise])
+      .then(([baseCities, remoteCities]) => {
         if (!alive) return;
-
-        const all = [
-          ...(Array.isArray(base) ? base : []),
-          ...(Array.isArray(custom) ? custom : []),
-        ];
-
-        // de-dupe case-insensitive
-        const seen = new Set();
-        const uniq = [];
-        for (const name of all) {
-          const key = String(name || "").trim().toLowerCase();
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          uniq.push(String(name).trim());
-        }
-
-        uniq.sort((a, b) => a.localeCompare(b));
-        setCityOptions(uniq);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setCityOptions([]);
+        const merged = mergeCityOptions(baseCities, remoteCities);
+        const typed = canonicalizeCity(citySearchTerm, {
+          state,
+          country,
+          options: merged
+        });
+        const next = typed ? mergeCityOptions([typed], merged) : merged;
+        setCityOptions(next);
       })
       .finally(() => {
         if (!alive) return;
@@ -922,7 +1058,7 @@ export default function CreateProfileWizard() {
     return () => {
       alive = false;
     };
-  }, [form.locationMode, form.state]);
+  }, [form.locationMode, form.state, form.country, citySearchTerm]);
 
   // --- PDF handlers (Step 1) ---
   const addPDFs = (files) => {
@@ -943,7 +1079,7 @@ export default function CreateProfileWizard() {
       getStep4Errors(form);
     if (!attemptedSteps[step] && Object.keys(touched).length === 0) return;
     setErrors(stepErrors);
-  }, [form, step, touched, attemptedSteps, emailStatus.error]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form, step, touched, attemptedSteps, emailStatus.error]);
 
   const handleEmailBlur = () => {
     markTouched("email");
@@ -1270,12 +1406,19 @@ export default function CreateProfileWizard() {
                   id="city"
                   className={`wizard1-input ${showFieldError("city") ? "has-error" : ""}`}
                   value={form.city}
-                  placeholder={form.state ? "Start typing…" : "Type city, then choose state"}
+                  disabled={!form.state}
+                  placeholder={form.state ? "Start typing city…" : "Choose a state first"}
                   list={form.state ? "city-options" : undefined}
                   onChange={(e) => setField({ city: e.target.value })}
                   onBlur={(e) => {
                     markTouched("city");
-                    setField({ city: normalizeCity(e.target.value) });
+                    setField({
+                      city: canonicalizeCity(e.target.value, {
+                        state: form.state,
+                        country: "United States",
+                        options: cityOptions
+                      })
+                    });
                   }}
                 />
 
@@ -1292,60 +1435,9 @@ export default function CreateProfileWizard() {
                 )}
 
                 {citiesLoading && form.state && <p className="wizard1-hint">Loading cities…</p>}
-
-                {form.state &&
-                  form.city.trim().length >= 2 &&
-                  !cityInList(form.city, cityOptions) && (
-                    <button
-                      type="button"
-                      className="wizard1-btn-text"
-                      onClick={async () => {
-                        try {
-                          const city = normalizeCity(form.city);
-                          const state = (form.state || "").trim().toUpperCase();
-
-                          const res = await fetch(`${API_BASE}/locations/cities`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ state, city }),
-                          });
-
-                          const text = await res.text();
-                          if (!res.ok) {
-                            let msg = "Could not add city.";
-                            try {
-                              const parsed = JSON.parse(text);
-                              msg = normalizeErrorMessage(parsed, msg);
-                            } catch {
-                              msg = "Could not add city.";
-                            }
-                            alert(msg);
-                            return;
-                          }
-
-                          setCityOptions((prev) => {
-                            const next = [...prev, city];
-
-                            const seen = new Set();
-                            const uniq = [];
-                            for (const name of next) {
-                              const key = String(name || "").trim().toLowerCase();
-                              if (!key || seen.has(key)) continue;
-                              seen.add(key);
-                              uniq.push(String(name).trim());
-                            }
-                            uniq.sort((a, b) => a.localeCompare(b));
-                            return uniq;
-                          });
-                        } catch {
-                          alert("Network error adding city.");
-                        }
-                      }}
-                      style={{ marginTop: 6 }}
-                    >
-                      + Add “{normalizeCity(form.city)}” to {form.state}
-                    </button>
-                  )}
+                {form.state && cityOptions.length > 0 && (
+                  <p className="wizard1-hint">Pick the standardized city result whenever possible.</p>
+                )}
 
                 {showFieldError("city") && <p className="wizard1-error">{errors.city}</p>}
               </div>
@@ -1362,12 +1454,16 @@ export default function CreateProfileWizard() {
                   value={form.state}
                   onChange={(e) => {
                     const st = (e.target.value || "").trim().toUpperCase();
-                    setField({ state: st, city: form.city });
+                    setField({ state: st, city: "" });
                   }}
                   onBlur={() => markTouched("state")}
                 >
                   <option value="">Select…</option>
-                  {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  {US_STATE_OPTIONS.map(({ code, label }) => (
+                    <option key={code} value={code}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
                 {showFieldError("state") && <p className="wizard1-error">{errors.state}</p>}
               </div>
@@ -1386,13 +1482,30 @@ export default function CreateProfileWizard() {
                   id="intl_city"
                   className={`wizard1-input ${showFieldError("city") ? "has-error" : ""}`}
                   value={form.city}
-                  placeholder="Type your city…"
+                  placeholder={normalizeCountry(form.country) ? "Start typing city…" : "Choose country first"}
+                  list={normalizeCountry(form.country) ? "intl-city-options" : undefined}
+                  disabled={!normalizeCountry(form.country)}
                   onChange={(e) => setField({ city: e.target.value })}
                   onBlur={(e) => {
                     markTouched("city");
-                    setField({ city: normalizeCity(e.target.value) });
+                    setField({
+                      city: canonicalizeCity(e.target.value, {
+                        country: form.country,
+                        options: cityOptions
+                      })
+                    });
                   }}
                 />
+                {normalizeCountry(form.country) && (
+                  <datalist id="intl-city-options">
+                    {cityOptions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                )}
+                {!normalizeCountry(form.country) && (
+                  <p className="wizard1-hint">Select your country first for city suggestions.</p>
+                )}
                 {showFieldError("city") && <p className="wizard1-error">{errors.city}</p>}
               </div>
             </div>
@@ -1412,7 +1525,7 @@ export default function CreateProfileWizard() {
                   onChange={(e) => setField({ country: e.target.value })}
                   onBlur={(e) => {
                     markTouched("country");
-                    setField({ country: normalizeCountry(e.target.value) });
+                    setField({ country: canonicalizeCountry(e.target.value) });
                   }}
                 />
 
@@ -1928,9 +2041,13 @@ export default function CreateProfileWizard() {
 
       // ✅ Location payload (US: city+state, Intl: city+country)
       locationMode: mode,
-      city: normalizeCity(form.city),
+      city: canonicalizeCity(form.city, {
+        state: mode === LOCATION_MODES.US ? (form.state || "").trim().toUpperCase() : "",
+        country: mode === LOCATION_MODES.INTL ? canonicalizeCountry(form.country) : "",
+        options: cityOptions
+      }),
       state: mode === LOCATION_MODES.US ? (form.state || "").trim().toUpperCase() : "",
-      country: mode === LOCATION_MODES.INTL ? normalizeCountry(form.country) : "",
+      country: mode === LOCATION_MODES.INTL ? canonicalizeCountry(form.country) : "",
 
       roles: form.roles,
       uploads,

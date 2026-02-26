@@ -123,18 +123,21 @@
 /* Chips + industry row */
 .p1-roles { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 12px 0 12px; }
 .p1-role-chip {
-  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
-  border: 1px solid color-mix(in srgb, var(--brand-primary) 30%, #d8e5f5);
-  color: var(--brand-primary);
   padding: 6px 12px;
   border-radius: 999px;
   font-size: .85rem;
+  font-weight: 600;
+}
+.p1-camp-role-chip {
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 28%, #d8e5f5);
+  color: color-mix(in srgb, var(--brand-primary) 78%, #1e293b);
 }
 .p1-industry-row { display: flex; justify-content: center; margin-top: 8px; }
 .p1-industry-chip {
-  background: color-mix(in srgb, var(--brand-primary) 18%, #ffffff);
-  border-color: color-mix(in srgb, var(--brand-primary) 40%, #d8e5f5);
-  color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 30%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 46%, #c4d4eb);
+  color: color-mix(in srgb, var(--brand-primary) 84%, #0f172a);
 }
 
 /* Actions */

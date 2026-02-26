@@ -108,6 +108,58 @@ function normalizeRecipients({ to, cc, bcc, replyTo }) {
   };
 }
 
+function normalizeAttachmentFilename(value = "", fallback = "attachment.pdf") {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/[\/\\]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[^\w.\- ()]/g, "")
+    .slice(0, 140);
+  return normalized || fallback;
+}
+
+function normalizeAttachments(attachments = []) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  if (list.length === 0) return [];
+
+  return list
+    .map((item, index) => {
+      const filename = normalizeAttachmentFilename(
+        item?.filename,
+        `attachment-${index + 1}.pdf`
+      );
+      const contentType = String(
+        item?.contentType || item?.mimeType || item?.type || "application/octet-stream"
+      ).trim();
+
+      const rawContent = item?.content;
+      let content = null;
+      if (Buffer.isBuffer(rawContent)) {
+        content = rawContent;
+      } else if (rawContent instanceof Uint8Array) {
+        content = Buffer.from(rawContent);
+      } else if (typeof rawContent === "string" && rawContent.trim()) {
+        // Accept base64 payloads from callers that do not pass Buffers.
+        content = Buffer.from(rawContent, "base64");
+      }
+
+      if (!content || content.length === 0) {
+        throw createEmailError(
+          `Attachment "${filename}" is missing file content.`,
+          "ATTACHMENT_CONTENT_REQUIRED",
+          400
+        );
+      }
+
+      return {
+        filename,
+        contentType,
+        content
+      };
+    })
+    .filter(Boolean);
+}
+
 function computeResendRetryDelay(attemptNumber) {
   const baseDelay = toBoundedInt(env.RESEND_RETRY_BASE_DELAY_MS, 300, 0, 10_000);
   if (baseDelay <= 0) return 0;
@@ -282,10 +334,11 @@ function getTransport() {
   return transport;
 }
 
-async function sendResendEmail({ to, cc, bcc, replyTo, subject, text, html }) {
+async function sendResendEmail({ to, cc, bcc, replyTo, subject, text, html, attachments }) {
   ensureConfiguredForMode("resend");
 
   const normalized = normalizeRecipients({ to, cc, bcc, replyTo });
+  const normalizedAttachments = normalizeAttachments(attachments);
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
@@ -306,15 +359,22 @@ async function sendResendEmail({ to, cc, bcc, replyTo, subject, text, html }) {
   if (html) payload.html = html;
   if (text) payload.text = text;
   if (!payload.html && !payload.text) payload.text = " ";
+  if (normalizedAttachments.length > 0) {
+    payload.attachments = normalizedAttachments.map((item) => ({
+      filename: item.filename,
+      content: item.content.toString("base64")
+    }));
+  }
 
   const result = await sendResendRequest(payload);
 
   return { ok: true, mode: "resend", messageId: String(result.messageId || "") };
 }
 
-async function sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html }) {
+async function sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html, attachments }) {
   ensureConfiguredForMode("smtp");
   const normalized = normalizeRecipients({ to, cc, bcc, replyTo });
+  const normalizedAttachments = normalizeAttachments(attachments);
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
@@ -332,7 +392,15 @@ async function sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html }) {
     replyTo: normalized.replyTo || undefined,
     subject: cleanSubject,
     text,
-    html
+    html,
+    attachments:
+      normalizedAttachments.length > 0
+        ? normalizedAttachments.map((item) => ({
+            filename: item.filename,
+            content: item.content,
+            contentType: item.contentType
+          }))
+        : undefined
   });
 
   return { ok: true, mode: "smtp", messageId: String(result?.messageId || "") };
@@ -356,6 +424,7 @@ export async function sendTransactionalEmail({
   subject,
   text,
   html,
+  attachments,
   modeOverride = ""
 }) {
   const mode = String(modeOverride || getEmailMode()).trim().toLowerCase();
@@ -374,17 +443,18 @@ export async function sendTransactionalEmail({
       to: normalized.to,
       cc: normalized.cc,
       bcc: normalized.bcc,
-      subject: cleanSubject
+      subject: cleanSubject,
+      attachments: normalizeAttachments(attachments).map((item) => item.filename)
     });
     return { ok: true, mode: "mock", messageId: "mock-message" };
   }
 
   if (mode === "resend") {
-    return sendResendEmail({ to, cc, bcc, replyTo, subject, text, html });
+    return sendResendEmail({ to, cc, bcc, replyTo, subject, text, html, attachments });
   }
 
   if (mode === "smtp") {
-    return sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html });
+    return sendSmtpEmail({ to, cc, bcc, replyTo, subject, text, html, attachments });
   }
 
   throw createEmailError("Unsupported EMAIL_MODE. Use one of: mock, smtp, resend.", "EMAIL_MODE_INVALID", 500);
@@ -412,6 +482,7 @@ export async function sendBulkTransactionalEmail({
   subject,
   text,
   html,
+  attachments,
   modeOverride = "",
   strategy = "per-recipient",
   batchSize = env.EMAIL_BROADCAST_BATCH_SIZE,
@@ -459,6 +530,7 @@ export async function sendBulkTransactionalEmail({
           subject,
           text,
           html,
+          attachments,
           modeOverride
         });
         sentCount += batch.length;
@@ -483,6 +555,7 @@ export async function sendBulkTransactionalEmail({
             subject,
             text,
             html,
+            attachments,
             modeOverride
           });
           sentCount += 1;
@@ -517,13 +590,23 @@ export async function sendBulkTransactionalEmail({
   };
 }
 
-export async function sendInviteEmail({ tenant, email, token, roleToAssign, expiresAt }) {
+export async function sendInviteEmail({
+  tenant,
+  email,
+  token,
+  roleToAssign,
+  expiresAt,
+  firstName = "",
+  lastName = ""
+}) {
   const link = inviteLink({ tenantSlug: tenant.slug, token, email });
   const { subject, text, html } = inviteTemplate({
     tenantName: tenant.name,
     link,
     roleToAssign,
-    expiresAt
+    expiresAt,
+    firstName,
+    lastName
   });
 
   return sendTransactionalEmail({ to: email, subject, text, html });

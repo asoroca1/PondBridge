@@ -104,6 +104,14 @@ function normalizeProfile(src = {}) {
   const split = splitCityState(src.cityState || "");
   const normalizedRoles = normalizeRoleChips(src);
   const socialSource = src.social || src.socials || {};
+  const collegeMajors = Array.isArray(src.collegeMajors)
+    ? src.collegeMajors
+    : Array.isArray(socialSource.collegeMajors)
+    ? socialSource.collegeMajors
+    : Array.isArray(socialSource.educationMajors)
+    ? socialSource.educationMajors
+    : [];
+  const nickname = String(src.nickname || socialSource.nickname || socialSource.campNickname || "").trim();
   const normalizedEducation =
     Array.isArray(src.education) && src.education.length
       ? src.education
@@ -111,7 +119,7 @@ function normalizeProfile(src = {}) {
       ? src.colleges.map((college, idx) => ({
           college: String(college || "").trim(),
           year: String(src.collegeYears?.[idx] || "").trim(),
-          major: ""
+          major: String(collegeMajors?.[idx] || "").trim()
         }))
       : [];
   const camperYearsSource =
@@ -125,7 +133,7 @@ function normalizeProfile(src = {}) {
     _id: src._id || src.id || "",
     firstName: src.firstName || "",
     lastName: src.lastName || "",
-    nickname: src.nickname || "",
+    nickname,
     email: src.email || src.emails?.[0] || "",
     phone: src.phone || src.phones?.[0] || "",
     city: src.city || split.city,
@@ -435,7 +443,7 @@ export default function PublicProfile() {
                     <>
                       <div className="p1-roles">
                         {roleChips.map((r) => (
-                          <span key={r} className="p1-role-chip">{r}</span>
+                          <span key={r} className="p1-role-chip p1-camp-role-chip">{r}</span>
                         ))}
                       </div>
                       {profile.industry && (

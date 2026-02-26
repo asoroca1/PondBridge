@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignIn } from "@clerk/clerk-react";
 import Navbar1 from "../components/Navbar1";
@@ -21,7 +21,6 @@ function normalizeErrorMessage(payload, fallback) {
 }
 
 function LoginScaffold({
-  networkName,
   email,
   setEmail,
   password,
@@ -37,13 +36,12 @@ function LoginScaffold({
   return (
     <div className="login1 login1-modern">
       <Navbar1 />
-      <section className="login1-main login1-main-modern">
+      <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
-              <h1 className="login1-title">Login</h1>
-              <h2 className="login1-clerk-panel-title">Sign in to {networkName}</h2>
+              <h1 className="login1-title auth-entry-title">Login</h1>
               <p className="login1-clerk-panel-subtitle">
                 Welcome back. Sign in with your camp account to continue.
               </p>
@@ -103,9 +101,8 @@ function LegacyLogin() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { slug: paramSlug = "" } = useParams();
-  const { slug: contextSlug = "", tenant } = useTenant();
+  const { slug: contextSlug = "" } = useTenant();
   const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
-  const networkName = resolveNetworkDisplayName(tenant);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -181,7 +178,6 @@ function LegacyLogin() {
 
   return (
     <LoginScaffold
-      networkName={networkName}
       email={email}
       setEmail={setEmail}
       password={password}
@@ -217,13 +213,12 @@ function ClerkLogin() {
   return (
     <div className="login1 login1-modern login1-clerk-page">
       <Navbar1 />
-      <section className="login1-main login1-main-modern">
+      <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
-              <h1 className="login1-title">Login</h1>
-              <h2 className="login1-clerk-panel-title">Sign in to {networkName}</h2>
+              <h1 className="login1-title auth-entry-title">Login</h1>
             </div>
             <div className="login1-clerk-host">
               <SignIn
@@ -235,8 +230,8 @@ function ClerkLogin() {
                 localization={{
                   signIn: {
                     start: {
-                      title: `Sign in to ${networkName}`,
-                      subtitle: `Continue to ${networkName}.`
+                      title: "",
+                      subtitle: ""
                     },
                     password: {
                       title: "Enter your password",
@@ -368,19 +363,15 @@ function ClerkLogin() {
 }
 
 function ClerkConfigErrorLogin() {
-  const { tenant } = useTenant();
-  const networkName = resolveNetworkDisplayName(tenant);
-
   return (
     <div className="login1 login1-modern">
       <Navbar1 />
-      <section className="login1-main login1-main-modern">
+      <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
-              <h1 className="login1-title">Login</h1>
-              <h2 className="login1-clerk-panel-title">Sign in to {networkName}</h2>
+              <h1 className="login1-title auth-entry-title">Login</h1>
             </div>
             <p className="login1-error">{clerkConfigError() || "Clerk auth is not configured correctly."}</p>
             <p className="login1-forgot">

@@ -120,14 +120,27 @@ function wrapLayout(bodyInner, unsubscribeUrl = "") {
 // 1. Invite template
 // ---------------------------------------------------------------------------
 
-export function inviteTemplate({ tenantName, link, roleToAssign = "user", expiresAt }) {
+export function inviteTemplate({
+  tenantName,
+  link,
+  roleToAssign = "user",
+  expiresAt,
+  firstName = "",
+  lastName = ""
+}) {
   const safeTenant = escapeHtml(tenantName);
   const safeRole = escapeHtml(roleToAssign);
+  const recipientName = [String(firstName || "").trim(), String(lastName || "").trim()]
+    .filter(Boolean)
+    .join(" ");
+  const safeRecipientName = escapeHtml(recipientName || "there");
   const expiresStr = formatDate(expiresAt);
 
   const subject = `You are invited to ${tenantName} on PondBridge`;
 
   const text = [
+    `Hi ${recipientName || "there"},`,
+    "",
     `You were invited to join ${tenantName}.`,
     `Assigned role: ${roleToAssign}.`,
     expiresAt ? `This invite expires on ${new Date(expiresAt).toISOString()}.` : "",
@@ -136,6 +149,7 @@ export function inviteTemplate({ tenantName, link, roleToAssign = "user", expire
 
   const html = wrapLayout(`
     <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">You're Invited!</h1>
+    <p style="margin:0 0 12px;">Hi <strong>${safeRecipientName}</strong>,</p>
     <p style="margin:0 0 12px;">You've been invited to join <strong>${safeTenant}</strong> on PondBridge.</p>
     <p style="margin:0 0 12px;">Your assigned role: <strong>${safeRole}</strong></p>
     ${expiresStr ? `<p style="margin:0 0 12px;font-size:13px;color:${BRAND.muted};">This invite expires on ${escapeHtml(expiresStr)}.</p>` : ""}

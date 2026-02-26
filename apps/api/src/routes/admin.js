@@ -20,7 +20,7 @@ import {
   EmailBroadcastModel,
   ImportReportModel
 } from "../db/models/index.js";
-import { runTenantCsvImport, findImportReportForTenant } from "../services/csvImport.js";
+import { findImportReportForTenant } from "../services/csvImport.js";
 import { env } from "../config/env.js";
 import {
   sendBulkTransactionalEmail,
@@ -50,6 +50,13 @@ import {
 import { normalizeBillingPlan } from "../services/billingState.js";
 import { hashPassword } from "../utils/auth.js";
 import { sanitizeText, sanitizeHtmlContent } from "../utils/sanitize.js";
+import { buildTenantUrls } from "../utils/domainProvisioning.js";
+import {
+  canonicalizeCityName,
+  canonicalizeCountryName,
+  composeCityState,
+  parseCityStateDetailed
+} from "../utils/location.js";
 
 const router = Router({ mergeParams: true });
 const csvUpload = multer({
@@ -122,11 +129,6 @@ const exportLimiter = rateLimit({
 });
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 
-function toBoolean(value) {
-  if (typeof value === "boolean") return value;
-  return String(value || "").trim().toLowerCase() === "true";
-}
-
 function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -162,14 +164,56 @@ function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-function parseEmailsFromText(text = "") {
-  return String(text || "")
-    .split(/[\n,;]+/g)
-    .map((entry) => normalizeEmail(entry))
-    .filter(Boolean);
+function normalizeInviteName(value = "") {
+  return sanitizeText(String(value || "").trim()).slice(0, 80);
 }
 
-function parseEmailsFromCsv(csvBuffer) {
+function parseInviteRowsFromText(text = "") {
+  return String(text || "")
+    .split(/[\n,;]+/g)
+    .map((entry) => ({
+      firstName: "",
+      lastName: "",
+      email: normalizeEmail(entry)
+    }))
+    .filter((entry) => Boolean(entry.email));
+}
+
+function parseInviteRowsFromRecipientsPayload(rawValue) {
+  if (!rawValue) return [];
+  let parsedValue = rawValue;
+  if (typeof parsedValue === "string") {
+    const trimmed = parsedValue.trim();
+    if (!trimmed) return [];
+    try {
+      parsedValue = JSON.parse(trimmed);
+    } catch {
+      throw new Error("Invalid recipients payload. Provide valid JSON rows.");
+    }
+  }
+  if (!Array.isArray(parsedValue)) return [];
+
+  return parsedValue
+    .map((row) => {
+      if (typeof row === "string") {
+        return { firstName: "", lastName: "", email: normalizeEmail(row) };
+      }
+      if (!row || typeof row !== "object") return null;
+      return {
+        firstName: normalizeInviteName(
+          row.firstName || row.first_name || row.givenName || row.given_name || ""
+        ),
+        lastName: normalizeInviteName(
+          row.lastName || row.last_name || row.familyName || row.family_name || ""
+        ),
+        email: normalizeEmail(row.email || row.Email || row.emailAddress || row.email_address || "")
+      };
+    })
+    .filter(Boolean)
+    .filter((row) => Boolean(row.email));
+}
+
+function parseInviteRowsFromCsv(csvBuffer) {
   if (!csvBuffer) return [];
   const csvText = Buffer.isBuffer(csvBuffer) ? csvBuffer.toString("utf8") : String(csvBuffer);
   const rows = parseCsv(csvText, {
@@ -180,26 +224,55 @@ function parseEmailsFromCsv(csvBuffer) {
     relax_column_count: true
   });
 
-  const emails = [];
+  const inviteRows = [];
   for (const row of rows) {
     const fromEmailHeader = normalizeEmail(
       row.email || row.Email || row["Email Address"] || row["email address"]
     );
+    const firstName = normalizeInviteName(
+      row.firstName || row["first name"] || row["First Name"] || row.first_name || ""
+    );
+    const lastName = normalizeInviteName(
+      row.lastName || row["last name"] || row["Last Name"] || row.last_name || ""
+    );
     if (fromEmailHeader) {
-      emails.push(fromEmailHeader);
+      inviteRows.push({ firstName, lastName, email: fromEmailHeader });
       continue;
     }
 
     for (const value of Object.values(row || {})) {
       const candidate = normalizeEmail(value);
       if (candidate && isEmail(candidate)) {
-        emails.push(candidate);
+        inviteRows.push({ firstName, lastName, email: candidate });
         break;
       }
     }
   }
 
-  return emails;
+  return inviteRows;
+}
+
+function mergeInviteRows(...groups) {
+  const merged = new Map();
+  for (const group of groups) {
+    for (const row of Array.isArray(group) ? group : []) {
+      const email = normalizeEmail(row?.email || "");
+      if (!isEmail(email)) continue;
+      const firstName = normalizeInviteName(row?.firstName || "");
+      const lastName = normalizeInviteName(row?.lastName || "");
+      const existing = merged.get(email);
+      if (!existing) {
+        merged.set(email, { email, firstName, lastName });
+        continue;
+      }
+      merged.set(email, {
+        email,
+        firstName: existing.firstName || firstName,
+        lastName: existing.lastName || lastName
+      });
+    }
+  }
+  return [...merged.values()];
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -250,8 +323,7 @@ const MODULE_CATALOG = [
   {
     key: "merchShop",
     label: "Merch Shop",
-    description: "External camp merch storefront.",
-    requiredFeature: "tenantBrandingAdvanced"
+    description: "External camp merch storefront."
   }
 ];
 
@@ -269,11 +341,13 @@ function toIso(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function completionScore(profile = {}) {
+function completionScore(profile = {}, user = null) {
+  const hasEmail =
+    (Array.isArray(profile?.emails) && profile.emails.some(Boolean)) || Boolean(user?.email);
   const checks = [
     Boolean(profile?.firstName),
     Boolean(profile?.lastName),
-    Array.isArray(profile?.emails) && profile.emails.some(Boolean),
+    hasEmail,
     Array.isArray(profile?.phones) && profile.phones.some(Boolean),
     Boolean(profile?.cityState),
     Boolean(profile?.roleAtCamp),
@@ -300,9 +374,48 @@ function normalizeRoleLabel(roleAtCamp = "") {
   return normalized;
 }
 
-function mapMemberRow(profile = {}, user = null) {
-  const score = completionScore(profile);
+function hasDirectorRole(roles = []) {
+  const roleSet = new Set((Array.isArray(roles) ? roles : [roles]).map((role) => String(role || "").trim()));
+  return roleSet.has("tenant_admin") || roleSet.has("super_admin") || roleSet.has("admin");
+}
+
+function resolveAccountRoleLabel(user = null, directorUserId = "") {
+  if (!hasDirectorRole(user?.roles || [])) return "";
+  const memberUserId = toObjectIdString(user?._id || user?.id);
+  if (directorUserId && memberUserId && memberUserId === directorUserId) {
+    return "Director";
+  }
+  return "Admin";
+}
+
+async function resolveDirectorUserId(tenant = null) {
+  if (!tenant?._id) return "";
+  const draftDirectorUserId = toObjectIdString(tenant?.onboardingDraft?.directorLegalAgreement?.acceptedByUserId);
+  const liveDirectorUserId = toObjectIdString(tenant?.directorLegalAgreement?.acceptedByUserId);
+  const candidate = draftDirectorUserId || liveDirectorUserId;
+  if (candidate) {
+    const matchingDirector = await UserModel.find(tenant._id, {
+      _id: candidate,
+      roles: { $contains: ["tenant_admin"] }
+    }, {
+      select: ["id"],
+      limit: 1
+    });
+    if (matchingDirector.length > 0) return candidate;
+  }
+
+  const admins = await UserModel.find(tenant._id, { roles: { $contains: ["tenant_admin"] } }, {
+    select: ["id"],
+    sort: { createdAt: 1 },
+    limit: 1
+  });
+  return toObjectIdString(admins?.[0]?._id || admins?.[0]?.id);
+}
+
+function mapMemberRow(profile = {}, user = null, { directorUserId = "" } = {}) {
+  const score = completionScore(profile, user);
   const email = profile?.emails?.find(Boolean) || user?.email || "";
+  const accountRoleLabel = resolveAccountRoleLabel(user, directorUserId);
   return {
     id: toObjectIdString(profile._id),
     userId: toObjectIdString(profile.userId),
@@ -311,7 +424,7 @@ function mapMemberRow(profile = {}, user = null) {
     fullName: `${profile.firstName || ""} ${profile.lastName || ""}`.trim(),
     email,
     avatarUrl: profile.avatarUrl || "",
-    role: normalizeRoleLabel(profile.roleAtCamp || ""),
+    role: accountRoleLabel || normalizeRoleLabel(profile.roleAtCamp || ""),
     yearsAtCamp: Array.isArray(profile.collegeYears) ? profile.collegeYears : [],
     location: profile.cityState || "",
     completionScore: score,
@@ -580,6 +693,7 @@ router.get("/dashboard", async (req, res, next) => {
 router.get("/members", async (req, res, next) => {
   try {
     const tenantId = req.tenant._id;
+    const directorUserId = await resolveDirectorUserId(req.tenant);
     const q = String(req.query.q || "").trim();
     const role = String(req.query.role || "").trim();
     const year = String(req.query.year || "").trim();
@@ -655,12 +769,12 @@ router.get("/members", async (req, res, next) => {
         .filter(Boolean);
       const users = userIds.length > 0
         ? await UserModel.find(tenantId, { _id: { $in: userIds } }, {
-            select: ["id", "email", "status", "lastLoginAt"]
+            select: ["id", "email", "status", "lastLoginAt", "roles"]
           })
         : [];
       const usersById = new Map(users.map((item) => [toObjectIdString(item._id), item]));
       const mapped = allProfiles.map((profile) =>
-        mapMemberRow(profile, usersById.get(toObjectIdString(profile.userId)) || null)
+        mapMemberRow(profile, usersById.get(toObjectIdString(profile.userId)) || null, { directorUserId })
       );
 
       mapped.sort((a, b) => {
@@ -708,12 +822,12 @@ router.get("/members", async (req, res, next) => {
     const userIds = profiles.map((item) => toObjectIdString(item.userId)).filter(Boolean);
     const users = userIds.length > 0
       ? await UserModel.find(tenantId, { _id: { $in: userIds } }, {
-          select: ["id", "email", "status", "lastLoginAt"]
+          select: ["id", "email", "status", "lastLoginAt", "roles"]
         })
       : [];
     const usersById = new Map(users.map((item) => [toObjectIdString(item._id), item]));
     let rows = profiles.map((profile) =>
-      mapMemberRow(profile, usersById.get(toObjectIdString(profile.userId)) || null)
+      mapMemberRow(profile, usersById.get(toObjectIdString(profile.userId)) || null, { directorUserId })
     );
 
     if (completion && completion !== "all") {
@@ -767,6 +881,23 @@ router.get("/members/template.csv", async (_req, res) => {
   return res.send(csv);
 });
 
+router.get("/invites/template.csv", async (_req, res) => {
+  const csv = stringify(
+    [
+      {
+        firstName: "Avery",
+        lastName: "Parker",
+        email: "avery@example.com"
+      }
+    ],
+    { header: true }
+  );
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", 'attachment; filename="pondbridge-invites-template.csv"');
+  return res.send(csv);
+});
+
 router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
   const profileId = String(req.params.profileId || "").trim();
   const profile = await ProfileModel.findOne(req.tenant._id, { _id: profileId });
@@ -784,10 +915,27 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
       patch[key] = sanitizeText(String(incoming[key] || "").trim());
     }
   };
+  const normalizeIncomingCityState = () => {
+    const hasLocationFields =
+      Object.prototype.hasOwnProperty.call(incoming, "cityState") ||
+      Object.prototype.hasOwnProperty.call(incoming, "city") ||
+      Object.prototype.hasOwnProperty.call(incoming, "state") ||
+      Object.prototype.hasOwnProperty.call(incoming, "country");
+    if (!hasLocationFields) return undefined;
+
+    const direct = String(incoming.cityState || "").trim();
+    if (direct) return composeCityState(parseCityStateDetailed(direct));
+
+    const state = String(incoming.state || "").trim().toUpperCase();
+    const country = canonicalizeCountryName(String(incoming.country || "").trim());
+    const city = canonicalizeCityName(String(incoming.city || "").trim(), { state, country });
+    return composeCityState({ city, state, country });
+  };
 
   assignString("firstName");
   assignString("lastName");
-  assignString("cityState");
+  const nextCityState = normalizeIncomingCityState();
+  if (nextCityState !== undefined) patch.cityState = nextCityState;
   assignString("roleAtCamp");
   assignString("bio");
   assignString("flaggedReason");
@@ -1263,6 +1411,7 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
 router.get("/analytics/network", async (req, res, next) => {
   try {
     const tenantId = req.tenant._id;
+    const directorUserId = await resolveDirectorUserId(req.tenant);
     const snapshot = await getTenantAnalyticsSnapshot({ tenantId });
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * DAY_MS);
@@ -1273,10 +1422,25 @@ router.get("/analytics/network", async (req, res, next) => {
         select: ["userId", "eventType", "createdAt", "metadata"]
       }),
       UserModel.find(tenantId, {}, {
-        select: ["id", "email", "lastLoginAt"]
+        select: ["id", "email", "lastLoginAt", "roles"]
       }),
       ProfileModel.find(tenantId, { status: { $ne: "removed" } }, {
-        select: ["id", "userId", "firstName", "lastName", "roleAtCamp", "createdAt"]
+        // Keep this aligned with completionScore fields so percentages are not undercounted.
+        select: [
+          "id",
+          "userId",
+          "firstName",
+          "lastName",
+          "emails",
+          "phones",
+          "cityState",
+          "roleAtCamp",
+          "highSchool",
+          "colleges",
+          "currentJobs",
+          "bio",
+          "createdAt"
+        ]
       }),
       EmailBroadcastModel.find(tenantId, { status: { $in: ["sent", "scheduled"] } }, {
         sort: { sentAt: -1, createdAt: -1 },
@@ -1340,9 +1504,12 @@ router.get("/analytics/network", async (req, res, next) => {
           profileId: toObjectIdString(profile._id),
           userId,
           name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim(),
-          role: profile.roleAtCamp || "Member",
+          role:
+            resolveAccountRoleLabel(usersById.get(userId) || null, directorUserId) ||
+            profile.roleAtCamp ||
+            "Member",
           logins: count,
-          completionScore: completionScore(profile),
+          completionScore: completionScore(profile, usersById.get(userId) || null),
           lastActiveAt: toIso(usersById.get(userId)?.lastLoginAt)
         };
       })
@@ -1578,22 +1745,28 @@ router.get("/settings", async (req, res) => {
   const content = draft.content;
   const theme = draft.theme;
   const settings = draft.settings;
+  const tenantUrls = buildTenantUrls(req.tenant);
+  const websiteUrl = String(content.supportUrl || "").trim() || tenantUrls.appUrl;
+  const directorUserId = await resolveDirectorUserId(req.tenant);
 
   return res.json({
     tenant: {
       id: toObjectIdString(req.tenant._id),
       slug: req.tenant.slug,
       name: req.tenant.name,
+      domain: tenantUrls.domain,
+      appUrl: tenantUrls.appUrl,
       status: req.tenant.status,
       onboardingStatus: req.tenant.onboardingStatus,
       planTier: req.tenant.planTier
     },
     identity: {
+      campName: String(req.tenant.name || ""),
       networkName: content.networkDisplayName,
       tagline: content.welcomeHeadline,
       aboutText: content.aboutText,
       contactEmail: content.contactEmail,
-      websiteUrl: content.supportUrl
+      websiteUrl
     },
     branding: {
       logoUrl: theme.logoUrl,
@@ -1607,10 +1780,10 @@ router.get("/settings", async (req, res) => {
       allowedEmailDomains: settings.allowedEmailDomains || [],
       requireProfileCompletion: Boolean(settings.requireProfileCompletion)
     },
-    admins: admins.map((item, index) => ({
+    admins: admins.map((item) => ({
       id: toObjectIdString(item._id),
       email: item.email,
-      role: index === 0 ? "Director" : "Admin",
+      role: toObjectIdString(item._id) === directorUserId ? "Director" : "Admin",
       addedAt: toIso(item.createdAt)
     })),
     pendingAdminInvites: pendingAdminInvites.map((item) => ({
@@ -1625,8 +1798,8 @@ router.get("/settings", async (req, res) => {
 });
 
 router.patch("/settings/identity", async (req, res) => {
-  const content = resolveContent(req.tenant);
   const draft = resolveDraft(req.tenant);
+  const content = draft.content || resolveContent(req.tenant);
   const next = {
     networkDisplayName: sanitizeText(String(req.body?.networkName ?? (content.networkDisplayName || "")).trim()),
     welcomeHeadline: sanitizeText(String(req.body?.tagline ?? (content.welcomeHeadline || "")).trim()),
@@ -1658,8 +1831,8 @@ router.patch("/settings/identity", async (req, res) => {
 });
 
 router.patch("/settings/branding", async (req, res) => {
-  const theme = resolveTheme(req.tenant);
   const draft = resolveDraft(req.tenant);
+  const theme = draft.theme || resolveTheme(req.tenant);
   const next = {
     brandPrimary: String(req.body?.brandPrimary ?? (theme.brandPrimary || "")).trim(),
     logoUrl: String(req.body?.logoUrl ?? (theme.logoUrl || "")).trim(),
@@ -1687,11 +1860,12 @@ router.patch("/settings/branding", async (req, res) => {
 
 router.patch("/settings/access", async (req, res) => {
   const signupMode = normalizeSignupMode(req.body?.signupMode || "open");
+  const draft = resolveDraft(req.tenant);
   let settings;
   try {
     settings = await buildSettingsStorePayload(
       {
-        ...resolveSettings(req.tenant),
+        ...draft.settings,
         signupMode,
         accessCode: req.body?.accessCode,
         allowedEmailDomains: parseList(req.body?.allowedEmailDomains || req.body?.allowedDomains || [])
@@ -1708,8 +1882,6 @@ router.patch("/settings/access", async (req, res) => {
   }
 
   settings.requireProfileCompletion = Boolean(req.body?.requireProfileCompletion);
-  const draft = resolveDraft(req.tenant);
-
   const currentAccessSettings = req.tenant.accessSettings || {};
   const tenant = await TenantModel.update(req.tenant._id, {
     settings,
@@ -1751,11 +1923,26 @@ router.get("/settings/admins", async (req, res) => {
     })
   ]);
 
+  const adminUserIds = admins.map((item) => toObjectIdString(item._id)).filter(Boolean);
+  const adminProfiles = adminUserIds.length
+    ? await ProfileModel.find(req.tenant._id, { userId: { $in: adminUserIds } }, {
+        select: ["id", "userId", "firstName", "lastName"]
+      })
+    : [];
+  const profileByUserId = new Map(
+    adminProfiles.map((profile) => [toObjectIdString(profile.userId), profile])
+  );
+  const directorUserId = await resolveDirectorUserId(req.tenant);
+
   return res.json({
-    admins: admins.map((item, index) => ({
+    admins: admins.map((item) => ({
       id: toObjectIdString(item._id),
+      name:
+        `${profileByUserId.get(toObjectIdString(item._id))?.firstName || ""} ${
+          profileByUserId.get(toObjectIdString(item._id))?.lastName || ""
+        }`.trim() || "",
       email: item.email,
-      role: index === 0 ? "Director" : "Admin",
+      role: toObjectIdString(item._id) === directorUserId ? "Director" : "Admin",
       addedAt: toIso(item.createdAt)
     })),
     pendingInvites: pending.map((item) => ({
@@ -1764,6 +1951,84 @@ router.get("/settings/admins", async (req, res) => {
       createdAt: toIso(item.createdAt),
       expiresAt: toIso(item.expiresAt)
     }))
+  });
+});
+
+router.get("/settings/admins/search", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.json({ items: [] });
+  const limit = toBoundedInt(req.query.limit, { min: 1, max: 25, fallback: 8 });
+  const profiles = await ProfileModel.search(req.tenant._id, q, { limit: Math.max(limit * 3, 24) });
+  const userIds = [...new Set(profiles.map((profile) => toObjectIdString(profile.userId)).filter(Boolean))];
+  if (!userIds.length) return res.json({ items: [] });
+
+  const users = await UserModel.find(req.tenant._id, { _id: { $in: userIds } }, {
+    select: ["id", "email", "roles", "status", "createdAt"]
+  });
+  const usersById = new Map(users.map((user) => [toObjectIdString(user._id), user]));
+  const seen = new Set();
+  const items = [];
+
+  for (const profile of profiles) {
+    const userId = toObjectIdString(profile.userId);
+    if (!userId || seen.has(userId)) continue;
+    const user = usersById.get(userId);
+    if (!user) continue;
+    seen.add(userId);
+    items.push({
+      id: toObjectIdString(profile._id),
+      userId,
+      fullName: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || user.email || "Member",
+      email: profile?.emails?.find(Boolean) || user.email || "",
+      roleAtCamp: profile.roleAtCamp || "",
+      location: profile.cityState || "",
+      avatarUrl: profile.avatarUrl || "",
+      status: profile.status || user.status || "active",
+      isAdmin: hasDirectorRole(user.roles || [])
+    });
+    if (items.length >= limit) break;
+  }
+
+  return res.json({ items });
+});
+
+router.post("/settings/admins/grant", async (req, res) => {
+  const userId = String(req.body?.userId || "").trim();
+  const email = normalizeEmail(req.body?.email || "");
+  if (!userId && !email) {
+    return res.status(400).json({
+      error: {
+        code: "USER_REQUIRED",
+        message: "Select a network member to grant admin access."
+      }
+    });
+  }
+
+  const user =
+    (userId ? await UserModel.findOne(req.tenant._id, { _id: userId }) : null) ||
+    (email ? await UserModel.findOne(req.tenant._id, { email }) : null);
+
+  if (!user) {
+    return res.status(404).json({
+      error: {
+        code: "USER_NOT_FOUND",
+        message: "That member could not be found in this network."
+      }
+    });
+  }
+
+  const roleSet = new Set((user.roles || []).map((role) => String(role || "").trim()).filter(Boolean));
+  roleSet.add("tenant_admin");
+  roleSet.add("user");
+  const updated = await UserModel.update(user._id, { roles: [...roleSet] });
+
+  return res.status(201).json({
+    ok: true,
+    admin: {
+      id: toObjectIdString(updated._id),
+      email: updated.email,
+      roles: updated.roles || [...roleSet]
+    }
   });
 });
 
@@ -2005,17 +2270,29 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
       fallback: env.INVITE_EXPIRES_DAYS
     });
 
-    const inputEmails = [
-      ...parseEmailsFromText(req.body.emails || ""),
-      ...parseEmailsFromCsv(req.file?.buffer || null)
-    ];
-    const uniqueEmails = [...new Set(inputEmails.filter((email) => isEmail(email)))];
-
-    if (uniqueEmails.length === 0) {
+    let recipientsFromPayload = [];
+    try {
+      recipientsFromPayload = parseInviteRowsFromRecipientsPayload(req.body.recipients);
+    } catch (parseError) {
       return res.status(400).json({
         error: {
-          code: "EMAILS_REQUIRED",
-          message: "Provide at least one valid email in text or CSV."
+          code: "INVALID_RECIPIENTS",
+          message: parseError.message || "Invalid recipients payload."
+        }
+      });
+    }
+
+    const recipients = mergeInviteRows(
+      recipientsFromPayload,
+      parseInviteRowsFromText(req.body.emails || ""),
+      parseInviteRowsFromCsv(req.file?.buffer || null)
+    );
+
+    if (recipients.length === 0) {
+      return res.status(400).json({
+        error: {
+          code: "RECIPIENTS_REQUIRED",
+          message: "Provide at least one valid recipient in rows, text, or CSV."
         }
       });
     }
@@ -2024,7 +2301,8 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
     let sentCount = 0;
     const skipped = [];
 
-    for (const email of uniqueEmails) {
+    for (const recipient of recipients) {
+      const email = recipient.email;
       const existingUser = await UserModel.findOne(req.tenant._id, { email });
       if (existingUser) {
         skipped.push({ email, reason: "USER_EXISTS" });
@@ -2046,7 +2324,9 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
           email,
           token,
           roleToAssign,
-          expiresAt: invite.expiresAt
+          expiresAt: invite.expiresAt,
+          firstName: recipient.firstName || "",
+          lastName: recipient.lastName || ""
         });
         sentCount += 1;
       } catch (error) {
@@ -2056,6 +2336,7 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
 
     return res.status(201).json({
       ok: true,
+      attemptedCount: recipients.length,
       createdCount,
       sentCount,
       skipped
@@ -2065,61 +2346,14 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
   }
 });
 
-router.post("/import-csv", csvUpload.single("file"), async (req, res, next) => {
-  try {
-    if (!req.file?.buffer) {
-      return res.status(400).json({
-        error: {
-          code: "CSV_REQUIRED",
-          message: "Upload CSV file under field name 'file'."
-        }
-      });
+router.post("/import-csv", csvUpload.single("file"), async (req, res) => {
+  return res.status(410).json({
+    error: {
+      code: "MEMBER_IMPORT_DISABLED",
+      message:
+        "Member import is disabled. Use Invite Members so people create their own accounts."
     }
-
-    const enableFuzzyMatch = toBoolean(req.body?.enableFuzzyMatch);
-    const fuzzyDistance = toBoundedInt(req.body?.fuzzyDistance, {
-      min: 0,
-      max: 4,
-      fallback: 1
-    });
-
-    const report = await runTenantCsvImport({
-      tenantId: req.tenant._id,
-      userId: req.user.id,
-      fileName: req.file.originalname || "import.csv",
-      csvBuffer: req.file.buffer,
-      options: { enableFuzzyMatch, fuzzyDistance }
-    });
-
-    return res.status(201).json({
-      ok: true,
-      report: {
-        reportId: report.reportId,
-        acceptedColumns: report.acceptedColumns,
-        rowsRead: report.rowsRead,
-        createdCount: report.createdCount,
-        updatedCount: report.updatedCount,
-        skippedDuplicates: report.skippedDuplicates,
-        errorCount: report.errors.length,
-        errors: report.errors,
-        hasFailureCsv: Boolean(report.failureCsv),
-        failureCsvDownloadPath: report.failureCsv
-          ? `/api/t/${req.tenant.slug}/admin/imports/${report.reportId}/failures.csv`
-          : ""
-      }
-    });
-  } catch (error) {
-    if (error?.code === "CSV_INVALID_FORMAT") {
-      return res.status(400).json({
-        error: {
-          code: "CSV_INVALID_FORMAT",
-          message: error.message
-        }
-      });
-    }
-
-    return next(error);
-  }
+  });
 });
 
 router.get("/imports/:reportId/failures.csv", async (req, res) => {

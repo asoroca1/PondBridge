@@ -1,5 +1,5 @@
 // src/pages/EditProfile.jsx
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import {
   resolveAgeGroupOptions,
@@ -17,6 +17,21 @@ const US_STATES = [
   "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
 ];
+const US_STATE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
+  IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine",
+  MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon",
+  PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee",
+  TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia",
+  WI: "Wisconsin", WY: "Wyoming"
+};
+const US_STATE_OPTIONS = US_STATES.map((code) => ({
+  code,
+  label: `${US_STATE_NAMES[code] || code} (${code})`
+}));
 
 const INDUSTRIES = [
   "Accounting", "Advertising", "Aerospace", "Agriculture",
@@ -44,6 +59,39 @@ const LOCATION_MODES = {
   US: "US",
   INTL: "INTL",
 };
+
+const COUNTRY_ALIASES = new Map([
+  ["usa", "United States"],
+  ["u s a", "United States"],
+  ["us", "United States"],
+  ["u s", "United States"],
+  ["united states of america", "United States"],
+  ["uk", "United Kingdom"],
+  ["u k", "United Kingdom"],
+  ["great britain", "United Kingdom"],
+  ["uae", "United Arab Emirates"],
+  ["u a e", "United Arab Emirates"]
+]);
+
+const CITY_ALIASES_GLOBAL = new Map([
+  ["nyc", "New York"],
+  ["new york city", "New York"],
+  ["san fran", "San Francisco"],
+  ["sf", "San Francisco"],
+  ["philly", "Philadelphia"],
+  ["vegas", "Las Vegas"],
+  ["nola", "New Orleans"]
+]);
+
+const CITY_ALIASES_BY_STATE = new Map([
+  ["CA|la", "Los Angeles"],
+  ["CA|l a", "Los Angeles"],
+  ["CA|l.a.", "Los Angeles"],
+  ["DC|washington dc", "Washington"],
+  ["DC|washington d c", "Washington"],
+  ["DC|d c", "Washington"],
+  ["DC|d.c.", "Washington"]
+]);
 
 // --- Countries (copied from CreateProfileWizard; display without trailing *) ---
 const cleanCountryName = (s = "") => String(s || "").trim().replace(/\*+$/g, "").trim();
@@ -125,13 +173,80 @@ const normalizeUrl = (s) => {
 const ensureUrl = (s) => normalizeUrl(s);
 
 /* ================= City/State/Country helpers ================= */
-const normalizeCity = (s = "") => (s || "").replace(/\s+/g, " ").trim();
-const normalizeCountry = (s = "") => (s || "").replace(/\s+/g, " ").trim();
+const normalizeLocationToken = (value = "") =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-const cityInList = (city, list) => {
-  const c = (city || "").trim().toLowerCase();
-  if (!c) return true;
-  return (list || []).some((x) => String(x).trim().toLowerCase() === c);
+const toTitleCase = (value = "") => {
+  const smallWords = new Set(["and", "or", "the", "of", "de", "da", "la", "le"]);
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+      if (index > 0 && smallWords.has(lower)) return lower;
+      return lower.slice(0, 1).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+};
+
+const normalizeCity = (s = "") => (s || "").replace(/\s+/g, " ").trim();
+
+const canonicalizeCountry = (value = "") => {
+  const raw = normalizeCity(value);
+  if (!raw) return "";
+  const token = normalizeLocationToken(raw);
+  const aliased = COUNTRY_ALIASES.get(token) || raw;
+  const matchedCountry = COUNTRIES.find((country) => normalizeLocationToken(country) === normalizeLocationToken(aliased));
+  if (matchedCountry) return matchedCountry;
+  return toTitleCase(aliased);
+};
+
+const normalizeCountry = (s = "") => canonicalizeCountry(s);
+
+const canonicalizeCity = (value = "", { state = "", country = "", options = [] } = {}) => {
+  const raw = normalizeCity(value);
+  if (!raw) return "";
+  const stateCode = String(state || "").trim().toUpperCase();
+  const countryName = canonicalizeCountry(country);
+  const token = normalizeLocationToken(raw);
+
+  const matchedOption = (Array.isArray(options) ? options : []).find(
+    (option) => normalizeLocationToken(option) === token
+  );
+  if (matchedOption) return matchedOption;
+
+  const stateAliasKey = `${stateCode}|${token}`;
+  if (CITY_ALIASES_BY_STATE.has(stateAliasKey)) return CITY_ALIASES_BY_STATE.get(stateAliasKey) || "";
+  if (CITY_ALIASES_GLOBAL.has(token)) return CITY_ALIASES_GLOBAL.get(token) || "";
+
+  if (
+    countryName === "United States" &&
+    stateCode === "DC" &&
+    (token === "washington dc" || token === "washington d c" || token === "d c")
+  ) {
+    return "Washington";
+  }
+
+  return toTitleCase(raw);
+};
+
+const mergeCityOptions = (...sources) => {
+  const seen = new Set();
+  const merged = [];
+  for (const source of sources) {
+    for (const city of Array.isArray(source) ? source : []) {
+      const normalized = normalizeCity(city);
+      const key = normalizeLocationToken(normalized);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(normalized);
+    }
+  }
+  return merged.sort((a, b) => a.localeCompare(b));
 };
 
 // Supports "City, ST" OR "City, Country" OR "City, Region, Country"
@@ -315,12 +430,13 @@ export default function EditProfile() {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const pdfInput = useRef(null);
 
   const [errors, setErrors] = useState({});
 
   const [cityOptions, setCityOptions] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
+  const staticUsCitiesCache = useRef(new Map());
+  const [citySearchTerm, setCitySearchTerm] = useState("");
 
   const [form, setForm] = useState({
     uploads: { photo: null, photoUrl: "", pdfs: [] },
@@ -397,16 +513,25 @@ export default function EditProfile() {
     }
   }, []);
 
-  // --- Load US cities (only when US mode + state selected), and merge base + custom ---
   useEffect(() => {
-    if ((form.locationMode || LOCATION_MODES.US) !== LOCATION_MODES.US) {
+    const timer = window.setTimeout(() => {
+      setCitySearchTerm(normalizeCity(form.city));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [form.city]);
+
+  // --- Load city options for US state or international country ---
+  useEffect(() => {
+    const mode = form.locationMode || LOCATION_MODES.US;
+    const state = String(form.state || "").trim().toUpperCase();
+    const country = canonicalizeCountry(form.country);
+
+    if (mode === LOCATION_MODES.US && !state) {
       setCityOptions([]);
       setCitiesLoading(false);
       return;
     }
-
-    const st = (form.state || "").trim().toUpperCase();
-    if (!st) {
+    if (mode === LOCATION_MODES.INTL && !country) {
       setCityOptions([]);
       setCitiesLoading(false);
       return;
@@ -415,41 +540,55 @@ export default function EditProfile() {
     let alive = true;
     setCitiesLoading(true);
 
-    Promise.all([
-      fetch(`/cities/${st}.json`).then((r) => (r.ok ? r.json() : [])),
-      fetch(`${API_BASE}/locations/cities/${st}`).then((r) => (r.ok ? r.json() : [])),
-    ])
-      .then(([base, custom]) => {
+    const q = citySearchTerm;
+    const params = new URLSearchParams();
+    params.set("limit", "150");
+    if (q.length >= 2) params.set("q", q);
+    if (mode === LOCATION_MODES.US) {
+      params.set("state", state);
+    } else {
+      params.set("country", country);
+    }
+
+    const remotePromise = fetch(`${API_BASE}/locations/cities?${params.toString()}`)
+      .then((response) => (response.ok ? response.json() : []))
+      .catch(() => []);
+
+    const staticPromise =
+      mode === LOCATION_MODES.US
+        ? (async () => {
+            if (staticUsCitiesCache.current.has(state)) {
+              return staticUsCitiesCache.current.get(state) || [];
+            }
+            const response = await fetch(`/cities/${state}.json`);
+            const items = response.ok ? await response.json() : [];
+            const normalized = Array.isArray(items) ? items : [];
+            staticUsCitiesCache.current.set(state, normalized);
+            return normalized;
+          })().catch(() => [])
+        : Promise.resolve([]);
+
+    Promise.all([staticPromise, remotePromise])
+      .then(([baseCities, remoteCities]) => {
         if (!alive) return;
-
-        const all = [
-          ...(Array.isArray(base) ? base : []),
-          ...(Array.isArray(custom) ? custom : []),
-        ];
-
-        const seen = new Set();
-        const uniq = [];
-        for (const name of all) {
-          const key = String(name || "").trim().toLowerCase();
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          uniq.push(String(name).trim());
-        }
-
-        uniq.sort((a, b) => a.localeCompare(b));
-        setCityOptions(uniq);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setCityOptions([]);
+        const merged = mergeCityOptions(baseCities, remoteCities);
+        const typed = canonicalizeCity(citySearchTerm, {
+          state,
+          country,
+          options: merged
+        });
+        const next = typed ? mergeCityOptions([typed], merged) : merged;
+        setCityOptions(next);
       })
       .finally(() => {
         if (!alive) return;
         setCitiesLoading(false);
       });
 
-    return () => { alive = false; };
-  }, [form.locationMode, form.state]);
+    return () => {
+      alive = false;
+    };
+  }, [form.locationMode, form.state, form.country, citySearchTerm]);
 
   // load current profile
   useEffect(() => {
@@ -496,14 +635,16 @@ export default function EditProfile() {
 
           firstName: fresh.firstName || "",
           lastName: fresh.lastName || "",
-          nickname: fresh.nickname || "",
+          nickname: String(
+            fresh.nickname || fresh.social?.nickname || fresh.socials?.nickname || fresh.socials?.campNickname || ""
+          ).trim(),
           email: fresh.email || "",
           phone: fresh.phone || "",
 
           locationMode: locMode,
-          city: city || "",
+          city: canonicalizeCity(city, { state, country }) || "",
           state: (state || "").trim().toUpperCase(),
-          country: country || "",
+          country: canonicalizeCountry(country) || "",
 
           roles: Array.isArray(fresh.roles) ? fresh.roles : (fresh.roles ? [fresh.roles] : []),
 
@@ -700,52 +841,64 @@ export default function EditProfile() {
 
     if (step === 3) {
       if (!validateStep4()) return;
-
-      try {
-        setSubmitting(true);
-        const token = getToken();
-        const payload = buildUpdatePayload(form);
-
-        const res = await fetch(`${API_BASE}/me`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const text = await res.text();
-        if (!res.ok) {
-          let msg = `Update failed (${res.status}).`;
-          try {
-            const j = JSON.parse(text);
-            msg = normalizeErrorMessage(j, msg);
-          } catch {}
-          console.error("Update failed:", res.status, text);
-          alert(msg);
-          return;
-        }
-
-        const data = JSON.parse(text);
-        const updatedUser = data.user || data.profile || data;
-
-        const serialized = JSON.stringify(updatedUser);
-        localStorage.setItem("user", serialized);
-        localStorage.setItem("pondbridgeUser", serialized);
-        window.dispatchEvent(new CustomEvent("pondbridge-auth-updated"));
-        window.dispatchEvent(new Event("cedar:userChanged"));
-        navigate("/my-profile");
-      } catch (err) {
-        console.error(err);
-        alert("Network error. Please try again.");
-      } finally {
-        setSubmitting(false);
-      }
+      await persistProfile({ exitAfterSave: true });
     }
   };
 
   const onBack = () => setStep((s) => Math.max(0, s - 1));
+
+  async function persistProfile({ exitAfterSave = false } = {}) {
+    try {
+      setSubmitting(true);
+      const token = getToken();
+      const payload = buildUpdatePayload(form);
+
+      const res = await fetch(`${API_BASE}/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const text = await res.text();
+      if (!res.ok) {
+        let msg = `Update failed (${res.status}).`;
+        try {
+          const j = JSON.parse(text);
+          msg = normalizeErrorMessage(j, msg);
+        } catch {}
+        console.error("Update failed:", res.status, text);
+        alert(msg);
+        return false;
+      }
+
+      const data = JSON.parse(text);
+      const updatedUser = data.user || data.profile || data;
+
+      const serialized = JSON.stringify(updatedUser);
+      localStorage.setItem("user", serialized);
+      localStorage.setItem("pondbridgeUser", serialized);
+      window.dispatchEvent(new CustomEvent("pondbridge-auth-updated"));
+      window.dispatchEvent(new Event("cedar:userChanged"));
+
+      if (exitAfterSave) {
+        navigate("/my-profile");
+      }
+      return true;
+    } catch (err) {
+      console.error(err);
+      alert("Network error. Please try again.");
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const onSaveAndExit = async () => {
+    await persistProfile({ exitAfterSave: true });
+  };
 
   function buildUpdatePayload(form) {
     const pastJobsSorted = sortJobsByRecency(form.pastJobs || []);
@@ -761,9 +914,13 @@ export default function EditProfile() {
 
       // ✅ Location payload (US: city+state, Intl: city+country)
       locationMode: mode,
-      city: normalizeCity(form.city),
+      city: canonicalizeCity(form.city, {
+        state: mode === LOCATION_MODES.US ? (form.state || "").trim().toUpperCase() : "",
+        country: mode === LOCATION_MODES.INTL ? canonicalizeCountry(form.country) : "",
+        options: cityOptions
+      }),
       state: mode === LOCATION_MODES.US ? (form.state || "").trim().toUpperCase() : "",
-      country: mode === LOCATION_MODES.INTL ? normalizeCountry(form.country) : "",
+      country: mode === LOCATION_MODES.INTL ? canonicalizeCountry(form.country) : "",
 
       roles: form.roles,
 
@@ -911,19 +1068,21 @@ export default function EditProfile() {
             <div className="wizard1-span-12">
               <div className="wizard1-field">
                 <label className="wizard1-label">Current Location Type</label>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div className="wizard1-segment">
                   <button
                     type="button"
-                    className="wizard1-btn-secondary"
+                    className={`wizard1-segment-btn ${(form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.US ? "is-active" : ""}`}
                     onClick={() => {
                       setField({
                         locationMode: LOCATION_MODES.US,
                         country: "",
                         state: (form.state || "").trim().toUpperCase(),
+                        city: canonicalizeCity(form.city, {
+                          state: form.state,
+                          country: "United States",
+                          options: cityOptions
+                        }),
                       });
-                    }}
-                    style={{
-                      opacity: (form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.US ? 1 : 0.6,
                     }}
                   >
                     United States
@@ -931,18 +1090,19 @@ export default function EditProfile() {
 
                   <button
                     type="button"
-                    className="wizard1-btn-secondary"
+                    className={`wizard1-segment-btn ${(form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.INTL ? "is-active" : ""}`}
                     onClick={() => {
                       setField({
                         locationMode: LOCATION_MODES.INTL,
                         state: "",
-                        country: normalizeCountry(form.country),
+                        country: canonicalizeCountry(form.country),
+                        city: canonicalizeCity(form.city, {
+                          country: form.country,
+                          options: cityOptions
+                        }),
                       });
                       setCityOptions([]);
                       setCitiesLoading(false);
-                    }}
-                    style={{
-                      opacity: (form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.INTL ? 1 : 0.6,
                     }}
                   >
                     International
@@ -967,10 +1127,18 @@ export default function EditProfile() {
                       className={`wizard1-input ${errors.city ? "has-error" : ""}`}
                       value={form.city}
                       disabled={!form.state}
-                      placeholder={form.state ? "Start typing…" : "Select a state first"}
+                      placeholder={form.state ? "Start typing city…" : "Select a state first"}
                       list={form.state ? "city-options" : undefined}
                       onChange={(e) => setField({ city: e.target.value })}
-                      onBlur={(e) => setField({ city: normalizeCity(e.target.value) })}
+                      onBlur={(e) =>
+                        setField({
+                          city: canonicalizeCity(e.target.value, {
+                            state: form.state,
+                            country: "United States",
+                            options: cityOptions
+                          })
+                        })
+                      }
                     />
 
                     {form.state && (
@@ -985,58 +1153,9 @@ export default function EditProfile() {
                       <p className="wizard1-hint">Loading cities…</p>
                     )}
 
-                    {/* ✅ Add-city action (same behavior as CreateProfileWizard) */}
-                    {form.state &&
-                      form.city.trim().length >= 2 &&
-                      !cityInList(form.city, cityOptions) && (
-                        <button
-                          type="button"
-                          className="wizard1-btn-text"
-                          onClick={async () => {
-                            try {
-                              const city = normalizeCity(form.city);
-                              const state = (form.state || "").trim().toUpperCase();
-
-                              const res = await fetch(`${API_BASE}/locations/cities`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ state, city }),
-                              });
-
-                              const text = await res.text();
-                              if (!res.ok) {
-                                let msg = "Could not add city.";
-                                try {
-                                  const parsed = JSON.parse(text);
-                                  msg = normalizeErrorMessage(parsed, msg);
-                                } catch {}
-                                alert(msg);
-                                return;
-                              }
-
-                              setCityOptions((prev) => {
-                                const next = [...prev, city];
-
-                                const seen = new Set();
-                                const uniq = [];
-                                for (const name of next) {
-                                  const key = String(name || "").trim().toLowerCase();
-                                  if (!key || seen.has(key)) continue;
-                                  seen.add(key);
-                                  uniq.push(String(name).trim());
-                                }
-                                uniq.sort((a, b) => a.localeCompare(b));
-                                return uniq;
-                              });
-                            } catch (e) {
-                              alert("Network error adding city.");
-                            }
-                          }}
-                          style={{ marginTop: 6 }}
-                        >
-                          + Add “{normalizeCity(form.city)}” to {form.state}
-                        </button>
-                      )}
+                    {form.state && cityOptions.length > 0 && (
+                      <p className="wizard1-hint">Pick the standardized city result whenever possible.</p>
+                    )}
 
                     {errors.city && <p className="wizard1-error">{errors.city}</p>}
                   </div>
@@ -1056,7 +1175,11 @@ export default function EditProfile() {
                       }}
                     >
                       <option value="">Select…</option>
-                      {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                      {US_STATE_OPTIONS.map(({ code, label }) => (
+                        <option key={code} value={code}>
+                          {label}
+                        </option>
+                      ))}
                     </select>
                     {errors.state && <p className="wizard1-error">{errors.state}</p>}
                   </div>
@@ -1075,10 +1198,29 @@ export default function EditProfile() {
                     <input
                       className={`wizard1-input ${errors.city ? "has-error" : ""}`}
                       value={form.city}
-                      placeholder="Type your city…"
+                      placeholder={normalizeCountry(form.country) ? "Start typing city…" : "Select country first"}
+                      list={normalizeCountry(form.country) ? "intl-city-options" : undefined}
+                      disabled={!normalizeCountry(form.country)}
                       onChange={(e) => setField({ city: e.target.value })}
-                      onBlur={(e) => setField({ city: normalizeCity(e.target.value) })}
+                      onBlur={(e) =>
+                        setField({
+                          city: canonicalizeCity(e.target.value, {
+                            country: form.country,
+                            options: cityOptions
+                          })
+                        })
+                      }
                     />
+                    {normalizeCountry(form.country) && (
+                      <datalist id="intl-city-options">
+                        {cityOptions.map((name) => (
+                          <option key={name} value={name} />
+                        ))}
+                      </datalist>
+                    )}
+                    {!normalizeCountry(form.country) && (
+                      <p className="wizard1-hint">Select your country first for city suggestions.</p>
+                    )}
                     {errors.city && <p className="wizard1-error">{errors.city}</p>}
                   </div>
                 </div>
@@ -1095,7 +1237,7 @@ export default function EditProfile() {
                       placeholder="Start typing…"
                       list="country-options"
                       onChange={(e) => setField({ country: e.target.value })}
-                      onBlur={(e) => setField({ country: normalizeCountry(e.target.value) })}
+                      onBlur={(e) => setField({ country: canonicalizeCountry(e.target.value) })}
                     />
 
                     <datalist id="country-options">
@@ -1496,9 +1638,14 @@ export default function EditProfile() {
               <span />
             )}
 
-            <button className="wizard1-btn-primary" onClick={onNext} disabled={submitting}>
-              {step < 3 ? "Next" : (submitting ? "Saving..." : "Save")}
-            </button>
+            <div className="wizard1-actions-right">
+              <button className="wizard1-btn-secondary" onClick={onSaveAndExit} disabled={submitting}>
+                {submitting ? "Saving..." : "Save & Exit"}
+              </button>
+              <button className="wizard1-btn-primary" onClick={onNext} disabled={submitting}>
+                {step < 3 ? "Next" : (submitting ? "Saving..." : "Save")}
+              </button>
+            </div>
           </div>
         </div>
       </main>

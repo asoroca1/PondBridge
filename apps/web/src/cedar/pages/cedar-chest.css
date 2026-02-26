@@ -176,6 +176,18 @@
     padding: 10px 12px; font:inherit; background:#fff;
     width: 100%;
   }
+  .cc-inline-check{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    font-size:14px;
+    color:#0f172a;
+  }
+  .cc-inline-check input[type="checkbox"]{
+    margin-top:2px;
+    width:16px;
+    height:16px;
+  }
   .cc-actions{ display:flex; align-items:center; gap:10px; }
   .cc-actions button{
     padding: 10px 14px; border-radius: 10px; border:1px solid var(--cc-navy);

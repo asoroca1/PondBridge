@@ -127,9 +127,16 @@ function jobsToText(jobs = []) {
     .join(" ");
 }
 
+function profileNickname(profile = {}) {
+  const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  return normalizeText(profile.nickname || socials.nickname || socials.campNickname || "");
+}
+
 function profileSearchFields(profile = {}) {
+  const nickname = profileNickname(profile);
   return {
-    fullName: normalizeText(`${profile.firstName || ""} ${profile.lastName || ""}`),
+    fullName: normalizeText(`${profile.firstName || ""} ${nickname ? `${nickname} ` : ""}${profile.lastName || ""}`),
+    nickname,
     role: normalizeText(profile.roleAtCamp || ""),
     industry: normalizeText(profile.industry || ""),
     cityState: normalizeText(profile.cityState || ""),
@@ -159,6 +166,7 @@ function scoreProfileForQuery(profile = {}, query = "") {
   const fields = profileSearchFields(profile);
   const haystacks = [
     fields.fullName,
+    fields.nickname,
     fields.emails,
     fields.role,
     fields.industry,

@@ -1,14 +1,14 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
-import { resolveNetworkDisplayName, resolveTenantContent } from "../../lib/campLabels.js";
+import { resolveCampName, resolveTenantContent } from "../../lib/campLabels.js";
 import Navbar1 from "../components/Navbar1";
 
 function Home() {
   const navigate = useNavigate();
   const { tenant } = useTenant();
   const content = resolveTenantContent(tenant);
-  const networkDisplayName = resolveNetworkDisplayName(tenant);
+  const campName = resolveCampName(tenant);
 
   return (
     <div className="home1">
@@ -17,7 +17,10 @@ function Home() {
       <section className="home1-hero">
         <div className="home1-hero-content">
           <h1 className="home1-title">
-            {content.welcomeHeadline || `Welcome to the ${networkDisplayName}`}
+            <>
+              {`Welcome to the ${campName}`}
+              <span className="home1-title-line">Alumni Network</span>
+            </>
           </h1>
 
           <p className="home1-sub">

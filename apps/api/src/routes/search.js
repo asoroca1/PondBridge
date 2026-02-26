@@ -2,8 +2,9 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
-import { ProfileModel } from "../db/models/index.js";
+import { ProfileModel, UserModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
+import { isValidObjectId } from "../utils/objectId.js";
 
 const router = Router({ mergeParams: true });
 
@@ -61,6 +62,8 @@ function parseSearchInput(req) {
 function mapNameResult(profile = {}) {
   const firstName = String(profile.firstName || "").trim();
   const lastName = String(profile.lastName || "").trim();
+  const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  const nickname = String(profile.nickname || socials.nickname || socials.campNickname || "").trim();
   const name = `${firstName} ${lastName}`.trim();
   return {
     id: String(profile._id || profile.id || ""),
@@ -69,6 +72,7 @@ function mapNameResult(profile = {}) {
     name: name || "Unknown",
     firstName,
     lastName,
+    nickname,
     cityState: String(profile.cityState || "").trim(),
     roleAtCamp: String(profile.roleAtCamp || "").trim(),
     industry: String(profile.industry || "").trim(),
@@ -77,14 +81,29 @@ function mapNameResult(profile = {}) {
   };
 }
 
+function withNickname(profile = {}) {
+  const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  return {
+    ...profile,
+    nickname: String(profile.nickname || socials.nickname || socials.campNickname || "").trim()
+  };
+}
+
+function normalizeEntityId(value = "") {
+  const id = String(value || "").trim();
+  if (!id || id === "undefined" || id === "null") return "";
+  return id;
+}
+
 async function runSearch(req) {
   const { q, roleAtCamp, industry, cityState, limit } = parseSearchInput(req);
-  const items = await ProfileModel.search(req.tenant._id, q, {
+  const rawItems = await ProfileModel.search(req.tenant._id, q, {
     roleAtCamp: roleAtCamp || null,
     industry: industry || null,
     cityState: cityState || null,
     limit
   });
+  const items = rawItems.map((profile) => withNickname(profile));
 
   if (q) {
     await logTenantEvent({
@@ -164,6 +183,54 @@ router.get("/names", async (req, res) => {
     total: mapped.length,
     items: mapped,
     results: mapped
+  });
+});
+
+router.get("/user/:id", async (req, res) => {
+  const id = normalizeEntityId(req.params.id);
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({
+      error: { code: "INVALID_ID", message: "Invalid id" }
+    });
+  }
+
+  let profile = await ProfileModel.findOne(req.tenant._id, { _id: id });
+  let user = null;
+
+  if (!profile) {
+    profile = await ProfileModel.findOne(req.tenant._id, { userId: id });
+  }
+
+  if (!profile) {
+    user = await UserModel.findOne(req.tenant._id, { _id: id });
+    const profileId = normalizeEntityId(user?.profileId || "");
+    if (isValidObjectId(profileId)) {
+      profile = await ProfileModel.findOne(req.tenant._id, { _id: profileId });
+    }
+  }
+
+  if (!user && profile?.userId) {
+    user = await UserModel.findOne(req.tenant._id, { _id: profile.userId });
+  }
+
+  if (!profile) {
+    return res.status(404).json({
+      error: { code: "NOT_FOUND", message: "Profile not found" }
+    });
+  }
+
+  const mapped = withNickname(profile);
+  return res.json({
+    user: {
+      ...mapped,
+      _id: String(mapped._id || mapped.id || ""),
+      id: String(mapped._id || mapped.id || ""),
+      email: String(user?.email || mapped.email || mapped.emails?.[0] || "").trim().toLowerCase(),
+      phone: String(mapped.phone || mapped.phones?.[0] || "").trim(),
+      uploads: {
+        photoUrl: String(mapped?.uploads?.photoUrl || mapped.photoUrl || mapped.avatarUrl || "").trim()
+      }
+    }
   });
 });
 

@@ -4,6 +4,7 @@ import { stringify } from "csv-stringify/sync";
 import { z } from "zod";
 import { UserModel, ProfileModel, ImportReportModel } from "../db/models/index.js";
 import { hashPassword } from "../utils/auth.js";
+import { composeCityState, parseCityStateDetailed } from "../utils/location.js";
 
 const acceptedColumns = [
   "firstName",
@@ -54,6 +55,12 @@ function normalizeCityState(value = "") {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+function canonicalizeCityState(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return composeCityState(parseCityStateDetailed(raw));
 }
 
 function normalizeEmail(value = "") {
@@ -125,7 +132,8 @@ function canonicalizeRow(rawRow = {}) {
 
   return {
     ...mapped,
-    email: normalizeEmail(mapped.email)
+    email: normalizeEmail(mapped.email),
+    cityState: canonicalizeCityState(mapped.cityState)
   };
 }
 

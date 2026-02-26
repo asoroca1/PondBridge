@@ -19,6 +19,12 @@ import { normalizeSignupMode } from "../services/onboarding.js";
 import { findInviteByOpaqueToken, markInviteUsed } from "../services/invites.js";
 import { hashOpaqueToken } from "../utils/tokens.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
+import {
+  canonicalizeCityName,
+  canonicalizeCountryName,
+  composeCityState,
+  parseCityStateDetailed
+} from "../utils/location.js";
 
 const router = Router({ mergeParams: true });
 const magicLinkRequestLimiter = rateLimit({
@@ -114,31 +120,56 @@ function normalizeRoleList(value = []) {
   return ordered;
 }
 
+function normalizeCollegeMajors(value = []) {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => String(entry || "").trim());
+}
+
 function normalizeCityStateFromBody(body = {}) {
   const direct = String(body.cityState || "").trim();
-  if (direct) return direct;
-  const city = String(body.city || "").trim();
+  if (direct) return composeCityState(parseCityStateDetailed(direct));
   const state = String(body.state || "").trim().toUpperCase();
-  const country = String(body.country || "").trim();
-  if (!city && !state && !country) return "";
-  if (state) return [city, state].filter(Boolean).join(", ");
-  return [city, country].filter(Boolean).join(", ");
+  const country = canonicalizeCountryName(String(body.country || "").trim());
+  const city = canonicalizeCityName(String(body.city || "").trim(), { state, country });
+  return composeCityState({ city, state, country });
 }
 
 function normalizeSocialsFromBody(body = {}, roleList = []) {
   const fromSocials = body.socials && typeof body.socials === "object" ? body.socials : {};
   const fromSocial = body.social && typeof body.social === "object" ? body.social : {};
   const merged = { ...fromSocials, ...fromSocial };
+  const nickname = String(
+    body.nickname ??
+      body.campNickname ??
+      merged.nickname ??
+      merged.campNickname ??
+      ""
+  ).trim();
   const normalizedCamperYears = normalizeCamperYears(
     body.camperYears && typeof body.camperYears === "object" ? body.camperYears : merged.camperYears || {}
   );
   const normalizedRoles = normalizeRoleList(
     roleList.length ? roleList : Array.isArray(merged.roles) ? merged.roles : []
   );
+  const normalizedCollegeMajors = normalizeCollegeMajors(
+    Array.isArray(body.collegeMajors)
+      ? body.collegeMajors
+      : Array.isArray(body.education)
+      ? body.education.map((row) => String(row?.major || "").trim())
+      : Array.isArray(merged.collegeMajors)
+      ? merged.collegeMajors
+      : Array.isArray(merged.educationMajors)
+      ? merged.educationMajors
+      : []
+  );
   return {
     ...merged,
+    ...(nickname ? { nickname, campNickname: nickname } : {}),
     camperYears: normalizedCamperYears,
-    roles: normalizedRoles
+    roles: normalizedRoles,
+    ...(normalizedCollegeMajors.length
+      ? { collegeMajors: normalizedCollegeMajors, educationMajors: normalizedCollegeMajors }
+      : {})
   };
 }
 

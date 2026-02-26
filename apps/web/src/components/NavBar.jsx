@@ -50,10 +50,34 @@ function initialsFrom(fullName = "") {
     .join("") || "?";
 }
 
+function firstNameFrom(user = {}) {
+  return String(
+    user?.firstName ||
+      user?.givenName ||
+      user?.given_name ||
+      user?.profile?.firstName ||
+      user?.profile?.givenName ||
+      ""
+  ).trim();
+}
+
+function lastNameFrom(user = {}) {
+  return String(
+    user?.lastName ||
+      user?.familyName ||
+      user?.family_name ||
+      user?.profile?.lastName ||
+      user?.profile?.familyName ||
+      ""
+  ).trim();
+}
+
 function fullNameFrom(user = {}) {
+  const firstName = firstNameFrom(user);
+  const lastName = lastNameFrom(user);
   return (
+    [firstName, lastName].filter(Boolean).join(" ").trim() ||
     String(user?.fullName || "").trim() ||
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
     String(user?.name || "").trim()
   );
 }
@@ -159,7 +183,9 @@ export default function NavBar() {
   const logoUrl = branding.logoUrl || (slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "");
   const fallbackLogoInitial = initialsFrom(tenant?.name || "Camp");
   const avatarSrc = getPhotoUrl(user);
-  const profileInitials = initialsFrom(fullNameFrom(user) || user?.email || "");
+  const profileInitials = initialsFrom(
+    fullNameFrom(user) || String(user?.email || "").split("@")[0] || "Member"
+  );
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
   const canFamilyTrees = Boolean(modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees"));
   const loginPath = pathWithCamp(slug, "/login");
