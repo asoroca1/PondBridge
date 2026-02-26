@@ -192,7 +192,9 @@ export function createModel(tableName, colMap) {
       }
 
       const selectCols = actualOpts.select
-        ? actualOpts.select.map((c) => colMap[c] || c).join(",")
+        ? actualOpts.select
+            .map((c) => (c === "_id" ? "id" : colMap[c] || c))
+            .join(",")
         : "*";
 
       let query = sb().from(tableName).select(selectCols, { count: "exact" });
