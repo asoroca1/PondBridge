@@ -619,6 +619,8 @@ body{
 }
 
 .login1-main {
+  min-height: calc(100vh - var(--auth-shell-top));
+  min-height: calc(100svh - var(--auth-shell-top));
   min-height: calc(100dvh - var(--auth-shell-top));
   display: grid;
   place-items: center;
@@ -626,6 +628,8 @@ body{
   position: relative;
   isolation: isolate;
   overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
   background:
     radial-gradient(
       circle at 14% 18%,
@@ -817,6 +821,9 @@ body{
   width: 100% !important;
   max-width: none !important;
   padding: 0 !important;
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 .login1-clerk-page .cl-rootBox,
@@ -825,6 +832,9 @@ body{
 .login1-clerk-page .cl-form {
   width: 100% !important;
   max-width: 100% !important;
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 .alumni-create-clerk-page {
