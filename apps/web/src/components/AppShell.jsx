@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import NavBar from "./NavBar.jsx";
 import ProductHeader from "./ProductHeader.jsx";
-import ProductFooter from "./ProductFooter.jsx";
 import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
@@ -33,7 +32,6 @@ export default function AppShell({ children }) {
       <div className="app-shell product-app-shell">
         <ProductHeader />
         <main className="product-app-main">{children}</main>
-        <ProductFooter />
       </div>
     );
   }

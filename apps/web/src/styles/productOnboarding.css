@@ -219,6 +219,24 @@
   padding: clamp(20px, 4vh, 44px) clamp(28px, 5vw, 60px) clamp(20px, 4vh, 44px);
 }
 
+/* Alumni auth pages should sit lower + centered under the network header. */
+.product-director-create-page.alumni-create-clerk-page {
+  min-height: calc(100dvh - 72px);
+  align-items: center;
+  justify-content: center;
+  padding-top: clamp(48px, 8vh, 90px);
+  padding-bottom: clamp(22px, 3.5vh, 36px);
+}
+
+.product-director-create-page.alumni-create-clerk-page .product-director-create-clerk-card h1,
+.product-director-create-page.alumni-create-clerk-page .product-director-create-card h1 {
+  color: var(--brand-primary);
+}
+
+.product-director-create-page.alumni-create-clerk-page .director-create-subtitle {
+  color: var(--text-muted);
+}
+
 /* ── Director Claim page (match Create Account style) ── */
 
 .product-director-claim-page {
@@ -1269,6 +1287,14 @@
   .product-director-claim-page {
     padding-left: 24px;
     padding-right: 24px;
+  }
+
+  .product-director-create-page.alumni-create-clerk-page {
+    min-height: calc(100dvh - 72px);
+    align-items: center;
+    justify-content: center;
+    padding-top: clamp(26px, 5vh, 54px);
+    padding-bottom: clamp(16px, 3vh, 28px);
   }
 
   .product-director-create-clerk-card,
