@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import {
   UserModel,
   ProfileModel,
+  ActivityItemModel,
   AccessRequestModel,
   MagicLinkTokenModel,
   TenantModel
@@ -375,6 +376,19 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
 
   await UserModel.update(user._id, { profileId: profile._id });
   user.profileId = profile._id;
+
+  const actorName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() || "Someone";
+  await ActivityItemModel.create({
+    tenantId: req.tenant._id,
+    actorUserId: user._id,
+    actor: { id: String(user._id), name: actorName },
+    type: "user.join",
+    target: {
+      href: `/profile/${profile._id}`,
+      label: "profile"
+    },
+    ts: new Date()
+  }).catch(() => {});
 
   if (matchingInvite) {
     await markInviteUsed(matchingInvite, user._id);

@@ -1315,6 +1315,18 @@ router.post("/photos", async (req, res) => {
     captionMentions: Array.isArray(req.body?.captionMentions) ? req.body.captionMentions : []
   });
 
+  await ActivityItemModel.create({
+    tenantId: req.tenant._id,
+    actorUserId: req.user.id,
+    actor: { id: String(req.user.id), name: ownerName },
+    type: "photo.upload",
+    target: {
+      href: "/photo-stream",
+      label: "Photo Stream"
+    },
+    ts: new Date()
+  }).catch(() => {});
+
   return res.status(201).json(photoToClient(created, req.user.id));
 });
 

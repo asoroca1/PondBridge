@@ -1,4 +1,4 @@
-import { ProfileModel, UserModel } from "../db/models/index.js";
+import { ActivityItemModel, ProfileModel, UserModel } from "../db/models/index.js";
 
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -144,5 +144,19 @@ export async function ensureProfileForUser({ tenantId, user, identity = {} }) {
 
   await UserModel.update(user._id, { profileId: profile._id });
   user.profileId = profile._id;
+
+  const actorName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() || "Someone";
+  await ActivityItemModel.create({
+    tenantId,
+    actorUserId: user._id,
+    actor: { id: String(user._id), name: actorName },
+    type: "user.join",
+    target: {
+      href: `/profile/${profile._id}`,
+      label: "profile"
+    },
+    ts: new Date()
+  }).catch(() => {});
+
   return profile;
 }
