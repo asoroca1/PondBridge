@@ -2925,14 +2925,35 @@ img[draggable="false"] { -webkit-user-drag: none; }
   padding: clamp(6px, 1vw, 12px) clamp(12px, 2vw, 28px) clamp(28px, 4.5vw, 56px);
 }
 
+.pb-cedar-page .director-admin-scope .pb-admin-ui-shell{
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  min-height: calc(100dvh - var(--page-shell-top));
+  grid-template-columns: 252px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.pb-cedar-page .director-admin-scope .pb-admin-ui-main{
+  min-width: 0;
+  padding: 22px 24px 30px;
+}
+
 .pb-cedar-page .director-admin-sidebar{
   position: sticky;
-  top: 88px;
-  border: 1px solid #dbe4ef;
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(16,24,40,.05);
-  padding: 12px;
+  top: 0;
+  height: calc(100dvh - var(--page-shell-top));
+  align-self: start;
+  border: 0;
+  border-right: 1px solid #dce6f1;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: none;
+  backdrop-filter: blur(1px);
+  padding: 16px 12px 20px;
+  overflow-y: auto;
 }
 
 .pb-cedar-page .director-admin-sidebar-title{
@@ -3974,12 +3995,26 @@ img[draggable="false"] { -webkit-user-drag: none; }
     padding-bottom: 24px;
   }
 
+  .pb-cedar-page .director-admin-scope .pb-admin-ui-shell{
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .pb-cedar-page .director-admin-scope .pb-admin-ui-main{
+    padding: 14px 12px 24px;
+  }
+
   .pb-cedar-page .director-admin-settings-shell{
     grid-template-columns: 1fr;
   }
 
   .pb-cedar-page .director-admin-sidebar{
     position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid #dce6f1;
+    border-radius: 0;
+    backdrop-filter: none;
   }
 
   .pb-cedar-page .director-admin-settings-sidebar-card{
