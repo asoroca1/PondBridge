@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
-import { AdminLayout, ContextBanner, SidebarNav } from "../../components/admin/AdminUi.jsx";
+import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
 
 const ADMIN_NAV = [
   { key: "overview", to: "dashboard", label: "Overview" },
@@ -23,7 +23,7 @@ const SETTINGS_NAV = [
 ];
 
 export default function DirectorAdminLayout() {
-  const { tenant, slug } = useTenant();
+  const { tenant } = useTenant();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -67,21 +67,10 @@ export default function DirectorAdminLayout() {
     return base;
   }, [onSettingsRoute, settingsOpen, showApprovals]);
 
-  const tenantName = tenant?.name || "Your Network";
-  const resolvedSlug = String(slug || tenant?.slug || "cedar");
-
   return (
     <section className="pb-cedar-page">
       <AdminLayout
         className="director-admin-scope"
-        banner={
-          <ContextBanner
-            title={`Admin Mode - ${tenantName}`}
-            subtitle="Manage members, communications, settings, and billing for your network."
-            exitTo={`/t/${resolvedSlug}/home`}
-            exitLabel="Exit Admin"
-          />
-        }
         sidebar={
           <SidebarNav
             title="Manage Network"
