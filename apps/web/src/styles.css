@@ -4735,6 +4735,9 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .super-login-card {
   width: min(500px, 100%);
   justify-self: center;
+  margin-inline: auto;
+  display: flex;
+  justify-content: center;
 }
 
 .super-login-card .cl-card {
@@ -4745,6 +4748,15 @@ img[draggable="false"] { -webkit-user-drag: none; }
   border-radius: 0;
   box-shadow: none;
   overflow: hidden;
+}
+
+.super-login-card .cl-rootBox,
+.super-login-card .cl-cardBox,
+.super-login-card .cl-main,
+.super-login-card .cl-form {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: auto;
 }
 
 .super-login-card .cl-main {
