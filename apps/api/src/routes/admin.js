@@ -655,7 +655,7 @@ router.get("/members", async (req, res, next) => {
         .filter(Boolean);
       const users = userIds.length > 0
         ? await UserModel.find(tenantId, { _id: { $in: userIds } }, {
-            select: ["_id", "email", "status", "lastLoginAt"]
+            select: ["id", "email", "status", "lastLoginAt"]
           })
         : [];
       const usersById = new Map(users.map((item) => [toObjectIdString(item._id), item]));
@@ -708,7 +708,7 @@ router.get("/members", async (req, res, next) => {
     const userIds = profiles.map((item) => toObjectIdString(item.userId)).filter(Boolean);
     const users = userIds.length > 0
       ? await UserModel.find(tenantId, { _id: { $in: userIds } }, {
-          select: ["_id", "email", "status", "lastLoginAt"]
+          select: ["id", "email", "status", "lastLoginAt"]
         })
       : [];
     const usersById = new Map(users.map((item) => [toObjectIdString(item._id), item]));
@@ -1273,10 +1273,10 @@ router.get("/analytics/network", async (req, res, next) => {
         select: ["userId", "eventType", "createdAt", "metadata"]
       }),
       UserModel.find(tenantId, {}, {
-        select: ["_id", "email", "lastLoginAt"]
+        select: ["id", "email", "lastLoginAt"]
       }),
       ProfileModel.find(tenantId, { status: { $ne: "removed" } }, {
-        select: ["_id", "userId", "firstName", "lastName", "roleAtCamp", "createdAt"]
+        select: ["id", "userId", "firstName", "lastName", "roleAtCamp", "createdAt"]
       }),
       EmailBroadcastModel.find(tenantId, { status: { $in: ["sent", "scheduled"] } }, {
         sort: { sentAt: -1, createdAt: -1 },
@@ -1561,7 +1561,7 @@ router.post("/billing/checkout", async (req, res, next) => {
 router.get("/settings", async (req, res) => {
   const [admins, pendingAdminInvites] = await Promise.all([
     UserModel.find(req.tenant._id, { roles: { $contains: ["tenant_admin"] } }, {
-      select: ["_id", "email", "roles", "createdAt"],
+      select: ["id", "email", "roles", "createdAt"],
       sort: { createdAt: 1 }
     }),
     InviteModel.find(req.tenant._id, {
@@ -1569,7 +1569,7 @@ router.get("/settings", async (req, res) => {
       usedAt: null,
       expiresAt: { $gt: new Date() }
     }, {
-      select: ["_id", "email", "createdAt", "expiresAt"],
+      select: ["id", "email", "createdAt", "expiresAt"],
       sort: { createdAt: -1 }
     })
   ]);
@@ -1738,7 +1738,7 @@ router.patch("/settings/access", async (req, res) => {
 router.get("/settings/admins", async (req, res) => {
   const [admins, pending] = await Promise.all([
     UserModel.find(req.tenant._id, { roles: { $contains: ["tenant_admin"] } }, {
-      select: ["_id", "email", "createdAt"],
+      select: ["id", "email", "createdAt"],
       sort: { createdAt: 1 }
     }),
     InviteModel.find(req.tenant._id, {
@@ -1746,7 +1746,7 @@ router.get("/settings/admins", async (req, res) => {
       usedAt: null,
       expiresAt: { $gt: new Date() }
     }, {
-      select: ["_id", "email", "createdAt", "expiresAt"],
+      select: ["id", "email", "createdAt", "expiresAt"],
       sort: { createdAt: -1 }
     })
   ]);
@@ -1824,7 +1824,7 @@ router.post("/settings/admins/invite", inviteSendLimiter, async (req, res) => {
 router.delete("/settings/admins/:userId", async (req, res) => {
   const userId = String(req.params.userId || "").trim();
   const admins = await UserModel.find(req.tenant._id, { roles: { $contains: ["tenant_admin"] } }, {
-    select: ["_id"]
+    select: ["id"]
   });
   if (admins.length <= 1) {
     return res.status(400).json({
