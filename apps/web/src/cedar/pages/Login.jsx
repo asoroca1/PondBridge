@@ -224,7 +224,6 @@ function ClerkLogin() {
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title">Login</h1>
               <h2 className="login1-clerk-panel-title">Sign in to {networkName}</h2>
-              <p className="login1-clerk-panel-subtitle">Use email sign-in and secure account recovery via Clerk.</p>
             </div>
             <div className="login1-clerk-host">
               <SignIn
