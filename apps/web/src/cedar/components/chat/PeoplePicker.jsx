@@ -14,8 +14,17 @@ function isObjectIdLike(value = "") {
   return /^[a-f0-9]{24}$/i.test(normalizeEntityId(value));
 }
 
-function toPickerId(user = {}) {
-  return normalizeEntityId(user?.userId);
+function toObjectId(value = "") {
+  const id = normalizeEntityId(value);
+  return isObjectIdLike(id) ? id : "";
+}
+
+function toPickerIdentity(user = {}) {
+  const userId = toObjectId(user?.userId);
+  const profileId = toObjectId(user?.id || user?._id);
+  const targetId = userId || profileId;
+  if (!targetId) return null;
+  return { targetId, userId, profileId };
 }
 
 function myUserIdFromToken() {
@@ -79,10 +88,18 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
       const next = [];
       const seen = new Set();
       rawItems.forEach((user) => {
-        const id = toPickerId(user);
-        if (!isObjectIdLike(id) || id === myUserId || seen.has(id)) return;
-        seen.add(id);
-        next.push({ ...user, id, _id: id, userId: id });
+        const identity = toPickerIdentity(user);
+        if (!identity) return;
+        if (identity.userId && identity.userId === myUserId) return;
+        if (seen.has(identity.targetId)) return;
+        seen.add(identity.targetId);
+        next.push({
+          ...user,
+          id: identity.targetId,
+          _id: identity.targetId,
+          userId: identity.userId || identity.targetId,
+          profileId: identity.profileId
+        });
       });
       setItems(next);
     } catch {
@@ -109,8 +126,9 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
       <ul className="pp-list">
         {loading && <li className="pp-item muted">Searching…</li>}
         {!loading && items.map(u => {
-          const id = toPickerId(u);
-          if (!id) return null;
+          const identity = toPickerIdentity(u);
+          if (!identity) return null;
+          const id = identity.targetId;
           const pic = avatarUrl(u);
           const name = `${u.firstName || ""} ${u.lastName || ""}`.trim();
           const job  = u.currentJob || "";
@@ -119,7 +137,16 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
             <li
               key={id}
               className={`pp-item ${isSel?"is-selected":""}`}
-              onClick={() => onSelect && onSelect({ ...u, id, _id: id, userId: id })}
+              onClick={() =>
+                onSelect &&
+                onSelect({
+                  ...u,
+                  id,
+                  _id: id,
+                  userId: identity.userId || id,
+                  profileId: identity.profileId
+                })
+              }
             >
               <PickerAvatar photo={pic} firstName={u.firstName} lastName={u.lastName} name={name} />
               <div className="pp-text">

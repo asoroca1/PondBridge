@@ -65,6 +65,7 @@ function mapNameResult(profile = {}) {
   return {
     id: String(profile._id || profile.id || ""),
     _id: String(profile._id || profile.id || ""),
+    userId: String(profile.userId || ""),
     name: name || "Unknown",
     firstName,
     lastName,
