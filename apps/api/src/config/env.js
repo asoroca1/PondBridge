@@ -92,15 +92,42 @@ const appBaseDomain =
   String(process.env.APP_BASE_DOMAIN || "pondbridgealumni.com")
     .trim()
     .toLowerCase() || "pondbridgealumni.com";
+const tenantHostSuffixes = dedupe(
+  [appBaseDomain, ...toCsvList(process.env.TENANT_HOST_SUFFIXES || "")]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+);
 const cloudflareWebProxied =
   process.env.CLOUDFLARE_WEB_PROXIED ?? process.env.CLOUDFLARE_PROXIED ?? "true";
 const cloudflareAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+const r2BucketName = String(
+  process.env.R2_BUCKET_NAME ||
+    process.env.R2_BUCKET ||
+    process.env.CLOUDFLARE_R2_BUCKET_NAME ||
+    process.env.CLOUDFLARE_R2_BUCKET ||
+    ""
+).trim();
+const r2AccessKeyId = String(
+  process.env.R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || ""
+).trim();
+const r2SecretAccessKey = String(
+  process.env.R2_SECRET_ACCESS_KEY ||
+    process.env.R2_SECRET_KEY ||
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+    ""
+).trim();
 const r2Endpoint = normalizeUrl(
   process.env.R2_ENDPOINT ||
     (cloudflareAccountId ? `https://${cloudflareAccountId}.r2.cloudflarestorage.com` : ""),
   ""
 );
-const r2PublicBaseUrl = normalizeUrl(process.env.R2_PUBLIC_BASE_URL || "", "");
+const r2PublicBaseUrl = normalizeUrl(
+  process.env.R2_PUBLIC_BASE_URL ||
+    process.env.R2_PUBLIC_URL ||
+    process.env.CLOUDFLARE_R2_PUBLIC_BASE_URL ||
+    "",
+  ""
+);
 const defaultEmailFrom = defaultEmailFromForDomain(appBaseDomain);
 
 export const env = {
@@ -126,6 +153,7 @@ export const env = {
     ...extraOrigins
   ]),
   APP_BASE_DOMAIN: appBaseDomain,
+  TENANT_HOST_SUFFIXES: tenantHostSuffixes,
   CORS_ALLOW_SUBDOMAIN_ORIGINS: toBoolean(process.env.CORS_ALLOW_SUBDOMAIN_ORIGINS, true),
   CUSTOM_DOMAIN_ALLOWLIST: dedupe(toCsvList(process.env.CUSTOM_DOMAIN_ALLOWLIST || "")),
   TRUST_PROXY_HOPS: toNumber(process.env.TRUST_PROXY_HOPS, 1),
@@ -200,9 +228,9 @@ export const env = {
     250,
     10000
   ),
-  R2_BUCKET_NAME: String(process.env.R2_BUCKET_NAME || "").trim(),
-  R2_ACCESS_KEY_ID: String(process.env.R2_ACCESS_KEY_ID || "").trim(),
-  R2_SECRET_ACCESS_KEY: String(process.env.R2_SECRET_ACCESS_KEY || "").trim(),
+  R2_BUCKET_NAME: r2BucketName,
+  R2_ACCESS_KEY_ID: r2AccessKeyId,
+  R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
   R2_REGION: String(process.env.R2_REGION || "auto").trim() || "auto",
   R2_ENDPOINT: r2Endpoint,
   R2_PUBLIC_BASE_URL: r2PublicBaseUrl,
@@ -228,6 +256,7 @@ export const env = {
   CLERK_SECRET_KEY: String(process.env.CLERK_SECRET_KEY || "").trim(),
   CLERK_AUTHORIZED_PARTIES: dedupe(toCsvList(process.env.CLERK_AUTHORIZED_PARTIES || "")),
   CLERK_JWT_AUDIENCE: String(process.env.CLERK_JWT_AUDIENCE || "").trim(),
+  CLERK_REQUIRE_TENANT_CLAIM: toBoolean(process.env.CLERK_REQUIRE_TENANT_CLAIM, false),
   CLERK_SUPER_ADMIN_EMAILS: dedupe(
     toCsvList(process.env.CLERK_SUPER_ADMIN_EMAILS || "").map((email) =>
       String(email || "").trim().toLowerCase()

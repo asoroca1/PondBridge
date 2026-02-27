@@ -12,6 +12,7 @@ import {
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { buildBillingPublicSnapshot } from "../services/billing.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
+import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
 
 const router = Router();
 
@@ -33,31 +34,6 @@ function isSignupEnabled(tenant) {
   return isTenantBillingAccessAllowed(tenant).allowed;
 }
 
-function normalizeHost(value = "") {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .split("/")[0]
-    .split(":")[0];
-}
-
-function resolveHostFromRequest(req) {
-  const fromQuery = normalizeHost(req.query.host || "");
-  if (fromQuery) return fromQuery;
-
-  const forwarded = normalizeHost(String(req.headers["x-forwarded-host"] || "").split(",")[0] || "");
-  if (forwarded) return forwarded;
-
-  const host = normalizeHost(req.headers.host || "");
-  if (host) return host;
-
-  const origin = normalizeHost(req.headers.origin || "");
-  if (origin) return origin;
-
-  return "";
-}
-
 async function resolveTenantForPublicRequest(req) {
   const slug = String(req.query.slug || "").trim().toLowerCase();
   if (slug) {
@@ -68,15 +44,25 @@ async function resolveTenantForPublicRequest(req) {
     };
   }
 
-  const host = resolveHostFromRequest(req);
-  if (!host) {
+  const host = String(req.query.host || "").trim().toLowerCase();
+  if (host) {
+    return {
+      tenant: await TenantModel.findByDomain(host),
+      lookup: "host",
+      lookupValue: host
+    };
+  }
+
+  const resolved = await resolveTenantFromRequest(req, { allowHeaderSlug: false });
+  const hostFromRequest = String(resolved.host || "").trim().toLowerCase();
+  if (!hostFromRequest) {
     return { tenant: null, lookup: "missing", lookupValue: "" };
   }
 
   return {
-    tenant: await TenantModel.findByDomain(host),
+    tenant: resolved.tenant,
     lookup: "host",
-    lookupValue: host
+    lookupValue: hostFromRequest
   };
 }
 

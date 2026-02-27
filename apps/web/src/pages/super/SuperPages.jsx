@@ -414,7 +414,7 @@ export function SuperTenantsPage() {
   async function wipeTenant(camp) {
     const phrase = `WIPE ${camp.slug}`;
     const typed = window.prompt(
-      `This permanently deletes ${camp.name} (${camp.slug}) and all backend records for this camp.\n\nType "${phrase}" to continue.`
+      `This permanently deletes ${camp.name} (${camp.slug}) and all Supabase/backend records for this camp, plus Clerk users that belong only to this camp.\n\nType "${phrase}" to continue.`
     );
     if (typed === null) return;
 

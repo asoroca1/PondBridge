@@ -380,9 +380,9 @@
     z-index: 1;
     width: 100%;
     height: var(--masthead-height);
-    background-size: cover;
+    background-size: var(--masthead-image-size, cover);
     background-repeat: no-repeat;
-    background-position: var(--masthead-pos);
+    background-position: var(--masthead-image-position, var(--masthead-pos));
     border-bottom: 1px solid rgba(16,24,40,.06);
     -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) var(--fade-cutoff), rgba(0,0,0,0) 100%);
             mask-image: linear-gradient(to bottom, rgba(0,0,0,1) var(--fade-cutoff), rgba(0,0,0,0) 100%);

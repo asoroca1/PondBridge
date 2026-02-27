@@ -339,6 +339,7 @@ export function DirectorAdminMembersPage() {
   const [editingMember, setEditingMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingMemberId, setDeletingMemberId] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
@@ -470,6 +471,35 @@ export function DirectorAdminMembersPage() {
       setError(requestError.message || "Failed to save member.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function hardDeleteMember(member) {
+    const memberId = String(member?.id || "").trim();
+    if (!memberId) return;
+
+    const label = member?.fullName || member?.email || "this member";
+    const confirmed = window.confirm(
+      `Delete ${label} from this network permanently?\n\nThis will remove their profile, account membership, chats, forum posts, photos, and feed activity. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingMemberId(memberId);
+    setError("");
+    setStatus("");
+    try {
+      await request(`/members/${memberId}/hard-delete`, {
+        method: "DELETE"
+      });
+      setRowMenuId("");
+      setEditingMember((prev) => (prev?.id === memberId ? null : prev));
+      setSelected((prev) => prev.filter((id) => id !== memberId));
+      setStatus(`${label} was permanently removed from this network.`);
+      await loadMembers();
+    } catch (requestError) {
+      setError(requestError.message || "Failed to delete member.");
+    } finally {
+      setDeletingMemberId("");
     }
   }
 
@@ -704,6 +734,14 @@ export function DirectorAdminMembersPage() {
                               }}
                             >
                               Edit Member
+                            </button>
+                            <button
+                              type="button"
+                              className="director-admin-inline-link"
+                              disabled={deletingMemberId === item.id}
+                              onClick={() => hardDeleteMember(item)}
+                            >
+                              {deletingMemberId === item.id ? "Deleting..." : "Delete from Network"}
                             </button>
                           </div>
                         ) : null}

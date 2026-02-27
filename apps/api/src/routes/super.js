@@ -22,17 +22,20 @@ import {
   AnalyticsEventModel,
   TenantAdminAuditLogModel,
   ResumeParseResultModel,
-  ActivityItemModel
+  ActivityItemModel,
+  ResendWebhookEventModel,
+  EmailSuppressionModel
 } from "../db/models/index.js";
 import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
 import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
 import { deprovisionTenantDomain, provisionTenantDomain } from "../services/cloudflareDomains.js";
 import { getEmailServiceStatus } from "../services/email.js";
-import { getR2ServiceStatus } from "../services/objectStorage.js";
+import { getR2ServiceStatus, purgeTenantObjectsFromR2 } from "../services/objectStorage.js";
 import { buildTenantUrls, defaultTenantDomain, isReservedSubdomain } from "../utils/domainProvisioning.js";
 import { hashOpaqueToken } from "../utils/tokens.js";
 import { env } from "../config/env.js";
+import { deleteClerkUserAccount, isClerkManagementConfigured } from "../services/clerkIdentity.js";
 
 const router = Router();
 const superSearchLimiter = rateLimit({
@@ -57,6 +60,9 @@ const BILLING_PLAN_MRR = {
 };
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 const APP_BASE_DOMAIN = String(env.APP_BASE_DOMAIN || "pondbridgealumni.com").trim().toLowerCase();
+const PRIVILEGED_GLOBAL_ROLES = new Set(["super_admin", "support_admin", "finance_admin"]);
+const HIDDEN_TENANT_PATTERN =
+  /(^|[-_.\s])(test\d*|sandbox|qa|staging|dev|demo)([-_.\s]|$)/i;
 const TENANT_PURGE_STEPS = [
   { key: "messages", model: MessageModel },
   { key: "forumPosts", model: ForumPostModel },
@@ -71,6 +77,8 @@ const TENANT_PURGE_STEPS = [
   { key: "tenantAuditLogs", model: TenantAdminAuditLogModel },
   { key: "resumeParseResults", model: ResumeParseResultModel },
   { key: "activityItems", model: ActivityItemModel },
+  { key: "resendWebhookEvents", model: ResendWebhookEventModel },
+  { key: "emailSuppressions", model: EmailSuppressionModel },
   { key: "magicLinkTokens", model: MagicLinkTokenModel },
   { key: "accessRequests", model: AccessRequestModel },
   { key: "invites", model: InviteModel },
@@ -257,6 +265,179 @@ function canAutoDeleteTenantDomain(domain = "") {
   return true;
 }
 
+function isTestOrSandboxTenant(tenant = {}) {
+  const slug = String(tenant?.slug || "").trim().toLowerCase();
+  const name = String(tenant?.name || "").trim().toLowerCase();
+  const domain = normalizeDomain(tenant?.customDomain || "");
+  const status = String(tenant?.status || "").trim().toLowerCase();
+
+  if (status === "sandbox") return true;
+  if (domain.endsWith(".pondbridge.test")) return true;
+  return (
+    HIDDEN_TENANT_PATTERN.test(slug) ||
+    HIDDEN_TENANT_PATTERN.test(name) ||
+    HIDDEN_TENANT_PATTERN.test(domain)
+  );
+}
+
+function hasPrivilegedGlobalRole(roles = []) {
+  const set = new Set((Array.isArray(roles) ? roles : []).map((role) => String(role || "").trim()));
+  for (const role of PRIVILEGED_GLOBAL_ROLES) {
+    if (set.has(role)) return true;
+  }
+  return false;
+}
+
+async function loadTenantUsersForCleanup(tenantId) {
+  const pageSize = 1000;
+  const maxPages = 300;
+  const users = [];
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const batch = await UserModel.find(tenantId, {}, {
+      select: ["id", "clerkUserId", "email", "roles"],
+      limit: pageSize,
+      offset: page * pageSize
+    });
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    users.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+
+  return users;
+}
+
+function collectClerkCleanupCandidates(users = []) {
+  const byClerkUserId = new Map();
+  for (const user of Array.isArray(users) ? users : []) {
+    const clerkUserId = String(user?.clerkUserId || "").trim();
+    if (!clerkUserId) continue;
+    const existing = byClerkUserId.get(clerkUserId) || {
+      clerkUserId,
+      emails: new Set()
+    };
+    const email = String(user?.email || "").trim().toLowerCase();
+    if (email) existing.emails.add(email);
+    byClerkUserId.set(clerkUserId, existing);
+  }
+
+  return [...byClerkUserId.values()].map((item) => ({
+    clerkUserId: item.clerkUserId,
+    emails: [...item.emails]
+  }));
+}
+
+function collectGlobalUserEmailCandidates(users = []) {
+  const emails = new Set();
+  for (const user of Array.isArray(users) ? users : []) {
+    const email = String(user?.email || "").trim().toLowerCase();
+    if (email) emails.add(email);
+  }
+  return [...emails];
+}
+
+async function purgeTenantClerkArtifacts({ clerkCandidates = [] } = {}) {
+  const summary = {
+    clerkConfigured: isClerkManagementConfigured(),
+    candidates: Array.isArray(clerkCandidates) ? clerkCandidates.length : 0,
+    deleted: 0,
+    notFound: 0,
+    skippedMembershipsRemain: 0,
+    skippedPrivilegedGlobal: 0,
+    skippedNoClerk: 0,
+    globalUsersDeleted: 0,
+    errors: []
+  };
+
+  if (!summary.clerkConfigured) {
+    summary.skippedNoClerk = summary.candidates;
+    return summary;
+  }
+
+  for (const candidate of Array.isArray(clerkCandidates) ? clerkCandidates : []) {
+    const clerkUserId = String(candidate?.clerkUserId || "").trim();
+    if (!clerkUserId) {
+      summary.skippedNoClerk += 1;
+      continue;
+    }
+
+    try {
+      const remainingMemberships = await UserModel.findMembershipsByClerkUserId(clerkUserId);
+      if ((remainingMemberships || []).length > 0) {
+        summary.skippedMembershipsRemain += 1;
+        continue;
+      }
+
+      const globalUser = await UserModel.findGlobalByClerkUserId(clerkUserId);
+      if (globalUser && hasPrivilegedGlobalRole(globalUser.roles || [])) {
+        summary.skippedPrivilegedGlobal += 1;
+        continue;
+      }
+
+      const deleted = await deleteClerkUserAccount(clerkUserId);
+      if (deleted.status === "deleted") {
+        summary.deleted += 1;
+      } else if (deleted.status === "not_found") {
+        summary.notFound += 1;
+      } else {
+        summary.skippedNoClerk += 1;
+      }
+
+      if (globalUser?._id && !hasPrivilegedGlobalRole(globalUser.roles || [])) {
+        await UserModel.delete(globalUser._id);
+        summary.globalUsersDeleted += 1;
+      }
+    } catch (error) {
+      summary.errors.push({
+        clerkUserId,
+        message: String(error?.message || "Failed to delete Clerk user")
+      });
+    }
+  }
+
+  return summary;
+}
+
+async function purgeTenantGlobalUserArtifacts({ emailCandidates = [] } = {}) {
+  const summary = {
+    candidates: Array.isArray(emailCandidates) ? emailCandidates.length : 0,
+    deleted: 0,
+    skippedMembershipsRemain: 0,
+    skippedPrivilegedGlobal: 0,
+    errors: []
+  };
+
+  for (const rawEmail of Array.isArray(emailCandidates) ? emailCandidates : []) {
+    const email = String(rawEmail || "").trim().toLowerCase();
+    if (!email) continue;
+
+    try {
+      const remainingMemberships = await UserModel.findMembershipsByEmail(email);
+      if ((remainingMemberships || []).length > 0) {
+        summary.skippedMembershipsRemain += 1;
+        continue;
+      }
+
+      const globalUser = await UserModel.findGlobalByEmail(email);
+      if (!globalUser?._id) continue;
+      if (hasPrivilegedGlobalRole(globalUser.roles || [])) {
+        summary.skippedPrivilegedGlobal += 1;
+        continue;
+      }
+
+      await UserModel.delete(globalUser._id);
+      summary.deleted += 1;
+    } catch (error) {
+      summary.errors.push({
+        email,
+        message: String(error?.message || "Failed to delete global user")
+      });
+    }
+  }
+
+  return summary;
+}
+
 async function purgeTenantRows(tenantId) {
   const counts = {};
 
@@ -382,7 +563,7 @@ async function loadTenantsWithCounts(filter = {}) {
     })
   );
 
-  return withCounts;
+  return withCounts.filter((tenant) => !isTestOrSandboxTenant(tenant));
 }
 
 async function buildNotifications() {
@@ -476,9 +657,10 @@ router.get("/search", superSearchLimiter, async (req, res) => {
   }
 
   const tenants = Array.from(tenantMap.values()).slice(0, 8);
+  const visibleTenants = tenants.filter((tenant) => !isTestOrSandboxTenant(tenant));
 
   const items = [
-    ...tenants.map((tenant) => ({
+    ...visibleTenants.map((tenant) => ({
       id: `tenant_${tenant.slug}`,
       type: "tenant",
       label: tenant.name,
@@ -487,6 +669,7 @@ router.get("/search", superSearchLimiter, async (req, res) => {
     })),
     ...directors.map((director) => {
       const tenant = tenantMap.get(toObjectIdString(director.tenantId));
+      if (!tenant || isTestOrSandboxTenant(tenant)) return null;
       return {
         id: `director_${director._id}`,
         type: "director",
@@ -494,7 +677,7 @@ router.get("/search", superSearchLimiter, async (req, res) => {
         meta: tenant ? `${tenant.name}` : "Director",
         href: `/super/tenants?search=${encodeURIComponent(director.email)}`
       };
-    })
+    }).filter(Boolean)
   ];
 
   return res.json({ items: items.slice(0, 20) });
@@ -888,6 +1071,9 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
     });
   }
 
+  const tenantUsers = await loadTenantUsersForCleanup(tenant._id);
+  const clerkCandidates = collectClerkCleanupCandidates(tenantUsers);
+  const globalUserEmailCandidates = collectGlobalUserEmailCandidates(tenantUsers);
   const domain = String(tenant.customDomain || defaultTenantDomain(tenant.slug) || "").trim().toLowerCase();
   let domainCleanup = { status: "skipped", reason: "domain_not_eligible" };
 
@@ -902,7 +1088,25 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
     }
   }
 
+  const objectStorageCleanup = await purgeTenantObjectsFromR2(tenant.slug);
   const counts = await purgeTenantRows(tenant._id);
+  const resendWebhookEventsBySlug = await ResendWebhookEventModel.count({ tenantSlug: tenant.slug });
+  if (resendWebhookEventsBySlug > 0) {
+    await ResendWebhookEventModel.deleteMany({ tenantSlug: tenant.slug });
+  }
+
+  const emailSuppressionsBySlug = await EmailSuppressionModel.count({ tenantSlug: tenant.slug });
+  if (emailSuppressionsBySlug > 0) {
+    await EmailSuppressionModel.deleteMany({ tenantSlug: tenant.slug });
+  }
+
+  counts.resendWebhookEventsBySlug = resendWebhookEventsBySlug;
+  counts.emailSuppressionsBySlug = emailSuppressionsBySlug;
+
+  const clerkCleanup = await purgeTenantClerkArtifacts({ clerkCandidates });
+  const globalUserCleanup = await purgeTenantGlobalUserArtifacts({
+    emailCandidates: globalUserEmailCandidates
+  });
   await TenantModel.delete(tenant._id);
 
   return res.json({
@@ -911,9 +1115,12 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
       tenantId: String(tenant._id),
       slug: tenant.slug,
       name: tenant.name,
-      counts
+      counts,
+      clerkCleanup,
+      globalUserCleanup
     },
-    domainCleanup
+    domainCleanup,
+    objectStorageCleanup
   });
 });
 

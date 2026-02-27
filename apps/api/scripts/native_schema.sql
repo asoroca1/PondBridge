@@ -79,6 +79,52 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_global_email_unique
   ON public.users ((lower(email)))
   WHERE tenant_id IS NULL;
 
+-- Enforce one active tenant membership per identity (email or Clerk user id).
+CREATE OR REPLACE FUNCTION public.enforce_single_tenant_membership()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  conflicting_tenant_id text;
+BEGIN
+  IF NEW.tenant_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM 'active' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT u.tenant_id
+  INTO conflicting_tenant_id
+  FROM public.users u
+  WHERE u.id <> COALESCE(NEW.id, '')
+    AND u.tenant_id IS NOT NULL
+    AND u.status = 'active'
+    AND (
+      (NEW.clerk_user_id IS NOT NULL AND NEW.clerk_user_id <> '' AND u.clerk_user_id = NEW.clerk_user_id)
+      OR lower(u.email) = lower(NEW.email)
+    )
+    AND u.tenant_id <> NEW.tenant_id
+  LIMIT 1;
+
+  IF conflicting_tenant_id IS NOT NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'identity is already bound to a different tenant',
+      DETAIL = format('existing_tenant_id=%s new_tenant_id=%s', conflicting_tenant_id, NEW.tenant_id);
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trigger_enforce_single_tenant_membership ON public.users;
+CREATE TRIGGER trigger_enforce_single_tenant_membership
+BEFORE INSERT OR UPDATE ON public.users
+FOR EACH ROW
+EXECUTE FUNCTION public.enforce_single_tenant_membership();
+
 -- 3. PROFILES
 CREATE TABLE IF NOT EXISTS public.profiles (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
@@ -122,6 +168,41 @@ CREATE INDEX IF NOT EXISTS idx_profiles_city_trgm ON public.profiles
   USING gin ((lower(coalesce(city_state, ''))) gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_profiles_emails_trgm ON public.profiles
   USING gin ((lower(array_to_string(emails, ' '))) gin_trgm_ops);
+
+CREATE OR REPLACE FUNCTION public.enforce_profile_user_tenant_consistency()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  user_tenant_id text;
+BEGIN
+  SELECT tenant_id
+  INTO user_tenant_id
+  FROM public.users
+  WHERE id = NEW.user_id
+  LIMIT 1;
+
+  IF user_tenant_id IS NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23503',
+      MESSAGE = 'profile user_id must reference a tenant-scoped user';
+  END IF;
+
+  IF user_tenant_id <> NEW.tenant_id THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'profile tenant_id must match users.tenant_id';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trigger_enforce_profile_user_tenant_consistency ON public.profiles;
+CREATE TRIGGER trigger_enforce_profile_user_tenant_consistency
+BEFORE INSERT OR UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.enforce_profile_user_tenant_consistency();
 
 -- 4. INVITES
 CREATE TABLE IF NOT EXISTS public.invites (
@@ -733,6 +814,110 @@ BEGIN
         tbl
       );
     END IF;
+  END LOOP;
+END;
+$$;
+
+-- ============================================================
+-- Authenticated Role RLS (Tenant-Scoped JWT claims)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.jwt_tenant_id()
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    NULLIF(auth.jwt() ->> 'tenantId', ''),
+    NULLIF(auth.jwt() ->> 'tenant_id', ''),
+    NULLIF(auth.jwt() ->> 'orgId', ''),
+    NULLIF(auth.jwt() ->> 'org_id', ''),
+    NULLIF(auth.jwt() -> 'public_metadata' ->> 'tenantId', ''),
+    NULLIF(auth.jwt() -> 'public_metadata' ->> 'tenant_id', ''),
+    ''
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.jwt_roles()
+RETURNS text[]
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    ARRAY(
+      SELECT jsonb_array_elements_text(
+        COALESCE(auth.jwt() -> 'roles', auth.jwt() -> 'public_metadata' -> 'roles', '[]'::jsonb)
+      )
+    ),
+    ARRAY[]::text[]
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.jwt_has_role(p_role text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT lower(trim(COALESCE(p_role, ''))) = ANY (
+    ARRAY(
+      SELECT lower(trim(role_name))
+      FROM unnest(public.jwt_roles()) AS role_name
+    )
+  )
+  OR lower(trim(COALESCE(auth.jwt() ->> 'role', ''))) = lower(trim(COALESCE(p_role, '')))
+  OR lower(trim(COALESCE(auth.jwt() ->> 'tenantRole', ''))) = lower(trim(COALESCE(p_role, '')));
+$$;
+
+DROP POLICY IF EXISTS tenants_authenticated_scope_select ON public.tenants;
+CREATE POLICY tenants_authenticated_scope_select
+ON public.tenants
+FOR SELECT
+TO authenticated
+USING (
+  public.jwt_tenant_id() <> ''
+  AND id = public.jwt_tenant_id()
+);
+
+DROP POLICY IF EXISTS tenants_authenticated_scope_update ON public.tenants;
+CREATE POLICY tenants_authenticated_scope_update
+ON public.tenants
+FOR UPDATE
+TO authenticated
+USING (
+  public.jwt_tenant_id() <> ''
+  AND id = public.jwt_tenant_id()
+  AND (
+    public.jwt_has_role('tenant_admin')
+    OR public.jwt_has_role('admin')
+    OR public.jwt_has_role('super_admin')
+  )
+)
+WITH CHECK (
+  public.jwt_tenant_id() <> ''
+  AND id = public.jwt_tenant_id()
+);
+
+DO $$
+DECLARE
+  tbl text;
+  policy_name text;
+BEGIN
+  FOR tbl IN
+    SELECT unnest(ARRAY[
+      'users', 'profiles', 'invites', 'access_requests', 'magic_link_tokens',
+      'conversations', 'messages', 'forums', 'forum_posts', 'photos',
+      'newsletters', 'email_broadcasts', 'family_trees', 'analytics_events',
+      'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
+      'activity_items', 'resend_webhook_events', 'email_suppressions'
+    ])
+  LOOP
+    policy_name := format('%s_authenticated_tenant_scope', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', policy_name, tbl);
+    EXECUTE format(
+      'CREATE POLICY %I ON public.%I FOR ALL TO authenticated USING (public.jwt_tenant_id() <> '''' AND tenant_id = public.jwt_tenant_id()) WITH CHECK (public.jwt_tenant_id() <> '''' AND tenant_id = public.jwt_tenant_id());',
+      policy_name,
+      tbl
+    );
   END LOOP;
 END;
 $$;

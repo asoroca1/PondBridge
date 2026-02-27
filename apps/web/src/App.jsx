@@ -59,7 +59,7 @@ import CedarLegalPage from "./cedar/pages/Legal.jsx";
 import CedarFamilyTreesPage from "./cedar/pages/FamilyTrees.jsx";
 import CedarFamilyTreeCreatePage from "./cedar/pages/FamilyTreeCreate.jsx";
 import CedarFamilyTreeViewPage from "./cedar/pages/FamilyTreeView.jsx";
-import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
+import { defaultTenantDomain, inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
 
 function TenantScopeLayout() {
   const { slug } = useParams();
@@ -95,11 +95,12 @@ function CustomDomainCampLayout() {
 
 function TenantScopeRoutes() {
   const { loading, error, tenant, slug: tenantSlug } = useTenant();
-  const { isAuthenticated, isReady, user, authProvider, refreshSession } = useAuth();
+  const { isAuthenticated, isReady, user, authProvider, refreshSession, logout } = useAuth();
   const location = useLocation();
   const params = useParams();
   const slug = params.slug || tenantSlug;
   const membershipSyncKeyRef = useRef("");
+  const [wrongNetwork, setWrongNetwork] = useState(null);
 
   useEffect(() => {
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -131,6 +132,52 @@ function TenantScopeRoutes() {
 
     refreshSession({ tenantSlug: slug }).catch(() => {});
   }, [authProvider, error, isAuthenticated, loading, location.pathname, refreshSession, slug, tenant, user]);
+
+  useEffect(() => {
+    const tenantId = String(tenant?.id || tenant?._id || "").trim();
+    const userTenantId = String(user?.tenantId || "").trim();
+    const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
+    if (
+      wrongNetwork ||
+      !isAuthenticated ||
+      !tenantId ||
+      !userTenantId ||
+      isSuperAdmin ||
+      tenantId === userTenantId
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    Promise.resolve(logout?.()).finally(() => {
+      if (cancelled) return;
+      setWrongNetwork({
+        expectedSlug: String(user?.tenantSlug || "").trim().toLowerCase(),
+        currentSlug: String(slug || tenant?.slug || "").trim().toLowerCase()
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, logout, slug, tenant, user, wrongNetwork]);
+
+  function expectedNetworkHref(expectedSlug = "") {
+    const normalizedSlug = String(expectedSlug || "").trim().toLowerCase();
+    if (!normalizedSlug || typeof window === "undefined") return "";
+
+    const currentHost = String(window.location.hostname || "").trim().toLowerCase();
+    const isLocal = currentHost === "localhost" || currentHost.endsWith(".localhost");
+    if (isLocal) {
+      const protocol = String(window.location.protocol || "http:");
+      const port = String(window.location.port || "5173");
+      return `${protocol}//${normalizedSlug}.localhost:${port}/login`;
+    }
+
+    const domain = defaultTenantDomain(normalizedSlug);
+    if (!domain) return "";
+    return `https://${domain}/login`;
+  }
 
   if (loading) {
     return (
@@ -182,6 +229,25 @@ function TenantScopeRoutes() {
               <li>Confirm `apps/web/.env` has the correct `VITE_API_BASE` value</li>
               <li>Refresh this page</li>
             </ol>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (wrongNetwork) {
+    const destination = expectedNetworkHref(wrongNetwork.expectedSlug);
+    return (
+      <section className="app-status-shell is-error">
+        <div className="app-status-card">
+          <h1>Wrong network for this account</h1>
+          <p>
+            Your session belongs to a different alumni network and has been signed out for security.
+          </p>
+          {destination ? (
+            <p>
+              <a href={destination}>Go to your network sign-in</a>
+            </p>
           ) : null}
         </div>
       </section>

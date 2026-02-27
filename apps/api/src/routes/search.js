@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
+import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
 import { ProfileModel, UserModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { isValidObjectId } from "../utils/objectId.js";
@@ -21,7 +22,7 @@ const searchRateLimiter = rateLimit({
   }
 });
 
-router.use(requireAuth, requireTenant, searchRateLimiter);
+router.use(requireTenant, requireAuth, enforceTenantScope, searchRateLimiter);
 
 function ensureSearchEnabled(req, res) {
   if (req.tenant?.modules?.search === false) {

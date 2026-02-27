@@ -66,6 +66,16 @@ export const UserModel = {
     );
   },
 
+  async findGlobalByEmail(email) {
+    return queryFirstUser(
+      getSupabaseAdmin()
+      .from("users")
+      .select("*")
+      .is("tenant_id", null)
+      .eq("email", String(email || "").trim().toLowerCase())
+    );
+  },
+
   async findMembershipsByClerkUserId(clerkUserId) {
     const { data, error } = await getSupabaseAdmin()
       .from("users")

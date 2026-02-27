@@ -11,6 +11,20 @@ function authUsesClerk() {
   return ["clerk", "hybrid"].includes(env.AUTH_PROVIDER);
 }
 
+function isClerkNotFoundError(error) {
+  const status = Number(error?.status || error?.statusCode || 0);
+  if (status === 404) return true;
+  const code = String(error?.code || "").trim().toLowerCase();
+  if (code.includes("not_found")) return true;
+  const clerkErrors = Array.isArray(error?.errors) ? error.errors : [];
+  return clerkErrors.some((item) =>
+    String(item?.code || "")
+      .trim()
+      .toLowerCase()
+      .includes("not_found")
+  );
+}
+
 function parseBearerToken(req) {
   const header = String(req.headers.authorization || "").trim();
   if (header.startsWith("Bearer ")) return header.slice(7).trim();
@@ -37,6 +51,96 @@ function normalizeEmail(email = "") {
 
 function normalizeName(value = "") {
   return String(value || "").trim();
+}
+
+function normalizeTenantValue(value = "") {
+  return String(value || "").trim();
+}
+
+function normalizeSlugValue(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeRoleValue(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function firstClaimValue(values = []) {
+  for (const value of values) {
+    const normalized = normalizeTenantValue(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function claimObject(value) {
+  return value && typeof value === "object" ? value : {};
+}
+
+function claimRolesFromValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeRoleValue(item)).filter(Boolean);
+  }
+  const one = normalizeRoleValue(value);
+  return one ? [one] : [];
+}
+
+export function extractTenantScopeFromClaims(claims = {}) {
+  const safeClaims = claimObject(claims);
+  const publicMetadata = claimObject(safeClaims.public_metadata || safeClaims.publicMetadata);
+  const unsafeMetadata = claimObject(safeClaims.unsafe_metadata || safeClaims.unsafeMetadata);
+
+  const tenantId = firstClaimValue([
+    safeClaims.tenantId,
+    safeClaims.tenant_id,
+    safeClaims.orgId,
+    safeClaims.org_id,
+    publicMetadata.tenantId,
+    publicMetadata.tenant_id,
+    publicMetadata.orgId,
+    publicMetadata.org_id,
+    unsafeMetadata.tenantId,
+    unsafeMetadata.tenant_id
+  ]);
+  const tenantSlug = normalizeSlugValue(
+    firstClaimValue([
+      safeClaims.tenantSlug,
+      safeClaims.tenant_slug,
+      publicMetadata.tenantSlug,
+      publicMetadata.tenant_slug,
+      unsafeMetadata.tenantSlug,
+      unsafeMetadata.tenant_slug
+    ])
+  );
+  const role = normalizeRoleValue(
+    firstClaimValue([
+      safeClaims.role,
+      safeClaims.tenantRole,
+      safeClaims.tenant_role,
+      publicMetadata.role,
+      publicMetadata.tenantRole,
+      publicMetadata.tenant_role
+    ])
+  );
+
+  const claimRoles = [
+    ...claimRolesFromValue(safeClaims.roles),
+    ...claimRolesFromValue(publicMetadata.roles),
+    ...claimRolesFromValue(unsafeMetadata.roles)
+  ];
+  const roleSet = new Set(claimRoles);
+  if (role) roleSet.add(role);
+
+  return {
+    tenantId: normalizeTenantValue(tenantId),
+    tenantSlug,
+    role,
+    roles: [...roleSet]
+  };
+}
+
+export function extractTenantScopeFromIdentity(identity = {}) {
+  return extractTenantScopeFromClaims(identity?.claims || {});
 }
 
 function readCachedClerkUserSnapshot(clerkUserId = "") {
@@ -121,4 +225,90 @@ export async function resolveClerkIdentityFromRequest(req) {
     lastName,
     claims
   };
+}
+
+export function isClerkManagementConfigured() {
+  return Boolean(clerkClient);
+}
+
+export async function syncClerkTenantMetadata({
+  clerkUserId = "",
+  tenantId = "",
+  tenantSlug = "",
+  role = "user",
+  allowTenantOverwrite = false
+} = {}) {
+  const normalizedClerkUserId = String(clerkUserId || "").trim();
+  const normalizedTenantId = normalizeTenantValue(tenantId);
+  if (!normalizedClerkUserId || !normalizedTenantId) {
+    return { status: "skipped", reason: "missing_identity_scope" };
+  }
+  if (!clerkClient) {
+    return { status: "skipped", reason: "clerk_not_configured" };
+  }
+
+  const user = await clerkClient.users.getUser(normalizedClerkUserId);
+  const currentPublicMetadata = claimObject(user?.publicMetadata);
+  const existingTenantId = firstClaimValue([
+    currentPublicMetadata.tenantId,
+    currentPublicMetadata.tenant_id,
+    currentPublicMetadata.orgId,
+    currentPublicMetadata.org_id
+  ]);
+
+  if (existingTenantId && existingTenantId !== normalizedTenantId && !allowTenantOverwrite) {
+    return {
+      status: "conflict",
+      reason: "tenant_scope_mismatch",
+      existingTenantId
+    };
+  }
+
+  const normalizedRole = normalizeRoleValue(role || "user") || "user";
+  const nextPublicMetadata = {
+    ...currentPublicMetadata,
+    tenantId: normalizedTenantId,
+    tenantSlug: normalizeSlugValue(tenantSlug || currentPublicMetadata.tenantSlug || ""),
+    role: normalizedRole,
+    roles: Array.from(
+      new Set([
+        ...claimRolesFromValue(currentPublicMetadata.roles),
+        normalizedRole
+      ])
+    )
+  };
+
+  await clerkClient.users.updateUserMetadata(normalizedClerkUserId, {
+    publicMetadata: nextPublicMetadata
+  });
+  clerkUserSnapshotCache.delete(normalizedClerkUserId);
+
+  return {
+    status: "updated",
+    tenantId: normalizedTenantId,
+    tenantSlug: nextPublicMetadata.tenantSlug,
+    role: normalizedRole
+  };
+}
+
+export async function deleteClerkUserAccount(clerkUserId = "") {
+  const normalized = String(clerkUserId || "").trim();
+  if (!normalized) {
+    return { status: "skipped", reason: "missing_clerk_user_id" };
+  }
+  if (!clerkClient) {
+    return { status: "skipped", reason: "clerk_not_configured" };
+  }
+
+  try {
+    await clerkClient.users.deleteUser(normalized);
+    clerkUserSnapshotCache.delete(normalized);
+    return { status: "deleted" };
+  } catch (error) {
+    if (isClerkNotFoundError(error)) {
+      clerkUserSnapshotCache.delete(normalized);
+      return { status: "not_found" };
+    }
+    throw error;
+  }
 }

@@ -4,6 +4,7 @@ import multer from "multer";
 import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
+import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
 import {
   ActivityItemModel,
   PhotoModel,
@@ -16,7 +17,12 @@ import {
   UserModel,
   CityGeoModel
 } from "../db/models/index.js";
-import { createPresignedUpload } from "../services/objectStorage.js";
+import {
+  createPresignedUpload,
+  uploadBufferToR2,
+  createPresignedDownloadUrl,
+  deleteObjectFromR2
+} from "../services/objectStorage.js";
 import { sendBulkTransactionalEmail } from "../services/email.js";
 import { broadcastTemplate } from "../services/emailTemplates.js";
 import { cityKey, geocodeCity } from "../utils/geocode.js";
@@ -68,7 +74,7 @@ const CITY_PEOPLE_CACHE_TTL_MS = Math.max(
 const MAP_CITY_PROFILE_LIMIT = Math.max(500, Number(process.env.MAP_CITY_PROFILE_SCAN_LIMIT || 5000));
 const MAP_SYNC_GEOCODE_LIMIT = Math.max(
   0,
-  Number(process.env.MAP_SYNC_GEOCODE_LIMIT || (process.env.MAPBOX_TOKEN ? 12 : 0))
+  Number(process.env.MAP_SYNC_GEOCODE_LIMIT || (process.env.MAPBOX_TOKEN ? 12 : 1))
 );
 const CITY_STATE_PARSE_CACHE_LIMIT = Math.max(
   1000,
@@ -92,6 +98,7 @@ const PUBLIC_UPLOAD_SCOPES = new Set(["avatar"]);
 const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero"]);
 const PRELAUNCH_PUBLIC_BRANDING_SCOPES = new Set(["branding-logo", "branding-hero"]);
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NEWSLETTER_R2_POINTER_MIME = "application/x.pondbridge.newsletter-r2-pointer+json";
 
 function normalizeFileName(fileName = "file") {
   return String(fileName || "file")
@@ -204,6 +211,7 @@ async function buildPresignedImageUpload(req, { allowPublicScopesOnly = true } =
     prefix,
     fileName,
     fileType,
+    objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
     fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
     allowedContentTypes: [...IMAGE_MIME_TYPES]
   });
@@ -250,6 +258,41 @@ function normalizeAttachmentFileName(fileName = "newsletter.pdf") {
     .replace(/\s+/g, " ")
     .replace(/[^\w.\- ()]/g, "");
   return base || "newsletter.pdf";
+}
+
+function buildTenantObjectProxyBaseUrl(req) {
+  return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/uploads/object`;
+}
+
+function encodeNewsletterPointer({ key = "", objectUrl = "" } = {}) {
+  const payload = {
+    version: 1,
+    key: String(key || "").trim(),
+    objectUrl: String(objectUrl || "").trim()
+  };
+  return Buffer.from(JSON.stringify(payload), "utf8");
+}
+
+function decodeNewsletterPointer(row = {}) {
+  if (String(row?.pdfMimeType || "") !== NEWSLETTER_R2_POINTER_MIME) return null;
+  const raw = row?.pdfData;
+  if (!raw) return null;
+  try {
+    const asBuffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    const parsed = JSON.parse(asBuffer.toString("utf8"));
+    const key = String(parsed?.key || "").trim();
+    const objectUrl = String(parsed?.objectUrl || "").trim();
+    if (!key || !objectUrl) return null;
+    return { key, objectUrl };
+  } catch {
+    return null;
+  }
+}
+
+function resolveNewsletterPdfUrl(req, row = {}) {
+  const pointer = decodeNewsletterPointer(row);
+  if (pointer?.objectUrl) return pointer.objectUrl;
+  return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${row._id}/file`;
 }
 
 async function resolveNetworkRecipientEmails(tenantId) {
@@ -1007,6 +1050,38 @@ router.post("/uploads/presign-public", publicUploadPresignLimiter, async (req, r
   }
 });
 
+router.get("/uploads/object", async (req, res, next) => {
+  try {
+    const key = String(req.query?.key || "").trim();
+    if (!key) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_OBJECT_KEY",
+          message: "Upload object key is required."
+        }
+      });
+    }
+
+    const expectedPrefix = `${String(req.tenant?.slug || "").trim()}/`;
+    if (!expectedPrefix || !key.startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: {
+          code: "TENANT_SCOPE_DENIED",
+          message: "Object key is outside this tenant scope."
+        }
+      });
+    }
+
+    const signed = await createPresignedDownloadUrl({
+      key,
+      expiresInSeconds: 600
+    });
+    return res.redirect(302, signed.downloadUrl);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.post("/prelaunch/unlock", (_req, res) => {
   return res.status(410).json({
     error: {
@@ -1021,23 +1096,7 @@ router.get("/prelaunch/status", (req, res) => {
   return res.json({ unlocked, mode: unlocked ? "live" : "locked" });
 });
 
-router.use(requireAuth);
-router.use((req, res, next) => {
-  const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
-  const isSuperAdmin = roles.includes("super_admin");
-  if (isSuperAdmin) return next();
-
-  if (String(req.user?.tenantId || "") !== String(req.tenant?._id || "")) {
-    return res.status(403).json({
-      error: {
-        code: "TENANT_SCOPE_DENIED",
-        message: "User does not have access to this tenant."
-      }
-    });
-  }
-
-  return next();
-});
+router.use(requireAuth, enforceTenantScope);
 
 router.post("/uploads/presign", privateUploadPresignLimiter, async (req, res, next) => {
   try {
@@ -1502,6 +1561,7 @@ router.post("/photos/presign", async (req, res, next) => {
       prefix: `photos/${req.user.id}`,
       fileName,
       fileType,
+      objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
       fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
       allowedContentTypes: [...IMAGE_MIME_TYPES]
     });
@@ -2048,6 +2108,7 @@ router.post("/conversations/:id/presign", async (req, res, next) => {
       prefix: `chat/${id}`,
       fileName,
       fileType: fileType || undefined,
+      objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
       fileSizeBytes: req.body?.fileSize || req.body?.size || 0
     });
 
@@ -2258,6 +2319,7 @@ router.post("/forums/:id/presign", async (req, res, next) => {
       prefix: `forums/${id}`,
       fileName,
       fileType: fileType || undefined,
+      objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
       fileSizeBytes: req.body?.fileSize || req.body?.size || 0
     });
 
@@ -2296,7 +2358,7 @@ router.get("/newsletters", async (req, res) => {
       title: row.title || "",
       season: row.season || "",
       year: row.year || null,
-      pdfUrl: `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${row._id}/file`,
+      pdfUrl: resolveNewsletterPdfUrl(req, row),
       createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null
     }))
   });
@@ -2311,6 +2373,11 @@ router.get("/newsletters/:id/file", async (req, res) => {
   const row = await NewsletterModel.findOne(req.tenant._id, { _id: id });
   if (!row || !row.pdfData) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Newsletter file not found" } });
+  }
+
+  const pointer = decodeNewsletterPointer(row);
+  if (pointer?.objectUrl) {
+    return res.redirect(302, pointer.objectUrl);
   }
 
   res.setHeader("Content-Type", row.pdfMimeType || "application/pdf");
@@ -2345,14 +2412,26 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     String(req.tenant?.content?.newsletterName || "Newsletter").trim() || "Newsletter";
   const title = sanitizeText(String(req.body?.title || "").trim()) || `${season} ${year} ${newsletterLabel}`;
   const emailToNetwork = parseBoolean(req.body?.emailToNetwork || req.body?.sendEmailToNetwork, false);
+  const uploaded = await uploadBufferToR2({
+    tenantSlug: req.tenant.slug,
+    prefix: "newsletters",
+    fileName: normalizeAttachmentFileName(file.originalname || `${season}-${year}.pdf`),
+    fileType: "application/pdf",
+    body: file.buffer,
+    objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
+    allowedContentTypes: ["application/pdf"]
+  });
   const created = await NewsletterModel.create({
     tenantId: req.tenant._id,
     title,
     season,
     year,
     pdfName: file.originalname || `${season}-${year}.pdf`,
-    pdfMimeType: "application/pdf",
-    pdfData: file.buffer
+    pdfMimeType: NEWSLETTER_R2_POINTER_MIME,
+    pdfData: encodeNewsletterPointer({
+      key: uploaded.key,
+      objectUrl: uploaded.objectUrl
+    })
   });
 
   let emailDelivery = {
@@ -2374,7 +2453,7 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
       };
     } else {
       const networkUrl = `${req.protocol}://${req.get("host")}/t/${req.tenant.slug}/cedar-chest`;
-      const pdfUrl = `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${created._id}/file`;
+      const pdfUrl = uploaded.objectUrl;
       const emailSubject = `New ${newsletterLabel}: ${title}`;
       const bodyHtml = `
         <p style="margin:0 0 12px;">A new <strong>${escapeHtml(newsletterLabel)}</strong> has been published for <strong>${escapeHtml(req.tenant.name || "your network")}</strong>.</p>
@@ -2449,7 +2528,7 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     title: created.title,
     season: created.season,
     year: created.year,
-    pdfUrl: `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${created._id}/file`,
+    pdfUrl: uploaded.objectUrl,
     createdAt: created.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString(),
     emailDelivery
   });
@@ -2469,6 +2548,15 @@ router.delete("/newsletters/:id", async (req, res) => {
   const existing = await NewsletterModel.findOne(req.tenant._id, { _id: id });
   if (!existing) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Newsletter not found" } });
+  }
+
+  const pointer = decodeNewsletterPointer(existing);
+  if (pointer?.key) {
+    try {
+      await deleteObjectFromR2(pointer.key);
+    } catch {
+      // Keep delete non-blocking for metadata row.
+    }
   }
 
   await NewsletterModel.delete(existing._id);

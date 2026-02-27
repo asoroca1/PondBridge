@@ -1068,8 +1068,8 @@
     linear-gradient(180deg, rgba(8, 24, 45, 0.05) 0%, rgba(8, 24, 45, 0.25) 100%),
     var(--preview-hero, none);
   background-color: #e8ecf1;
-  background-size: cover;
-  background-position: center;
+  background-size: cover, var(--preview-hero-size, cover);
+  background-position: center, var(--preview-hero-position, center center);
 }
 
 .director-live-preview-welcome {

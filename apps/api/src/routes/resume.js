@@ -4,6 +4,7 @@ import pdfParse from "pdf-parse";
 import rateLimit from "express-rate-limit";
 import { requireTenant } from "../middleware/tenantContext.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
 import { hasFeature } from "@pondbridge/shared";
 import { parseResumeTextToProfile } from "../utils/resume.js";
 
@@ -32,7 +33,14 @@ const upload = multer({
   }
 });
 
-router.post("/parse", resumeParseLimiter, requireAuth, requireTenant, upload.single("resume"), async (req, res) => {
+router.post(
+  "/parse",
+  resumeParseLimiter,
+  requireTenant,
+  requireAuth,
+  enforceTenantScope,
+  upload.single("resume"),
+  async (req, res) => {
   if (!hasFeature(req.tenant.planTier, "resumeParsing", req.tenant.addOns || [])) {
     return res.status(403).json({
       error: {
@@ -55,6 +63,7 @@ router.post("/parse", resumeParseLimiter, requireAuth, requireTenant, upload.sin
   const profileData = await parseResumeTextToProfile(parsedPdf.text || "");
 
   return res.json({ profile: profileData });
-});
+  }
+);
 
 export default router;

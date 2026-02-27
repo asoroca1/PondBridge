@@ -3,7 +3,8 @@ import multer from "multer";
 import { listFeaturesForPlan } from "@pondbridge/shared";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/requireAuth.js";
-import { getTenantContext } from "../middleware/tenantContext.js";
+import { requireTenant } from "../middleware/tenantContext.js";
+import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
 import {
   TenantModel,
   UserModel,
@@ -218,26 +219,22 @@ async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
     };
   }
 
-  const tenantId =
+  const explicitTenantId =
     String(req.query.tenantId || "").trim() ||
-    String(req.body?.tenantId || "").trim() ||
-    String(req.user.tenantId || "").trim();
+    String(req.body?.tenantId || "").trim();
+  const membershipTenantId = String(req.user.tenantId || "").trim();
 
-  let tenant = null;
-  if (tenantId) {
-    tenant = await TenantModel.findById(tenantId);
+  let tenant = req.tenant || null;
+
+  if (explicitTenantId && (!tenant || isSuperAdmin)) {
+    tenant = await TenantModel.findById(explicitTenantId);
   }
 
-  if (!tenant) {
-    const context = getTenantContext(req);
-    if (context.slug) {
-      tenant = await TenantModel.findBySlug(context.slug);
-    } else if (context.host) {
-      tenant = await TenantModel.findByDomain(context.host);
-    }
+  if (!tenant && membershipTenantId) {
+    tenant = await TenantModel.findById(membershipTenantId);
   }
 
-  if (!tenant && !tenantId) {
+  if (!tenant && !explicitTenantId && !membershipTenantId) {
     return {
       error: {
         status: 400,
@@ -266,7 +263,7 @@ async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
     };
   }
 
-  if (!isSuperAdmin && String(req.user.tenantId) !== String(tenant._id)) {
+  if (!isSuperAdmin && membershipTenantId && membershipTenantId !== String(tenant._id)) {
     return {
       error: {
         status: 403,
@@ -282,6 +279,8 @@ async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
 
   return { tenant, isSuperAdmin, isTenantAdmin };
 }
+
+router.use("/me", requireTenant, requireAuth, enforceTenantScope);
 
 function applyChecklistAndStep(tenant, { currentChecklist, stepToComplete, nextStep }) {
   let checklist = mergeChecklist(currentChecklist || tenant.onboardingChecklist || createDefaultChecklist());

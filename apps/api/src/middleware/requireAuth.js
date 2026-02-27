@@ -1,8 +1,7 @@
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { readAuthTokenFromCookie } from "../utils/authCookie.js";
-import { getTenantContext } from "./tenantContext.js";
-import { TenantModel, UserModel } from "../db/models/index.js";
+import { UserModel } from "../db/models/index.js";
 import { resolveClerkIdentityFromRequest } from "../services/clerkIdentity.js";
 import {
   applySuperConsoleRolePolicy,
@@ -10,6 +9,7 @@ import {
   findSingleTenantMembershipForIdentity,
   findTenantUserForIdentity
 } from "../services/identityUsers.js";
+import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
 
 function authUsesLegacy() {
   return ["legacy", "hybrid"].includes(env.AUTH_PROVIDER);
@@ -43,33 +43,8 @@ function sameRoleSet(a = [], b = []) {
 }
 
 async function resolveTenantIdForAuth(req) {
-  // Resolve tenant from trusted request routing/host context first.
-  const context = getTenantContext(req);
-  if (context.slug) {
-    const tenant = await TenantModel.findBySlug(context.slug);
-    return tenant ? String(tenant._id) : "";
-  }
-  if (context.host) {
-    const tenant = await TenantModel.findByDomain(context.host);
-    if (tenant) return String(tenant._id);
-  }
-
-  // Header fallback is only used on routes that do not encode tenant in the URL/host.
-  const fromSlugHeader = String(req.headers["x-tenant-slug"] || "").trim();
-  if (fromSlugHeader) {
-    const tenant = await TenantModel.findBySlug(fromSlugHeader);
-    if (tenant) return String(tenant._id);
-  }
-
-  // Keep x-tenant-id as a constrained compatibility fallback only when the
-  // tenant exists; do not trust arbitrary client IDs.
-  const fromHeader = String(req.headers["x-tenant-id"] || "").trim();
-  if (fromHeader) {
-    const tenant = await TenantModel.findById(fromHeader);
-    if (tenant) return String(tenant._id);
-  }
-
-  return "";
+  const resolved = await resolveTenantFromRequest(req, { allowHeaderSlug: true });
+  return String(resolved?.tenantId || "");
 }
 
 function applyLegacyUser(req, payload, token, source) {
@@ -144,14 +119,28 @@ export async function requireIdentity(req, res, next) {
 
 export async function requireAuth(req, res, next) {
   return requireIdentity(req, res, async () => {
+    const tenantId = await resolveTenantIdForAuth(req);
+
     if (req.user) {
       const canonicalRoles = canonicalizeAppRoles(req.user.roles || []);
       req.user.roles = applySuperConsoleRolePolicy(canonicalRoles, req.identity || {}, req.user.email || "");
+      if (
+        tenantId &&
+        !req.user.roles.includes("super_admin") &&
+        req.user.tenantId &&
+        String(req.user.tenantId) !== String(tenantId)
+      ) {
+        return res.status(403).json({
+          error: {
+            code: "TENANT_SCOPE_DENIED",
+            message: "Identity is scoped to a different tenant."
+          }
+        });
+      }
       return next();
     }
 
     const identity = req.identity || {};
-    const tenantId = await resolveTenantIdForAuth(req);
     const superUser = await ensureGlobalSuperAdmin(identity);
 
     let appUser = null;
@@ -163,6 +152,22 @@ export async function requireAuth(req, res, next) {
 
     if (!appUser && superUser) {
       appUser = superUser;
+    }
+
+    if (!appUser && tenantId) {
+      const otherMembership = await findSingleTenantMembershipForIdentity(identity);
+      if (
+        otherMembership?.tenantId &&
+        String(otherMembership.tenantId) !== String(tenantId) &&
+        !(otherMembership.roles || []).includes("super_admin")
+      ) {
+        return res.status(403).json({
+          error: {
+            code: "TENANT_SCOPE_DENIED",
+            message: "Identity is scoped to a different tenant."
+          }
+        });
+      }
     }
 
     if (!appUser) {

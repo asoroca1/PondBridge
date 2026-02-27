@@ -22,6 +22,18 @@ export const onboardingStepIds = [
 export const onboardingChecklistStatuses = ["not_started", "in_progress", "completed"];
 export const signupModes = ["open", "code", "invite_only", "approval_queue"];
 export const fontTokens = ["cedar_default", "modern_clean", "classic_serif"];
+export const heroImagePositionPresets = [
+  "left top",
+  "center top",
+  "right top",
+  "left center",
+  "center center",
+  "right center",
+  "left bottom",
+  "center bottom",
+  "right bottom"
+];
+export const heroImageSizePresets = ["cover", "contain", "auto", "110%", "125%", "140%"];
 export const defaultCampAgeGroups = [
   "Super Warrior",
   "Warrior",
@@ -33,6 +45,37 @@ export const defaultCampAgeGroups = [
   "Senior II"
 ];
 export const defaultCampStaffRoles = ["Camper", "Counselor", "JC", "CIT", "Admin"];
+
+const HERO_IMAGE_POSITION_SET = new Set(heroImagePositionPresets);
+const HERO_IMAGE_SIZE_SET = new Set(heroImageSizePresets);
+const HERO_IMAGE_POSITION_ALIASES = {
+  center: "center center",
+  top: "center top",
+  bottom: "center bottom",
+  left: "left center",
+  right: "right center"
+};
+
+export function normalizeHeroImagePosition(value = "", fallback = "center center") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (Object.prototype.hasOwnProperty.call(HERO_IMAGE_POSITION_ALIASES, normalized)) {
+    return HERO_IMAGE_POSITION_ALIASES[normalized];
+  }
+  if (HERO_IMAGE_POSITION_SET.has(normalized)) return normalized;
+  return fallback;
+}
+
+export function normalizeHeroImageSize(value = "", fallback = "cover") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (HERO_IMAGE_SIZE_SET.has(normalized)) return normalized;
+  if (/^\d{2,3}%$/.test(normalized)) {
+    const pct = Number.parseInt(normalized.replace("%", ""), 10);
+    if (Number.isFinite(pct) && pct >= 60 && pct <= 200) return `${pct}%`;
+  }
+  return fallback;
+}
 
 const jobSchema = z
   .object({
@@ -76,6 +119,16 @@ export const tenantThemeSchema = z.object({
   card: z.string().trim().default("#ffffff"),
   logoUrl: z.string().trim().default(""),
   heroImageUrl: z.string().trim().default(""),
+  heroImagePosition: z
+    .string()
+    .trim()
+    .default("center center")
+    .transform((value) => normalizeHeroImagePosition(value)),
+  heroImageSize: z
+    .string()
+    .trim()
+    .default("cover")
+    .transform((value) => normalizeHeroImageSize(value)),
   fontFamily: z.string().trim().default("Inter"),
   fontToken: z.enum(fontTokens).default("cedar_default")
 });

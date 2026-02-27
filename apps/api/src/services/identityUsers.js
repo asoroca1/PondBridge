@@ -1,10 +1,15 @@
 import { UserModel } from "../db/models/index.js";
 import { env } from "../config/env.js";
+import { syncClerkTenantMetadata } from "./clerkIdentity.js";
 
 const SUPER_CONSOLE_ROLES = new Set(["super_admin", "support_admin", "finance_admin"]);
 
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeTenantId(value = "") {
+  return String(value || "").trim();
 }
 
 function mergeRoleSet(existing = [], required = []) {
@@ -24,6 +29,37 @@ function uniqueById(items = []) {
     map.set(id, item);
   }
   return [...map.values()];
+}
+
+function resolvePrimaryTenantRole(roles = []) {
+  const roleSet = new Set((roles || []).map((role) => String(role || "").trim().toLowerCase()).filter(Boolean));
+  if (roleSet.has("super_admin")) return "super_admin";
+  if (roleSet.has("tenant_admin") || roleSet.has("admin")) return "tenant_admin";
+  return "user";
+}
+
+async function enforceClerkTenantMetadataSync({
+  clerkUserId = "",
+  tenantId = "",
+  tenantSlug = "",
+  role = "user"
+} = {}) {
+  const syncResult = await syncClerkTenantMetadata({
+    clerkUserId,
+    tenantId,
+    tenantSlug,
+    role
+  });
+  if (syncResult?.status !== "conflict") return syncResult;
+
+  const error = new Error("Clerk identity is already scoped to a different tenant.");
+  error.statusCode = 403;
+  error.code = "TENANT_SCOPE_DENIED";
+  error.details = {
+    tenantId: normalizeTenantId(tenantId),
+    existingTenantId: normalizeTenantId(syncResult?.existingTenantId || "")
+  };
+  throw error;
 }
 
 function rolesChanged(current = [], next = []) {
@@ -175,14 +211,7 @@ export async function findTenantUserForIdentity(tenantId, identity = {}) {
 }
 
 export async function findSingleTenantMembershipForIdentity(identity = {}) {
-  const clerkUserId = String(identity.clerkUserId || "").trim();
-  const email = normalizeEmail(identity.email || "");
-
-  let memberships = clerkUserId ? await UserModel.findMembershipsByClerkUserId(clerkUserId) : [];
-  if (memberships.length === 0 && email) {
-    memberships = await UserModel.findMembershipsByEmail(email);
-  }
-
+  const memberships = await findTenantMembershipsForIdentity(identity, { activeOnly: false });
   const active = memberships.filter((item) => item.status === "active");
   if (active.length === 1) return active[0];
   if (active.length > 1) return null;
@@ -190,12 +219,55 @@ export async function findSingleTenantMembershipForIdentity(identity = {}) {
   return null;
 }
 
+export async function findTenantMembershipsForIdentity(identity = {}, { activeOnly = false } = {}) {
+  const clerkUserId = String(identity.clerkUserId || "").trim();
+  const email = normalizeEmail(identity.email || "");
+
+  let memberships = clerkUserId ? await UserModel.findMembershipsByClerkUserId(clerkUserId) : [];
+  if (memberships.length === 0 && email) {
+    memberships = await UserModel.findMembershipsByEmail(email);
+  }
+  const uniqueMemberships = uniqueById(memberships);
+  if (!activeOnly) return uniqueMemberships;
+  return uniqueMemberships.filter((item) => item.status === "active");
+}
+
+async function assertIdentityTenantBinding({
+  tenantId,
+  identity,
+  allowCrossTenant = false
+}) {
+  const normalizedTenantId = normalizeTenantId(tenantId);
+  if (!normalizedTenantId) return { memberships: [] };
+
+  const memberships = await findTenantMembershipsForIdentity(identity, { activeOnly: true });
+  const crossTenantMemberships = memberships.filter(
+    (membership) =>
+      membership?.tenantId && normalizeTenantId(membership.tenantId) !== normalizedTenantId
+  );
+  if (allowCrossTenant || crossTenantMemberships.length === 0) {
+    return { memberships };
+  }
+
+  const error = new Error("Identity is already bound to a different tenant.");
+  error.statusCode = 403;
+  error.code = "TENANT_SCOPE_DENIED";
+  error.details = {
+    tenantId: normalizedTenantId,
+    existingTenantId: normalizeTenantId(crossTenantMemberships[0]?.tenantId || "")
+  };
+  throw error;
+}
+
 export async function createTenantMembershipFromIdentity({
   tenantId,
   identity,
   roles = ["user"],
-  status = "active"
+  status = "active",
+  tenantSlug = "",
+  allowCrossTenant = false
 }) {
+  await assertIdentityTenantBinding({ tenantId, identity, allowCrossTenant });
   const email = normalizeEmail(identity?.email || "");
   const clerkUserId = String(identity?.clerkUserId || "").trim();
   const existing = await findTenantUserForIdentity(tenantId, identity);
@@ -204,11 +276,17 @@ export async function createTenantMembershipFromIdentity({
     const patch = {};
     if ((existing.roles || []).length !== nextRoles.length) patch.roles = nextRoles;
     if (status && existing.status !== status) patch.status = status;
-    if (Object.keys(patch).length === 0) return existing;
-    return UserModel.update(existing._id, patch);
+    const updated = Object.keys(patch).length === 0 ? existing : await UserModel.update(existing._id, patch);
+    await enforceClerkTenantMetadataSync({
+      clerkUserId,
+      tenantId,
+      tenantSlug,
+      role: resolvePrimaryTenantRole(updated.roles || nextRoles)
+    });
+    return updated;
   }
 
-  return UserModel.create({
+  const created = await UserModel.create({
     tenantId,
     clerkUserId: clerkUserId || null,
     email: email || `${clerkUserId}@clerk.local`,
@@ -216,4 +294,11 @@ export async function createTenantMembershipFromIdentity({
     roles: mergeRoleSet([], roles),
     status
   });
+  await enforceClerkTenantMetadataSync({
+    clerkUserId,
+    tenantId,
+    tenantSlug,
+    role: resolvePrimaryTenantRole(created.roles || roles)
+  });
+  return created;
 }

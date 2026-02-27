@@ -1,5 +1,7 @@
 import {
   hasFeature,
+  normalizeHeroImagePosition,
+  normalizeHeroImageSize,
   onboardingPatchSchema,
   tenantContentSchema,
   tenantModulesSchema,
@@ -170,6 +172,8 @@ export function resolveTheme(tenant) {
     card: String(live.card || "#ffffff"),
     logoUrl: String(live.logoUrl || ""),
     heroImageUrl: String(live.heroImageUrl || ""),
+    heroImagePosition: normalizeHeroImagePosition(live.heroImagePosition || ""),
+    heroImageSize: normalizeHeroImageSize(live.heroImageSize || ""),
     fontFamily: String(live.fontFamily || FONT_TOKEN_TO_FAMILY[fontToken]),
     typography: String(live.typography || live.fontFamily || "Inter"),
     fontToken
@@ -291,6 +295,8 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
       brandSecondary: theme.brandSecondary,
       brandAccent: theme.brandAccent,
       heroImageUrl: theme.heroImageUrl,
+      heroImagePosition: theme.heroImagePosition,
+      heroImageSize: theme.heroImageSize,
       fontToken: theme.fontToken
     },
     content: {

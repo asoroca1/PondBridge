@@ -1,4 +1,5 @@
 import { Link, useParams } from "react-router-dom";
+import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { Button, Card, PageShell } from "@pondbridge/ui";
 import { useTenant } from "../context/TenantContext.jsx";
 import cedarField from "../assets/cedar-field.jpeg";
@@ -7,11 +8,21 @@ export default function TenantLanding() {
   const { slug } = useParams();
   const { tenant } = useTenant();
   const isDemo = tenant?.onboardingStatus !== "live";
-  const heroImage = tenant?.theme?.heroImageUrl || cedarField;
+  const heroBranding = tenant?.config?.branding || tenant?.theme || {};
+  const heroImage = heroBranding.heroImageUrl || cedarField;
+  const heroImagePosition = normalizeHeroImagePosition(heroBranding.heroImagePosition || "");
+  const heroImageSize = normalizeHeroImageSize(heroBranding.heroImageSize || "");
 
   return (
     <div className={`home1 ${isDemo ? "home1-demo" : ""}`}>
-      <section className="home-masthead" style={{ backgroundImage: `url(${heroImage})` }} />
+      <section
+        className="home-masthead"
+        style={{
+          backgroundImage: `url(${heroImage})`,
+          backgroundPosition: heroImagePosition,
+          backgroundSize: heroImageSize
+        }}
+      />
       <PageShell className="home-content-shell">
         <section className="welcome-hero">
           <Card className="welcome-banner">

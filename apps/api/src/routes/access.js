@@ -20,6 +20,7 @@ import {
   createTenantMembershipFromIdentity,
   findTenantUserForIdentity
 } from "../services/identityUsers.js";
+import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
 import {
   ensureProfileForUser,
   isProfileComplete,
@@ -398,7 +399,7 @@ async function writeTenantAudit(tenantId, actorUserId, event, metadata = {}) {
   });
 }
 
-router.use(requireIdentity, requireTenant);
+router.use(requireTenant, requireIdentity, enforceTenantScope);
 
 router.get("/decision", accessDecisionLimiter, async (req, res) => {
   const inviteToken = String(req.query.inviteToken || req.query.token || "").trim();
@@ -465,6 +466,7 @@ router.post("/director-bootstrap", accessMutationLimiter, async (req, res) => {
   const member = await createTenantMembershipFromIdentity({
     tenantId,
     identity,
+    tenantSlug: req.tenant.slug,
     roles: ["tenant_admin", "user"],
     status: "active"
   });
@@ -573,6 +575,7 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
     member = await createTenantMembershipFromIdentity({
       tenantId: req.tenant._id,
       identity,
+      tenantSlug: req.tenant.slug,
       roles: ["user"],
       status: "active"
     });
@@ -580,6 +583,7 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
     member = await createTenantMembershipFromIdentity({
       tenantId: req.tenant._id,
       identity,
+      tenantSlug: req.tenant.slug,
       roles: member.roles || ["user"],
       status: "active"
     });
@@ -789,6 +793,7 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
     member = await createTenantMembershipFromIdentity({
       tenantId: req.tenant._id,
       identity,
+      tenantSlug: req.tenant.slug,
       roles: rolesFromInvite(invite),
       status: "active"
     });
@@ -801,6 +806,7 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
       const updated = await createTenantMembershipFromIdentity({
         tenantId: req.tenant._id,
         identity,
+        tenantSlug: req.tenant.slug,
         roles: nextRoles,
         status: patch.status || member.status
       });

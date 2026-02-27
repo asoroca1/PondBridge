@@ -9,6 +9,7 @@ import { listFeaturesForPlan, hasFeature } from "@pondbridge/shared";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { requireTenant } from "../middleware/tenantContext.js";
+import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
 import { requireFeature } from "../middleware/requireFeature.js";
 import {
   ProfileModel,
@@ -18,7 +19,17 @@ import {
   AccessRequestModel,
   AnalyticsEventModel,
   EmailBroadcastModel,
-  ImportReportModel
+  ImportReportModel,
+  MagicLinkTokenModel,
+  ConversationModel,
+  MessageModel,
+  ForumModel,
+  ForumPostModel,
+  PhotoModel,
+  FamilyTreeModel,
+  TenantAdminAuditLogModel,
+  ResumeParseResultModel,
+  ActivityItemModel
 } from "../db/models/index.js";
 import { findImportReportForTenant } from "../services/csvImport.js";
 import { env } from "../config/env.js";
@@ -447,6 +458,351 @@ function parseIds(input) {
   )];
 }
 
+function uniqueIdStrings(values = []) {
+  return [...new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+}
+
+async function collectIdsForFilters(model, tenantId, filters = []) {
+  const ids = new Set();
+  for (const filter of filters) {
+    if (!filter || typeof filter !== "object" || Object.keys(filter).length === 0) continue;
+    const rows = await model.find(tenantId, filter, { select: ["id"] });
+    for (const row of rows) {
+      const id = toObjectIdString(row?._id || row?.id);
+      if (id) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
+function sanitizeConversationMembers(members = [], removedUserId = "") {
+  return asArray(members).filter(
+    (entry) => String(entry?.userId || "").trim() !== String(removedUserId || "").trim()
+  );
+}
+
+function sanitizeConversationReadBy(readBy = [], removedUserId = "") {
+  return asArray(readBy).filter(
+    (entry) => String(entry?.userId || "").trim() !== String(removedUserId || "").trim()
+  );
+}
+
+async function deleteMemberFromTenant({
+  tenantId,
+  userId,
+  profileId,
+  email = ""
+}) {
+  const summary = {
+    profileDeleted: 0,
+    userDeleted: 0,
+    messagesDeleted: 0,
+    conversationsDeleted: 0,
+    conversationsUpdated: 0,
+    forumPostsDeleted: 0,
+    forumsDeleted: 0,
+    forumsUpdated: 0,
+    photosDeleted: 0,
+    photosUpdated: 0,
+    photoLikesRemoved: 0,
+    photoCommentsRemoved: 0,
+    familyTreesDeleted: 0,
+    familyTreesUpdated: 0,
+    activityItemsDeleted: 0,
+    analyticsEventsDeleted: 0,
+    magicLinkTokensDeleted: 0,
+    invitesDeleted: 0,
+    accessRequestsDeleted: 0,
+    adminAuditLogsDeleted: 0,
+    resumeParseResultsDeleted: 0
+  };
+
+  const safeUserId = String(userId || "").trim();
+  const safeProfileId = String(profileId || "").trim();
+  const safeEmail = normalizeEmail(email);
+
+  // 1) Remove authored messages first.
+  const authoredMessageCount = await MessageModel.count(tenantId, { senderId: safeUserId });
+  if (authoredMessageCount > 0) {
+    await MessageModel.deleteMany(tenantId, { senderId: safeUserId });
+    summary.messagesDeleted += authoredMessageCount;
+  }
+
+  // 2) Remove/update conversations where this user participated.
+  const conversations = await ConversationModel.find(tenantId, {
+    participantIds: { $contains: [safeUserId] }
+  });
+  for (const conversation of conversations) {
+    const currentParticipants = uniqueIdStrings(conversation.participantIds || []);
+    const nextParticipants = currentParticipants.filter((entry) => entry !== safeUserId);
+    const nextMembers = sanitizeConversationMembers(conversation.members, safeUserId);
+    const nextReadBy = sanitizeConversationReadBy(conversation.readBy, safeUserId);
+    const shouldDeleteConversation = nextParticipants.length < 2;
+
+    if (shouldDeleteConversation) {
+      const remainingConversationMessages = await MessageModel.count(tenantId, {
+        conversationId: toObjectIdString(conversation._id)
+      });
+      if (remainingConversationMessages > 0) {
+        await MessageModel.deleteMany(tenantId, { conversationId: toObjectIdString(conversation._id) });
+        summary.messagesDeleted += remainingConversationMessages;
+      }
+      await ConversationModel.delete(conversation._id);
+      summary.conversationsDeleted += 1;
+      continue;
+    }
+
+    const latestMessages = await MessageModel.find(
+      tenantId,
+      { conversationId: toObjectIdString(conversation._id), deletedAt: null },
+      { sort: { createdAt: -1 }, limit: 1 }
+    );
+    const latestMessage = latestMessages[0] || null;
+    const existingCreatedBy = String(conversation.createdBy || "").trim();
+    const nextCreatedBy = nextParticipants.includes(existingCreatedBy)
+      ? existingCreatedBy
+      : nextParticipants[0];
+    const nextLastMessageAt =
+      latestMessage?.createdAt || conversation?.createdAt || new Date().toISOString();
+
+    await ConversationModel.update(conversation._id, {
+      participantIds: nextParticipants,
+      members: nextMembers,
+      readBy: nextReadBy,
+      createdBy: nextCreatedBy,
+      lastMessageAt: nextLastMessageAt,
+      lastMessage: latestMessage
+        ? {
+            senderId: latestMessage.senderId,
+            kind: latestMessage.kind,
+            text:
+              latestMessage.kind === "text"
+                ? latestMessage.text || ""
+                : latestMessage.kind === "image"
+                ? "Photo"
+                : "File attachment",
+            media: latestMessage.kind !== "text" ? latestMessage.media || null : null,
+            createdAt: latestMessage.createdAt || nextLastMessageAt
+          }
+        : null
+    });
+    summary.conversationsUpdated += 1;
+  }
+
+  // 3) Remove authored forum posts.
+  const authoredForumPostCount = await ForumPostModel.count(tenantId, { authorId: safeUserId });
+  if (authoredForumPostCount > 0) {
+    await ForumPostModel.deleteMany(tenantId, { authorId: safeUserId });
+    summary.forumPostsDeleted += authoredForumPostCount;
+  }
+
+  // 4) Remove/update forums where this user appears as member/moderator/creator.
+  const [memberForums, moderatorForums, creatorForums] = await Promise.all([
+    ForumModel.find(tenantId, { memberIds: { $contains: [safeUserId] } }),
+    ForumModel.find(tenantId, { moderators: { $contains: [safeUserId] } }),
+    ForumModel.find(tenantId, { creatorId: safeUserId })
+  ]);
+  const touchedForums = new Map();
+  [...memberForums, ...moderatorForums, ...creatorForums].forEach((forum) => {
+    const id = toObjectIdString(forum?._id || forum?.id);
+    if (id) touchedForums.set(id, forum);
+  });
+
+  for (const forum of touchedForums.values()) {
+    const nextMemberIds = uniqueIdStrings(forum.memberIds || []).filter((entry) => entry !== safeUserId);
+    let nextModerators = uniqueIdStrings(forum.moderators || []).filter((entry) => entry !== safeUserId);
+    if (nextMemberIds.length === 0) {
+      const remainingForumPostCount = await ForumPostModel.count(tenantId, {
+        forumId: toObjectIdString(forum._id)
+      });
+      if (remainingForumPostCount > 0) {
+        await ForumPostModel.deleteMany(tenantId, { forumId: toObjectIdString(forum._id) });
+        summary.forumPostsDeleted += remainingForumPostCount;
+      }
+      await ForumModel.delete(forum._id);
+      summary.forumsDeleted += 1;
+      continue;
+    }
+
+    let nextCreatorId = String(forum.creatorId || forum.createdBy || "").trim();
+    if (!nextCreatorId || nextCreatorId === safeUserId || !nextMemberIds.includes(nextCreatorId)) {
+      nextCreatorId = nextModerators[0] || nextMemberIds[0];
+    }
+    if (!nextModerators.includes(nextCreatorId)) {
+      nextModerators = uniqueIdStrings([nextCreatorId, ...nextModerators]);
+    }
+
+    const livePostsCount = await ForumPostModel.count(tenantId, {
+      forumId: toObjectIdString(forum._id),
+      deletedAt: null
+    });
+    const latestForumPosts = await ForumPostModel.find(
+      tenantId,
+      { forumId: toObjectIdString(forum._id), deletedAt: null },
+      { sort: { createdAt: -1 }, limit: 1 }
+    );
+    await ForumModel.update(forum._id, {
+      memberIds: nextMemberIds,
+      moderators: nextModerators,
+      creatorId: nextCreatorId,
+      createdBy: nextCreatorId,
+      postsCount: livePostsCount,
+      lastActivityAt: latestForumPosts[0]?.createdAt || forum.lastActivityAt || new Date().toISOString()
+    });
+    summary.forumsUpdated += 1;
+  }
+
+  // 5) Remove photos owned by this user.
+  const ownedPhotoCount = await PhotoModel.count(tenantId, { ownerId: safeUserId });
+  if (ownedPhotoCount > 0) {
+    await PhotoModel.deleteMany(tenantId, { ownerId: safeUserId });
+    summary.photosDeleted += ownedPhotoCount;
+  }
+
+  // 6) Strip likes/comments left by this user from remaining photos.
+  const remainingPhotos = await PhotoModel.find(tenantId, {}, {
+    select: ["id", "likes", "comments"]
+  });
+  for (const photo of remainingPhotos) {
+    const likes = asArray(photo.likes);
+    const comments = asArray(photo.comments);
+    const nextLikes = likes.filter((entry) => String(entry || "").trim() !== safeUserId);
+    const nextComments = comments.filter(
+      (entry) => String(entry?.userId || "").trim() !== safeUserId
+    );
+    const likesRemoved = likes.length - nextLikes.length;
+    const commentsRemoved = comments.length - nextComments.length;
+    if (likesRemoved <= 0 && commentsRemoved <= 0) continue;
+
+    await PhotoModel.update(photo._id, {
+      likes: nextLikes,
+      comments: nextComments
+    });
+    summary.photosUpdated += 1;
+    summary.photoLikesRemoved += Math.max(0, likesRemoved);
+    summary.photoCommentsRemoved += Math.max(0, commentsRemoved);
+  }
+
+  // 7) Remove this profile from family trees and relationship references.
+  const familyTrees = await FamilyTreeModel.find(tenantId, {});
+  for (const tree of familyTrees) {
+    const originalMembers = asArray(tree.members);
+    let changed = false;
+    const nextMembers = originalMembers
+      .filter((member) => {
+        const keep = String(member?.profileId || "") !== safeProfileId;
+        if (!keep) changed = true;
+        return keep;
+      })
+      .map((member) => {
+        const relationships = asArray(member?.relationships);
+        const nextRelationships = relationships.filter(
+          (relationship) => String(relationship?.toProfileId || "") !== safeProfileId
+        );
+        if (nextRelationships.length !== relationships.length) changed = true;
+        return {
+          ...member,
+          relationships: nextRelationships
+        };
+      });
+
+    if (!changed) continue;
+
+    if (nextMembers.length < 2) {
+      await FamilyTreeModel.delete(tree._id);
+      summary.familyTreesDeleted += 1;
+      continue;
+    }
+
+    const patch = { members: nextMembers };
+    if (String(tree.createdByUserId || "") === safeUserId) {
+      const replacementProfileId = String(nextMembers[0]?.profileId || "").trim();
+      if (replacementProfileId) {
+        const replacementProfiles = await ProfileModel.find(
+          tenantId,
+          { _id: replacementProfileId },
+          { select: ["id", "userId"], limit: 1 }
+        );
+        const replacementUserId = String(replacementProfiles[0]?.userId || "").trim();
+        if (replacementUserId) {
+          patch.createdByUserId = replacementUserId;
+        }
+      }
+    }
+
+    await FamilyTreeModel.update(tree._id, patch);
+    summary.familyTreesUpdated += 1;
+  }
+
+  // 8) Remove user-specific analytics/activity and auth artifacts.
+  const activityItemCount = await ActivityItemModel.count(tenantId, { actorUserId: safeUserId });
+  if (activityItemCount > 0) {
+    await ActivityItemModel.deleteMany(tenantId, { actorUserId: safeUserId });
+    summary.activityItemsDeleted += activityItemCount;
+  }
+
+  const analyticsEventCount = await AnalyticsEventModel.count(tenantId, { userId: safeUserId });
+  if (analyticsEventCount > 0) {
+    await AnalyticsEventModel.deleteMany(tenantId, { userId: safeUserId });
+    summary.analyticsEventsDeleted += analyticsEventCount;
+  }
+
+  const magicLinkIds = await collectIdsForFilters(MagicLinkTokenModel, tenantId, [
+    { userId: safeUserId },
+    safeEmail ? { email: safeEmail } : null
+  ]);
+  if (magicLinkIds.length > 0) {
+    await MagicLinkTokenModel.deleteMany(tenantId, { _id: { $in: magicLinkIds } });
+    summary.magicLinkTokensDeleted += magicLinkIds.length;
+  }
+
+  const inviteIds = await collectIdsForFilters(InviteModel, tenantId, [
+    { createdByUserId: safeUserId },
+    { usedByUserId: safeUserId },
+    safeEmail ? { email: safeEmail } : null
+  ]);
+  if (inviteIds.length > 0) {
+    await InviteModel.deleteMany(tenantId, { _id: { $in: inviteIds } });
+    summary.invitesDeleted += inviteIds.length;
+  }
+
+  const accessRequestIds = await collectIdsForFilters(AccessRequestModel, tenantId, [
+    { reviewedByUserId: safeUserId },
+    { approvedUserId: safeUserId },
+    safeEmail ? { email: safeEmail } : null
+  ]);
+  if (accessRequestIds.length > 0) {
+    await AccessRequestModel.deleteMany(tenantId, { _id: { $in: accessRequestIds } });
+    summary.accessRequestsDeleted += accessRequestIds.length;
+  }
+
+  const adminAuditCount = await TenantAdminAuditLogModel.count(tenantId, { actorUserId: safeUserId });
+  if (adminAuditCount > 0) {
+    await TenantAdminAuditLogModel.deleteMany(tenantId, { actorUserId: safeUserId });
+    summary.adminAuditLogsDeleted += adminAuditCount;
+  }
+
+  const resumeParseCount = await ResumeParseResultModel.count(tenantId, {
+    createdByUserId: safeUserId
+  });
+  if (resumeParseCount > 0) {
+    await ResumeParseResultModel.deleteMany(tenantId, { createdByUserId: safeUserId });
+    summary.resumeParseResultsDeleted += resumeParseCount;
+  }
+
+  // 9) Delete profile + tenant membership row.
+  await ProfileModel.delete(safeProfileId);
+  summary.profileDeleted = 1;
+  await UserModel.delete(safeUserId);
+  summary.userDeleted = 1;
+
+  return summary;
+}
+
 function parseList(value = "") {
   return [...new Set(
     String(value || "")
@@ -605,7 +961,7 @@ async function buildRecentActivity(tenantId) {
     }));
 }
 
-router.use(requireAuth, requireTenant, requireRole("tenant_admin"));
+router.use(requireTenant, requireAuth, enforceTenantScope, requireRole("tenant_admin"));
 
 router.get("/dashboard", async (req, res, next) => {
   try {
@@ -977,6 +1333,75 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
     ok: true,
     member: mapMemberRow(updated, user)
   });
+});
+
+router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, res, next) => {
+  try {
+    const profileId = String(req.params.profileId || "").trim();
+    const profile = await ProfileModel.findOne(req.tenant._id, { _id: profileId });
+
+    if (!profile) {
+      return res.status(404).json({
+        error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }
+      });
+    }
+
+    const userId = toObjectIdString(profile.userId);
+    if (!userId) {
+      return res.status(400).json({
+        error: { code: "INVALID_MEMBER", message: "Profile is missing a linked user." }
+      });
+    }
+    if (String(userId) === String(req.user.id || "")) {
+      return res.status(400).json({
+        error: { code: "CANNOT_DELETE_SELF", message: "You cannot delete your own account from this network." }
+      });
+    }
+
+    const user = await UserModel.findOne(req.tenant._id, { _id: userId });
+    if (!user) {
+      await ProfileModel.delete(profile._id);
+      return res.json({
+        ok: true,
+        deletedProfileId: profileId,
+        deletedUserId: userId,
+        summary: {
+          profileDeleted: 1,
+          userDeleted: 0
+        }
+      });
+    }
+
+    const targetIsAdmin = hasDirectorRole(user.roles || []);
+    if (targetIsAdmin) {
+      const tenantUsers = await UserModel.find(req.tenant._id, {}, { select: ["id", "roles"] });
+      const adminCount = tenantUsers.filter((item) => hasDirectorRole(item?.roles || [])).length;
+      if (adminCount <= 1) {
+        return res.status(400).json({
+          error: {
+            code: "LAST_ADMIN_PROTECTED",
+            message: "Cannot delete the last director/admin from this network."
+          }
+        });
+      }
+    }
+
+    const summary = await deleteMemberFromTenant({
+      tenantId: req.tenant._id,
+      userId,
+      profileId: toObjectIdString(profile._id),
+      email: profile?.emails?.[0] || user?.email || ""
+    });
+
+    return res.json({
+      ok: true,
+      deletedProfileId: toObjectIdString(profile._id),
+      deletedUserId: userId,
+      summary
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.post("/members/bulk-action", async (req, res) => {
@@ -1780,6 +2205,8 @@ router.get("/settings", async (req, res) => {
     branding: {
       logoUrl: theme.logoUrl,
       heroImageUrl: theme.heroImageUrl,
+      heroImagePosition: theme.heroImagePosition,
+      heroImageSize: theme.heroImageSize,
       brandPrimary: theme.brandPrimary
     },
     access: {
@@ -1842,11 +2269,17 @@ router.patch("/settings/identity", async (req, res) => {
 router.patch("/settings/branding", async (req, res) => {
   const draft = resolveDraft(req.tenant);
   const theme = draft.theme || resolveTheme(req.tenant);
-  const next = {
-    brandPrimary: String(req.body?.brandPrimary ?? (theme.brandPrimary || "")).trim(),
-    logoUrl: String(req.body?.logoUrl ?? (theme.logoUrl || "")).trim(),
-    heroImageUrl: String(req.body?.heroImageUrl ?? (theme.heroImageUrl || "")).trim()
-  };
+  const next = resolveTheme({
+    theme: {
+      ...theme,
+      ...req.body,
+      brandPrimary: String(req.body?.brandPrimary ?? (theme.brandPrimary || "")).trim(),
+      logoUrl: String(req.body?.logoUrl ?? (theme.logoUrl || "")).trim(),
+      heroImageUrl: String(req.body?.heroImageUrl ?? (theme.heroImageUrl || "")).trim(),
+      heroImagePosition: String(req.body?.heroImagePosition ?? (theme.heroImagePosition || "")).trim(),
+      heroImageSize: String(req.body?.heroImageSize ?? (theme.heroImageSize || "")).trim()
+    }
+  });
 
   const currentTheme = req.tenant.theme || {};
   const tenant = await TenantModel.update(req.tenant._id, {
@@ -1854,11 +2287,20 @@ router.patch("/settings/branding", async (req, res) => {
       ...currentTheme,
       brandPrimary: next.brandPrimary || theme.brandPrimary,
       logoUrl: next.logoUrl,
-      heroImageUrl: next.heroImageUrl
+      heroImageUrl: next.heroImageUrl,
+      heroImagePosition: next.heroImagePosition,
+      heroImageSize: next.heroImageSize
     },
     onboardingDraft: {
       ...draft,
-      theme: { ...draft.theme, ...next },
+      theme: {
+        ...draft.theme,
+        brandPrimary: next.brandPrimary || theme.brandPrimary,
+        logoUrl: next.logoUrl,
+        heroImageUrl: next.heroImageUrl,
+        heroImagePosition: next.heroImagePosition,
+        heroImageSize: next.heroImageSize
+      },
       updatedAt: new Date(),
       updatedByUserId: req.user.id
     }
@@ -2397,24 +2839,77 @@ router.get("/imports/:reportId/failures.csv", async (req, res) => {
   return res.send(report.failureCsv);
 });
 
-router.delete("/profiles/:profileId", async (req, res) => {
-  const profile = await ProfileModel.findOne(req.tenant._id, {
-    _id: req.params.profileId
-  });
-
-  if (!profile) {
-    return res.status(404).json({
-      error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }
+router.delete("/profiles/:profileId", async (req, res, next) => {
+  try {
+    const profileId = String(req.params.profileId || "").trim();
+    const profile = await ProfileModel.findOne(req.tenant._id, {
+      _id: profileId
     });
-  }
 
-  await ProfileModel.delete(profile._id);
-  if (profile.userId) {
-    const user = await UserModel.findOne(req.tenant._id, { _id: profile.userId });
-    if (user) await UserModel.delete(user._id);
-  }
+    if (!profile) {
+      return res.status(404).json({
+        error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }
+      });
+    }
 
-  return res.json({ ok: true, deletedProfileId: req.params.profileId });
+    const userId = toObjectIdString(profile.userId);
+    if (!userId) {
+      await ProfileModel.delete(profile._id);
+      return res.json({ ok: true, deletedProfileId: profileId, deletedUserId: "" });
+    }
+
+    if (String(userId) === String(req.user.id || "")) {
+      return res.status(400).json({
+        error: {
+          code: "CANNOT_DELETE_SELF",
+          message: "You cannot delete your own account from this network."
+        }
+      });
+    }
+
+    const user = await UserModel.findOne(req.tenant._id, { _id: userId });
+    if (!user) {
+      await ProfileModel.delete(profile._id);
+      return res.json({
+        ok: true,
+        deletedProfileId: profileId,
+        deletedUserId: userId,
+        summary: {
+          profileDeleted: 1,
+          userDeleted: 0
+        }
+      });
+    }
+
+    if (hasDirectorRole(user.roles || [])) {
+      const tenantUsers = await UserModel.find(req.tenant._id, {}, { select: ["id", "roles"] });
+      const adminCount = tenantUsers.filter((item) => hasDirectorRole(item?.roles || [])).length;
+      if (adminCount <= 1) {
+        return res.status(400).json({
+          error: {
+            code: "LAST_ADMIN_PROTECTED",
+            message: "Cannot delete the last director/admin from this network."
+          }
+        });
+      }
+    }
+
+    const summary = await deleteMemberFromTenant({
+      tenantId: req.tenant._id,
+      userId,
+      profileId: toObjectIdString(profile._id),
+      email: profile?.emails?.[0] || user?.email || ""
+    });
+
+    return res.json({
+      ok: true,
+      deletedProfileId: profileId,
+      deletedUserId: userId,
+      summary
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.get("/export/csv", exportLimiter, async (req, res) => {
@@ -2513,7 +3008,7 @@ router.put("/access-settings", async (req, res) => {
 });
 
 router.put("/branding", async (req, res) => {
-  const theme = req.body.theme || {};
+  const theme = resolveTheme({ theme: req.body.theme || {} });
 
   const currentTheme = req.tenant.theme || {};
   const tenant = await TenantModel.update(req.tenant._id, {
@@ -2526,6 +3021,8 @@ router.put("/branding", async (req, res) => {
       card: String(theme.card || currentTheme.card),
       logoUrl: String(theme.logoUrl || currentTheme.logoUrl),
       heroImageUrl: String(theme.heroImageUrl || currentTheme.heroImageUrl),
+      heroImagePosition: String(theme.heroImagePosition || currentTheme.heroImagePosition),
+      heroImageSize: String(theme.heroImageSize || currentTheme.heroImageSize),
       typography: String(theme.typography || currentTheme.typography)
     },
     onboardingStatus: "in_progress"

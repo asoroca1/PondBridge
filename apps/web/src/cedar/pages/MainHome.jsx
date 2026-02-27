@@ -1,6 +1,7 @@
 // src/pages/MainHome.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { resolveNewsletterLabel, resolveTenantContent } from "../../lib/campLabels.js";
@@ -567,7 +568,10 @@ export default function MainHome() {
   const content = resolveTenantContent(tenant);
   const modules = tenant?.config?.modules || tenant?.modules || {};
   const newsletterLabel = resolveNewsletterLabel(tenant);
-  const heroImage = tenant?.config?.branding?.heroImageUrl || cedarField;
+  const heroBranding = tenant?.config?.branding || tenant?.theme || {};
+  const heroImage = heroBranding.heroImageUrl || cedarField;
+  const heroImagePosition = normalizeHeroImagePosition(heroBranding.heroImagePosition || "");
+  const heroImageSize = normalizeHeroImageSize(heroBranding.heroImageSize || "");
 
   // NEW: unread DM+Group badge count
   const unreadChats = useUnreadChatsCount();
@@ -817,7 +821,11 @@ export default function MainHome() {
       <div className="nav-spacer" />
       <div
         className="home-masthead"
-        style={{ backgroundImage: `url(${heroImage})` }}
+        style={{
+          backgroundImage: `url(${heroImage})`,
+          "--masthead-image-position": heroImagePosition,
+          "--masthead-image-size": heroImageSize
+        }}
         role="img"
         aria-label={`${tenant?.name || "Camp"} field`}
       />

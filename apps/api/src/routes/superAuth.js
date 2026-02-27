@@ -77,6 +77,7 @@ router.get("/session", requireAuth, async (req, res) => {
       id: req.user.id,
       _id: req.user.id,
       tenantId: req.user.tenantId || null,
+      tenantSlug: tenant?.slug || "",
       roles: req.user.roles || [],
       email: req.user.email || ""
     },

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
 
 const TenantContext = createContext(null);
@@ -70,6 +71,8 @@ function applyTheme(config = {}) {
   const fontToken = String(branding.fontToken || "cedar_default");
   const font = FONT_TOKEN_MAP[fontToken] || FONT_TOKEN_MAP.cedar_default;
   const heroImage = branding.heroImageUrl || "";
+  const heroImagePosition = normalizeHeroImagePosition(branding.heroImagePosition || "");
+  const heroImageSize = normalizeHeroImageSize(branding.heroImageSize || "");
   const brandPrimary = normalizeHexColor(branding.brandPrimary || "#002b5c");
   const brandPrimaryHover = mixHex(brandPrimary, "#000000", 0.16);
   const brandPrimaryStrong = mixHex(brandPrimary, "#000000", 0.24);
@@ -94,6 +97,8 @@ function applyTheme(config = {}) {
   root.style.setProperty("--font-display", font.display);
   root.style.setProperty("--font-body", font.body);
   root.style.setProperty("--font-family", font.body);
+  root.style.setProperty("--hero-image-position", heroImagePosition);
+  root.style.setProperty("--hero-image-size", heroImageSize);
   if (heroImage) root.style.setProperty("--hero-image-url", `url(\"${heroImage}\")`);
   else root.style.removeProperty("--hero-image-url");
 }

@@ -1,70 +1,12 @@
-import { TenantModel } from "../db/models/index.js";
-import { env } from "../config/env.js";
-
-function stripPort(host = "") {
-  return String(host).split(":")[0].toLowerCase();
-}
-
-function requestHost(req) {
-  const forwarded = String(req.headers["x-forwarded-host"] || "")
-    .split(",")[0]
-    .trim();
-  if (forwarded) return stripPort(forwarded);
-  return stripPort(req.headers.host || "");
-}
-
-function extractSlugFromHost(host = "") {
-  const safeHost = stripPort(host);
-  if (!safeHost) return "";
-  const reservedSubdomains = new Set(["www", "app", "api", "super"]);
-
-  if (safeHost.endsWith(`.${env.APP_BASE_DOMAIN}`)) {
-    const prefix = safeHost.slice(0, -1 * (env.APP_BASE_DOMAIN.length + 1));
-    if (prefix) {
-      const candidate = prefix.split(".")[0];
-      if (!reservedSubdomains.has(candidate)) return candidate;
-    }
-  }
-
-  if (safeHost.endsWith(".localhost")) {
-    const prefix = safeHost.replace(".localhost", "");
-    if (prefix && prefix !== "localhost") {
-      const candidate = prefix.split(".")[0];
-      if (!reservedSubdomains.has(candidate)) return candidate;
-    }
-  }
-
-  return "";
-}
+import { resolveTenantHint, resolveTenantFromRequest } from "../utils/tenantResolution.js";
 
 export function getTenantContext(req) {
-  const fromParam = String(req.params.slug || "").trim().toLowerCase();
-  if (fromParam) return { slug: fromParam, source: "path_param" };
-
-  const pathMatch = req.originalUrl.match(/\/t\/([^/]+)/i);
-  const fromPath = pathMatch?.[1]?.trim().toLowerCase() || "";
-  if (fromPath) return { slug: fromPath, source: "url_prefix" };
-
-  const host = requestHost(req);
-  const fromHost = extractSlugFromHost(host || "");
-  if (fromHost) return { slug: fromHost, source: "subdomain" };
-
-  const fromHeader = String(req.headers["x-tenant-slug"] || "").trim().toLowerCase();
-  if (fromHeader) return { slug: fromHeader, source: "header" };
-
-  return { slug: "", source: "missing", host };
+  return resolveTenantHint(req, { allowHeaderSlug: true });
 }
 
 export async function requireTenant(req, res, next) {
-  const context = getTenantContext(req);
-  let tenant = null;
-  let source = context.source;
-  if (context.slug) {
-    tenant = await TenantModel.findBySlug(context.slug);
-  } else if (context.host) {
-    tenant = await TenantModel.findByDomain(context.host);
-    if (tenant) source = "domain";
-  } else {
+  const context = await resolveTenantFromRequest(req, { allowHeaderSlug: true });
+  if (!context.slug && !context.host) {
     return res.status(400).json({
       error: {
         code: "TENANT_REQUIRED",
@@ -73,7 +15,7 @@ export async function requireTenant(req, res, next) {
     });
   }
 
-  if (!tenant) {
+  if (!context.tenant) {
     return res.status(404).json({
       error: {
         code: "TENANT_NOT_FOUND",
@@ -84,18 +26,18 @@ export async function requireTenant(req, res, next) {
     });
   }
 
-  req.tenant = tenant;
+  req.tenant = context.tenant;
   req.tenantContext = {
-    tenantId: String(tenant._id),
-    slug: tenant.slug,
-    source
+    tenantId: context.tenantId,
+    slug: context.tenant.slug,
+    source: context.source
   };
 
   if (
     req.user &&
     !req.user.roles.includes("super_admin") &&
     req.user.tenantId &&
-    String(req.user.tenantId) !== String(tenant._id)
+    String(req.user.tenantId) !== String(context.tenant._id)
   ) {
     return res.status(403).json({
       error: {

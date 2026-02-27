@@ -281,7 +281,10 @@ function ClerkBackedAuthProvider({ children }) {
           token: clerkToken,
           headers: tenantSlug ? { "X-Tenant-Slug": tenantSlug } : {}
         });
-        const normalizedUser = normalizeUserShape(payload?.user);
+        const normalizedUser = normalizeUserShape({
+          ...(payload?.user || {}),
+          tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
+        });
         setUser(normalizedUser);
         writeAuthToStorage(clerkToken, normalizedUser);
         markTabSessionAuthenticated();

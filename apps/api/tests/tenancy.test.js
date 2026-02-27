@@ -223,6 +223,32 @@ describe("API tenancy isolation", () => {
     expect(response.body.error?.code).toBe("TENANT_SCOPE_DENIED");
   });
 
+  test("tenant A token is rejected when tenant B scope is requested on /api/auth/session", async () => {
+    const { credentials } = await createFixtures();
+    const tokenA = await loginTenant("tenant-a", credentials.adminA);
+
+    const response = await request(app)
+      .get("/api/auth/session")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("X-Tenant-Slug", "tenant-b");
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("TENANT_SCOPE_DENIED");
+  });
+
+  test("tenant A token is rejected on /api/tenants/me when requesting tenant B", async () => {
+    const { credentials } = await createFixtures();
+    const tokenA = await loginTenant("tenant-a", credentials.adminA);
+
+    const response = await request(app)
+      .get("/api/tenants/me/onboarding")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("X-Tenant-Slug", "tenant-b");
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("TENANT_SCOPE_DENIED");
+  });
+
   test("super admin can access both tenant A and tenant B admin endpoints", async () => {
     const { credentials } = await createFixtures();
     const superToken = await loginSuper(credentials.super);

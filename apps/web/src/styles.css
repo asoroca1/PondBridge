@@ -448,8 +448,8 @@ body{
   
     /* Background image (Vite + relative to styles.css in /src) */
     background-image: var(--hero-image-url, url("./assets/cedar-field.jpeg"));
-    background-size: cover;
-    background-position: center;
+    background-size: var(--hero-image-size, cover);
+    background-position: var(--hero-image-position, center center);
     background-repeat: no-repeat;
   }
   
@@ -601,16 +601,14 @@ body{
       padding: var(--home1-btn-pad-y) var(--home1-btn-pad-x);
     }
 
-      /* Background image position/zoom controls */
     .home1 {
-        --home1-bg-pos-x: 75%;   /* left | center | right | or % value */
-        --home1-bg-pos-y: center;   /* top | center | bottom | or % value */
-        --home1-bg-size: cover;     /* cover | contain | auto | or 120% for zoom */
+      --home1-bg-pos: var(--hero-image-position, center center);
+      --home1-bg-size: var(--hero-image-size, cover);
     }
 
     .home1-hero {
-        background-position: var(--home1-bg-pos-x) var(--home1-bg-pos-y);
-        background-size: var(--home1-bg-size);
+      background-position: var(--home1-bg-pos);
+      background-size: var(--home1-bg-size);
     }
   }
   
@@ -649,8 +647,8 @@ body{
   inset: 0;
   background-image: var(--hero-image-url, url("./cedar/assets/cedar-field.jpeg"));
   background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center;
+  background-size: var(--hero-image-size, cover);
+  background-position: var(--hero-image-position, center center);
   opacity: 0.18;
   filter: grayscale(100%) contrast(1.04) brightness(0.95);
   z-index: -2;

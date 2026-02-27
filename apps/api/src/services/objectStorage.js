@@ -1,5 +1,12 @@
 import crypto from "crypto";
-import { HeadBucketCommand, S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  HeadBucketCommand,
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config/env.js";
 
@@ -73,11 +80,26 @@ function inferExtensionFromContentType(contentType = "") {
 
 function joinObjectUrl(baseUrl, objectKey) {
   const safeBase = trimTrailingSlashes(baseUrl);
+  if (!safeBase) return "";
   const encodedPath = String(objectKey || "")
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   return `${safeBase}/${encodedPath}`;
+}
+
+function buildTenantObjectProxyUrl(baseUrl = "", objectKey = "") {
+  const safeBase = trimTrailingSlashes(baseUrl);
+  if (!safeBase) return "";
+  const safeKey = String(objectKey || "").trim();
+  if (!safeKey) return "";
+  return `${safeBase}?key=${encodeURIComponent(safeKey)}`;
+}
+
+function resolveObjectUrl({ objectKey = "", publicBaseUrl = "", objectProxyBaseUrl = "" } = {}) {
+  const direct = joinObjectUrl(publicBaseUrl, objectKey);
+  if (direct) return direct;
+  return buildTenantObjectProxyUrl(objectProxyBaseUrl, objectKey);
 }
 
 function createStorageError(message, code = "STORAGE_ERROR", statusCode = 500, details = null) {
@@ -142,13 +164,13 @@ export function getR2ServiceStatus() {
   if (!env.R2_ACCESS_KEY_ID) missing.push("R2_ACCESS_KEY_ID");
   if (!env.R2_SECRET_ACCESS_KEY) missing.push("R2_SECRET_ACCESS_KEY");
   if (!env.R2_ENDPOINT) missing.push("R2_ENDPOINT");
-  if (!env.R2_PUBLIC_BASE_URL) missing.push("R2_PUBLIC_BASE_URL");
   return {
     configured: missing.length === 0,
     missing,
     bucketName: env.R2_BUCKET_NAME || "",
     endpoint: env.R2_ENDPOINT || "",
-    publicBaseUrl: env.R2_PUBLIC_BASE_URL || ""
+    publicBaseUrl: env.R2_PUBLIC_BASE_URL || "",
+    hasPublicBaseUrl: Boolean(String(env.R2_PUBLIC_BASE_URL || "").trim())
   };
 }
 
@@ -251,6 +273,7 @@ export async function uploadBufferToR2({
   fileName = "file",
   fileType = "",
   body,
+  objectProxyBaseUrl = "",
   cacheControl = "",
   maxBytes = env.R2_MAX_UPLOAD_BYTES,
   allowedContentTypes = []
@@ -279,7 +302,11 @@ export async function uploadBufferToR2({
   await getR2Client().send(command);
 
   return {
-    objectUrl: joinObjectUrl(env.R2_PUBLIC_BASE_URL, objectKey),
+    objectUrl: resolveObjectUrl({
+      objectKey,
+      publicBaseUrl: env.R2_PUBLIC_BASE_URL,
+      objectProxyBaseUrl
+    }),
     key: objectKey,
     contentType,
     size: byteLength
@@ -292,6 +319,7 @@ export async function createPresignedUpload({
   fileName = "file",
   fileType = "",
   fileSizeBytes = 0,
+  objectProxyBaseUrl = "",
   maxBytes = env.R2_MAX_UPLOAD_BYTES,
   expiresInSeconds = env.R2_PRESIGN_EXPIRES_SECONDS || 900,
   cacheControl = "",
@@ -315,7 +343,11 @@ export async function createPresignedUpload({
   });
 
   const uploadUrl = await getSignedUrl(getR2Client(), command, { expiresIn });
-  const objectUrl = joinObjectUrl(env.R2_PUBLIC_BASE_URL, objectKey);
+  const objectUrl = resolveObjectUrl({
+    objectKey,
+    publicBaseUrl: env.R2_PUBLIC_BASE_URL,
+    objectProxyBaseUrl
+  });
 
   return {
     uploadUrl,
@@ -325,5 +357,104 @@ export async function createPresignedUpload({
       "Content-Type": contentType,
       ...(resolvedCacheControl ? { "Cache-Control": resolvedCacheControl } : {})
     }
+  };
+}
+
+export async function createPresignedDownloadUrl({
+  key = "",
+  expiresInSeconds = env.R2_PRESIGN_EXPIRES_SECONDS || 900
+} = {}) {
+  ensureR2Configured();
+  const safeKey = String(key || "").trim();
+  if (!safeKey) {
+    throw createStorageError("key is required for object download.", "INVALID_OBJECT_KEY", 400);
+  }
+  const expiresIn = Math.min(3600, Math.max(60, Number(expiresInSeconds) || 900));
+  const command = new GetObjectCommand({
+    Bucket: env.R2_BUCKET_NAME,
+    Key: safeKey
+  });
+  const downloadUrl = await getSignedUrl(getR2Client(), command, { expiresIn });
+  return { downloadUrl, key: safeKey, expiresIn };
+}
+
+export async function deleteObjectFromR2(key = "") {
+  const safeKey = String(key || "").trim();
+  if (!safeKey) {
+    return { status: "skipped", reason: "missing_object_key" };
+  }
+  if (!isR2Configured()) {
+    return { status: "skipped", reason: "r2_not_configured" };
+  }
+
+  await getR2Client().send(
+    new DeleteObjectsCommand({
+      Bucket: env.R2_BUCKET_NAME,
+      Delete: {
+        Objects: [{ Key: safeKey }],
+        Quiet: true
+      }
+    })
+  );
+
+  return { status: "ok", key: safeKey };
+}
+
+export async function purgeTenantObjectsFromR2(tenantSlug = "") {
+  const safeTenant = normalizeSegment(tenantSlug);
+  if (!safeTenant) {
+    return { status: "skipped", reason: "missing_tenant_slug", prefix: "", scanned: 0, deleted: 0 };
+  }
+  if (!isR2Configured()) {
+    return { status: "skipped", reason: "r2_not_configured", prefix: `${safeTenant}/`, scanned: 0, deleted: 0 };
+  }
+
+  const bucket = env.R2_BUCKET_NAME;
+  const prefix = `${safeTenant}/`;
+  const client = getR2Client();
+  let continuationToken = null;
+  let scanned = 0;
+  let deleted = 0;
+  let batches = 0;
+
+  do {
+    const listed = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        MaxKeys: 1000,
+        ...(continuationToken ? { ContinuationToken: continuationToken } : {})
+      })
+    );
+
+    const keys = (listed?.Contents || [])
+      .map((item) => String(item?.Key || "").trim())
+      .filter(Boolean);
+    scanned += keys.length;
+
+    if (keys.length > 0) {
+      const deletedChunk = await client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: {
+            Objects: keys.map((key) => ({ Key: key })),
+            Quiet: true
+          }
+        })
+      );
+      const errors = Array.isArray(deletedChunk?.Errors) ? deletedChunk.Errors.length : 0;
+      deleted += Math.max(0, keys.length - errors);
+      batches += 1;
+    }
+
+    continuationToken = listed?.IsTruncated ? listed?.NextContinuationToken || null : null;
+  } while (continuationToken);
+
+  return {
+    status: "ok",
+    prefix,
+    scanned,
+    deleted,
+    batches
   };
 }

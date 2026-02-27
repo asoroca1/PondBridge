@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  heroImagePositionPresets,
+  heroImageSizePresets,
+  normalizeHeroImagePosition,
+  normalizeHeroImageSize
+} from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
 import { defaultTenantDomain } from "../lib/domain.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -50,6 +56,8 @@ const DEFAULT_AGE_GROUPS = [
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
 const DEFAULT_TERMS_VERSION = "2026-02-21";
 const DEFAULT_PRIVACY_VERSION = "2026-02-21";
+const DEFAULT_HERO_IMAGE_POSITION = "center center";
+const DEFAULT_HERO_IMAGE_SIZE = "cover";
 const EMPTY_ADDRESS = {
   line1: "",
   line2: "",
@@ -81,6 +89,33 @@ const BILLING_PLAN_OPTIONS = [
     summary: "Advanced feature tier with institutional-level support."
   }
 ];
+const HERO_POSITION_LABELS = {
+  "left top": "Top left",
+  "center top": "Top center",
+  "right top": "Top right",
+  "left center": "Center left",
+  "center center": "Center",
+  "right center": "Center right",
+  "left bottom": "Bottom left",
+  "center bottom": "Bottom center",
+  "right bottom": "Bottom right"
+};
+const HERO_SIZE_LABELS = {
+  cover: "Fill frame",
+  contain: "Fit whole photo",
+  auto: "Original size",
+  "110%": "Slight zoom",
+  "125%": "Medium zoom",
+  "140%": "Close zoom"
+};
+const HERO_POSITION_OPTIONS = heroImagePositionPresets.map((value) => ({
+  value,
+  label: HERO_POSITION_LABELS[value] || value
+}));
+const HERO_SIZE_OPTIONS = heroImageSizePresets.map((value) => ({
+  value,
+  label: HERO_SIZE_LABELS[value] || value
+}));
 
 function normalizeBillingPlanCode(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
@@ -396,7 +431,9 @@ function DirectorCreateAccountWizardPage() {
   const [themeDraft, setThemeDraft] = useState({
     brandPrimary: DEFAULT_SETUP_BRAND,
     logoUrl: "",
-    heroImageUrl: ""
+    heroImageUrl: "",
+    heroImagePosition: DEFAULT_HERO_IMAGE_POSITION,
+    heroImageSize: DEFAULT_HERO_IMAGE_SIZE
   });
   const [hasCustomMainColor, setHasCustomMainColor] = useState(false);
   const [modulesDraft, setModulesDraft] = useState({
@@ -559,9 +596,22 @@ function DirectorCreateAccountWizardPage() {
     setThemeDraft((prev) => ({
       brandPrimary: String(hasCustomMainColor ? prev.brandPrimary : initialBrandColor),
       logoUrl: String(source.logoUrl || prev.logoUrl || ""),
-      heroImageUrl: String(source.heroImageUrl || prev.heroImageUrl || "")
+      heroImageUrl: String(source.heroImageUrl || prev.heroImageUrl || ""),
+      heroImagePosition: normalizeHeroImagePosition(
+        source.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+      ),
+      heroImageSize: normalizeHeroImageSize(
+        source.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+      )
     }));
-  }, [hasCustomMainColor, initialBrandColor, tenant?.theme?.logoUrl, tenant?.theme?.heroImageUrl]);
+  }, [
+    hasCustomMainColor,
+    initialBrandColor,
+    tenant?.theme?.logoUrl,
+    tenant?.theme?.heroImageUrl,
+    tenant?.theme?.heroImagePosition,
+    tenant?.theme?.heroImageSize
+  ]);
 
   useEffect(() => {
     const sourceName = String(tenant?.content?.newsletterName || "").trim();
@@ -626,13 +676,24 @@ function DirectorCreateAccountWizardPage() {
     const draft = tenant?.onboardingDraft;
     if (!draft) return;
 
-    if (draft.theme?.brandPrimary && isHexColor(draft.theme.brandPrimary)) {
+    if (draft.theme && typeof draft.theme === "object") {
       setThemeDraft((prev) => ({
-        brandPrimary: draft.theme.brandPrimary || prev.brandPrimary,
+        brandPrimary:
+          draft.theme.brandPrimary && isHexColor(draft.theme.brandPrimary)
+            ? draft.theme.brandPrimary
+            : prev.brandPrimary,
         logoUrl: draft.theme.logoUrl || prev.logoUrl,
-        heroImageUrl: draft.theme.heroImageUrl || prev.heroImageUrl
+        heroImageUrl: draft.theme.heroImageUrl || prev.heroImageUrl,
+        heroImagePosition: normalizeHeroImagePosition(
+          draft.theme.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSize: normalizeHeroImageSize(
+          draft.theme.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        )
       }));
-      setHasCustomMainColor(true);
+      if (draft.theme.brandPrimary && isHexColor(draft.theme.brandPrimary)) {
+        setHasCustomMainColor(true);
+      }
     }
     if (draft.modules) {
       const m = draft.modules;
@@ -690,7 +751,9 @@ function DirectorCreateAccountWizardPage() {
         brandPrimary: themeDraft.brandPrimary,
         brandSecondary: deriveSecondaryHex(themeDraft.brandPrimary),
         logoUrl: themeDraft.logoUrl,
-        heroImageUrl: themeDraft.heroImageUrl
+        heroImageUrl: themeDraft.heroImageUrl,
+        heroImagePosition: themeDraft.heroImagePosition,
+        heroImageSize: themeDraft.heroImageSize
       };
     } else if (completedStep === STEP_FEATURES) {
       payload.modules = { ...modulesDraft };
@@ -1356,6 +1419,12 @@ function DirectorCreateAccountWizardPage() {
             text: String(baseTheme.text || "#0f172a"),
             card: String(baseTheme.card || "#ffffff"),
             heroImageUrl: finalHeroImageUrl,
+            heroImagePosition: normalizeHeroImagePosition(
+              themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+            ),
+            heroImageSize: normalizeHeroImageSize(
+              themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+            ),
             fontFamily: String(baseTheme.fontFamily || "Inter"),
             fontToken: String(baseTheme.fontToken || "cedar_default")
           }
@@ -1809,6 +1878,54 @@ function DirectorCreateAccountWizardPage() {
                     />
                   </div>
 
+                  <div className="wizard1-field wizard1-span-6">
+                    <label className="wizard1-label" htmlFor="director-main-photo-position">
+                      Main photo position
+                    </label>
+                    <select
+                      id="director-main-photo-position"
+                      className="wizard1-input"
+                      value={themeDraft.heroImagePosition}
+                      onChange={(event) =>
+                        updateThemeField(
+                          "heroImagePosition",
+                          normalizeHeroImagePosition(
+                            event.target.value || DEFAULT_HERO_IMAGE_POSITION
+                          )
+                        )
+                      }
+                    >
+                      {HERO_POSITION_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="wizard1-field wizard1-span-6">
+                    <label className="wizard1-label" htmlFor="director-main-photo-size">
+                      Main photo sizing
+                    </label>
+                    <select
+                      id="director-main-photo-size"
+                      className="wizard1-input"
+                      value={themeDraft.heroImageSize}
+                      onChange={(event) =>
+                        updateThemeField(
+                          "heroImageSize",
+                          normalizeHeroImageSize(event.target.value || DEFAULT_HERO_IMAGE_SIZE)
+                        )
+                      }
+                    >
+                      {HERO_SIZE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="wizard1-span-12">
                     <p className="wizard1-label">Live preview</p>
                     <div className="director-live-preview-frame">
@@ -1830,7 +1947,13 @@ function DirectorCreateAccountWizardPage() {
                           ),
                           "--preview-hero": themeDraft.heroImageUrl
                             ? `url("${themeDraft.heroImageUrl}")`
-                            : "none"
+                            : "none",
+                          "--preview-hero-position": normalizeHeroImagePosition(
+                            themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+                          ),
+                          "--preview-hero-size": normalizeHeroImageSize(
+                            themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+                          )
                         }}
                       >
                         <div className="director-live-preview-nav">
@@ -2463,6 +2586,14 @@ function DirectorCreateAccountWizardPage() {
                         </li>
                         <li>
                           <strong>Main photo:</strong> {themeDraft.heroImageUrl ? "Uploaded" : "Not uploaded"}
+                        </li>
+                        <li>
+                          <strong>Main photo framing:</strong>{" "}
+                          {(HERO_POSITION_OPTIONS.find((item) => item.value === themeDraft.heroImagePosition)
+                            ?.label || "Center")}{" "}
+                          /{" "}
+                          {(HERO_SIZE_OPTIONS.find((item) => item.value === themeDraft.heroImageSize)?.label ||
+                            "Fill frame")}
                         </li>
                       </ul>
                     </article>
