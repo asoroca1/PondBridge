@@ -14,6 +14,18 @@
     <div id="root"></div>
     <script>
       (function installBootstrapGuard() {
+        (function restoreDeepLinkFrom404() {
+          var currentUrl = new URL(window.location.href);
+          var forwardedPath = currentUrl.searchParams.get("__pb_path");
+          if (!forwardedPath) return;
+          if (!/^\/(?!\/)/.test(forwardedPath)) {
+            currentUrl.searchParams.delete("__pb_path");
+            window.history.replaceState(null, "", currentUrl.pathname + (currentUrl.search ? currentUrl.search : ""));
+            return;
+          }
+          window.history.replaceState(null, "", forwardedPath);
+        })();
+
         var retryKey = "pondbridge_bootstrap_retry_count";
         var maxRetries = 2;
         var hasNavigated = false;

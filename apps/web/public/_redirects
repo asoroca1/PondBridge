@@ -1,7 +1,6 @@
 # Do not rewrite missing static assets to index.html.
 # Missing static assets should return a hard 404.
 /assets/* /404.html 404
-/*.* /404.html 404
 
 # SPA fallback for application routes.
 /* /index.html 200

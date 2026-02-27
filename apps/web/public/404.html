@@ -4,8 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Not Found</title>
+    <script>
+      (function redirectSpaDeepLink() {
+        var path = window.location.pathname + window.location.search + window.location.hash;
+        // Only recover app-like routes; static assets should remain 404.
+        if (/\.[a-z0-9]+$/i.test(window.location.pathname)) return;
+
+        var target = new URL(window.location.origin + "/");
+        target.searchParams.set("__pb_path", path);
+        window.location.replace(target.toString());
+      })();
+    </script>
   </head>
   <body>
     <h1>404 Not Found</h1>
+    <p>If you are not redirected automatically, return to the home page.</p>
   </body>
 </html>
