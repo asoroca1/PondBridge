@@ -521,9 +521,8 @@ export default function NavBar() {
             <img src={logoUrl} alt={`${tenant?.name || "Camp"} logo`} className="navbar2-logo" />
           ) : (
             <div
-              className="nav2-ac-avatar nav2-avatar-fallback nav2-ac-initials"
+              className="nav2-ac-avatar nav2-avatar-fallback nav2-ac-initials navbar2-logo-fallback"
               aria-hidden="true"
-              style={{ width: 60, height: 60 }}
             >
               {fallbackLogoInitial}
             </div>
