@@ -10,6 +10,9 @@ import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";
 
+// Build marker used to force fresh hashed assets after CDN cache corruption.
+window.__PONDBRIDGE_BUILD__ = "2026-02-27T19:45Z";
+
 const clerkNoSocialAppearance = {
   elements: {
     socialButtons: {

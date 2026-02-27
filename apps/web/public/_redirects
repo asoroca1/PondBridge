@@ -1,9 +1,5 @@
 # Do not rewrite missing static assets to index.html.
-# If a stale hashed JS chunk is requested, serve recovery JS that forces
-# one cache-busting reload to self-heal stale-tab deployments.
-/assets/*.js /chunk-missing-reload.js 200
-
-# For other missing static assets, return a hard 404.
+# Missing static assets should return a hard 404.
 /assets/* /404.html 404
 /*.* /404.html 404
 
