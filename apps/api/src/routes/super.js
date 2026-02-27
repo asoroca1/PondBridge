@@ -547,7 +547,7 @@ async function writeAudit(tenantId, actorUserId, event, metadata = {}) {
   }
 }
 
-async function loadTenantsWithCounts(filter = {}) {
+async function loadTenantsWithCounts(filter = {}, { includeHidden = false } = {}) {
   const tenants = await TenantModel.find(filter, { sort: { createdAt: -1 } });
 
   const withCounts = await Promise.all(
@@ -563,6 +563,7 @@ async function loadTenantsWithCounts(filter = {}) {
     })
   );
 
+  if (includeHidden) return withCounts;
   return withCounts.filter((tenant) => !isTestOrSandboxTenant(tenant));
 }
 
@@ -657,7 +658,8 @@ router.get("/search", superSearchLimiter, async (req, res) => {
   }
 
   const tenants = Array.from(tenantMap.values()).slice(0, 8);
-  const visibleTenants = tenants.filter((tenant) => !isTestOrSandboxTenant(tenant));
+  const includeHidden = getPrimaryRole(req.user) === "super_admin";
+  const visibleTenants = includeHidden ? tenants : tenants.filter((tenant) => !isTestOrSandboxTenant(tenant));
 
   const items = [
     ...visibleTenants.map((tenant) => ({
@@ -669,7 +671,7 @@ router.get("/search", superSearchLimiter, async (req, res) => {
     })),
     ...directors.map((director) => {
       const tenant = tenantMap.get(toObjectIdString(director.tenantId));
-      if (!tenant || isTestOrSandboxTenant(tenant)) return null;
+      if (!tenant || (!includeHidden && isTestOrSandboxTenant(tenant))) return null;
       return {
         id: `director_${director._id}`,
         type: "director",
@@ -832,7 +834,8 @@ router.get("/tenants", requireRole("support_admin"), async (req, res) => {
   if (plan) filter.planTier = plan;
   if (billingStatus) filter.billingStatus = billingStatus;
 
-  let items = await loadTenantsWithCounts(filter);
+  const includeHidden = getPrimaryRole(req.user) === "super_admin";
+  let items = await loadTenantsWithCounts(filter, { includeHidden });
 
   if (search) {
     const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
