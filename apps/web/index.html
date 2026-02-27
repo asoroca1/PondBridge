@@ -13,102 +13,20 @@
   <body>
     <div id="root"></div>
     <script>
-      (function installBootstrapGuard() {
-        (function restoreDeepLinkFrom404() {
-          var currentUrl = new URL(window.location.href);
-          var forwardedPath = currentUrl.searchParams.get("__pb_path");
-          if (!forwardedPath) return;
-          if (!/^\/(?!\/)/.test(forwardedPath)) {
-            currentUrl.searchParams.delete("__pb_path");
-            window.history.replaceState(null, "", currentUrl.pathname + (currentUrl.search ? currentUrl.search : ""));
-            return;
-          }
-          window.history.replaceState(null, "", forwardedPath);
-        })();
+      (function restoreDeepLinkFrom404() {
+        var currentUrl = new URL(window.location.href);
+        var forwardedPath = currentUrl.searchParams.get("__pb_path");
+        if (!forwardedPath) return;
 
-        var retryKey = "pondbridge_bootstrap_retry_count";
-        var maxRetries = 2;
-        var hasNavigated = false;
+        currentUrl.searchParams.delete("__pb_path");
+        var cleaned = currentUrl.pathname + (currentUrl.search || "") + (currentUrl.hash || "");
 
-        function showFailureState(source, detail) {
-          var root = document.getElementById("root");
-          if (!root || root.childElementCount > 0) return;
-          var detailText = String(detail || "").trim();
-          var detailHtml = detailText
-            ? "<p style='margin:12px 0 0;line-height:1.4;font-size:0.92rem;color:#4a5f79'><strong>Failed asset:</strong> " +
-              detailText.replace(/</g, "&lt;").replace(/>/g, "&gt;") +
-              "</p>"
-            : "";
-          root.innerHTML =
-            '<section style="max-width:640px;margin:72px auto;padding:24px;border:1px solid #d7e3ef;border-radius:16px;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif;color:#10243e;background:#f8fbff">' +
-            "<h1 style='margin:0 0 10px;font-size:1.35rem'>PondBridge couldn't load</h1>" +
-            "<p style='margin:0 0 12px;line-height:1.5'>A network or cache issue blocked a JavaScript asset from loading.</p>" +
-            "<p style='margin:0;line-height:1.5'>Please hard refresh this page (Cmd+Shift+R) and try again.</p>" +
-            detailHtml +
-            "</section>";
+        if (!/^\/(?!\/)/.test(forwardedPath)) {
+          window.history.replaceState(null, "", cleaned);
+          return;
         }
 
-        function tryRecover(source, detail) {
-          if (hasNavigated) return;
-          var count = 0;
-          try {
-            count = Number(window.sessionStorage.getItem(retryKey) || "0");
-          } catch {
-            count = 0;
-          }
-
-          if (count < maxRetries) {
-            hasNavigated = true;
-            try {
-              window.sessionStorage.setItem(retryKey, String(count + 1));
-            } catch {
-              // Ignore storage failures.
-            }
-            var nextUrl = new URL(window.location.href);
-            nextUrl.searchParams.set("pb_bootstrap_retry", String(Date.now()));
-            window.location.replace(nextUrl.toString());
-            return;
-          }
-
-          console.error("PondBridge bootstrap failed:", source, detail);
-          showFailureState(source, detail);
-        }
-
-        window.addEventListener(
-          "error",
-          function (event) {
-            var target = event && event.target;
-            if (target && target.tagName === "SCRIPT") {
-              tryRecover("script", target.src || "");
-              return;
-            }
-            var message = String((event && event.message) || "").toLowerCase();
-            if (message.includes("mime") || message.includes("imported module")) {
-              tryRecover("runtime", message);
-            }
-          },
-          true
-        );
-
-        window.addEventListener("unhandledrejection", function (event) {
-          var message = String((event && event.reason && event.reason.message) || event.reason || "").toLowerCase();
-          if (message.includes("import") || message.includes("fetch")) {
-            tryRecover("rejection", message);
-          }
-        });
-
-        window.addEventListener("load", function () {
-          setTimeout(function () {
-            var root = document.getElementById("root");
-            if (root && root.childElementCount > 0) {
-              try {
-                window.sessionStorage.removeItem(retryKey);
-              } catch {
-                // Ignore storage failures.
-              }
-            }
-          }, 1200);
-        });
+        window.history.replaceState(null, "", forwardedPath);
       })();
     </script>
     <script type="module" src="/src/main.jsx"></script>

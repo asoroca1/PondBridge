@@ -1,27 +1,28 @@
-(function recoverFromMissingChunk() {
-  var storageKey = "pondbridge_chunk_recovery_ts";
-  var now = Date.now();
-  var lastAttempt = 0;
-
+(async function recoverFromMissingChunk() {
+  var retryKey = "pondbridge_chunk_recovery_attempted";
   try {
-    lastAttempt = Number(window.sessionStorage.getItem(storageKey) || "0");
+    if (window.sessionStorage.getItem(retryKey) === "1") {
+      return;
+    }
+    window.sessionStorage.setItem(retryKey, "1");
   } catch {
-    lastAttempt = 0;
-  }
-
-  // Avoid infinite loops if something else is broken.
-  if (lastAttempt && now - lastAttempt < 10000) {
-    console.error("PondBridge asset recovery already attempted recently.");
-    return;
+    // Continue with best effort.
   }
 
   try {
-    window.sessionStorage.setItem(storageKey, String(now));
+    var html = await fetch("/", { cache: "no-store", credentials: "same-origin" }).then(function (res) {
+      return res.text();
+    });
+    var match = html.match(/<script type="module"[^>]*src="([^"]+)"/i);
+    if (match && match[1]) {
+      var src = match[1];
+      var suffix = src.indexOf("?") >= 0 ? "&" : "?";
+      await import(src + suffix + "pb_recover=" + Date.now());
+      return;
+    }
   } catch {
-    // Ignore storage failures and continue with best-effort recovery.
+    // Fallback below.
   }
 
-  var url = new URL(window.location.href);
-  url.searchParams.set("pb_refresh", String(now));
-  window.location.replace(url.toString());
+  window.location.replace("/?pb_recover=" + Date.now());
 })();
