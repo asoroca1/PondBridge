@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
+    "prebuild": "node ../../scripts/validateCloudflareRedirects.mjs ./public/_redirects",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src/App.jsx src/components src/context src/lib src/pages --ext .js,.jsx",

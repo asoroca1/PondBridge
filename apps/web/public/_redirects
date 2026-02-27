@@ -1,6 +1,11 @@
-# Do not rewrite missing static assets to index.html.
-# Missing static assets should return a hard 404.
-/assets/* /404.html 404
+# Cloudflare Pages: serve built assets directly.
+# Missing files under these paths should stay 404.
+/favicon.svg /favicon.svg 200
+/manifest.json /manifest.json 200
+/robots.txt /robots.txt 200
+/sitemap.xml /sitemap.xml 200
+/assets/* /assets/:splat 200
 
 # SPA fallback for application routes.
-/* /index.html 200
+# Use "/" (not "/index.html") to avoid Cloudflare loop rejection.
+/* / 200

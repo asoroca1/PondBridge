@@ -4,11 +4,76 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Not Found</title>
+    <style>
+      body {
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #f6f8fb;
+        color: #10233a;
+      }
+
+      .safe-card {
+        width: min(560px, calc(100% - 32px));
+        border: 1px solid #d6dfeb;
+        border-radius: 12px;
+        background: #fff;
+        padding: 20px;
+        box-shadow: 0 10px 25px rgba(10, 30, 60, 0.08);
+      }
+
+      .safe-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .safe-actions a {
+        text-decoration: none;
+        border-radius: 8px;
+        padding: 10px 14px;
+        border: 1px solid #b7c7dd;
+        color: #10233a;
+        font-weight: 600;
+      }
+
+      .safe-actions a.primary {
+        background: #0a4f9e;
+        border-color: #0a4f9e;
+        color: #fff;
+      }
+    </style>
     <script>
       (function redirectSpaDeepLink() {
         var path = window.location.pathname + window.location.search + window.location.hash;
         // Only recover app-like routes; static assets should remain 404.
         if (/\.[a-z0-9]+$/i.test(window.location.pathname)) return;
+
+        var loopKey = "pondbridge_404_loop_guard";
+        var now = Date.now();
+        var guard = { path: "", count: 0, ts: 0 };
+        try {
+          guard = JSON.parse(window.sessionStorage.getItem(loopKey) || "{}");
+        } catch {
+          guard = { path: "", count: 0, ts: 0 };
+        }
+        if (guard.path === path && now - Number(guard.ts || 0) < 20000) {
+          guard.count = Number(guard.count || 0) + 1;
+        } else {
+          guard = { path: path, count: 1, ts: now };
+        }
+        try {
+          window.sessionStorage.setItem(loopKey, JSON.stringify(guard));
+        } catch {}
+
+        if (guard.count > 2 && /^\/super(\/|$)/.test(window.location.pathname || "")) {
+          var safe = document.getElementById("super-safe-mode");
+          if (safe) safe.hidden = false;
+          return;
+        }
 
         var target = new URL(window.location.origin + "/");
         target.searchParams.set("__pb_path", path);
@@ -17,7 +82,17 @@
     </script>
   </head>
   <body>
-    <h1>404 Not Found</h1>
-    <p>If you are not redirected automatically, return to the home page.</p>
+    <main class="safe-card">
+      <h1>404 Not Found</h1>
+      <p>If you are not redirected automatically, return to the home page.</p>
+      <section id="super-safe-mode" hidden>
+        <h2>Super Admin Safe Mode</h2>
+        <p>Automatic recovery was paused to prevent a redirect loop. Retry or sign out and sign in again.</p>
+        <div class="safe-actions">
+          <a class="primary" href="/">Retry</a>
+          <a href="/super/login?signedOut=1">Sign out</a>
+        </div>
+      </section>
+    </main>
   </body>
 </html>
