@@ -316,7 +316,7 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "" }) {
     const profile = await ensureProfileForUser({ tenantId, user: membership, identity });
     const completion = profileCompletionPercent(profile || {});
     const needsOnboarding = !isProfileComplete(profile || {}, settings.requireProfileCompletion ? 100 : 1);
-    const isDirector = roleSet(membership.roles).has("tenant_admin") || roleSet(membership.roles).has("super_admin");
+    const isDirector = roleSet(membership.roles).has("tenant_admin");
     if (!billingAccess.allowed && !isDirector) {
       return {
         state: "billing_restricted",
@@ -466,6 +466,18 @@ router.post("/director-bootstrap", accessMutationLimiter, async (req, res) => {
   const tenantId = String(req.tenant._id);
   const identity = req.identity || {};
   const identityEmail = normalizeEmail(identity.email || "");
+  const requestRoleSet = roleSet(req.user?.roles || []);
+  const requestTenantId = String(req.user?.tenantId || "").trim();
+
+  if (requestRoleSet.has("super_admin") && requestTenantId !== tenantId) {
+    return res.status(409).json({
+      error: {
+        code: "SUPER_ADMIN_SESSION_REQUIRES_SIGN_OUT",
+        message:
+          "You are signed in with a global super admin session. Sign out first, then create or sign in with the camp director account."
+      }
+    });
+  }
 
   const existingDirector = await UserModel.findOne(tenantId, {
     roles: { $contains: ["tenant_admin"] },

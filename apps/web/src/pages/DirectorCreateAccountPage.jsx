@@ -359,10 +359,7 @@ async function optimizeImageFile(
 
 function DirectorCreateAccountClerkGate() {
   const { isReady, isAuthenticated, user } = useAuth();
-  const hasWizardAccess = Boolean(
-    isAuthenticated &&
-      (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"))
-  );
+  const hasWizardAccess = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
 
   if (!isReady) {
     return (
@@ -411,8 +408,7 @@ function DirectorCreateAccountWizardPage() {
   const { login, token: authToken, user } = useAuth();
   const { tenant } = useTenant();
   const slug = String(paramSlug || tenant?.slug || "").trim().toLowerCase();
-  const isDirectorUser =
-    user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin");
+  const isDirectorUser = user?.roles?.includes("tenant_admin");
   const accountStepRequired = !isDirectorUser;
   const initialBrandColor = useMemo(() => DEFAULT_SETUP_BRAND, []);
 

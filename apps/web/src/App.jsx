@@ -187,8 +187,12 @@ function TenantScopeRoutes() {
     const tenantId = String(tenant?.id || tenant?._id || "").trim();
     const userTenantId = String(user?.tenantId || "").trim();
     const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
+    const onDirectorBootstrapRoute =
+      path.includes("/director-claim") || path.includes("/director-create-account");
     const alreadyScopedToTenant = Boolean(
-      user && (isSuperAdmin || (tenantId && userTenantId && userTenantId === tenantId))
+      user &&
+        ((tenantId && userTenantId && userTenantId === tenantId) ||
+          (isSuperAdmin && !onDirectorBootstrapRoute))
     );
     if (alreadyScopedToTenant) {
       membershipSyncKeyRef.current = syncKey;
@@ -321,8 +325,7 @@ function TenantScopeRoutes() {
     );
   }
 
-  const isCampDirector =
-    isAuthenticated && (user?.roles?.includes("tenant_admin") || user?.roles?.includes("super_admin"));
+  const isCampDirector = isAuthenticated && user?.roles?.includes("tenant_admin");
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
   const onboardingIncomplete = tenant?.onboardingStatus !== "live";
   const currentPath = location.pathname || "";
