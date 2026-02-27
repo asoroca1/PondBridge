@@ -1,0 +1,7 @@
+# Do not rewrite missing static assets to index.html.
+# If a stale hashed chunk is requested, return a hard 404.
+/assets/* /404.html 404
+/*.* /404.html 404
+
+# SPA fallback for application routes.
+/* /index.html 200
