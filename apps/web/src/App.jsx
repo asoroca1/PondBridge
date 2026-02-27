@@ -1,65 +1,121 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import AppShell from "./components/AppShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import DirectorOnboardingCommandCenterPage from "./pages/DirectorOnboardingCommandCenterPage.jsx";
-import DirectorClaimPage from "./pages/DirectorClaimPage.jsx";
-import DirectorCreateAccountPage from "./pages/DirectorCreateAccountPage.jsx";
 import TenantAccessPendingPage from "./pages/TenantAccessPendingPage.jsx";
 import TenantAuthCallbackPage from "./pages/TenantAuthCallbackPage.jsx";
-import DirectorAdminLayout from "./pages/admin/DirectorAdminLayout.jsx";
-import {
-  DirectorAdminAnalyticsPage,
-  DirectorAdminApprovalsPage,
-  DirectorAdminBillingPage,
-  DirectorAdminDashboardPage,
-  DirectorAdminEmailComposePage,
-  DirectorAdminEmailHistoryPage,
-  DirectorAdminFeaturesPage,
-  DirectorAdminInvitesPage,
-  DirectorAdminMembersPage,
-  DirectorAdminSettingsAccessPage,
-  DirectorAdminSettingsAdminsPage,
-  DirectorAdminSettingsBrandingPage,
-  DirectorAdminSettingsDangerPage,
-  DirectorAdminSettingsLayout,
-  DirectorAdminSettingsNetworkPage,
-  DirectorAdminSettingsNotificationsPage
-} from "./pages/admin/DirectorAdminPages.jsx";
 import SuperLoginPage from "./pages/SuperLoginPage.jsx";
-import SuperShellLayout from "./pages/super/SuperShellLayout.jsx";
-import {
-  SuperBillingFailedPage,
-  SuperBillingTenantsPage,
-  SuperEmailTransactionalPage,
-  SuperPlatformPulsePage,
-  SuperSettingsPage,
-  SuperTenantCreatePage,
-  SuperTenantsPage
-} from "./pages/super/SuperPages.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
-import CedarHomePage from "./cedar/pages/Home.jsx";
-import CedarLoginPage from "./cedar/pages/Login.jsx";
-import CedarForgotPasswordPage from "./cedar/pages/ForgotPassword.jsx";
-import CedarCreateProfileWizardPage from "./cedar/pages/CreateProfileWizard.jsx";
-import CedarMainHomePage from "./cedar/pages/MainHome.jsx";
-import CedarMyProfilePage from "./cedar/pages/MyProfile.jsx";
-import CedarEditProfilePage from "./cedar/pages/EditProfile.jsx";
-import CedarAdvancedSearchPage from "./cedar/pages/AdvancedSearch.jsx";
-import CedarPhotoStreamPage from "./cedar/pages/PhotoStream.jsx";
-import CedarChatAndForumsPage from "./cedar/pages/ChatAndForums.jsx";
-import CedarChestPage from "./cedar/pages/CedarChest.jsx";
-import CedarLocationMapPage from "./cedar/pages/LocationMap.jsx";
-import CedarSearchResultsPage from "./cedar/pages/SearchResults.jsx";
-import CedarPublicProfilePage from "./cedar/pages/PublicProfile.jsx";
-import CedarLegalPage from "./cedar/pages/Legal.jsx";
-import CedarFamilyTreesPage from "./cedar/pages/FamilyTrees.jsx";
-import CedarFamilyTreeCreatePage from "./cedar/pages/FamilyTreeCreate.jsx";
-import CedarFamilyTreeViewPage from "./cedar/pages/FamilyTreeView.jsx";
 import { defaultTenantDomain, inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
+
+const CedarHomePage = lazy(() => import("./cedar/pages/Home.jsx"));
+const CedarLoginPage = lazy(() => import("./cedar/pages/Login.jsx"));
+const CedarForgotPasswordPage = lazy(() => import("./cedar/pages/ForgotPassword.jsx"));
+const CedarCreateProfileWizardPage = lazy(() => import("./cedar/pages/CreateProfileWizard.jsx"));
+const CedarMainHomePage = lazy(() => import("./cedar/pages/MainHome.jsx"));
+const CedarMyProfilePage = lazy(() => import("./cedar/pages/MyProfile.jsx"));
+const CedarEditProfilePage = lazy(() => import("./cedar/pages/EditProfile.jsx"));
+const CedarAdvancedSearchPage = lazy(() => import("./cedar/pages/AdvancedSearch.jsx"));
+const CedarPhotoStreamPage = lazy(() => import("./cedar/pages/PhotoStream.jsx"));
+const CedarChatAndForumsPage = lazy(() => import("./cedar/pages/ChatAndForums.jsx"));
+const CedarChestPage = lazy(() => import("./cedar/pages/CedarChest.jsx"));
+const CedarLocationMapPage = lazy(() => import("./cedar/pages/LocationMap.jsx"));
+const CedarSearchResultsPage = lazy(() => import("./cedar/pages/SearchResults.jsx"));
+const CedarPublicProfilePage = lazy(() => import("./cedar/pages/PublicProfile.jsx"));
+const CedarLegalPage = lazy(() => import("./cedar/pages/Legal.jsx"));
+const CedarFamilyTreesPage = lazy(() => import("./cedar/pages/FamilyTrees.jsx"));
+const CedarFamilyTreeCreatePage = lazy(() => import("./cedar/pages/FamilyTreeCreate.jsx"));
+const CedarFamilyTreeViewPage = lazy(() => import("./cedar/pages/FamilyTreeView.jsx"));
+
+const DirectorOnboardingCommandCenterPage = lazy(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
+const DirectorClaimPage = lazy(() => import("./pages/DirectorClaimPage.jsx"));
+const DirectorCreateAccountPage = lazy(() => import("./pages/DirectorCreateAccountPage.jsx"));
+const DirectorAdminLayout = lazy(() => import("./pages/admin/DirectorAdminLayout.jsx"));
+const DirectorAdminAnalyticsPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminAnalyticsPage }))
+);
+const DirectorAdminApprovalsPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminApprovalsPage }))
+);
+const DirectorAdminBillingPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminBillingPage }))
+);
+const DirectorAdminDashboardPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminDashboardPage }))
+);
+const DirectorAdminEmailComposePage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailComposePage }))
+);
+const DirectorAdminEmailHistoryPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailHistoryPage }))
+);
+const DirectorAdminFeaturesPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
+);
+const DirectorAdminInvitesPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminInvitesPage }))
+);
+const DirectorAdminMembersPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
+);
+const DirectorAdminSettingsAccessPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminSettingsAccessPage
+  }))
+);
+const DirectorAdminSettingsAdminsPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminSettingsAdminsPage
+  }))
+);
+const DirectorAdminSettingsBrandingPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminSettingsBrandingPage
+  }))
+);
+const DirectorAdminSettingsDangerPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminSettingsDangerPage
+  }))
+);
+const DirectorAdminSettingsLayout = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminSettingsLayout }))
+);
+const DirectorAdminSettingsNetworkPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminSettingsNetworkPage
+  }))
+);
+const DirectorAdminSettingsNotificationsPage = lazy(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminSettingsNotificationsPage
+  }))
+);
+const SuperShellLayout = lazy(() => import("./pages/super/SuperShellLayout.jsx"));
+const SuperBillingFailedPage = lazy(() =>
+  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingFailedPage }))
+);
+const SuperBillingTenantsPage = lazy(() =>
+  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingTenantsPage }))
+);
+const SuperEmailTransactionalPage = lazy(() =>
+  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperEmailTransactionalPage }))
+);
+const SuperPlatformPulsePage = lazy(() =>
+  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperPlatformPulsePage }))
+);
+const SuperSettingsPage = lazy(() =>
+  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperSettingsPage }))
+);
+const SuperTenantCreatePage = lazy(() =>
+  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperTenantCreatePage }))
+);
+const SuperTenantsPage = lazy(() =>
+  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperTenantsPage }))
+);
 
 function TenantScopeLayout() {
   const { slug } = useParams();
@@ -90,6 +146,17 @@ function CustomDomainCampLayout() {
     <TenantProvider>
       <TenantScopeRoutes />
     </TenantProvider>
+  );
+}
+
+function RouteLoadingFallback() {
+  return (
+    <section className="app-status-shell">
+      <div className="app-status-card">
+        <h1>Loading page...</h1>
+        <p>Please wait while we load this view.</p>
+      </div>
+    </section>
   );
 }
 
@@ -292,6 +359,7 @@ function TenantScopeRoutes() {
   return (
     <AppShell>
       <ErrorBoundary level="page">
+      <Suspense fallback={<RouteLoadingFallback />}>
       <Routes>
         <Route index element={onboardingIncomplete ? <DirectorClaimPage /> : <CedarHomePage />} />
         <Route path="login/*" element={<CedarLoginPage />} />
@@ -494,6 +562,7 @@ function TenantScopeRoutes() {
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </Suspense>
       </ErrorBoundary>
     </AppShell>
   );
@@ -555,6 +624,7 @@ export default function App() {
     <div className={`app-route-shell ${isRouting ? "is-routing" : ""}`}>
       <div className={`app-route-progress ${isRouting ? "is-active" : ""}`} aria-hidden="true" />
       <div className="app-route-stage">
+        <Suspense fallback={<RouteLoadingFallback />}>
         <Routes location={location}>
           {hostCampSlug || customDomainHost ? (
             <Route path="/t/:slug/*" element={<HostScopedTenantRedirect />} />
@@ -594,6 +664,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/super/login" replace />} />
           )}
         </Routes>
+        </Suspense>
       </div>
     </div>
   );

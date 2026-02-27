@@ -25,7 +25,6 @@ const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
     .trim()
     .toLowerCase()
 );
-const CLERK_STORAGE_TOKEN_SYNC_INTERVAL_MS = 15_000;
 
 function inferTenantSlugForSessionRequest() {
   if (typeof window === "undefined") return "";
@@ -148,6 +147,7 @@ function LegacyAuthProvider({ children }) {
   const hydrateLegacySession = !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
   const [token, setToken] = useState(hydrateLegacySession ? initial.token : "");
   const [user, setUser] = useState(hydrateLegacySession ? normalizeUserShape(initial.user) : null);
+  const bootstrapCompleteRef = useRef(false);
 
   useEffect(() => {
     function syncFromStorage() {
@@ -193,19 +193,53 @@ function LegacyAuthProvider({ children }) {
     onLogout: logout
   });
 
-  const refreshSession = useCallback(async () => {
-    return {
-      ok: Boolean(token),
-      authProvider: "legacy",
-      user
-    };
-  }, [token, user]);
+  const refreshSession = useCallback(
+    async ({ tenantSlug = "" } = {}) => {
+      const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
+        .trim()
+        .toLowerCase();
+      try {
+        const payload = await requestJson("/api/auth/session", {
+          token: token || "",
+          headers: resolvedTenantSlug ? { "X-Tenant-Slug": resolvedTenantSlug } : {}
+        });
+        const normalizedUser = normalizeUserShape(payload?.user);
+        setUser(normalizedUser);
+        writeAuthToStorage(token || "", normalizedUser);
+        markTabSessionAuthenticated();
+        return {
+          ok: Boolean(normalizedUser),
+          authProvider: payload?.authProvider || "legacy",
+          user: normalizedUser
+        };
+      } catch (error) {
+        if (error?.status === 401 || error?.status === 403) {
+          setToken("");
+          setUser(null);
+          clearAuthStorage();
+          clearTabSessionAuthenticated();
+          clearTabLoginIntent();
+          return { ok: false, authProvider: "legacy", user: null };
+        }
+        throw error;
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    if (bootstrapCompleteRef.current) return;
+    bootstrapCompleteRef.current = true;
+    if (FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) return;
+
+    refreshSession({ tenantSlug: inferTenantSlugForSessionRequest() }).catch(() => {});
+  }, [refreshSession]);
 
   const value = useMemo(
     () => ({
       token,
       user,
-      isAuthenticated: Boolean(token),
+      isAuthenticated: Boolean(token || user?.id),
       isReady: true,
       authProvider: "legacy",
       authConfigError: "",
@@ -356,47 +390,6 @@ function ClerkBackedAuthProvider({ children }) {
     };
   }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession, sessionId]);
 
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return undefined;
-    let disposed = false;
-    let lastSyncedAt = 0;
-
-    const syncTokenToStorage = async ({ force = false } = {}) => {
-      if (disposed) return;
-      const now = Date.now();
-      if (!force && now - lastSyncedAt < CLERK_STORAGE_TOKEN_SYNC_INTERVAL_MS) {
-        return;
-      }
-      lastSyncedAt = now;
-      const nextToken = await getAuthToken().catch(() => "");
-      if (!nextToken) return;
-      writeAuthToStorage(nextToken, normalizeUserShape(user));
-    };
-
-    syncTokenToStorage({ force: true }).catch(() => {});
-    const intervalId = window.setInterval(() => {
-      syncTokenToStorage().catch(() => {});
-    }, CLERK_STORAGE_TOKEN_SYNC_INTERVAL_MS);
-    const onFocus = () => {
-      syncTokenToStorage().catch(() => {});
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        syncTokenToStorage().catch(() => {});
-      }
-    };
-
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      disposed = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [getAuthToken, isLoaded, isSignedIn, user]);
-
   const login = useCallback(
     (nextToken, nextUser) => {
       if (nextToken) {
@@ -433,7 +426,7 @@ function ClerkBackedAuthProvider({ children }) {
     () => ({
       token,
       user,
-      isAuthenticated: Boolean(token),
+      isAuthenticated: Boolean(token || user?.id),
       isReady: Boolean(isLoaded) && !sessionRefreshing,
       authProvider: AUTH_PROVIDER,
       authConfigError: "",

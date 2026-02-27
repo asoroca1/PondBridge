@@ -1,4 +1,5 @@
 import { logTenantEvent } from "./analytics.js";
+import { logLine } from "./logger.js";
 
 export async function logTenantSecurityEvent({
   req,
@@ -21,12 +22,14 @@ export async function logTenantSecurityEvent({
     source: String(details?.source || "")
   };
 
-  console.warn("[security:tenant_scope]", {
+  logLine("warn", "security.tenant_scope_denied", {
     code,
     message,
     requestId,
-    path: payload.path,
+    tenantId: safeTenantId,
+    actorUserId: payload.userId,
     method: payload.method,
+    route: payload.path,
     tokenTenantId: payload.tokenTenantId,
     resolvedTenantId: payload.resolvedTenantId
   });

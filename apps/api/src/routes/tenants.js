@@ -2,9 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { listFeaturesForPlan } from "@pondbridge/shared";
 import { env } from "../config/env.js";
-import { requireAuth } from "../middleware/requireAuth.js";
-import { requireTenant } from "../middleware/tenantContext.js";
-import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
+import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import {
   TenantModel,
   UserModel,
@@ -224,6 +222,20 @@ async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
     String(req.body?.tenantId || "").trim();
   const membershipTenantId = String(req.user.tenantId || "").trim();
 
+  if (!isSuperAdmin && explicitTenantId && membershipTenantId && explicitTenantId !== membershipTenantId) {
+    return {
+      error: {
+        status: 403,
+        payload: {
+          error: {
+            code: "TENANT_SCOPE_DENIED",
+            message: "You cannot manage another tenant"
+          }
+        }
+      }
+    };
+  }
+
   let tenant = req.tenant || null;
 
   if (explicitTenantId && (!tenant || isSuperAdmin)) {
@@ -280,7 +292,7 @@ async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
   return { tenant, isSuperAdmin, isTenantAdmin };
 }
 
-router.use("/me", requireTenant, requireAuth, enforceTenantScope);
+router.use("/me", ...requireTenantAuthScope);
 
 function applyChecklistAndStep(tenant, { currentChecklist, stepToComplete, nextStep }) {
   let checklist = mergeChecklist(currentChecklist || tenant.onboardingChecklist || createDefaultChecklist());
@@ -351,7 +363,7 @@ async function saveTenantOnboarding(tenantId, update) {
   return TenantModel.update(tenantId, patch);
 }
 
-router.patch("/me/onboarding/draft", requireAuth, async (req, res, next) => {
+router.patch("/me/onboarding/draft", async (req, res, next) => {
   try {
     const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
     if (resolved.error) {
@@ -387,7 +399,7 @@ router.patch("/me/onboarding/draft", requireAuth, async (req, res, next) => {
   }
 });
 
-router.get("/me/onboarding", requireAuth, async (req, res) => {
+router.get("/me/onboarding", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
     return res.status(resolved.error.status).json(resolved.error.payload);
@@ -410,7 +422,7 @@ router.get("/me/onboarding", requireAuth, async (req, res) => {
   );
 });
 
-router.patch("/me/onboarding", requireAuth, async (req, res, next) => {
+router.patch("/me/onboarding", async (req, res, next) => {
   try {
     const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
     if (resolved.error) {
@@ -451,7 +463,7 @@ router.patch("/me/onboarding", requireAuth, async (req, res, next) => {
   }
 });
 
-router.patch("/me/theme", requireAuth, async (req, res, next) => {
+router.patch("/me/theme", async (req, res, next) => {
   try {
     const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
     if (resolved.error) {
@@ -501,7 +513,7 @@ router.patch("/me/theme", requireAuth, async (req, res, next) => {
   }
 });
 
-router.patch("/me/content", requireAuth, async (req, res, next) => {
+router.patch("/me/content", async (req, res, next) => {
   try {
     const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
     if (resolved.error) {
@@ -551,7 +563,7 @@ router.patch("/me/content", requireAuth, async (req, res, next) => {
   }
 });
 
-router.patch("/me/settings", requireAuth, async (req, res, next) => {
+router.patch("/me/settings", async (req, res, next) => {
   try {
     const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
     if (resolved.error) {
@@ -602,7 +614,7 @@ router.patch("/me/settings", requireAuth, async (req, res, next) => {
   }
 });
 
-router.patch("/me/modules", requireAuth, async (req, res, next) => {
+router.patch("/me/modules", async (req, res, next) => {
   try {
     const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
     if (resolved.error) {
@@ -652,7 +664,7 @@ router.patch("/me/modules", requireAuth, async (req, res, next) => {
   }
 });
 
-router.post("/me/admins", requireAuth, async (req, res) => {
+router.post("/me/admins", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
     return res.status(resolved.error.status).json(resolved.error.payload);
@@ -847,10 +859,10 @@ async function runImportCsvHandler(req, res, next) {
   }
 }
 
-router.post("/me/import-csv", requireAuth, csvUpload.single("file"), runImportCsvHandler);
-router.post("/me/import/csv", requireAuth, csvUpload.single("file"), runImportCsvHandler);
+router.post("/me/import-csv", csvUpload.single("file"), runImportCsvHandler);
+router.post("/me/import/csv", csvUpload.single("file"), runImportCsvHandler);
 
-router.get("/me/import/history", requireAuth, async (req, res) => {
+router.get("/me/import/history", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
     return res.status(resolved.error.status).json(resolved.error.payload);
@@ -875,7 +887,7 @@ router.get("/me/import/history", requireAuth, async (req, res) => {
   });
 });
 
-router.post("/me/launch", requireAuth, async (req, res) => {
+router.post("/me/launch", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
     return res.status(resolved.error.status).json(resolved.error.payload);
@@ -1017,7 +1029,7 @@ router.post("/me/launch", requireAuth, async (req, res) => {
   });
 });
 
-router.patch("/me/billing", requireAuth, async (req, res) => {
+router.patch("/me/billing", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
     return res.status(resolved.error.status).json(resolved.error.payload);
@@ -1153,7 +1165,7 @@ router.patch("/me/billing", requireAuth, async (req, res) => {
   });
 });
 
-router.patch("/me/plan", requireAuth, async (req, res) => {
+router.patch("/me/plan", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
     return res.status(resolved.error.status).json(resolved.error.payload);
@@ -1201,7 +1213,7 @@ router.patch("/me/plan", requireAuth, async (req, res) => {
   });
 });
 
-router.post("/me/billing/checkout", requireAuth, async (req, res, next) => {
+router.post("/me/billing/checkout", async (req, res, next) => {
   try {
     const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
     if (resolved.error) {
@@ -1264,7 +1276,7 @@ router.post("/me/billing/checkout", requireAuth, async (req, res, next) => {
   }
 });
 
-router.get("/me/billing", requireAuth, async (req, res) => {
+router.get("/me/billing", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
   if (resolved.error) {
     return res.status(resolved.error.status).json(resolved.error.payload);

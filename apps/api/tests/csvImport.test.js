@@ -167,18 +167,18 @@ describe("Tenant CSV import", () => {
     ].join("\n");
 
     const importResponse = await request(app)
-      .post("/api/t/tenant-a/admin/import-csv")
+      .post("/api/tenants/me/import-csv")
       .set("Authorization", `Bearer ${tokenA}`)
+      .set("X-Tenant-Slug", "tenant-a")
       .field("enableFuzzyMatch", "false")
       .attach("file", Buffer.from(csvContent, "utf8"), "tenant-a-import.csv");
 
-    expect(importResponse.status).toBe(201);
-    expect(importResponse.body.report.createdCount).toBe(1);
-    expect(importResponse.body.report.updatedCount).toBe(1);
-    expect(importResponse.body.report.skippedDuplicates).toBe(1);
-    expect(importResponse.body.report.errorCount).toBe(1);
-    expect(importResponse.body.report.hasFailureCsv).toBe(true);
-    expect(importResponse.body.report.failureCsvDownloadPath).toContain("/failures.csv");
+    expect(importResponse.status).toBe(200);
+    expect(importResponse.body.importSummary.createdCount).toBe(1);
+    expect(importResponse.body.importSummary.updatedCount).toBe(1);
+    expect(importResponse.body.importSummary.skippedDuplicates).toBe(1);
+    expect(importResponse.body.importSummary.errorCount).toBe(1);
+    expect(importResponse.body.importSummary.failureCsvDownloadPath).toContain("/failures.csv");
 
     const tenantAProfiles = await request(app)
       .get("/api/t/tenant-a/profiles")
@@ -195,7 +195,7 @@ describe("Tenant CSV import", () => {
     expect(existingProfile).toBeTruthy();
     expect(existingProfile.phones).toContain("5552220000");
 
-    const reportId = importResponse.body.report.reportId;
+    const reportId = importResponse.body.importSummary.reportId;
     const failuresResponse = await request(app)
       .get(`/api/t/tenant-a/admin/imports/${reportId}/failures.csv`)
       .set("Authorization", `Bearer ${tokenA}`);
@@ -216,11 +216,27 @@ describe("Tenant CSV import", () => {
     ].join("\n");
 
     const response = await request(app)
-      .post("/api/t/tenant-b/admin/import-csv")
+      .post("/api/tenants/me/import-csv")
       .set("Authorization", `Bearer ${tokenA}`)
+      .set("X-Tenant-Slug", "tenant-b")
       .attach("file", Buffer.from(csvContent, "utf8"), "wrong-tenant.csv");
 
     expect(response.status).toBe(403);
     expect(response.body.error?.code).toBe("TENANT_SCOPE_DENIED");
+  });
+
+  test("legacy admin import endpoint returns explicit deprecation response", async () => {
+    await createFixtures();
+    const tokenA = await loginTenant("tenant-a", {
+      email: "admin-a@example.com",
+      password: "AdminPass123!"
+    });
+
+    const response = await request(app)
+      .post("/api/t/tenant-a/admin/import-csv")
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(response.status).toBe(410);
+    expect(response.body.error?.code).toBe("MEMBER_IMPORT_DISABLED");
   });
 });

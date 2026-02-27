@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, PageShell, SectionTitle } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
@@ -44,6 +44,35 @@ function billingPlanLabel(code = "") {
   return "Legacy";
 }
 
+function billingReadinessHint({
+  lifecycleStatus = "",
+  onboardingFeeStatus = "",
+  billingReady = false
+} = {}) {
+  if (billingReady) return "Billing is confirmed. Launch gate is clear.";
+
+  const lifecycle = String(lifecycleStatus || "").trim().toLowerCase();
+  const feeStatus = String(onboardingFeeStatus || "").trim().toLowerCase();
+
+  if (lifecycle === "checkout_started") {
+    return "Checkout completed, but Stripe confirmation is still syncing. This usually resolves in under a minute.";
+  }
+  if (lifecycle === "past_due" || lifecycle === "incomplete") {
+    return "Billing is past due or incomplete. Open the billing portal to resolve payment before launch.";
+  }
+  if (lifecycle === "canceled" || lifecycle === "paused") {
+    return "Subscription is not active. Restart checkout or update the subscription in billing portal.";
+  }
+  if (feeStatus === "unpaid") {
+    return "Onboarding fee is still unpaid. Launch stays blocked until Stripe marks it paid.";
+  }
+  return "Billing is still pending. Refresh this page after Stripe processing finishes.";
+}
+
+function launchGuideDismissedKey(slug = "") {
+  return `pondbridge_launch_guide_dismissed_${String(slug || "").trim().toLowerCase() || "default"}`;
+}
+
 export default function DirectorOnboardingCommandCenterPage() {
   const { slug } = useParams();
   const { token, user } = useAuth();
@@ -59,14 +88,19 @@ export default function DirectorOnboardingCommandCenterPage() {
   const [updatingBilling, setUpdatingBilling] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [syncingBilling, setSyncingBilling] = useState(false);
+  const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
 
   const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
+  const launchedQueryState = String(searchParams.get("launched") || "").trim().toLowerCase();
 
-  async function loadCommandCenter() {
-    setLoading(true);
-    setError("");
+  const loadCommandCenter = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const [onboardingPayload, billingPayload] = await Promise.all([
         requestJson("/api/tenants/me/onboarding", { token }),
@@ -82,16 +116,22 @@ export default function DirectorOnboardingCommandCenterPage() {
       if (livePlanCode) {
         setSelectedPlanCode(livePlanCode);
       }
+      return { onboardingPayload, billingPayload };
     } catch (requestError) {
-      setError(requestError.message);
+      if (!silent) {
+        setError(requestError.message);
+      }
+      return null;
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  }
+  }, [token]);
 
   useEffect(() => {
     loadCommandCenter();
-  }, [token]);
+  }, [loadCommandCenter]);
 
   useEffect(() => {
     if (checkoutQueryState === "success") {
@@ -102,6 +142,34 @@ export default function DirectorOnboardingCommandCenterPage() {
       setStatus("");
     }
   }, [checkoutQueryState]);
+
+  useEffect(() => {
+    if (launchedQueryState !== "1" || !slug) {
+      setShowLaunchGuide(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    try {
+      const dismissed = window.localStorage.getItem(launchGuideDismissedKey(slug)) === "1";
+      setShowLaunchGuide(!dismissed);
+    } catch {
+      setShowLaunchGuide(true);
+    }
+  }, [launchedQueryState, slug]);
+
+  function dismissLaunchGuide() {
+    if (typeof window === "undefined") {
+      setShowLaunchGuide(false);
+      return;
+    }
+    try {
+      window.localStorage.setItem(launchGuideDismissedKey(slug), "1");
+    } catch {
+      // Ignore storage write failures and still dismiss in-memory.
+    }
+    setShowLaunchGuide(false);
+  }
 
   async function markBillingReady() {
     setUpdatingBilling(true);
@@ -208,11 +276,73 @@ export default function DirectorOnboardingCommandCenterPage() {
   const inactive = payload?.tenant?.status === "inactive";
   const billingReady = Boolean(payload?.readiness?.checks?.find((check) => check.id === "billing")?.ok);
   const launchReady = Boolean(payload?.readiness?.isReady);
+  const billingLifecycleStatus = String(
+    billing?.tenant?.billingLifecycleStatus || payload?.billing?.lifecycleStatus || "uninitialized"
+  )
+    .trim()
+    .toLowerCase();
+  const onboardingFeeStatus = String(
+    billing?.tenant?.onboardingFeeStatus || payload?.billing?.onboardingFeeStatus || "unpaid"
+  )
+    .trim()
+    .toLowerCase();
+  const billingHint = billingReadinessHint({
+    lifecycleStatus: billingLifecycleStatus,
+    onboardingFeeStatus,
+    billingReady
+  });
   const activePlanCode = String(
     billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "legacy"
   )
     .trim()
     .toLowerCase();
+
+  useEffect(() => {
+    if (checkoutQueryState !== "success" || billingReady) {
+      setSyncingBilling(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+    let timeoutId = null;
+    setSyncingBilling(true);
+
+    async function poll() {
+      attempts += 1;
+      const refreshed = await loadCommandCenter({ silent: true });
+      if (cancelled) return;
+
+      const refreshedReady = Boolean(
+        refreshed?.onboardingPayload?.readiness?.checks?.find((check) => check.id === "billing")?.ok
+      );
+      if (refreshedReady) {
+        setStatus("Stripe confirmation received. Billing is ready.");
+        setError("");
+        setSyncingBilling(false);
+        return;
+      }
+
+      if (attempts >= 8) {
+        setStatus(
+          "Checkout completed, but billing confirmation is still pending. Use Refresh or Billing Details in a minute."
+        );
+        setSyncingBilling(false);
+        return;
+      }
+
+      timeoutId = window.setTimeout(poll, 4000);
+    }
+
+    timeoutId = window.setTimeout(poll, 3000);
+    return () => {
+      cancelled = true;
+      setSyncingBilling(false);
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [billingReady, checkoutQueryState, loadCommandCenter]);
 
   if (loading) {
     return (
@@ -224,6 +354,36 @@ export default function DirectorOnboardingCommandCenterPage() {
 
   return (
     <PageShell className="pb-cedar-page command-center-shell">
+      {showLaunchGuide ? (
+        <Card className="launch-guide-banner">
+          <SectionTitle>Your network is live. Here&apos;s what to do next.</SectionTitle>
+          <ol className="launch-guide-list">
+            <li>
+              Import your alumni list.
+              <Link className="link-button secondary" to={`/t/${slug}/settings/imports`}>
+                Go to Imports
+              </Link>
+            </li>
+            <li>
+              Invite key alumni to join and seed early activity.
+              <Link className="link-button secondary" to={`/t/${slug}/admin`}>
+                Open Admin
+              </Link>
+            </li>
+            <li>
+              Finalize your welcome message and content.
+              <Link className="link-button secondary" to={`/t/${slug}/settings/content`}>
+                Edit Content
+              </Link>
+            </li>
+          </ol>
+          <div className="inline-actions">
+            <Button variant="secondary" onClick={dismissLaunchGuide}>
+              Got it
+            </Button>
+          </div>
+        </Card>
+      ) : null}
       <Card>
         <h1>Welcome, {payload?.tenant?.name || tenant?.name || "Your Camp"} Director</h1>
         <p className="muted">
@@ -254,17 +414,19 @@ export default function DirectorOnboardingCommandCenterPage() {
             <Badge tone="neutral">Setup in Progress</Badge>
           )}
           {billingReady ? <Badge tone="success">Billing Ready</Badge> : <Badge tone="danger">Billing Pending</Badge>}
+          {syncingBilling ? <Badge tone="neutral">Syncing Stripe...</Badge> : null}
         </div>
         {inactive ? (
           <p className="error-text">
             Your camp is currently inactive. Please contact support before launching.
           </p>
         ) : null}
+        {!billingReady ? <p className="muted billing-sync-note">{billingHint}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
       </Card>
 
-      {payload?.tenant?.onboardingStatus === "live" ? (
+      {payload?.tenant?.onboardingStatus === "live" && !showLaunchGuide ? (
         <Card>
           <SectionTitle>First 3 Things To Do</SectionTitle>
           <p className="muted">
@@ -348,6 +510,7 @@ export default function DirectorOnboardingCommandCenterPage() {
           <p>
             <strong>Readiness:</strong> {billingReady ? "Ready" : "Blocked until billing is ready"}
           </p>
+          <p className="muted billing-readiness-hint">{billingHint}</p>
           {Array.isArray(billing?.catalog?.plans) && billing.catalog.plans.length ? (
             <label className="director-command-center-plan-select">
               Plan selection

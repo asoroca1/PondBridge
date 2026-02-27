@@ -65,10 +65,10 @@ export default function LocationMap() {
         const fresh = await getAuthToken();
         if (fresh) return String(fresh).trim();
       } catch {
-        // fall through to local storage token fallback
+        // fall through to volatile token fallback
       }
     }
-    return getToken() || localStorage.getItem("adminToken") || "";
+    return getToken() || "";
   }
 
   function normalizeCities(raw) {

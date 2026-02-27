@@ -4551,6 +4551,33 @@ img[draggable="false"] { -webkit-user-drag: none; }
   font-weight: 600;
 }
 
+.command-center-shell .billing-sync-note{
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.command-center-shell .billing-readiness-hint{
+  margin: 8px 0 0;
+}
+
+.command-center-shell .launch-guide-banner{
+  border-left: 4px solid #2f8a62;
+  background: #f6fcf8;
+}
+
+.command-center-shell .launch-guide-list{
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.command-center-shell .launch-guide-list li{
+  color: #1f3049;
+  display: grid;
+  gap: 8px;
+}
+
 /* Post-launch guided onboarding */
 
 .post-launch-steps{

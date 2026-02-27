@@ -6,6 +6,24 @@
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+CREATE OR REPLACE FUNCTION public.lower_immutable(input_text text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+STRICT
+AS $$
+  SELECT lower(COALESCE(input_text, '') COLLATE "C");
+$$;
+
+CREATE OR REPLACE FUNCTION public.join_text_array_immutable(input_values text[], delimiter text DEFAULT ' ')
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+STRICT
+AS $$
+  SELECT array_to_string(COALESCE(input_values, '{}'::text[]), delimiter);
+$$;
+
 -- 1. TENANTS
 CREATE TABLE IF NOT EXISTS public.tenants (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
@@ -76,7 +94,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_scope_clerk_user_unique
   ON public.users ((COALESCE(tenant_id, '__global__')), clerk_user_id)
   WHERE clerk_user_id IS NOT NULL AND clerk_user_id <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_global_email_unique
-  ON public.users ((lower(email)))
+  ON public.users ((public.lower_immutable(email)))
   WHERE tenant_id IS NULL;
 
 -- Enforce one active tenant membership per identity (email or Clerk user id).
@@ -159,15 +177,15 @@ CREATE INDEX IF NOT EXISTS idx_profiles_tenant_role ON public.profiles (tenant_i
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_industry ON public.profiles (tenant_id, industry);
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_city ON public.profiles (tenant_id, city_state);
 CREATE INDEX IF NOT EXISTS idx_profiles_name_trgm ON public.profiles
-  USING gin ((lower(trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')))) gin_trgm_ops);
+  USING gin ((public.lower_immutable(trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')))) gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_profiles_role_trgm ON public.profiles
-  USING gin ((lower(coalesce(role_at_camp, ''))) gin_trgm_ops);
+  USING gin ((public.lower_immutable(coalesce(role_at_camp, ''))) gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_profiles_industry_trgm ON public.profiles
-  USING gin ((lower(coalesce(industry, ''))) gin_trgm_ops);
+  USING gin ((public.lower_immutable(coalesce(industry, ''))) gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_profiles_city_trgm ON public.profiles
-  USING gin ((lower(coalesce(city_state, ''))) gin_trgm_ops);
+  USING gin ((public.lower_immutable(coalesce(city_state, ''))) gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_profiles_emails_trgm ON public.profiles
-  USING gin ((lower(array_to_string(emails, ' '))) gin_trgm_ops);
+  USING gin ((public.lower_immutable(public.join_text_array_immutable(emails, ' '))) gin_trgm_ops);
 
 CREATE OR REPLACE FUNCTION public.enforce_profile_user_tenant_consistency()
 RETURNS TRIGGER
@@ -251,7 +269,7 @@ CREATE INDEX IF NOT EXISTS idx_access_requests_tenant ON public.access_requests 
 CREATE INDEX IF NOT EXISTS idx_access_requests_tenant_status ON public.access_requests (tenant_id, status, requested_at DESC);
 CREATE INDEX IF NOT EXISTS idx_access_requests_tenant_email ON public.access_requests (tenant_id, email, status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_access_requests_pending_unique
-  ON public.access_requests (tenant_id, lower(email))
+  ON public.access_requests (tenant_id, public.lower_immutable(email))
   WHERE status = 'pending';
 
 -- 6. MAGIC LINK TOKENS
@@ -547,7 +565,39 @@ CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_email_id
 CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_recipient
   ON public.resend_webhook_events (recipient_email, occurred_at DESC);
 
--- 22. EMAIL SUPPRESSIONS
+-- 22. STRIPE WEBHOOK EVENTS
+CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  stripe_event_id text NOT NULL UNIQUE,
+  event_type text NOT NULL DEFAULT '',
+  processing_status text NOT NULL DEFAULT 'received'
+    CHECK (processing_status IN ('received', 'processed', 'failed')),
+  processed_at timestamptz,
+  failed_at timestamptz,
+  tenant_id text REFERENCES public.tenants(id),
+  tenant_slug text NOT NULL DEFAULT '',
+  stripe_customer_id text NOT NULL DEFAULT '',
+  stripe_subscription_id text NOT NULL DEFAULT '',
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  error_code text NOT NULL DEFAULT '',
+  error_message text NOT NULL DEFAULT '',
+  attempts integer NOT NULL DEFAULT 1 CHECK (attempts >= 1),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_status
+  ON public.stripe_webhook_events (processing_status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_tenant
+  ON public.stripe_webhook_events (tenant_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_customer
+  ON public.stripe_webhook_events (stripe_customer_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_subscription
+  ON public.stripe_webhook_events (stripe_subscription_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_event_type
+  ON public.stripe_webhook_events (event_type, updated_at DESC);
+
+-- 23. EMAIL SUPPRESSIONS
 CREATE TABLE IF NOT EXISTS public.email_suppressions (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   email text NOT NULL UNIQUE,
@@ -589,8 +639,7 @@ AS $$
   WITH normalized AS (
     SELECT
       trim(coalesce(p_query, '')) AS raw_query,
-      lower(trim(coalesce(p_query, ''))) AS query_lc,
-      GREATEST(1, LEAST(coalesce(p_limit, 30), 100)) AS effective_limit
+      lower(trim(coalesce(p_query, ''))) AS query_lc
   ),
   base AS (
     SELECT
@@ -683,7 +732,7 @@ AS $$
     s.fuzzy_score DESC,
     p.last_name ASC,
     p.first_name ASC
-  LIMIT n.effective_limit;
+  LIMIT GREATEST(1, LEAST(coalesce(p_limit, 30), 100));
 $$;
 
 -- Top search terms from analytics
@@ -748,7 +797,7 @@ BEGIN
       'magic_link_tokens', 'conversations', 'forums', 'photos',
       'newsletters', 'email_broadcasts', 'family_trees', 'analytics_events',
       'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
-      'city_geo', 'activity_items', 'resend_webhook_events', 'email_suppressions'
+      'city_geo', 'activity_items', 'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
     EXECUTE format(
@@ -776,7 +825,7 @@ BEGIN
       'photos', 'newsletters', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
       'resume_parse_results', 'city_geo', 'activity_items',
-      'resend_webhook_events', 'email_suppressions'
+      'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
@@ -797,7 +846,7 @@ BEGIN
       'photos', 'newsletters', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
       'resume_parse_results', 'city_geo', 'activity_items',
-      'resend_webhook_events', 'email_suppressions'
+      'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
     policy_name := format('%s_service_role_all', tbl);
@@ -815,6 +864,28 @@ BEGIN
       );
     END IF;
   END LOOP;
+END;
+$$;
+
+-- Legacy compatibility: lock down pb_mongo_mirror if it still exists in runtime DBs.
+DO $$
+BEGIN
+  IF to_regclass('public.pb_mongo_mirror') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public.pb_mongo_mirror ENABLE ROW LEVEL SECURITY;';
+    EXECUTE 'ALTER TABLE public.pb_mongo_mirror FORCE ROW LEVEL SECURITY;';
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'pb_mongo_mirror'
+        AND policyname = 'pb_mongo_mirror_service_role_all'
+    ) THEN
+      EXECUTE
+        'CREATE POLICY pb_mongo_mirror_service_role_all ON public.pb_mongo_mirror
+         FOR ALL TO service_role USING (true) WITH CHECK (true);';
+    END IF;
+  END IF;
 END;
 $$;
 
@@ -908,7 +979,7 @@ BEGIN
       'conversations', 'messages', 'forums', 'forum_posts', 'photos',
       'newsletters', 'email_broadcasts', 'family_trees', 'analytics_events',
       'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
-      'activity_items', 'resend_webhook_events', 'email_suppressions'
+      'activity_items', 'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
     policy_name := format('%s_authenticated_tenant_scope', tbl);
@@ -919,5 +990,18 @@ BEGIN
       tbl
     );
   END LOOP;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF to_regclass('public.pb_mongo_mirror') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS pb_mongo_mirror_authenticated_tenant_scope ON public.pb_mongo_mirror;';
+    EXECUTE
+      'CREATE POLICY pb_mongo_mirror_authenticated_tenant_scope ON public.pb_mongo_mirror
+       FOR ALL TO authenticated
+       USING (public.jwt_tenant_id() <> '''' AND tenant_id = public.jwt_tenant_id())
+       WITH CHECK (public.jwt_tenant_id() <> '''' AND tenant_id = public.jwt_tenant_id());';
+  END IF;
 END;
 $$;

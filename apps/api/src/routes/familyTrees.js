@@ -1,15 +1,13 @@
 import { Router } from "express";
 import { isValidObjectId } from "../utils/objectId.js";
-import { requireAuth } from "../middleware/requireAuth.js";
-import { requireTenant } from "../middleware/tenantContext.js";
-import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
+import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { requireFeature } from "../middleware/requireFeature.js";
 import { FamilyTreeModel, RELATIONSHIP_TYPES, UserModel, ProfileModel } from "../db/models/index.js";
 import { sanitizeText } from "../utils/sanitize.js";
 
 const router = Router({ mergeParams: true });
 
-router.use(requireTenant, requireAuth, enforceTenantScope, requireFeature("familyTrees"));
+router.use(...requireTenantAuthScope, requireFeature("familyTrees"));
 
 function asId(value) {
   return String(value || "").trim();

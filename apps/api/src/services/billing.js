@@ -1,6 +1,10 @@
 import Stripe from "stripe";
 import { env } from "../config/env.js";
-import { TenantAdminAuditLogModel, TenantModel } from "../db/models/index.js";
+import {
+  StripeWebhookEventModel,
+  TenantAdminAuditLogModel,
+  TenantModel
+} from "../db/models/index.js";
 import {
   buildTenantSettingsWithBillingPatch,
   isBillingReadyForLaunch,
@@ -104,6 +108,102 @@ function defaultCancelUrl(tenant) {
 
 function allowMockBilling() {
   return env.NODE_ENV !== "production" || env.ALLOW_MOCK_BILLING_IN_PRODUCTION;
+}
+
+function lifecycleTransitionAllowed(currentStatus = "", nextStatus = "", eventType = "") {
+  const current = String(currentStatus || "").trim().toLowerCase();
+  const next = String(nextStatus || "").trim().toLowerCase();
+  const event = String(eventType || "").trim().toLowerCase();
+  if (!next) return false;
+  if (!current || current === next) return true;
+
+  if (current === "canceled") {
+    return (
+      next === "active" ||
+      next === "trialing" ||
+      (next === "checkout_started" && event === "checkout.session.completed")
+    );
+  }
+
+  if (
+    (current === "active" || current === "trialing") &&
+    (next === "checkout_started" || next === "uninitialized" || next === "incomplete")
+  ) {
+    return false;
+  }
+
+  if (current === "past_due" && (next === "checkout_started" || next === "uninitialized")) {
+    return false;
+  }
+
+  if (current === "active" && next === "trialing") return false;
+  return true;
+}
+
+function coerceLifecycleTransition(tenant, requestedStatus = "", eventType = "") {
+  const currentStatus = resolveTenantBilling(tenant).lifecycleStatus;
+  const nextStatus = String(requestedStatus || "").trim().toLowerCase();
+  if (!nextStatus) return currentStatus;
+  if (lifecycleTransitionAllowed(currentStatus, nextStatus, eventType)) return nextStatus;
+  return currentStatus;
+}
+
+function coerceOnboardingFeeStatus(tenant, requestedStatus = "", { allowPaidRegression = false } = {}) {
+  const currentStatus = resolveTenantBilling(tenant).onboardingFeeStatus;
+  const nextStatus = String(requestedStatus || "").trim().toLowerCase();
+  if (!nextStatus) return currentStatus;
+  if (allowPaidRegression) return nextStatus;
+  if (currentStatus === ONBOARDING_FEE_PAID && nextStatus === ONBOARDING_FEE_UNPAID) {
+    return ONBOARDING_FEE_PAID;
+  }
+  return nextStatus;
+}
+
+function isStripeWebhookLedgerUnavailableError(error) {
+  const code = String(error?.code || "").trim().toUpperCase();
+  const message = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  return (
+    code === "PGRST205" ||
+    code === "42P01" ||
+    message.includes("schema cache") ||
+    details.includes("schema cache") ||
+    message.includes("stripe_webhook_events") ||
+    details.includes("stripe_webhook_events") ||
+    (message.includes("relation") && message.includes("does not exist"))
+  );
+}
+
+function pickStripeCustomerIdFromPayload(payload = {}) {
+  return String(
+    payload?.customer || payload?.data?.object?.customer || payload?.metadata?.customer || ""
+  )
+    .trim();
+}
+
+function pickStripeSubscriptionIdFromPayload(payload = {}) {
+  const explicit = String(
+    payload?.subscription ||
+      payload?.data?.object?.subscription ||
+      payload?.metadata?.subscriptionId ||
+      ""
+  ).trim();
+  if (explicit) return explicit;
+
+  const maybeSubscriptionId = String(payload?.id || "").trim();
+  if (maybeSubscriptionId.startsWith("sub_")) return maybeSubscriptionId;
+  return "";
+}
+
+function buildWebhookTenantContext(tenant, payload = {}) {
+  return {
+    tenantId: String(tenant?._id || tenant?.id || "").trim() || null,
+    tenantSlug: String(tenant?.slug || "").trim(),
+    stripeCustomerId:
+      String(tenant?.stripeCustomerId || "").trim() || pickStripeCustomerIdFromPayload(payload),
+    stripeSubscriptionId:
+      String(tenant?.stripeSubscriptionId || "").trim() || pickStripeSubscriptionIdFromPayload(payload)
+  };
 }
 
 async function writeBillingAudit(tenantId, event, metadata = {}) {
@@ -321,6 +421,54 @@ async function appendProcessedEventId(tenant, eventId = "") {
   });
 
   return updated;
+}
+
+async function registerStripeWebhookEventReceipt(event = {}) {
+  const eventId = String(event?.id || "").trim();
+  const eventType = String(event?.type || "").trim();
+  if (!eventId || !eventType) {
+    return {
+      available: true,
+      duplicateProcessed: false,
+      record: null
+    };
+  }
+
+  try {
+    const receipt = await StripeWebhookEventModel.recordReceipt({
+      stripeEventId: eventId,
+      eventType,
+      payload: event
+    });
+    return {
+      available: true,
+      duplicateProcessed: String(receipt?.processingStatus || "").trim().toLowerCase() === "processed",
+      record: receipt
+    };
+  } catch (error) {
+    if (!isStripeWebhookLedgerUnavailableError(error)) throw error;
+    return {
+      available: false,
+      duplicateProcessed: false,
+      record: null
+    };
+  }
+}
+
+async function markStripeWebhookEventProcessed(event = {}, context = {}) {
+  try {
+    await StripeWebhookEventModel.markProcessed(String(event?.id || "").trim(), context);
+  } catch (error) {
+    if (!isStripeWebhookLedgerUnavailableError(error)) throw error;
+  }
+}
+
+async function markStripeWebhookEventFailed(event = {}, errorValue, context = {}) {
+  try {
+    await StripeWebhookEventModel.markFailed(String(event?.id || "").trim(), errorValue, context);
+  } catch (error) {
+    if (!isStripeWebhookLedgerUnavailableError(error)) throw error;
+  }
 }
 
 export function getBillingMode() {
@@ -554,21 +702,48 @@ export async function createTenantCheckoutSession({
   };
 }
 
-async function handleCheckoutSessionCompleted(event, session) {
+function buildMissingTenantWebhookError(payload = {}, eventType = "") {
+  const error = new Error(
+    `Unable to map Stripe event '${String(eventType || "").trim()}' to a tenant.`
+  );
+  error.code = "BILLING_TENANT_NOT_FOUND";
+  error.statusCode = 422;
+  error.webhookContext = {
+    tenantId: pickTenantIdFromPayload(payload) || null,
+    tenantSlug: String(payload?.metadata?.tenantSlug || "").trim(),
+    stripeCustomerId: pickStripeCustomerIdFromPayload(payload),
+    stripeSubscriptionId: pickStripeSubscriptionIdFromPayload(payload)
+  };
+  return error;
+}
+
+async function applyLegacyTenantDedupe(tenant, eventId = "", enabled = false) {
+  if (!enabled) return tenant;
+  const deduped = await appendProcessedEventId(tenant, eventId);
+  if (deduped === null) return null;
+  return deduped || tenant;
+}
+
+async function handleCheckoutSessionCompleted(event, session, { useTenantEventDedupe = false } = {}) {
   let tenant = await findTenantForStripePayload(session);
-  if (!tenant) return;
+  if (!tenant) throw buildMissingTenantWebhookError(session, event.type);
 
-  const deduped = await appendProcessedEventId(tenant, event.id);
-  if (deduped === null) return;
-  if (deduped) tenant = deduped;
+  tenant = await applyLegacyTenantDedupe(tenant, event.id, useTenantEventDedupe);
+  if (!tenant) {
+    return {
+      skipped: true,
+      tenantContext: buildWebhookTenantContext(null, session)
+    };
+  }
 
+  const tenantBilling = resolveTenantBilling(tenant);
   const metadataPlanCode = normalizePlanCode(
     String(session?.metadata?.planCode || "").trim(),
     tenant.planTier
   );
   let lifecycleStatus = inferCheckoutLifecycleStatus(session);
   let stripePriceId = tenant.stripePriceId;
-  let currentPeriodEnd = resolveTenantBilling(tenant).currentPeriodEnd;
+  let currentPeriodEnd = tenantBilling.currentPeriodEnd;
   let resolvedPlanCode = metadataPlanCode;
   let planTier = resolveFeatureTierFromBillingPlan(resolvedPlanCode);
 
@@ -589,8 +764,13 @@ async function handleCheckoutSessionCompleted(event, session) {
     if (periodEnd > 0) currentPeriodEnd = new Date(periodEnd * 1000).toISOString();
   }
 
+  lifecycleStatus = coerceLifecycleTransition(tenant, lifecycleStatus, event.type);
   const catalog = getCatalogEntry(resolvedPlanCode);
-  const onboardingFeeStatus = catalog.onboardingFeeAmount <= 0 ? ONBOARDING_FEE_WAIVED : ONBOARDING_FEE_UNPAID;
+  const computedOnboardingStatus =
+    catalog.onboardingFeeAmount <= 0 ? ONBOARDING_FEE_WAIVED : ONBOARDING_FEE_UNPAID;
+  const onboardingFeeStatus = coerceOnboardingFeeStatus(tenant, computedOnboardingStatus, {
+    allowPaidRegression: resolvedPlanCode !== tenantBilling.billingPlan
+  });
 
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
@@ -619,15 +799,24 @@ async function handleCheckoutSessionCompleted(event, session) {
     stripeSessionId: session.id,
     planCode: resolvedPlanCode
   }).catch(() => {});
+
+  return {
+    skipped: false,
+    tenantContext: buildWebhookTenantContext(updated, session)
+  };
 }
 
-async function handleSubscriptionUpdate(event, subscription) {
+async function handleSubscriptionUpdate(event, subscription, { useTenantEventDedupe = false } = {}) {
   let tenant = await findTenantForStripePayload(subscription);
-  if (!tenant) return;
+  if (!tenant) throw buildMissingTenantWebhookError(subscription, event.type);
 
-  const deduped = await appendProcessedEventId(tenant, event.id);
-  if (deduped === null) return;
-  if (deduped) tenant = deduped;
+  tenant = await applyLegacyTenantDedupe(tenant, event.id, useTenantEventDedupe);
+  if (!tenant) {
+    return {
+      skipped: true,
+      tenantContext: buildWebhookTenantContext(null, subscription)
+    };
+  }
 
   const stripePriceId = String(subscription?.items?.data?.[0]?.price?.id || "").trim();
   const resolvedPlanCode = normalizePlanCode(
@@ -636,7 +825,11 @@ async function handleSubscriptionUpdate(event, subscription) {
     tenant.planTier
   );
   const planTier = resolveFeatureTierFromBillingPlan(resolvedPlanCode);
-  const lifecycleStatus = mapStripeLifecycleStatus(subscription.status);
+  const lifecycleStatus = coerceLifecycleTransition(
+    tenant,
+    mapStripeLifecycleStatus(subscription.status),
+    event.type
+  );
   const billing = resolveTenantBilling(tenant);
   const periodEnd = Number(subscription?.current_period_end || 0);
 
@@ -662,22 +855,36 @@ async function handleSubscriptionUpdate(event, subscription) {
     lifecycleStatus,
     planCode: resolvedPlanCode
   }).catch(() => {});
+
+  return {
+    skipped: false,
+    tenantContext: buildWebhookTenantContext(updated, subscription)
+  };
 }
 
-async function handleInvoicePaid(event, invoice) {
+async function handleInvoicePaid(event, invoice, { useTenantEventDedupe = false } = {}) {
   let tenant = await findTenantForStripePayload(invoice);
-  if (!tenant) return;
+  if (!tenant) throw buildMissingTenantWebhookError(invoice, event.type);
 
-  const deduped = await appendProcessedEventId(tenant, event.id);
-  if (deduped === null) return;
-  if (deduped) tenant = deduped;
+  tenant = await applyLegacyTenantDedupe(tenant, event.id, useTenantEventDedupe);
+  if (!tenant) {
+    return {
+      skipped: true,
+      tenantContext: buildWebhookTenantContext(null, invoice)
+    };
+  }
 
   const billing = resolveTenantBilling(tenant);
   const invoiceHasOnboarding = hasOnboardingFeeLine(invoice, tenant);
-  const onboardingFeeStatus = invoiceHasOnboarding
-    ? ONBOARDING_FEE_PAID
-    : billing.onboardingFeeStatus;
-  const lifecycleStatus = billing.lifecycleStatus === "canceled" ? "canceled" : "active";
+  const onboardingFeeStatus = coerceOnboardingFeeStatus(
+    tenant,
+    invoiceHasOnboarding ? ONBOARDING_FEE_PAID : billing.onboardingFeeStatus
+  );
+  const lifecycleStatus = coerceLifecycleTransition(
+    tenant,
+    billing.lifecycleStatus === "canceled" ? "canceled" : "active",
+    event.type
+  );
 
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
@@ -703,20 +910,29 @@ async function handleInvoicePaid(event, invoice) {
     stripeInvoiceId: invoice.id,
     onboardingFeePaid: invoiceHasOnboarding
   }).catch(() => {});
+
+  return {
+    skipped: false,
+    tenantContext: buildWebhookTenantContext(updated, invoice)
+  };
 }
 
-async function handleInvoicePaymentFailed(event, invoice) {
+async function handleInvoicePaymentFailed(event, invoice, { useTenantEventDedupe = false } = {}) {
   let tenant = await findTenantForStripePayload(invoice);
-  if (!tenant) return;
+  if (!tenant) throw buildMissingTenantWebhookError(invoice, event.type);
 
-  const deduped = await appendProcessedEventId(tenant, event.id);
-  if (deduped === null) return;
-  if (deduped) tenant = deduped;
+  tenant = await applyLegacyTenantDedupe(tenant, event.id, useTenantEventDedupe);
+  if (!tenant) {
+    return {
+      skipped: true,
+      tenantContext: buildWebhookTenantContext(null, invoice)
+    };
+  }
 
-  const lifecycleStatus = "past_due";
+  const lifecycleStatus = coerceLifecycleTransition(tenant, "past_due", event.type);
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
-      billingStatus: "past_due"
+      billingStatus: toLegacyBillingStatusFromLifecycle(lifecycleStatus)
     },
     billingPatch: {
       lifecycleStatus,
@@ -729,9 +945,14 @@ async function handleInvoicePaymentFailed(event, invoice) {
     eventId: event.id,
     stripeInvoiceId: invoice.id
   }).catch(() => {});
+
+  return {
+    skipped: false,
+    tenantContext: buildWebhookTenantContext(updated, invoice)
+  };
 }
 
-async function handlePaymentIntent(event, paymentIntent) {
+async function handlePaymentIntent(event, paymentIntent, { useTenantEventDedupe = false } = {}) {
   let tenant = await findTenantForStripePayload(paymentIntent);
   if (!tenant && paymentIntent?.invoice && stripe) {
     try {
@@ -741,11 +962,15 @@ async function handlePaymentIntent(event, paymentIntent) {
       tenant = null;
     }
   }
-  if (!tenant) return;
+  if (!tenant) throw buildMissingTenantWebhookError(paymentIntent, event.type);
 
-  const deduped = await appendProcessedEventId(tenant, event.id);
-  if (deduped === null) return;
-  if (deduped) tenant = deduped;
+  tenant = await applyLegacyTenantDedupe(tenant, event.id, useTenantEventDedupe);
+  if (!tenant) {
+    return {
+      skipped: true,
+      tenantContext: buildWebhookTenantContext(null, paymentIntent)
+    };
+  }
 
   const type = String(event.type || "").trim().toLowerCase();
   const succeeded = type === "payment_intent.succeeded";
@@ -753,25 +978,25 @@ async function handlePaymentIntent(event, paymentIntent) {
   const metadataOnboarding =
     String(paymentIntent?.metadata?.lineType || "").trim().toLowerCase() === "onboarding_fee";
   const billing = resolveTenantBilling(tenant);
-  const onboardingFeeStatus = metadataOnboarding && succeeded ? ONBOARDING_FEE_PAID : billing.onboardingFeeStatus;
+  const onboardingFeeStatus = coerceOnboardingFeeStatus(
+    tenant,
+    metadataOnboarding && succeeded ? ONBOARDING_FEE_PAID : billing.onboardingFeeStatus
+  );
+  const lifecycleStatus = coerceLifecycleTransition(
+    tenant,
+    succeeded ? (billing.lifecycleStatus === "canceled" ? "canceled" : "active") : "past_due",
+    event.type
+  );
 
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
       onboardingFeePaid:
         onboardingFeeStatus === ONBOARDING_FEE_PAID ||
         onboardingFeeStatus === ONBOARDING_FEE_WAIVED,
-      billingStatus: succeeded
-        ? toLegacyBillingStatusFromLifecycle(
-            billing.lifecycleStatus === "canceled" ? "canceled" : "active"
-          )
-        : "past_due"
+      billingStatus: toLegacyBillingStatusFromLifecycle(lifecycleStatus)
     },
     billingPatch: {
-      lifecycleStatus: succeeded
-        ? billing.lifecycleStatus === "canceled"
-          ? "canceled"
-          : "active"
-        : "past_due",
+      lifecycleStatus,
       onboardingFeeStatus,
       lastPaymentIntentId: String(paymentIntent.id || "").trim(),
       lastPaymentIntentStatus: status
@@ -784,33 +1009,100 @@ async function handlePaymentIntent(event, paymentIntent) {
     status,
     onboardingFeeSettled: metadataOnboarding && succeeded
   }).catch(() => {});
+
+  return {
+    skipped: false,
+    tenantContext: buildWebhookTenantContext(updated, paymentIntent)
+  };
 }
 
 export async function processStripeEvent(event) {
   const eventType = String(event?.type || "").trim();
-  if (!eventType) return;
+  if (!eventType) {
+    return {
+      processed: false,
+      duplicate: false,
+      ledger: false
+    };
+  }
 
-  switch (eventType) {
-    case "checkout.session.completed":
-      await handleCheckoutSessionCompleted(event, event.data.object);
-      break;
-    case "customer.subscription.created":
-    case "customer.subscription.updated":
-    case "customer.subscription.deleted":
-      await handleSubscriptionUpdate(event, event.data.object);
-      break;
-    case "invoice.paid":
-      await handleInvoicePaid(event, event.data.object);
-      break;
-    case "invoice.payment_failed":
-      await handleInvoicePaymentFailed(event, event.data.object);
-      break;
-    case "payment_intent.succeeded":
-    case "payment_intent.payment_failed":
-      await handlePaymentIntent(event, event.data.object);
-      break;
-    default:
-      break;
+  const receipt = await registerStripeWebhookEventReceipt(event);
+  if (receipt.duplicateProcessed) {
+    return {
+      processed: false,
+      duplicate: true,
+      ledger: receipt.available,
+      eventId: String(event?.id || "").trim(),
+      type: eventType
+    };
+  }
+
+  const handlerOptions = {
+    useTenantEventDedupe: !receipt.available
+  };
+  const payload = event?.data?.object || {};
+  let webhookContext = buildWebhookTenantContext(null, payload);
+
+  try {
+    let handlerResult = { skipped: false };
+    switch (eventType) {
+      case "checkout.session.completed": {
+        handlerResult = await handleCheckoutSessionCompleted(event, payload, handlerOptions);
+        webhookContext = handlerResult?.tenantContext || webhookContext;
+        break;
+      }
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
+        handlerResult = await handleSubscriptionUpdate(event, payload, handlerOptions);
+        webhookContext = handlerResult?.tenantContext || webhookContext;
+        break;
+      }
+      case "invoice.paid": {
+        handlerResult = await handleInvoicePaid(event, payload, handlerOptions);
+        webhookContext = handlerResult?.tenantContext || webhookContext;
+        break;
+      }
+      case "invoice.payment_failed": {
+        handlerResult = await handleInvoicePaymentFailed(event, payload, handlerOptions);
+        webhookContext = handlerResult?.tenantContext || webhookContext;
+        break;
+      }
+      case "payment_intent.succeeded":
+      case "payment_intent.payment_failed": {
+        handlerResult = await handlePaymentIntent(event, payload, handlerOptions);
+        webhookContext = handlerResult?.tenantContext || webhookContext;
+        break;
+      }
+      default:
+        break;
+    }
+
+    if (handlerResult?.skipped) {
+      return {
+        processed: false,
+        duplicate: true,
+        ledger: receipt.available,
+        eventId: String(event?.id || "").trim(),
+        type: eventType
+      };
+    }
+
+    await markStripeWebhookEventProcessed(event, webhookContext);
+    return {
+      processed: true,
+      duplicate: false,
+      ledger: receipt.available,
+      eventId: String(event?.id || "").trim(),
+      type: eventType
+    };
+  } catch (error) {
+    const fallbackContext = {
+      ...webhookContext,
+      ...(error?.webhookContext || {})
+    };
+    await markStripeWebhookEventFailed(event, error, fallbackContext);
+    throw error;
   }
 }
 

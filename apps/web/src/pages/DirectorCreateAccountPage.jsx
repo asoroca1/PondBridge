@@ -32,6 +32,15 @@ const STEP_ORDER = [
   STEP_BILLING_PLAN,
   STEP_REVIEW_LAUNCH
 ];
+
+function normalizeWizardStep(value = "", { accountStepRequired = true } = {}) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const fallback = accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN;
+  if (!STEP_ORDER.includes(normalized)) return fallback;
+  if (!accountStepRequired && normalized === STEP_ACCOUNT) return STEP_DESIGN;
+  return normalized;
+}
+
 const DEFAULT_FEATURE_MODULES = {
   directory: true,
   search: true,
@@ -412,6 +421,7 @@ function DirectorCreateAccountWizardPage() {
   const [step, setStep] = useState(() => (accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN));
   const [submitError, setSubmitError] = useState("");
   const [finishing, setFinishing] = useState(false);
+  const [draftRestoredNotice, setDraftRestoredNotice] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
   const [showLaunchCelebration, setShowLaunchCelebration] = useState(false);
@@ -470,6 +480,16 @@ function DirectorCreateAccountWizardPage() {
   }, [step]);
 
   useEffect(() => {
+    if (!draftRestoredNotice) return;
+    const timeoutId = window.setTimeout(() => {
+      setDraftRestoredNotice("");
+    }, 4500);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [draftRestoredNotice]);
+
+  useEffect(() => {
     if (skipAccountHydratedRef.current) return;
     if (accountStepRequired) return;
 
@@ -523,6 +543,12 @@ function DirectorCreateAccountWizardPage() {
       : hasCustomMainColor
       ? draftMainColor
       : initialBrandColor;
+  const paletteSwatches = [
+    { label: "Primary", color: effectiveMainColor },
+    { label: "Action", color: darkenHex(effectiveMainColor, 0.12) },
+    { label: "Soft", color: deriveSecondaryHex(effectiveMainColor, 0.72) },
+    { label: "Surface", color: deriveSecondaryHex(effectiveMainColor, 0.9) }
+  ];
 
   const selectedBillingPlanCode = normalizeBillingPlanCode(form.billingPlanCode);
   const selectedBillingPlan = BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) || BILLING_PLAN_OPTIONS[0];
@@ -663,14 +689,78 @@ function DirectorCreateAccountWizardPage() {
 
     const localDraft = readWizardDraft(slug);
     if (localDraft) {
+      const draftForm =
+        localDraft.form && typeof localDraft.form === "object" ? localDraft.form : localDraft;
       setForm((prev) => ({
         ...prev,
-        firstName: localDraft.firstName || prev.firstName,
-        lastName: localDraft.lastName || prev.lastName,
-        email: localDraft.email || prev.email,
-        campName: localDraft.campName || prev.campName,
-        billingPlanCode: normalizeBillingPlanCode(localDraft.billingPlanCode || prev.billingPlanCode)
+        firstName: String(draftForm.firstName || prev.firstName || ""),
+        lastName: String(draftForm.lastName || prev.lastName || ""),
+        email: String(draftForm.email || prev.email || ""),
+        campName: String(draftForm.campName || prev.campName || ""),
+        billingPlanCode: normalizeBillingPlanCode(
+          draftForm.billingPlanCode || draftForm.selectedPlanCode || prev.billingPlanCode
+        )
       }));
+
+      if (localDraft.themeDraft && typeof localDraft.themeDraft === "object") {
+        setThemeDraft((prev) => ({
+          ...prev,
+          brandPrimary: isHexColor(localDraft.themeDraft.brandPrimary)
+            ? localDraft.themeDraft.brandPrimary
+            : prev.brandPrimary,
+          logoUrl: String(localDraft.themeDraft.logoUrl || prev.logoUrl || ""),
+          heroImageUrl: String(localDraft.themeDraft.heroImageUrl || prev.heroImageUrl || ""),
+          heroImagePosition: normalizeHeroImagePosition(
+            localDraft.themeDraft.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+          ),
+          heroImageSize: normalizeHeroImageSize(
+            localDraft.themeDraft.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+          )
+        }));
+        if (isHexColor(localDraft.themeDraft.brandPrimary)) {
+          setHasCustomMainColor(true);
+        }
+      }
+
+      if (localDraft.modulesDraft && typeof localDraft.modulesDraft === "object") {
+        setModulesDraft((prev) => ({
+          ...prev,
+          ...localDraft.modulesDraft
+        }));
+      }
+
+      if (Object.prototype.hasOwnProperty.call(localDraft, "newsletterName")) {
+        setNewsletterName(String(localDraft.newsletterName || ""));
+      }
+
+      if (localDraft.campSpecifics && typeof localDraft.campSpecifics === "object") {
+        setCampSpecifics((prev) => ({
+          ...prev,
+          ageGroupsText: String(localDraft.campSpecifics.ageGroupsText || prev.ageGroupsText || ""),
+          staffRolesText: String(localDraft.campSpecifics.staffRolesText || prev.staffRolesText || ""),
+          homepageQuote: String(localDraft.campSpecifics.homepageQuote || prev.homepageQuote || ""),
+          merchShopUrl: String(localDraft.campSpecifics.merchShopUrl || prev.merchShopUrl || "")
+        }));
+      }
+
+      if (localDraft.billingDetails && typeof localDraft.billingDetails === "object") {
+        setBillingDetails((prev) => ({
+          sameAsMailing:
+            localDraft.billingDetails.sameAsMailing === undefined
+              ? prev.sameAsMailing
+              : Boolean(localDraft.billingDetails.sameAsMailing),
+          mailingAddress: normalizeAddress(
+            localDraft.billingDetails.mailingAddress || prev.mailingAddress || EMPTY_ADDRESS
+          ),
+          billingAddress: normalizeAddress(
+            localDraft.billingDetails.billingAddress || prev.billingAddress || EMPTY_ADDRESS
+          )
+        }));
+      }
+
+      setStep(normalizeWizardStep(localDraft.step, { accountStepRequired }));
+      setDraftRestoredNotice("Draft restored from your previous session.");
+      return;
     }
 
     const draft = tenant?.onboardingDraft;
@@ -728,19 +818,55 @@ function DirectorCreateAccountWizardPage() {
           : prev.billingAddress
       }));
     }
-  }, [slug, tenant?.onboardingDraft]);
+  }, [accountStepRequired, slug, tenant?.onboardingDraft]);
 
-  function saveDraftForStep(completedStep) {
-    if (completedStep === STEP_ACCOUNT) {
-      writeWizardDraft(slug, {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        campName: form.campName,
-        billingPlanCode: form.billingPlanCode
-      });
-      return;
-    }
+  function buildLocalDraftSnapshot(nextStep = step) {
+    const next = normalizeWizardStep(nextStep, { accountStepRequired });
+    return {
+      step: next,
+      form: {
+        firstName: String(form.firstName || "").trim(),
+        lastName: String(form.lastName || "").trim(),
+        email: String(form.email || "").trim().toLowerCase(),
+        campName: String(form.campName || "").trim(),
+        billingPlanCode: normalizeBillingPlanCode(form.billingPlanCode)
+      },
+      themeDraft: {
+        brandPrimary: isHexColor(themeDraft.brandPrimary) ? themeDraft.brandPrimary : initialBrandColor,
+        logoUrl: String(themeDraft.logoUrl || ""),
+        heroImageUrl: String(themeDraft.heroImageUrl || ""),
+        heroImagePosition: normalizeHeroImagePosition(
+          themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSize: normalizeHeroImageSize(themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE)
+      },
+      modulesDraft: { ...modulesDraft },
+      newsletterName: String(newsletterName || ""),
+      campSpecifics: {
+        ageGroupsText: String(campSpecifics.ageGroupsText || ""),
+        staffRolesText: String(campSpecifics.staffRolesText || ""),
+        homepageQuote: String(campSpecifics.homepageQuote || ""),
+        merchShopUrl: String(campSpecifics.merchShopUrl || "")
+      },
+      billingDetails: {
+        sameAsMailing: Boolean(billingDetails.sameAsMailing),
+        mailingAddress: normalizeAddress(billingDetails.mailingAddress),
+        billingAddress: billingDetails.sameAsMailing
+          ? normalizeAddress(billingDetails.mailingAddress)
+          : normalizeAddress(billingDetails.billingAddress)
+      },
+      selectedPlanCode: normalizeBillingPlanCode(form.billingPlanCode)
+    };
+  }
+
+  function saveLocalDraft(nextStep = step) {
+    if (!slug) return;
+    writeWizardDraft(slug, buildLocalDraftSnapshot(nextStep));
+  }
+
+  function saveDraftForStep(completedStep, { nextStep = step } = {}) {
+    saveLocalDraft(nextStep);
+    if (completedStep === STEP_ACCOUNT) return;
 
     const token = authToken;
     if (!token) return;
@@ -940,7 +1066,7 @@ function DirectorCreateAccountWizardPage() {
       return;
     }
     setSubmitError("");
-    saveDraftForStep(STEP_ACCOUNT);
+    saveDraftForStep(STEP_ACCOUNT, { nextStep: STEP_DESIGN });
     setStep(STEP_DESIGN);
   }
 
@@ -961,7 +1087,7 @@ function DirectorCreateAccountWizardPage() {
       setSubmitError("Please fix the design fields before moving forward.");
       return;
     }
-    saveDraftForStep(STEP_DESIGN);
+    saveDraftForStep(STEP_DESIGN, { nextStep: STEP_FEATURES });
     setStep(STEP_FEATURES);
   }
 
@@ -991,7 +1117,7 @@ function DirectorCreateAccountWizardPage() {
     }
 
     setSubmitError("");
-    saveDraftForStep(STEP_FEATURES);
+    saveDraftForStep(STEP_FEATURES, { nextStep: STEP_CAMP_SPECIFICS });
     setStep(STEP_CAMP_SPECIFICS);
   }
 
@@ -1029,7 +1155,7 @@ function DirectorCreateAccountWizardPage() {
     }
 
     setSubmitError("");
-    saveDraftForStep(STEP_CAMP_SPECIFICS);
+    saveDraftForStep(STEP_CAMP_SPECIFICS, { nextStep: STEP_BILLING_PLAN });
     setStep(STEP_BILLING_PLAN);
   }
 
@@ -1080,7 +1206,7 @@ function DirectorCreateAccountWizardPage() {
     }
 
     setSubmitError("");
-    saveDraftForStep(STEP_BILLING_PLAN);
+    saveDraftForStep(STEP_BILLING_PLAN, { nextStep: STEP_REVIEW_LAUNCH });
     setStep(STEP_REVIEW_LAUNCH);
   }
 
@@ -1226,6 +1352,7 @@ function DirectorCreateAccountWizardPage() {
 
     if (targetIndex <= currentIndex) {
       setSubmitError("");
+      saveLocalDraft(targetStep);
       setStep(targetStep);
       return;
     }
@@ -1278,6 +1405,7 @@ function DirectorCreateAccountWizardPage() {
     }
 
     setSubmitError("");
+    saveLocalDraft(targetStep);
     setStep(targetStep);
   }
 
@@ -1635,6 +1763,9 @@ function DirectorCreateAccountWizardPage() {
           </div>
 
           <div className="director-step-content" key={step}>
+          {draftRestoredNotice ? (
+            <p className="director-draft-restored">{draftRestoredNotice}</p>
+          ) : null}
           {step === STEP_ACCOUNT ? (
             <>
               <div className="director-design-head director-design-head--styled">
@@ -1838,6 +1969,19 @@ function DirectorCreateAccountWizardPage() {
                     {themeErrors.brandPrimary ? (
                       <p className="wizard1-error">{themeErrors.brandPrimary}</p>
                     ) : null}
+                    <div className="director-palette-preview" aria-label="Brand palette preview">
+                      {paletteSwatches.map((swatch) => (
+                        <div className="director-palette-swatch" key={swatch.label}>
+                          <span
+                            className="director-palette-chip"
+                            style={{ backgroundColor: swatch.color }}
+                            aria-hidden="true"
+                          />
+                          <span>{swatch.label}</span>
+                          <code>{swatch.color.toUpperCase()}</code>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="wizard1-field wizard1-span-12">

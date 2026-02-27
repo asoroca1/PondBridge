@@ -19,4 +19,5 @@ export { ResumeParseResultModel } from "./ResumeParseResultModel.js";
 export { CityGeoModel } from "./CityGeoModel.js";
 export { ActivityItemModel } from "./ActivityItemModel.js";
 export { ResendWebhookEventModel } from "./ResendWebhookEventModel.js";
+export { StripeWebhookEventModel } from "./StripeWebhookEventModel.js";
 export { EmailSuppressionModel } from "./EmailSuppressionModel.js";

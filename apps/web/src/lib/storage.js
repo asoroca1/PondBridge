@@ -1,13 +1,12 @@
+import { clearVolatileAuthToken, getVolatileAuthToken, setVolatileAuthToken } from "./authMemory.js";
+
 export const STORAGE_KEYS = {
-  token: "pondbridgeToken",
   user: "pondbridgeUser",
-  legacyToken: "token",
   legacyUser: "user"
 };
 
 export function readAuthFromStorage() {
-  const token =
-    localStorage.getItem(STORAGE_KEYS.token) || localStorage.getItem(STORAGE_KEYS.legacyToken) || "";
+  const token = getVolatileAuthToken();
   const rawUser =
     localStorage.getItem(STORAGE_KEYS.user) || localStorage.getItem(STORAGE_KEYS.legacyUser) || "";
   let user = null;
@@ -20,8 +19,7 @@ export function readAuthFromStorage() {
 }
 
 export function writeAuthToStorage(token, user) {
-  localStorage.setItem(STORAGE_KEYS.token, token || "");
-  localStorage.setItem(STORAGE_KEYS.legacyToken, token || "");
+  setVolatileAuthToken(token || "");
   if (user) {
     const serialized = JSON.stringify(user);
     localStorage.setItem(STORAGE_KEYS.user, serialized);
@@ -34,10 +32,12 @@ export function writeAuthToStorage(token, user) {
 }
 
 export function clearAuthStorage() {
-  localStorage.removeItem(STORAGE_KEYS.token);
+  clearVolatileAuthToken();
   localStorage.removeItem(STORAGE_KEYS.user);
-  localStorage.removeItem(STORAGE_KEYS.legacyToken);
   localStorage.removeItem(STORAGE_KEYS.legacyUser);
+  localStorage.removeItem("pondbridgeToken");
+  localStorage.removeItem("token");
+  localStorage.removeItem("cedarToken");
   window.dispatchEvent(new CustomEvent("pondbridge-auth-updated"));
 }
 

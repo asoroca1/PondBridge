@@ -9,6 +9,28 @@ let clearAllDocuments;
 let hashPassword;
 let Tenant;
 let User;
+let StripeWebhookEventModel;
+let stripeWebhookLedgerAvailable = false;
+let slugCounter = 0;
+
+function nextSlug(baseSlug = "tenant") {
+  slugCounter += 1;
+  return `${String(baseSlug || "tenant").trim()}-${slugCounter}`;
+}
+
+async function detectStripeWebhookLedger() {
+  try {
+    await StripeWebhookEventModel.findByStripeEventId("__ledger_probe__");
+    return true;
+  } catch (error) {
+    const code = String(error?.code || "").trim().toUpperCase();
+    const message = String(error?.message || "").toLowerCase();
+    if (code === "PGRST205" || message.includes("stripe_webhook_events")) {
+      return false;
+    }
+    throw error;
+  }
+}
 
 async function createTenant({
   slug,
@@ -20,9 +42,10 @@ async function createTenant({
   onboardingFeePaid = false,
   settings = {}
 }) {
+  const effectiveSlug = nextSlug(slug);
   return Tenant.create({
-    name: name || `Camp ${slug}`,
-    slug,
+    name: name || `Camp ${effectiveSlug}`,
+    slug: effectiveSlug,
     status: "active",
     planTier: "base",
     onboardingStatus,
@@ -91,9 +114,11 @@ beforeAll(async () => {
   ({ hashPassword } = await import("../src/utils/auth.js"));
   ({ Tenant } = await import("../src/models/Tenant.js"));
   ({ User } = await import("../src/models/User.js"));
+  ({ StripeWebhookEventModel } = await import("../src/db/models/index.js"));
   ({ default: app } = await import("../src/app.js"));
 
   await connectToDatabase();
+  stripeWebhookLedgerAvailable = await detectStripeWebhookLedger();
 });
 
 afterEach(async () => {
@@ -109,7 +134,7 @@ describe("Stripe billing system", () => {
       onboardingStatus: "in_progress"
     });
     await createTenantAdmin(tenant._id, "director@legacy.test");
-    const token = await loginTenant("billing-legacy-checkout", "director@legacy.test");
+    const token = await loginTenant(tenant.slug, "director@legacy.test");
 
     const response = await request(app)
       .post("/api/tenants/me/billing/checkout")
@@ -137,7 +162,7 @@ describe("Stripe billing system", () => {
       onboardingStatus: "in_progress"
     });
     await createTenantAdmin(tenant._id, "director@institutional.test");
-    const token = await loginTenant("billing-institutional-checkout", "director@institutional.test");
+    const token = await loginTenant(tenant.slug, "director@institutional.test");
 
     const response = await request(app)
       .post("/api/tenants/me/billing/checkout")
@@ -201,7 +226,7 @@ describe("Stripe billing system", () => {
       onboardingStatus: "in_progress"
     });
     await createTenantAdmin(tenant._id, "director@invalid-plan.test");
-    const token = await loginTenant("billing-invalid-plan", "director@invalid-plan.test");
+    const token = await loginTenant(tenant.slug, "director@invalid-plan.test");
 
     const response = await request(app)
       .post("/api/tenants/me/billing/checkout")
@@ -253,17 +278,30 @@ describe("Stripe billing system", () => {
       .post("/api/webhooks/stripe")
       .send(payload);
     expect(first.status).toBe(200);
+    expect(first.body.processed).toBe(true);
+    expect(first.body.duplicate).toBe(false);
 
     const second = await request(app)
       .post("/api/webhooks/stripe")
       .send(payload);
     expect(second.status).toBe(200);
+    expect(second.body.processed).toBe(false);
+    expect(second.body.duplicate).toBe(true);
 
     const stored = await Tenant.findById(tenant._id);
     expect(stored.billingStatus).toBe("active");
     expect(stored.onboardingFeePaid).toBe(true);
     expect(stored.onboardingFeeInvoiceId).toBe("in_test_123");
-    expect(stored.settings?.billing?.processedEventIds).toEqual(["evt_invoice_paid_dup_1"]);
+
+    if (stripeWebhookLedgerAvailable) {
+      const eventLog = await StripeWebhookEventModel.findByStripeEventId("evt_invoice_paid_dup_1");
+      expect(eventLog).toBeTruthy();
+      expect(eventLog.processingStatus).toBe("processed");
+      expect(eventLog.attempts).toBe(2);
+      expect(eventLog.tenantId).toBe(String(tenant._id));
+    } else {
+      expect(stored.settings?.billing?.processedEventIds).toEqual(["evt_invoice_paid_dup_1"]);
+    }
   });
 
   test("invoice.payment_failed webhook transitions tenant into past_due lifecycle", async () => {
@@ -297,12 +335,52 @@ describe("Stripe billing system", () => {
       .post("/api/webhooks/stripe")
       .send(payload);
     expect(response.status).toBe(200);
+    expect(response.body.processed).toBe(true);
+    expect(response.body.duplicate).toBe(false);
 
     const stored = await Tenant.findById(tenant._id);
     expect(stored.billingStatus).toBe("past_due");
     expect(stored.settings?.billing?.lifecycleStatus).toBe("past_due");
     expect(stored.settings?.billing?.lastInvoiceId).toBe("in_failed_123");
-    expect(stored.settings?.billing?.processedEventIds).toEqual(["evt_invoice_failed_1"]);
+
+    if (stripeWebhookLedgerAvailable) {
+      const eventLog = await StripeWebhookEventModel.findByStripeEventId("evt_invoice_failed_1");
+      expect(eventLog).toBeTruthy();
+      expect(eventLog.processingStatus).toBe("processed");
+      expect(eventLog.tenantId).toBe(String(tenant._id));
+    } else {
+      expect(stored.settings?.billing?.processedEventIds).toEqual(["evt_invoice_failed_1"]);
+    }
+  });
+
+  test("webhook failures are recorded when Stripe payload cannot map to a tenant", async () => {
+    const payload = {
+      id: "evt_invoice_unknown_tenant",
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: "in_unknown_001",
+          customer: "cus_does_not_exist",
+          status: "paid",
+          lines: { data: [] }
+        }
+      }
+    };
+
+    const response = await request(app)
+      .post("/api/webhooks/stripe")
+      .send(payload);
+
+    expect(response.status).toBe(422);
+    expect(response.body.error?.code).toBe("BILLING_TENANT_NOT_FOUND");
+
+    if (stripeWebhookLedgerAvailable) {
+      const eventLog = await StripeWebhookEventModel.findByStripeEventId("evt_invoice_unknown_tenant");
+      expect(eventLog).toBeTruthy();
+      expect(eventLog.processingStatus).toBe("failed");
+      expect(eventLog.errorCode).toBe("BILLING_TENANT_NOT_FOUND");
+      expect(eventLog.errorMessage).toContain("Unable to map Stripe event");
+    }
   });
 
   test("tenant admin cannot start checkout for another tenant", async () => {
@@ -310,7 +388,7 @@ describe("Stripe billing system", () => {
     const tenantB = await createTenant({ slug: "billing-scope-b", onboardingStatus: "live" });
 
     await createTenantAdmin(tenantA._id, "director@scopea.test");
-    const tokenA = await loginTenant("billing-scope-a", "director@scopea.test");
+    const tokenA = await loginTenant(tenantA.slug, "director@scopea.test");
 
     const response = await request(app)
       .post("/api/tenants/me/billing/checkout")

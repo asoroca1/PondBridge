@@ -69,13 +69,24 @@ export default function TenantImportPage() {
       formData.append("enableFuzzyMatch", String(enableFuzzyMatch));
       formData.append("fuzzyDistance", String(fuzzyDistance));
 
-      const payload = await requestJson(`/api/t/${slug}/admin/import-csv`, {
+      const payload = await requestJson("/api/tenants/me/import-csv", {
         method: "POST",
         token,
+        headers: {
+          "X-Tenant-Slug": slug
+        },
         body: formData
       });
 
-      setResult(payload.report || null);
+      const summary = payload.importSummary || payload.report || null;
+      setResult(
+        summary
+          ? {
+              ...summary,
+              hasFailureCsv: Boolean(summary.hasFailureCsv || summary.failureCsvDownloadPath)
+            }
+          : null
+      );
       setStatus("Import finished.");
     } catch (runError) {
       setError(runError.message);
@@ -207,11 +218,11 @@ export default function TenantImportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.errors.slice(0, 100).map((item) => (
-                    <tr key={`${item.rowNumber}-${item.code}`}>
-                      <td>{item.rowNumber}</td>
-                      <td>{item.code}</td>
-                      <td>{item.message}</td>
+                  {result.errors.slice(0, 100).map((item, index) => (
+                    <tr key={`${item.rowNumber || item.row || index}-${item.code || item.reason || "error"}`}>
+                      <td>{item.rowNumber ?? item.row ?? "-"}</td>
+                      <td>{item.code || "ERROR"}</td>
+                      <td>{item.message || item.reason || "Unknown row error"}</td>
                     </tr>
                   ))}
                 </tbody>

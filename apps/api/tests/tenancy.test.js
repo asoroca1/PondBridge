@@ -271,4 +271,62 @@ describe("API tenancy isolation", () => {
     expect(tenantAResponse.body.counts.profiles).toBeGreaterThan(0);
     expect(tenantBResponse.body.counts.profiles).toBeGreaterThan(0);
   });
+
+  test("tenant admin cannot access super console endpoints", async () => {
+    const { credentials } = await createFixtures();
+    const tokenA = await loginTenant("tenant-a", credentials.adminA);
+
+    const response = await request(app)
+      .get("/api/super/notifications")
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("ROLE_FORBIDDEN");
+  });
+
+  test("tenant admin cannot query tenant B search endpoints", async () => {
+    const { credentials } = await createFixtures();
+    const tokenA = await loginTenant("tenant-a", credentials.adminA);
+
+    const response = await request(app)
+      .get("/api/t/tenant-b/search/users?q=Alex")
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("TENANT_SCOPE_DENIED");
+  });
+
+  test("tenant admin cannot read tenant B profile detail routes", async () => {
+    const { credentials } = await createFixtures();
+    const tokenA = await loginTenant("tenant-a", credentials.adminA);
+    const tokenB = await loginTenant("tenant-b", credentials.adminB);
+
+    const tenantBProfiles = await request(app)
+      .get("/api/t/tenant-b/profiles")
+      .set("Authorization", `Bearer ${tokenB}`);
+
+    expect(tenantBProfiles.status).toBe(200);
+    const targetProfileId = String(tenantBProfiles.body.items?.[0]?.id || tenantBProfiles.body.items?.[0]?._id || "");
+    expect(targetProfileId).toBeTruthy();
+
+    const response = await request(app)
+      .get(`/api/t/tenant-b/profiles/${targetProfileId}`)
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("TENANT_SCOPE_DENIED");
+  });
+
+  test("tenant admin cannot mutate tenant B admin settings", async () => {
+    const { credentials } = await createFixtures();
+    const tokenA = await loginTenant("tenant-a", credentials.adminA);
+
+    const response = await request(app)
+      .post("/api/t/tenant-b/admin/settings/pause")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ paused: true });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("TENANT_SCOPE_DENIED");
+  });
 });

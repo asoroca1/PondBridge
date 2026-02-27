@@ -1,6 +1,6 @@
 // src/components/CedarBackground.jsx
 import React from "react";
-import bgImage from "../assets/cedar-bg.png";
+import bgImage from "../assets/cedar-bg.jpg";
 
 /**
  * behavior:

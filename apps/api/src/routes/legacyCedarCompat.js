@@ -1754,11 +1754,17 @@ router.delete("/photos/:id", async (req, res) => {
 
 router.post("/conversations/dm", async (req, res) => {
   const meId = asObjectId(req.user.id);
-  const resolvedOtherId = await resolveTenantUserId(req.tenant._id, req.body?.userId);
-  const otherId = asObjectId(resolvedOtherId);
-  if (!meId || !otherId) {
+  const requestedOtherId = asObjectId(req.body?.userId);
+  if (!meId || !requestedOtherId) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "userId is required" } });
   }
+
+  const resolvedOtherId = await resolveTenantUserId(req.tenant._id, req.body?.userId);
+  if (!resolvedOtherId) {
+    return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "User not found in this camp" } });
+  }
+  const otherId = asObjectId(resolvedOtherId);
+
   if (String(meId) === String(otherId)) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Cannot DM yourself" } });
   }

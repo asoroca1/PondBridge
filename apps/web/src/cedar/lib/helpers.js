@@ -1,3 +1,5 @@
+import { getVolatileAuthToken } from "../../lib/authMemory.js";
+
 /**
  * Shared utility functions for Cedar pages.
  *
@@ -24,9 +26,7 @@ function parseJwtExpiry(token = "") {
 /** Retrieve the best stored auth token and avoid stale/expired values. */
 export function getToken() {
   const candidates = [
-    localStorage.getItem("pondbridgeToken") || "",
-    localStorage.getItem("token") || "",
-    localStorage.getItem("cedarToken") || ""
+    getVolatileAuthToken() || ""
   ]
     .map((value) => String(value || "").trim())
     .filter(Boolean);

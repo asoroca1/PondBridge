@@ -9,16 +9,26 @@ export default function ImportsSettingsPage() {
   const { token } = useAuth();
   const [history, setHistory] = useState([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    requestJson("/api/tenants/me/import/history", { token })
+    setLoading(true);
+    requestJson("/api/tenants/me/import/history", {
+      token,
+      headers: {
+        "X-Tenant-Slug": slug
+      }
+    })
       .then((payload) => {
         setHistory(payload.items || []);
       })
       .catch((requestError) => {
         setError(requestError.message);
+      })
+      .finally(() => {
+        setLoading(false);
       });
-  }, [token]);
+  }, [slug, token]);
 
   return (
     <PageShell className="pb-cedar-page">
@@ -37,7 +47,9 @@ export default function ImportsSettingsPage() {
 
       <Card>
         <SectionTitle>Recent Imports</SectionTitle>
-        {history.length === 0 ? (
+        {loading ? (
+          <p className="muted">Loading import history...</p>
+        ) : history.length === 0 ? (
           <p className="muted">No imports have been run yet.</p>
         ) : (
           <div className="import-errors-wrap">

@@ -7,8 +7,7 @@ import {
   TenantAdminAuditLogModel,
   TenantModel
 } from "../db/models/index.js";
-import { requireIdentity } from "../middleware/requireAuth.js";
-import { requireTenant } from "../middleware/tenantContext.js";
+import { requireTenantIdentityScope } from "../middleware/tenantAccess.js";
 import { comparePassword } from "../utils/auth.js";
 import {
   createInviteRecord,
@@ -20,7 +19,6 @@ import {
   createTenantMembershipFromIdentity,
   findTenantUserForIdentity
 } from "../services/identityUsers.js";
-import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
 import {
   ensureProfileForUser,
   isProfileComplete,
@@ -38,11 +36,23 @@ import {
 
 const router = Router({ mergeParams: true });
 
+function accessLimiterKey(req, { includeIdentity = false } = {}) {
+  const tenantSlug = String(req.params?.slug || req.tenant?.slug || "").trim().toLowerCase();
+  const ip = String(req.ip || "").trim();
+  const identityRef = includeIdentity
+    ? String(req.user?.id || req.identity?.userId || req.identity?.clerkUserId || req.identity?.email || "")
+        .trim()
+        .toLowerCase()
+    : "";
+  return ["access", tenantSlug, ip, identityRef].join(":");
+}
+
 const accessDecisionLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => accessLimiterKey(req),
   message: {
     error: {
       code: "RATE_LIMITED",
@@ -56,10 +66,25 @@ const accessMutationLimiter = rateLimit({
   limit: 60,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => accessLimiterKey(req, { includeIdentity: true }),
   message: {
     error: {
       code: "RATE_LIMITED",
       message: "Too many access attempts. Please wait and try again."
+    }
+  }
+});
+
+const inviteCreateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => accessLimiterKey(req, { includeIdentity: true }),
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many invite creations. Please wait before sending more invites."
     }
   }
 });
@@ -399,7 +424,7 @@ async function writeTenantAudit(tenantId, actorUserId, event, metadata = {}) {
   });
 }
 
-router.use(requireTenant, requireIdentity, enforceTenantScope);
+router.use(...requireTenantIdentityScope);
 
 router.get("/decision", accessDecisionLimiter, async (req, res) => {
   const inviteToken = String(req.query.inviteToken || req.query.token || "").trim();
@@ -844,7 +869,7 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
   });
 });
 
-router.post("/invite/create", accessMutationLimiter, async (req, res) => {
+router.post("/invite/create", accessMutationLimiter, inviteCreateLimiter, async (req, res) => {
   const requester = await findTenantUserForIdentity(req.tenant._id, req.identity || {});
   const roleSetLocal = roleSet(requester?.roles || []);
   if (!roleSetLocal.has("tenant_admin") && !roleSetLocal.has("super_admin")) {

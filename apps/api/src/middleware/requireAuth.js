@@ -19,6 +19,12 @@ function authUsesClerk() {
   return ["clerk", "hybrid"].includes(env.AUTH_PROVIDER);
 }
 
+function legacyTokenAllowed() {
+  if (env.AUTH_PROVIDER === "legacy") return true;
+  if (env.AUTH_PROVIDER === "hybrid") return Boolean(env.HYBRID_ALLOW_LEGACY_TOKENS);
+  return false;
+}
+
 function canonicalizeAppRoles(roles = []) {
   const roleSet = new Set(
     (Array.isArray(roles) ? roles : [roles])
@@ -53,14 +59,8 @@ function applyLegacyUser(req, payload, token, source) {
     token,
     userId: payload.sub,
     tenantId: payload.tenantId || null,
-    email: payload.email || ""
-  };
-  req.user = {
-    id: payload.sub,
-    _id: payload.sub,
-    tenantId: payload.tenantId || null,
-    roles: canonicalizeAppRoles(payload.roles || []),
-    email: payload.email
+    email: payload.email || "",
+    claimedRoles: canonicalizeAppRoles(payload.roles || [])
   };
   req.token = token;
   req.authSource = source;
@@ -85,16 +85,6 @@ export async function requireIdentity(req, res, next) {
   const cookieToken = readAuthTokenFromCookie(req);
   const token = bearerToken || cookieToken;
 
-  if (token && authUsesLegacy()) {
-    try {
-      const payload = jwt.verify(token, env.JWT_SECRET);
-      applyLegacyUser(req, payload, token, bearerToken ? "bearer" : "cookie");
-      return next();
-    } catch {
-      // Try Clerk next in hybrid mode.
-    }
-  }
-
   if (authUsesClerk()) {
     try {
       const identity = await resolveClerkIdentityFromRequest(req);
@@ -105,8 +95,27 @@ export async function requireIdentity(req, res, next) {
         return next();
       }
     } catch {
+      // Fall through to legacy/hard-fail below.
+    }
+  }
+
+  if (token && authUsesLegacy() && legacyTokenAllowed()) {
+    try {
+      const payload = jwt.verify(token, env.JWT_SECRET);
+      applyLegacyUser(req, payload, token, bearerToken ? "bearer" : "cookie");
+      return next();
+    } catch {
       // Fall through to AUTH_INVALID below.
     }
+  }
+
+  if (token && authUsesLegacy() && !legacyTokenAllowed()) {
+    return res.status(401).json({
+      error: {
+        code: "AUTH_LEGACY_TOKEN_DISABLED",
+        message: "Legacy JWT tokens are disabled in hybrid mode. Continue with Clerk authentication."
+      }
+    });
   }
 
   if (!token) {
@@ -120,34 +129,23 @@ export async function requireIdentity(req, res, next) {
 export async function requireAuth(req, res, next) {
   return requireIdentity(req, res, async () => {
     const tenantId = await resolveTenantIdForAuth(req);
-
-    if (req.user) {
-      const canonicalRoles = canonicalizeAppRoles(req.user.roles || []);
-      req.user.roles = applySuperConsoleRolePolicy(canonicalRoles, req.identity || {}, req.user.email || "");
-      if (
-        tenantId &&
-        !req.user.roles.includes("super_admin") &&
-        req.user.tenantId &&
-        String(req.user.tenantId) !== String(tenantId)
-      ) {
-        return res.status(403).json({
-          error: {
-            code: "TENANT_SCOPE_DENIED",
-            message: "Identity is scoped to a different tenant."
-          }
-        });
-      }
-      return next();
-    }
-
     const identity = req.identity || {};
-    const superUser = await ensureGlobalSuperAdmin(identity);
 
     let appUser = null;
+    if (identity.provider === "legacy" && identity.userId) {
+      appUser = await UserModel.findById(String(identity.userId || ""));
+    }
+
+    const shouldResolveGlobalSuper = String(identity.provider || "").toLowerCase() === "clerk";
+    const superUser = shouldResolveGlobalSuper ? await ensureGlobalSuperAdmin(identity) : null;
     if (tenantId) {
-      appUser = await findTenantUserForIdentity(tenantId, identity);
+      if (!appUser) {
+        appUser = await findTenantUserForIdentity(tenantId, identity);
+      }
     } else {
-      appUser = await findSingleTenantMembershipForIdentity(identity);
+      if (!appUser) {
+        appUser = await findSingleTenantMembershipForIdentity(identity);
+      }
     }
 
     if (!appUser && superUser) {
@@ -179,13 +177,36 @@ export async function requireAuth(req, res, next) {
     const canonicalRoles = canonicalizeAppRoles(appUser.roles || []);
     const sanitizedRoles = applySuperConsoleRolePolicy(canonicalRoles, identity, appUser.email || "");
     if (!sameRoleSet(appUser.roles || [], sanitizedRoles)) {
-      if (appUser?._id) {
-        appUser = await UserModel.update(appUser._id, { roles: sanitizedRoles });
-      } else {
-        appUser.roles = sanitizedRoles;
-      }
+      appUser = await UserModel.update(appUser._id, { roles: sanitizedRoles });
     }
     appUser.roles = sanitizedRoles;
+
+    if (
+      tenantId &&
+      !appUser.roles.includes("super_admin") &&
+      appUser.tenantId &&
+      String(appUser.tenantId) !== String(tenantId)
+    ) {
+      return res.status(403).json({
+        error: {
+          code: "TENANT_SCOPE_DENIED",
+          message: "Identity is scoped to a different tenant."
+        }
+      });
+    }
+
+    if (identity.provider === "legacy" && identity.tenantId) {
+      const claimedTenantId = String(identity.tenantId || "").trim();
+      const userTenantId = String(appUser.tenantId || "").trim();
+      if (claimedTenantId && userTenantId && claimedTenantId !== userTenantId && !appUser.roles.includes("super_admin")) {
+        return res.status(403).json({
+          error: {
+            code: "TENANT_SCOPE_DENIED",
+            message: "Token tenant scope does not match membership."
+          }
+        });
+      }
+    }
 
     if (appUser.status !== "active" && !(appUser.roles || []).includes("super_admin")) {
       return res.status(403).json({

@@ -1060,8 +1060,28 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
   }
 
+  const confirmationMode = String(req.body?.mode || "").trim().toLowerCase();
+  if (confirmationMode !== "manual_super_console") {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_DELETE_MODE",
+        message: "Hard delete requires an explicit manual_super_console confirmation mode."
+      }
+    });
+  }
+
+  const requestedSlug = String(req.body?.slug || "").trim().toLowerCase();
+  if (!requestedSlug || requestedSlug !== String(tenant.slug || "").trim().toLowerCase()) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_TENANT_SLUG",
+        message: "Tenant slug confirmation mismatch."
+      }
+    });
+  }
+
   const confirmation = String(req.body?.confirmation || "").trim();
-  const expected = `WIPE ${tenant.slug}`;
+  const expected = `WIPE ${tenant.slug} ${tenant._id}`;
   if (confirmation !== expected) {
     return res.status(400).json({
       error: {
@@ -1107,6 +1127,27 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
   const globalUserCleanup = await purgeTenantGlobalUserArtifacts({
     emailCandidates: globalUserEmailCandidates
   });
+
+  console.warn("[super:tenant_hard_delete]", {
+    actorUserId: String(req.user?.id || ""),
+    tenantId: String(tenant._id || ""),
+    tenantSlug: String(tenant.slug || ""),
+    tenantName: String(tenant.name || "")
+  });
+
+  await writeAudit(tenant._id, req.user.id, "super_tenant_hard_deleted", {
+    removed: {
+      tenantId: String(tenant._id || ""),
+      slug: String(tenant.slug || ""),
+      name: String(tenant.name || "")
+    },
+    counts,
+    domainCleanup,
+    objectStorageCleanup,
+    clerkCleanup,
+    globalUserCleanup
+  });
+
   await TenantModel.delete(tenant._id);
 
   return res.json({

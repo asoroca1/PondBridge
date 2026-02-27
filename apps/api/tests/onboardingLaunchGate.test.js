@@ -81,25 +81,35 @@ async function createReadyTenant({ slug, billingStatus = "past_due", onboardingF
 }
 
 async function seedProfiles(tenantId, count = 5) {
-  const docs = Array.from({ length: count }).map((_, index) => ({
-    tenantId,
-    userId: generateObjectId(),
-    firstName: `Seed${index}`,
-    lastName: "Member",
-    emails: [`seed${index}@example.com`],
-    phones: [],
-    cityState: "Chicago, IL",
-    roleAtCamp: "Camper",
-    highSchool: "",
-    colleges: [],
-    collegeYears: [],
-    currentJobs: [],
-    pastJobs: [],
-    industry: "",
-    socials: { linkedin: "", instagram: "", facebook: "" },
-    avatarUrl: "",
-    bio: ""
-  }));
+  const docs = [];
+  for (let index = 0; index < count; index += 1) {
+    const seededUser = await User.create({
+      tenantId,
+      email: `seed-${String(tenantId).slice(0, 8)}-${index}@example.com`,
+      passwordHash: "seed-password-hash",
+      roles: ["user"],
+      status: "active"
+    });
+    docs.push({
+      tenantId,
+      userId: seededUser._id,
+      firstName: `Seed${index}`,
+      lastName: "Member",
+      emails: [`seed${index}@example.com`],
+      phones: [],
+      cityState: "Chicago, IL",
+      roleAtCamp: "Camper",
+      highSchool: "",
+      colleges: [],
+      collegeYears: [],
+      currentJobs: [],
+      pastJobs: [],
+      industry: "",
+      socials: { linkedin: "", instagram: "", facebook: "" },
+      avatarUrl: "",
+      bio: ""
+    });
+  }
   await Profile.insertMany(docs);
 }
 

@@ -8,10 +8,12 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "lint": "eslint src scripts",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules NODE_ENV=test PONDBRIDGE_ALLOW_DB_RESET=1 jest --runInBand",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules NODE_ENV=test PONDBRIDGE_ALLOW_DB_RESET=1 PONDBRIDGE_TEST_RESET_ACK=1 jest --runInBand",
     "seed": "node scripts/seed.js",
     "dev:provision-test-camp": "node scripts/devProvisionTestCampFlow.js",
     "supabase:apply-schema": "node scripts/applySupabaseSchema.js",
+    "rls:audit": "node scripts/rlsCoverageReport.js",
+    "db:preflight": "node scripts/dbPreflightCheck.js",
     "supabase:harden-users-uniqueness": "node scripts/hardenUsersUniqueness.js",
     "migrate:legacy-media-to-r2": "node scripts/migrateLegacyMediaToR2.js"
   },

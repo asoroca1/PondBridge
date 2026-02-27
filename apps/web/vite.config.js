@@ -32,5 +32,19 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173
+  },
+  build: {
+    // The map route intentionally carries a heavy map engine bundle behind lazy routing.
+    // Raise warning threshold so CI surfaces actionable regressions instead of known route-isolated size.
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/maplibre-gl")) return "vendor-maplibre";
+          if (id.includes("node_modules/@clerk")) return "vendor-clerk";
+          return null;
+        }
+      }
+    }
   }
 });

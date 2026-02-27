@@ -6,12 +6,14 @@ const router = Router();
 router.post("/", async (req, res, next) => {
   try {
     const event = await constructStripeEventFromRequest(req);
-    await processStripeEvent(event);
+    const processing = await processStripeEvent(event);
 
     return res.json({
       received: true,
       eventId: event.id,
-      type: event.type
+      type: event.type,
+      processed: Boolean(processing?.processed),
+      duplicate: Boolean(processing?.duplicate)
     });
   } catch (error) {
     return next(error);

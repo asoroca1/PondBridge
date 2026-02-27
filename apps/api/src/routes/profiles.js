@@ -1,8 +1,6 @@
 import { Router } from "express";
 import { isValidObjectId } from "../utils/objectId.js";
-import { requireAuth } from "../middleware/requireAuth.js";
-import { requireTenant } from "../middleware/tenantContext.js";
-import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
+import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { UserModel, ProfileModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { sanitizeText } from "../utils/sanitize.js";
@@ -15,7 +13,7 @@ import {
 
 const router = Router({ mergeParams: true });
 
-router.use(requireTenant, requireAuth, enforceTenantScope);
+router.use(...requireTenantAuthScope);
 
 function withNickname(profile = {}) {
   const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};

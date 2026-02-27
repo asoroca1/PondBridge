@@ -15,7 +15,10 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "format": "prettier --write ."
+    "perf:check-web": "node scripts/checkWebBuildBudget.mjs",
+    "db:preflight": "npm --workspace @pondbridge/api run db:preflight",
+    "format": "prettier --write .",
+    "security:check-env": "node scripts/checkTrackedEnv.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

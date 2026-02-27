@@ -133,6 +133,7 @@ const defaultEmailFrom = defaultEmailFromForDomain(appBaseDomain);
 export const env = {
   NODE_ENV: process.env.NODE_ENV || "development",
   AUTH_PROVIDER: String(process.env.AUTH_PROVIDER || "legacy").trim().toLowerCase(),
+  HYBRID_ALLOW_LEGACY_TOKENS: toBoolean(process.env.HYBRID_ALLOW_LEGACY_TOKENS, true),
   DB_PROVIDER: "supabase",
   PORT: toNumber(process.env.PORT, 4000),
   API_JSON_LIMIT: String(process.env.API_JSON_LIMIT || "15mb").trim() || "15mb",

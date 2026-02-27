@@ -14,6 +14,7 @@ const TABLES_FOR_CLEANUP = [
   "tenant_admin_audit_logs",
   "resume_parse_results",
   "activity_items",
+  "stripe_webhook_events",
   "magic_link_tokens",
   "access_requests",
   "invites",
@@ -24,7 +25,7 @@ const TABLES_FOR_CLEANUP = [
   "tenants"
 ];
 
-const DEFAULT_TEST_DB_MARKERS = ["localhost", "127.0.0.1", "test"];
+const DEFAULT_TEST_DB_MARKERS = ["localhost", "127.0.0.1"];
 
 function parseMarkers(raw = "") {
   const markers = String(raw || "")
@@ -53,6 +54,11 @@ function assertDestructiveResetAllowed() {
       .trim()
       .toLowerCase()
   );
+  const explicitAcknowledge = ["1", "true", "yes", "on"].includes(
+    String(process.env.PONDBRIDGE_TEST_RESET_ACK || "")
+      .trim()
+      .toLowerCase()
+  );
   const markerGuardDisabled = ["1", "true", "yes", "on"].includes(
     String(process.env.PONDBRIDGE_DISABLE_DB_MARKER_GUARD || "")
       .trim()
@@ -61,9 +67,9 @@ function assertDestructiveResetAllowed() {
   const markers = parseMarkers(process.env.PONDBRIDGE_TEST_DB_MARKERS || "");
   const safeByMarker = markerGuardDisabled || looksLikeSafeTestDatabase(markers);
 
-  if (!isTestEnv || !explicitOptIn || !safeByMarker) {
+  if (!isTestEnv || !explicitOptIn || !explicitAcknowledge || !safeByMarker) {
     throw new Error(
-      "Refusing destructive database reset. Require NODE_ENV=test, PONDBRIDGE_ALLOW_DB_RESET=1, and a non-production database marker match."
+      "Refusing destructive database reset. Require NODE_ENV=test, PONDBRIDGE_ALLOW_DB_RESET=1, PONDBRIDGE_TEST_RESET_ACK=1, and a non-production database marker match."
     );
   }
 }
@@ -104,8 +110,14 @@ async function truncateViaDirectSql() {
 }
 
 function isMissingTableError(error) {
+  const code = String(error?.code || "").trim().toUpperCase();
   const message = String(error?.message || "").toLowerCase();
-  return message.includes("does not exist") || message.includes("relation");
+  return (
+    code === "PGRST205" ||
+    message.includes("could not find the table") ||
+    message.includes("does not exist") ||
+    message.includes("relation")
+  );
 }
 
 async function truncateViaSupabaseApi() {

@@ -1,0 +1,68 @@
+name: Quality Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  web-and-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Security env hygiene
+        run: npm run security:check-env
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Web performance budget
+        run: npm run perf:check-web
+
+  api-test-and-db-gates:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      PONDBRIDGE_ALLOW_DB_RESET: "1"
+      PONDBRIDGE_TEST_RESET_ACK: "1"
+      PONDBRIDGE_TEST_DB_MARKERS: ${{ secrets.PONDBRIDGE_TEST_DB_MARKERS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: DB preflight
+        run: npm run db:preflight
+
+      - name: RLS audit
+        run: npm --workspace @pondbridge/api run rls:audit
+
+      - name: API tests
+        run: npm --workspace @pondbridge/api run test

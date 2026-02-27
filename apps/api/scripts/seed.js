@@ -7,6 +7,14 @@ import { hashPassword } from "../src/utils/auth.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url).pathname });
 
+function envFlag(name, fallback = false) {
+  const normalized = String(process.env[name] ?? "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return fallback;
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
 async function upsertUser(tenantId, email, passwordHash, roles) {
   const existing = tenantId
     ? await UserModel.findOne(tenantId, { email })
@@ -56,6 +64,16 @@ async function upsertProfile({ tenantId, userId, email, firstName, lastName, rol
 }
 
 async function run() {
+  const nodeEnv = String(process.env.NODE_ENV || "").trim().toLowerCase();
+  const allowProdSeed = envFlag("PONDBRIDGE_ALLOW_PROD_SEED", false);
+  const allowLegacyDemoDelete = envFlag("PONDBRIDGE_SEED_DELETE_LEGACY_DEMO", false);
+
+  if (nodeEnv === "production" && !allowProdSeed) {
+    throw new Error(
+      "Refusing to run seed in production without PONDBRIDGE_ALLOW_PROD_SEED=1."
+    );
+  }
+
   await connectToDatabase();
 
   const defaultChecklist = [
@@ -83,13 +101,17 @@ async function run() {
 
   // Remove legacy demo tenant if it exists.
   const legacyDemoTenant = await TenantModel.findBySlug("demo-camp");
-  if (legacyDemoTenant?._id) {
+  if (legacyDemoTenant?._id && allowLegacyDemoDelete) {
     const demoTid = legacyDemoTenant._id;
     await Promise.all([
       ProfileModel.deleteMany(demoTid, {}),
       UserModel.deleteMany(demoTid, {})
     ]);
     await TenantModel.delete(demoTid);
+  } else if (legacyDemoTenant?._id && !allowLegacyDemoDelete) {
+    console.log(
+      "[seed] Skipping legacy demo tenant deletion (set PONDBRIDGE_SEED_DELETE_LEGACY_DEMO=1 to enable)."
+    );
   }
 
   const tenantData = {

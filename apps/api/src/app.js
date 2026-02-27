@@ -21,6 +21,8 @@ import legacyCedarCompatRoutes from "./routes/legacyCedarCompat.js";
 import { csrfProtection } from "./middleware/csrfProtection.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { attachRequestContext } from "./middleware/requestContext.js";
+import { attachRequestLogging } from "./middleware/requestLogging.js";
+import { augmentErrorResponses } from "./middleware/responseErrorAugment.js";
 import { patchExpressAsyncErrors } from "./utils/patchExpressAsyncErrors.js";
 import { getEmailServiceStatus } from "./services/email.js";
 import { getR2ServiceStatus } from "./services/objectStorage.js";
@@ -58,6 +60,8 @@ app.use((req, res, next) => {
   return next();
 });
 app.use(attachRequestContext);
+app.use(augmentErrorResponses);
+app.use(attachRequestLogging);
 
 app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRoutes);
 app.use("/api/webhooks/resend", express.raw({ type: "application/json" }), resendWebhookRoutes);
@@ -68,7 +72,14 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 80,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) =>
+    [
+      "auth",
+      String(req.ip || ""),
+      String(req.params?.slug || "global"),
+      String(req.path || "")
+    ].join(":")
 });
 
 app.get("/health", (_req, res) => {

@@ -412,7 +412,7 @@ export function SuperTenantsPage() {
   }
 
   async function wipeTenant(camp) {
-    const phrase = `WIPE ${camp.slug}`;
+    const phrase = `WIPE ${camp.slug} ${camp._id}`;
     const typed = window.prompt(
       `This permanently deletes ${camp.name} (${camp.slug}) and all Supabase/backend records for this camp, plus Clerk users that belong only to this camp.\n\nType "${phrase}" to continue.`
     );
@@ -425,7 +425,11 @@ export function SuperTenantsPage() {
       const payload = await requestJson(`/api/super/tenants/${camp._id}/hard-delete`, {
         method: "DELETE",
         token,
-        body: { confirmation: typed }
+        body: {
+          mode: "manual_super_console",
+          slug: String(camp.slug || "").trim().toLowerCase(),
+          confirmation: typed
+        }
       });
 
       const removed = payload?.removed?.counts || {};

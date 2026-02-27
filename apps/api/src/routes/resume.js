@@ -2,9 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import pdfParse from "pdf-parse";
 import rateLimit from "express-rate-limit";
-import { requireTenant } from "../middleware/tenantContext.js";
-import { requireAuth } from "../middleware/requireAuth.js";
-import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
+import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { hasFeature } from "@pondbridge/shared";
 import { parseResumeTextToProfile } from "../utils/resume.js";
 
@@ -36,9 +34,7 @@ const upload = multer({
 router.post(
   "/parse",
   resumeParseLimiter,
-  requireTenant,
-  requireAuth,
-  enforceTenantScope,
+  ...requireTenantAuthScope,
   upload.single("resume"),
   async (req, res) => {
   if (!hasFeature(req.tenant.planTier, "resumeParsing", req.tenant.addOns || [])) {

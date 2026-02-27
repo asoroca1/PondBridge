@@ -1,11 +1,50 @@
 import { resolveTenantHint, resolveTenantFromRequest } from "../utils/tenantResolution.js";
+import { TenantModel } from "../db/models/index.js";
 
 export function getTenantContext(req) {
   return resolveTenantHint(req, { allowHeaderSlug: true });
 }
 
+function readRequestedTenantId(req) {
+  const queryTenantId = String(req.query?.tenantId || "").trim();
+  if (queryTenantId) return queryTenantId;
+
+  const bodyTenantId = String(req.body?.tenantId || "").trim();
+  if (bodyTenantId) return bodyTenantId;
+
+  return String(req.headers["x-tenant-id"] || "").trim();
+}
+
+async function resolveFallbackTenantFromAuth(req) {
+  const isSuperAdmin = Array.isArray(req.user?.roles) && req.user.roles.includes("super_admin");
+  const requestedTenantId = readRequestedTenantId(req);
+  const fallbackTenantId = isSuperAdmin && requestedTenantId
+    ? requestedTenantId
+    : String(req.user?.tenantId || "").trim();
+
+  if (!fallbackTenantId) return null;
+
+  const tenant = await TenantModel.findById(fallbackTenantId);
+  if (!tenant) return null;
+
+  return {
+    tenant,
+    tenantId: String(tenant._id),
+    slug: String(tenant.slug || "").trim().toLowerCase(),
+    source: isSuperAdmin && requestedTenantId ? "super_admin_param" : "auth_membership",
+    host: ""
+  };
+}
+
 export async function requireTenant(req, res, next) {
-  const context = await resolveTenantFromRequest(req, { allowHeaderSlug: true });
+  let context = await resolveTenantFromRequest(req, { allowHeaderSlug: true });
+  if (!context.tenant && !context.slug && req.user) {
+    const fallbackContext = await resolveFallbackTenantFromAuth(req);
+    if (fallbackContext) {
+      context = fallbackContext;
+    }
+  }
+
   if (!context.slug && !context.host) {
     return res.status(400).json({
       error: {

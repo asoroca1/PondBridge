@@ -27,35 +27,47 @@ import {
 } from "../utils/location.js";
 
 const router = Router({ mergeParams: true });
+function authLimiterKey(req, { includeEmail = false } = {}) {
+  const tenantSlug = String(req.params?.slug || req.tenant?.slug || "").trim().toLowerCase();
+  const ip = String(req.ip || "").trim();
+  const email = includeEmail ? String(req.body?.email || "").trim().toLowerCase() : "";
+  return ["tenant-auth", tenantSlug, ip, email].join(":");
+}
+
 const magicLinkRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 6,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req, { includeEmail: true })
 });
 const registerLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 25,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req, { includeEmail: true })
 });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 40,
+  limit: 20,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req, { includeEmail: true })
 });
 const inviteVerifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 40,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req)
 });
 const magicLinkConsumeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 40,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req)
 });
 
 function isLegacyTenantAuthDisabled() {

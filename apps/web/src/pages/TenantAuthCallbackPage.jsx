@@ -30,6 +30,59 @@ function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
 }
 
+function resolveAuthCallbackError(err, slug, inviteToken = "") {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  const fallbackMessage = String(err?.message || "Could not complete authentication.");
+  const loginPath = routeWithSlug(
+    slug,
+    `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
+  );
+
+  if (code === "RATE_LIMITED") {
+    return {
+      message: "Too many access attempts were made. Wait a minute, then try again.",
+      guidance: "If this keeps happening, open a private window and try once.",
+      retryPath: loginPath
+    };
+  }
+  if (code === "TENANT_INACTIVE") {
+    return {
+      message: "This camp network is currently inactive.",
+      guidance: "Contact support or your camp director to reactivate access.",
+      retryPath: loginPath
+    };
+  }
+  if (code === "DIRECTOR_ALREADY_CLAIMED") {
+    return {
+      message: "This director account is already claimed.",
+      guidance: "Sign in with the claimed director account or ask support to transfer ownership.",
+      retryPath: loginPath
+    };
+  }
+  if (code === "BILLING_RESTRICTED" || code === "BILLING_TENANT_NOT_FOUND") {
+    return {
+      message: "Billing access is still syncing for this network.",
+      guidance: "Wait a few seconds, then retry sign-in.",
+      retryPath: loginPath
+    };
+  }
+  if (code === "API_UNREACHABLE") {
+    return {
+      message: "Could not reach the API while finishing sign-in.",
+      guidance: "Verify the backend is running, then retry.",
+      retryPath: loginPath
+    };
+  }
+
+  return {
+    message: fallbackMessage,
+    guidance: "Retry sign-in. If the issue repeats, contact support with the exact error message.",
+    retryPath: loginPath
+  };
+}
+
 function LegacyAuthCallbackPage() {
   const { slug: paramSlug = "" } = useParams();
   const { slug: contextSlug = "" } = useTenant();
@@ -60,6 +113,11 @@ function ClerkAuthCallbackPage() {
   const { refreshSession } = useAuth();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const [error, setError] = useState("");
+  const [guidance, setGuidance] = useState("");
+  const [retryPath, setRetryPath] = useState("");
+  const [phaseMessage, setPhaseMessage] = useState(
+    "We are syncing your account and loading your network access."
+  );
   const [working, setWorking] = useState(true);
 
   useEffect(() => {
@@ -80,6 +138,7 @@ function ClerkAuthCallbackPage() {
         const token = await getToken();
         if (!token) throw new Error("No authenticated session token from Clerk.");
 
+        setPhaseMessage("Checking your network access...");
         let payload = await requestJson(
           `/api/t/${slug}/access/decision${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`,
           { token }
@@ -94,6 +153,7 @@ function ClerkAuthCallbackPage() {
           decision.state === "not_member";
 
         if (hasDirectorBootstrapIntent || shouldBootstrapFromPrelaunchFallback) {
+          setPhaseMessage("Claiming director setup access...");
           await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
             method: "POST",
             token,
@@ -102,6 +162,7 @@ function ClerkAuthCallbackPage() {
           clearDirectorBootstrapIntent(slug);
         } else if (decision.action === "accept_invite" && inviteToken) {
           clearDirectorBootstrapIntent(slug);
+          setPhaseMessage("Accepting your invite...");
           await requestJson(`/api/t/${slug}/access/invite/accept`, {
             method: "POST",
             token,
@@ -121,6 +182,7 @@ function ClerkAuthCallbackPage() {
             return;
           }
 
+          setPhaseMessage("Creating your network membership...");
           await requestJson(`/api/t/${slug}/access/join`, {
             method: "POST",
             token,
@@ -128,6 +190,7 @@ function ClerkAuthCallbackPage() {
           });
         } else if (decision.action === "request_access") {
           clearDirectorBootstrapIntent(slug);
+          setPhaseMessage("Submitting your access request...");
           await requestJson(`/api/t/${slug}/access/request-access`, {
             method: "POST",
             token,
@@ -135,6 +198,7 @@ function ClerkAuthCallbackPage() {
           });
         }
 
+        setPhaseMessage("Finalizing sign-in...");
         payload = await requestJson(`/api/t/${slug}/access/decision`, { token });
         decision = payload?.decision || {};
         await refreshSession({ tenantSlug: slug });
@@ -147,7 +211,10 @@ function ClerkAuthCallbackPage() {
         navigate(next, { replace: true });
       } catch (err) {
         if (cancelled) return;
-        setError(String(err?.message || "Unable to finish authentication."));
+        const resolved = resolveAuthCallbackError(err, slug, inviteToken);
+        setError(resolved.message);
+        setGuidance(resolved.guidance);
+        setRetryPath(resolved.retryPath);
       } finally {
         if (!cancelled && !redirected) setWorking(false);
       }
@@ -165,12 +232,13 @@ function ClerkAuthCallbackPage() {
         <h1>{working ? "Finishing sign in..." : "Sign in issue"}</h1>
         <p>
           {working
-            ? "We are syncing your account and loading your network access."
+            ? phaseMessage
             : error || "Could not complete authentication."}
         </p>
+        {!working && guidance ? <p>{guidance}</p> : null}
         {!working ? (
           <p>
-            <Link to={routeWithSlug(slug, "/login")}>Back to login</Link>
+            <Link to={retryPath || routeWithSlug(slug, "/login")}>Retry sign-in</Link>
           </p>
         ) : null}
       </div>

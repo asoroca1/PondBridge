@@ -1,26 +1,18 @@
+import { logLine } from "../services/logger.js";
+
 export function notFoundHandler(req, res) {
+  const requestId = String(req.requestId || "").trim();
   res.status(404).json({
     error: {
       code: "NOT_FOUND",
-      message: `Route not found: ${req.method} ${req.originalUrl}`
+      message: `Route not found: ${req.method} ${req.originalUrl}`,
+      requestId
     }
   });
 }
 
 export function errorHandler(err, req, res, _next) {
   const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
-  if (isProd) {
-    console.error("[api:error]", {
-      code: err?.code || "INTERNAL_ERROR",
-      status: err?.statusCode || err?.status || 500,
-      path: req.originalUrl,
-      method: req.method,
-      message: String(err?.message || "Unexpected server error")
-    });
-  } else {
-    console.error(err);
-  }
-
   const rawCode = err?.code || "";
   const rawMessage = String(err?.message || "");
   const dnsOrSocketFailure = new Set(["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ECONNRESET"]);
@@ -48,10 +40,25 @@ export function errorHandler(err, req, res, _next) {
       "Backend database is unreachable. Verify SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and network access.";
   }
 
+  logLine("error", "http.request.error", {
+    requestId: String(req?.requestId || ""),
+    tenantId: String(req?.tenant?._id || req?.tenantContext?.tenantId || req?.user?.tenantId || ""),
+    actorUserId: String(req?.user?.id || req?.user?._id || ""),
+    method: String(req?.method || ""),
+    route: String(req?.originalUrl || req?.url || ""),
+    status,
+    code,
+    message,
+    details: isProd ? null : err?.details || null
+  });
+
+  res.locals.errorCode = code;
+
   res.status(status).json({
     error: {
       code,
       message,
+      requestId: String(req.requestId || ""),
       details: isProd ? null : err.details || null,
       path: req.originalUrl
     }

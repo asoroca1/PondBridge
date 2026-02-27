@@ -6,10 +6,7 @@ import PDFDocument from "pdfkit";
 import { stringify } from "csv-stringify/sync";
 import { parse as parseCsv } from "csv-parse/sync";
 import { listFeaturesForPlan, hasFeature } from "@pondbridge/shared";
-import { requireAuth } from "../middleware/requireAuth.js";
-import { requireRole } from "../middleware/requireRole.js";
-import { requireTenant } from "../middleware/tenantContext.js";
-import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
+import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
 import { requireFeature } from "../middleware/requireFeature.js";
 import {
   ProfileModel,
@@ -119,6 +116,13 @@ const inviteSendLimiter = rateLimit({
   limit: 40,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) =>
+    [
+      "admin-invite",
+      String(req.params?.slug || req.tenant?.slug || ""),
+      String(req.user?.id || ""),
+      String(req.ip || "")
+    ].join(":"),
   message: {
     error: {
       code: "RATE_LIMITED",
@@ -350,6 +354,24 @@ function toIso(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function writeAdminAudit(req, event, metadata = {}) {
+  if (!req?.tenant?._id) return;
+  try {
+    await TenantAdminAuditLogModel.create({
+      tenantId: req.tenant._id,
+      actorUserId: req.user?.id || null,
+      event,
+      metadata: {
+        route: String(req.originalUrl || req.path || ""),
+        method: String(req.method || "").toUpperCase(),
+        ...metadata
+      }
+    });
+  } catch {
+    // Never fail an admin operation because audit logging failed.
+  }
 }
 
 function completionScore(profile = {}, user = null) {
@@ -961,7 +983,7 @@ async function buildRecentActivity(tenantId) {
     }));
 }
 
-router.use(requireTenant, requireAuth, enforceTenantScope, requireRole("tenant_admin"));
+router.use(...requireTenantRoleScope("tenant_admin"));
 
 router.get("/dashboard", async (req, res, next) => {
   try {
@@ -1329,6 +1351,11 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
   }
 
   const user = await UserModel.findOne(req.tenant._id, { _id: updated.userId });
+  await writeAdminAudit(req, "admin_member_updated", {
+    profileId: toObjectIdString(updated._id),
+    userId: toObjectIdString(updated.userId),
+    changedFields: Object.keys(patch)
+  });
   return res.json({
     ok: true,
     member: mapMemberRow(updated, user)
@@ -1361,6 +1388,11 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
     const user = await UserModel.findOne(req.tenant._id, { _id: userId });
     if (!user) {
       await ProfileModel.delete(profile._id);
+      await writeAdminAudit(req, "admin_member_hard_deleted", {
+        profileId: toObjectIdString(profile._id),
+        userId,
+        summary: { profileDeleted: 1, userDeleted: 0 }
+      });
       return res.json({
         ok: true,
         deletedProfileId: profileId,
@@ -1391,6 +1423,11 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
       userId,
       profileId: toObjectIdString(profile._id),
       email: profile?.emails?.[0] || user?.email || ""
+    });
+    await writeAdminAudit(req, "admin_member_hard_deleted", {
+      profileId: toObjectIdString(profile._id),
+      userId,
+      summary
     });
 
     return res.json({
@@ -1438,6 +1475,10 @@ router.post("/members/bulk-action", async (req, res) => {
         { status: "inactive" }
       );
     }
+    await writeAdminAudit(req, "admin_members_bulk_action", {
+      action,
+      affected: profiles.length
+    });
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -1455,6 +1496,10 @@ router.post("/members/bulk-action", async (req, res) => {
         { status: "active" }
       );
     }
+    await writeAdminAudit(req, "admin_members_bulk_action", {
+      action,
+      affected: profiles.length
+    });
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -1465,6 +1510,10 @@ router.post("/members/bulk-action", async (req, res) => {
       { _id: { $in: ids } },
       { status: "flagged", flaggedReason: reason }
     );
+    await writeAdminAudit(req, "admin_members_bulk_action", {
+      action,
+      affected: profiles.length
+    });
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -1479,6 +1528,10 @@ router.post("/members/bulk-action", async (req, res) => {
       status: profile.status || "active"
     }));
     const csv = stringify(records, { header: true });
+    await writeAdminAudit(req, "admin_members_bulk_action", {
+      action,
+      affected: profiles.length
+    });
     return res.json({
       ok: true,
       action,
@@ -1556,6 +1609,11 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
       reviewedByUserId: req.user.id,
       approvedUserId: existingUser._id
     });
+    await writeAdminAudit(req, "admin_access_request_approved", {
+      requestId: toObjectIdString(request._id),
+      approvedUserId: toObjectIdString(existingUser._id),
+      existingUser: true
+    });
     return res.json({ ok: true, requestId: toObjectIdString(request._id), existingUser: true });
   }
 
@@ -1596,6 +1654,11 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
     approvedUserId: user._id
+  });
+  await writeAdminAudit(req, "admin_access_request_approved", {
+    requestId: toObjectIdString(request._id),
+    approvedUserId: toObjectIdString(user._id),
+    existingUser: false
   });
 
   const approvedFirstName = String(
@@ -1644,6 +1707,10 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
     denialReason: reason
+  });
+  await writeAdminAudit(req, "admin_access_request_denied", {
+    requestId: toObjectIdString(request._id),
+    reasonLength: reason.length
   });
 
   if (isEmail(request.email)) {
@@ -2355,6 +2422,11 @@ router.patch("/settings/access", async (req, res) => {
     }
   });
 
+  await writeAdminAudit(req, "admin_access_settings_updated", {
+    signupMode,
+    requireProfileCompletion: Boolean(settings.requireProfileCompletion),
+    hasAccessCode: Boolean(settings.accessCodeHash)
+  });
   return res.json({ ok: true, access: resolveDraft(tenant).settings });
 });
 
@@ -2472,6 +2544,11 @@ router.post("/settings/admins/grant", async (req, res) => {
   roleSet.add("tenant_admin");
   roleSet.add("user");
   const updated = await UserModel.update(user._id, { roles: [...roleSet] });
+  await writeAdminAudit(req, "admin_role_granted", {
+    targetUserId: toObjectIdString(updated._id),
+    targetEmail: updated.email,
+    role: "tenant_admin"
+  });
 
   return res.status(201).json({
     ok: true,
@@ -2497,6 +2574,12 @@ router.post("/settings/admins/invite", inviteSendLimiter, async (req, res) => {
     roles.add("tenant_admin");
     roles.add("user");
     await UserModel.update(existing._id, { roles: [...roles] });
+    await writeAdminAudit(req, "admin_role_granted", {
+      targetUserId: toObjectIdString(existing._id),
+      targetEmail: existing.email,
+      role: "tenant_admin",
+      promotedExistingUser: true
+    });
     return res.status(201).json({ ok: true, promotedExistingUser: true });
   }
 
@@ -2525,6 +2608,11 @@ router.post("/settings/admins/invite", inviteSendLimiter, async (req, res) => {
       email,
       message: String(error?.message || "")
     });
+  });
+  await writeAdminAudit(req, "admin_invite_created", {
+    inviteId: toObjectIdString(invite._id),
+    email: invite.email,
+    roleToAssign: "tenant_admin"
   });
 
   return res.status(201).json({
@@ -2561,6 +2649,11 @@ router.delete("/settings/admins/:userId", async (req, res) => {
   let roles = (user.roles || []).filter((role) => role !== "tenant_admin");
   if (!roles.includes("user")) roles.push("user");
   await UserModel.update(user._id, { roles });
+  await writeAdminAudit(req, "admin_role_revoked", {
+    targetUserId: toObjectIdString(user._id),
+    targetEmail: user.email,
+    role: "tenant_admin"
+  });
 
   return res.json({ ok: true });
 });
@@ -2596,6 +2689,10 @@ router.post("/settings/pause", async (req, res) => {
   const tenant = await TenantModel.update(req.tenant._id, {
     status: paused ? "inactive" : "active"
   });
+  await writeAdminAudit(req, "admin_network_paused_toggled", {
+    paused,
+    nextStatus: tenant.status
+  });
 
   return res.json({
     ok: true,
@@ -2614,6 +2711,9 @@ router.post("/settings/delete-request", async (req, res) => {
       requestedByUserId: req.user.id,
       note
     }
+  });
+  await writeAdminAudit(req, "admin_delete_request_submitted", {
+    noteLength: note.length
   });
 
   return res.json({
@@ -2785,6 +2885,14 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
       }
     }
 
+    await writeAdminAudit(req, "admin_invites_sent", {
+      roleToAssign,
+      attemptedCount: recipients.length,
+      createdCount,
+      sentCount,
+      skippedCount: skipped.length
+    });
+
     return res.status(201).json({
       ok: true,
       attemptedCount: recipients.length,
@@ -2855,6 +2963,11 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
     const userId = toObjectIdString(profile.userId);
     if (!userId) {
       await ProfileModel.delete(profile._id);
+      await writeAdminAudit(req, "admin_member_hard_deleted", {
+        profileId: toObjectIdString(profile._id),
+        userId: "",
+        summary: { profileDeleted: 1, userDeleted: 0 }
+      });
       return res.json({ ok: true, deletedProfileId: profileId, deletedUserId: "" });
     }
 
@@ -2870,6 +2983,11 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
     const user = await UserModel.findOne(req.tenant._id, { _id: userId });
     if (!user) {
       await ProfileModel.delete(profile._id);
+      await writeAdminAudit(req, "admin_member_hard_deleted", {
+        profileId: toObjectIdString(profile._id),
+        userId,
+        summary: { profileDeleted: 1, userDeleted: 0 }
+      });
       return res.json({
         ok: true,
         deletedProfileId: profileId,
@@ -2899,6 +3017,11 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
       userId,
       profileId: toObjectIdString(profile._id),
       email: profile?.emails?.[0] || user?.email || ""
+    });
+    await writeAdminAudit(req, "admin_member_hard_deleted", {
+      profileId: toObjectIdString(profile._id),
+      userId,
+      summary
     });
 
     return res.json({

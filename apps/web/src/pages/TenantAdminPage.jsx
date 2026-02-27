@@ -198,8 +198,8 @@ export default function TenantAdminPage() {
           <Button variant="secondary" onClick={publishOnboarding}>
             Publish onboarding
           </Button>
-          <Link className="link-button secondary" to={`/t/${slug}/admin/import`}>
-            Import CSV
+          <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+            Invite or Import Members
           </Link>
           <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
             Manage Invites
