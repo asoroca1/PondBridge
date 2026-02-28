@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
+import { clearAuthStorage } from "../../lib/storage.js";
 import { SuperAdminLayout } from "../../components/admin/AdminUi.jsx";
 
 function roleFromUser(user) {
@@ -58,6 +59,7 @@ export default function SuperShellLayout() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const searchCacheRef = useRef(new Map());
 
   const role = roleFromUser(user);
@@ -125,17 +127,35 @@ export default function SuperShellLayout() {
   }, [allowed, getAuthToken, search, token]);
 
   async function handleLogout() {
+    if (signingOut) return;
+    setSigningOut(true);
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
     try {
-      await requestJson("/api/auth/super/logout", {
-        method: "POST",
-        token,
-        getToken: () => getAuthToken({ forceRefresh: true })
-      });
+      await Promise.race([
+        requestJson("/api/auth/super/logout", {
+          method: "POST",
+          token,
+          getToken: () => getAuthToken({ forceRefresh: true })
+        }),
+        wait(2200)
+      ]);
+    } catch {
+      // no-op
+    }
+
+    try {
+      await Promise.race([Promise.resolve(logout()), wait(3200)]);
     } catch {
       // no-op
     } finally {
-      logout();
-      navigate("/super/login", { replace: true });
+      try {
+        clearAuthStorage();
+        window.sessionStorage.removeItem("pondbridgeTabAuthSession");
+        window.sessionStorage.removeItem("pondbridgeTabLoginIntent");
+      } catch {
+        // no-op
+      }
+      window.location.assign("/super/login?signedOut=1");
     }
   }
 
@@ -210,8 +230,13 @@ export default function SuperShellLayout() {
           ) : null}
         </div>
         <div className="super-topbar-actions">
-          <button type="button" className="super-signout-btn" onClick={handleLogout}>
-            Sign out
+          <button
+            type="button"
+            className="super-signout-btn"
+            onClick={handleLogout}
+            disabled={signingOut}
+          >
+            {signingOut ? "Signing out..." : "Sign out"}
           </button>
         </div>
       </header>

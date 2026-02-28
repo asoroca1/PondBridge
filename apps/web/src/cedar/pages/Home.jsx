@@ -2,7 +2,6 @@ import { useNavigate } from "react-router-dom";
 import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveCampName, resolveTenantContent } from "../../lib/campLabels.js";
-import Navbar1 from "../components/Navbar1";
 
 function Home() {
   const navigate = useNavigate();
@@ -15,41 +14,35 @@ function Home() {
   const heroImageSize = normalizeHeroImageSize(heroBranding.heroImageSize || "");
 
   return (
-    <div className="home1">
-      <Navbar1 />
+    <section
+      className="landing-hero"
+      style={{
+        ...(heroImage ? { backgroundImage: `url(${heroImage})` } : {}),
+        backgroundPosition: heroImagePosition || "center center",
+        backgroundSize: heroImageSize || "cover"
+      }}
+    >
+      <div className="landing-overlay" />
 
-      <section
-        className="home1-hero"
-        style={{
-          ...(heroImage ? { backgroundImage: `url(${heroImage})` } : {}),
-          backgroundPosition: heroImagePosition,
-          backgroundSize: heroImageSize
-        }}
-      >
-        <div className="home1-hero-content">
-          <h1 className="home1-title">
-            <>
-              {`Welcome to the ${campName}`}
-              <span className="home1-title-line">Alumni Network</span>
-            </>
-          </h1>
-
-          <p className="home1-sub">
-            {content.welcomeBody ||
-              "Reconnect with bunkmates. Search for people in your industry and reconnect with your camp community."}
-          </p>
-
-          <div className="home1-cta">
-            <button className="home1-btn" onClick={() => navigate("/create-account")}>
-              Create Account
-            </button>
-            <button className="home1-btn" onClick={() => navigate("/login")}>
-              Login
-            </button>
-          </div>
+      <div className="landing-content">
+        <span className="landing-preline">Welcome to the</span>
+        <h1 className="landing-headline">
+          {campName} Alumni Network
+        </h1>
+        <p className="landing-subtitle">
+          {content.welcomeBody ||
+            "Reconnect with bunkmates. Search for people in your industry and reconnect with your camp community."}
+        </p>
+        <div className="landing-cta">
+          <button className="landing-btn landing-btn-primary" onClick={() => navigate("/create-account")}>
+            Create Account
+          </button>
+          <button className="landing-btn landing-btn-secondary" onClick={() => navigate("/login")}>
+            Login
+          </button>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 

@@ -36,3 +36,15 @@ services:
         value: "true"
       - key: AUTH_COOKIE_SAMESITE
         value: lax
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_REGION
+        value: auto
+      - key: R2_PUBLIC_BASE_URL
+        sync: false

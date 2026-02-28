@@ -3,7 +3,6 @@
     --grid-gap: 18px;
     --card-pad: 14px;
     --maxw: 1240px;
-    --nav-h: 68px;
     --border: var(--card-border, #e6e8eb);
     --shadow: var(--shadow-sm);
   }
