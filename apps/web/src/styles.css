@@ -444,7 +444,7 @@ body{
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: calc(var(--nav-h) + clamp(28px, 5vh, 56px)) 0 clamp(48px, 7vh, 84px);
+  padding: calc(var(--nav-h) + clamp(36px, 6vh, 72px)) 0 clamp(56px, 8vh, 96px);
   overflow: hidden;
   isolation: isolate;
 
@@ -459,13 +459,15 @@ body{
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.02) 0%,
-    rgba(0, 0, 0, 0.08) 35%,
-    rgba(0, 0, 0, 0.45) 65%,
-    rgba(0, 0, 0, 0.75) 100%
-  );
+  background:
+    radial-gradient(circle at 50% 56%, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.22) 30%, rgba(0, 0, 0, 0.46) 60%, rgba(0, 0, 0, 0.74) 100%),
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.03) 0%,
+      rgba(0, 0, 0, 0.12) 34%,
+      rgba(0, 0, 0, 0.48) 66%,
+      rgba(0, 0, 0, 0.82) 100%
+    );
   pointer-events: none;
 }
 
@@ -477,43 +479,47 @@ body{
   flex-direction: column;
   align-items: center;
   width: 100%;
-  max-width: 760px;
+  max-width: 920px;
   padding: 0 28px;
 }
 
 /* "Welcome to the" pre-line */
 .landing-preline {
   font-family: "DM Sans", system-ui, sans-serif;
-  font-weight: 500;
-  font-size: 15px;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  font-size: clamp(17px, 1.1vw, 21px);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 18px;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.32);
 }
 
 /* Camp name + "Alumni Network" headline */
 .landing-headline {
   font-family: "Instrument Serif", Georgia, serif;
   font-weight: 400;
-  font-size: clamp(46px, 6vw, 82px);
-  letter-spacing: -0.02em;
-  line-height: 0.98;
+  font-size: clamp(62px, 7vw, 108px);
+  letter-spacing: -0.03em;
+  line-height: 0.92;
   color: #fff;
   margin: 0;
-  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 6px 28px rgba(0, 0, 0, 0.38);
   text-wrap: balance;
-  max-width: 11ch;
+  max-width: 10ch;
 }
 
 /* Subtitle */
 .landing-subtitle {
   font-family: "DM Sans", system-ui, sans-serif;
-  font-size: clamp(18px, 1.45vw, 22px);
-  line-height: 1.42;
-  color: rgba(255, 255, 255, 0.75);
-  max-width: 620px;
-  margin: 18px 0 0;
+  font-size: clamp(25px, 2vw, 34px);
+  line-height: 1.32;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 760px;
+  margin: 26px 0 0;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.26);
   text-wrap: pretty;
 }
 
@@ -523,8 +529,8 @@ body{
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  margin-top: 34px;
+  gap: 16px;
+  margin-top: 42px;
   width: 100%;
 }
 
@@ -533,13 +539,14 @@ body{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 58px;
-  min-width: 204px;
-  padding: 0 36px;
-  border-radius: 12px;
+  height: 62px;
+  min-width: 224px;
+  padding: 0 40px;
+  border-radius: 14px;
   font-family: "DM Sans", system-ui, sans-serif;
   font-weight: 700;
-  font-size: 17px;
+  font-size: 19px;
+  letter-spacing: -0.01em;
   line-height: 1;
   cursor: pointer;
   text-decoration: none;
@@ -554,7 +561,7 @@ body{
 }
 .landing-btn-primary:hover {
   background: #fff;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
 
 /* Secondary button — outline / ghost */
@@ -566,7 +573,7 @@ body{
 .landing-btn-secondary:hover {
   border-color: rgba(255, 255, 255, 0.7);
   color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* Disabled state */
@@ -580,13 +587,18 @@ body{
 /* Tablets (≤ 1024px) */
 @media (max-width: 1024px) {
   .landing-content {
-    max-width: 680px;
+    max-width: 760px;
     padding: 0 24px;
   }
 
   .landing-headline {
-    font-size: clamp(42px, 5.6vw, 68px);
+    font-size: clamp(54px, 6.4vw, 88px);
     max-width: 12ch;
+  }
+
+  .landing-subtitle {
+    font-size: clamp(22px, 2.4vw, 28px);
+    max-width: 680px;
   }
 }
 
@@ -609,18 +621,19 @@ body{
   }
 
   .landing-headline {
-    font-size: clamp(36px, 8.2vw, 54px);
+    font-size: clamp(44px, 9vw, 62px);
     max-width: 10ch;
   }
 
   .landing-subtitle {
-    font-size: 16px;
-    max-width: 30ch;
+    font-size: clamp(19px, 4.4vw, 24px);
+    line-height: 1.36;
+    max-width: 32ch;
   }
 
   .landing-btn {
-    height: 52px;
-    font-size: 16px;
+    height: 58px;
+    font-size: 18px;
   }
 }
 
@@ -632,19 +645,20 @@ body{
 
   .landing-preline {
     font-size: 14px;
+    letter-spacing: 0.14em;
   }
 
   .landing-headline {
-    font-size: clamp(30px, 8vw, 42px);
+    font-size: clamp(38px, 10vw, 48px);
   }
 
   .landing-subtitle {
-    font-size: 15px;
+    font-size: 18px;
   }
 
   .landing-btn {
-    height: 48px;
-    font-size: 15px;
+    height: 54px;
+    font-size: 17px;
   }
 }
   
@@ -1748,6 +1762,42 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .navbar2-title{
   font-family: "DM Sans", system-ui, sans-serif; font-weight:500; line-height:1;
   font-size:1.125rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+.navbar2.is-auth-route .navbar2-left{
+  gap: 0.8rem;
+}
+
+.navbar2.is-auth-route .navbar2-logo{
+  max-height: 42px;
+  margin-right: 14px;
+}
+
+.navbar2.is-auth-route .navbar2-logo-fallback{
+  width: 42px;
+  height: 42px;
+  flex-basis: 42px;
+  margin-right: 14px;
+  font-size: 1rem;
+}
+
+.navbar2.is-auth-route .navbar2-title{
+  font-size: 1.85rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  max-width: min(44vw, 540px);
+}
+
+.navbar2.is-auth-route .navbar2-auth-actions{
+  gap: 10px;
+}
+
+.navbar2.is-auth-route .navbar2-auth-btn{
+  height: 50px;
+  padding: 0 26px;
+  border-radius: 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 /* ===== Right cluster pieces ===== */
