@@ -143,6 +143,10 @@ export async function requireAuth(req, res, next) {
         appUser = await findTenantUserForIdentity(tenantId, identity);
       }
     } else {
+      // Global (non-tenant) requests should prefer global super-admin identity.
+      if (!appUser && superUser) {
+        appUser = superUser;
+      }
       if (!appUser) {
         appUser = await findSingleTenantMembershipForIdentity(identity);
       }
