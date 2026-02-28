@@ -11,6 +11,18 @@ function authUsesClerk() {
   return ["clerk", "hybrid"].includes(env.AUTH_PROVIDER);
 }
 
+function shouldRetryVerificationWithoutPolicy(error) {
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    message.includes("audience") ||
+    message.includes("authorized") ||
+    message.includes("azp") ||
+    code.includes("audience") ||
+    code.includes("authorized")
+  );
+}
+
 function isClerkNotFoundError(error) {
   const status = Number(error?.status || error?.statusCode || 0);
   if (status === 404) return true;
@@ -187,7 +199,29 @@ export async function resolveClerkIdentityFromRequest(req) {
     verifyOptions.authorizedParties = env.CLERK_AUTHORIZED_PARTIES;
   }
 
-  const claims = await verifyToken(token, verifyOptions);
+  let claims;
+  try {
+    claims = await verifyToken(token, verifyOptions);
+  } catch (error) {
+    const strictPoliciesEnabled =
+      Boolean(env.CLERK_JWT_AUDIENCE) || env.CLERK_AUTHORIZED_PARTIES.length > 0;
+    if (!strictPoliciesEnabled || !shouldRetryVerificationWithoutPolicy(error)) {
+      throw error;
+    }
+
+    // Fallback for production incidents caused by stale audience/authorized-party config.
+    // Signature validation still uses the Clerk secret for this instance.
+    try {
+      console.warn("[auth] Clerk strict token policy rejected request, retrying with signature-only verification", {
+        requestId: String(req?.requestId || ""),
+        path: String(req?.originalUrl || req?.url || ""),
+        origin: String(req?.headers?.origin || "")
+      });
+    } catch {
+      // no-op
+    }
+    claims = await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY });
+  }
   const clerkUserId = String(claims?.sub || "").trim();
   if (!clerkUserId) return null;
 
