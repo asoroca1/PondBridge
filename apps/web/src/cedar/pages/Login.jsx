@@ -20,6 +20,18 @@ function normalizeErrorMessage(payload, fallback) {
   return fallback;
 }
 
+function resolveAuthIssueMessage(searchParams) {
+  const authIssue = String(searchParams.get("authIssue") || "")
+    .trim()
+    .toLowerCase();
+
+  if (authIssue === "wrong_network") {
+    return "This account cannot access this network. Sign in with an account that belongs to this camp.";
+  }
+
+  return "";
+}
+
 function LoginScaffold({
   email,
   setEmail,
@@ -27,6 +39,7 @@ function LoginScaffold({
   setPassword,
   submitting,
   error,
+  notice,
   status,
   onSubmit,
   onMagicLink,
@@ -65,6 +78,7 @@ function LoginScaffold({
                 required
               />
 
+              {notice ? <p className="login1-error">{notice}</p> : null}
               {error ? <p className="login1-error">{error}</p> : null}
               {status ? <p className="success-text">{status}</p> : null}
 
@@ -103,12 +117,14 @@ function LegacyLogin() {
   const { slug: paramSlug = "" } = useParams();
   const { slug: contextSlug = "" } = useTenant();
   const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [sendingMagicLink, setSendingMagicLink] = useState(false);
+  const notice = resolveAuthIssueMessage(searchParams);
 
   const validate = () => {
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -184,6 +200,7 @@ function LegacyLogin() {
       setPassword={setPassword}
       submitting={submitting}
       error={error}
+      notice={notice}
       status={status}
       onSubmit={handleSubmit}
       onMagicLink={sendMagicLink}
@@ -200,6 +217,7 @@ function ClerkLogin() {
   const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const notice = resolveAuthIssueMessage(searchParams);
   const path = tenantRoute(slug, "/login");
   const callbackPath = tenantRoute(
     slug,
@@ -220,6 +238,7 @@ function ClerkLogin() {
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title auth-entry-title">Login</h1>
             </div>
+            {notice ? <p className="login1-error">{notice}</p> : null}
             <div className="login1-clerk-host">
               <SignIn
                 path={path}

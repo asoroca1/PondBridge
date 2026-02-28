@@ -30,15 +30,36 @@ function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
 }
 
+function buildLoginPath(slug, { inviteToken = "", authIssue = "" } = {}) {
+  const params = new URLSearchParams();
+  if (inviteToken) params.set("inviteToken", inviteToken);
+  if (authIssue) params.set("authIssue", authIssue);
+  const query = params.toString();
+  return routeWithSlug(slug, `/login${query ? `?${query}` : ""}`);
+}
+
+function isTenantScopeMismatchError(err) {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  const message = String(err?.payload?.error?.message || err?.message || "")
+    .trim()
+    .toLowerCase();
+  return (
+    code === "TENANT_SCOPE_DENIED" ||
+    code === "TENANT_CLAIM_REQUIRED" ||
+    message.includes("tenant scope does not match") ||
+    message.includes("does not match this network") ||
+    message.includes("tenant-scoped clerk token claim is required")
+  );
+}
+
 function resolveAuthCallbackError(err, slug, inviteToken = "") {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
     .toUpperCase();
   const fallbackMessage = String(err?.message || "Could not complete authentication.");
-  const loginPath = routeWithSlug(
-    slug,
-    `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
-  );
+  const loginPath = buildLoginPath(slug, { inviteToken });
 
   if (code === "RATE_LIMITED") {
     return {
@@ -110,7 +131,7 @@ function ClerkAuthCallbackPage() {
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const directorBootstrap = truthy(searchParams.get("directorBootstrap"));
   const completeJoin = truthy(searchParams.get("completeJoin"));
-  const { refreshSession } = useAuth();
+  const { refreshSession, logout } = useAuth();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const [error, setError] = useState("");
   const [guidance, setGuidance] = useState("");
@@ -211,6 +232,20 @@ function ClerkAuthCallbackPage() {
         navigate(next, { replace: true });
       } catch (err) {
         if (cancelled) return;
+        if (isTenantScopeMismatchError(err)) {
+          clearDirectorBootstrapIntent(slug);
+          setPhaseMessage("Resetting sign-in so you can use the correct network account...");
+          try {
+            await Promise.resolve(logout?.());
+          } finally {
+            if (cancelled) return;
+            redirected = true;
+            navigate(buildLoginPath(slug, { inviteToken, authIssue: "wrong_network" }), {
+              replace: true
+            });
+          }
+          return;
+        }
         const resolved = resolveAuthCallbackError(err, slug, inviteToken);
         setError(resolved.message);
         setGuidance(resolved.guidance);
@@ -224,7 +259,7 @@ function ClerkAuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [completeJoin, directorBootstrap, getToken, inviteToken, isLoaded, isSignedIn, navigate, refreshSession, slug]);
+  }, [completeJoin, directorBootstrap, getToken, inviteToken, isLoaded, isSignedIn, logout, navigate, refreshSession, slug]);
 
   return (
     <section className="app-status-shell">

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import AppShell from "./components/AppShell.jsx";
@@ -164,6 +164,7 @@ function TenantScopeRoutes() {
   const { loading, error, tenant, slug: tenantSlug } = useTenant();
   const { isAuthenticated, isReady, user, authProvider, refreshSession, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const params = useParams();
   const slug = params.slug || tenantSlug;
   const membershipSyncKeyRef = useRef("");
@@ -222,16 +223,24 @@ function TenantScopeRoutes() {
     let cancelled = false;
     Promise.resolve(logout?.()).finally(() => {
       if (cancelled) return;
-      setWrongNetwork({
+      const nextWrongNetwork = {
         expectedSlug: String(user?.tenantSlug || "").trim().toLowerCase(),
         currentSlug: String(slug || tenant?.slug || "").trim().toLowerCase()
-      });
+      };
+      setWrongNetwork(nextWrongNetwork);
+
+      const loginParams = new URLSearchParams();
+      loginParams.set("authIssue", "wrong_network");
+      const targetSlug = nextWrongNetwork.currentSlug;
+      if (targetSlug) {
+        navigate(`/t/${targetSlug}/login?${loginParams.toString()}`, { replace: true });
+      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, logout, slug, tenant, user, wrongNetwork]);
+  }, [isAuthenticated, logout, navigate, slug, tenant, user, wrongNetwork]);
 
   function expectedNetworkHref(expectedSlug = "") {
     const normalizedSlug = String(expectedSlug || "").trim().toLowerCase();
