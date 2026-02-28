@@ -100,7 +100,7 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     }
   }
 
-  if (!(body instanceof FormData)) {
+  if (!(body instanceof FormData) && body != null) {
     baseHeaders["Content-Type"] = "application/json";
   }
 
