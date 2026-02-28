@@ -1621,15 +1621,15 @@ img[draggable="false"] { -webkit-user-drag: none; }
 /* ========== NAVBAR2 (stable, right-locked, scalable search) ========== */
 :root{
   --cedar-navy: var(--brand-primary);
-  --nav-h: 91px;
-  --nav-pad-x: 1.2rem;
+  --nav-h: 108px;
+  --nav-pad-x: 1.45rem;
   --page-shell-gap: clamp(8px, 1.8vw, 14px);
   --page-shell-top: calc(var(--nav-h) + var(--page-shell-gap) + env(safe-area-inset-top, 0px));
 
   /* wider by default, but still bounded for stability */
   --s-input-w: clamp(360px, 24vw, 520px);
-  --s-btn-size: 34px;
-  --s-btn-gap: 3px;
+  --s-btn-size: 40px;
+  --s-btn-gap: 4px;
 
   /* keep some room for the logo */
   --left-guard: 200px; 
@@ -1687,20 +1687,20 @@ img[draggable="false"] { -webkit-user-drag: none; }
 }
 
 /* Logo + Title */
-.navbar2-logo{ height:130px; margin-left:-2.2rem; margin-right:-.4rem; object-fit:contain; }
+.navbar2-logo{ height:148px; margin-left:-2.2rem; margin-right:-.35rem; object-fit:contain; }
 .navbar2-logo-fallback{
-  width:84px;
-  height:84px;
-  flex:0 0 84px;
+  width:92px;
+  height:92px;
+  flex:0 0 92px;
   margin-left:-.15rem;
   margin-right:.1rem;
   border-width:3px;
-  font-size:1.75rem;
+  font-size:1.95rem;
   box-shadow:0 10px 24px rgba(2,33,71,.18);
 }
 .navbar2-title{
   font-family: var(--font-display, 'Roboto Slab', serif); font-weight:700; line-height:1;
-  font-size:2.6rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-size:2.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
 /* ===== Right cluster pieces ===== */
@@ -1716,8 +1716,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .navbar2-search-input{
   width:100%;
-  height:38px;
-  padding: 0 calc(var(--s-btn-size) + var(--s-btn-gap) + 8px) 0 .9rem; /* room for icon */
+  height:46px;
+  padding: 0 calc(var(--s-btn-size) + var(--s-btn-gap) + 10px) 0 1rem; /* room for icon */
   border:0; outline:0; border-radius:20px; background:#fff; color:#111;
 }
 
@@ -1744,17 +1744,17 @@ img[draggable="false"] { -webkit-user-drag: none; }
   cursor:pointer;
   border-radius:50%;
 }
-.navbar2-profile{ width:60px; height:60px; border-radius:50%; object-fit:cover; cursor:pointer; display:block; }
+.navbar2-profile{ width:72px; height:72px; border-radius:50%; object-fit:cover; cursor:pointer; display:block; }
 .navbar2-menuWrap{ position:relative; display:flex; align-items:center; }
 .navbar2-burger{
   background: transparent;
   border: 0;
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 4px;
+  gap: 5px;
   padding: 0;
   cursor:pointer;
   border-radius:10px;
@@ -1765,7 +1765,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   background:rgba(255,255,255,.14);
   box-shadow:0 0 0 1px rgba(255,255,255,.2) inset;
 }
-.navbar2-burger-line{ width:22px; height:2px; background:#fff; border-radius:2px; }
+.navbar2-burger-line{ width:24px; height:2px; background:#fff; border-radius:2px; }
 
 /* Dropdowns – render OVER the page content */
 .navbar2-dropdown{
@@ -1898,44 +1898,44 @@ img[draggable="false"] { -webkit-user-drag: none; }
 /* Shrink title as viewport narrows so the right cluster never shifts */
 @media (max-width:1220px){
   .navbar2-title{
-    font-size: clamp(1rem, 3vw, 1.5rem);
-    max-width: min(40vw, 240px);
+    font-size: clamp(1.35rem, 3.3vw, 2rem);
+    max-width: min(42vw, 340px);
   }
 
   .navbar2.is-auth-route .navbar2-title{
-    font-size: clamp(1.08rem, 4.1vw, 1.55rem);
-    max-width: min(53vw, 240px);
+    font-size: clamp(1.2rem, 4.1vw, 1.85rem);
+    max-width: min(53vw, 320px);
   }
 }
 
 /* Gradually trim internals as width decreases (bar height stays the same) */
 @media (max-width:1100px){
   :root{ --s-input-w: clamp(320px, 28vw, 440px); }
-  .navbar2-logo{ height:118px; }
-  .navbar2-logo-fallback{ width:80px; height:80px; flex-basis:80px; font-size:1.65rem; }
+  .navbar2-logo{ height:136px; }
+  .navbar2-logo-fallback{ width:86px; height:86px; flex-basis:86px; font-size:1.8rem; }
 }
 @media (max-width:980px){
   :root{ --s-input-w: clamp(300px, 34vw, 400px); }
-  .navbar2-logo{ height:106px; }
-  .navbar2-logo-fallback{ width:74px; height:74px; flex-basis:74px; font-size:1.55rem; }
-  .navbar2-profile{ width:54px; height:54px; }
+  .navbar2-logo{ height:124px; }
+  .navbar2-logo-fallback{ width:78px; height:78px; flex-basis:78px; font-size:1.65rem; }
+  .navbar2-profile{ width:64px; height:64px; }
 }
 @media (max-width:880px){
   :root{ --s-input-w: clamp(270px, 36vw, 340px); --left-guard: 140px; }
-  .navbar2-logo{ height:98px; }
-  .navbar2-logo-fallback{ width:70px; height:70px; flex-basis:70px; font-size:1.45rem; }
+  .navbar2-logo{ height:114px; }
+  .navbar2-logo-fallback{ width:72px; height:72px; flex-basis:72px; font-size:1.5rem; }
 }
 @media (max-width:780px){
   :root{ --s-input-w: clamp(240px, 43vw, 320px); --left-guard: 128px; }
-  .navbar2-logo{ height:90px; }
-  .navbar2-logo-fallback{ width:66px; height:66px; flex-basis:66px; font-size:1.35rem; }
-  .navbar2-profile{ width:48px; height:48px; }
+  .navbar2-logo{ height:104px; }
+  .navbar2-logo-fallback{ width:68px; height:68px; flex-basis:68px; font-size:1.38rem; }
+  .navbar2-profile{ width:56px; height:56px; }
 }
 @media (max-width:680px){
   :root{ --s-input-w: clamp(210px, 46vw, 280px); --s-btn-size:30px; --left-guard: 120px; }
-  .navbar2-logo{ height:82px; }
+  .navbar2-logo{ height:92px; }
   .navbar2-logo-fallback{ width:62px; height:62px; flex-basis:62px; font-size:1.25rem; }
-  .navbar2-search-input{ height:32px; }
+  .navbar2-search-input{ height:38px; }
 }
 
 /* Small phones: enforce hard-fit layout so nav never overflows viewport */
