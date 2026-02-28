@@ -43,6 +43,20 @@ function inferTenantSlugForSessionRequest() {
   return String(fromPath || fromHost || remembered || "").trim().toLowerCase();
 }
 
+function isAuthEntryRoute(pathname = "") {
+  const path = String(pathname || "");
+  return (
+    path === "/super" ||
+    path.startsWith("/super/") ||
+    path.includes("/login") ||
+    path.includes("/auth/callback") ||
+    path.includes("/create-account") ||
+    path.includes("/director-claim") ||
+    path.includes("/director-create-account") ||
+    path.includes("/request-access")
+  );
+}
+
 function markTabSessionAuthenticated() {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(TAB_AUTH_SESSION_KEY, "1");
@@ -358,8 +372,13 @@ function ClerkBackedAuthProvider({ children }) {
 
     const tabSessionExists = hasTabSessionAuthenticated();
     const loginIntentExists = hasTabLoginIntent();
+    const pathname = typeof window === "undefined" ? "" : window.location.pathname || "";
+    const onAuthRoute = isAuthEntryRoute(pathname);
 
-    if (FORCE_RELOGIN_ON_TAB_CLOSE && !tabSessionExists && !loginIntentExists) {
+    // Clerk sessions are browser-scoped, so tab sessionStorage markers are not reliable
+    // across auth redirects or fresh tabs. Never block an active Clerk session from
+    // bootstrapping on an explicit auth-entry route.
+    if (FORCE_RELOGIN_ON_TAB_CLOSE && !isSignedIn && !tabSessionExists && !loginIntentExists && !onAuthRoute) {
       clearLocalAuth();
       bootstrappedSessionIdRef.current = "";
       setSessionRefreshing(false);

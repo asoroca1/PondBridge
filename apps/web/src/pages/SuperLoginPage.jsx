@@ -31,6 +31,7 @@ function ClerkSuperLoginPage() {
     } catch {
       // no-op
     }
+    noteTabLoginIntent();
   }, []);
   const handleAuthInteraction = useCallback(() => {
     noteTabLoginIntent();

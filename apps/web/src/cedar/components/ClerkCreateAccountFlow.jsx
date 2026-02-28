@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../../lib/http.js";
-import { useAuth } from "../../context/AuthContext.jsx";
+import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { normalizeTenantRouteForHost, tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
@@ -31,6 +31,10 @@ export default function ClerkCreateAccountFlow() {
   const [accessCode, setAccessCode] = useState("");
   const [submittingJoin, setSubmittingJoin] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    noteTabLoginIntent();
+  }, []);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;

@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignIn } from "@clerk/clerk-react";
 import Navbar1 from "../components/Navbar1";
 import { API_BASE } from "../lib/api";
 import { requestJson } from "../../lib/http.js";
-import { useAuth } from "../../context/AuthContext.jsx";
+import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/authMode.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
@@ -227,6 +227,10 @@ function ClerkLogin() {
     slug,
     `/create-account${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
   );
+
+  useEffect(() => {
+    noteTabLoginIntent();
+  }, []);
 
   return (
     <div className="login1 login1-modern login1-clerk-page">
