@@ -12,6 +12,10 @@ function truthy(value) {
   return ["1", "true", "yes", "on"].includes(normalized);
 }
 
+function wait(ms = 0) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function directorBootstrapIntentKey(slug = "") {
   return `pondbridgeDirectorBootstrapIntent:${String(slug || "").trim().toLowerCase() || "default"}`;
 }
@@ -96,6 +100,13 @@ function resolveAuthCallbackError(err, slug, inviteToken = "") {
       retryPath: loginPath
     };
   }
+  if (code === "SESSION_SYNC_FAILED") {
+    return {
+      message: "Sign-in completed, but we could not finalize your network session.",
+      guidance: "Retry sign-in once. If this repeats, contact support with this error.",
+      retryPath: loginPath
+    };
+  }
 
   return {
     message: fallbackMessage,
@@ -140,6 +151,19 @@ function ClerkAuthCallbackPage() {
     "We are syncing your account and loading your network access."
   );
   const [working, setWorking] = useState(true);
+
+  async function ensureTenantSessionSync(targetSlug = "") {
+    const safeSlug = String(targetSlug || "").trim().toLowerCase();
+    for (const delayMs of [0, 180, 420, 900]) {
+      if (delayMs > 0) await wait(delayMs);
+      const payload = await refreshSession({ tenantSlug: safeSlug });
+      const userId = String(payload?.user?.id || payload?.user?._id || "").trim();
+      if (userId) return payload;
+    }
+    const error = new Error("Session sync did not resolve a tenant user.");
+    error.code = "SESSION_SYNC_FAILED";
+    throw error;
+  }
 
   useEffect(() => {
     if (!isLoaded || !slug) return;
@@ -222,7 +246,7 @@ function ClerkAuthCallbackPage() {
         setPhaseMessage("Finalizing sign-in...");
         payload = await requestJson(`/api/t/${slug}/access/decision`, { token });
         decision = payload?.decision || {};
-        await refreshSession({ tenantSlug: slug });
+        await ensureTenantSessionSync(slug);
 
         const next = normalizeTenantRouteForHost(
           slug,

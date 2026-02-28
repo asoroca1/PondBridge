@@ -168,6 +168,7 @@ function TenantScopeRoutes() {
   const params = useParams();
   const slug = params.slug || tenantSlug;
   const membershipSyncKeyRef = useRef("");
+  const membershipSyncInFlightRef = useRef(false);
   const [wrongNetwork, setWrongNetwork] = useState(null);
 
   useEffect(() => {
@@ -179,6 +180,7 @@ function TenantScopeRoutes() {
       path.includes("/director-create-account");
     if (!clerkMode || !isAuthenticated || !slug || loading || Boolean(error) || !tenant || onSyncBlockedRoute) {
       membershipSyncKeyRef.current = "";
+      membershipSyncInFlightRef.current = false;
       return;
     }
 
@@ -197,20 +199,37 @@ function TenantScopeRoutes() {
     );
     if (alreadyScopedToTenant) {
       membershipSyncKeyRef.current = syncKey;
+      membershipSyncInFlightRef.current = false;
       return;
     }
 
     membershipSyncKeyRef.current = syncKey;
-
-    refreshSession({ tenantSlug: slug }).catch(() => {});
+    membershipSyncInFlightRef.current = true;
+    refreshSession({ tenantSlug: slug })
+      .catch(() => {})
+      .finally(() => {
+        membershipSyncInFlightRef.current = false;
+      });
   }, [authProvider, error, isAuthenticated, loading, location.pathname, refreshSession, slug, tenant, user]);
 
   useEffect(() => {
+    const path = String(location.pathname || "");
+    const onAuthBootstrapRoute =
+      path.includes("/auth/callback") ||
+      path.includes("/director-claim") ||
+      path.includes("/director-create-account") ||
+      path.includes("/login") ||
+      path.includes("/create-account") ||
+      path.includes("/request-access");
+    const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
     const tenantId = String(tenant?.id || tenant?._id || "").trim();
     const userTenantId = String(user?.tenantId || "").trim();
     const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
     if (
       wrongNetwork ||
+      !isReady ||
+      membershipSyncInFlightRef.current ||
+      (clerkMode && onAuthBootstrapRoute) ||
       !isAuthenticated ||
       !tenantId ||
       !userTenantId ||
@@ -240,7 +259,7 @@ function TenantScopeRoutes() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, logout, navigate, slug, tenant, user, wrongNetwork]);
+  }, [authProvider, isAuthenticated, isReady, location.pathname, logout, navigate, slug, tenant, user, wrongNetwork]);
 
   function expectedNetworkHref(expectedSlug = "") {
     const normalizedSlug = String(expectedSlug || "").trim().toLowerCase();

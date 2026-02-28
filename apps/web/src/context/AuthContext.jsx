@@ -313,6 +313,8 @@ function ClerkBackedAuthProvider({ children }) {
     setUser(null);
     clearAuthStorage();
     clearTabSessionAuthenticated();
+    bootstrappedSessionIdRef.current = "";
+    pendingBootstrapRetriesRef.current = 0;
   }, []);
 
   const getAuthToken = useCallback(
@@ -414,7 +416,9 @@ function ClerkBackedAuthProvider({ children }) {
       return;
     }
 
-    if (sessionId && bootstrappedSessionIdRef.current === sessionId) {
+    const hasResolvedUser = Boolean(String(user?.id || user?._id || "").trim());
+    const hasLocalAuth = Boolean(token || hasResolvedUser);
+    if (sessionId && bootstrappedSessionIdRef.current === sessionId && hasLocalAuth) {
       setSessionRefreshing(false);
       return;
     }
@@ -454,7 +458,7 @@ function ClerkBackedAuthProvider({ children }) {
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession, sessionId]);
+  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession, sessionId, token, user]);
 
   const login = useCallback(
     (nextToken, nextUser) => {
