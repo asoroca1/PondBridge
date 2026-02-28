@@ -20,6 +20,8 @@ const AUTO_LOGOUT_TIMEOUT_MS =
   Number.isFinite(AUTO_LOGOUT_MINUTES) && AUTO_LOGOUT_MINUTES > 0
     ? AUTO_LOGOUT_MINUTES * 60 * 1000
     : 0;
+const CLERK_BOOTSTRAP_RETRY_DELAYS_MS = [0, 160, 420, 900];
+const CLERK_BOOTSTRAP_MAX_RETRIES = 4;
 const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
   String(import.meta.env.VITE_FORCE_LOGOUT_ON_TAB_CLOSE || "false")
     .trim()
@@ -55,6 +57,16 @@ function isAuthEntryRoute(pathname = "") {
     path.includes("/director-create-account") ||
     path.includes("/request-access")
   );
+}
+
+function wait(ms = 0) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function createPendingClerkTokenError() {
+  const error = new Error("Clerk session token is not ready yet.");
+  error.code = "AUTH_TOKEN_PENDING";
+  return error;
 }
 
 function markTabSessionAuthenticated() {
@@ -290,6 +302,7 @@ function ClerkBackedAuthProvider({ children }) {
   const { signOut } = useClerk();
   const userRef = useRef(null);
   const bootstrappedSessionIdRef = useRef("");
+  const pendingBootstrapRetriesRef = useRef(0);
 
   useEffect(() => {
     userRef.current = user;
@@ -315,6 +328,17 @@ function ClerkBackedAuthProvider({ children }) {
     [getToken, isLoaded, isSignedIn]
   );
 
+  const resolveBootstrapToken = useCallback(async () => {
+    for (const [index, delayMs] of CLERK_BOOTSTRAP_RETRY_DELAYS_MS.entries()) {
+      if (delayMs > 0) {
+        await wait(delayMs);
+      }
+      const nextToken = await getAuthToken({ forceRefresh: index > 0 });
+      if (nextToken) return nextToken;
+    }
+    return "";
+  }, [getAuthToken]);
+
   const refreshSession = useCallback(
     async ({ tenantSlug = "" } = {}) => {
       if (!isLoaded || !isSignedIn) {
@@ -323,11 +347,9 @@ function ClerkBackedAuthProvider({ children }) {
         return null;
       }
 
-      const clerkToken = await getAuthToken();
+      const clerkToken = await resolveBootstrapToken();
       if (!clerkToken) {
-        clearLocalAuth();
-        setSessionRefreshing(false);
-        return null;
+        throw createPendingClerkTokenError();
       }
 
       setSessionRefreshing(true);
@@ -361,7 +383,7 @@ function ClerkBackedAuthProvider({ children }) {
         setSessionRefreshing(false);
       }
     },
-    [clearLocalAuth, getAuthToken, isLoaded, isSignedIn]
+    [clearLocalAuth, isLoaded, isSignedIn, resolveBootstrapToken]
   );
 
   useEffect(() => {
@@ -398,23 +420,39 @@ function ClerkBackedAuthProvider({ children }) {
     }
 
     let active = true;
+    let retryTimer = null;
     const tenantSlug = inferTenantSlugForSessionRequest();
-    refreshSession({ tenantSlug })
-      .then(() => {
-        if (!active) return;
-        if (sessionId) {
-          bootstrappedSessionIdRef.current = sessionId;
-        }
-      })
-      .catch(() => {
-        if (!active) return;
-        clearLocalAuth();
-        bootstrappedSessionIdRef.current = "";
-        setSessionRefreshing(false);
-      });
+    const bootstrapSession = () => {
+      refreshSession({ tenantSlug })
+        .then(() => {
+          if (!active) return;
+          pendingBootstrapRetriesRef.current = 0;
+          if (sessionId) {
+            bootstrappedSessionIdRef.current = sessionId;
+          }
+        })
+        .catch((error) => {
+          if (!active) return;
+          if (error?.code === "AUTH_TOKEN_PENDING" && pendingBootstrapRetriesRef.current < CLERK_BOOTSTRAP_MAX_RETRIES) {
+            pendingBootstrapRetriesRef.current += 1;
+            retryTimer = window.setTimeout(() => {
+              retryTimer = null;
+              bootstrapSession();
+            }, 320);
+            return;
+          }
+          pendingBootstrapRetriesRef.current = 0;
+          clearLocalAuth();
+          bootstrappedSessionIdRef.current = "";
+          setSessionRefreshing(false);
+        });
+    };
+
+    bootstrapSession();
 
     return () => {
       active = false;
+      if (retryTimer) window.clearTimeout(retryTimer);
     };
   }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession, sessionId]);
 
