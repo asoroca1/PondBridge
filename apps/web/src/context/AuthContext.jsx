@@ -28,8 +28,17 @@ const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
 
 function inferTenantSlugForSessionRequest() {
   if (typeof window === "undefined") return "";
-  const fromPath = String(window.location.pathname || "").match(/^\/t\/([^/]+)/i)?.[1] || "";
-  const fromHost = inferCampSlugFromHost(window.location.hostname || "");
+  const pathname = String(window.location.pathname || "");
+  const host = String(window.location.hostname || "");
+  const fromPath = pathname.match(/^\/t\/([^/]+)/i)?.[1] || "";
+  const fromHost = inferCampSlugFromHost(host);
+
+  // Never carry remembered tenant scope into global/super-console routes.
+  const onSuperRoute = pathname === "/super" || pathname.startsWith("/super/");
+  if (onSuperRoute || host === "pondbridgealumni.com" || host === "app.pondbridgealumni.com") {
+    return String(fromPath || fromHost || "").trim().toLowerCase();
+  }
+
   const remembered = String(localStorage.getItem("pondbridgeTenantSlug") || "").trim().toLowerCase();
   return String(fromPath || fromHost || remembered || "").trim().toLowerCase();
 }

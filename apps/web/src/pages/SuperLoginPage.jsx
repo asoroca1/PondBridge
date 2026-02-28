@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { SignIn } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
@@ -23,6 +23,13 @@ function superDestinationFromUser(user) {
 
 function ClerkSuperLoginPage() {
   const { token, user, isReady, logout } = useAuth();
+  useEffect(() => {
+    try {
+      localStorage.removeItem("pondbridgeTenantSlug");
+    } catch {
+      // no-op
+    }
+  }, []);
   const handleAuthInteraction = useCallback(() => {
     noteTabLoginIntent();
   }, []);
