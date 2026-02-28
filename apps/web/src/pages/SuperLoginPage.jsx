@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { SignIn } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
@@ -23,6 +23,8 @@ function superDestinationFromUser(user) {
 
 function ClerkSuperLoginPage() {
   const { token, user, isReady, logout } = useAuth();
+  const [signingOutUnauthorized, setSigningOutUnauthorized] = useState(false);
+  const autoSignOutRef = useRef("");
   useEffect(() => {
     try {
       localStorage.removeItem("pondbridgeTenantSlug");
@@ -34,15 +36,38 @@ function ClerkSuperLoginPage() {
     noteTabLoginIntent();
   }, []);
   const handleSwitchAccount = useCallback(async () => {
+    setSigningOutUnauthorized(true);
     await logout();
+    setSigningOutUnauthorized(false);
     noteTabLoginIntent();
   }, [logout]);
+
+  useEffect(() => {
+    if (!token || !isReady || !user || hasSuperConsoleRole(user)) {
+      autoSignOutRef.current = "";
+      setSigningOutUnauthorized(false);
+      return;
+    }
+
+    const userId = String(user?.id || user?._id || user?.email || "").trim();
+    if (!userId || autoSignOutRef.current === userId) return;
+    autoSignOutRef.current = userId;
+    setSigningOutUnauthorized(true);
+
+    Promise.resolve(logout())
+      .catch(() => {
+        // no-op
+      })
+      .finally(() => {
+        setSigningOutUnauthorized(false);
+      });
+  }, [isReady, logout, token, user]);
 
   if (token && hasSuperConsoleRole(user)) {
     return <Navigate to={superDestinationFromUser(user)} replace />;
   }
 
-  if (token && isReady && user && !hasSuperConsoleRole(user)) {
+  if (signingOutUnauthorized) {
     return (
       <section className="super-login-shell">
         <div className="super-login-backdrop" />
@@ -53,11 +78,13 @@ function ClerkSuperLoginPage() {
               <h1>Super Admin Console</h1>
               <p className="error-text">This account is not authorized for super admin access.</p>
               <p className="super-login-subtitle">
-                Signed in as <strong>{String(user?.email || "unknown account")}</strong>. Switch accounts to continue
-                with your super admin login.
+                Signing out <strong>{String(user?.email || "unknown account")}</strong> so you can continue with your
+                normal Super Admin login.
               </p>
             </div>
-            <Button onClick={handleSwitchAccount}>Switch account</Button>
+            <Button onClick={handleSwitchAccount} disabled>
+              Switching account...
+            </Button>
           </div>
         </div>
       </section>
