@@ -1,5 +1,4 @@
 // src/App.jsx
-import { useEffect, useRef, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import GlobalAuthGate from "./GlobalAuthGate";
 
@@ -24,27 +23,14 @@ import FamilyTreeView from "./pages/FamilyTreeView";
 
 export default function App() {
   const location = useLocation();
-  const routeTimerRef = useRef(null);
-  const [isRouting, setIsRouting] = useState(true);
-
-  useEffect(() => {
-    setIsRouting(true);
-    window.clearTimeout(routeTimerRef.current);
-    routeTimerRef.current = window.setTimeout(() => {
-      setIsRouting(false);
-    }, 220);
-
-    return () => {
-      window.clearTimeout(routeTimerRef.current);
-    };
-  }, [location.pathname, location.search, location.hash]);
+  const routeKey = `${location.pathname}${location.search}${location.hash}`;
 
   return (
-    <div className={`app-route-shell ${isRouting ? "is-routing" : ""}`}>
-      <div className={`app-route-progress ${isRouting ? "is-active" : ""}`} aria-hidden="true" />
+    <div className="app-route-shell">
+      <div className="app-route-progress" key={routeKey} aria-hidden="true" />
 
       <div
-        key={`${location.pathname}${location.search}${location.hash}`}
+        key={routeKey}
         className="app-route-stage"
       >
         <Routes location={location}>

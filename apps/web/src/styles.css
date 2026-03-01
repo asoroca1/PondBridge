@@ -118,10 +118,8 @@ body{
   z-index: 2200;
   pointer-events: none;
   background: linear-gradient(90deg, var(--brand-primary-soft-strong) 0%, var(--brand-primary-hover) 45%, var(--brand-primary-soft) 100%);
-}
-
-.app-route-progress.is-active{
-  opacity: 1;
+  /* Key-based animation: remounting with a new key triggers the animation
+     via CSS alone, avoiding React state re-renders on every navigation. */
   animation: appRouteProgress var(--ui-medium) var(--ui-ease);
 }
 
@@ -273,7 +271,7 @@ body{
 @media (prefers-reduced-motion: reduce){
   html{ scroll-behavior: auto; }
   .app-route-stage,
-  .app-route-progress.is-active{ animation: none !important; }
+  .app-route-progress{ animation: none !important; }
   :where(button, [type="button"], [type="submit"], [type="reset"], a[href]){
     transition: none !important;
   }

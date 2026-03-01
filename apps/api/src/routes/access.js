@@ -97,6 +97,12 @@ function roleSet(roles = []) {
   return new Set((roles || []).map((role) => String(role || "").trim()).filter(Boolean));
 }
 
+function isGlobalSuperAdmin(req) {
+  const roles = roleSet(req.user?.roles || []);
+  const userTenantId = String(req.user?.tenantId || "").trim();
+  return roles.has("super_admin") && !userTenantId;
+}
+
 function mergeRoles(base = [], extra = []) {
   return [...new Set([...(base || []), ...(extra || [])].map((role) => String(role || "").trim()).filter(Boolean))];
 }
@@ -278,9 +284,22 @@ async function findInviteForEmail(tenantId, email = "") {
   return candidates.find((item) => new Date(item.expiresAt) > new Date()) || null;
 }
 
-async function buildAccessDecision({ tenant, identity, inviteToken = "" }) {
+async function buildAccessDecision({ tenant, identity, inviteToken = "", callerUser = null }) {
   const tenantId = String(tenant._id);
   const email = normalizeEmail(identity.email || "");
+
+  // Block global super admins from joining camp networks. They should manage
+  // camps from the super console, not create user/profile records inside them.
+  const callerRoles = roleSet(callerUser?.roles || []);
+  const callerTenantId = String(callerUser?.tenantId || "").trim();
+  if (callerRoles.has("super_admin") && !callerTenantId) {
+    return {
+      state: "super_admin_blocked",
+      action: "use_super_console",
+      nextRoute: "/super/tenants"
+    };
+  }
+
   const settings = resolveSettings(tenant);
   const signupMode = normalizeSignupMode(settings.signupMode || "open");
   const joinMode = tenantJoinMode(tenant);
@@ -431,7 +450,8 @@ router.get("/decision", accessDecisionLimiter, async (req, res) => {
   const decision = await buildAccessDecision({
     tenant: req.tenant,
     identity: req.identity || {},
-    inviteToken
+    inviteToken,
+    callerUser: req.user || null
   });
   return res.json({
     tenant: {
@@ -544,6 +564,15 @@ router.post("/director-bootstrap", accessMutationLimiter, async (req, res) => {
 });
 
 router.post("/join", accessMutationLimiter, async (req, res) => {
+  if (isGlobalSuperAdmin(req)) {
+    return res.status(409).json({
+      error: {
+        code: "SUPER_ADMIN_BLOCKED",
+        message: "Super admin accounts cannot join camp networks. Sign out and use a separate account."
+      }
+    });
+  }
+
   const billingAccess = isTenantBillingAccessAllowed(req.tenant);
 
   if (req.tenant.status !== "active" || req.tenant.onboardingStatus !== "live") {
@@ -665,6 +694,15 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
 });
 
 router.post("/request-access", accessMutationLimiter, async (req, res) => {
+  if (isGlobalSuperAdmin(req)) {
+    return res.status(409).json({
+      error: {
+        code: "SUPER_ADMIN_BLOCKED",
+        message: "Super admin accounts cannot request access to camp networks."
+      }
+    });
+  }
+
   const billingAccess = isTenantBillingAccessAllowed(req.tenant);
   if (!billingAccess.allowed) {
     return res.status(403).json({
@@ -761,6 +799,15 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
 });
 
 router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
+  if (isGlobalSuperAdmin(req)) {
+    return res.status(409).json({
+      error: {
+        code: "SUPER_ADMIN_BLOCKED",
+        message: "Super admin accounts cannot accept invites to camp networks."
+      }
+    });
+  }
+
   const billingAccess = isTenantBillingAccessAllowed(req.tenant);
   if (!billingAccess.allowed) {
     return res.status(403).json({

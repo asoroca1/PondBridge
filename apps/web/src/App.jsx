@@ -178,7 +178,10 @@ function TenantScopeRoutes() {
       path.includes("/auth/callback") ||
       path.includes("/director-claim") ||
       path.includes("/director-create-account");
-    if (!clerkMode || !isAuthenticated || !slug || loading || Boolean(error) || !tenant || onSyncBlockedRoute) {
+    // Wait for auth to be fully ready before syncing membership. This prevents
+    // firing a second refreshSession while the initial bootstrap is in flight,
+    // which was a major source of cascading re-renders and glitching.
+    if (!clerkMode || !isReady || !isAuthenticated || !slug || loading || Boolean(error) || !tenant || onSyncBlockedRoute) {
       membershipSyncKeyRef.current = "";
       membershipSyncInFlightRef.current = false;
       return;
@@ -210,7 +213,7 @@ function TenantScopeRoutes() {
       .finally(() => {
         membershipSyncInFlightRef.current = false;
       });
-  }, [authProvider, error, isAuthenticated, loading, location.pathname, refreshSession, slug, tenant, user]);
+  }, [authProvider, error, isAuthenticated, isReady, loading, location.pathname, refreshSession, slug, tenant, user]);
 
   useEffect(() => {
     const path = String(location.pathname || "");
@@ -289,9 +292,7 @@ function TenantScopeRoutes() {
     );
   }
 
-  const hasResolvedUser = Boolean(String(user?.id || user?._id || "").trim());
-
-  if (!isReady && !hasResolvedUser) {
+  if (!isReady) {
     return (
       <section className="app-status-shell">
         <div className="app-status-card">
@@ -632,28 +633,19 @@ function HostScopedTenantRedirect() {
 
 export default function App() {
   const location = useLocation();
-  const routeTimerRef = useRef(null);
-  const [isRouting, setIsRouting] = useState(true);
   const hostCampSlug = inferCampSlugFromHost();
   const rememberedSlug = localStorage.getItem("pondbridgeTenantSlug") || "";
   const customDomainHost = isPotentialCustomTenantHost();
   const legacyRedirectEnabled = Boolean(!hostCampSlug && !customDomainHost && rememberedSlug);
 
-  useEffect(() => {
-    setIsRouting(true);
-    window.clearTimeout(routeTimerRef.current);
-    routeTimerRef.current = window.setTimeout(() => {
-      setIsRouting(false);
-    }, 220);
-
-    return () => {
-      window.clearTimeout(routeTimerRef.current);
-    };
-  }, [location.pathname, location.search, location.hash]);
+  // Use a key-based CSS animation for route transitions instead of React state.
+  // This avoids re-rendering the entire component tree on every navigation,
+  // which was causing cascading glitches and visual flicker.
+  const routeKey = `${location.pathname}${location.search}${location.hash}`;
 
   return (
-    <div className={`app-route-shell ${isRouting ? "is-routing" : ""}`}>
-      <div className={`app-route-progress ${isRouting ? "is-active" : ""}`} aria-hidden="true" />
+    <div className="app-route-shell">
+      <div className="app-route-progress" key={routeKey} aria-hidden="true" />
       <div className="app-route-stage">
         <Suspense fallback={<RouteLoadingFallback />}>
         <Routes location={location}>

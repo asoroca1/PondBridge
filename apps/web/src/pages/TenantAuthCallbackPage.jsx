@@ -58,6 +58,10 @@ function isTenantScopeMismatchError(err) {
   );
 }
 
+function isSuperAdminDecision(decision) {
+  return String(decision?.state || "").toLowerCase() === "super_admin_blocked";
+}
+
 function resolveAuthCallbackError(err, slug, inviteToken = "") {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
@@ -65,6 +69,13 @@ function resolveAuthCallbackError(err, slug, inviteToken = "") {
   const fallbackMessage = String(err?.message || "Could not complete authentication.");
   const loginPath = buildLoginPath(slug, { inviteToken });
 
+  if (code === "SUPER_ADMIN_BLOCKED") {
+    return {
+      message: "Super admin accounts cannot join camp networks.",
+      guidance: "Sign out and use a separate account, or return to the super admin console.",
+      retryPath: "/super/tenants"
+    };
+  }
   if (code === "RATE_LIMITED") {
     return {
       message: "Too many access attempts were made. Wait a minute, then try again.",
@@ -189,6 +200,15 @@ function ClerkAuthCallbackPage() {
           { token }
         );
         let decision = payload?.decision || {};
+
+        // Block super admin accounts from joining camp networks. The backend
+        // returns a special decision state; redirect to the super console.
+        if (isSuperAdminDecision(decision)) {
+          redirected = true;
+          navigate("/super/tenants", { replace: true });
+          return;
+        }
+
         const hasDirectorBootstrapIntent = directorBootstrap || readDirectorBootstrapIntent(slug);
         const tenantOnboardingStatus = String(payload?.tenant?.onboardingStatus || "").trim().toLowerCase();
         const shouldBootstrapFromPrelaunchFallback =

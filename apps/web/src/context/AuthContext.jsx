@@ -295,18 +295,30 @@ function LegacyAuthProvider({ children }) {
 }
 
 function ClerkBackedAuthProvider({ children }) {
+  // Hydrate cached user from localStorage on mount so returning users
+  // see content immediately instead of a blank flash while Clerk loads.
+  const cachedAuth = readAuthFromStorage();
+  const shouldHydrate = !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
   const [token, setToken] = useState("");
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(shouldHydrate ? normalizeUserShape(cachedAuth.user) : null);
   const [sessionRefreshing, setSessionRefreshing] = useState(true);
   const { isLoaded, isSignedIn, getToken, sessionId } = useClerkAuth();
   const { signOut } = useClerk();
   const userRef = useRef(null);
+  const tokenRef = useRef("");
   const bootstrappedSessionIdRef = useRef("");
   const pendingBootstrapRetriesRef = useRef(0);
+  // Ref to hold the latest refreshSession so the bootstrap effect doesn't
+  // need it in its dependency array (it's an output, not an input).
+  const refreshSessionRef = useRef(null);
 
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
 
   const clearLocalAuth = useCallback(() => {
     setToken("");
@@ -388,6 +400,15 @@ function ClerkBackedAuthProvider({ children }) {
     [clearLocalAuth, isLoaded, isSignedIn, resolveBootstrapToken]
   );
 
+  // Keep the ref in sync so the bootstrap effect can call the latest version.
+  useEffect(() => {
+    refreshSessionRef.current = refreshSession;
+  }, [refreshSession]);
+
+  // Bootstrap effect: only depends on Clerk SDK state and sessionId.
+  // token/user are OUTPUTS of this effect, not inputs - using refs avoids
+  // re-triggering the effect when they change, which was causing cascading
+  // re-renders and visual glitching.
   useEffect(() => {
     if (!isLoaded) {
       setSessionRefreshing(true);
@@ -399,9 +420,6 @@ function ClerkBackedAuthProvider({ children }) {
     const pathname = typeof window === "undefined" ? "" : window.location.pathname || "";
     const onAuthRoute = isAuthEntryRoute(pathname);
 
-    // Clerk sessions are browser-scoped, so tab sessionStorage markers are not reliable
-    // across auth redirects or fresh tabs. Never block an active Clerk session from
-    // bootstrapping on an explicit auth-entry route.
     if (FORCE_RELOGIN_ON_TAB_CLOSE && !isSignedIn && !tabSessionExists && !loginIntentExists && !onAuthRoute) {
       clearLocalAuth();
       bootstrappedSessionIdRef.current = "";
@@ -416,8 +434,8 @@ function ClerkBackedAuthProvider({ children }) {
       return;
     }
 
-    const hasResolvedUser = Boolean(String(user?.id || user?._id || "").trim());
-    const hasLocalAuth = Boolean(token || hasResolvedUser);
+    const hasResolvedUser = Boolean(String(userRef.current?.id || userRef.current?._id || "").trim());
+    const hasLocalAuth = Boolean(tokenRef.current || hasResolvedUser);
     if (sessionId && bootstrappedSessionIdRef.current === sessionId && hasLocalAuth) {
       setSessionRefreshing(false);
       return;
@@ -427,7 +445,9 @@ function ClerkBackedAuthProvider({ children }) {
     let retryTimer = null;
     const tenantSlug = inferTenantSlugForSessionRequest();
     const bootstrapSession = () => {
-      refreshSession({ tenantSlug })
+      const doRefresh = refreshSessionRef.current;
+      if (!doRefresh) return;
+      doRefresh({ tenantSlug })
         .then(() => {
           if (!active) return;
           pendingBootstrapRetriesRef.current = 0;
@@ -458,7 +478,7 @@ function ClerkBackedAuthProvider({ children }) {
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [clearLocalAuth, isLoaded, isSignedIn, refreshSession, sessionId, token, user]);
+  }, [clearLocalAuth, isLoaded, isSignedIn, sessionId]);
 
   const login = useCallback(
     (nextToken, nextUser) => {

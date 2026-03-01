@@ -218,6 +218,8 @@ function ClerkLogin() {
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const notice = resolveAuthIssueMessage(searchParams);
+  const { user, isAuthenticated, logout } = useAuth();
+  const isSuperAdmin = isAuthenticated && user?.roles?.includes("super_admin");
   const path = tenantRoute(slug, "/login");
   const callbackPath = tenantRoute(
     slug,
@@ -231,6 +233,45 @@ function ClerkLogin() {
   useEffect(() => {
     noteTabLoginIntent();
   }, []);
+
+  // If the current user is a super admin, block them from proceeding into
+  // the camp login flow. This prevents creating unwanted user/profile records.
+  if (isSuperAdmin) {
+    return (
+      <div className="login1 login1-modern login1-clerk-page">
+        <Navbar1 />
+        <section className="login1-main login1-main-modern login1-main-create-bg">
+          <div className="login1-wrap">
+            <article className="login1-card login1-card-modern">
+              <div className="login1-intro">
+                <p className="login1-kicker">Camp Access</p>
+                <h1 className="login1-title auth-entry-title">Super Admin Detected</h1>
+              </div>
+              <p className="login1-error">
+                You are signed in as a Super Admin. Super admin accounts cannot join camp networks
+                because it creates member records that affect camp data.
+              </p>
+              <p style={{ fontSize: "0.92rem", color: "var(--text-muted)", lineHeight: 1.5, marginTop: 8 }}>
+                To access a camp as a member, sign out first and use a separate account.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+                <Link to="/super/tenants" className="login1-btn" style={{ textAlign: "center", textDecoration: "none" }}>
+                  Back to Super Console
+                </Link>
+                <button
+                  type="button"
+                  className="login1-forgot"
+                  onClick={() => logout()}
+                >
+                  Sign out and use a different account
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="login1 login1-modern login1-clerk-page">
