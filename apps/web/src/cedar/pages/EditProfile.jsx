@@ -10,6 +10,7 @@ import CedarBackground from "../components/CedarBackground";
 import { API_BASE, getMe } from "../lib/api";
 import { getToken } from "../lib/helpers";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 /* Data */
 const US_STATES = [
@@ -425,6 +426,7 @@ const digitsOnly = (s = "") => String(s).replace(/\D/g, "").slice(0, 10);
 export default function EditProfile() {
   const navigate = useNavigate();
   const { tenant } = useTenant();
+  const { getAuthToken } = useAuth();
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
   const ageGroupOptions = useMemo(() => resolveAgeGroupOptions(tenant), [tenant]);
   const [step, setStep] = useState(0);
@@ -470,28 +472,54 @@ export default function EditProfile() {
   const setCamperYears = (patch) =>
     setForm((f) => ({ ...f, camperYears: { ...(f.camperYears || {}), ...patch } }));
 
+  const resolveAuthToken = useCallback(
+    async ({ forceRefresh = false } = {}) => {
+      const current = getToken();
+      if (current && !forceRefresh) return current;
+      if (typeof getAuthToken === "function") {
+        try {
+          const next = await getAuthToken({ forceRefresh });
+          if (next) return next;
+        } catch {
+          // fall through to best-effort local token
+        }
+      }
+      return getToken();
+    },
+    [getAuthToken]
+  );
+
   /**
    * ✅ FIX: immediately persist photoUrl to backend (and localStorage) the moment upload finishes.
    * This mirrors “signup feels saved” behavior and prevents losing photo if user exits before final Save,
    * and also handles backends that accept top-level photoUrl instead of nested uploads.photoUrl.
    */
   const savePhotoUrlNow = useCallback(async (photoUrl) => {
-    const token = getToken();
+    const token = await resolveAuthToken();
     if (!token) return;
 
     try {
-      const res = await fetch(`${API_BASE}/me`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          // send BOTH for backward compatibility
-          uploads: { photoUrl: photoUrl || "" },
-          photoUrl: photoUrl || "",
-        }),
-      });
+      const makeRequest = (authToken) =>
+        fetch(`${API_BASE}/me`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            // send BOTH for backward compatibility
+            uploads: { photoUrl: photoUrl || "" },
+            photoUrl: photoUrl || "",
+          }),
+        });
+
+      let res = await makeRequest(token);
+      if (res.status === 401) {
+        const refreshed = await resolveAuthToken({ forceRefresh: true });
+        if (refreshed && refreshed !== token) {
+          res = await makeRequest(refreshed);
+        }
+      }
 
       const text = await res.text();
       if (!res.ok) {
@@ -511,7 +539,7 @@ export default function EditProfile() {
     } catch (e) {
       console.warn("Photo autosave network error:", e);
     }
-  }, []);
+  }, [resolveAuthToken]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -596,7 +624,7 @@ export default function EditProfile() {
     (async () => {
       try {
         setLoading(true);
-        const token = getToken();
+        const token = await resolveAuthToken();
         let fresh = null;
 
         if (token) {
@@ -675,14 +703,14 @@ export default function EditProfile() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [resolveAuthToken]);
 
   // photo upload (same presign route)
   const presignAndUploadProfile = useCallback(async (blob) => {
     const fileName = `avatar-${Date.now()}.png`;
     const fileType = "image/png";
 
-    const token = getToken();
+    const token = await resolveAuthToken();
 
     const r = await fetch(`${API_BASE}/uploads/presign-public`, {
       method: "POST",
@@ -709,7 +737,7 @@ export default function EditProfile() {
     savePhotoUrlNow(objectUrl);
 
     return objectUrl;
-  }, [savePhotoUrlNow]);
+  }, [resolveAuthToken, savePhotoUrlNow]);
 
   const validateStep1 = () => {
     const e = {};
@@ -850,17 +878,26 @@ export default function EditProfile() {
   async function persistProfile({ exitAfterSave = false } = {}) {
     try {
       setSubmitting(true);
-      const token = getToken();
+      const token = await resolveAuthToken();
       const payload = buildUpdatePayload(form);
 
-      const res = await fetch(`${API_BASE}/me`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
+      const makeRequest = (authToken) =>
+        fetch(`${API_BASE}/me`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+
+      let res = await makeRequest(token);
+      if (res.status === 401) {
+        const refreshed = await resolveAuthToken({ forceRefresh: true });
+        if (refreshed && refreshed !== token) {
+          res = await makeRequest(refreshed);
+        }
+      }
 
       const text = await res.text();
       if (!res.ok) {

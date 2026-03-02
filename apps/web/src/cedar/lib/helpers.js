@@ -25,28 +25,27 @@ function parseJwtExpiry(token = "") {
 
 /** Retrieve the best stored auth token and avoid stale/expired values. */
 export function getToken() {
-  const candidates = [
-    getVolatileAuthToken() || ""
-  ]
+  const candidates = [getVolatileAuthToken() || ""]
     .map((value) => String(value || "").trim())
     .filter(Boolean);
 
   if (!candidates.length) return "";
 
   const now = Math.floor(Date.now() / 1000);
-  const nonExpired = candidates.filter((token) => {
-    const exp = parseJwtExpiry(token);
-    return exp === 0 || exp > now + 15;
-  });
-  const pool = nonExpired.length ? nonExpired : candidates;
+  const entries = candidates.map((token) => ({ token, exp: parseJwtExpiry(token) }));
+  const nonExpired = entries.filter(({ exp }) => exp === 0 || exp > now + 15);
+  const opaque = entries.filter(({ exp }) => exp === 0);
 
-  let best = pool[0];
-  let bestExp = parseJwtExpiry(best);
-  for (const token of pool.slice(1)) {
-    const exp = parseJwtExpiry(token);
-    if (exp > bestExp) {
-      best = token;
-      bestExp = exp;
+  // Never return a JWT we can already tell is expired.
+  const pool = nonExpired.length ? nonExpired : opaque;
+  if (!pool.length) return "";
+
+  let best = pool[0]?.token || "";
+  let bestExp = pool[0]?.exp || 0;
+  for (const entry of pool.slice(1)) {
+    if ((entry.exp || 0) > bestExp) {
+      best = entry.token;
+      bestExp = entry.exp || 0;
     }
   }
   return best;

@@ -20,6 +20,7 @@ const AUTO_LOGOUT_TIMEOUT_MS =
   Number.isFinite(AUTO_LOGOUT_MINUTES) && AUTO_LOGOUT_MINUTES > 0
     ? AUTO_LOGOUT_MINUTES * 60 * 1000
     : 0;
+const CLERK_TOKEN_SYNC_INTERVAL_MS = 45 * 1000;
 const CLERK_BOOTSTRAP_RETRY_DELAYS_MS = [0, 160, 420, 900];
 const CLERK_BOOTSTRAP_MAX_RETRIES = 4;
 const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
@@ -398,9 +399,7 @@ function ClerkBackedAuthProvider({ children }) {
         return payload;
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
-          setToken("");
-          writeAuthToStorage(clerkToken, null);
-          setUser(null);
+          clearLocalAuth();
           clearTabSessionAuthenticated();
           clearTabLoginIntent();
           return null;
@@ -427,6 +426,47 @@ function ClerkBackedAuthProvider({ children }) {
     },
     [clearLocalAuth, isLoaded, isSignedIn, resolveBootstrapToken]
   );
+
+  // Keep volatile token storage in sync for Cedar pages that still issue
+  // direct fetch() calls with getToken() helpers.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return undefined;
+    let active = true;
+
+    const syncToken = async (forceRefresh = false) => {
+      try {
+        await getAuthToken({ forceRefresh });
+      } catch {
+        // Ignore token refresh failures; request-level code handles auth errors.
+      }
+    };
+
+    syncToken();
+    const intervalId = window.setInterval(() => {
+      if (!active) return;
+      syncToken();
+    }, CLERK_TOKEN_SYNC_INTERVAL_MS);
+
+    const onFocus = () => {
+      if (!active) return;
+      syncToken(true);
+    };
+    const onVisibility = () => {
+      if (!active) return;
+      if (document.visibilityState === "visible") {
+        syncToken(true);
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [getAuthToken, isLoaded, isSignedIn]);
 
   // Keep the ref in sync so the bootstrap effect can call the latest version.
   useEffect(() => {
