@@ -9,7 +9,7 @@
   --as2-card: var(--card, #ffffff);
   --as2-border: var(--card-border, #e7e5e4);
   --as2-radius: var(--radius-lg);
-  --as2-shadow: var(--shadow-lg);
+  --as2-shadow: var(--shadow-sm);
   --as2-text: var(--brand-primary);
   --as2-mute: #64748b;
   --as2-chip: #eef2f6;
@@ -123,7 +123,7 @@
   cursor: pointer;
   font-weight: 600;
   color: var(--as2-text);
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.2;
 }
 
@@ -460,6 +460,11 @@ select.as2-input {
   cursor: pointer;
 }
 
+.as2-filter-chip:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
 .as2-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -486,14 +491,14 @@ select.as2-input {
     border-color 0.18s ease,
     box-shadow 0.18s ease,
     transform 0.06s ease;
-  animation: as2-fadeIn 0.3s ease-out both;
+  animation: as2-fadeIn 0.25s ease-out both;
 }
 
 .as2-card:hover,
 .as2-card:focus-within {
   border-color: #cbd5e1;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
 
 .as2-card-link {
@@ -732,6 +737,12 @@ select.as2-input {
 .as2-pagebtn {
   min-width: 34px;
   justify-content: center;
+  background: #fff;
+  color: var(--as2-text);
+}
+
+.as2-pagebtn:hover:not(.is-current) {
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
 }
 
 .as2-pagebtn.is-current {

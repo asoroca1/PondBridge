@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  AlertCircle,
   Briefcase,
   Building2,
   CalendarDays,
@@ -8,7 +9,9 @@ import {
   GraduationCap,
   MapPin,
   Search,
+  SearchX,
   SlidersHorizontal,
+  Tag,
   Users,
   X,
 } from "lucide-react";
@@ -628,7 +631,7 @@ export default function AdvancedSearch() {
 
             <section className={`as2-sec ${ui.sections.role ? "open" : ""}`}>
               <SectionHead
-                icon={Briefcase}
+                icon={Tag}
                 label="Role / Title"
                 active={sectionActive.role}
                 open={ui.sections.role}
@@ -844,7 +847,7 @@ export default function AdvancedSearch() {
                       onClick={() => {
                         setUi((curr) => ({
                           ...curr,
-                          drawerOpen: false,
+                          drawerOpen: true,
                           sections: { ...curr.sections, name: true },
                         }));
                         requestAnimationFrame(() => nameInputRef.current?.focus());
@@ -863,7 +866,7 @@ export default function AdvancedSearch() {
                       <div
                         className="as2-card as2-skel"
                         key={index}
-                        style={{ animationDelay: `${index * 0.04}s` }}
+                        style={{ animationDelay: `${Math.min(index * 0.04, 0.4)}s` }}
                       >
                         <div className="ph avatar" />
                         <div className="ph name" />
@@ -882,6 +885,9 @@ export default function AdvancedSearch() {
                 {!state.loading && state.error && (
                   <div className="as2-emptywrap">
                     <div className="as2-emptycard">
+                      <div className="as2-empty-icon" style={{ color: '#dc2626' }} aria-hidden="true">
+                        <AlertCircle size={48} />
+                      </div>
                       <h3>We couldn't load results</h3>
                       <p className="muted">{state.error}</p>
                       <button className="as2-btn as2-btn-outline" onClick={clearAll}>
@@ -896,6 +902,9 @@ export default function AdvancedSearch() {
                     {state.items.length === 0 ? (
                       <div className="as2-emptywrap">
                         <div className="as2-emptycard">
+                          <div className="as2-empty-icon" aria-hidden="true">
+                            <SearchX size={48} />
+                          </div>
                           <h3>No matches</h3>
                           <p className="muted">Try widening or clearing your filters.</p>
                           <div className="as2-empty-actions">
@@ -945,7 +954,7 @@ export default function AdvancedSearch() {
                               <div
                                 className="as2-card"
                                 key={id}
-                                style={{ animationDelay: `${index * 0.04}s` }}
+                                style={{ animationDelay: `${Math.min(index * 0.04, 0.4)}s` }}
                               >
                                 <Link
                                   to={profileWithName}
