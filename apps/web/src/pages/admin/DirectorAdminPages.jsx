@@ -322,6 +322,12 @@ function TimeSeriesChartCard({
 
   const areaPath = `${linePath} L ${padding.left + plotWidth} ${(padding.top + plotHeight).toFixed(2)} L ${padding.left} ${(padding.top + plotHeight).toFixed(2)} Z`;
   const yTicks = Array.from({ length: maxValue + 1 }, (_unused, index) => index);
+  const majorGridYKeys = new Set(
+    yTicks.map((value) => (padding.top + (1 - value / maxValue) * plotHeight).toFixed(2))
+  );
+  const minorGridYs = [0.25, 0.5, 0.75]
+    .map((ratio) => padding.top + (1 - ratio) * plotHeight)
+    .filter((y) => !majorGridYKeys.has(y.toFixed(2)));
   const xLabelStep = Math.max(1, Math.round(weekSeries.length / 6));
   const xLabelIndexes = new Set(
     weekSeries
@@ -406,6 +412,17 @@ function TimeSeriesChartCard({
           <text className="director-admin-chart-axis-label x" x={chartWidth / 2} y={chartHeight - 8}>
             {xLabel}
           </text>
+
+          {minorGridYs.map((y) => (
+            <line
+              key={`minor-${y.toFixed(2)}`}
+              className="director-admin-chart-grid-line minor"
+              x1={padding.left}
+              x2={padding.left + plotWidth}
+              y1={y}
+              y2={y}
+            />
+          ))}
 
           {yTicks.map((value) => {
             const y = padding.top + (1 - value / maxValue) * plotHeight;

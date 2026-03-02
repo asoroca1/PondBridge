@@ -3567,6 +3567,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
   shape-rendering: crispEdges;
 }
 
+.pb-cedar-page .director-admin-chart-grid-line.minor{
+  stroke: #edf3fa;
+}
+
 .pb-cedar-page .director-admin-chart-ytick{
   fill: #768ba3;
   font-size: 11px;
