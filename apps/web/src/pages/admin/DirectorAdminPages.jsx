@@ -475,7 +475,7 @@ function TimeSeriesChartCard({
 }
 
 export function DirectorAdminDashboardPage() {
-  const { slug, request } = useAdminApi();
+  const { request } = useAdminApi();
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -570,16 +570,6 @@ export function DirectorAdminDashboardPage() {
         <AdminPageHeader
           title="Admin Overview"
           className="director-admin-page-head"
-          actions={
-            <>
-              <Link className="link-button secondary" to={`/t/${slug}/home`}>
-                View Network
-              </Link>
-              <Button variant="secondary" onClick={loadDashboard}>
-                Refresh
-              </Button>
-            </>
-          }
         />
         {error ? <p className="error-text">{error}</p> : null}
         <div className="director-admin-stat-grid">
