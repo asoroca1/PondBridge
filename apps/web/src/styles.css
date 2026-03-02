@@ -3426,6 +3426,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
   align-items: stretch;
 }
 
+.pb-cedar-page .director-admin-two-col > .pb-card{
+  margin-top: 0;
+}
+
 .pb-cedar-page .director-admin-chart-card{
   display: flex;
   flex-direction: column;
@@ -3543,18 +3547,21 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-chart-axis-label{
   fill: #6a7f97;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .pb-cedar-page .director-admin-chart-axis-label.y{
-  transform-origin: 12px 110px;
+  transform-box: fill-box;
+  transform-origin: center;
   transform: rotate(-90deg);
   text-anchor: middle;
+  dominant-baseline: middle;
 }
 
 .pb-cedar-page .director-admin-chart-axis-label.x{
   text-anchor: middle;
+  dominant-baseline: middle;
 }
 
 .pb-cedar-page .director-admin-chart-grid-line{

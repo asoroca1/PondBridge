@@ -303,7 +303,7 @@ function TimeSeriesChartCard({
 
   const chartHeight = 232;
   const chartWidth = 560;
-  const padding = { top: 16, right: 16, bottom: 36, left: 44 };
+  const padding = { top: 16, right: 16, bottom: 38, left: 52 };
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
   const maxValue = Math.max(1, ...weekSeries.map((point) => point.value));
@@ -394,10 +394,10 @@ function TimeSeriesChartCard({
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverIndex(weekSeries.length ? weekSeries.length - 1 : null)}
         >
-          <text className="director-admin-chart-axis-label y" x={12} y={chartHeight / 2}>
+          <text className="director-admin-chart-axis-label y" x={16} y={chartHeight / 2}>
             {yLabel}
           </text>
-          <text className="director-admin-chart-axis-label x" x={chartWidth / 2} y={chartHeight - 6}>
+          <text className="director-admin-chart-axis-label x" x={chartWidth / 2} y={chartHeight - 8}>
             {xLabel}
           </text>
 
