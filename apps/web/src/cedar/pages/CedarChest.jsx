@@ -158,9 +158,7 @@ export default function CedarChest() {
     setNewsletters((prev) => prev.filter((x) => (x._id || x.id) !== id));
   }
 
-  const subtitleText = newsletters.length
-    ? `${filtered.length} of ${newsletters.length} issues in the archive`
-    : `Seasonal PDF newsletter for the ${networkDisplayName} community.`;
+  const subtitleText = `Seasonal PDF newsletter for the ${networkDisplayName} community.`;
 
   return (
     <>
@@ -302,8 +300,47 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
   const pdfUrl = item?.pdfUrl || item?.url || item?.fileUrl;
   const created = item?.createdAt || item?.created_at;
 
+  const [opening, setOpening] = useState(false);
+  const [openErr, setOpenErr] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [delErr, setDelErr] = useState("");
+
+  async function handleOpenPdf() {
+    if (!pdfUrl || opening) return;
+    setOpening(true);
+    setOpenErr("");
+    try {
+      const token = String(getToken() || "").trim();
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const res = await fetch(pdfUrl, {
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? "Your session expired. Please sign in again." : "Failed to load PDF.");
+      }
+
+      const blob = await res.blob();
+      if (!blob || !blob.size) throw new Error("PDF file is empty.");
+      const objectUrl = URL.createObjectURL(blob);
+      const popup = window.open(objectUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      setOpenErr(String(error?.message || "Failed to load PDF."));
+      window.setTimeout(() => setOpenErr(""), 4500);
+    } finally {
+      setOpening(false);
+    }
+  }
 
   async function handleDelete() {
     if (!isAdmin || !id) return;
@@ -342,10 +379,10 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
 
       <div className="cc-card-actions">
         {pdfUrl ? (
-          <a className="cc-btn cc-btn-primary" href={pdfUrl} target="_blank" rel="noreferrer">
+          <button type="button" className="cc-btn cc-btn-primary" onClick={handleOpenPdf} disabled={opening}>
             <FileText size={14} />
-            View PDF
-          </a>
+            {opening ? "Opening..." : "View PDF"}
+          </button>
         ) : (
           <span className="cc-miss">PDF missing</span>
         )}
@@ -363,6 +400,7 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
         )}
       </div>
 
+      {!!openErr && <div className="cc-error small">{openErr}</div>}
       {!!delErr && <div className="cc-error small">{delErr}</div>}
     </article>
   );
