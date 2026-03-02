@@ -1,18 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
-import {
-  resolveNetworkDisplayName,
-  resolveNewsletterLabel
-} from "../../lib/campLabels.js";
+import { resolveNetworkDisplayName, resolveNewsletterLabel } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, fmtDate } from "../lib/helpers.js";
-import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./cedar-chest.css";
-import { Newspaper } from "lucide-react";
-
+import { FileText, Newspaper } from "lucide-react";
 
 const API = API_BASE;
 
@@ -26,7 +21,11 @@ function normalizeRoleSet(value = {}) {
         : [];
   return new Set(
     rawRoles
-      .map((role) => String(role || "").trim().toLowerCase())
+      .map((role) =>
+        String(role || "")
+          .trim()
+          .toLowerCase()
+      )
       .filter(Boolean)
   );
 }
@@ -48,11 +47,7 @@ function readJwtRoles() {
     const token = getToken();
     if (!token) return [];
     const payload = JSON.parse(atob(token.split(".")[1]));
-    return Array.isArray(payload?.roles)
-      ? payload.roles
-      : payload?.role
-        ? [payload.role]
-        : [];
+    return Array.isArray(payload?.roles) ? payload.roles : payload?.role ? [payload.role] : [];
   } catch {
     return [];
   }
@@ -67,8 +62,6 @@ export default function CedarChest() {
   const [err, setErr] = useState("");
   const [season, setSeason] = useState("");
   const [year, setYear] = useState("");
-  const [subEmail, setSubEmail] = useState("");
-  const [subMsg, setSubMsg] = useState("");
   const [adminProbeAllowed, setAdminProbeAllowed] = useState(false);
   const networkDisplayName = resolveNetworkDisplayName(tenant);
   const newsletterLabel = resolveNewsletterLabel(tenant);
@@ -86,7 +79,7 @@ export default function CedarChest() {
         if (!res.ok) throw new Error("Failed to load newsletters");
         const j = await res.json();
         if (!ignore) {
-          setNewsletters(Array.isArray(j) ? j : j?.items ?? []);
+          setNewsletters(Array.isArray(j) ? j : (j?.items ?? []));
         }
       } catch (e) {
         if (!ignore) setErr(e.message || "Error");
@@ -103,7 +96,7 @@ export default function CedarChest() {
   const roleBasedAdmin = useMemo(
     () =>
       hasDirectorPrivileges(authUser, {
-        roles: readJwtRoles()
+        roles: readJwtRoles(),
       }),
     [authUser]
   );
@@ -149,9 +142,7 @@ export default function CedarChest() {
   // Client-side filtering
   const filtered = useMemo(() => {
     return newsletters
-      .filter((n) =>
-        season ? String(n?.season).toLowerCase() === season.toLowerCase() : true
-      )
+      .filter((n) => (season ? String(n?.season).toLowerCase() === season.toLowerCase() : true))
       .filter((n) => (year ? String(n?.year) === String(year) : true))
       .sort((a, b) => {
         // newest (by year desc, then typical season order) first:
@@ -162,79 +153,117 @@ export default function CedarChest() {
       });
   }, [newsletters, season, year]);
 
-  // Subscribe UI (front-end only for now)
-  function handleSubscribe(e) {
-    e.preventDefault();
-    if (!subEmail || !/\S+@\S+\.\S+/.test(subEmail)) {
-      setSubMsg("Please enter a valid email.");
-      return;
-    }
-    // UI only; later: POST to /api/subscribe
-    setSubMsg(`Thanks! You’ll get the next ${newsletterLabel} in your inbox.`);
-    setTimeout(() => setSubMsg(""), 3000);
-    setSubEmail("");
-  }
-
   // remove from state when deleted
   function handleDeleted(id) {
     setNewsletters((prev) => prev.filter((x) => (x._id || x.id) !== id));
   }
+
+  const subtitleText = newsletters.length
+    ? `${filtered.length} of ${newsletters.length} issues in the archive`
+    : `Seasonal PDF newsletter for the ${networkDisplayName} community.`;
 
   return (
     <>
       {/* background visible; keep as you last set it */}
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <main className="cc-wrap nav2-page-shell">
-      <CedarPageHeader
-        icon={<Newspaper size={18} />}
-        title={`The ${newsletterLabel}`}
-        subtitle={`Seasonal PDF newsletter for the ${networkDisplayName} community.`}
-      >
-        <div className="cc-filters" role="group" aria-label="Filter newsletters">
+        <CedarPageHeader
+          icon={<Newspaper size={18} />}
+          title={`The ${newsletterLabel}`}
+          subtitle={subtitleText}
+        >
+          <div className="cc-filters" role="group" aria-label="Filter newsletters">
             <label className="cc-filter">
-            <div className="cc-filter-label">Season</div>
-            <select value={season} onChange={(e)=>setSeason(e.target.value)}>
+              <div className="cc-filter-label">Season</div>
+              <select
+                className={season ? "active" : ""}
+                value={season}
+                onChange={(e) => setSeason(e.target.value)}
+              >
                 <option value="">All</option>
-                {["Winter","Spring","Summer","Fall"].map(s => (
-                <option key={s} value={s}>{s}</option>
+                {["Winter", "Spring", "Summer", "Fall"].map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
                 ))}
                 {seasonsInData
-                .filter(s => !["Winter","Spring","Summer","Fall"].includes(s))
-                .map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+                  .filter((s) => !["Winter", "Spring", "Summer", "Fall"].includes(s))
+                  .map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+              </select>
             </label>
             <label className="cc-filter">
-            <div className="cc-filter-label">Year</div>
-            <select value={year} onChange={(e)=>setYear(e.target.value)}>
+              <div className="cc-filter-label">Year</div>
+              <select
+                className={year ? "active" : ""}
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+              >
                 <option value="">All</option>
-                {yearsInData.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+                {yearsInData.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             </label>
-        </div>
-      </CedarPageHeader>
-
+          </div>
+        </CedarPageHeader>
 
         {/* TWO-COLUMN GRID */}
-        <section className="cc-layout">
+        <section className={`cc-layout${isAdmin ? "" : " cc-layout-single"}`}>
           {/* LEFT: newsletter stream OR status — this column is the anchor for alignment */}
           <div className="cc-left">
-            {loading && <CedarSkeleton.Lines lines={4} />}
-            {err && !loading && (
-              <div className="cc-error">Couldn’t load newsletters: {err}</div>
+            {loading && (
+              <section className="cc-list">
+                {[0, 1, 2].map((idx) => (
+                  <article key={idx} className="cc-card cc-skel">
+                    <div className="cc-skel-chip" />
+                    <div className="cc-skel-title" />
+                    <div className="cc-skel-date" />
+                    <div className="cc-skel-btn" />
+                  </article>
+                ))}
+              </section>
             )}
+            {err && !loading && <div className="cc-error">Couldn’t load newsletters: {err}</div>}
 
             {!loading && !err && (
               <section className="cc-list">
                 {filtered.length === 0 ? (
-                  <div className="cc-empty">No newsletters match your filters.</div>
+                  <div className="cc-empty">
+                    <FileText size={36} className="cc-empty-icon" />
+                    <h3 className="cc-empty-title">No newsletters found</h3>
+                    <p className="cc-empty-text">
+                      {season || year
+                        ? "Try changing your season or year filter."
+                        : "No newsletters have been published yet."}
+                    </p>
+                    {(season || year) && (
+                      <button
+                        type="button"
+                        className="cc-btn"
+                        onClick={() => {
+                          setSeason("");
+                          setYear("");
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
                 ) : (
-                  filtered.map((n) => (
+                  filtered.map((n, index) => (
                     <NewsletterCard
                       key={n._id || n.id}
                       item={n}
                       newsletterLabel={newsletterLabel}
                       isAdmin={isAdmin}
                       onDeleted={handleDeleted}
+                      index={index}
                     />
                   ))
                 )}
@@ -243,25 +272,11 @@ export default function CedarChest() {
           </div>
 
           {/* RIGHT: subscribe (top) + admin (below) */}
-          <aside className="cc-right">
-            <div className="cc-rail">
-              {/*<section className="cc-subscribe">
-                <h2>{`Get the ${newsletterLabel} by Email`}</h2>
-                <form onSubmit={handleSubscribe} className="cc-sub-form">
-                  <input
-                    type="email"
-                    placeholder="your@email.com"
-                    value={subEmail}
-                    onChange={(e) => setSubEmail(e.target.value)}
-                    aria-label="Email address"
-                  />
-                  <button type="submit">Subscribe</button>
-                  </form>
-                {!!subMsg && <div className="cc-sub-msg">{subMsg}</div>}
-              </section>*/}
-              {isAdmin && (
+          {isAdmin && (
+            <aside className="cc-right">
+              <div className="cc-rail">
                 <section className="cc-admin">
-                  <h2>{`Upload New ${newsletterLabel} (Admin)`}</h2>
+                  <h2>Publish New Issue</h2>
                   <AdminUpload
                     compact
                     newsletterLabel={newsletterLabel}
@@ -270,9 +285,9 @@ export default function CedarChest() {
                     }}
                   />
                 </section>
-              )}
-            </div>
-          </aside>
+              </div>
+            </aside>
+          )}
         </section>
       </main>
     </>
@@ -280,7 +295,7 @@ export default function CedarChest() {
 }
 
 // ===== card =====
-function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted }) {
+function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }) {
   const id = item?._id || item?.id;
   const title =
     item?.title || `${item?.season || ""} ${item?.year || ""} ${newsletterLabel}`.trim();
@@ -314,9 +329,11 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted }) {
   }
 
   return (
-    <article className="cc-card">
+    <article className="cc-card" style={{ animationDelay: `${index * 0.04}s` }}>
       <div className="cc-card-meta">
-        <div className="cc-chip">{item?.season}</div>
+        <div className="cc-chip" data-season={item?.season}>
+          {item?.season}
+        </div>
         <div className="cc-year">{item?.year}</div>
       </div>
 
@@ -325,7 +342,8 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted }) {
 
       <div className="cc-card-actions">
         {pdfUrl ? (
-          <a className="cc-btn" href={pdfUrl} target="_blank" rel="noreferrer">
+          <a className="cc-btn cc-btn-primary" href={pdfUrl} target="_blank" rel="noreferrer">
+            <FileText size={14} />
             View PDF
           </a>
         ) : (
@@ -359,6 +377,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
   const [emailToNetwork, setEmailToNetwork] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const fileRef = useRef(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -373,6 +392,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
 
     setBusy(true);
     setMsg("");
+    let timeoutMs = 3000;
     try {
       const fd = new FormData();
       if (title) fd.append("title", title);
@@ -390,6 +410,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
       const created = await res.json();
       const delivery = created?.emailDelivery || null;
       if (delivery?.requested) {
+        timeoutMs = 6000;
         if (delivery.status === "sent") {
           setMsg(`Uploaded and emailed to ${Number(delivery?.sent || 0)} members.`);
         } else if (delivery.status === "partial_failure") {
@@ -410,13 +431,14 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
       setSeason("");
       setYear(new Date().getFullYear());
       setPdf(null);
+      if (fileRef.current) fileRef.current.value = "";
       setEmailToNetwork(false);
       onUploaded?.(created);
     } catch (e) {
       setMsg(e.message || "Upload failed");
     } finally {
       setBusy(false);
-      setTimeout(() => setMsg(""), 3000);
+      setTimeout(() => setMsg(""), timeoutMs);
     }
   }
 
@@ -456,13 +478,23 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
         </div>
       </div>
 
+      <div className="cc-form-divider" />
+
       <div className="cc-row">
         <label>PDF File</label>
-        <input
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => setPdf(e.target.files?.[0] || null)}
-        />
+        <div className="cc-file-upload">
+          <button type="button" className="cc-file-btn" onClick={() => fileRef.current?.click()}>
+            Choose PDF
+          </button>
+          <span className="cc-file-name">{pdf ? pdf.name : "No file selected"}</span>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/pdf"
+            hidden
+            onChange={(e) => setPdf(e.target.files?.[0] || null)}
+          />
+        </div>
       </div>
 
       <div className="cc-row">
@@ -472,13 +504,21 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
             checked={emailToNetwork}
             onChange={(event) => setEmailToNetwork(event.target.checked)}
           />
-          <span>Email this newsletter to everyone in the network (PDF attached)</span>
+          <span>Email to all members</span>
         </label>
+        <p className="cc-check-help">PDF will be attached to the email.</p>
       </div>
 
       <div className="cc-actions">
         <button type="submit" disabled={busy}>
-          {busy ? "Uploading…" : "Upload Newsletter"}
+          {busy ? (
+            <>
+              <span className="cc-spinner" aria-hidden="true" />
+              Uploading...
+            </>
+          ) : (
+            "Upload Issue"
+          )}
         </button>
         {msg && <span className="cc-msg">{msg}</span>}
       </div>
@@ -496,7 +536,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
   // non-compact legacy rendering (kept for reuse elsewhere if needed)
   return (
     <section className="cc-admin">
-      <h2>{`Upload New ${newsletterLabel} (Admin)`}</h2>
+      <h2>Publish New Issue</h2>
       {Form}
     </section>
   );

@@ -1,4 +1,3 @@
-// src/pages/LocationMap.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -6,7 +5,7 @@ import { useParams } from "react-router-dom";
 
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
-import { MapPin } from "lucide-react";
+import { MapPin, RotateCcw, X } from "lucide-react";
 import { API_BASE } from "../lib/api";
 import { getToken, initialsOf } from "../lib/helpers.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -17,11 +16,11 @@ function nameOf(p) {
   const full = [p.firstName, p.lastName].filter(Boolean).join(" ").trim();
   return full || "Alumni Member";
 }
+
 function cityLabel(c) {
   return [c.city, c.state].filter(Boolean).join(", ");
 }
 
-// same sizing logic as your step expression
 function markerSize(count) {
   const n = Number(count || 0);
   if (n >= 20) return 36;
@@ -30,7 +29,16 @@ function markerSize(count) {
   return 22;
 }
 
-const DEFAULT_VIEW = { center: [-98.5795, 39.8283], zoom: 3.5 }; // USA center
+function escapeHtml(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const DEFAULT_VIEW = { center: [-98.5795, 39.8283], zoom: 3.5 };
 const CITIES_CACHE_KEY = "map:cities:v1";
 const CITIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const PEOPLE_CACHE_PREFIX = "map:city:people:v1:";
@@ -39,25 +47,48 @@ const PEOPLE_CACHE_TTL_MS = 2 * 60 * 1000;
 export default function LocationMap() {
   const { slug = "" } = useParams();
   const { getAuthToken } = useAuth();
+
   const mapRef = useRef(null);
   const mapEl = useRef(null);
+  const resultsRef = useRef(null);
 
-  const markersRef = useRef([]); // store Marker instances so we can remove them
-  const citiesRef = useRef([]);  // latest cities for map load race-proof
+  const markersRef = useRef([]);
+  const selectedMarkerRef = useRef(null);
+  const citiesRef = useRef([]);
+  const selectedRef = useRef(null);
+
   const loadedRef = useRef(false);
   const peopleReqRef = useRef(0);
   const peopleCacheRef = useRef(new Map());
 
-  const [cities, setCities] = useState([]);       // [{city,state,lat,lng,count,key}]
-  const [selected, setSelected] = useState(null); // selected city object
-  const [people, setPeople] = useState([]);       // people for selected city
+  const [cities, setCities] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [people, setPeople] = useState([]);
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingCities, setLoadingCities] = useState(true);
+
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  const totalAlumni = useMemo(
+    () => cities.reduce((sum, city) => sum + Number(city?.count || 0), 0),
+    [cities]
+  );
+
   const brandPrimary = useMemo(() => {
     if (typeof window === "undefined") return "#002b5c";
-    const resolved = window.getComputedStyle(document.documentElement).getPropertyValue("--brand-primary").trim();
+    const resolved = window
+      .getComputedStyle(document.documentElement)
+      .getPropertyValue("--brand-primary")
+      .trim();
     return resolved || "#002b5c";
   }, []);
+
+  const subtitleText =
+    cities.length > 0
+      ? `${totalAlumni} alumni across ${cities.length} cities`
+      : "Explore where your alumni network lives around the world.";
 
   async function resolveToken() {
     if (typeof getAuthToken === "function") {
@@ -91,6 +122,9 @@ export default function LocationMap() {
         lastName: p.lastName || "",
         uploads: p.uploads || {},
         photoUrl: p.photoUrl,
+        industry: p.industry || p.primaryIndustry || "",
+        currentJob: p.currentJob || p.currentJobTitle || "",
+        company: p.currentCompany || p.company || "",
       }))
       .filter((p) => p.id);
   }
@@ -129,11 +163,32 @@ export default function LocationMap() {
     }
   }
 
+  function clearHighlightedMarker() {
+    if (!selectedMarkerRef.current) return;
+    selectedMarkerRef.current.classList.remove("is-selected");
+    selectedMarkerRef.current.style.zIndex = "";
+    selectedMarkerRef.current = null;
+  }
+
+  function highlightMarker(el) {
+    if (!el) return;
+    if (selectedMarkerRef.current && selectedMarkerRef.current !== el) {
+      selectedMarkerRef.current.classList.remove("is-selected");
+      selectedMarkerRef.current.style.zIndex = "";
+    }
+    el.classList.add("is-selected");
+    el.style.zIndex = "3";
+    selectedMarkerRef.current = el;
+  }
+
   function clearMarkers() {
-    for (const m of markersRef.current) {
+    clearHighlightedMarker();
+    for (const marker of markersRef.current) {
       try {
-        m.remove();
-      } catch {}
+        marker.remove();
+      } catch {
+        // ignore remove failures
+      }
     }
     markersRef.current = [];
   }
@@ -144,75 +199,94 @@ export default function LocationMap() {
 
     clearMarkers();
 
-    (list || []).forEach((c) => {
-      const lat = Number(c.lat);
-      const lng = Number(c.lng);
-      const count = Number(c.count || 0);
+    (list || []).forEach((city, index) => {
+      const lat = Number(city.lat);
+      const lng = Number(city.lng);
+      const count = Number(city.count || 0);
       if (!Number.isFinite(lat) || !Number.isFinite(lng) || count <= 0) return;
 
       const size = markerSize(count);
+      const cityKey = String(city.key || "")
+        .trim()
+        .toLowerCase();
+      const label = [city.city, city.state].filter(Boolean).join(", ");
 
       const el = document.createElement("div");
+      el.className = "lm-marker";
+      el.dataset.cityKey = cityKey;
       el.style.width = `${size}px`;
       el.style.height = `${size}px`;
-      el.style.borderRadius = "999px";
       el.style.background = brandPrimary;
-      el.style.border = "2px solid #ffffff";
-      el.style.display = "flex";
-      el.style.alignItems = "center";
-      el.style.justifyContent = "center";
-      el.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.18)";
-      el.style.cursor = "pointer";
-      el.style.userSelect = "none";
 
-      // Keep markers clean: no numeric badge over the map.
-      const core = document.createElement("span");
-      const coreSize = Math.max(6, Math.round(size * 0.28));
-      core.style.width = `${coreSize}px`;
-      core.style.height = `${coreSize}px`;
-      core.style.borderRadius = "999px";
-      core.style.background = "#ffffff";
-      core.style.opacity = "0.95";
-      el.appendChild(core);
+      if (count >= 2) {
+        const countLabel = document.createElement("span");
+        countLabel.className = "lm-marker-count";
+        countLabel.textContent = count > 99 ? "99+" : String(count);
+        countLabel.style.fontSize = size <= 26 ? "10px" : "12px";
+        el.appendChild(countLabel);
+      } else {
+        const dot = document.createElement("span");
+        dot.className = "lm-marker-dot";
+        const dotSize = Math.max(6, Math.round(size * 0.28));
+        dot.style.width = `${dotSize}px`;
+        dot.style.height = `${dotSize}px`;
+        el.appendChild(dot);
+      }
 
       const marker = new maplibregl.Marker({ element: el, anchor: "center" })
         .setLngLat([lng, lat])
         .addTo(map);
 
-      // Click marker -> select city + load people
+      setTimeout(() => {
+        el.classList.add("is-ready");
+      }, index * 20);
+
+      if (selectedRef.current?.key && cityKey === String(selectedRef.current.key).toLowerCase()) {
+        highlightMarker(el);
+      }
+
       el.addEventListener("click", () => {
         const sel = {
-          key: String(c.key || ""),
-          city: String(c.city || ""),
-          state: String(c.state || ""),
+          key: cityKey,
+          city: String(city.city || ""),
+          state: String(city.state || ""),
           count,
           lat,
           lng,
         };
+
+        highlightMarker(el);
         setSelected(sel);
         loadPeople(sel);
         map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 7) });
+
+        setTimeout(() => {
+          resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 300);
       });
 
-      // (optional) hover tooltip
-      const label = [c.city, c.state].filter(Boolean).join(", ");
       let popup = null;
       el.addEventListener("mouseenter", () => {
         if (!label) return;
+
         popup = new maplibregl.Popup({
           closeButton: false,
           closeOnClick: false,
           offset: 14,
         })
           .setLngLat([lng, lat])
-          .setHTML(`<div style="font-weight:700;color:#0f172a;">${label}</div>`)
+          .setHTML(
+            `<div class=\"lm-tip-title\">${escapeHtml(label)}</div><div class=\"lm-tip-meta\">${count} alumni</div>`
+          )
           .addTo(map);
-        
       });
+
       el.addEventListener("mouseleave", () => {
         try {
-          popup && popup.remove();
-        } catch {}
+          popup?.remove();
+        } catch {
+          // ignore popup teardown failures
+        }
         popup = null;
       });
 
@@ -220,20 +294,16 @@ export default function LocationMap() {
     });
   }
 
-  /* ------------------------------ Init map ------------------------------ */
   useEffect(() => {
     if (!mapEl.current) return;
     if (mapRef.current) return;
 
     const el = mapEl.current;
-    el.style.height = "60vh";
-    el.style.minHeight = "420px";
-    el.style.position = "relative";
 
     const glOK = (() => {
       try {
-        const c = document.createElement("canvas");
-        return !!(c.getContext("webgl") || c.getContext("experimental-webgl"));
+        const canvas = document.createElement("canvas");
+        return !!(canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
       } catch {
         return false;
       }
@@ -248,7 +318,6 @@ export default function LocationMap() {
       return;
     }
 
-    // Raster-only style (no glyphs needed)
     const style = {
       version: 8,
       sources: {
@@ -279,18 +348,17 @@ export default function LocationMap() {
 
     map.on("load", () => {
       loadedRef.current = true;
-
-      // render markers immediately on load (handles fetch-before-load)
       renderMarkers(citiesRef.current);
 
-      // Safari/WebKit nudges
       map.resize();
       requestAnimationFrame(() => map.resize());
       setTimeout(() => map.resize(), 0);
       setTimeout(() => map.resize(), 250);
     });
 
-    map.on("error", (e) => console.error("[Map] runtime/style error:", e?.error || e));
+    map.on("error", (event) => {
+      console.error("[Map] runtime/style error:", event?.error || event);
+    });
 
     mapRef.current = map;
 
@@ -302,9 +370,8 @@ export default function LocationMap() {
       }
       loadedRef.current = false;
     };
-  }, []);
+  }, [brandPrimary]);
 
-  /* -------------------------- Fetch cities from backend ------------------------- */
   useEffect(() => {
     let cancelled = false;
 
@@ -333,13 +400,13 @@ export default function LocationMap() {
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
         const res = await fetch(`${API_BASE}/map/cities`, { headers });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
 
-        // accept numbers OR numeric strings
+        const data = await res.json();
         const list = normalizeCities(data);
 
         if (!cancelled) {
           if (list.length === 0 && citiesRef.current.length) return;
+
           setCities(list);
           citiesRef.current = list;
           try {
@@ -351,11 +418,10 @@ export default function LocationMap() {
             // ignore cache write failures
           }
 
-          // if map already loaded, update markers now
           if (loadedRef.current) renderMarkers(list);
         }
-      } catch (err) {
-        console.error("Failed to load city map data", err);
+      } catch (error) {
+        console.error("Failed to load city map data", error);
         if (!cancelled) {
           if (citiesRef.current.length) return;
           setCities([]);
@@ -372,7 +438,6 @@ export default function LocationMap() {
     };
   }, []);
 
-  /* ------------------------------ Load people list ----------------------------- */
   async function loadPeople(citySel) {
     const reqId = ++peopleReqRef.current;
     const cityKey = String(citySel?.key || "").trim();
@@ -400,9 +465,12 @@ export default function LocationMap() {
       if (citySel?.state) params.set("state", String(citySel.state));
       const query = params.toString();
 
-      const res = await fetch(`${API_BASE}/map/city/${encodeURIComponent(cityKey)}${query ? `?${query}` : ""}`, {
-        headers,
-      });
+      const res = await fetch(
+        `${API_BASE}/map/city/${encodeURIComponent(cityKey)}${query ? `?${query}` : ""}`,
+        {
+          headers,
+        }
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
@@ -412,8 +480,8 @@ export default function LocationMap() {
         setPeople(cleaned);
         setCachedPeople(cityKey, cleaned);
       }
-    } catch (e) {
-      console.error("Failed to load people for city", e);
+    } catch (error) {
+      console.error("Failed to load people for city", error);
       if (reqId === peopleReqRef.current) setPeople([]);
     } finally {
       if (reqId === peopleReqRef.current) setLoadingPeople(false);
@@ -422,53 +490,86 @@ export default function LocationMap() {
 
   function clearSelection() {
     peopleReqRef.current += 1;
+    clearHighlightedMarker();
     setSelected(null);
     setPeople([]);
-    // don’t need to change markers; user can click another
   }
 
-  const emptySelectionMessage = loadingCities
-    ? "Loading alumni location data..."
-    : cities.length === 0
-      ? "No alumni locations available yet. Add location details to member profiles and this map will populate automatically."
-      : "Click a city circle on the map to see alumni there.";
+  function resetMapView() {
+    clearSelection();
+    mapRef.current?.easeTo({ center: DEFAULT_VIEW.center, zoom: DEFAULT_VIEW.zoom });
+  }
+
+  const skeletonCount = Math.max(3, Math.min(Number(selected?.count || 6), 12));
 
   return (
-    <div className="lm-wrap" style={{ position: "relative", minHeight: "100vh" }}>
+    <div className="lm-wrap">
       <CedarBackground behavior="scroll" opacity={0.9} zIndex={0} />
 
       <main className="lm-main nav2-page-shell">
         <CedarPageHeader
           icon={<MapPin size={18} />}
           title="Alumni Location Map"
-          subtitle="Explore where your alumni network lives around the world."
-        />
+          subtitle={subtitleText}
+        >
+          <button type="button" className="lm-reset-view-btn" onClick={resetMapView}>
+            <RotateCcw size={14} />
+            Reset view
+          </button>
+        </CedarPageHeader>
 
         <section className="lm-map-card">
           <div className="lm-map" ref={mapEl} />
         </section>
 
-        <section className="lm-results">
+        <section className="lm-results" ref={resultsRef}>
           {!selected ? (
-            <div className="lm-empty">{emptySelectionMessage}</div>
+            loadingCities ? (
+              <div className="lm-prompt lm-prompt-loading">
+                <span className="lm-prompt-spinner" aria-hidden="true" />
+                <p>Loading alumni locations...</p>
+              </div>
+            ) : cities.length === 0 ? (
+              <div className="lm-prompt lm-prompt-empty">
+                <MapPin size={36} className="lm-prompt-icon" aria-hidden="true" />
+                <h3>No locations mapped yet</h3>
+                <p>
+                  Alumni locations will appear here as members add city and state to their profiles.
+                </p>
+              </div>
+            ) : (
+              <div className="lm-prompt">
+                <MapPin size={36} className="lm-prompt-icon" aria-hidden="true" />
+                <h3>Select a city to explore</h3>
+                <p>Click any pin on the map to see alumni who live there.</p>
+                <p className="lm-prompt-stat">
+                  {totalAlumni} alumni across {cities.length} cities
+                </p>
+              </div>
+            )
           ) : (
-            <>
+            <div className="lm-results-panel">
               <div className="lm-results-head">
                 <div className="lm-results-title">
                   <h2>{cityLabel(selected)}</h2>
-                  <p>{people.length || selected.count} alumni</p>
+                  <p>{people.length || Number(selected.count || 0)} alumni</p>
                 </div>
                 <div className="lm-results-actions">
-                  <button className="lm-clear-btn" onClick={clearSelection}>
-                    Clear
+                  <button type="button" className="lm-clear-btn" onClick={clearSelection}>
+                    <X size={14} />
+                    Clear selection
                   </button>
                 </div>
               </div>
 
               {loadingPeople ? (
                 <div className="lm-grid">
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <div key={i} className="lm-card lm-skel" />
+                  {Array.from({ length: skeletonCount }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="lm-card lm-skel"
+                      style={{ animationDelay: `${index * 0.04}s` }}
+                    />
                   ))}
                 </div>
               ) : people.length === 0 ? (
@@ -477,23 +578,58 @@ export default function LocationMap() {
                 </div>
               ) : (
                 <div className="lm-grid">
-                  {people.map((p) => {
-                    const profileId = String(p.id || p._id || p.profileId || p.userId || "").trim();
-                    if (!profileId || profileId === "undefined" || profileId === "null") return null;
-                    const photo = p.uploads?.photoUrl || p.photoUrl || "";
-                    const initials = initialsOf(p);
+                  {people.map((person, index) => {
+                    const profileId = String(
+                      person.id || person._id || person.profileId || person.userId || ""
+                    ).trim();
+                    if (!profileId || profileId === "undefined" || profileId === "null")
+                      return null;
+
+                    const photo = person.uploads?.photoUrl || person.photoUrl || "";
+                    const initials = initialsOf(person);
                     const profileHref = tenantRoute(slug, `/profile/${profileId}`);
-                    const dmHref = tenantRoute(slug, `/chat-rooms?to=${encodeURIComponent(profileId)}`);
+                    const dmHref = tenantRoute(
+                      slug,
+                      `/chat-rooms?to=${encodeURIComponent(profileId)}`
+                    );
+
+                    const roleText = [person.currentJob, person.company]
+                      .filter(Boolean)
+                      .join(" at ");
+
                     return (
-                      <article key={profileId} className="lm-card">
+                      <article
+                        key={profileId}
+                        className="lm-card"
+                        style={{ animationDelay: `${index * 0.04}s` }}
+                      >
                         {photo ? (
-                          <img className="lm-avatar" src={photo} alt={nameOf(p)} />
+                          <img className="lm-avatar" src={photo} alt={nameOf(person)} />
                         ) : (
-                          <div className="lm-avatar lm-initials" aria-label={nameOf(p)}>
+                          <div className="lm-avatar lm-initials" aria-label={nameOf(person)}>
                             {initials}
                           </div>
                         )}
-                        <div className="lm-name">{nameOf(p)}</div>
+
+                        <div className="lm-name" title={nameOf(person)}>
+                          {nameOf(person)}
+                        </div>
+
+                        {(person.industry || roleText) && (
+                          <div className="lm-meta">
+                            {person.industry && (
+                              <span className="lm-industry-pill" title={person.industry}>
+                                {person.industry}
+                              </span>
+                            )}
+                            {roleText && (
+                              <span className="lm-role" title={roleText}>
+                                {roleText}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         <div className="lm-actions">
                           <a className="lm-btn primary" href={profileHref}>
                             View Profile
@@ -507,7 +643,7 @@ export default function LocationMap() {
                   })}
                 </div>
               )}
-            </>
+            </div>
           )}
         </section>
       </main>

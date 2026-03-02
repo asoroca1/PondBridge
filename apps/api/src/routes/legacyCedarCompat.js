@@ -80,7 +80,20 @@ const CITY_STATE_PARSE_CACHE_LIMIT = Math.max(
   1000,
   Number(process.env.MAP_CITY_STATE_PARSE_CACHE_LIMIT || 6000)
 );
-const MAP_CITY_PROFILE_SELECT = ["id", "firstName", "lastName", "avatarUrl", "cityState"];
+const MAP_CITY_PROFILE_SELECT = [
+  "id",
+  "firstName",
+  "lastName",
+  "avatarUrl",
+  "cityState",
+  "industry",
+  "primaryIndustry",
+  "currentJob",
+  "currentJobTitle",
+  "currentCompany",
+  "company",
+  "currentJobs"
+];
 const citiesCacheByTenant = new Map(); // tenantId -> { data, expiresAt, inflight }
 const cityPeopleCacheByTenant = new Map(); // tenantId -> Map(cityKey -> { data, expiresAt, inflight })
 const geocodeQueue = new Map();
@@ -501,13 +514,22 @@ async function loadMapProfilesForCity(tenantId, { city = "", state = "" } = {}) 
 function mapCityPerson(profile) {
   const id = String(profile._id || profile.id || "").trim();
   if (!id) return null;
+  const jobs = Array.isArray(profile.currentJobs) ? profile.currentJobs : [];
+  const firstJob = jobs.find((job) => job && (job.title || job.role || job.company)) || {};
+  const currentJob = String(
+    profile.currentJob || profile.currentJobTitle || firstJob.title || firstJob.role || ""
+  ).trim();
+  const company = String(profile.currentCompany || profile.company || firstJob.company || "").trim();
   return {
     _id: id,
     id,
     firstName: profile.firstName || "",
     lastName: profile.lastName || "",
     uploads: { photoUrl: profile.avatarUrl || "" },
-    photoUrl: profile.avatarUrl || ""
+    photoUrl: profile.avatarUrl || "",
+    industry: String(profile.industry || profile.primaryIndustry || "").trim(),
+    currentJob,
+    company
   };
 }
 

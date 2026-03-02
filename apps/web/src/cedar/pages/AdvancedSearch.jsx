@@ -1,6 +1,18 @@
-// src/pages/AdvancedSearch.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams, useNavigate, Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Briefcase,
+  Building2,
+  CalendarDays,
+  ChevronDown,
+  GraduationCap,
+  MapPin,
+  Search,
+  SlidersHorizontal,
+  Users,
+  X,
+} from "lucide-react";
+
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { API_BASE } from "../lib/api";
@@ -8,79 +20,105 @@ import { getToken } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
 import "./advanced-search.css";
 
-/* ---------- helpers ---------- */
-function pickCurrentJob(p = {}) {
-  if (p.currentJob) {
-    if (typeof p.currentJob === "string") {
-      const [rawRole, rawCompany] = p.currentJob.split("@").map((s) => s?.trim());
+function pickCurrentJob(profile = {}) {
+  if (profile.currentJob) {
+    if (typeof profile.currentJob === "string") {
+      const [rawRole, rawCompany] = profile.currentJob.split("@").map((value) => value?.trim());
       return { role: rawRole || "", company: rawCompany || "" };
     }
-    if (typeof p.currentJob === "object" && p.currentJob !== null) {
-      const role = p.currentJob.role || p.currentJob.title || p.currentJob.jobTitle || "";
-      const company = p.currentJob.company || p.currentJob.organization || p.currentJob.org || "";
+    if (typeof profile.currentJob === "object" && profile.currentJob !== null) {
+      const role =
+        profile.currentJob.role || profile.currentJob.title || profile.currentJob.jobTitle || "";
+      const company =
+        profile.currentJob.company ||
+        profile.currentJob.organization ||
+        profile.currentJob.org ||
+        "";
       if (role || company) return { role, company };
     }
   }
-  const singleRole = p.currentJobTitle || p.jobTitle || p.title || p.currentRole || "";
-  const singleCompany = p.currentCompany || p.company || "";
+
+  const singleRole =
+    profile.currentJobTitle || profile.jobTitle || profile.title || profile.currentRole || "";
+  const singleCompany = profile.currentCompany || profile.company || "";
   const arr =
-    (Array.isArray(p.currentJobs) && p.currentJobs) ||
-    (Array.isArray(p.jobs) && p.jobs) ||
-    (Array.isArray(p.employment) && p.employment) ||
+    (Array.isArray(profile.currentJobs) && profile.currentJobs) ||
+    (Array.isArray(profile.jobs) && profile.jobs) ||
+    (Array.isArray(profile.employment) && profile.employment) ||
     [];
-  const j = arr.find((j) => j?.isCurrent || j?.current) ?? arr[0] ?? null;
-  const arrayRole = j?.role || j?.title || "";
-  const arrayCompany = j?.company || j?.organization || j?.org || "";
+  const job = arr.find((entry) => entry?.isCurrent || entry?.current) ?? arr[0] ?? null;
+  const arrayRole = job?.role || job?.title || "";
+  const arrayCompany = job?.company || job?.organization || job?.org || "";
+
   return { role: singleRole || arrayRole || "", company: singleCompany || arrayCompany || "" };
 }
 
 const DEBOUNCE = 400;
 function useDebounced(value, delay = DEBOUNCE) {
-  const [v, setV] = useState(value);
+  const [debounced, setDebounced] = useState(value);
   useEffect(() => {
-    const t = setTimeout(() => setV(value), delay);
+    const t = setTimeout(() => setDebounced(value), delay);
     return () => clearTimeout(t);
   }, [value, delay]);
-  return v;
+  return debounced;
 }
 
-const parseList = (s) =>
-  String(s || "")
+const parseList = (value) =>
+  String(value || "")
     .split(",")
-    .map((x) => x.trim())
+    .map((v) => v.trim())
     .filter(Boolean);
+
+function initials(first = "", last = "") {
+  const f = first?.trim()[0] || "";
+  const l = last?.trim()[0] || "";
+  return (f + l).toUpperCase();
+}
+
+function buildPageItems(page, pages) {
+  if (pages <= 7) return Array.from({ length: pages }, (_, idx) => idx + 1);
+
+  const items = [1];
+  const start = Math.max(2, page - 1);
+  const end = Math.min(pages - 1, page + 1);
+
+  if (start > 2) items.push("left-ellipsis");
+  for (let value = start; value <= end; value += 1) items.push(value);
+  if (end < pages - 1) items.push("right-ellipsis");
+
+  items.push(pages);
+  return items;
+}
 
 function RolesMultiSelect({ options, value, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const selected = String(value || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const selected = parseList(value);
 
   useEffect(() => {
-    const onDocClick = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    const onDocClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const toggle = (opt) => {
-    const has = selected.includes(opt);
-    const next = has ? selected.filter((v) => v !== opt) : [...selected, opt];
+  const toggle = (option) => {
+    const has = selected.includes(option);
+    const next = has ? selected.filter((v) => v !== option) : [...selected, option];
     onChange(next.join(", "));
   };
 
   return (
     <div className="as2-mwrap" ref={ref}>
-      {/* looks/spacing like .as2-input */}
       <div
         className={`as2-mselect ${open ? "is-open" : ""}`}
         role="button"
         tabIndex={0}
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setOpen((o) => !o)}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") setOpen((v) => !v);
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -90,35 +128,36 @@ function RolesMultiSelect({ options, value, onChange }) {
               <span
                 key={tag}
                 className="as2-tag"
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={(event) => {
+                  event.stopPropagation();
                   toggle(tag);
                 }}
               >
-                {tag} <span className="x">×</span>
+                {tag}
+                <span className="x">×</span>
               </span>
             ))}
           </div>
         ) : (
-          <span className="as2-placeholder">Select roles…</span>
+          <span className="as2-placeholder">Select roles...</span>
         )}
-        <span className="as2-caret">▾</span>
+        <ChevronDown size={14} className="as2-caret" />
       </div>
 
       {open && (
         <div className="as2-menu" role="listbox">
-          {options.map((opt) => (
-            <label key={opt} className="as2-option">
-              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
-              <span>{opt}</span>
+          {options.map((option) => (
+            <label key={option} className="as2-option">
+              <input
+                type="checkbox"
+                checked={selected.includes(option)}
+                onChange={() => toggle(option)}
+              />
+              <span>{option}</span>
             </label>
           ))}
           {selected.length > 0 && (
-            <button
-              type="button"
-              className="as2-btn as2-btn-ghost as2-menu-clear"
-              onClick={() => onChange("")}
-            >
+            <button type="button" className="as2-menu-clear" onClick={() => onChange("")}>
               Clear roles
             </button>
           )}
@@ -128,16 +167,36 @@ function RolesMultiSelect({ options, value, onChange }) {
   );
 }
 
-function initials(first = "", last = "") {
-  const f = first?.trim()[0] || "";
-  const l = last?.trim()[0] || "";
-  return (f + l).toUpperCase();
+function SectionHead({
+  icon: Icon,
+  label,
+  active = false,
+  onClick,
+  open = false,
+  nonCollapsible = false,
+}) {
+  return (
+    <button
+      className={`as2-sec-head${nonCollapsible ? " static" : ""}`}
+      onClick={onClick}
+      type="button"
+      aria-expanded={nonCollapsible ? true : open}
+      style={nonCollapsible ? { cursor: "default" } : undefined}
+    >
+      <span className="as2-head-label">
+        <Icon size={15} aria-hidden="true" />
+        <span>{label}</span>
+        {active && <span className="as2-active-dot" aria-hidden="true" />}
+      </span>
+      {!nonCollapsible && <ChevronDown size={15} className="chev" aria-hidden="true" />}
+    </button>
+  );
 }
 
-/* =================== PAGE =================== */
 export default function AdvancedSearch() {
   const { tenant } = useTenant();
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
+
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -150,27 +209,48 @@ export default function AdvancedSearch() {
     college: params.get("college") || "",
     gradMin: params.get("gradMin") || "",
     gradMax: params.get("gradMax") || "",
-
-    // ✅ NEW: Camper year range
     camperMin: params.get("camperMin") || "",
     camperMax: params.get("camperMax") || "",
-
     role: params.get("role") || "",
     company: params.get("company") || "",
     sort: params.get("sort") || "name",
     offset: parseInt(params.get("offset") || "0", 10),
     limit: parseInt(params.get("limit") || "24", 10),
   }));
+
+  const [ui, setUi] = useState({
+    drawerOpen: false,
+    sections: {
+      name: true,
+      cedarRoles: false,
+      industry: false,
+      role: false,
+      college: false,
+      camperYears: false,
+      location: false,
+      company: false,
+    },
+  });
+
+  const [state, setState] = useState({
+    loading: false,
+    items: [],
+    total: 0,
+    error: null,
+  });
+
+  const nameInputRef = useRef(null);
+  const resultsRef = useRef(null);
+
   const debounced = useDebounced(form);
 
-  /* ---- FILTER GUARD ---- */
   const hasActiveFilters = useMemo(() => {
     const {
       q,
       cedarRoles,
       industries,
       city,
-      state,
+      state: stateField,
       college,
       gradMin,
       gradMax,
@@ -180,36 +260,63 @@ export default function AdvancedSearch() {
       company,
     } = debounced;
 
-    return [q, cedarRoles, industries, city, state, college, gradMin, gradMax, camperMin, camperMax, role, company].some(
-      (v) => String(v || "").trim() !== ""
-    );
+    return [
+      q,
+      cedarRoles,
+      industries,
+      city,
+      stateField,
+      college,
+      gradMin,
+      gradMax,
+      camperMin,
+      camperMax,
+      role,
+      company,
+    ].some((value) => String(value || "").trim() !== "");
   }, [debounced]);
 
-  const [ui, setUi] = useState({
-    sections: {
-      name: false,
-      cedarRoles: false,
-      industry: false,
-      role: false,
-      college: false,
-      camperYears: false, // ✅ NEW
-      location: false,
-      company: false,
-    },
-  });
+  const industriesList = useMemo(() => parseList(form.industries), [form.industries]);
 
-  const [state, setState] = useState({ loading: false, items: [], total: 0, error: null });
+  const sectionActive = useMemo(
+    () => ({
+      name: Boolean(form.q.trim()),
+      cedarRoles: Boolean(form.cedarRoles.trim()),
+      industry: Boolean(form.industries.trim()),
+      role: Boolean(form.role.trim()),
+      college: Boolean(form.college.trim() || form.gradMin || form.gradMax),
+      camperYears: Boolean(form.camperMin || form.camperMax),
+      location: Boolean(form.city.trim() || form.state.trim()),
+      company: Boolean(form.company.trim()),
+      display: Boolean(form.sort !== "name" || Number(form.limit) !== 24),
+    }),
+    [form]
+  );
 
-  // sync -> URL
+  const rolePreview = useMemo(() => {
+    if (!staffRoleOptions.length) return "";
+    const base = staffRoleOptions.slice(0, 3).join(", ");
+    const extra = staffRoleOptions.length > 3 ? `, and ${staffRoleOptions.length - 3} more` : "";
+    return `${base}${extra}`;
+  }, [staffRoleOptions]);
+
+  useEffect(() => {
+    if (!ui.drawerOpen) return;
+    const onEsc = (event) => {
+      if (event.key === "Escape") setUi((curr) => ({ ...curr, drawerOpen: false }));
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [ui.drawerOpen]);
+
   useEffect(() => {
     const p = new URLSearchParams();
-    Object.entries(debounced).forEach(([k, v]) => {
-      if (v !== "" && v !== null && v !== undefined) p.set(k, String(v));
+    Object.entries(debounced).forEach(([key, value]) => {
+      if (value !== "" && value !== null && value !== undefined) p.set(key, String(value));
     });
     setParams(p, { replace: true });
   }, [debounced, setParams]);
 
-  // fetch (skips when no filters)
   useEffect(() => {
     let alive = true;
 
@@ -221,26 +328,28 @@ export default function AdvancedSearch() {
     }
 
     (async () => {
-      setState((s) => ({ ...s, loading: true, error: null }));
+      setState((curr) => ({ ...curr, loading: true, error: null }));
       try {
         const qs = new URLSearchParams();
-        Object.entries(debounced).forEach(([k, v]) => {
-          if (v !== "" && v !== null && v !== undefined) qs.set(k, String(v));
+        Object.entries(debounced).forEach(([key, value]) => {
+          if (value !== "" && value !== null && value !== undefined) qs.set(key, String(value));
         });
 
         const res = await fetch(`${API_BASE}/search/users?${qs.toString()}`, {
           headers: { Authorization: `Bearer ${getToken()}` },
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
         const data = await res.json();
         if (!alive) return;
+
         setState({
           loading: false,
           items: Array.isArray(data.items) ? data.items : [],
           total: Number.isFinite(data.total) ? data.total : data.items?.length || 0,
           error: null,
         });
-      } catch (err) {
+      } catch {
         if (!alive) return;
         setState({ loading: false, items: [], total: 0, error: "Failed to load results." });
       }
@@ -251,13 +360,14 @@ export default function AdvancedSearch() {
     };
   }, [debounced, hasActiveFilters]);
 
-  // handlers
-  const onField =
-    (k) =>
-    (e) => {
-      const v = e?.target?.value ?? e;
-      setForm((f) => ({ ...f, [k]: v, offset: 0 }));
-    };
+  const onField = (key) => (event) => {
+    const value = event?.target?.value ?? event;
+    setForm((curr) => ({ ...curr, [key]: value, offset: 0 }));
+  };
+
+  const setFields = (updates = {}) => {
+    setForm((curr) => ({ ...curr, ...updates, offset: 0 }));
+  };
 
   const clearAll = () => {
     setForm({
@@ -269,8 +379,8 @@ export default function AdvancedSearch() {
       college: "",
       gradMin: "",
       gradMax: "",
-      camperMin: "", // ✅ NEW
-      camperMax: "", // ✅ NEW
+      camperMin: "",
+      camperMax: "",
       role: "",
       company: "",
       sort: "name",
@@ -280,292 +390,486 @@ export default function AdvancedSearch() {
     setState({ loading: false, items: [], total: 0, error: null });
   };
 
-  const toggle = (key) => setUi((s) => ({ ...s, sections: { ...s.sections, [key]: !s.sections[key] } }));
-
-  // industries chip remove
-  const industriesList = useMemo(() => parseList(form.industries), [form.industries]);
-  const removeIndustry = (val) => {
-    const next = industriesList.filter((x) => x.toLowerCase() !== String(val).toLowerCase());
-    setForm((f) => ({ ...f, industries: next.join(", "), offset: 0 }));
+  const removeIndustry = (value) => {
+    const next = industriesList.filter(
+      (entry) => entry.toLowerCase() !== String(value).toLowerCase()
+    );
+    setForm((curr) => ({ ...curr, industries: next.join(", "), offset: 0 }));
   };
 
-  // paging
+  const toggle = (key) => {
+    setUi((curr) => ({
+      ...curr,
+      sections: {
+        ...curr.sections,
+        [key]: !curr.sections[key],
+      },
+    }));
+  };
+
   const page = Math.floor((form.offset || 0) / (form.limit || 24)) + 1;
   const pages = Math.max(1, Math.ceil((state.total || 0) / (form.limit || 24)));
-  const nextPage = () => page < pages && setForm((f) => ({ ...f, offset: f.offset + f.limit }));
-  const prevPage = () => page > 1 && setForm((f) => ({ ...f, offset: Math.max(0, f.offset - f.limit) }));
   const fromN = state.total ? form.offset + 1 : 0;
   const toN = state.total ? Math.min(form.offset + form.limit, state.total) : 0;
 
-  const header = useMemo(() => (!form.q ? "Advanced Search" : `Results for “${form.q}”`), [form.q]);
+  const scrollToResults = () => {
+    resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const gotoPage = (nextPage) => {
+    if (nextPage < 1 || nextPage > pages || nextPage === page) return;
+    setForm((curr) => ({ ...curr, offset: (nextPage - 1) * curr.limit }));
+    scrollToResults();
+  };
+
+  const prevPage = () => gotoPage(page - 1);
+  const nextPage = () => gotoPage(page + 1);
+  const pageItems = useMemo(() => buildPageItems(page, pages), [page, pages]);
+
+  const activeFilterChips = useMemo(() => {
+    const chips = [];
+    const push = (key, label) => chips.push({ key, label });
+
+    if (form.q.trim()) push("q", `Name: ${form.q.trim()}`);
+    if (form.cedarRoles.trim()) push("cedarRoles", `Camp role: ${form.cedarRoles.trim()}`);
+    if (form.industries.trim()) push("industries", `Industry: ${form.industries.trim()}`);
+    if (form.role.trim()) push("role", `Title: ${form.role.trim()}`);
+    if (form.company.trim()) push("company", `Company: ${form.company.trim()}`);
+    if (form.college.trim()) push("college", `College: ${form.college.trim()}`);
+
+    if (form.gradMin || form.gradMax) {
+      push("gradRange", `Grad: ${form.gradMin || "..."} - ${form.gradMax || "..."}`);
+    }
+
+    if (form.camperMin || form.camperMax) {
+      push("camperRange", `Camper: ${form.camperMin || "..."} - ${form.camperMax || "..."}`);
+    }
+
+    if (form.city.trim() || form.state.trim()) {
+      const loc = [form.city.trim(), form.state.trim()].filter(Boolean).join(", ");
+      push("location", `Location: ${loc}`);
+    }
+
+    return chips;
+  }, [form]);
+
+  const removeFilterChip = (key) => {
+    if (key === "gradRange") return setFields({ gradMin: "", gradMax: "" });
+    if (key === "camperRange") return setFields({ camperMin: "", camperMax: "" });
+    if (key === "location") return setFields({ city: "", state: "" });
+    return setFields({ [key]: "" });
+  };
+
+  const header = useMemo(() => (!form.q ? "Advanced Search" : `Results for "${form.q}"`), [form.q]);
+  const skeletonCount = Math.min(Math.max(Number(form.limit || 8), 1), 12);
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh" }}>
-      {/* BACKGROUND */}
+    <div className="as2-shell">
       <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={0} />
 
-      {/* PAGE CONTENT */}
-      <main className="as2 nav2-page-shell" style={{ position: "relative", zIndex: 1, background: "transparent" }}>
+      <main className="as2 nav2-page-shell">
+        <button
+          type="button"
+          className="as2-filters-fab"
+          onClick={() => setUi((curr) => ({ ...curr, drawerOpen: true }))}
+        >
+          <SlidersHorizontal size={15} />
+          Filters
+        </button>
+
         <div className="as2-wrap">
-          {/* LEFT RAIL */}
-          <aside className="as2-rail">
+          <div
+            className={`as2-drawer-backdrop${ui.drawerOpen ? " is-open" : ""}`}
+            onClick={() => setUi((curr) => ({ ...curr, drawerOpen: false }))}
+            aria-hidden="true"
+          />
+
+          <aside className={`as2-rail${ui.drawerOpen ? " is-open" : ""}`}>
             <div className="as2-rail-head">
-              <h2>Advanced Search</h2>
-              <button className="as2-btn as2-btn-ghost" onClick={clearAll}>
-                Reset
-              </button>
+              <div className="as2-rail-title">
+                <SlidersHorizontal size={16} aria-hidden="true" />
+                <h2>Advanced Search</h2>
+              </div>
+
+              <div className="as2-rail-actions">
+                <button className="as2-btn as2-btn-ghost" onClick={clearAll} type="button">
+                  Reset
+                </button>
+                <button
+                  className="as2-rail-close"
+                  type="button"
+                  onClick={() => setUi((curr) => ({ ...curr, drawerOpen: false }))}
+                  aria-label="Close filters"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            {/* Name */}
             <section className={`as2-sec ${ui.sections.name ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("name")}>
-                <span>Name</span>
-                <i className="chev" />
-              </button>
+              <SectionHead
+                icon={Search}
+                label="Name"
+                active={sectionActive.name}
+                open={ui.sections.name}
+                onClick={() => toggle("name")}
+              />
               <div className="as2-sec-body">
-                <input className="as2-input" value={form.q} onChange={onField("q")} placeholder="e.g., Henry" />
-              </div>
-            </section>
-
-            {/* Camp Roles */}
-            <section className={`as2-sec ${ui.sections.cedarRoles ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("cedarRoles")}>
-                <span>Former/Current Role at Camp</span>
-                <i className="chev" />
-              </button>
-              <div className="as2-sec-body">
-                <RolesMultiSelect
-                  options={staffRoleOptions}
-                  value={form.cedarRoles}
-                  onChange={(v) => setForm((f) => ({ ...f, cedarRoles: v, offset: 0 }))}
-                />
-              </div>
-            </section>
-
-                        {/* ✅ NEW: Camper Years */}
-                        <section className={`as2-sec ${ui.sections.camperYears ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("camperYears")}>
-                <span>Camper Years</span>
-                <i className="chev" />
-              </button>
-              <div className="as2-sec-body">
-                <div className="as2-row">
-                  <div className="as2-col">
-                    <label className="as2-label">Min</label>
-                    <input
-                      className="as2-input"
-                      type="number"
-                      inputMode="numeric"
-                      value={form.camperMin}
-                      onChange={onField("camperMin")}
-                      placeholder="year"
-                    />
-                  </div>
-                  <div className="as2-col">
-                    <label className="as2-label">Max</label>
-                    <input
-                      className="as2-input"
-                      type="number"
-                      inputMode="numeric"
-                      value={form.camperMax}
-                      onChange={onField("camperMax")}
-                      placeholder="year"
-                    />
-                  </div>
-                </div>
-                <div className="as2-help muted" style={{ marginTop: 8 }}>
-                </div>
-              </div>
-            </section>
-
-            {/* Industry */}
-            <section className={`as2-sec ${ui.sections.industry ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("industry")}>
-                <span>Industry</span>
-                <i className="chev" />
-              </button>
-              <div className="as2-sec-body">
-                <input
-                  className="as2-input"
-                  value={form.industries}
-                  onChange={onField("industries")}
-                  placeholder="(e.g., Finance, Law)"
-                />
-                {!!industriesList.length && (
-                  <div className="as2-chips">
-                    {industriesList.map((tag) => (
-                      <span key={tag} className="as2-chip">
-                        {tag}
-                        <button className="x" onClick={() => removeIndustry(tag)} aria-label={`Remove ${tag}`}>
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* Role / Title */}
-            <section className={`as2-sec ${ui.sections.role ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("role")}>
-                <span>Role / Title</span>
-                <i className="chev" />
-              </button>
-              <div className="as2-sec-body">
-                <input className="as2-input" value={form.role} onChange={onField("role")} placeholder="e.g., Software Engineer" />
-              </div>
-            </section>
-
-            {/* Company */}
-            <section className={`as2-sec ${ui.sections.company ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("company")}>
-                <span>Company</span>
-                <i className="chev" />
-              </button>
-              <div className="as2-sec-body">
-                <input className="as2-input" value={form.company} onChange={onField("company")} placeholder="e.g., KX Bank" />
-              </div>
-            </section>
-
-            {/* College + Grad Year */}
-            <section className={`as2-sec ${ui.sections.college ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("college")}>
-                <span>College & Grad Year</span>
-                <i className="chev" />
-              </button>
-              <div className="as2-sec-body">
-                <input className="as2-input" value={form.college} onChange={onField("college")} placeholder="e.g., UCLA" />
-                <div className="as2-row">
-                  <div className="as2-col">
-                    <label className="as2-label">Min</label>
-                    <input
-                      className="as2-input"
-                      type="number"
-                      inputMode="numeric"
-                      value={form.gradMin}
-                      onChange={onField("gradMin")}
-                      placeholder="year"
-                    />
-                  </div>
-                  <div className="as2-col">
-                    <label className="as2-label">Max</label>
-                    <input
-                      className="as2-input"
-                      type="number"
-                      inputMode="numeric"
-                      value={form.gradMax}
-                      onChange={onField("gradMax")}
-                      placeholder="year"
-                    />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-
-            {/* Location */}
-            <section className={`as2-sec ${ui.sections.location ? "open" : ""}`}>
-              <button className="as2-sec-head" onClick={() => toggle("location")}>
-                <span>Location</span>
-                <i className="chev" />
-              </button>
-              <div className="as2-sec-body">
-                <div className="as2-row">
-                  <input className="as2-input" value={form.city} onChange={onField("city")} placeholder="City" />
+                <div className="as2-sec-inner">
                   <input
+                    ref={nameInputRef}
                     className="as2-input"
-                    value={form.state}
-                    onChange={onField("state")}
-                    placeholder="State / Country"
-                    aria-label="State or Country"
+                    value={form.q}
+                    onChange={onField("q")}
+                    placeholder="e.g., Henry"
                   />
                 </div>
               </div>
             </section>
 
-            {/* Sort & per-page */}
-            <section className="as2-sec open">
+            <section className={`as2-sec ${ui.sections.cedarRoles ? "open" : ""}`}>
+              <SectionHead
+                icon={Users}
+                label="Former/Current Role at Camp"
+                active={sectionActive.cedarRoles}
+                open={ui.sections.cedarRoles}
+                onClick={() => toggle("cedarRoles")}
+              />
               <div className="as2-sec-body">
-                <div className="as2-row">
-                  <div className="as2-col">
-                    <label className="as2-label">Sort</label>
-                    <select className="as2-input" value={form.sort} onChange={onField("sort")}>
-                      <option value="name">Name (A–Z)</option>
-                      <option value="recent">Recently Added</option>
-                    </select>
+                <div className="as2-sec-inner">
+                  <RolesMultiSelect
+                    options={staffRoleOptions}
+                    value={form.cedarRoles}
+                    onChange={(v) => setForm((curr) => ({ ...curr, cedarRoles: v, offset: 0 }))}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className={`as2-sec ${ui.sections.camperYears ? "open" : ""}`}>
+              <SectionHead
+                icon={CalendarDays}
+                label="Camper Years"
+                active={sectionActive.camperYears}
+                open={ui.sections.camperYears}
+                onClick={() => toggle("camperYears")}
+              />
+              <div className="as2-sec-body">
+                <div className="as2-sec-inner">
+                  <div className="as2-row">
+                    <div className="as2-col">
+                      <label className="as2-label">Min</label>
+                      <input
+                        className="as2-input"
+                        type="number"
+                        inputMode="numeric"
+                        min="1900"
+                        max="2100"
+                        value={form.camperMin}
+                        onChange={onField("camperMin")}
+                        placeholder="year"
+                      />
+                    </div>
+                    <div className="as2-col">
+                      <label className="as2-label">Max</label>
+                      <input
+                        className="as2-input"
+                        type="number"
+                        inputMode="numeric"
+                        min="1900"
+                        max="2100"
+                        value={form.camperMax}
+                        onChange={onField("camperMax")}
+                        placeholder="year"
+                      />
+                    </div>
                   </div>
-                  <div className="as2-col">
-                    <label className="as2-label">Per Page</label>
-                    <select
+                </div>
+              </div>
+            </section>
+
+            <section className={`as2-sec ${ui.sections.industry ? "open" : ""}`}>
+              <SectionHead
+                icon={Briefcase}
+                label="Industry"
+                active={sectionActive.industry}
+                open={ui.sections.industry}
+                onClick={() => toggle("industry")}
+              />
+              <div className="as2-sec-body">
+                <div className="as2-sec-inner">
+                  <input
+                    className="as2-input"
+                    value={form.industries}
+                    onChange={onField("industries")}
+                    placeholder="e.g., Finance, Law"
+                  />
+                  <p className="as2-help">Separate multiple industries with commas.</p>
+
+                  {!!industriesList.length && (
+                    <div className="as2-chips">
+                      {industriesList.map((tag) => (
+                        <span key={tag} className="as2-chip">
+                          {tag}
+                          <button
+                            className="x"
+                            onClick={() => removeIndustry(tag)}
+                            aria-label={`Remove ${tag}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className={`as2-sec ${ui.sections.role ? "open" : ""}`}>
+              <SectionHead
+                icon={Briefcase}
+                label="Role / Title"
+                active={sectionActive.role}
+                open={ui.sections.role}
+                onClick={() => toggle("role")}
+              />
+              <div className="as2-sec-body">
+                <div className="as2-sec-inner">
+                  <input
+                    className="as2-input"
+                    value={form.role}
+                    onChange={onField("role")}
+                    placeholder="e.g., Software Engineer"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className={`as2-sec ${ui.sections.company ? "open" : ""}`}>
+              <SectionHead
+                icon={Building2}
+                label="Company"
+                active={sectionActive.company}
+                open={ui.sections.company}
+                onClick={() => toggle("company")}
+              />
+              <div className="as2-sec-body">
+                <div className="as2-sec-inner">
+                  <input
+                    className="as2-input"
+                    value={form.company}
+                    onChange={onField("company")}
+                    placeholder="e.g., KX Bank"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className={`as2-sec ${ui.sections.college ? "open" : ""}`}>
+              <SectionHead
+                icon={GraduationCap}
+                label="College & Grad Year"
+                active={sectionActive.college}
+                open={ui.sections.college}
+                onClick={() => toggle("college")}
+              />
+              <div className="as2-sec-body">
+                <div className="as2-sec-inner">
+                  <input
+                    className="as2-input"
+                    value={form.college}
+                    onChange={onField("college")}
+                    placeholder="e.g., UCLA"
+                  />
+
+                  <div className="as2-row">
+                    <div className="as2-col">
+                      <label className="as2-label">Min</label>
+                      <input
+                        className="as2-input"
+                        type="number"
+                        inputMode="numeric"
+                        min="1900"
+                        max="2100"
+                        value={form.gradMin}
+                        onChange={onField("gradMin")}
+                        placeholder="year"
+                      />
+                    </div>
+                    <div className="as2-col">
+                      <label className="as2-label">Max</label>
+                      <input
+                        className="as2-input"
+                        type="number"
+                        inputMode="numeric"
+                        min="1900"
+                        max="2100"
+                        value={form.gradMax}
+                        onChange={onField("gradMax")}
+                        placeholder="year"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className={`as2-sec ${ui.sections.location ? "open" : ""}`}>
+              <SectionHead
+                icon={MapPin}
+                label="Location"
+                active={sectionActive.location}
+                open={ui.sections.location}
+                onClick={() => toggle("location")}
+              />
+              <div className="as2-sec-body">
+                <div className="as2-sec-inner">
+                  <div className="as2-row">
+                    <input
                       className="as2-input"
-                      value={form.limit}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          limit: parseInt(e.target.value, 10),
-                          offset: 0,
-                        }))
-                      }
-                    >
-                      <option value={12}>12</option>
-                      <option value={24}>24</option>
-                      <option value={48}>48</option>
-                    </select>
+                      value={form.city}
+                      onChange={onField("city")}
+                      placeholder="City"
+                    />
+                    <input
+                      className="as2-input"
+                      value={form.state}
+                      onChange={onField("state")}
+                      placeholder="State / Country"
+                      aria-label="State or Country"
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="as2-sec open">
+              <SectionHead
+                icon={SlidersHorizontal}
+                label="Display Options"
+                active={sectionActive.display}
+                nonCollapsible
+              />
+              <div className="as2-sec-body">
+                <div className="as2-sec-inner">
+                  <div className="as2-row">
+                    <div className="as2-col">
+                      <label className="as2-label">Sort</label>
+                      <select className="as2-input" value={form.sort} onChange={onField("sort")}>
+                        <option value="name">Name (A-Z)</option>
+                        <option value="recent">Recently Added</option>
+                      </select>
+                    </div>
+                    <div className="as2-col">
+                      <label className="as2-label">Per Page</label>
+                      <select
+                        className="as2-input"
+                        value={form.limit}
+                        onChange={(event) =>
+                          setForm((curr) => ({
+                            ...curr,
+                            limit: parseInt(event.target.value, 10),
+                            offset: 0,
+                          }))
+                        }
+                      >
+                        <option value={12}>12</option>
+                        <option value={24}>24</option>
+                        <option value={48}>48</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
             </section>
           </aside>
 
-          {/* RESULTS */}
-          <section className="as2-results">
+          <section className="as2-results" ref={resultsRef}>
             <div className="as2-results-head">
               <div className="lhs">
                 <h1 className="as2-title">{header}</h1>
                 {hasActiveFilters && !state.loading && (
                   <div className="as2-sub">
-                    Showing {fromN}–{toN} of {state.total}
+                    Showing {fromN}-{toN} of {state.total}
                   </div>
                 )}
               </div>
-              <div className="rhs">
-                <button className="as2-btn as2-btn-ghost" onClick={clearAll}>
-                  Reset
-                </button>
-              </div>
             </div>
 
-            {/* Welcome state (no filters yet) */}
+            {!!activeFilterChips.length && (
+              <div className="as2-filter-chips">
+                {activeFilterChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    className="as2-filter-chip"
+                    onClick={() => removeFilterChip(chip.key)}
+                    title="Remove filter"
+                  >
+                    <span>{chip.label}</span>
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            )}
+
             {!hasActiveFilters ? (
               <div className="as2-emptywrap">
                 <div className="as2-emptycard">
+                  <div className="as2-empty-icon" aria-hidden="true">
+                    <Search size={56} />
+                  </div>
                   <h3>Start an advanced search</h3>
                   <p className="muted">
-                    Use the filters on the left to find alumni by name, role at camp, industry, college, grad year, camper years, or location.
+                    Use filters to find alumni by name, role, industry, college, years, or location.
                   </p>
                   <ul className="as2-emptylist">
                     <li>
-                      Try a name, like <span className="kbd">"Jay"</span>
+                      Search by name with <span className="kbd">Name</span>
                     </li>
                     <li>
-                      Add a college (e.g., <span className="kbd">“Michigan”</span>)
+                      Find alumni in <span className="kbd">Industry</span>
                     </li>
-                    <li>{`Filter by role at camp (${staffRoleOptions.join(", ")})`}</li>
-                    <li>Use camper years to find people from a specific era</li>
+                    <li>
+                      Discover who went to your <span className="kbd">College</span>
+                    </li>
+                    <li>
+                      Filter by camp roles ({rolePreview || "counselor, division head, and more"})
+                    </li>
                   </ul>
+                  <div className="as2-empty-actions">
+                    <button
+                      className="as2-btn as2-btn-primary"
+                      onClick={() => {
+                        setUi((curr) => ({
+                          ...curr,
+                          drawerOpen: false,
+                          sections: { ...curr.sections, name: true },
+                        }));
+                        requestAnimationFrame(() => nameInputRef.current?.focus());
+                      }}
+                    >
+                      Start with a name search
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
               <>
                 {state.loading && (
                   <div className="as2-grid">
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <div className="as2-card as2-skel" key={i}>
+                    {Array.from({ length: skeletonCount }).map((_, index) => (
+                      <div
+                        className="as2-card as2-skel"
+                        key={index}
+                        style={{ animationDelay: `${index * 0.04}s` }}
+                      >
                         <div className="ph avatar" />
-                        <div className="ph line w120" />
-                        <div className="ph line w160" />
-                        <div className="ph line w140" />
+                        <div className="ph name" />
+                        <div className="ph industry" />
+                        <div className="ph loc" />
+                        <div className="ph job" />
                         <div className="as2-cta">
                           <div className="ph btn" />
                           <div className="ph btn" />
@@ -578,7 +882,7 @@ export default function AdvancedSearch() {
                 {!state.loading && state.error && (
                   <div className="as2-emptywrap">
                     <div className="as2-emptycard">
-                      <h3>We couldn’t load results</h3>
+                      <h3>We couldn't load results</h3>
                       <p className="muted">{state.error}</p>
                       <button className="as2-btn as2-btn-outline" onClick={clearAll}>
                         Reset filters
@@ -604,56 +908,100 @@ export default function AdvancedSearch() {
                     ) : (
                       <>
                         <div className="as2-grid">
-                          {state.items.map((p) => {
-                            const id = String(p.id || p._id || p.profileId || p.userId || "").trim();
+                          {state.items.map((profile, index) => {
+                            const id = String(
+                              profile.id || profile._id || profile.profileId || profile.userId || ""
+                            ).trim();
                             if (!id || id === "undefined" || id === "null") return null;
-                            const photo = p.photoUrl || p?.uploads?.photoUrl || null;
+
+                            const first = profile.firstName || profile.first || "";
+                            const last = profile.lastName || profile.last || "";
+                            const photo = profile.photoUrl || profile?.uploads?.photoUrl || null;
+
                             const industry =
-                              p.industry ||
-                              p.primaryIndustry ||
-                              (Array.isArray(p.industries) && p.industries[0]) ||
-                              p.sector ||
+                              profile.industry ||
+                              profile.primaryIndustry ||
+                              (Array.isArray(profile.industries) && profile.industries[0]) ||
+                              profile.sector ||
                               "";
-                            const { role, company } = pickCurrentJob(p);
-                            const jobLine = [role, company && `@ ${company}`].filter(Boolean).join(" ");
-                            const loc = p.location || [p.city, p.state || p.region, p.country].filter(Boolean).join(", ");
-                            const first = p.firstName || p.first || "";
-                            const last = p.lastName || p.last || "";
+
+                            const { role, company } = pickCurrentJob(profile);
+                            const jobLine = [role, company && `at ${company}`]
+                              .filter(Boolean)
+                              .join(" ");
+                            const loc =
+                              profile.location ||
+                              [profile.city, profile.state || profile.region, profile.country]
+                                .filter(Boolean)
+                                .join(", ");
+
+                            const profilePath = `/profile/${id}`;
+                            const profileWithName = `${profilePath}?name=${encodeURIComponent(
+                              `${first} ${last}`
+                            )}`;
+                            const hasMeta = Boolean(industry || loc || jobLine);
 
                             return (
-                              <div className="as2-card" key={id}>
+                              <div
+                                className="as2-card"
+                                key={id}
+                                style={{ animationDelay: `${index * 0.04}s` }}
+                              >
                                 <Link
-                                  to={`/profile/${id}?name=${encodeURIComponent(`${first} ${last}`)}`}
-                                  state={{ preload: p }}
+                                  to={profileWithName}
+                                  state={{ preload: profile }}
                                   className="as2-card-link"
                                   aria-label={`${first} ${last} profile`}
                                 >
                                   {photo ? (
-                                    <img className="as2-avatar" src={photo} alt={`${first} ${last}`} />
+                                    <img
+                                      className="as2-avatar"
+                                      src={photo}
+                                      alt={`${first} ${last}`}
+                                    />
                                   ) : (
-                                    <div className="as2-avatar-fallback">{initials(first, last)}</div>
+                                    <div className="as2-avatar-fallback">
+                                      {initials(first, last)}
+                                    </div>
                                   )}
                                 </Link>
 
                                 <Link
-                                  to={`/profile/${id}?name=${encodeURIComponent(`${first} ${last}`)}`}
-                                  state={{ preload: p }}
+                                  to={profileWithName}
+                                  state={{ preload: profile }}
                                   className="as2-name"
+                                  title={`${first} ${last}`}
                                 >
                                   {first} {last}
                                 </Link>
 
                                 {industry && <div className="as2-industry">{industry}</div>}
-                                {loc && <div className="as2-loc">{loc}</div>}
-                                {(role || company) && <div className="as2-job">{jobLine || role || company}</div>}
+                                {loc && (
+                                  <div className="as2-loc" title={loc}>
+                                    <MapPin size={13} aria-hidden="true" />
+                                    <span>{loc}</span>
+                                  </div>
+                                )}
+                                {jobLine && (
+                                  <div className="as2-job" title={jobLine}>
+                                    {jobLine}
+                                  </div>
+                                )}
+
+                                {!hasMeta && (
+                                  <div className="as2-loc as2-empty-meta">No details available</div>
+                                )}
 
                                 <div className="as2-cta">
-                                  <Link to={`/profile/${id}`} className="as2-btn as2-btn-primary">
+                                  <Link to={profilePath} className="as2-btn as2-btn-primary">
                                     View Profile
                                   </Link>
                                   <button
+                                    type="button"
                                     className="as2-btn as2-btn-outline"
-                                    onClick={() => navigate(`/chat-rooms?to=${encodeURIComponent(id)}`)}
+                                    onClick={() =>
+                                      navigate(`/chat-rooms?to=${encodeURIComponent(id)}`)
+                                    }
                                   >
                                     Message
                                   </button>
@@ -665,15 +1013,46 @@ export default function AdvancedSearch() {
 
                         {state.total > form.limit && (
                           <div className="as2-pager">
-                            <button className="as2-btn as2-btn-outline" disabled={page <= 1} onClick={prevPage}>
+                            <button
+                              className="as2-btn as2-btn-outline"
+                              disabled={page <= 1}
+                              onClick={prevPage}
+                              type="button"
+                            >
                               Prev
                             </button>
-                            <div className="as2-pagecount">
-                              Page {page} / {pages}
+
+                            <div className="as2-pagebtns">
+                              {pageItems.map((item) =>
+                                typeof item === "number" ? (
+                                  <button
+                                    key={item}
+                                    type="button"
+                                    className={`as2-btn as2-pagebtn${item === page ? " is-current" : ""}`}
+                                    onClick={() => gotoPage(item)}
+                                  >
+                                    {item}
+                                  </button>
+                                ) : (
+                                  <span key={item} className="as2-page-ellipsis" aria-hidden="true">
+                                    ...
+                                  </span>
+                                )
+                              )}
                             </div>
-                            <button className="as2-btn as2-btn-outline" disabled={page >= pages} onClick={nextPage}>
+
+                            <button
+                              className="as2-btn as2-btn-outline"
+                              disabled={page >= pages}
+                              onClick={nextPage}
+                              type="button"
+                            >
                               Next
                             </button>
+
+                            <div className="as2-pagecount">
+                              Showing {fromN}-{toN} of {state.total}
+                            </div>
                           </div>
                         )}
                       </>
