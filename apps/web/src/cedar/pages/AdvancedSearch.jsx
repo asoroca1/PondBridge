@@ -500,7 +500,7 @@ export default function AdvancedSearch() {
             <div className="as2-rail-head">
               <div className="as2-rail-title">
                 <SlidersHorizontal size={16} aria-hidden="true" />
-                <h2>Advanced Search</h2>
+                <h2>Search Filters</h2>
               </div>
 
               <div className="as2-rail-actions">
