@@ -2264,7 +2264,7 @@ router.get("/settings", async (req, res) => {
     identity: {
       campName: String(req.tenant.name || ""),
       networkName: content.networkDisplayName,
-      tagline: content.welcomeHeadline,
+      tagline: String(content.welcomeBody || content.welcomeHeadline || "").trim(),
       aboutText: content.aboutText,
       contactEmail: content.contactEmail,
       websiteUrl
@@ -2303,9 +2303,14 @@ router.get("/settings", async (req, res) => {
 router.patch("/settings/identity", async (req, res) => {
   const draft = resolveDraft(req.tenant);
   const content = draft.content || resolveContent(req.tenant);
+  const nextTagline = sanitizeText(
+    String(req.body?.tagline ?? (content.welcomeBody || content.welcomeHeadline || "")).trim()
+  );
   const next = {
     networkDisplayName: sanitizeText(String(req.body?.networkName ?? (content.networkDisplayName || "")).trim()),
-    welcomeHeadline: sanitizeText(String(req.body?.tagline ?? (content.welcomeHeadline || "")).trim()),
+    // Keep both headline/body aligned with the "Tagline" field so landing subtitles update from settings.
+    welcomeHeadline: nextTagline,
+    welcomeBody: nextTagline,
     aboutText: sanitizeText(String(req.body?.aboutText ?? (content.aboutText || "")).trim()),
     contactEmail: normalizeEmail(req.body?.contactEmail ?? (content.contactEmail || "")),
     supportUrl: String(req.body?.websiteUrl ?? (content.supportUrl || "")).trim()
