@@ -366,17 +366,8 @@ function TimeSeriesChartCard({
         >
           Prev
         </button>
-        <div className="director-admin-chart-week-strip">
-          {windows.map((window) => (
-            <button
-              key={window.key}
-              type="button"
-              className={`director-admin-chart-week-pill${window.key === selectedWeekKey ? " is-active" : ""}`}
-              onClick={() => onWeekChange(window.key)}
-            >
-              {window.label}
-            </button>
-          ))}
+        <div className="director-admin-chart-week-current" aria-live="polite">
+          {selectedWeek?.label || "Current week"}
         </div>
         <button
           type="button"
@@ -584,7 +575,7 @@ export function DirectorAdminDashboardPage() {
 
       <div className="director-admin-two-col director-admin-dashboard-charts">
         <TimeSeriesChartCard
-          title="New Users Over Time"
+          title="New Users"
           yLabel="New users"
           xLabel="Date"
           points={newUsersSeries}
@@ -593,7 +584,7 @@ export function DirectorAdminDashboardPage() {
           onWeekChange={setActiveWeekKey}
         />
         <TimeSeriesChartCard
-          title="Sign-Ins Over Time"
+          title="Sign-Ins"
           yLabel="Sign-ins"
           xLabel="Date"
           points={signInsSeries}

@@ -3454,6 +3454,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+  min-height: 32px;
 }
 
 .pb-cedar-page .director-admin-chart-week-btn{
@@ -3499,6 +3500,23 @@ img[draggable="false"] { -webkit-user-drag: none; }
   border-color: color-mix(in srgb, var(--brand-primary) 30%, #d4e0ee);
   background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
   color: var(--brand-primary);
+}
+
+.pb-cedar-page .director-admin-chart-week-current{
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 20%, #d4e0ee);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  color: var(--brand-primary);
+  font-size: .78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pb-cedar-page .director-admin-chart-empty{
