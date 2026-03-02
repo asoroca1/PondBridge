@@ -306,7 +306,8 @@ function TimeSeriesChartCard({
   const padding = { top: 16, right: 16, bottom: 38, left: 52 };
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
-  const maxValue = Math.max(1, ...weekSeries.map((point) => point.value));
+  const maxObservedValue = Math.max(0, ...weekSeries.map((point) => point.value));
+  const maxValue = Math.max(1, Math.ceil(maxObservedValue));
   const xStep = weekSeries.length > 1 ? plotWidth / (weekSeries.length - 1) : 0;
 
   const chartPoints = weekSeries.map((point, index) => {
@@ -320,7 +321,7 @@ function TimeSeriesChartCard({
     .join(" ");
 
   const areaPath = `${linePath} L ${padding.left + plotWidth} ${(padding.top + plotHeight).toFixed(2)} L ${padding.left} ${(padding.top + plotHeight).toFixed(2)} Z`;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const yTicks = Array.from({ length: maxValue + 1 }, (_unused, index) => index);
   const xLabelStep = Math.max(1, Math.round(weekSeries.length / 6));
   const xLabelIndexes = new Set(
     weekSeries
@@ -406,11 +407,10 @@ function TimeSeriesChartCard({
             {xLabel}
           </text>
 
-          {yTicks.map((tick) => {
-            const y = padding.top + (1 - tick) * plotHeight;
-            const value = Math.round(maxValue * tick);
+          {yTicks.map((value) => {
+            const y = padding.top + (1 - value / maxValue) * plotHeight;
             return (
-              <g key={tick}>
+              <g key={value}>
                 <line
                   className="director-admin-chart-grid-line"
                   x1={padding.left}
