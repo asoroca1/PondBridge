@@ -37,16 +37,21 @@
     box-shadow:var(--ps-shadow);
     padding:18px 18px 20px;
   }
-  .ps-surface-head{
-    display:flex; align-items:center; justify-content:space-between; gap:12px;
+  .ps-page-header{
+    margin-bottom: 16px;
   }
   
-  .ps-title{ margin:0; font-size:28px; color:var(--ps-navy); letter-spacing:.2px; }
-  .ps-subcopy{ margin:6px 0 18px; color:var(--ps-gray-500); font-size:14px; }
-  
   /* sort (with custom arrow) */
-  .ps-sort-wrap{ display:inline-flex; align-items:center; gap:8px; }
+  .ps-sort-wrap{ display:flex; align-items:center; gap:6px; }
   .ps-sort-label{ font-size:12px; color:var(--ps-gray-500); }
+  .ps-header-right{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    margin-left:auto;
+    flex:0 0 auto;
+    min-width:0;
+  }
   .ps-select{
     appearance:none;
     font:inherit; font-size:14px;
@@ -406,19 +411,6 @@
     outline:2px solid var(--brand-primary-focus); outline-offset:1px;
   }
 
-/* fix spacing for sort + upload buttons */
-.ps-header-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;       /* increase gap between sort and upload */
-  }
-  
-  .ps-sort-wrap {
-    display: flex;
-    align-items: center;
-    gap: 6px;        /* keeps "Sort" label tucked in neatly */
-  }
-
   /* always behind the app */
 .cedar-bg {
     position: fixed;   /* not absolute */
@@ -464,59 +456,33 @@
     opacity: .88;
   }
 
-/* Let the header wrap when there's not enough room */
-.ps-surface-head{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:12px;
-    flex-wrap: wrap;            /* <-- key fix */
+.ps-select{ max-width: 62vw; }
+
+@media (max-width: 430px){
+  .ps-page-header .cedar-ph-title{
+    font-size: 26px;
+    line-height: 1.08;
   }
-  
-  /* keep the right side as a unit */
+
   .ps-header-right{
-    display:flex;
-    align-items:center;
-    gap:16px;
-    margin-left:auto;
-    flex:0 0 auto;
-    min-width:0;
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px;
   }
-  
-  /* prevent super-wide selects from pushing the button off */
-  .ps-select{ max-width: 62vw; }
-  
-  /* ---------- iPhone widths (and other tight phones) ---------- */
-  @media (max-width: 430px){
-    /* put title on its own line; controls on the next line */
-    .ps-title{
-      font-size: 26px;
-      line-height: 1.08;
-      flex: 1 1 100%;
-      margin: 0;               /* removes extra vertical jiggle */
-    }
-  
-    .ps-header-right{
-      width: 100%;             /* forces a new line under the title */
-      justify-content: space-between;
-      gap: 10px;
-    }
-  
-    .ps-select{
-      max-width: 58vw;         /* leaves room for the button */
-      font-size: 13px;
-      padding: 7px 26px 7px 10px;
-    }
-  
-    /* slightly tighter pill so it never overflows */
-    .ps-btn.primary{
-      padding: 8px 12px;
-      border-radius: 12px;
-      font-size: 14px;
-      white-space: nowrap;     /* keep label on one line */
-    }
-  
-    /* a touch less horizontal padding inside the card */
-    .ps-surface{ padding-left: 14px; padding-right: 14px; }
+
+  .ps-select{
+    max-width: 58vw;
+    font-size: 13px;
+    padding: 7px 26px 7px 10px;
   }
+
+  .ps-btn.primary{
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .ps-surface{ padding-left: 14px; padding-right: 14px; }
+}
   

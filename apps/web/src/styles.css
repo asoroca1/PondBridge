@@ -3422,6 +3422,110 @@ img[draggable="false"] { -webkit-user-drag: none; }
   align-items: stretch;
 }
 
+.pb-cedar-page .director-admin-dashboard-charts{
+  align-items: stretch;
+}
+
+.pb-cedar-page .director-admin-chart-card{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.pb-cedar-page .director-admin-chart-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pb-cedar-page .director-admin-chart-value{
+  font-size: .82rem;
+  color: #5b6e86;
+  font-weight: 600;
+}
+
+.pb-cedar-page .director-admin-chart-empty{
+  border: 1px dashed #d3deea;
+  border-radius: 10px;
+  padding: 18px 12px;
+  text-align: center;
+  color: #5b6e86;
+  font-size: .9rem;
+}
+
+.pb-cedar-page .director-admin-chart-scroll{
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+}
+
+.pb-cedar-page .director-admin-chart-svg{
+  display: block;
+  min-width: 560px;
+}
+
+.pb-cedar-page .director-admin-chart-axis-label{
+  fill: #6a7f97;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pb-cedar-page .director-admin-chart-axis-label.y{
+  transform-origin: 12px 110px;
+  transform: rotate(-90deg);
+  text-anchor: middle;
+}
+
+.pb-cedar-page .director-admin-chart-axis-label.x{
+  text-anchor: middle;
+}
+
+.pb-cedar-page .director-admin-chart-grid-line{
+  stroke: #e5edf6;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.pb-cedar-page .director-admin-chart-ytick{
+  fill: #768ba3;
+  font-size: 11px;
+  text-anchor: end;
+}
+
+.pb-cedar-page .director-admin-chart-xtick{
+  fill: #768ba3;
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.pb-cedar-page .director-admin-chart-area{
+  fill: color-mix(in srgb, var(--brand-primary) 14%, #ffffff);
+}
+
+.pb-cedar-page .director-admin-chart-line{
+  fill: none;
+  stroke: var(--brand-primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pb-cedar-page .director-admin-chart-crosshair{
+  stroke: color-mix(in srgb, var(--brand-primary) 35%, #94a3b8);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.pb-cedar-page .director-admin-chart-dot{
+  fill: #ffffff;
+  stroke: var(--brand-primary);
+  stroke-width: 2;
+}
+
 .pb-cedar-page .director-admin-equal-panel{
   display: flex;
   flex-direction: column;

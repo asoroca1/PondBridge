@@ -291,6 +291,8 @@ function mergeInviteRows(...groups) {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DASHBOARD_CHART_DAYS = 30;
+const DASHBOARD_SIGNIN_EVENT_TYPES = ["auth_login_password", "auth_login_magic_link"];
 const DEFAULT_MEMBER_PAGE_SIZE = 25;
 const MAX_MEMBER_PAGE_SIZE = 100;
 const MODULE_CATALOG = [
@@ -354,6 +356,54 @@ function toIso(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function utcDayStart(value = new Date()) {
+  const date = new Date(value);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
+
+function utcDayKey(value) {
+  if (!value) return "";
+  const date = utcDayStart(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+function utcDayLabel(dayKey = "") {
+  if (!dayKey) return "";
+  const date = new Date(`${dayKey}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return dayKey;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function buildDailyCountSeries({ startDate, days = DASHBOARD_CHART_DAYS, values = [] }) {
+  const normalizedDays = Math.max(1, Number(days || 0));
+  const start = utcDayStart(startDate);
+  const buckets = [];
+  const counts = new Map();
+
+  for (let index = 0; index < normalizedDays; index += 1) {
+    const day = new Date(start.getTime() + index * DAY_MS);
+    const key = utcDayKey(day);
+    buckets.push({
+      date: key,
+      label: utcDayLabel(key),
+      value: 0
+    });
+    counts.set(key, 0);
+  }
+
+  for (const entry of values) {
+    const key = utcDayKey(entry);
+    if (!key || !counts.has(key)) continue;
+    counts.set(key, Number(counts.get(key) || 0) + 1);
+  }
+
+  return buckets.map((bucket) => ({
+    ...bucket,
+    value: Number(counts.get(bucket.date) || 0)
+  }));
 }
 
 async function writeAdminAudit(req, event, metadata = {}) {
@@ -990,9 +1040,20 @@ router.get("/dashboard", async (req, res, next) => {
     const tenantId = req.tenant._id;
     const sevenDaysAgo = new Date(Date.now() - 7 * DAY_MS);
     const thirtyDaysAgo = new Date(Date.now() - 30 * DAY_MS);
+    const chartEndDay = utcDayStart(new Date());
+    const chartStartDay = new Date(chartEndDay.getTime() - (DASHBOARD_CHART_DAYS - 1) * DAY_MS);
     const settings = resolveSettings(req.tenant);
 
-    const [activeMembers, newThisWeek, pendingApprovals, profiles, lastBroadcast, activity] =
+    const [
+      activeMembers,
+      newThisWeek,
+      pendingApprovals,
+      profiles,
+      lastBroadcast,
+      activity,
+      recentNewUsers,
+      recentSignIns
+    ] =
       await Promise.all([
         ProfileModel.count(tenantId, { status: "active" }),
         ProfileModel.count(tenantId, {
@@ -1007,7 +1068,23 @@ router.get("/dashboard", async (req, res, next) => {
           sort: { sentAt: -1, createdAt: -1 },
           limit: 1
         }),
-        buildRecentActivity(tenantId)
+        buildRecentActivity(tenantId),
+        ProfileModel.find(
+          tenantId,
+          {
+            status: "active",
+            createdAt: { $gte: chartStartDay }
+          },
+          { select: ["createdAt"] }
+        ),
+        AnalyticsEventModel.find(
+          tenantId,
+          {
+            createdAt: { $gte: chartStartDay },
+            eventType: { $in: DASHBOARD_SIGNIN_EVENT_TYPES }
+          },
+          { select: ["createdAt"] }
+        )
       ]);
 
     const completionAverage = profiles.length
@@ -1031,6 +1108,17 @@ router.get("/dashboard", async (req, res, next) => {
         ? "live"
         : "in_setup";
 
+    const newUsersSeries = buildDailyCountSeries({
+      startDate: chartStartDay,
+      days: DASHBOARD_CHART_DAYS,
+      values: (recentNewUsers || []).map((entry) => entry?.createdAt)
+    });
+    const signInsSeries = buildDailyCountSeries({
+      startDate: chartStartDay,
+      days: DASHBOARD_CHART_DAYS,
+      values: (recentSignIns || []).map((entry) => entry?.createdAt)
+    });
+
     return res.json({
       tenant: {
         id: toObjectIdString(req.tenant._id),
@@ -1053,6 +1141,11 @@ router.get("/dashboard", async (req, res, next) => {
         newThisWeek,
         pendingApprovals,
         profileCompletion: completionAverage
+      },
+      charts: {
+        rangeDays: DASHBOARD_CHART_DAYS,
+        newUsers: newUsersSeries,
+        signIns: signInsSeries
       },
       lastEmail: lastBroadcast[0]
         ? {

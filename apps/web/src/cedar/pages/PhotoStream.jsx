@@ -3,9 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import CedarBackground from "../components/CedarBackground";
 import CedarSkeleton from "../components/CedarSkeleton.jsx";
+import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./photo-stream.css";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
+import { Images } from "lucide-react";
 
 const API = API_BASE;
 
@@ -562,17 +564,17 @@ export default function PhotoStream() {
       <div className="ps-container nav2-page-shell">
         {/* White scrollable surface */}
         <div className="ps-surface">
-          <div className="ps-surface-head">
-            <h1 className="ps-title">Photo Stream</h1>
+          <CedarPageHeader
+            className="ps-page-header"
+            icon={<Images size={18} />}
+            title="Photo Stream"
+            subtitle={`Share old and new camp photos with the ${campName} community. Click a photo to enlarge.`}
+          >
             <div className="ps-header-right">
               <SortDropdown value={sort} onChange={setSort} />
               <button className="ps-btn primary" onClick={() => setUploadOpen(true)}>Upload Photo</button>
             </div>
-          </div>
-
-          <p className="ps-subcopy">
-            {`Share old and new camp photos with the ${campName} community. Click a photo to enlarge.`}
-          </p>
+          </CedarPageHeader>
 
           <div className="ps-feed-grid">
             {items.map(p => {
