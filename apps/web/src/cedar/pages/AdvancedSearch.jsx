@@ -339,9 +339,20 @@ export default function AdvancedSearch() {
           if (value !== "" && value !== null && value !== undefined) qs.set(key, String(value));
         });
 
-        const res = await fetch(`${API_BASE}/search/users?${qs.toString()}`, {
-          headers: { Authorization: `Bearer ${getToken()}` },
+        const url = `${API_BASE}/search/users?${qs.toString()}`;
+        const token = String(getToken() || "").trim();
+
+        let res = await fetch(url, {
+          credentials: "include",
         });
+
+        if (res.status === 401 && token) {
+          res = await fetch(url, {
+            credentials: "include",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
