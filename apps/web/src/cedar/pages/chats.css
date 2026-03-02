@@ -622,6 +622,11 @@
   text-decoration: underline;
 }
 
+.cf-post a.cf-avatar-link,
+.cf-post a.cf-avatar-link:hover {
+  text-decoration: none;
+}
+
 .cf-typing {
   padding: 8px 10px;
   font-size: 12px;
