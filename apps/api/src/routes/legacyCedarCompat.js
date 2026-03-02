@@ -87,11 +87,6 @@ const MAP_CITY_PROFILE_SELECT = [
   "avatarUrl",
   "cityState",
   "industry",
-  "primaryIndustry",
-  "currentJob",
-  "currentJobTitle",
-  "currentCompany",
-  "company",
   "currentJobs"
 ];
 const citiesCacheByTenant = new Map(); // tenantId -> { data, expiresAt, inflight }
@@ -2686,7 +2681,7 @@ router.get("/map/city/:key", async (req, res) => {
   const now = Date.now();
   const tenantCache = getTenantPeopleCache(tenantId);
   const cached = tenantCache.get(key);
-  if (cached?.data && now < Number(cached.expiresAt || 0)) {
+  if (Array.isArray(cached?.data) && cached.data.length > 0 && now < Number(cached.expiresAt || 0)) {
     return res.json(cached.data);
   }
 
@@ -2741,7 +2736,7 @@ router.get("/map/city/:key", async (req, res) => {
   } finally {
     setTenantPeopleCacheEntry(tenantId, key, {
       data: output,
-      expiresAt: Date.now() + CITY_PEOPLE_CACHE_TTL_MS,
+      expiresAt: Date.now() + (Array.isArray(output) && output.length > 0 ? CITY_PEOPLE_CACHE_TTL_MS : 5000),
       inflight: null
     });
   }

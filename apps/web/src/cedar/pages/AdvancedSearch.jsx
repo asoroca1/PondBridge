@@ -465,9 +465,9 @@ export default function AdvancedSearch() {
 
   return (
     <div className="as2-shell">
-      <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={0} />
+      <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
 
-      <main className="as2 nav2-page-shell">
+      <main className="as2 nav2-page-shell" style={{ position: "relative", zIndex: 1 }}>
         <button
           type="button"
           className="as2-filters-fab"

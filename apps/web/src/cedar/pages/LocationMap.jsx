@@ -132,7 +132,12 @@ export default function LocationMap() {
   function getCachedPeople(cityKey) {
     const now = Date.now();
     const localEntry = peopleCacheRef.current.get(cityKey);
-    if (localEntry && now - Number(localEntry.ts || 0) <= PEOPLE_CACHE_TTL_MS) {
+    if (
+      localEntry &&
+      Array.isArray(localEntry.data) &&
+      localEntry.data.length > 0 &&
+      now - Number(localEntry.ts || 0) <= PEOPLE_CACHE_TTL_MS
+    ) {
       return localEntry.data;
     }
 
@@ -142,6 +147,7 @@ export default function LocationMap() {
       const parsed = JSON.parse(raw);
       if (now - Number(parsed?.ts || 0) > PEOPLE_CACHE_TTL_MS) return null;
       const normalized = normalizePeople(parsed?.data || []);
+      if (!normalized.length) return null;
       peopleCacheRef.current.set(cityKey, { ts: parsed.ts, data: normalized });
       return normalized;
     } catch {
@@ -150,6 +156,15 @@ export default function LocationMap() {
   }
 
   function setCachedPeople(cityKey, data) {
+    if (!Array.isArray(data) || data.length === 0) {
+      try {
+        sessionStorage.removeItem(`${PEOPLE_CACHE_PREFIX}${cityKey}`);
+      } catch {
+        // ignore cache removal failures
+      }
+      peopleCacheRef.current.delete(cityKey);
+      return;
+    }
     const entry = { ts: Date.now(), data };
     peopleCacheRef.current.set(cityKey, entry);
     if (peopleCacheRef.current.size > 80) {
