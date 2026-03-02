@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { readAuthTokenFromCookie } from "../utils/authCookie.js";
 import { UserModel } from "../db/models/index.js";
 import { resolveClerkIdentityFromRequest } from "../services/clerkIdentity.js";
+import { trackClerkSessionSignIn } from "../services/analytics.js";
 import {
   applySuperConsoleRolePolicy,
   ensureGlobalSuperAdmin,
@@ -219,6 +220,23 @@ export async function requireAuth(req, res, next) {
     }
 
     applyAppUser(req, appUser, identity, req.authSource || "bearer");
+    if (tenantId && identity.provider === "clerk") {
+      const sessionId = String(identity?.claims?.sid || identity?.claims?.session_id || "").trim();
+      if (sessionId) {
+        try {
+          const recorded = await trackClerkSessionSignIn({
+            tenantId,
+            userId: appUser._id,
+            sessionId
+          });
+          if (recorded) {
+            await UserModel.update(appUser._id, { lastLoginAt: new Date() }).catch(() => {});
+          }
+        } catch {
+          // Do not fail auth when analytics logging fails.
+        }
+      }
+    }
     return next();
   });
 }

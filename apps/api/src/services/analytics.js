@@ -5,9 +5,32 @@ import { UserModel } from "../db/models/index.js";
 const ACTIVE_EVENT_TYPES = [
   "auth_login_password",
   "auth_login_magic_link",
+  "auth_login_clerk",
   "profile_updated",
   "directory_search"
 ];
+const CLERK_SIGNIN_EVENT_TYPE = "auth_login_clerk";
+const CLERK_SIGNIN_SESSION_TTL_MS = 36 * 60 * 60 * 1000;
+const recentClerkSessionCache = new Map();
+
+function cacheKeyForClerkSession(tenantId = "", sessionId = "") {
+  return `${String(tenantId || "").trim()}:${String(sessionId || "").trim()}`;
+}
+
+function hasRecentClerkSession(key = "", now = Date.now()) {
+  const expiresAt = Number(recentClerkSessionCache.get(key) || 0);
+  if (!expiresAt) return false;
+  if (expiresAt <= now) {
+    recentClerkSessionCache.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function markRecentClerkSession(key = "", now = Date.now()) {
+  if (!key) return;
+  recentClerkSessionCache.set(key, now + CLERK_SIGNIN_SESSION_TTL_MS);
+}
 
 function normalizeSearchTerm(value = "") {
   return String(value || "")
@@ -84,6 +107,38 @@ export async function logTenantEvent({ tenantId, userId = null, eventType, metad
     eventType: String(eventType),
     metadata: safeMetadata
   });
+}
+
+export async function trackClerkSessionSignIn({ tenantId, userId = null, sessionId = "" } = {}) {
+  const normalizedTenantId = String(tenantId || "").trim();
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedTenantId || !normalizedSessionId) return false;
+
+  const cacheKey = cacheKeyForClerkSession(normalizedTenantId, normalizedSessionId);
+  const now = Date.now();
+  if (hasRecentClerkSession(cacheKey, now)) return false;
+
+  const exists = await AnalyticsEventModel.hasEventWithSession(
+    normalizedTenantId,
+    CLERK_SIGNIN_EVENT_TYPE,
+    normalizedSessionId
+  );
+  if (exists) {
+    markRecentClerkSession(cacheKey, now);
+    return false;
+  }
+
+  await logTenantEvent({
+    tenantId: normalizedTenantId,
+    userId,
+    eventType: CLERK_SIGNIN_EVENT_TYPE,
+    metadata: {
+      method: "clerk",
+      sessionId: normalizedSessionId
+    }
+  });
+  markRecentClerkSession(cacheKey, now);
+  return true;
 }
 
 export async function getTenantAnalyticsSnapshot({ tenantId }) {

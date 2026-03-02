@@ -292,7 +292,11 @@ function mergeInviteRows(...groups) {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DASHBOARD_CHART_DAYS = 30;
-const DASHBOARD_SIGNIN_EVENT_TYPES = ["auth_login_password", "auth_login_magic_link"];
+const DASHBOARD_SIGNIN_EVENT_TYPES = [
+  "auth_login_password",
+  "auth_login_magic_link",
+  "auth_login_clerk"
+];
 const DEFAULT_MEMBER_PAGE_SIZE = 25;
 const MAX_MEMBER_PAGE_SIZE = 100;
 const MODULE_CATALOG = [

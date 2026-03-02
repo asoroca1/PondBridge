@@ -34,5 +34,18 @@ export const AnalyticsEventModel = {
     });
     if (error) throw error;
     return data || [];
+  },
+
+  async hasEventWithSession(tenantId, eventType, sessionId) {
+    if (!tenantId || !eventType || !sessionId) return false;
+    const { data, error } = await getSupabaseAdmin()
+      .from("analytics_events")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("event_type", String(eventType))
+      .contains("metadata", { sessionId: String(sessionId) })
+      .limit(1);
+    if (error) throw error;
+    return Boolean((data || []).length);
   }
 };
