@@ -3431,6 +3431,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
   flex-direction: column;
   gap: 10px;
   overflow: hidden;
+  min-height: 392px;
+  height: 100%;
 }
 
 .pb-cedar-page .director-admin-chart-head{
@@ -3447,6 +3449,58 @@ img[draggable="false"] { -webkit-user-drag: none; }
   font-weight: 600;
 }
 
+.pb-cedar-page .director-admin-chart-week-nav{
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-chart-week-btn{
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d4e0ee;
+  border-radius: 999px;
+  background: #fff;
+  color: #1b3f6d;
+  font-size: .75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pb-cedar-page .director-admin-chart-week-btn:disabled{
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.pb-cedar-page .director-admin-chart-week-strip{
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.pb-cedar-page .director-admin-chart-week-pill{
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d4e0ee;
+  border-radius: 999px;
+  background: #fff;
+  color: #425c79;
+  font-size: .74rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pb-cedar-page .director-admin-chart-week-pill.is-active{
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, #d4e0ee);
+  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
+  color: var(--brand-primary);
+}
+
 .pb-cedar-page .director-admin-chart-empty{
   border: 1px dashed #d3deea;
   border-radius: 10px;
@@ -3461,6 +3515,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 4px;
+  margin-top: 2px;
 }
 
 .pb-cedar-page .director-admin-chart-svg{

@@ -172,22 +172,125 @@ function StatCard({ label, value, hint = "", tone = "neutral" }) {
 }
 
 function normalizeSeries(points = []) {
-  return (Array.isArray(points) ? points : []).map((point, index) => ({
-    date: String(point?.date || ""),
-    label: String(point?.label || point?.date || `Point ${index + 1}`),
-    value: Math.max(0, Number(point?.value || 0))
+  const normalized = (Array.isArray(points) ? points : [])
+    .map((point, index) => ({
+      date: String(point?.date || ""),
+      label: String(point?.label || point?.date || `Point ${index + 1}`),
+      value: Math.max(0, Number(point?.value || 0))
+    }))
+    .filter((point) => Boolean(point.date))
+    .sort((left, right) => left.date.localeCompare(right.date));
+
+  return normalized.map((point) => ({
+    ...point,
+    weekKey: weekStartKeyFromDate(point.date)
   }));
 }
 
-function TimeSeriesChartCard({ title, yLabel, xLabel = "Time", points = [] }) {
+function weekStartKeyFromDate(dateKey = "") {
+  if (!dateKey) return "";
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return "";
+  const day = date.getUTCDay();
+  const start = new Date(date);
+  start.setUTCDate(date.getUTCDate() - day);
+  return start.toISOString().slice(0, 10);
+}
+
+function weekDateKeysFromStart(weekKey = "") {
+  if (!weekKey) return [];
+  const start = new Date(`${weekKey}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return [];
+  return Array.from({ length: 7 }, (_unused, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function currentWeekKey() {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  return weekStartKeyFromDate(todayKey);
+}
+
+function formatChartDate(dateKey = "") {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function buildWeekWindows(points = []) {
+  const grouped = new Map();
+  for (const point of points) {
+    const key = String(point?.weekKey || "");
+    if (!key) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(point);
+  }
+  const thisWeek = currentWeekKey();
+  if (thisWeek && !grouped.has(thisWeek)) {
+    grouped.set(thisWeek, []);
+  }
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, _values]) => {
+      const weekDates = weekDateKeysFromStart(key);
+      const startDate = weekDates[0] || key;
+      const endDate = weekDates[6] || key;
+      return {
+        key,
+        startDate,
+        endDate,
+        label: `${formatChartDate(startDate)} - ${formatChartDate(endDate)}`
+      };
+    });
+}
+
+function TimeSeriesChartCard({
+  title,
+  yLabel,
+  xLabel = "Time",
+  points = [],
+  weekWindows = [],
+  activeWeekKey = "",
+  onWeekChange = () => {}
+}) {
   const series = useMemo(() => normalizeSeries(points), [points]);
-  const [hoverIndex, setHoverIndex] = useState(series.length ? series.length - 1 : null);
+  const windows = useMemo(() => (weekWindows.length ? weekWindows : buildWeekWindows(series)), [series, weekWindows]);
+  const fallbackWeekKey = windows.length ? windows[windows.length - 1].key : "";
+  const selectedWeekKey = windows.some((window) => window.key === activeWeekKey)
+    ? activeWeekKey
+    : fallbackWeekKey;
+  const selectedWeek = windows.find((window) => window.key === selectedWeekKey) || null;
+  const sourceWeekSeries = selectedWeek
+    ? series.filter((point) => point.weekKey === selectedWeek.key)
+    : series;
+  const weekDates = useMemo(() => weekDateKeysFromStart(selectedWeekKey), [selectedWeekKey]);
+  const weekValueByDate = useMemo(() => {
+    const map = new Map();
+    for (const point of sourceWeekSeries) {
+      map.set(point.date, Number(map.get(point.date) || 0) + Number(point.value || 0));
+    }
+    return map;
+  }, [sourceWeekSeries]);
+  const weekSeries = useMemo(
+    () =>
+      weekDates.map((dateKey) => ({
+        date: dateKey,
+        label: formatChartDate(dateKey),
+        value: Number(weekValueByDate.get(dateKey) || 0),
+        weekKey: selectedWeekKey
+      })),
+    [selectedWeekKey, weekDates, weekValueByDate]
+  );
+  const [hoverIndex, setHoverIndex] = useState(weekSeries.length ? weekSeries.length - 1 : null);
 
   useEffect(() => {
-    setHoverIndex(series.length ? series.length - 1 : null);
-  }, [series]);
+    setHoverIndex(weekSeries.length ? weekSeries.length - 1 : null);
+  }, [selectedWeekKey, weekSeries.length]);
 
-  if (!series.length) {
+  if (!weekSeries.length) {
     return (
       <Card className="director-admin-chart-card">
         <div className="director-admin-chart-head">
@@ -198,15 +301,15 @@ function TimeSeriesChartCard({ title, yLabel, xLabel = "Time", points = [] }) {
     );
   }
 
-  const chartHeight = 220;
-  const chartWidth = Math.max(560, series.length * 28);
+  const chartHeight = 232;
+  const chartWidth = 560;
   const padding = { top: 16, right: 16, bottom: 36, left: 44 };
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
-  const maxValue = Math.max(1, ...series.map((point) => point.value));
-  const xStep = series.length > 1 ? plotWidth / (series.length - 1) : 0;
+  const maxValue = Math.max(1, ...weekSeries.map((point) => point.value));
+  const xStep = weekSeries.length > 1 ? plotWidth / (weekSeries.length - 1) : 0;
 
-  const chartPoints = series.map((point, index) => {
+  const chartPoints = weekSeries.map((point, index) => {
     const x = padding.left + xStep * index;
     const y = padding.top + (1 - point.value / maxValue) * plotHeight;
     return { ...point, x, y };
@@ -218,21 +321,24 @@ function TimeSeriesChartCard({ title, yLabel, xLabel = "Time", points = [] }) {
 
   const areaPath = `${linePath} L ${padding.left + plotWidth} ${(padding.top + plotHeight).toFixed(2)} L ${padding.left} ${(padding.top + plotHeight).toFixed(2)} Z`;
   const yTicks = [0, 0.25, 0.5, 0.75, 1];
-  const xLabelStep = Math.max(1, Math.round(series.length / 6));
+  const xLabelStep = Math.max(1, Math.round(weekSeries.length / 6));
   const xLabelIndexes = new Set(
-    series
+    weekSeries
       .map((_point, index) => index)
-      .filter((index) => index === 0 || index === series.length - 1 || index % xLabelStep === 0)
+      .filter((index) => index === 0 || index === weekSeries.length - 1 || index % xLabelStep === 0)
   );
 
-  const activeIndex = hoverIndex == null ? null : Math.max(0, Math.min(series.length - 1, hoverIndex));
+  const activeIndex = hoverIndex == null ? null : Math.max(0, Math.min(weekSeries.length - 1, hoverIndex));
   const activePoint = activeIndex == null ? null : chartPoints[activeIndex];
+  const activeWeekIndex = Math.max(0, windows.findIndex((window) => window.key === selectedWeekKey));
+  const canMovePrev = activeWeekIndex > 0;
+  const canMoveNext = activeWeekIndex >= 0 && activeWeekIndex < windows.length - 1;
 
   const handleMouseMove = (event) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const localX = event.clientX - bounds.left - padding.left;
     const ratio = plotWidth <= 0 ? 0 : Math.max(0, Math.min(1, localX / plotWidth));
-    const nextIndex = Math.round(ratio * (series.length - 1));
+    const nextIndex = Math.round(ratio * (weekSeries.length - 1));
     setHoverIndex(nextIndex);
   };
 
@@ -247,6 +353,45 @@ function TimeSeriesChartCard({ title, yLabel, xLabel = "Time", points = [] }) {
         ) : null}
       </div>
 
+      <div className="director-admin-chart-week-nav">
+        <button
+          type="button"
+          className="director-admin-chart-week-btn"
+          onClick={() => {
+            if (!canMovePrev) return;
+            onWeekChange(windows[activeWeekIndex - 1]?.key || selectedWeekKey);
+          }}
+          disabled={!canMovePrev}
+          aria-label="Previous week"
+        >
+          Prev
+        </button>
+        <div className="director-admin-chart-week-strip">
+          {windows.map((window) => (
+            <button
+              key={window.key}
+              type="button"
+              className={`director-admin-chart-week-pill${window.key === selectedWeekKey ? " is-active" : ""}`}
+              onClick={() => onWeekChange(window.key)}
+            >
+              {window.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="director-admin-chart-week-btn"
+          onClick={() => {
+            if (!canMoveNext) return;
+            onWeekChange(windows[activeWeekIndex + 1]?.key || selectedWeekKey);
+          }}
+          disabled={!canMoveNext}
+          aria-label="Next week"
+        >
+          Next
+        </button>
+      </div>
+
       <div className="director-admin-chart-scroll">
         <svg
           className="director-admin-chart-svg"
@@ -256,7 +401,7 @@ function TimeSeriesChartCard({ title, yLabel, xLabel = "Time", points = [] }) {
           role="img"
           aria-label={title}
           onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoverIndex(series.length ? series.length - 1 : null)}
+          onMouseLeave={() => setHoverIndex(weekSeries.length ? weekSeries.length - 1 : null)}
         >
           <text className="director-admin-chart-axis-label y" x={12} y={chartHeight / 2}>
             {yLabel}
@@ -339,6 +484,34 @@ export function DirectorAdminDashboardPage() {
     loadDashboard();
   }, [loadDashboard]);
 
+  const stats = payload?.stats || {};
+  const totalMembers = Number(stats.totalMembers || 0);
+  const activeMembers = Number(stats.activeMembers ?? totalMembers);
+  const recentSignups = Number(stats.newThisWeek || 0);
+  const profileCompletion = Number(stats.profileCompletion || 0);
+  const newUsersSeries = payload?.charts?.newUsers || [];
+  const signInsSeries = payload?.charts?.signIns || [];
+  const normalizedNewUsersSeries = useMemo(() => normalizeSeries(newUsersSeries), [newUsersSeries]);
+  const normalizedSignInsSeries = useMemo(() => normalizeSeries(signInsSeries), [signInsSeries]);
+  const combinedSeries = useMemo(
+    () => [...normalizedNewUsersSeries, ...normalizedSignInsSeries],
+    [normalizedNewUsersSeries, normalizedSignInsSeries]
+  );
+  const weekWindows = useMemo(() => buildWeekWindows(combinedSeries), [combinedSeries]);
+  const [activeWeekKey, setActiveWeekKey] = useState("");
+
+  useEffect(() => {
+    if (!weekWindows.length) {
+      setActiveWeekKey("");
+      return;
+    }
+    const thisWeekKey = currentWeekKey();
+    const resolvedKey = weekWindows.some((window) => window.key === thisWeekKey)
+      ? thisWeekKey
+      : weekWindows[weekWindows.length - 1].key;
+    setActiveWeekKey((previous) => (weekWindows.some((window) => window.key === previous) ? previous : resolvedKey));
+  }, [weekWindows]);
+
   if (loading && !payload) {
     return (
       <Card>
@@ -347,13 +520,6 @@ export function DirectorAdminDashboardPage() {
     );
   }
 
-  const stats = payload?.stats || {};
-  const totalMembers = Number(stats.totalMembers || 0);
-  const activeMembers = Number(stats.activeMembers ?? totalMembers);
-  const recentSignups = Number(stats.newThisWeek || 0);
-  const profileCompletion = Number(stats.profileCompletion || 0);
-  const newUsersSeries = payload?.charts?.newUsers || [];
-  const signInsSeries = payload?.charts?.signIns || [];
   const statCards = [
     {
       key: "total-members",
@@ -422,12 +588,18 @@ export function DirectorAdminDashboardPage() {
           yLabel="New users"
           xLabel="Date"
           points={newUsersSeries}
+          weekWindows={weekWindows}
+          activeWeekKey={activeWeekKey}
+          onWeekChange={setActiveWeekKey}
         />
         <TimeSeriesChartCard
           title="Sign-Ins Over Time"
           yLabel="Sign-ins"
           xLabel="Date"
           points={signInsSeries}
+          weekWindows={weekWindows}
+          activeWeekKey={activeWeekKey}
+          onWeekChange={setActiveWeekKey}
         />
       </div>
 
