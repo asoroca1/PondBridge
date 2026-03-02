@@ -308,6 +308,11 @@ function ClerkBackedAuthProvider({ children }) {
   const tokenRef = useRef("");
   const bootstrappedSessionIdRef = useRef("");
   const pendingBootstrapRetriesRef = useRef(0);
+  // Tracks whether the first bootstrap cycle has finished (success or fail).
+  // After the initial bootstrap, refreshSession must NOT toggle
+  // sessionRefreshing – doing so flickers isReady back to false, which
+  // unmounts AppShell+NavBar and causes severe visual glitching.
+  const bootstrapDoneRef = useRef(false);
   // Ref to hold the latest refreshSession so the bootstrap effect doesn't
   // need it in its dependency array (it's an output, not an input).
   const refreshSessionRef = useRef(null);
@@ -357,7 +362,10 @@ function ClerkBackedAuthProvider({ children }) {
     async ({ tenantSlug = "" } = {}) => {
       if (!isLoaded || !isSignedIn) {
         clearLocalAuth();
-        setSessionRefreshing(false);
+        if (!bootstrapDoneRef.current) {
+          bootstrapDoneRef.current = true;
+          setSessionRefreshing(false);
+        }
         return null;
       }
 
@@ -366,7 +374,12 @@ function ClerkBackedAuthProvider({ children }) {
         throw createPendingClerkTokenError();
       }
 
-      setSessionRefreshing(true);
+      // Only block isReady during the very first bootstrap.  After that,
+      // subsequent refreshes (e.g. membership-sync) must NOT toggle
+      // sessionRefreshing – otherwise isReady flickers true→false→true,
+      // causing the entire AppShell / NavBar tree to unmount and remount.
+      const isInitialBootstrap = !bootstrapDoneRef.current;
+      if (isInitialBootstrap) setSessionRefreshing(true);
       setToken(clerkToken);
 
       try {
@@ -392,9 +405,24 @@ function ClerkBackedAuthProvider({ children }) {
           clearTabLoginIntent();
           return null;
         }
+        // Network / CORS / API-unreachable error.  If we already have a
+        // cached user (e.g. returning visitor, or second refresh after a
+        // successful bootstrap), keep the cached auth instead of clearing
+        // everything and bouncing the user to the login screen.
+        const hasExistingUser = Boolean(
+          String(userRef.current?.id || userRef.current?._id || "").trim()
+        );
+        if (hasExistingUser) {
+          writeAuthToStorage(clerkToken, userRef.current);
+          markTabSessionAuthenticated();
+          return null;
+        }
         throw error;
       } finally {
-        setSessionRefreshing(false);
+        if (isInitialBootstrap) {
+          bootstrapDoneRef.current = true;
+          setSessionRefreshing(false);
+        }
       }
     },
     [clearLocalAuth, isLoaded, isSignedIn, resolveBootstrapToken]
@@ -423,6 +451,7 @@ function ClerkBackedAuthProvider({ children }) {
     if (FORCE_RELOGIN_ON_TAB_CLOSE && !isSignedIn && !tabSessionExists && !loginIntentExists && !onAuthRoute) {
       clearLocalAuth();
       bootstrappedSessionIdRef.current = "";
+      bootstrapDoneRef.current = true;
       setSessionRefreshing(false);
       return;
     }
@@ -430,6 +459,7 @@ function ClerkBackedAuthProvider({ children }) {
     if (!isSignedIn) {
       clearLocalAuth();
       bootstrappedSessionIdRef.current = "";
+      bootstrapDoneRef.current = true;
       setSessionRefreshing(false);
       return;
     }
@@ -437,6 +467,7 @@ function ClerkBackedAuthProvider({ children }) {
     const hasResolvedUser = Boolean(String(userRef.current?.id || userRef.current?._id || "").trim());
     const hasLocalAuth = Boolean(tokenRef.current || hasResolvedUser);
     if (sessionId && bootstrappedSessionIdRef.current === sessionId && hasLocalAuth) {
+      bootstrapDoneRef.current = true;
       setSessionRefreshing(false);
       return;
     }
@@ -468,6 +499,7 @@ function ClerkBackedAuthProvider({ children }) {
           pendingBootstrapRetriesRef.current = 0;
           clearLocalAuth();
           bootstrappedSessionIdRef.current = "";
+          bootstrapDoneRef.current = true;
           setSessionRefreshing(false);
         });
     };

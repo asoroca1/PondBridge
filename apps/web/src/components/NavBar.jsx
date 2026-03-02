@@ -495,11 +495,14 @@ export default function NavBar() {
   }
 
   async function handleLogout() {
+    const raceTimeout = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
     try {
-      await requestJson(`/api/t/${slug}/auth/logout`, {
-        method: "POST",
-        token
-      });
+      // Race against a timeout so logout doesn't hang when the API is
+      // unreachable (CORS / network failure, especially on Safari).
+      await Promise.race([
+        requestJson(`/api/t/${slug}/auth/logout`, { method: "POST", token }),
+        raceTimeout(2200)
+      ]);
     } catch {
       // No-op: clear local auth regardless.
     } finally {

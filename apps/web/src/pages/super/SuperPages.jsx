@@ -247,6 +247,7 @@ export function SuperPlatformPulsePage() {
   }
 
   useEffect(() => {
+    if (!token) return undefined;
     setLoading(true);
     loadData();
 
@@ -365,6 +366,10 @@ export function SuperTenantsPage() {
   }
 
   useEffect(() => {
+    // Don't fire API calls before auth bootstrap has provided a token.
+    // Without this guard the first render always hits the API with an empty
+    // token, gets a 401, and briefly shows "Could not load tenants."
+    if (!token) return;
     setLoading(true);
     loadData();
   }, [token, filters.search, filters.status, filters.plan, filters.billingStatus]);
@@ -817,6 +822,7 @@ export function SuperEmailTransactionalPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token, days]);
 
@@ -1045,6 +1051,7 @@ export function SuperEmailBroadcastPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token]);
 
@@ -1241,6 +1248,7 @@ export function SuperBillingOverviewPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token]);
 
@@ -1320,6 +1328,7 @@ export function SuperBillingTenantsPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token, filters.search, filters.plan, filters.status, filters.paymentMethod, page]);
 
@@ -1524,6 +1533,7 @@ export function SuperBillingFailedPage() {
   }
 
   useEffect(() => {
+    if (!token) return undefined;
     loadData();
     const id = window.setInterval(loadData, 30000);
     return () => window.clearInterval(id);
@@ -1624,6 +1634,7 @@ export function SuperAnalyticsEngagementPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token]);
 
@@ -1746,6 +1757,7 @@ export function SuperAnalyticsFunnelPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token]);
 
@@ -1843,6 +1855,7 @@ export function SuperAnalyticsFlagsPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token]);
 
@@ -2001,6 +2014,7 @@ export function SuperJobsHealthPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token]);
 
@@ -2083,6 +2097,7 @@ export function SuperJobsLogPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token, filters.status, filters.search]);
 
@@ -2242,6 +2257,7 @@ export function SuperJobsImportsPage() {
   }
 
   useEffect(() => {
+    if (!token) return undefined;
     loadData();
     const id = window.setInterval(loadData, 5000);
     return () => window.clearInterval(id);
@@ -2401,6 +2417,7 @@ export function SuperJobsScheduledPage() {
   }
 
   useEffect(() => {
+    if (!token) return;
     loadData();
   }, [token]);
 
@@ -2489,6 +2506,7 @@ export function SuperSettingsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!token) return;
     requestJson("/api/super/settings", { token })
       .then((payload) => setData(payload))
       .catch((loadError) => setError(loadError.message || "Could not load super settings."));

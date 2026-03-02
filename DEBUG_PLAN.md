@@ -1,8 +1,55 @@
 # PondBridge Production Debug Plan
 
-**Status**: Ready for implementation
+**Status**: Round 2 fixes applied
 **Created**: 2026-03-01
-**Issues**: 3 critical bugs identified in production auth/routing flow
+**Updated**: 2026-03-01 (Round 2)
+**Issues**: 3 original + 5 additional root causes identified
+
+---
+
+## Round 2 Fixes (2026-03-01)
+
+### Additional Root Causes Found
+
+1. **cedar/App.jsx `key={routeKey}` on stage div**: The `app-route-stage` div had a React
+   `key` that changed on every route navigation, causing the ENTIRE page content tree
+   (including NavBar) to unmount and remount. This was the #1 source of visual flashing.
+   **Fix**: Removed `key` from stage div (only keep on progress bar).
+
+2. **`refreshSession` toggled `sessionRefreshing` on every call**: The `refreshSession`
+   callback always set `sessionRefreshing = true/false`, which caused `isReady` to flicker
+   `true -> false -> true`. This happened during membership-sync (not just bootstrap),
+   which unmounted the entire `AppShell + NavBar` tree and re-showed the "Checking your
+   account" interstitial.
+   **Fix**: Added `bootstrapDoneRef` — after initial bootstrap, `refreshSession` no longer
+   touches `sessionRefreshing`, so `isReady` stays true permanently.
+
+3. **Network errors cleared all cached auth**: When the API was unreachable (CORS / Safari
+   ITP / network), `refreshSession` threw, the bootstrap caught it, and cleared all auth
+   (including cached user from localStorage). This logged the user out on transient failures.
+   **Fix**: If `refreshSession` fails with a network error but there's already a cached user,
+   keep the cached auth instead of clearing everything.
+
+4. **NavBar logout had no timeout**: The `handleLogout` function in NavBar awaited the API
+   logout call with no timeout. If the API was unreachable, logout hung before clearing local
+   auth — making it seem like "logout doesn't work".
+   **Fix**: Added 2.2s race timeout (matching SuperShellLayout's pattern).
+
+5. **Super pages fired API calls with empty token**: All `useEffect` hooks in SuperPages.jsx
+   depended on `token` but didn't guard against empty string. During bootstrap, they fired
+   once with `token=""` (401 error), then again with the real token. This caused brief error
+   flashes and double-loading.
+   **Fix**: Added `if (!token) return;` guard to all 12 data-loading effects.
+
+### Files Modified (Round 2)
+- `apps/web/src/cedar/App.jsx` — removed `key={routeKey}` from stage div
+- `apps/web/src/context/AuthContext.jsx` — `bootstrapDoneRef`, network error resilience
+- `apps/web/src/components/NavBar.jsx` — logout timeout
+- `apps/web/src/pages/super/SuperPages.jsx` — token guards on all useEffects
+
+---
+
+## Original Issues (Round 1)
 
 ---
 

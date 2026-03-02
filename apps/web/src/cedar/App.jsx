@@ -29,10 +29,7 @@ export default function App() {
     <div className="app-route-shell">
       <div className="app-route-progress" key={routeKey} aria-hidden="true" />
 
-      <div
-        key={routeKey}
-        className="app-route-stage"
-      >
+      <div className="app-route-stage">
         <Routes location={location}>
           {/* Public */}
           <Route path="/" element={<Home />} />
