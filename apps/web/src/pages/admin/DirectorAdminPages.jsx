@@ -394,7 +394,12 @@ function TimeSeriesChartCard({
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverIndex(weekSeries.length ? weekSeries.length - 1 : null)}
         >
-          <text className="director-admin-chart-axis-label y" x={16} y={chartHeight / 2}>
+          <text
+            className="director-admin-chart-axis-label y"
+            x={16}
+            y={chartHeight / 2}
+            transform={`rotate(-90 16 ${chartHeight / 2})`}
+          >
             {yLabel}
           </text>
           <text className="director-admin-chart-axis-label x" x={chartWidth / 2} y={chartHeight - 8}>
