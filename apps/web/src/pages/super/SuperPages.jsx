@@ -229,7 +229,7 @@ export function SuperPlatformPulsePage() {
   const { token, getAuthToken } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [_loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   async function loadData() {
     try {

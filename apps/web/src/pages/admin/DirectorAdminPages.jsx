@@ -203,6 +203,7 @@ export function DirectorAdminDashboardPage() {
   }
 
   const stats = payload?.stats || {};
+  const tenant = payload?.tenant || {};
   const totalMembers = Number(stats.totalMembers || 0);
   const activeMembers = Number(stats.activeMembers ?? totalMembers);
   const recentSignups = Number(stats.newThisWeek || 0);
