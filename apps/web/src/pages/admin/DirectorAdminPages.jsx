@@ -469,6 +469,40 @@ function TimeSeriesChartCard({
   );
 }
 
+function TopProfileBreakdownCard({
+  title,
+  columnLabel = "Category",
+  items = []
+}) {
+  const rows = (Array.isArray(items) ? items : []).slice(0, 5);
+  return (
+    <Card className="director-admin-breakdown-card">
+      <div className="director-admin-breakdown-head">
+        <h3 className="pb-section-title">{title}</h3>
+      </div>
+      <div className="director-admin-breakdown-table-head">
+        <span>{columnLabel}</span>
+        <span>Members</span>
+      </div>
+      <div className="director-admin-breakdown-list">
+        {rows.length ? (
+          rows.map((item, index) => (
+            <div key={`${item.label}-${index}`} className="director-admin-breakdown-row-item">
+              <span className="director-admin-breakdown-label">
+                <span className="director-admin-breakdown-rank">{index + 1}</span>
+                {item.label}
+              </span>
+              <strong>{Number(item.count || 0)}</strong>
+            </div>
+          ))
+        ) : (
+          <p className="director-admin-breakdown-empty">No profile data yet.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export function DirectorAdminDashboardPage() {
   const { request } = useAdminApi();
   const [payload, setPayload] = useState(null);
@@ -499,6 +533,8 @@ export function DirectorAdminDashboardPage() {
   const profileCompletion = Number(stats.profileCompletion || 0);
   const newUsersSeries = payload?.charts?.newUsers || [];
   const signInsSeries = payload?.charts?.signIns || [];
+  const topLocations = payload?.profileBreakdowns?.topLocations || [];
+  const topRoles = payload?.profileBreakdowns?.topRoles || [];
   const normalizedNewUsersSeries = useMemo(() => normalizeSeries(newUsersSeries), [newUsersSeries]);
   const normalizedSignInsSeries = useMemo(() => normalizeSeries(signInsSeries), [signInsSeries]);
   const combinedSeries = useMemo(
@@ -581,15 +617,29 @@ export function DirectorAdminDashboardPage() {
       </Card>
 
       <div className="director-admin-two-col director-admin-dashboard-charts">
-        <TimeSeriesChartCard
-          title="New Users"
-          yLabel="New users"
-          xLabel="Date"
-          points={newUsersSeries}
-          weekWindows={weekWindows}
-          activeWeekKey={activeWeekKey}
-          onWeekChange={setActiveWeekKey}
-        />
+        <div className="director-admin-dashboard-left">
+          <TimeSeriesChartCard
+            title="New Users"
+            yLabel="New users"
+            xLabel="Date"
+            points={newUsersSeries}
+            weekWindows={weekWindows}
+            activeWeekKey={activeWeekKey}
+            onWeekChange={setActiveWeekKey}
+          />
+          <div className="director-admin-breakdown-row">
+            <TopProfileBreakdownCard
+              title="Top Locations"
+              columnLabel="Location"
+              items={topLocations}
+            />
+            <TopProfileBreakdownCard
+              title="Top Roles At Camp"
+              columnLabel="Role"
+              items={topRoles}
+            />
+          </div>
+        </div>
         <TimeSeriesChartCard
           title="Sign-Ins"
           yLabel="Sign-ins"

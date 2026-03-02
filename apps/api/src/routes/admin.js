@@ -457,6 +457,36 @@ function normalizeRoleLabel(roleAtCamp = "") {
   return normalized;
 }
 
+function normalizeLocationLabel(cityState = "") {
+  const parsed = parseCityStateDetailed(String(cityState || "").trim());
+  return composeCityState(parsed);
+}
+
+function splitRoleValues(roleAtCamp = "") {
+  const source = Array.isArray(roleAtCamp) ? roleAtCamp : [roleAtCamp];
+  return source
+    .flatMap((entry) => String(entry || "").split(/[,;|]+/g))
+    .map((entry) => sanitizeText(String(entry || "").trim()))
+    .filter(Boolean);
+}
+
+function topCountBuckets(values = [], limit = 5) {
+  const counts = new Map();
+  for (const value of values) {
+    const label = String(value || "").trim();
+    if (!label) continue;
+    counts.set(label, Number(counts.get(label) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((left, right) => {
+      const delta = Number(right[1] || 0) - Number(left[1] || 0);
+      if (delta !== 0) return delta;
+      return left[0].localeCompare(right[0]);
+    })
+    .slice(0, Math.max(1, Number(limit || 0)))
+    .map(([label, count]) => ({ label, count: Number(count || 0) }));
+}
+
 function hasDirectorRole(roles = []) {
   const roleSet = new Set((Array.isArray(roles) ? roles : [roles]).map((role) => String(role || "").trim()));
   return roleSet.has("tenant_admin") || roleSet.has("super_admin") || roleSet.has("admin");
@@ -1092,6 +1122,12 @@ router.get("/dashboard", async (req, res, next) => {
           profiles.reduce((sum, profile) => sum + completionScore(profile), 0) / profiles.length
         )
       : 0;
+    const topLocations = topCountBuckets(
+      profiles.map((profile) => normalizeLocationLabel(profile?.cityState || ""))
+    );
+    const topRoles = topCountBuckets(
+      profiles.flatMap((profile) => splitRoleValues(profile?.roleAtCamp || ""))
+    );
 
     const priorWindowCount = await ProfileModel.count(tenantId, {
       status: "active",
@@ -1146,6 +1182,10 @@ router.get("/dashboard", async (req, res, next) => {
         rangeDays: DASHBOARD_CHART_DAYS,
         newUsers: newUsersSeries,
         signIns: signInsSeries
+      },
+      profileBreakdowns: {
+        topLocations,
+        topRoles
       },
       lastEmail: lastBroadcast[0]
         ? {
