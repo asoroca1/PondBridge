@@ -353,11 +353,6 @@ function TimeSeriesChartCard({
     <Card className="director-admin-chart-card">
       <div className="director-admin-chart-head">
         <h2 className="pb-section-title">{title}</h2>
-        {activePoint ? (
-          <span className="director-admin-chart-value">
-            {activePoint.value} on {activePoint.label}
-          </span>
-        ) : null}
       </div>
 
       <div className="director-admin-chart-week-nav">
