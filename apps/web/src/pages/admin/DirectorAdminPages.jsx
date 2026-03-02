@@ -203,11 +203,10 @@ export function DirectorAdminDashboardPage() {
   }
 
   const stats = payload?.stats || {};
-  const tenant = payload?.tenant || {};
-  const pendingApprovals = Number(stats.pendingApprovals || 0);
   const totalMembers = Number(stats.totalMembers || 0);
-  const activeMembers = Number(stats.activeMembers ?? Math.max(0, totalMembers - pendingApprovals));
+  const activeMembers = Number(stats.activeMembers ?? totalMembers);
   const recentSignups = Number(stats.newThisWeek || 0);
+  const profileCompletion = Number(stats.profileCompletion || 0);
   const statCards = [
     {
       key: "total-members",
@@ -224,18 +223,18 @@ export function DirectorAdminDashboardPage() {
       tone: "neutral"
     },
     {
-      key: "pending-approvals",
-      label: "Pending Approvals",
-      value: pendingApprovals,
-      hint: "Awaiting review",
-      tone: pendingApprovals > 0 ? "warning" : "neutral"
-    },
-    {
       key: "recent-signups",
       label: "Recent Signups",
       value: recentSignups,
       hint: "Last 7 days",
       tone: recentSignups > 0 ? "success" : "neutral"
+    },
+    {
+      key: "profile-completion",
+      label: "Profile Completion",
+      value: `${profileCompletion}%`,
+      hint: "Average across members",
+      tone: profileCompletion >= 70 ? "success" : "neutral"
     }
   ];
   const quickActions = [

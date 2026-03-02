@@ -15,7 +15,6 @@ import { env } from "../config/env.js";
 import { sendMagicLinkEmail, sendWelcomeEmail } from "../services/email.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { clearAuthCookie, setAuthCookie } from "../utils/authCookie.js";
-import { normalizeSignupMode } from "../services/onboarding.js";
 import { findInviteByOpaqueToken, markInviteUsed } from "../services/invites.js";
 import { hashOpaqueToken } from "../utils/tokens.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
@@ -95,13 +94,9 @@ function rolesFromInvite(invite) {
   return ["user"];
 }
 
-function resolveSignupMode(tenant) {
-  return normalizeSignupMode(tenant?.settings?.signupMode || tenant?.accessSettings?.signupMode || "open");
-}
-
-function emailDomain(email = "") {
-  const at = String(email || "").toLowerCase().trim().split("@");
-  return at.length > 1 ? at[at.length - 1] : "";
+function resolveSignupMode(_tenant) {
+  // Access policy is retired: all tenant signups are open.
+  return "open";
 }
 
 function normalizeCamperYears(value = {}) {
@@ -320,23 +315,6 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
           }
         });
       }
-    }
-  }
-
-  const allowedDomains = Array.isArray(req.tenant?.settings?.allowedEmailDomains)
-    ? req.tenant.settings.allowedEmailDomains
-        .map((domain) => String(domain || "").toLowerCase().trim().replace(/^@/, ""))
-        .filter(Boolean)
-    : [];
-  if (!bypassAccessControls && allowedDomains.length > 0 && !matchingInvite) {
-    const domain = emailDomain(email);
-    if (!allowedDomains.includes(domain)) {
-      return res.status(403).json({
-        error: {
-          code: "EMAIL_DOMAIN_NOT_ALLOWED",
-          message: "Your email domain is not allowed for this camp."
-        }
-      });
     }
   }
 

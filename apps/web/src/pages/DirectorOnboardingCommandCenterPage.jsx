@@ -601,8 +601,8 @@ export default function DirectorOnboardingCommandCenterPage() {
             <Link className="link-button secondary" to={`/t/${slug}/settings/branding`}>
               Branding
             </Link>
-            <Link className="link-button secondary" to={`/t/${slug}/settings/signup`}>
-              Signup
+            <Link className="link-button secondary" to={`/t/${slug}/settings/network`}>
+              Network
             </Link>
             <Link className="link-button secondary" to={`/t/${slug}/settings/content`}>
               Content

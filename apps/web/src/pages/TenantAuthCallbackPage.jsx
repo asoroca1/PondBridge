@@ -152,7 +152,6 @@ function ClerkAuthCallbackPage() {
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const directorBootstrap = truthy(searchParams.get("directorBootstrap"));
-  const completeJoin = truthy(searchParams.get("completeJoin"));
   const { refreshSession, logout } = useAuth();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const [error, setError] = useState("");
@@ -235,28 +234,8 @@ function ClerkAuthCallbackPage() {
           });
         } else if (decision.action === "join_network") {
           clearDirectorBootstrapIntent(slug);
-          if (String(decision.signupMode || "").toLowerCase() === "code" && !completeJoin) {
-            redirected = true;
-            navigate(
-              routeWithSlug(
-                slug,
-                `/create-account?completeJoin=1${inviteToken ? `&inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
-              ),
-              { replace: true }
-            );
-            return;
-          }
-
           setPhaseMessage("Creating your network membership...");
           await requestJson(`/api/t/${slug}/access/join`, {
-            method: "POST",
-            token,
-            body: {}
-          });
-        } else if (decision.action === "request_access") {
-          clearDirectorBootstrapIntent(slug);
-          setPhaseMessage("Submitting your access request...");
-          await requestJson(`/api/t/${slug}/access/request-access`, {
             method: "POST",
             token,
             body: {}
@@ -303,7 +282,7 @@ function ClerkAuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [completeJoin, directorBootstrap, getToken, inviteToken, isLoaded, isSignedIn, logout, navigate, refreshSession, slug]);
+  }, [directorBootstrap, getToken, inviteToken, isLoaded, isSignedIn, logout, navigate, refreshSession, slug]);
 
   return (
     <section className="app-status-shell">

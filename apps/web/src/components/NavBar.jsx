@@ -197,8 +197,7 @@ export default function NavBar() {
   const onAuthRoute =
     onLoginRoute ||
     onCreateAccountRoute ||
-    /\/auth\/callback\/?$/.test(currentPath) ||
-    /\/request-access\/?$/.test(currentPath);
+    /\/auth\/callback\/?$/.test(currentPath);
   const onPublicEntryRoute =
     currentPath === "/" ||
     currentPath === `/t/${slug}` ||

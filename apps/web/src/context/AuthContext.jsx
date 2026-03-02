@@ -55,8 +55,7 @@ function isAuthEntryRoute(pathname = "") {
     path.includes("/auth/callback") ||
     path.includes("/create-account") ||
     path.includes("/director-claim") ||
-    path.includes("/director-create-account") ||
-    path.includes("/request-access")
+    path.includes("/director-create-account")
   );
 }
 

@@ -210,24 +210,22 @@ export function resolveContent(tenant) {
 }
 
 export function resolveSettings(tenant) {
-  const legacyMode = normalizeSignupMode(tenant?.accessSettings?.signupMode || "");
   const settings = tenant?.settings || {};
-  const signupMode = normalizeSignupMode(settings.signupMode || legacyMode || "open");
-  const accessCodeHash = String(settings.accessCodeHash || "").trim();
 
   return {
-    signupMode,
-    accessCodeHash,
-    accessCodeHint: String(settings.accessCodeHint || ""),
-    allowedEmailDomains: normalizeDomains(settings.allowedEmailDomains || []),
+    // Access policy is retired: all networks use open join.
+    signupMode: "open",
+    accessCodeHash: "",
+    accessCodeHint: "",
+    allowedEmailDomains: [],
     allowSearchByDefault: Boolean(
       settings.allowSearchByDefault !== undefined ? settings.allowSearchByDefault : true
     ),
     allowDirectoryBrowse: Boolean(
       settings.allowDirectoryBrowse !== undefined ? settings.allowDirectoryBrowse : true
     ),
-    requireProfileCompletion: Boolean(settings.requireProfileCompletion || false),
-    hasAccessCode: Boolean(accessCodeHash)
+    requireProfileCompletion: false,
+    hasAccessCode: false
   };
 }
 

@@ -13,8 +13,7 @@ const initialForm = {
   password: "",
   cityState: "",
   roleAtCamp: "",
-  bio: "",
-  accessCode: ""
+  bio: ""
 };
 
 export default function RegisterPage() {
@@ -32,7 +31,6 @@ export default function RegisterPage() {
   const [saving, setSaving] = useState(false);
   const [resumeUploading, setResumeUploading] = useState(false);
   const canUseResumeParsing = tenantHasFeature(tenant, "resumeParsing");
-  const signupMode = tenant?.accessSettings?.signupMode || "open";
   const signupEnabled = tenant?.accessSettings?.signupEnabled !== false;
 
   useEffect(() => {
@@ -135,11 +133,6 @@ export default function RegisterPage() {
         {!signupEnabled ? (
           <p className="error-text">Signup is not open yet. Please contact your camp director.</p>
         ) : null}
-        {signupMode === "invite" && !inviteMeta ? (
-          <p className="muted">
-            This camp is invite-only. Use the invite link sent to your email to continue.
-          </p>
-        ) : null}
         {inviteMeta ? (
           <p className="success-text">
             Invite recognized for <strong>{inviteMeta.email}</strong> ({inviteMeta.roleToAssign}).
@@ -202,13 +195,6 @@ export default function RegisterPage() {
             <Input
               value={form.cityState}
               onChange={(event) => setForm((prev) => ({ ...prev, cityState: event.target.value }))}
-            />
-          </label>
-          <label>
-            Access code (if required)
-            <Input
-              value={form.accessCode}
-              onChange={(event) => setForm((prev) => ({ ...prev, accessCode: event.target.value }))}
             />
           </label>
           <label>

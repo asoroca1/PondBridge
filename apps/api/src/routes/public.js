@@ -4,9 +4,7 @@ import { TenantModel } from "../db/models/index.js";
 import { listFeaturesForPlan } from "@pondbridge/shared";
 import {
   buildTenantConfig,
-  normalizeSignupMode,
   resolveContent,
-  resolveSettings,
   resolveTheme
 } from "../services/onboarding.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
@@ -112,7 +110,7 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
       theme: resolveTheme(tenant),
       content: resolveContent(tenant),
       accessSettings: {
-        signupMode: normalizeSignupMode(config.accessRules.signupMode || "open"),
+        signupMode: "open",
         signupEnabled: isSignupEnabled(tenant)
       },
       modules: config.modules,
@@ -147,7 +145,6 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
       });
     }
 
-    const settings = resolveSettings(tenant);
     const billingAccess = isTenantBillingAccessAllowed(tenant);
 
     return res.json({
@@ -160,7 +157,7 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
         reason: billingAccess.reason,
         inGrace: billingAccess.inGrace
       },
-      signupMode: normalizeSignupMode(settings.signupMode || "open")
+      signupMode: "open"
     });
   } catch (error) {
     return next(error);

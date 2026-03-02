@@ -5,7 +5,6 @@ import { useAuth } from "./context/AuthContext.jsx";
 import AppShell from "./components/AppShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import TenantAccessPendingPage from "./pages/TenantAccessPendingPage.jsx";
 import TenantAuthCallbackPage from "./pages/TenantAuthCallbackPage.jsx";
 import SuperLoginPage from "./pages/SuperLoginPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
@@ -37,9 +36,6 @@ const DirectorAdminLayout = lazy(() => import("./pages/admin/DirectorAdminLayout
 const DirectorAdminAnalyticsPage = lazy(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminAnalyticsPage }))
 );
-const DirectorAdminApprovalsPage = lazy(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminApprovalsPage }))
-);
 const DirectorAdminBillingPage = lazy(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminBillingPage }))
 );
@@ -60,11 +56,6 @@ const DirectorAdminInvitesPage = lazy(() =>
 );
 const DirectorAdminMembersPage = lazy(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
-);
-const DirectorAdminSettingsAccessPage = lazy(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
-    default: module.DirectorAdminSettingsAccessPage
-  }))
 );
 const DirectorAdminSettingsAdminsPage = lazy(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
@@ -87,11 +78,6 @@ const DirectorAdminSettingsLayout = lazy(() =>
 const DirectorAdminSettingsNetworkPage = lazy(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsNetworkPage
-  }))
-);
-const DirectorAdminSettingsNotificationsPage = lazy(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
-    default: module.DirectorAdminSettingsNotificationsPage
   }))
 );
 const SuperShellLayout = lazy(() => import("./pages/super/SuperShellLayout.jsx"));
@@ -222,8 +208,7 @@ function TenantScopeRoutes() {
       path.includes("/director-claim") ||
       path.includes("/director-create-account") ||
       path.includes("/login") ||
-      path.includes("/create-account") ||
-      path.includes("/request-access");
+      path.includes("/create-account");
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
     const tenantId = String(tenant?.id || tenant?._id || "").trim();
     const userTenantId = String(user?.tenantId || "").trim();
@@ -372,8 +357,7 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-claim") ||
     currentPath.includes("/director-create-account") ||
     currentPath.includes("/login") ||
-    currentPath.includes("/create-account") ||
-    currentPath.includes("/request-access");
+    currentPath.includes("/create-account");
 
   if (clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute) {
     const callbackPath = slug ? `/t/${slug}/auth/callback` : "/auth/callback";
@@ -398,7 +382,6 @@ function TenantScopeRoutes() {
         <Route path="forgot-password" element={<CedarForgotPasswordPage />} />
         <Route path="create-account/*" element={<CedarCreateProfileWizardPage />} />
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
-        <Route path="request-access" element={<TenantAccessPendingPage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
         <Route path="director-create-account/*" element={<DirectorCreateAccountPage />} />
         <Route path="legal" element={<CedarLegalPage />} />
@@ -528,7 +511,7 @@ function TenantScopeRoutes() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DirectorAdminDashboardPage />} />
           <Route path="members" element={<DirectorAdminMembersPage />} />
-          <Route path="members/approvals" element={<DirectorAdminApprovalsPage />} />
+          <Route path="members/approvals" element={<Navigate to="../members" replace />} />
           <Route path="members/import" element={<Navigate to="../invites" replace />} />
           <Route path="invites" element={<DirectorAdminInvitesPage />} />
           <Route path="directory" element={<Navigate to="../members" replace />} />
@@ -544,9 +527,9 @@ function TenantScopeRoutes() {
             <Route index element={<Navigate to="network" replace />} />
             <Route path="network" element={<DirectorAdminSettingsNetworkPage />} />
             <Route path="branding" element={<DirectorAdminSettingsBrandingPage />} />
-            <Route path="access" element={<DirectorAdminSettingsAccessPage />} />
+            <Route path="access" element={<Navigate to="../network" replace />} />
             <Route path="admins" element={<DirectorAdminSettingsAdminsPage />} />
-            <Route path="notifications" element={<DirectorAdminSettingsNotificationsPage />} />
+            <Route path="notifications" element={<Navigate to="../network" replace />} />
             <Route path="danger" element={<DirectorAdminSettingsDangerPage />} />
           </Route>
           <Route path="*" element={<Navigate to="dashboard" replace />} />
@@ -568,7 +551,7 @@ function TenantScopeRoutes() {
         />
         <Route
           path="settings/signup"
-          element={<Navigate to={slug ? `/t/${slug}/admin/settings/access` : "/admin/settings/access"} replace />}
+          element={<Navigate to={slug ? `/t/${slug}/admin/settings/network` : "/admin/settings/network"} replace />}
         />
         <Route
           path="settings/content"

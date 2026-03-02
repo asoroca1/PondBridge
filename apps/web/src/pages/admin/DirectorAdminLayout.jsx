@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { useTenant } from "../../context/TenantContext.jsx";
 import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
 
 const ADMIN_NAV = [
@@ -16,23 +15,13 @@ const ADMIN_NAV = [
 const SETTINGS_NAV = [
   { key: "network", to: "settings/network", label: "Network Identity", className: "director-admin-sidebar-sublink" },
   { key: "branding", to: "settings/branding", label: "Branding", className: "director-admin-sidebar-sublink" },
-  { key: "access", to: "settings/access", label: "Access Policy", className: "director-admin-sidebar-sublink" },
   { key: "admins", to: "settings/admins", label: "Admins", className: "director-admin-sidebar-sublink" },
-  { key: "notifications", to: "settings/notifications", label: "Notifications", className: "director-admin-sidebar-sublink" },
   { key: "danger", to: "settings/danger", label: "Danger Zone", className: "director-admin-sidebar-sublink" }
 ];
 
 export default function DirectorAdminLayout() {
-  const { tenant } = useTenant();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const signupMode =
-    tenant?.config?.accessRules?.signupMode ||
-    tenant?.accessSettings?.signupMode ||
-    tenant?.settings?.signupMode ||
-    "open";
-  const showApprovals = signupMode === "approval_queue";
   const onSettingsRoute = location.pathname.includes("/admin/settings/");
 
   useEffect(() => {
@@ -41,18 +30,6 @@ export default function DirectorAdminLayout() {
 
   const sections = useMemo(() => {
     const base = ADMIN_NAV.map((item) => ({ ...item, className: "director-admin-sidebar-link" }));
-
-    if (showApprovals) {
-      const membersIndex = base.findIndex((item) => item.key === "members");
-      if (membersIndex >= 0) {
-        base.splice(membersIndex + 1, 0, {
-          key: "approvals",
-          to: "members/approvals",
-          label: "Pending Approvals",
-          className: "director-admin-sidebar-link"
-        });
-      }
-    }
 
     base.push({
       key: "settings",
@@ -65,7 +42,7 @@ export default function DirectorAdminLayout() {
     });
 
     return base;
-  }, [onSettingsRoute, settingsOpen, showApprovals]);
+  }, [onSettingsRoute, settingsOpen]);
 
   return (
     <section className="pb-cedar-page">

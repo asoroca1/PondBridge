@@ -8,7 +8,6 @@ import {
   TenantModel
 } from "../db/models/index.js";
 import { requireTenantIdentityScope } from "../middleware/tenantAccess.js";
-import { comparePassword } from "../utils/auth.js";
 import {
   createInviteRecord,
   findInviteByOpaqueTokenAnyState,
@@ -24,7 +23,7 @@ import {
   isProfileComplete,
   profileCompletionPercent
 } from "../services/profileCompletion.js";
-import { normalizeSignupMode, resolveSettings } from "../services/onboarding.js";
+import { resolveSettings } from "../services/onboarding.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 import {
@@ -117,18 +116,8 @@ function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-function emailDomain(email = "") {
-  const at = String(email || "").toLowerCase().trim().split("@");
-  return at.length > 1 ? at[at.length - 1] : "";
-}
-
-function tenantJoinMode(tenant) {
-  const settings = resolveSettings(tenant);
-  const signupMode = normalizeSignupMode(settings.signupMode || "open");
-
-  if (signupMode === "invite_only") return "invite_only";
-  if (signupMode === "approval_queue") return "request_access";
-  if (signupMode === "code") return "open_join";
+function tenantJoinMode(_tenant) {
+  // Access policy is retired: all networks use open join.
   return "open_join";
 }
 
@@ -301,12 +290,11 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
   }
 
   const settings = resolveSettings(tenant);
-  const signupMode = normalizeSignupMode(settings.signupMode || "open");
+  const signupMode = "open";
   const joinMode = tenantJoinMode(tenant);
   const billingAccess = isTenantBillingAccessAllowed(tenant);
 
   const membership = await findTenantUserForIdentity(tenantId, identity);
-  const pendingRequest = await findPendingRequest(tenantId, email);
   const inviteFromToken = inviteToken ? await findInviteByOpaqueToken(tenantId, inviteToken) : null;
   const inviteByEmail = inviteFromToken || (email ? await findInviteForEmail(tenantId, email) : null);
   const invite = inviteByEmail && new Date(inviteByEmail.expiresAt) > new Date() ? inviteByEmail : null;
@@ -372,18 +360,6 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
         id: String(profile?._id || ""),
         completionPercent: completion,
         isComplete: !needsOnboarding
-      }
-    };
-  }
-
-  if (pendingRequest) {
-    return {
-      state: "pending_approval",
-      action: "wait_for_approval",
-      nextRoute: pendingRoute,
-      request: {
-        id: String(pendingRequest._id),
-        requestedAt: pendingRequest.requestedAt
       }
     };
   }
@@ -597,42 +573,6 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
   if (!email || !isEmail(email)) {
     return res.status(400).json({
       error: { code: "IDENTITY_EMAIL_REQUIRED", message: "A verified email is required to join this network." }
-    });
-  }
-
-  const settings = resolveSettings(req.tenant);
-  const signupMode = normalizeSignupMode(settings.signupMode || "open");
-  if (signupMode === "invite_only") {
-    return res.status(403).json({
-      error: { code: "INVITE_REQUIRED", message: "This network is invite-only." }
-    });
-  }
-  if (signupMode === "approval_queue") {
-    return res.status(403).json({
-      error: { code: "APPROVAL_REQUIRED", message: "This network requires approval before joining." }
-    });
-  }
-
-  if (signupMode === "code") {
-    const accessCode = String(req.body?.accessCode || "").trim();
-    const codeHash = String(req.tenant?.settings?.accessCodeHash || "").trim();
-    const legacyCode = String(req.tenant?.accessSettings?.accessCode || "").trim();
-    const codeMatched =
-      (codeHash ? await comparePassword(accessCode, codeHash) : false) ||
-      (legacyCode ? accessCode === legacyCode : false);
-    if (!codeMatched) {
-      return res.status(403).json({
-        error: { code: "ACCESS_CODE_INVALID", message: "A valid access code is required." }
-      });
-    }
-  }
-
-  const allowedDomains = (settings.allowedEmailDomains || [])
-    .map((domain) => String(domain || "").trim().toLowerCase().replace(/^@/, ""))
-    .filter(Boolean);
-  if (allowedDomains.length > 0 && !allowedDomains.includes(emailDomain(email))) {
-    return res.status(403).json({
-      error: { code: "EMAIL_DOMAIN_NOT_ALLOWED", message: "Your email domain is not allowed for this network." }
     });
   }
 

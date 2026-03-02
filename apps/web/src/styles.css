@@ -3202,13 +3202,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-sidebar{
   position: sticky;
-  top: 0;
+  top: var(--page-shell-top);
   height: calc(100dvh - var(--page-shell-top));
   align-self: start;
   border: 0;
   border-right: 1px solid #dce6f1;
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.92);
+  background: #fff;
   box-shadow: none;
   backdrop-filter: blur(1px);
   padding: 16px 12px 20px;
