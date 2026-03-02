@@ -1117,7 +1117,7 @@ router.get("/dashboard", async (req, res, next) => {
             createdAt: { $gte: chartStartDay },
             eventType: { $in: DASHBOARD_SIGNIN_EVENT_TYPES }
           },
-          { select: ["createdAt"] }
+          { select: ["createdAt", "userId"] }
         )
       ]);
 
@@ -1158,6 +1158,34 @@ router.get("/dashboard", async (req, res, next) => {
       days: DASHBOARD_CHART_DAYS,
       values: (recentSignIns || []).map((entry) => entry?.createdAt)
     });
+    const profileByUserId = new Map(
+      (profiles || []).map((profile) => [toObjectIdString(profile?.userId), profile])
+    );
+    const signInCountsByUserId = new Map();
+    for (const entry of recentSignIns || []) {
+      const userId = toObjectIdString(entry?.userId);
+      if (!userId) continue;
+      signInCountsByUserId.set(userId, Number(signInCountsByUserId.get(userId) || 0) + 1);
+    }
+    const topActiveMembers = [...signInCountsByUserId.entries()]
+      .map(([userId, logins]) => {
+        const profile = profileByUserId.get(userId) || null;
+        if (!profile) return null;
+        const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
+        return {
+          profileId: toObjectIdString(profile._id),
+          userId,
+          fullName: fullName || "Member",
+          logins: Number(logins || 0)
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        const delta = Number(right.logins || 0) - Number(left.logins || 0);
+        if (delta !== 0) return delta;
+        return String(left.fullName || "").localeCompare(String(right.fullName || ""));
+      })
+      .slice(0, 5);
 
     return res.json({
       tenant: {
@@ -1189,7 +1217,8 @@ router.get("/dashboard", async (req, res, next) => {
       },
       profileBreakdowns: {
         topLocations,
-        topRoles
+        topRoles,
+        topActiveMembers
       },
       lastEmail: lastBroadcast[0]
         ? {

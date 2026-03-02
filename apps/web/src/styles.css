@@ -3432,6 +3432,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
   min-width: 0;
 }
 
+.pb-cedar-page .director-admin-dashboard-right{
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+}
+
 .pb-cedar-page .director-admin-two-col > .pb-card{
   margin-top: 0;
 }

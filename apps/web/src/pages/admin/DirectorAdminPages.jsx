@@ -472,6 +472,7 @@ function TimeSeriesChartCard({
 function TopProfileBreakdownCard({
   title,
   columnLabel = "Category",
+  countLabel = "Members",
   items = []
 }) {
   const rows = (Array.isArray(items) ? items : []).slice(0, 5);
@@ -482,7 +483,7 @@ function TopProfileBreakdownCard({
       </div>
       <div className="director-admin-breakdown-table-head">
         <span>{columnLabel}</span>
-        <span>Members</span>
+        <span>{countLabel}</span>
       </div>
       <div className="director-admin-breakdown-list">
         {rows.length ? (
@@ -535,6 +536,10 @@ export function DirectorAdminDashboardPage() {
   const signInsSeries = payload?.charts?.signIns || [];
   const topLocations = payload?.profileBreakdowns?.topLocations || [];
   const topRoles = payload?.profileBreakdowns?.topRoles || [];
+  const topActiveMembers = (payload?.profileBreakdowns?.topActiveMembers || []).map((item) => ({
+    label: String(item?.fullName || "Member"),
+    count: Number(item?.logins || 0)
+  }));
   const normalizedNewUsersSeries = useMemo(() => normalizeSeries(newUsersSeries), [newUsersSeries]);
   const normalizedSignInsSeries = useMemo(() => normalizeSeries(signInsSeries), [signInsSeries]);
   const combinedSeries = useMemo(
@@ -640,15 +645,23 @@ export function DirectorAdminDashboardPage() {
             />
           </div>
         </div>
-        <TimeSeriesChartCard
-          title="Sign-Ins"
-          yLabel="Sign-ins"
-          xLabel="Date"
-          points={signInsSeries}
-          weekWindows={weekWindows}
-          activeWeekKey={activeWeekKey}
-          onWeekChange={setActiveWeekKey}
-        />
+        <div className="director-admin-dashboard-right">
+          <TimeSeriesChartCard
+            title="Sign-Ins"
+            yLabel="Sign-ins"
+            xLabel="Date"
+            points={signInsSeries}
+            weekWindows={weekWindows}
+            activeWeekKey={activeWeekKey}
+            onWeekChange={setActiveWeekKey}
+          />
+          <TopProfileBreakdownCard
+            title="Top Active Members"
+            columnLabel="Member"
+            countLabel="Logins"
+            items={topActiveMembers}
+          />
+        </div>
       </div>
 
     </div>
