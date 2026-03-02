@@ -393,9 +393,19 @@ CREATE TABLE IF NOT EXISTS public.newsletters (
   pdf_name text NOT NULL DEFAULT '',
   pdf_mime_type text NOT NULL DEFAULT 'application/pdf',
   pdf_data bytea,
+  cover_image_name text NOT NULL DEFAULT '',
+  cover_image_mime_type text NOT NULL DEFAULT '',
+  cover_image_data bytea,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.newsletters
+  ADD COLUMN IF NOT EXISTS cover_image_name text NOT NULL DEFAULT '';
+ALTER TABLE public.newsletters
+  ADD COLUMN IF NOT EXISTS cover_image_mime_type text NOT NULL DEFAULT '';
+ALTER TABLE public.newsletters
+  ADD COLUMN IF NOT EXISTS cover_image_data bytea;
 
 CREATE INDEX IF NOT EXISTS idx_newsletters_tenant ON public.newsletters (tenant_id, year DESC, season, created_at DESC);
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { resolveNetworkDisplayName, resolveNewsletterLabel } from "../../lib/campLabels.js";
@@ -7,9 +7,10 @@ import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, fmtDate } from "../lib/helpers.js";
 import "./cedar-chest.css";
-import { FileText, Newspaper } from "lucide-react";
+import { FileText, Newspaper, Upload, X } from "lucide-react";
 
 const API = API_BASE;
+const DEFAULT_SEASONS = ["Winter", "Spring", "Summer", "Fall"];
 
 function normalizeRoleSet(value = {}) {
   const rawRoles = Array.isArray(value?.roles)
@@ -53,6 +54,22 @@ function readJwtRoles() {
   }
 }
 
+function seasonClassName(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized ? `is-${normalized}` : "";
+}
+
+async function parseApiError(response, fallback = "Request failed") {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    const payload = await response.json().catch(() => null);
+    const message = payload?.error?.message || payload?.message;
+    return message ? String(message) : fallback;
+  }
+  const text = await response.text().catch(() => "");
+  return text ? String(text) : fallback;
+}
+
 // ===== main page =====
 export default function CedarChest() {
   const { tenant } = useTenant();
@@ -63,10 +80,12 @@ export default function CedarChest() {
   const [season, setSeason] = useState("");
   const [year, setYear] = useState("");
   const [adminProbeAllowed, setAdminProbeAllowed] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+
   const networkDisplayName = resolveNetworkDisplayName(tenant);
   const newsletterLabel = resolveNewsletterLabel(tenant);
 
-  // Fetch newsletters
   useEffect(() => {
     let ignore = false;
     async function run() {
@@ -76,17 +95,18 @@ export default function CedarChest() {
         const res = await fetch(`${API}/newsletters`, {
           headers: authHeaders(),
         });
-        if (!res.ok) throw new Error("Failed to load newsletters");
+        if (!res.ok) throw new Error(await parseApiError(res, "Failed to load newsletters"));
         const j = await res.json();
         if (!ignore) {
-          setNewsletters(Array.isArray(j) ? j : (j?.items ?? []));
+          setNewsletters(Array.isArray(j) ? j : j?.items ?? []);
         }
-      } catch (e) {
-        if (!ignore) setErr(e.message || "Error");
+      } catch (error) {
+        if (!ignore) setErr(String(error?.message || "Error"));
       } finally {
         if (!ignore) setLoading(false);
       }
     }
+
     run();
     return () => {
       ignore = true;
@@ -101,7 +121,6 @@ export default function CedarChest() {
     [authUser]
   );
 
-  // Fallback permission probe keeps admin UI available even if local role payload is stale.
   useEffect(() => {
     let ignore = false;
     if (roleBasedAdmin) {
@@ -110,6 +129,7 @@ export default function CedarChest() {
         ignore = true;
       };
     }
+
     async function probe() {
       try {
         const res = await fetch(`${API}/admin/overview`, { headers: authHeaders(false) });
@@ -118,6 +138,7 @@ export default function CedarChest() {
         if (!ignore) setAdminProbeAllowed(false);
       }
     }
+
     probe();
     return () => {
       ignore = true;
@@ -126,34 +147,45 @@ export default function CedarChest() {
 
   const isAdmin = roleBasedAdmin || adminProbeAllowed;
 
-  // Distinct season/year options from data
   const seasonsInData = useMemo(() => {
-    const s = new Set();
-    newsletters.forEach((n) => n?.season && s.add(n.season));
-    return Array.from(s).sort();
+    const values = new Set();
+    newsletters.forEach((n) => n?.season && values.add(n.season));
+    return Array.from(values).sort();
   }, [newsletters]);
 
   const yearsInData = useMemo(() => {
-    const s = new Set();
-    newsletters.forEach((n) => n?.year && s.add(String(n.year)));
-    return Array.from(s).sort((a, b) => Number(b) - Number(a)); // newest first
+    const values = new Set();
+    newsletters.forEach((n) => n?.year && values.add(String(n.year)));
+    return Array.from(values).sort((a, b) => Number(b) - Number(a));
   }, [newsletters]);
 
-  // Client-side filtering
   const filtered = useMemo(() => {
     return newsletters
       .filter((n) => (season ? String(n?.season).toLowerCase() === season.toLowerCase() : true))
       .filter((n) => (year ? String(n?.year) === String(year) : true))
       .sort((a, b) => {
-        // newest (by year desc, then typical season order) first:
         const y = Number(b.year) - Number(a.year);
         if (y !== 0) return y;
-        const order = ["Winter", "Spring", "Summer", "Fall"];
-        return order.indexOf(b.season) - order.indexOf(a.season);
+        return DEFAULT_SEASONS.indexOf(String(b.season || "")) - DEFAULT_SEASONS.indexOf(String(a.season || ""));
       });
   }, [newsletters, season, year]);
 
-  // remove from state when deleted
+  const requestCloseUploadModal = useCallback(() => {
+    if (uploadBusy) return;
+    setUploadOpen(false);
+  }, [uploadBusy]);
+
+  useEffect(() => {
+    if (!uploadOpen) return;
+    const onEsc = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      requestCloseUploadModal();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [uploadOpen, requestCloseUploadModal]);
+
   function handleDeleted(id) {
     setNewsletters((prev) => prev.filter((x) => (x._id || x.id) !== id));
   }
@@ -162,132 +194,157 @@ export default function CedarChest() {
 
   return (
     <>
-      {/* background visible; keep as you last set it */}
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
+
       <main className="cc-wrap nav2-page-shell">
         <CedarPageHeader
           icon={<Newspaper size={18} />}
           title={`The ${newsletterLabel}`}
           subtitle={subtitleText}
         >
-          <div className="cc-filters" role="group" aria-label="Filter newsletters">
-            <label className="cc-filter">
-              <div className="cc-filter-label">Season</div>
-              <select
-                className={season ? "active" : ""}
-                value={season}
-                onChange={(e) => setSeason(e.target.value)}
-              >
-                <option value="">All</option>
-                {["Winter", "Spring", "Summer", "Fall"].map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-                {seasonsInData
-                  .filter((s) => !["Winter", "Spring", "Summer", "Fall"].includes(s))
-                  .map((s) => (
+          <div className="cc-header-tools">
+            <div className="cc-filters" role="group" aria-label="Filter newsletters">
+              <label className="cc-filter">
+                <div className="cc-filter-label">Season</div>
+                <select
+                  className={season ? "active" : ""}
+                  value={season}
+                  onChange={(event) => setSeason(event.target.value)}
+                >
+                  <option value="">All</option>
+                  {DEFAULT_SEASONS.map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
                   ))}
-              </select>
-            </label>
-            <label className="cc-filter">
-              <div className="cc-filter-label">Year</div>
-              <select
-                className={year ? "active" : ""}
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
+                  {seasonsInData
+                    .filter((s) => !DEFAULT_SEASONS.includes(s))
+                    .map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label className="cc-filter">
+                <div className="cc-filter-label">Year</div>
+                <select
+                  className={year ? "active" : ""}
+                  value={year}
+                  onChange={(event) => setYear(event.target.value)}
+                >
+                  <option value="">All</option>
+                  {yearsInData.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {isAdmin && (
+              <button
+                type="button"
+                className="cc-btn cc-btn-primary cc-upload-trigger"
+                onClick={() => setUploadOpen(true)}
               >
-                <option value="">All</option>
-                {yearsInData.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <Upload size={15} />
+                Upload Issue
+              </button>
+            )}
           </div>
         </CedarPageHeader>
 
-        {/* TWO-COLUMN GRID */}
-        <section className={`cc-layout${isAdmin ? "" : " cc-layout-single"}`}>
-          {/* LEFT: newsletter stream OR status — this column is the anchor for alignment */}
-          <div className="cc-left">
-            {loading && (
-              <section className="cc-list">
-                {[0, 1, 2].map((idx) => (
-                  <article key={idx} className="cc-card cc-skel">
-                    <div className="cc-skel-chip" />
-                    <div className="cc-skel-title" />
-                    <div className="cc-skel-date" />
-                    <div className="cc-skel-btn" />
-                  </article>
-                ))}
-              </section>
-            )}
-            {err && !loading && <div className="cc-error">Couldn’t load newsletters: {err}</div>}
+        {loading && (
+          <section className="cc-grid" aria-label="Loading newsletters">
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((idx) => (
+              <article key={idx} className="cc-card cc-skel" aria-hidden="true">
+                <div className="cc-skel-cover" />
+                <div className="cc-skel-title" />
+                <div className="cc-skel-date" />
+              </article>
+            ))}
+          </section>
+        )}
 
-            {!loading && !err && (
-              <section className="cc-list">
-                {filtered.length === 0 ? (
-                  <div className="cc-empty">
-                    <FileText size={36} className="cc-empty-icon" />
-                    <h3 className="cc-empty-title">No newsletters found</h3>
-                    <p className="cc-empty-text">
-                      {season || year
-                        ? "Try changing your season or year filter."
-                        : "No newsletters have been published yet."}
-                    </p>
-                    {(season || year) && (
-                      <button
-                        type="button"
-                        className="cc-btn"
-                        onClick={() => {
-                          setSeason("");
-                          setYear("");
-                        }}
-                      >
-                        Clear filters
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  filtered.map((n, index) => (
-                    <NewsletterCard
-                      key={n._id || n.id}
-                      item={n}
-                      newsletterLabel={newsletterLabel}
-                      isAdmin={isAdmin}
-                      onDeleted={handleDeleted}
-                      index={index}
-                    />
-                  ))
-                )}
-              </section>
-            )}
-          </div>
+        {err && !loading && <div className="cc-error">Couldn’t load newsletters: {err}</div>}
 
-          {/* RIGHT: subscribe (top) + admin (below) */}
-          {isAdmin && (
-            <aside className="cc-right">
-              <div className="cc-rail">
-                <section className="cc-admin">
-                  <h2>Publish New Issue</h2>
-                  <AdminUpload
-                    compact
-                    newsletterLabel={newsletterLabel}
-                    onUploaded={(created) => {
-                      setNewsletters((prev) => [created, ...prev]);
+        {!loading && !err && (
+          <section className="cc-grid" aria-label="Newsletter gallery">
+            {filtered.length === 0 ? (
+              <div className="cc-empty">
+                <FileText size={36} className="cc-empty-icon" />
+                <h3 className="cc-empty-title">No newsletters found</h3>
+                <p className="cc-empty-text">
+                  {season || year
+                    ? "Try changing your season or year filter."
+                    : "No newsletters have been published yet."}
+                </p>
+                {(season || year) && (
+                  <button
+                    type="button"
+                    className="cc-btn"
+                    onClick={() => {
+                      setSeason("");
+                      setYear("");
                     }}
-                  />
-                </section>
+                  >
+                    Clear filters
+                  </button>
+                )}
               </div>
-            </aside>
-          )}
-        </section>
+            ) : (
+              filtered.map((n, index) => (
+                <NewsletterCard
+                  key={n._id || n.id}
+                  item={n}
+                  newsletterLabel={newsletterLabel}
+                  isAdmin={isAdmin}
+                  onDeleted={handleDeleted}
+                  index={index}
+                />
+              ))
+            )}
+          </section>
+        )}
       </main>
+
+      {isAdmin && uploadOpen && (
+        <div
+          className="cc-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cc-upload-modal-title"
+          onClick={requestCloseUploadModal}
+        >
+          <div className="cc-modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="cc-modal-head">
+              <h2 id="cc-upload-modal-title">Upload New Issue</h2>
+              <button
+                type="button"
+                className="cc-modal-close"
+                onClick={requestCloseUploadModal}
+                disabled={uploadBusy}
+                aria-label="Close upload modal"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <AdminUpload
+              newsletterLabel={newsletterLabel}
+              onBusyChange={setUploadBusy}
+              onCancel={requestCloseUploadModal}
+              onUploaded={(created) => {
+                setNewsletters((prev) => [created, ...prev]);
+                setUploadOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -295,18 +352,22 @@ export default function CedarChest() {
 // ===== card =====
 function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }) {
   const id = item?._id || item?.id;
-  const title =
-    item?.title || `${item?.season || ""} ${item?.year || ""} ${newsletterLabel}`.trim();
-  const pdfUrl = item?.pdfUrl || item?.url || item?.fileUrl;
+  const title = item?.title || `${item?.season || ""} ${item?.year || ""} ${newsletterLabel}`.trim();
+  const pdfUrl = String(item?.pdfUrl || item?.url || item?.fileUrl || "").trim();
+  const coverImageUrl = String(item?.coverImageUrl || "").trim();
   const created = item?.createdAt || item?.created_at;
-
   const [opening, setOpening] = useState(false);
+  const [coverBroken, setCoverBroken] = useState(false);
   const [openErr, setOpenErr] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [delErr, setDelErr] = useState("");
 
+  useEffect(() => {
+    setCoverBroken(false);
+  }, [coverImageUrl]);
+
   async function handleOpenPdf() {
-    if (!pdfUrl || opening) return;
+    if (!pdfUrl || opening || deleting) return;
     setOpening(true);
     setOpenErr("");
     try {
@@ -342,9 +403,11 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
     }
   }
 
-  async function handleDelete() {
-    if (!isAdmin || !id) return;
+  async function handleDelete(event) {
+    event.stopPropagation();
+    if (!isAdmin || !id || deleting) return;
     if (!window.confirm("Delete this newsletter? This cannot be undone.")) return;
+
     setDeleting(true);
     setDelErr("");
     try {
@@ -353,74 +416,129 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || "Delete failed");
+        throw new Error(await parseApiError(res, "Delete failed"));
       }
       onDeleted?.(id);
-    } catch (e) {
-      setDelErr(e.message || "Delete failed");
-      setTimeout(() => setDelErr(""), 4000);
+    } catch (error) {
+      setDelErr(String(error?.message || "Delete failed"));
+      window.setTimeout(() => setDelErr(""), 4000);
     } finally {
       setDeleting(false);
     }
   }
 
+  const clickable = Boolean(pdfUrl) && !deleting;
+
   return (
-    <article className="cc-card" style={{ animationDelay: `${index * 0.04}s` }}>
-      <div className="cc-card-meta">
-        <div className="cc-chip" data-season={item?.season}>
-          {item?.season}
-        </div>
-        <div className="cc-year">{item?.year}</div>
-      </div>
-
-      <h3 className="cc-card-title">{title}</h3>
-      {created && <div className="cc-card-date">Published {fmtDate(created)}</div>}
-
-      <div className="cc-card-actions">
-        {pdfUrl ? (
-          <button type="button" className="cc-btn cc-btn-primary" onClick={handleOpenPdf} disabled={opening}>
-            <FileText size={14} />
-            {opening ? "Opening..." : "View PDF"}
-          </button>
+    <article
+      className={`cc-card ${clickable ? "is-clickable" : ""}`.trim()}
+      style={{ animationDelay: `${index * 0.03}s` }}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? handleOpenPdf : undefined}
+      onKeyDown={
+        clickable
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleOpenPdf();
+              }
+            }
+          : undefined
+      }
+      aria-busy={opening || deleting}
+      aria-label={clickable ? `Open ${title} PDF` : undefined}
+    >
+      <div className="cc-cover">
+        {coverImageUrl && !coverBroken ? (
+          <img
+            src={coverImageUrl}
+            alt={`${title} cover`}
+            className="cc-cover-image"
+            loading="lazy"
+            onError={() => setCoverBroken(true)}
+          />
         ) : (
-          <span className="cc-miss">PDF missing</span>
-        )}
-
-        {isAdmin && (
-          <button
-            className={`cc-btn danger${deleting ? " busy" : ""}`}
-            onClick={handleDelete}
-            disabled={deleting}
-            aria-disabled={deleting}
-            title="Delete newsletter"
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </button>
+          <div className={`cc-cover-fallback ${seasonClassName(item?.season)}`.trim()}>
+            <div className="cc-cover-fallback-season">{String(item?.season || "Newsletter")}</div>
+            <div className="cc-cover-fallback-year">{String(item?.year || "")}</div>
+          </div>
         )}
       </div>
 
-      {!!openErr && <div className="cc-error small">{openErr}</div>}
-      {!!delErr && <div className="cc-error small">{delErr}</div>}
+      <div className="cc-card-caption">
+        <div className="cc-card-meta">
+          <span className={`cc-chip ${seasonClassName(item?.season)}`.trim()}>{item?.season || "Issue"}</span>
+          <span className="cc-year">{item?.year || ""}</span>
+          {isAdmin && (
+            <button
+              type="button"
+              className={`cc-card-delete${deleting ? " busy" : ""}`}
+              onClick={handleDelete}
+              disabled={deleting}
+              aria-disabled={deleting}
+              title="Delete newsletter"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
+          )}
+        </div>
+
+        <h3 className="cc-card-title">{title}</h3>
+        {created && <div className="cc-card-date">Published {fmtDate(created)}</div>}
+        {opening && <div className="cc-card-status">Opening PDF...</div>}
+        {!pdfUrl && <div className="cc-miss">PDF missing</div>}
+        {!!openErr && <div className="cc-error small">{openErr}</div>}
+        {!!delErr && <div className="cc-error small">{delErr}</div>}
+      </div>
     </article>
   );
 }
 
-// ===== admin upload panel =====
-function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = false }) {
+// ===== admin upload form =====
+function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Newsletter" }) {
   const [title, setTitle] = useState("");
   const [season, setSeason] = useState("");
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [pdf, setPdf] = useState(null);
+  const [coverImage, setCoverImage] = useState(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState("");
   const [emailToNetwork, setEmailToNetwork] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const fileRef = useRef(null);
+  const coverRef = useRef(null);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
+
+  useEffect(
+    () => () => {
+      onBusyChange?.(false);
+    },
+    [onBusyChange]
+  );
+
+  useEffect(() => {
+    if (!coverImage) {
+      setCoverPreviewUrl("");
+      return;
+    }
+
+    const url = URL.createObjectURL(coverImage);
+    setCoverPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [coverImage]);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
     if (!pdf) {
       setMsg("Please choose a PDF.");
+      return;
+    }
+    if (!coverImage) {
+      setMsg("Please choose a cover image (JPG, PNG, or WEBP).");
       return;
     }
     if (!season || !year) {
@@ -431,6 +549,7 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
     setBusy(true);
     setMsg("");
     let timeoutMs = 3000;
+
     try {
       const fd = new FormData();
       if (title) fd.append("title", title);
@@ -438,13 +557,17 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
       fd.append("year", String(year));
       fd.append("emailToNetwork", String(emailToNetwork));
       fd.append("file", pdf);
+      fd.append("coverImage", coverImage);
 
       const res = await fetch(`${API}/newsletters`, {
         method: "POST",
         headers: { Authorization: `Bearer ${getToken()}` },
         body: fd,
       });
-      if (!res.ok) throw new Error((await res.text()) || "Upload failed");
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, "Upload failed"));
+      }
+
       const created = await res.json();
       const delivery = created?.emailDelivery || null;
       if (delivery?.requested) {
@@ -465,22 +588,25 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
       } else {
         setMsg("Uploaded!");
       }
+
       setTitle("");
       setSeason("");
-      setYear(new Date().getFullYear());
+      setYear(String(new Date().getFullYear()));
       setPdf(null);
+      setCoverImage(null);
       if (fileRef.current) fileRef.current.value = "";
+      if (coverRef.current) coverRef.current.value = "";
       setEmailToNetwork(false);
       onUploaded?.(created);
-    } catch (e) {
-      setMsg(e.message || "Upload failed");
+    } catch (error) {
+      setMsg(String(error?.message || "Upload failed"));
     } finally {
       setBusy(false);
       setTimeout(() => setMsg(""), timeoutMs);
     }
   }
 
-  const Form = (
+  return (
     <form className="cc-admin-form" onSubmit={handleSubmit}>
       <div className="cc-row">
         <label>Title (optional)</label>
@@ -488,30 +614,31 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
           type="text"
           placeholder={`Fall ${new Date().getFullYear()} ${newsletterLabel}`}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(event) => setTitle(event.target.value)}
         />
       </div>
 
       <div className="cc-row cc-row-2">
         <div>
           <label>Season</label>
-          <select value={season} onChange={(e) => setSeason(e.target.value)}>
-            <option value="">Select…</option>
-            {["Winter", "Spring", "Summer", "Fall"].map((s) => (
+          <select value={season} onChange={(event) => setSeason(event.target.value)}>
+            <option value="">Select...</option>
+            {DEFAULT_SEASONS.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
           </select>
         </div>
+
         <div>
           <label>Year</label>
           <input
             type="number"
-            value={year}
-            onChange={(e) => setYear(e.target.value)}
             min="1900"
             max="2100"
+            value={year}
+            onChange={(event) => setYear(event.target.value)}
           />
         </div>
       </div>
@@ -530,9 +657,34 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
             type="file"
             accept="application/pdf"
             hidden
-            onChange={(e) => setPdf(e.target.files?.[0] || null)}
+            onChange={(event) => setPdf(event.target.files?.[0] || null)}
           />
         </div>
+      </div>
+
+      <div className="cc-row">
+        <label>Cover Image (required)</label>
+        <div className="cc-file-upload">
+          <button type="button" className="cc-file-btn" onClick={() => coverRef.current?.click()}>
+            Choose Cover
+          </button>
+          <span className="cc-file-name">{coverImage ? coverImage.name : "JPG, PNG, or WEBP"}</span>
+          <input
+            ref={coverRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            hidden
+            onChange={(event) => setCoverImage(event.target.files?.[0] || null)}
+          />
+        </div>
+
+        {coverPreviewUrl ? (
+          <div className="cc-cover-preview-wrap">
+            <img src={coverPreviewUrl} alt="Selected cover preview" className="cc-cover-preview" />
+          </div>
+        ) : (
+          <div className="cc-cover-preview-empty">Cover preview appears here</div>
+        )}
       </div>
 
       <div className="cc-row">
@@ -548,6 +700,10 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
       </div>
 
       <div className="cc-actions">
+        <button type="button" className="cc-btn cc-btn-ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+
         <button type="submit" disabled={busy}>
           {busy ? (
             <>
@@ -558,24 +714,9 @@ function AdminUpload({ onUploaded, newsletterLabel = "Newsletter", compact = fal
             "Upload Issue"
           )}
         </button>
-        {msg && <span className="cc-msg">{msg}</span>}
       </div>
 
-      {!compact && (
-        <p className="cc-note">
-          This panel is visible only to directors/admins. Regular users won’t see it.
-        </p>
-      )}
+      {msg && <span className="cc-msg">{msg}</span>}
     </form>
-  );
-
-  if (compact) return Form;
-
-  // non-compact legacy rendering (kept for reuse elsewhere if needed)
-  return (
-    <section className="cc-admin">
-      <h2>Publish New Issue</h2>
-      {Form}
-    </section>
   );
 }

@@ -107,6 +107,9 @@ const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero
 const PRELAUNCH_PUBLIC_BRANDING_SCOPES = new Set(["branding-logo", "branding-hero"]);
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NEWSLETTER_R2_POINTER_MIME = "application/x.pondbridge.newsletter-r2-pointer+json";
+const NEWSLETTER_COVER_R2_POINTER_MIME =
+  "application/x.pondbridge.newsletter-cover-r2-pointer+json";
+const NEWSLETTER_COVER_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
 function normalizeFileName(fileName = "file") {
   return String(fileName || "file")
@@ -272,7 +275,7 @@ function buildTenantObjectProxyBaseUrl(req) {
   return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/uploads/object`;
 }
 
-function encodeNewsletterPointer({ key = "", objectUrl = "" } = {}) {
+function encodeR2Pointer({ key = "", objectUrl = "" } = {}) {
   const payload = {
     version: 1,
     key: String(key || "").trim(),
@@ -281,9 +284,9 @@ function encodeNewsletterPointer({ key = "", objectUrl = "" } = {}) {
   return Buffer.from(JSON.stringify(payload), "utf8");
 }
 
-function decodeNewsletterPointer(row = {}) {
-  if (String(row?.pdfMimeType || "") !== NEWSLETTER_R2_POINTER_MIME) return null;
-  const raw = row?.pdfData;
+function decodeR2Pointer(rawValue = null, expectedMimeType = "", actualMimeType = "") {
+  if (String(actualMimeType || "") !== String(expectedMimeType || "")) return null;
+  const raw = rawValue;
   if (!raw) return null;
   try {
     const asBuffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
@@ -297,10 +300,24 @@ function decodeNewsletterPointer(row = {}) {
   }
 }
 
+function decodeNewsletterPointer(row = {}) {
+  return decodeR2Pointer(row?.pdfData, NEWSLETTER_R2_POINTER_MIME, row?.pdfMimeType);
+}
+
+function decodeNewsletterCoverPointer(row = {}) {
+  return decodeR2Pointer(row?.coverImageData, NEWSLETTER_COVER_R2_POINTER_MIME, row?.coverImageMimeType);
+}
+
 function resolveNewsletterPdfUrl(req, row = {}) {
   const pointer = decodeNewsletterPointer(row);
   if (pointer?.objectUrl) return pointer.objectUrl;
   return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${row._id}/file`;
+}
+
+function resolveNewsletterCoverUrl(row = {}) {
+  const pointer = decodeNewsletterCoverPointer(row);
+  if (pointer?.objectUrl) return pointer.objectUrl;
+  return "";
 }
 
 async function resolveNetworkRecipientEmails(tenantId) {
@@ -2382,6 +2399,7 @@ router.get("/newsletters", async (req, res) => {
       season: row.season || "",
       year: row.year || null,
       pdfUrl: resolveNewsletterPdfUrl(req, row),
+      coverImageUrl: resolveNewsletterCoverUrl(row),
       createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null
     }))
   });
@@ -2411,18 +2429,39 @@ router.get("/newsletters/:id/file", async (req, res) => {
   return res.send(row.pdfData);
 });
 
-router.post("/newsletters", upload.single("file"), async (req, res) => {
+router.post(
+  "/newsletters",
+  upload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "coverImage", maxCount: 1 }
+  ]),
+  async (req, res) => {
   const isAdmin = isCampAdmin(req.user);
   if (!isAdmin) {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Admin access required" } });
   }
 
-  const file = req.file;
+  const files = req.files && typeof req.files === "object" ? req.files : {};
+  const file = Array.isArray(files.file) ? files.file[0] : null;
+  const coverImage = Array.isArray(files.coverImage) ? files.coverImage[0] : null;
   if (!file) {
     return res.status(400).json({ error: { code: "FILE_REQUIRED", message: "PDF file is required" } });
   }
   if (file.mimetype !== "application/pdf") {
     return res.status(400).json({ error: { code: "INVALID_FILE", message: "Only PDF uploads are supported" } });
+  }
+  if (!coverImage) {
+    return res.status(400).json({
+      error: { code: "COVER_IMAGE_REQUIRED", message: "Cover image is required." }
+    });
+  }
+  if (!NEWSLETTER_COVER_MIME_TYPES.has(String(coverImage.mimetype || "").toLowerCase())) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_COVER_IMAGE",
+        message: "Cover image must be a JPG, PNG, or WEBP file."
+      }
+    });
   }
 
   const season = sanitizeText(String(req.body?.season || "").trim());
@@ -2444,6 +2483,15 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
     allowedContentTypes: ["application/pdf"]
   });
+  const uploadedCover = await uploadBufferToR2({
+    tenantSlug: req.tenant.slug,
+    prefix: "newsletters/covers",
+    fileName: normalizeAttachmentFileName(coverImage.originalname || `${season}-${year}-cover.jpg`),
+    fileType: String(coverImage.mimetype || "").toLowerCase(),
+    body: coverImage.buffer,
+    objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
+    allowedContentTypes: [...NEWSLETTER_COVER_MIME_TYPES]
+  });
   const created = await NewsletterModel.create({
     tenantId: req.tenant._id,
     title,
@@ -2451,9 +2499,15 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     year,
     pdfName: file.originalname || `${season}-${year}.pdf`,
     pdfMimeType: NEWSLETTER_R2_POINTER_MIME,
-    pdfData: encodeNewsletterPointer({
+    pdfData: encodeR2Pointer({
       key: uploaded.key,
       objectUrl: uploaded.objectUrl
+    }),
+    coverImageName: coverImage.originalname || `${season}-${year}-cover.jpg`,
+    coverImageMimeType: NEWSLETTER_COVER_R2_POINTER_MIME,
+    coverImageData: encodeR2Pointer({
+      key: uploadedCover.key,
+      objectUrl: uploadedCover.objectUrl
     })
   });
 
@@ -2552,10 +2606,12 @@ router.post("/newsletters", upload.single("file"), async (req, res) => {
     season: created.season,
     year: created.year,
     pdfUrl: uploaded.objectUrl,
+    coverImageUrl: uploadedCover.objectUrl,
     createdAt: created.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString(),
     emailDelivery
   });
-});
+}
+);
 
 router.delete("/newsletters/:id", async (req, res) => {
   const isAdmin = isCampAdmin(req.user);
@@ -2577,6 +2633,15 @@ router.delete("/newsletters/:id", async (req, res) => {
   if (pointer?.key) {
     try {
       await deleteObjectFromR2(pointer.key);
+    } catch {
+      // Keep delete non-blocking for metadata row.
+    }
+  }
+
+  const coverPointer = decodeNewsletterCoverPointer(existing);
+  if (coverPointer?.key) {
+    try {
+      await deleteObjectFromR2(coverPointer.key);
     } catch {
       // Keep delete non-blocking for metadata row.
     }
