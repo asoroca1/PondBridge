@@ -21,6 +21,7 @@ import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { API_BASE } from "../lib/api";
 import { getToken } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
+import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./advanced-search.css";
 
 function pickCurrentJob(profile = {}) {
@@ -471,6 +472,14 @@ export default function AdvancedSearch() {
       <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
 
       <main className="as2 nav2-page-shell" style={{ position: "relative", zIndex: 1 }}>
+        <div className="as2-page-header">
+          <CedarPageHeader
+            icon={<SlidersHorizontal size={18} />}
+            title="Advanced Search"
+            subtitle="Find alumni by name, camp role, industry, education, and location."
+          />
+        </div>
+
         <button
           type="button"
           className="as2-filters-fab"
@@ -789,16 +798,18 @@ export default function AdvancedSearch() {
           </aside>
 
           <section className="as2-results" ref={resultsRef}>
-            <div className="as2-results-head">
-              <div className="lhs">
-                <h1 className="as2-title">{header}</h1>
-                {hasActiveFilters && !state.loading && (
-                  <div className="as2-sub">
-                    Showing {fromN}-{toN} of {state.total}
-                  </div>
-                )}
+            {hasActiveFilters && (
+              <div className="as2-results-head">
+                <div className="lhs">
+                  <h1 className="as2-title">{header}</h1>
+                  {!state.loading && (
+                    <div className="as2-sub">
+                      Showing {fromN}-{toN} of {state.total}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {!!activeFilterChips.length && (
               <div className="as2-filter-chips">
@@ -885,7 +896,11 @@ export default function AdvancedSearch() {
                 {!state.loading && state.error && (
                   <div className="as2-emptywrap">
                     <div className="as2-emptycard">
-                      <div className="as2-empty-icon" style={{ color: '#dc2626' }} aria-hidden="true">
+                      <div
+                        className="as2-empty-icon"
+                        style={{ color: "#dc2626" }}
+                        aria-hidden="true"
+                      >
                         <AlertCircle size={48} />
                       </div>
                       <h3>We couldn't load results</h3>

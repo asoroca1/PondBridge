@@ -30,6 +30,12 @@
   gap: 24px;
 }
 
+.as2-page-header {
+  max-width: 1460px;
+  margin: 0 auto;
+  padding: 0 16px 16px;
+}
+
 .as2-filters-fab {
   display: none;
   position: fixed;
