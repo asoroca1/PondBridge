@@ -338,27 +338,12 @@ export default function HeroImageEditor({
       <div
         className={[
           "hero-image-editor__preview-stage",
+          "hero-image-editor__preview-stage--landing",
           modal && "hero-image-editor__preview-stage--modal"
         ].filter(Boolean).join(" ")}
       >
-        <div className="hero-image-editor__nav" style={{ background: brandPrimary }}>
-          <div className="hero-image-editor__nav-left">
-            {logoUrl ? (
-              <img src={logoUrl} alt="" className="hero-image-editor__nav-logo" />
-            ) : (
-              <span className="hero-image-editor__nav-logo-fallback">
-                {safeCampName.slice(0, 1).toUpperCase()}
-              </span>
-            )}
-            <strong className="hero-image-editor__nav-title">{safeCampName}</strong>
-          </div>
-          <div className="hero-image-editor__nav-right">
-            <span className="hero-image-editor__nav-btn">Create Account</span>
-            <span className="hero-image-editor__nav-btn hero-image-editor__nav-btn--secondary">Login</span>
-          </div>
-        </div>
-
-        <div className="hero-image-editor__masthead" style={heroBackgroundStyle}>
+        <div className="hero-image-editor__landing-screen" style={heroBackgroundStyle}>
+          <div className="hero-image-editor__landing-overlay" />
           {interactive ? (
             <button
               ref={modalSurfaceRef}
@@ -379,38 +364,12 @@ export default function HeroImageEditor({
               Upload a main photo to enable interactive preview.
             </p>
           ) : null}
-        </div>
-
-        <div className="hero-image-editor__welcome-hero">
-          <div className="hero-image-editor__welcome-banner">
-            <div className="hero-image-editor__welcome-left">
-              <div className="hero-image-editor__welcome-copy">
-                <h5 className="hero-image-editor__welcome-title">
-                  Welcome to {safeCampName} Alumni Network
-                </h5>
-                <p className="hero-image-editor__welcome-sub">{safeWelcomeBody}</p>
-                <div className="hero-image-editor__welcome-actions">
-                  <span className="hero-image-editor__welcome-btn">Sign in</span>
-                  <span className="hero-image-editor__welcome-btn hero-image-editor__welcome-btn--secondary">
-                    Create account
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="hero-image-editor__welcome-right">
-              <div className="hero-image-editor__pulse">
-                <strong>Network Pulse</strong>
-                <div className="hero-image-editor__pulse-rows">
-                  <span className="hero-image-editor__pulse-row">
-                    <span className="hero-image-editor__pulse-num">Base</span>
-                    <span className="hero-image-editor__pulse-label">Plan</span>
-                  </span>
-                  <span className="hero-image-editor__pulse-row">
-                    <span className="hero-image-editor__pulse-num">Live</span>
-                    <span className="hero-image-editor__pulse-label">Status</span>
-                  </span>
-                </div>
-              </div>
+          <div className="hero-image-editor__landing-content">
+            <h3>Welcome to the {safeCampName} Alumni Network</h3>
+            <p>{safeWelcomeBody}</p>
+            <div className="hero-image-editor__landing-actions">
+              <span className="hero-image-editor__landing-action-btn">Create Account</span>
+              <span className="hero-image-editor__landing-action-btn">Login</span>
             </div>
           </div>
         </div>
