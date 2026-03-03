@@ -96,38 +96,62 @@
   text-transform: uppercase;
 }
 
+/* ---- Preview stage (shared container) ---- */
+
 .hero-image-editor__preview-stage {
+  --pe-nav-h: 26px;
+  --pe-masthead-h: 150px;
+  --pe-fade-cutoff: 62%;
+  --pe-overlap: 72px;
+  --pe-banner-pad: 10px;
+  --pe-avatar-size: 28px;
+  --pe-radius: 8px;
+
   position: relative;
   height: 315px;
-  background: #eef3f9;
+  background: #f5f7fa;
   overflow: hidden;
   contain: layout paint;
 }
 
 .hero-image-editor__preview-stage--modal {
-  height: min(70vh, 640px);
+  --pe-nav-h: 40px;
+  --pe-masthead-h: 240px;
+  --pe-fade-cutoff: 62%;
+  --pe-overlap: 110px;
+  --pe-banner-pad: 16px;
+  --pe-avatar-size: 44px;
+  --pe-radius: 10px;
+
+  height: 100%;
+  min-height: 320px;
+  max-height: 640px;
   border-radius: 12px;
   border: 1px solid #dbe5f1;
 }
 
-.hero-image-editor__landing-nav {
-  min-height: 36px;
+/* ---- Navbar (shared between both previews) ---- */
+
+.hero-image-editor__nav {
+  height: var(--pe-nav-h);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 10px;
   gap: 8px;
+  position: relative;
+  z-index: 3;
 }
 
-.hero-image-editor__landing-brand {
+.hero-image-editor__nav-left {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
-.hero-image-editor__landing-brand strong {
+.hero-image-editor__nav-title {
   font-size: 0.73rem;
   font-weight: 700;
   white-space: nowrap;
@@ -135,14 +159,20 @@
   text-overflow: ellipsis;
 }
 
-.hero-image-editor__landing-brand span,
-.hero-image-editor__landing-brand img {
+.hero-image-editor__nav-logo {
   width: 18px;
   height: 18px;
   border-radius: 999px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.hero-image-editor__nav-logo-fallback {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -150,119 +180,229 @@
   font-weight: 800;
 }
 
-.hero-image-editor__landing-actions {
+.hero-image-editor__nav-right {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.hero-image-editor__landing-actions span {
-  font-size: 0.66rem;
+/* Landing nav: auth buttons */
+.hero-image-editor__nav-btn {
+  font-size: 0.62rem;
   font-weight: 700;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 999px;
-  padding: 4px 7px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand-primary, #0f2747);
+  border-radius: 6px;
+  padding: 3px 6px;
 }
 
-.hero-image-editor__landing-hero {
-  position: relative;
-  height: calc(100% - 36px);
-  background-color: #d7dee8;
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: cover;
-  will-change: background-position, background-size;
-}
-
-.hero-image-editor__landing-overlay {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 50% 56%, rgba(0, 0, 0, 0.09) 0%, rgba(0, 0, 0, 0.28) 48%, rgba(0, 0, 0, 0.72) 100%),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.78));
-}
-
-.hero-image-editor__landing-copy {
-  position: absolute;
-  inset: auto 12px 14px 12px;
-  z-index: 2;
-  display: grid;
-  gap: 5px;
-  text-align: center;
-}
-
-.hero-image-editor__landing-copy span {
-  color: rgba(255, 255, 255, 0.88);
-  letter-spacing: 0.16em;
-  font-size: 0.58rem;
-  font-weight: 700;
-}
-
-.hero-image-editor__landing-copy h3 {
-  margin: 0;
-  color: #fff;
-  font-family: var(--font-display, "Roboto Slab", serif);
-  font-size: clamp(1rem, 1.8vw, 1.3rem);
-  line-height: 1.04;
-  text-wrap: balance;
-}
-
-.hero-image-editor__landing-copy p {
-  margin: 0;
+.hero-image-editor__nav-btn--secondary {
+  background: transparent;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 0.73rem;
-  line-height: 1.32;
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
-.hero-image-editor__member-topbar {
-  min-height: 16px;
+/* Member nav: search pill, avatar, burger */
+.hero-image-editor__nav-search-pill {
+  width: 60px;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.hero-image-editor__member-masthead {
+.hero-image-editor__nav-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.hero-image-editor__nav-burger {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+}
+
+.hero-image-editor__nav-burger span {
+  width: 12px;
+  height: 1.5px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 1px;
+}
+
+/* ---- Masthead (shared, replaces __landing-hero and __member-masthead) ---- */
+
+.hero-image-editor__masthead {
   position: relative;
-  height: 120px;
+  height: var(--pe-masthead-h);
   background-color: #d7dee8;
   background-repeat: no-repeat;
   background-position: center center;
   background-size: cover;
   will-change: background-position, background-size;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) var(--pe-fade-cutoff),
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) var(--pe-fade-cutoff),
+    rgba(0, 0, 0, 0) 100%
+  );
 }
 
-.hero-image-editor__preview-stage--modal.hero-image-editor__preview-stage--member .hero-image-editor__member-masthead {
-  height: 42%;
+@supports not (mask-image: linear-gradient(#000, #000)) {
+  .hero-image-editor__masthead::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 38%;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(245, 247, 250, 0) 0%, #f5f7fa 100%);
+  }
 }
 
-.hero-image-editor__member-masthead-fade {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0) 46%, rgba(245, 247, 250, 0.94) 100%);
-}
+/* ---- Welcome hero + banner (shared overlap pattern) ---- */
 
-.hero-image-editor__member-welcome {
+.hero-image-editor__welcome-hero {
+  margin-top: calc(-1 * var(--pe-overlap));
   position: relative;
-  margin: -30px 10px 0;
-  border: 1px solid #d9e3ef;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.96);
+  z-index: 2;
+  padding: 0 10px;
+}
+
+.hero-image-editor__welcome-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px;
-  z-index: 1;
+  padding: var(--pe-banner-pad);
+  border-radius: var(--pe-radius);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(255, 255, 255, 0.98)
+  );
+  border: 1px solid #d9e3ef;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.hero-image-editor__member-welcome-main {
+.hero-image-editor__welcome-left {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
+.hero-image-editor__welcome-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hero-image-editor__welcome-title {
+  margin: 0;
+  color: var(--brand-primary, #0f2747);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.hero-image-editor__welcome-sub {
+  margin: 0;
+  color: #5d738f;
+  font-size: 0.64rem;
+  line-height: 1.3;
+  max-width: 26ch;
+}
+
+.hero-image-editor__welcome-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.hero-image-editor__welcome-btn {
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--brand-primary, #0f2747);
+  color: #fff;
+}
+
+.hero-image-editor__welcome-btn--secondary {
+  background: transparent;
+  border: 1px solid #c8d5e8;
+  color: #3a5a80;
+}
+
+.hero-image-editor__welcome-right {
+  flex: 0 0 auto;
+}
+
+/* ---- Pulse card (shared between landing + member) ---- */
+
+.hero-image-editor__pulse {
+  border: 1px solid #d5e0ed;
+  border-radius: var(--pe-radius);
+  background: #f9fbff;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.hero-image-editor__pulse strong {
+  font-size: 0.56rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0a0a0a;
+  font-weight: 800;
+}
+
+.hero-image-editor__pulse-rows {
+  display: flex;
+  gap: 6px;
+}
+
+.hero-image-editor__pulse-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid #d5e0ed;
+  border-radius: 999px;
+  background: #fbfdff;
+}
+
+.hero-image-editor__pulse-num {
+  font-weight: 800;
+  font-size: 0.62rem;
+  color: var(--brand-primary, #0f2747);
+}
+
+.hero-image-editor__pulse-label {
+  font-size: 0.54rem;
+  color: #5b6270;
+}
+
+/* ---- Member-specific: welcome avatar ---- */
+
 .hero-image-editor__member-avatar {
-  width: 28px;
-  height: 28px;
+  width: var(--pe-avatar-size);
+  height: var(--pe-avatar-size);
+  flex: 0 0 var(--pe-avatar-size);
   border-radius: 999px;
   background: color-mix(in srgb, var(--brand-primary, #0f2747) 18%, #ffffff);
   color: var(--brand-primary, #0f2747);
@@ -271,58 +411,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 2px solid color-mix(in srgb, var(--brand-primary, #0f2747) 20%, #ffffff);
 }
 
-.hero-image-editor__member-welcome-main h5 {
-  margin: 0;
-  color: #17304f;
-  font-size: 0.86rem;
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* ---- Quick actions (member only) ---- */
 
-.hero-image-editor__member-welcome-main p {
-  margin: 2px 0 0;
-  color: #5d738f;
-  font-size: 0.68rem;
-  max-width: 27ch;
-  line-height: 1.35;
-}
-
-.hero-image-editor__member-pulse {
-  flex: 0 0 auto;
-  border: 1px solid #d5e0ed;
-  border-radius: 8px;
-  background: #f9fbff;
-  padding: 6px;
-  display: grid;
-  gap: 4px;
-}
-
-.hero-image-editor__member-pulse strong {
-  font-size: 0.62rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #4f6785;
-}
-
-.hero-image-editor__member-pulse span {
-  font-size: 0.64rem;
-  color: #3e5672;
-}
-
-.hero-image-editor__member-quick-actions {
+.hero-image-editor__quick-actions {
   margin: 8px 10px 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  position: relative;
+  z-index: 2;
 }
 
-.hero-image-editor__member-quick-actions span {
+.hero-image-editor__quick-actions span {
   border: 1px solid #d9e2ee;
-  border-radius: 8px;
+  border-radius: var(--pe-radius);
   background: #fff;
   min-height: 26px;
   display: inline-flex;
@@ -335,6 +440,8 @@
   padding: 0 6px;
 }
 
+/* ---- Drag surface ---- */
+
 .hero-image-editor__drag-surface {
   position: absolute;
   inset: 0;
@@ -345,6 +452,7 @@
   cursor: default;
   touch-action: none;
   outline: none;
+  z-index: 1;
 }
 
 .hero-image-editor__drag-surface:disabled {
@@ -363,9 +471,12 @@
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.82), inset 0 0 0 4px rgba(15, 39, 71, 0.58);
 }
 
+/* ---- Empty state ---- */
+
 .hero-image-editor__empty-state {
   position: absolute;
-  inset: auto 10px 10px;
+  inset: 50% 10px auto;
+  transform: translateY(-50%);
   margin: 0;
   z-index: 2;
   border: 1px dashed #c1cedf;
@@ -378,11 +489,15 @@
   padding: 8px 10px;
 }
 
+/* ---- Hint ---- */
+
 .hero-image-editor__hint {
   margin: 0;
   color: #5c7390;
   font-size: 0.8rem;
 }
+
+/* ---- Modal ---- */
 
 .hero-image-editor__modal-backdrop {
   position: fixed;
@@ -404,6 +519,7 @@
   background: #ffffff;
   box-shadow: 0 24px 80px rgba(9, 26, 48, 0.28);
   display: grid;
+  grid-template-rows: auto 1fr auto;
   gap: 10px;
   padding: 12px;
   overflow: hidden;
@@ -443,6 +559,7 @@
 
 .hero-image-editor__modal-content {
   min-height: 0;
+  overflow: hidden;
 }
 
 .hero-image-editor__modal-hint {
@@ -454,6 +571,8 @@
 .hero-image-editor--admin {
   margin-top: 8px;
 }
+
+/* ---- Responsive ---- */
 
 @media (max-width: 1040px) {
   .hero-image-editor__preview-grid {
@@ -471,15 +590,17 @@
   }
 
   .hero-image-editor__preview-stage {
+    --pe-masthead-h: 130px;
+    --pe-overlap: 60px;
     height: 286px;
   }
 
-  .hero-image-editor__member-welcome {
+  .hero-image-editor__preview-stage:not(.hero-image-editor__preview-stage--modal) .hero-image-editor__welcome-banner {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .hero-image-editor__member-pulse {
+  .hero-image-editor__preview-stage:not(.hero-image-editor__preview-stage--modal) .hero-image-editor__welcome-right {
     width: 100%;
   }
 
@@ -493,6 +614,10 @@
   }
 
   .hero-image-editor__preview-stage--modal {
-    height: min(66vh, 560px);
+    --pe-masthead-h: 180px;
+    --pe-overlap: 80px;
+    --pe-avatar-size: 34px;
+    min-height: 260px;
+    max-height: 560px;
   }
 }

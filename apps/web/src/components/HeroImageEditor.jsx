@@ -336,29 +336,29 @@ export default function HeroImageEditor({
   function renderLandingPreview({ interactive = false, modal = false } = {}) {
     return (
       <div
-        className={
-          modal
-            ? "hero-image-editor__preview-stage hero-image-editor__preview-stage--modal"
-            : "hero-image-editor__preview-stage"
-        }
+        className={[
+          "hero-image-editor__preview-stage",
+          modal && "hero-image-editor__preview-stage--modal"
+        ].filter(Boolean).join(" ")}
       >
-        <div className="hero-image-editor__landing-nav" style={{ background: brandPrimary }}>
-          <div className="hero-image-editor__landing-brand">
-            {logoUrl ? <img src={logoUrl} alt="" /> : <span>{safeCampName.slice(0, 1).toUpperCase()}</span>}
-            <strong>{safeCampName} Alumni Network</strong>
+        <div className="hero-image-editor__nav" style={{ background: brandPrimary }}>
+          <div className="hero-image-editor__nav-left">
+            {logoUrl ? (
+              <img src={logoUrl} alt="" className="hero-image-editor__nav-logo" />
+            ) : (
+              <span className="hero-image-editor__nav-logo-fallback">
+                {safeCampName.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            <strong className="hero-image-editor__nav-title">{safeCampName}</strong>
           </div>
-          <div className="hero-image-editor__landing-actions">
-            <span>Create Account</span>
-            <span>Login</span>
+          <div className="hero-image-editor__nav-right">
+            <span className="hero-image-editor__nav-btn">Create Account</span>
+            <span className="hero-image-editor__nav-btn hero-image-editor__nav-btn--secondary">Login</span>
           </div>
         </div>
-        <div className="hero-image-editor__landing-hero" style={heroBackgroundStyle}>
-          <div className="hero-image-editor__landing-overlay" />
-          <div className="hero-image-editor__landing-copy">
-            <span>WELCOME TO THE</span>
-            <h3>{safeCampName} Alumni Network</h3>
-            <p>{safeWelcomeBody}</p>
-          </div>
+
+        <div className="hero-image-editor__masthead" style={heroBackgroundStyle}>
           {interactive ? (
             <button
               ref={modalSurfaceRef}
@@ -380,6 +380,40 @@ export default function HeroImageEditor({
             </p>
           ) : null}
         </div>
+
+        <div className="hero-image-editor__welcome-hero">
+          <div className="hero-image-editor__welcome-banner">
+            <div className="hero-image-editor__welcome-left">
+              <div className="hero-image-editor__welcome-copy">
+                <h5 className="hero-image-editor__welcome-title">
+                  Welcome to {safeCampName} Alumni Network
+                </h5>
+                <p className="hero-image-editor__welcome-sub">{safeWelcomeBody}</p>
+                <div className="hero-image-editor__welcome-actions">
+                  <span className="hero-image-editor__welcome-btn">Sign in</span>
+                  <span className="hero-image-editor__welcome-btn hero-image-editor__welcome-btn--secondary">
+                    Create account
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="hero-image-editor__welcome-right">
+              <div className="hero-image-editor__pulse">
+                <strong>Network Pulse</strong>
+                <div className="hero-image-editor__pulse-rows">
+                  <span className="hero-image-editor__pulse-row">
+                    <span className="hero-image-editor__pulse-num">Base</span>
+                    <span className="hero-image-editor__pulse-label">Plan</span>
+                  </span>
+                  <span className="hero-image-editor__pulse-row">
+                    <span className="hero-image-editor__pulse-num">Live</span>
+                    <span className="hero-image-editor__pulse-label">Status</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -387,15 +421,33 @@ export default function HeroImageEditor({
   function renderMemberPreview({ interactive = false, modal = false } = {}) {
     return (
       <div
-        className={
-          modal
-            ? "hero-image-editor__preview-stage hero-image-editor__preview-stage--modal hero-image-editor__preview-stage--member"
-            : "hero-image-editor__preview-stage hero-image-editor__preview-stage--member"
-        }
+        className={[
+          "hero-image-editor__preview-stage",
+          "hero-image-editor__preview-stage--member",
+          modal && "hero-image-editor__preview-stage--modal"
+        ].filter(Boolean).join(" ")}
       >
-        <div className="hero-image-editor__member-topbar" style={{ background: brandPrimary }} />
-        <div className="hero-image-editor__member-masthead" style={heroBackgroundStyle}>
-          <div className="hero-image-editor__member-masthead-fade" />
+        <div className="hero-image-editor__nav" style={{ background: brandPrimary }}>
+          <div className="hero-image-editor__nav-left">
+            {logoUrl ? (
+              <img src={logoUrl} alt="" className="hero-image-editor__nav-logo" />
+            ) : (
+              <span className="hero-image-editor__nav-logo-fallback">
+                {safeCampName.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            <strong className="hero-image-editor__nav-title">{safeCampName}</strong>
+          </div>
+          <div className="hero-image-editor__nav-right">
+            <span className="hero-image-editor__nav-search-pill" />
+            <span className="hero-image-editor__nav-avatar">A</span>
+            <span className="hero-image-editor__nav-burger">
+              <span /><span /><span />
+            </span>
+          </div>
+        </div>
+
+        <div className="hero-image-editor__masthead" style={heroBackgroundStyle}>
           {interactive ? (
             <button
               ref={modalSurfaceRef}
@@ -412,21 +464,35 @@ export default function HeroImageEditor({
             />
           ) : null}
         </div>
-        <div className="hero-image-editor__member-welcome">
-          <div className="hero-image-editor__member-welcome-main">
-            <div className="hero-image-editor__member-avatar">A</div>
-            <div>
-              <h5>Welcome back, Aden!</h5>
-              <p>{safeWelcomeBody}</p>
+
+        <div className="hero-image-editor__welcome-hero">
+          <div className="hero-image-editor__welcome-banner">
+            <div className="hero-image-editor__welcome-left">
+              <div className="hero-image-editor__member-avatar">A</div>
+              <div className="hero-image-editor__welcome-copy">
+                <h5 className="hero-image-editor__welcome-title">Welcome back, Aden!</h5>
+                <p className="hero-image-editor__welcome-sub">{safeWelcomeBody}</p>
+              </div>
+            </div>
+            <div className="hero-image-editor__welcome-right">
+              <div className="hero-image-editor__pulse">
+                <strong>Community Pulse</strong>
+                <div className="hero-image-editor__pulse-rows">
+                  <span className="hero-image-editor__pulse-row">
+                    <span className="hero-image-editor__pulse-num">281</span>
+                    <span className="hero-image-editor__pulse-label">Alumni</span>
+                  </span>
+                  <span className="hero-image-editor__pulse-row">
+                    <span className="hero-image-editor__pulse-num">124</span>
+                    <span className="hero-image-editor__pulse-label">Locations</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="hero-image-editor__member-pulse">
-            <strong>Community Pulse</strong>
-            <span>281 Alumni</span>
-            <span>124 Locations</span>
-          </div>
         </div>
-        <div className="hero-image-editor__member-quick-actions">
+
+        <div className="hero-image-editor__quick-actions">
           {featureLabels.map((item) => (
             <span key={item}>{item}</span>
           ))}
