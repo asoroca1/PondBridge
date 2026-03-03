@@ -1,6 +1,34 @@
 import { getSupabaseAdmin } from "../supabaseAdmin.js";
 import { generateObjectId } from "../../utils/objectId.js";
 
+const NODE_ENV = String(process.env.NODE_ENV || "").trim().toLowerCase();
+const ALLOW_UNSCOPED_DELETES = String(process.env.PONDBRIDGE_ALLOW_UNSCOPED_DELETES || "")
+  .trim()
+  .toLowerCase() === "1";
+
+function normalizeId(value = "") {
+  return String(value || "").trim();
+}
+
+function hasFilterScope(filter) {
+  return Boolean(
+    filter &&
+      typeof filter === "object" &&
+      !Array.isArray(filter) &&
+      Object.keys(filter).length > 0
+  );
+}
+
+function assertDeleteManyScope({ tableName = "", tenantId = "", filter = {} } = {}) {
+  const normalizedTenantId = normalizeId(tenantId);
+  if (normalizedTenantId || hasFilterScope(filter)) return normalizedTenantId;
+  if (NODE_ENV === "test" || ALLOW_UNSCOPED_DELETES) return normalizedTenantId;
+
+  throw new Error(
+    `Refusing unscoped deleteMany on table "${tableName}". Provide tenant scope or a non-empty filter.`
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Column mapping helpers
 // ---------------------------------------------------------------------------
@@ -344,10 +372,14 @@ export function createModel(tableName, colMap) {
     // ----- DELETE -----
 
     async delete(id) {
+      const normalizedId = normalizeId(id);
+      if (!normalizedId) {
+        throw new Error(`Refusing delete on table "${tableName}" without a valid id.`);
+      }
       const { error } = await sb()
         .from(tableName)
         .delete()
-        .eq("id", id);
+        .eq("id", normalizedId);
       if (error) throw error;
     },
 
@@ -362,8 +394,14 @@ export function createModel(tableName, colMap) {
         actualFilter = tenantIdOrFilter;
       }
 
+      const safeTenantId = assertDeleteManyScope({
+        tableName,
+        tenantId,
+        filter: actualFilter
+      });
+
       let query = sb().from(tableName).delete();
-      if (tenantId) query = query.eq("tenant_id", tenantId);
+      if (safeTenantId) query = query.eq("tenant_id", safeTenantId);
       query = applyFilter(query, actualFilter, colMap);
 
       const { error } = await query;
