@@ -10,6 +10,7 @@ body,
   --cc-navy: var(--brand-primary);
   --cc-gray: var(--text-muted, #6b7280);
   --cc-border: var(--card-border, #e5e7eb);
+  --cc-border-strong: #9fb3cb;
   --cc-card: var(--card, #ffffff);
   --cc-chip: #f1f5f9;
   --cc-focus: #0ea5e9;
@@ -396,7 +397,7 @@ body,
   max-height: min(88vh, 760px);
   overflow: auto;
   background: #fff;
-  border: 1px solid var(--cc-border);
+  border: 1px solid var(--cc-border-strong);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   padding: 14px;
@@ -447,13 +448,17 @@ body,
 .cc-admin-form label {
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: #1f334d;
 }
 
 .cc-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  border: 1px solid #d1dfef;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fbfdff;
 }
 
 .cc-row-2 {
@@ -465,18 +470,34 @@ body,
 .cc-admin-form input[type="text"],
 .cc-admin-form input[type="number"],
 .cc-admin-form select {
-  border: 1px solid var(--cc-border);
+  border: 1.5px solid var(--cc-border-strong);
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
   background: #fff;
+  color: #0f172a;
   width: 100%;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+
+.cc-admin-form input[type="text"]:hover,
+.cc-admin-form input[type="number"]:hover,
+.cc-admin-form select:hover {
+  border-color: #7f9bb8;
+}
+
+.cc-admin-form input[type="text"]:focus,
+.cc-admin-form input[type="number"]:focus,
+.cc-admin-form select:focus {
+  outline: none;
+  border-color: #456ea2;
+  box-shadow: 0 0 0 3px rgba(69, 110, 162, 0.18);
 }
 
 .cc-admin-form .cc-form-divider {
   height: 1px;
-  background: var(--cc-border);
-  margin: 4px 0;
+  background: #c8d7e8;
+  margin: 2px 0;
 }
 
 .cc-file-upload {
@@ -484,12 +505,16 @@ body,
   align-items: center;
   gap: 10px;
   min-width: 0;
+  border: 1.5px solid var(--cc-border-strong);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
 }
 
 .cc-file-btn {
   padding: 8px 14px;
   border-radius: 10px;
-  border: 1px solid var(--cc-border);
+  border: 1.5px solid var(--cc-border-strong);
   background: #fff;
   font-weight: 500;
   color: #0f172a;
@@ -498,7 +523,8 @@ body,
 }
 
 .cc-file-btn:hover {
-  background: #f8fafc;
+  background: #f3f8ff;
+  border-color: #6d8eb3;
 }
 
 .cc-file-name {
@@ -507,15 +533,16 @@ body,
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: var(--cc-gray);
+  color: #415a79;
 }
 
 .cc-cover-preview-wrap {
   margin-top: 8px;
   width: 160px;
-  border: 1px solid var(--cc-border);
+  border: 1.5px solid var(--cc-border-strong);
   border-radius: 10px;
   overflow: hidden;
+  background: #fff;
 }
 
 .cc-cover-preview {
@@ -527,11 +554,12 @@ body,
 
 .cc-cover-preview-empty {
   margin-top: 8px;
-  border: 1px dashed #cbd5e1;
+  border: 2px dashed #9eb4ce;
   border-radius: 10px;
   padding: 10px;
   font-size: 12px;
-  color: #64748b;
+  color: #4e627d;
+  background: #f8fbff;
 }
 
 .cc-inline-check {
@@ -551,7 +579,7 @@ body,
 .cc-check-help {
   margin: 2px 0 0 26px;
   font-size: 12px;
-  color: var(--cc-gray);
+  color: #4e627d;
 }
 
 .cc-actions {
