@@ -1387,9 +1387,9 @@
   text-decoration: underline;
 }
 
-.director-create-login-line--clerk {
-  margin-top: 10px;
-  text-align: center;
+.director-existing-account-callout--clerk {
+  margin: 12px auto 0;
+  justify-content: center;
 }
 
 .director-create-back-btn {

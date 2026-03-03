@@ -94,10 +94,10 @@ export default function DirectorCreateAccountClerkPage() {
               Create your director login to start network setup.
             </p>
             {!showAccountSwitchPrompt ? (
-              <p className="director-create-login-line director-create-login-line--clerk">
-                Already created your director account?{" "}
+              <div className="director-existing-account-callout director-existing-account-callout--clerk">
+                <span>Already created your director account?</span>
                 <Link to={signInPath}>Log in and continue onboarding</Link>
-              </p>
+              </div>
             ) : null}
           </div>
 
