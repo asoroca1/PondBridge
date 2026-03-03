@@ -62,6 +62,16 @@ function isSuperAdminDecision(decision) {
   return String(decision?.state || "").toLowerCase() === "super_admin_blocked";
 }
 
+function isDirectorBootstrapDisabledError(err) {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  const message = String(err?.payload?.error?.message || err?.message || "")
+    .trim()
+    .toLowerCase();
+  return code === "DIRECTOR_BOOTSTRAP_DISABLED" || message.includes("only available before launch");
+}
+
 function resolveAuthCallbackError(err, slug, inviteToken = "") {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
@@ -210,19 +220,29 @@ function ClerkAuthCallbackPage() {
 
         const hasDirectorBootstrapIntent = directorBootstrap || readDirectorBootstrapIntent(slug);
         const tenantOnboardingStatus = String(payload?.tenant?.onboardingStatus || "").trim().toLowerCase();
+        const bootstrapAvailable = tenantOnboardingStatus && tenantOnboardingStatus !== "live";
+        if (hasDirectorBootstrapIntent && !bootstrapAvailable) {
+          clearDirectorBootstrapIntent(slug);
+        }
         const shouldBootstrapFromPrelaunchFallback =
           !inviteToken &&
           tenantOnboardingStatus &&
           tenantOnboardingStatus !== "live" &&
           decision.state === "not_member";
+        const shouldAttemptDirectorBootstrap =
+          (hasDirectorBootstrapIntent && bootstrapAvailable) || shouldBootstrapFromPrelaunchFallback;
 
-        if (hasDirectorBootstrapIntent || shouldBootstrapFromPrelaunchFallback) {
+        if (shouldAttemptDirectorBootstrap) {
           setPhaseMessage("Claiming director setup access...");
-          await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
-            method: "POST",
-            token,
-            body: {}
-          });
+          try {
+            await requestJson(`/api/t/${slug}/access/director-bootstrap`, {
+              method: "POST",
+              token,
+              body: {}
+            });
+          } catch (bootstrapErr) {
+            if (!isDirectorBootstrapDisabledError(bootstrapErr)) throw bootstrapErr;
+          }
           clearDirectorBootstrapIntent(slug);
         } else if (decision.action === "accept_invite" && inviteToken) {
           clearDirectorBootstrapIntent(slug);
