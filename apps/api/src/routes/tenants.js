@@ -391,6 +391,10 @@ router.patch("/me/onboarding/draft", async (req, res, next) => {
     if (body.billingDetails && typeof body.billingDetails === "object") {
       update["onboardingDraft.billingDetails"] = body.billingDetails;
     }
+    if (body.wizard && typeof body.wizard === "object") {
+      const existing = tenant.onboardingDraft?.wizard || {};
+      update["onboardingDraft.wizard"] = { ...existing, ...body.wizard };
+    }
 
     await saveTenantOnboarding(tenant._id, update);
     return res.json({ ok: true });

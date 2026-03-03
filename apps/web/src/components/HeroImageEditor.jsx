@@ -1,46 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   formatHeroImagePositionPercent,
-  heroImagePositionPresets,
-  heroImageSizePresets,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
   parseHeroImagePosition
 } from "@pondbridge/shared";
 import "./HeroImageEditor.css";
-
-const POSITION_LABELS = {
-  "left top": "Top left",
-  "center top": "Top center",
-  "right top": "Top right",
-  "left center": "Center left",
-  "center center": "Center",
-  "right center": "Center right",
-  "left bottom": "Bottom left",
-  "center bottom": "Bottom center",
-  "right bottom": "Bottom right"
-};
-
-const POSITION_SHORT_LABELS = {
-  "left top": "TL",
-  "center top": "TC",
-  "right top": "TR",
-  "left center": "CL",
-  "center center": "C",
-  "right center": "CR",
-  "left bottom": "BL",
-  "center bottom": "BC",
-  "right bottom": "BR"
-};
-
-const SIZE_LABELS = {
-  cover: "Fill frame",
-  contain: "Fit whole photo",
-  auto: "Original size",
-  "110%": "Slight zoom",
-  "125%": "Medium zoom",
-  "140%": "Close zoom"
-};
 
 const DEFAULT_FEATURE_LABELS = [
   "Advanced Search",
@@ -56,6 +21,21 @@ const DRAG_CLAMP_MAX = 100;
 const ZOOM_MIN = 60;
 const ZOOM_MAX = 200;
 const ZOOM_STEP = 2;
+
+const PREVIEW_META = {
+  landing: {
+    key: "landing",
+    title: "Public Landing Preview",
+    subtitle: "Logged-out homepage hero",
+    aria: "Open public landing hero editor"
+  },
+  member: {
+    key: "member",
+    title: "Member Home Preview",
+    subtitle: "Logged-in masthead and welcome panel",
+    aria: "Open member home masthead editor"
+  }
+};
 
 function clamp(value, min, max) {
   const parsed = Number(value);
@@ -126,12 +106,12 @@ export default function HeroImageEditor({
     [normalizedPosition]
   );
 
-  const isPresetPosition = heroImagePositionPresets.includes(normalizedPosition);
-  const isPresetSize = heroImageSizePresets.includes(normalizedSize);
   const [isDragging, setIsDragging] = useState(false);
+  const [activePreview, setActivePreview] = useState("");
   const dragPointerIdRef = useRef(null);
   const pendingPositionRef = useRef(null);
   const positionFrameRef = useRef(0);
+  const modalSurfaceRef = useRef(null);
 
   const applyPosition = useCallback(
     (nextCoords) => {
@@ -195,6 +175,45 @@ export default function HeroImageEditor({
     },
     []
   );
+
+  const closePreviewEditor = useCallback(() => {
+    setIsDragging(false);
+    dragPointerIdRef.current = null;
+    setActivePreview("");
+  }, []);
+
+  useEffect(() => {
+    if (!activePreview) return undefined;
+
+    const onEscape = (event) => {
+      if (String(event.key || "") === "Escape") {
+        closePreviewEditor();
+      }
+    };
+
+    const previousOverflow =
+      typeof document !== "undefined" ? String(document.body.style.overflow || "") : "";
+
+    if (typeof document !== "undefined") {
+      document.body.style.overflow = "hidden";
+    }
+
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("keydown", onEscape);
+      if (typeof document !== "undefined") {
+        document.body.style.overflow = previousOverflow;
+      }
+    };
+  }, [activePreview, closePreviewEditor]);
+
+  useEffect(() => {
+    if (!activePreview) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      modalSurfaceRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activePreview]);
 
   const updatePositionFromPointer = useCallback(
     (event) => {
@@ -314,6 +333,110 @@ export default function HeroImageEditor({
     .filter(Boolean)
     .join(" ");
 
+  function renderLandingPreview({ interactive = false, modal = false } = {}) {
+    return (
+      <div
+        className={
+          modal
+            ? "hero-image-editor__preview-stage hero-image-editor__preview-stage--modal"
+            : "hero-image-editor__preview-stage"
+        }
+      >
+        <div className="hero-image-editor__landing-nav" style={{ background: brandPrimary }}>
+          <div className="hero-image-editor__landing-brand">
+            {logoUrl ? <img src={logoUrl} alt="" /> : <span>{safeCampName.slice(0, 1).toUpperCase()}</span>}
+            <strong>{safeCampName} Alumni Network</strong>
+          </div>
+          <div className="hero-image-editor__landing-actions">
+            <span>Create Account</span>
+            <span>Login</span>
+          </div>
+        </div>
+        <div className="hero-image-editor__landing-hero" style={heroBackgroundStyle}>
+          <div className="hero-image-editor__landing-overlay" />
+          <div className="hero-image-editor__landing-copy">
+            <span>WELCOME TO THE</span>
+            <h3>{safeCampName} Alumni Network</h3>
+            <p>{safeWelcomeBody}</p>
+          </div>
+          {interactive ? (
+            <button
+              ref={modalSurfaceRef}
+              type="button"
+              className={hasHeroImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
+              disabled={!hasHeroImage}
+              onPointerDown={onDragStart}
+              onPointerMove={onDragMove}
+              onPointerUp={finishDrag}
+              onPointerCancel={finishDrag}
+              onWheel={onPreviewWheel}
+              onKeyDown={onPreviewKeyDown}
+              aria-label="Adjust public landing hero image with drag and zoom"
+            />
+          ) : null}
+          {!hasHeroImage ? (
+            <p className="hero-image-editor__empty-state">
+              Upload a main photo to enable interactive preview.
+            </p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  function renderMemberPreview({ interactive = false, modal = false } = {}) {
+    return (
+      <div
+        className={
+          modal
+            ? "hero-image-editor__preview-stage hero-image-editor__preview-stage--modal hero-image-editor__preview-stage--member"
+            : "hero-image-editor__preview-stage hero-image-editor__preview-stage--member"
+        }
+      >
+        <div className="hero-image-editor__member-topbar" style={{ background: brandPrimary }} />
+        <div className="hero-image-editor__member-masthead" style={heroBackgroundStyle}>
+          <div className="hero-image-editor__member-masthead-fade" />
+          {interactive ? (
+            <button
+              ref={modalSurfaceRef}
+              type="button"
+              className={hasHeroImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
+              disabled={!hasHeroImage}
+              onPointerDown={onDragStart}
+              onPointerMove={onDragMove}
+              onPointerUp={finishDrag}
+              onPointerCancel={finishDrag}
+              onWheel={onPreviewWheel}
+              onKeyDown={onPreviewKeyDown}
+              aria-label="Adjust member home masthead image with drag and zoom"
+            />
+          ) : null}
+        </div>
+        <div className="hero-image-editor__member-welcome">
+          <div className="hero-image-editor__member-welcome-main">
+            <div className="hero-image-editor__member-avatar">A</div>
+            <div>
+              <h5>Welcome back, Aden!</h5>
+              <p>{safeWelcomeBody}</p>
+            </div>
+          </div>
+          <div className="hero-image-editor__member-pulse">
+            <strong>Community Pulse</strong>
+            <span>281 Alumni</span>
+            <span>124 Locations</span>
+          </div>
+        </div>
+        <div className="hero-image-editor__member-quick-actions">
+          {featureLabels.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const activePreviewMeta = PREVIEW_META[activePreview] || null;
+
   return (
     <section className={rootClassName}>
       <div className="hero-image-editor__header">
@@ -327,213 +450,84 @@ export default function HeroImageEditor({
         </button>
       </div>
 
-      <div className="hero-image-editor__controls">
-        <label className="hero-image-editor__field">
-          Main photo position
-          <select
-            value={isPresetPosition ? normalizedPosition : "__custom_position__"}
-            onChange={(event) => {
-              const next = String(event.target.value || "").trim();
-              if (next && next !== "__custom_position__") {
-                applyPosition(parseHeroImagePosition(next, positionCoords));
-              }
-            }}
-          >
-            {heroImagePositionPresets.map((preset) => (
-              <option key={preset} value={preset}>
-                {POSITION_LABELS[preset] || preset}
-              </option>
-            ))}
-            {!isPresetPosition ? (
-              <option value="__custom_position__">
-                Custom ({normalizedPosition})
-              </option>
-            ) : null}
-          </select>
-        </label>
-
-        <label className="hero-image-editor__field">
-          Main photo sizing
-          <select
-            value={isPresetSize ? normalizedSize : "__custom_size__"}
-            onChange={(event) => {
-              const next = String(event.target.value || "").trim();
-              if (next && next !== "__custom_size__") {
-                applySize(next);
-              }
-            }}
-          >
-            {heroImageSizePresets.map((preset) => (
-              <option key={preset} value={preset}>
-                {SIZE_LABELS[preset] || preset}
-              </option>
-            ))}
-            {!isPresetSize ? (
-              <option value="__custom_size__">
-                Custom ({normalizedSize})
-              </option>
-            ) : null}
-          </select>
-        </label>
-      </div>
-
-      <div className="hero-image-editor__quick-grid">
-        <div className="hero-image-editor__quick-group">
-          <span>Position presets</span>
-          <div className="hero-image-editor__position-grid">
-            {heroImagePositionPresets.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                className={
-                  normalizedPosition === preset
-                    ? "hero-image-editor__position-btn is-active"
-                    : "hero-image-editor__position-btn"
-                }
-                onClick={() => applyPosition(parseHeroImagePosition(preset, positionCoords))}
-                aria-label={`Set position to ${POSITION_LABELS[preset] || preset}`}
-              >
-                {POSITION_SHORT_LABELS[preset] || preset}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="hero-image-editor__quick-group">
-          <span>Zoom presets</span>
-          <div className="hero-image-editor__zoom-chip-row">
-            {[100, 110, 125, 140, 160].map((zoomPreset) => (
-              <button
-                key={zoomPreset}
-                type="button"
-                className={
-                  normalizedSize === `${zoomPreset}%`
-                    ? "hero-image-editor__zoom-chip is-active"
-                    : "hero-image-editor__zoom-chip"
-                }
-                onClick={() => applyZoomValue(zoomPreset)}
-              >
-                {zoomPreset}%
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="hero-image-editor__zoom-row">
-        <label htmlFor={`hero-image-editor-zoom-${variant}`}>Zoom ({zoomValue}%)</label>
-        <input
-          id={`hero-image-editor-zoom-${variant}`}
-          type="range"
-          min={ZOOM_MIN}
-          max={ZOOM_MAX}
-          step={1}
-          value={zoomValue}
-          onChange={(event) => applyZoomValue(Number(event.target.value))}
-        />
-      </div>
-
-      <div className="hero-image-editor__status">
-        <span>
-          Position: <strong>{normalizedPosition}</strong>
-        </span>
-        <span>
-          Size: <strong>{normalizedSize}</strong>
-        </span>
-      </div>
-
       <div className="hero-image-editor__preview-grid">
         <article className="hero-image-editor__preview-card">
           <header>
-            <h4>Public Landing Preview</h4>
-            <p>Logged-out homepage hero</p>
+            <h4>{PREVIEW_META.landing.title}</h4>
+            <p>{PREVIEW_META.landing.subtitle}</p>
           </header>
-          <div className="hero-image-editor__preview-stage">
-            <div className="hero-image-editor__landing-nav" style={{ background: brandPrimary }}>
-              <div className="hero-image-editor__landing-brand">
-                {logoUrl ? <img src={logoUrl} alt="" /> : <span>{safeCampName.slice(0, 1).toUpperCase()}</span>}
-                <strong>{safeCampName} Alumni Network</strong>
-              </div>
-              <div className="hero-image-editor__landing-actions">
-                <span>Create Account</span>
-                <span>Login</span>
-              </div>
-            </div>
-            <div className="hero-image-editor__landing-hero" style={heroBackgroundStyle}>
-              <div className="hero-image-editor__landing-overlay" />
-              <div className="hero-image-editor__landing-copy">
-                <span>WELCOME TO THE</span>
-                <h3>{safeCampName} Alumni Network</h3>
-                <p>{safeWelcomeBody}</p>
-              </div>
-              <button
-                type="button"
-                className={hasHeroImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
-                disabled={!hasHeroImage}
-                onPointerDown={onDragStart}
-                onPointerMove={onDragMove}
-                onPointerUp={finishDrag}
-                onPointerCancel={finishDrag}
-                onWheel={onPreviewWheel}
-                onKeyDown={onPreviewKeyDown}
-                aria-label="Adjust public landing hero image with drag and zoom"
-              />
-              {!hasHeroImage ? (
-                <p className="hero-image-editor__empty-state">
-                  Upload a main photo to enable interactive preview.
-                </p>
-              ) : null}
-            </div>
-          </div>
+          <button
+            type="button"
+            className="hero-image-editor__preview-launcher"
+            onClick={() => setActivePreview(PREVIEW_META.landing.key)}
+            aria-label={PREVIEW_META.landing.aria}
+          >
+            {renderLandingPreview()}
+            <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
+          </button>
         </article>
 
         <article className="hero-image-editor__preview-card">
           <header>
-            <h4>Member Home Preview</h4>
-            <p>Logged-in masthead and welcome panel</p>
+            <h4>{PREVIEW_META.member.title}</h4>
+            <p>{PREVIEW_META.member.subtitle}</p>
           </header>
-          <div className="hero-image-editor__preview-stage">
-            <div className="hero-image-editor__member-topbar" style={{ background: brandPrimary }} />
-            <div className="hero-image-editor__member-masthead" style={heroBackgroundStyle}>
-              <div className="hero-image-editor__member-masthead-fade" />
-              <button
-                type="button"
-                className={hasHeroImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
-                disabled={!hasHeroImage}
-                onPointerDown={onDragStart}
-                onPointerMove={onDragMove}
-                onPointerUp={finishDrag}
-                onPointerCancel={finishDrag}
-                onWheel={onPreviewWheel}
-                onKeyDown={onPreviewKeyDown}
-                aria-label="Adjust member home masthead image with drag and zoom"
-              />
-            </div>
-            <div className="hero-image-editor__member-welcome">
-              <div className="hero-image-editor__member-welcome-main">
-                <div className="hero-image-editor__member-avatar">A</div>
-                <div>
-                  <h5>Welcome back, Aden!</h5>
-                  <p>{safeWelcomeBody}</p>
-                </div>
-              </div>
-              <div className="hero-image-editor__member-pulse">
-                <strong>Community Pulse</strong>
-                <span>281 Alumni</span>
-                <span>124 Locations</span>
-              </div>
-            </div>
-            <div className="hero-image-editor__member-quick-actions">
-              {featureLabels.map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-            </div>
-          </div>
+          <button
+            type="button"
+            className="hero-image-editor__preview-launcher"
+            onClick={() => setActivePreview(PREVIEW_META.member.key)}
+            aria-label={PREVIEW_META.member.aria}
+          >
+            {renderMemberPreview()}
+            <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
+          </button>
         </article>
       </div>
 
       <p className="hero-image-editor__hint">
-        Tip: drag inside either preview to reposition, use mouse wheel/trackpad to zoom, or use arrow keys and +/- when focused.
+        Click either preview to open the full editor. In the popup: drag to reposition, use trackpad or wheel to zoom, or use arrow keys and +/- when focused.
       </p>
+
+      {activePreviewMeta ? (
+        <div
+          className="hero-image-editor__modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closePreviewEditor();
+            }
+          }}
+        >
+          <div
+            className="hero-image-editor__modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`hero-image-editor-modal-title-${variant}`}
+          >
+            <header className="hero-image-editor__modal-header">
+              <div>
+                <h4 id={`hero-image-editor-modal-title-${variant}`}>{activePreviewMeta.title}</h4>
+                <p>{activePreviewMeta.subtitle}</p>
+              </div>
+              <button
+                type="button"
+                className="hero-image-editor__modal-close"
+                onClick={closePreviewEditor}
+              >
+                Close
+              </button>
+            </header>
+            <div className="hero-image-editor__modal-content">
+              {activePreviewMeta.key === PREVIEW_META.landing.key
+                ? renderLandingPreview({ interactive: true, modal: true })
+                : renderMemberPreview({ interactive: true, modal: true })}
+            </div>
+            <p className="hero-image-editor__modal-hint">
+              Use drag/trackpad for quick framing. Arrow keys nudge the photo, and +/- changes zoom.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

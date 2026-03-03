@@ -32,129 +32,6 @@
   cursor: pointer;
 }
 
-.hero-image-editor__controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.hero-image-editor__field {
-  display: grid;
-  gap: 6px;
-  color: #203a58;
-  font-size: 0.84rem;
-  font-weight: 700;
-}
-
-.hero-image-editor__field select {
-  min-height: 40px;
-  border-radius: 9px;
-  border: 1px solid #cad6e8;
-  background: #fff;
-  color: #1c314d;
-  padding: 0 10px;
-  font-size: 0.9rem;
-}
-
-.hero-image-editor__quick-grid {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 10px;
-}
-
-.hero-image-editor__quick-group {
-  border: 1px solid #dae4f0;
-  border-radius: 10px;
-  background: #f9fbfe;
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-}
-
-.hero-image-editor__quick-group > span {
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #557094;
-  font-weight: 800;
-}
-
-.hero-image-editor__position-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.hero-image-editor__position-btn {
-  min-height: 34px;
-  border-radius: 8px;
-  border: 1px solid #cad8ea;
-  background: #fff;
-  color: #314c6e;
-  font-size: 0.76rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.hero-image-editor__position-btn.is-active {
-  border-color: color-mix(in srgb, var(--brand-primary, #0f2747) 35%, #b9c9dd);
-  background: color-mix(in srgb, var(--brand-primary, #0f2747) 10%, #ffffff);
-  color: var(--brand-primary, #0f2747);
-}
-
-.hero-image-editor__zoom-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.hero-image-editor__zoom-chip {
-  min-height: 34px;
-  border-radius: 999px;
-  border: 1px solid #cad8ea;
-  background: #fff;
-  color: #314c6e;
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 0 12px;
-  cursor: pointer;
-}
-
-.hero-image-editor__zoom-chip.is-active {
-  border-color: color-mix(in srgb, var(--brand-primary, #0f2747) 35%, #b9c9dd);
-  background: color-mix(in srgb, var(--brand-primary, #0f2747) 12%, #ffffff);
-  color: var(--brand-primary, #0f2747);
-}
-
-.hero-image-editor__zoom-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 10px;
-}
-
-.hero-image-editor__zoom-row label {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: #203a58;
-}
-
-.hero-image-editor__zoom-row input[type="range"] {
-  width: 100%;
-}
-
-.hero-image-editor__status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  color: #4b6788;
-  font-size: 0.84rem;
-}
-
-.hero-image-editor__status strong {
-  color: #17304f;
-}
-
 .hero-image-editor__preview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -190,12 +67,47 @@
   font-size: 0.8rem;
 }
 
+.hero-image-editor__preview-launcher {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 0;
+}
+
+.hero-image-editor__preview-launcher:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand-primary, #0f2747) 48%, #99aec9);
+  outline-offset: -2px;
+}
+
+.hero-image-editor__preview-launch-label {
+  display: block;
+  padding: 7px 12px 9px;
+  border-top: 1px solid #dde5f1;
+  background: #ffffff;
+  color: #3f5d7f;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .hero-image-editor__preview-stage {
   position: relative;
   height: 315px;
   background: #eef3f9;
   overflow: hidden;
   contain: layout paint;
+}
+
+.hero-image-editor__preview-stage--modal {
+  height: min(70vh, 640px);
+  border-radius: 12px;
+  border: 1px solid #dbe5f1;
 }
 
 .hero-image-editor__landing-nav {
@@ -314,6 +226,10 @@
   background-position: center center;
   background-size: cover;
   will-change: background-position, background-size;
+}
+
+.hero-image-editor__preview-stage--modal.hero-image-editor__preview-stage--member .hero-image-editor__member-masthead {
+  height: 42%;
 }
 
 .hero-image-editor__member-masthead-fade {
@@ -468,28 +384,94 @@
   font-size: 0.8rem;
 }
 
+.hero-image-editor__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(9, 20, 35, 0.52);
+  backdrop-filter: blur(1.5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.hero-image-editor__modal {
+  width: min(1060px, 100%);
+  max-height: calc(100vh - 40px);
+  border: 1px solid #cedbeb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(9, 26, 48, 0.28);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.hero-image-editor__modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 2px;
+}
+
+.hero-image-editor__modal-header h4 {
+  margin: 0;
+  color: #17304f;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.hero-image-editor__modal-header p {
+  margin: 2px 0 0;
+  color: #557093;
+  font-size: 0.82rem;
+}
+
+.hero-image-editor__modal-close {
+  border: 1px solid #c8d5e8;
+  background: #f7faff;
+  color: #1f3f63;
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hero-image-editor__modal-content {
+  min-height: 0;
+}
+
+.hero-image-editor__modal-hint {
+  margin: 0;
+  color: #506b8c;
+  font-size: 0.8rem;
+}
+
 .hero-image-editor--admin {
   margin-top: 8px;
 }
 
 @media (max-width: 1040px) {
-  .hero-image-editor__controls,
-  .hero-image-editor__quick-grid {
-    grid-template-columns: 1fr;
-  }
-
   .hero-image-editor__preview-grid {
     grid-template-columns: 1fr;
   }
+
+  .hero-image-editor__modal {
+    width: min(780px, 100%);
+  }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
   .hero-image-editor {
     padding: 12px;
   }
 
   .hero-image-editor__preview-stage {
-    height: 280px;
+    height: 286px;
   }
 
   .hero-image-editor__member-welcome {
@@ -499,5 +481,18 @@
 
   .hero-image-editor__member-pulse {
     width: 100%;
+  }
+
+  .hero-image-editor__modal-backdrop {
+    padding: 10px;
+  }
+
+  .hero-image-editor__modal {
+    max-height: calc(100vh - 20px);
+    padding: 10px;
+  }
+
+  .hero-image-editor__preview-stage--modal {
+    height: min(66vh, 560px);
   }
 }

@@ -329,6 +329,7 @@ export function resolveDraft(tenant) {
   const baseBillingDetails = resolveBillingDetails(tenant);
   const draftLegal = deepClone(tenant?.onboardingDraft?.directorLegalAgreement || {}) || {};
   const baseLegal = resolveDirectorLegalAgreement(tenant);
+  const draftWizard = deepClone(tenant?.onboardingDraft?.wizard || {}) || {};
 
   return {
     theme: {
@@ -406,6 +407,10 @@ export function resolveDraft(tenant) {
       acceptedByUserId: draftLegal.acceptedByUserId || baseLegal.acceptedByUserId || null,
       termsVersion: String(draftLegal.termsVersion || baseLegal.termsVersion || "2026-02-21"),
       privacyVersion: String(draftLegal.privacyVersion || baseLegal.privacyVersion || "2026-02-21")
+    },
+    wizard: {
+      step: String(draftWizard.step || "").trim().toLowerCase(),
+      savedAt: draftWizard.savedAt || tenant?.onboardingDraft?.updatedAt || null
     },
     updatedAt: tenant?.onboardingDraft?.updatedAt || null,
     updatedByUserId: tenant?.onboardingDraft?.updatedByUserId || null

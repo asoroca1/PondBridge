@@ -42,6 +42,36 @@ function normalizeWizardStep(value = "", { accountStepRequired = true } = {}) {
   return normalized;
 }
 
+function truthyParam(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+function legacyOnboardingStepToWizardStep(value = "", { accountStepRequired = true } = {}) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "name_branding") return STEP_DESIGN;
+  if (normalized === "welcome_message") return STEP_CAMP_SPECIFICS;
+  if (normalized === "signup_controls") return STEP_BILLING_PLAN;
+  if (normalized === "import_alumni") return STEP_BILLING_PLAN;
+  if (normalized === "modules") return STEP_FEATURES;
+  if (normalized === "review_launch") return STEP_REVIEW_LAUNCH;
+  return accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN;
+}
+
+function resolveServerResumeStep(
+  { draft = null, onboardingStep = "" } = {},
+  { accountStepRequired = true } = {}
+) {
+  const explicit = String(draft?.wizard?.step || "").trim().toLowerCase();
+  if (explicit) {
+    return normalizeWizardStep(explicit, { accountStepRequired });
+  }
+  return normalizeWizardStep(
+    legacyOnboardingStepToWizardStep(onboardingStep, { accountStepRequired }),
+    { accountStepRequired }
+  );
+}
+
 const DEFAULT_FEATURE_MODULES = {
   directory: true,
   search: true,
@@ -179,6 +209,12 @@ const FEATURE_OPTIONS = [
     description: "Newsletter archive and announcements section for your camp."
   }
 ];
+
+const PREMIUM_ONLY_MODULE_KEYS = ["familyTrees"];
+const BASE_FEATURE_SET_KEYS = Object.keys(DEFAULT_FEATURE_MODULES).filter(
+  (key) => !PREMIUM_ONLY_MODULE_KEYS.includes(key)
+);
+const PREMIUM_FEATURE_SET_KEYS = Object.keys(DEFAULT_FEATURE_MODULES);
 
 function emailLooksValid(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
@@ -414,15 +450,23 @@ function DirectorCreateAccountWizardPage() {
   const initialBrandColor = useMemo(() => DEFAULT_SETUP_BRAND, []);
 
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const setupRequested = truthyParam(searchParams.get("setup"));
+  const resumeLoginPath = inviteToken
+    ? `/t/${slug}/login?inviteToken=${encodeURIComponent(inviteToken)}`
+    : `/t/${slug}/login`;
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
   const [step, setStep] = useState(() => (accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN));
   const [submitError, setSubmitError] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [draftRestoredNotice, setDraftRestoredNotice] = useState("");
+  const [saveLaterStatus, setSaveLaterStatus] = useState("");
+  const [savingForLater, setSavingForLater] = useState(false);
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
   const [showLaunchCelebration, setShowLaunchCelebration] = useState(false);
   const [launchRedirectUrl, setLaunchRedirectUrl] = useState("");
+  const [serverOnboardingSnapshot, setServerOnboardingSnapshot] = useState(null);
+  const [serverDraftLoaded, setServerDraftLoaded] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -487,12 +531,27 @@ function DirectorCreateAccountWizardPage() {
   }, [draftRestoredNotice]);
 
   useEffect(() => {
+    if (!saveLaterStatus) return;
+    const timeoutId = window.setTimeout(() => {
+      setSaveLaterStatus("");
+    }, 5200);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [saveLaterStatus]);
+
+  useEffect(() => {
     if (skipAccountHydratedRef.current) return;
     if (accountStepRequired) return;
 
     skipAccountHydratedRef.current = true;
     setStep((currentStep) => (currentStep === STEP_ACCOUNT ? STEP_DESIGN : currentStep));
   }, [accountStepRequired]);
+
+  useEffect(() => {
+    if (!setupRequested || !accountStepRequired || !slug) return;
+    navigate(resumeLoginPath, { replace: true });
+  }, [accountStepRequired, navigate, resumeLoginPath, setupRequested, slug]);
 
   useEffect(() => {
     if (!isDirectorUser) return;
@@ -513,6 +572,38 @@ function DirectorCreateAccountWizardPage() {
   }, [isDirectorUser, tenant?.name, user?.email, user?.name]);
 
   useEffect(() => {
+    if (!slug || !authToken || !isDirectorUser) {
+      setServerOnboardingSnapshot(null);
+      setServerDraftLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+    setServerDraftLoaded(false);
+
+    requestJson("/api/tenants/me/onboarding", { token: authToken })
+      .then((payload) => {
+        if (cancelled) return;
+        const tenantPayload = payload?.tenant || {};
+        setServerOnboardingSnapshot({
+          draft: tenantPayload.onboardingDraft || null,
+          onboardingStep: String(tenantPayload.onboardingStep || "").trim().toLowerCase()
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setServerOnboardingSnapshot(null);
+      })
+      .finally(() => {
+        if (!cancelled) setServerDraftLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, isDirectorUser, slug]);
+
+  useEffect(() => {
     if (!showLaunchCelebration || !launchRedirectUrl) return;
     const timer = setTimeout(() => {
       if (launchRedirectUrl.startsWith("http")) {
@@ -527,9 +618,7 @@ function DirectorCreateAccountWizardPage() {
   const backPath = inviteToken
     ? `/t/${slug}/director-claim?token=${encodeURIComponent(inviteToken)}`
     : `/t/${slug}/director-claim`;
-  const loginPath = inviteToken
-    ? `/t/${slug}/login?inviteToken=${encodeURIComponent(inviteToken)}`
-    : `/t/${slug}/login`;
+  const loginPath = resumeLoginPath;
   const firstWizardStep = accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN;
   const draftMainColor = isHexColor(themeDraft.brandPrimary)
     ? themeDraft.brandPrimary
@@ -574,6 +663,32 @@ function DirectorCreateAccountWizardPage() {
   const enabledFeatureLabels = FEATURE_OPTIONS.filter((item) => Boolean(modulesDraft[item.key])).map(
     (item) => item.title
   );
+  const recommendedFeatureSet = selectedBillingPlanCode === "institutional" ? "premium" : "base";
+  const activeFeatureSet = useMemo(() => {
+    const hasPremiumSet = PREMIUM_FEATURE_SET_KEYS.every((key) => Boolean(modulesDraft[key]));
+    if (hasPremiumSet) return "premium";
+
+    const hasBaseSet =
+      BASE_FEATURE_SET_KEYS.every((key) => Boolean(modulesDraft[key])) &&
+      PREMIUM_ONLY_MODULE_KEYS.every((key) => !Boolean(modulesDraft[key]));
+    if (hasBaseSet) return "base";
+
+    return "custom";
+  }, [modulesDraft]);
+  const reviewDirectorName = `${form.firstName} ${form.lastName}`.trim() || "Not set";
+  const mainPhotoFramingLabel = `${
+    HERO_POSITION_OPTIONS.find((item) => item.value === themeDraft.heroImagePosition)?.label || "Center"
+  } / ${
+    HERO_SIZE_OPTIONS.find((item) => item.value === themeDraft.heroImageSize)?.label || "Fill frame"
+  }`;
+  const enabledModulesCount = enabledFeatureLabels.length;
+  const designPreviewHeroStyle = themeDraft.heroImageUrl
+    ? {
+        backgroundImage: `url("${themeDraft.heroImageUrl}")`,
+        backgroundPosition: normalizeHeroImagePosition(themeDraft.heroImagePosition || "center center"),
+        backgroundSize: normalizeHeroImageSize(themeDraft.heroImageSize || "cover")
+      }
+    : undefined;
   const reviewAgeGroups = parseLineList(campSpecifics.ageGroupsText);
   const reviewStaffRoles = parseLineList(campSpecifics.staffRolesText);
   const normalizedMailingAddress = normalizeAddress(billingDetails.mailingAddress);
@@ -679,89 +794,96 @@ function DirectorCreateAccountWizardPage() {
     campSpecificsHydratedRef.current = true;
   }, [tenant]);
 
-  const draftHydratedRef = useRef(false);
+  const localDraftHydratedRef = useRef(false);
+  const serverDraftHydratedRef = useRef(false);
+
   useEffect(() => {
-    if (draftHydratedRef.current) return;
-    draftHydratedRef.current = true;
+    if (!slug || localDraftHydratedRef.current) return;
+    localDraftHydratedRef.current = true;
 
     const localDraft = readWizardDraft(slug);
-    if (localDraft) {
-      const draftForm =
-        localDraft.form && typeof localDraft.form === "object" ? localDraft.form : localDraft;
-      setForm((prev) => ({
+    if (!localDraft) return;
+
+    const draftForm =
+      localDraft.form && typeof localDraft.form === "object" ? localDraft.form : localDraft;
+    setForm((prev) => ({
+      ...prev,
+      firstName: String(draftForm.firstName || prev.firstName || ""),
+      lastName: String(draftForm.lastName || prev.lastName || ""),
+      email: String(draftForm.email || prev.email || ""),
+      campName: String(draftForm.campName || prev.campName || ""),
+      billingPlanCode: normalizeBillingPlanCode(
+        draftForm.billingPlanCode || draftForm.selectedPlanCode || prev.billingPlanCode
+      )
+    }));
+
+    if (localDraft.themeDraft && typeof localDraft.themeDraft === "object") {
+      setThemeDraft((prev) => ({
         ...prev,
-        firstName: String(draftForm.firstName || prev.firstName || ""),
-        lastName: String(draftForm.lastName || prev.lastName || ""),
-        email: String(draftForm.email || prev.email || ""),
-        campName: String(draftForm.campName || prev.campName || ""),
-        billingPlanCode: normalizeBillingPlanCode(
-          draftForm.billingPlanCode || draftForm.selectedPlanCode || prev.billingPlanCode
+        brandPrimary: isHexColor(localDraft.themeDraft.brandPrimary)
+          ? localDraft.themeDraft.brandPrimary
+          : prev.brandPrimary,
+        logoUrl: String(localDraft.themeDraft.logoUrl || prev.logoUrl || ""),
+        heroImageUrl: String(localDraft.themeDraft.heroImageUrl || prev.heroImageUrl || ""),
+        heroImagePosition: normalizeHeroImagePosition(
+          localDraft.themeDraft.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSize: normalizeHeroImageSize(
+          localDraft.themeDraft.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
         )
       }));
-
-      if (localDraft.themeDraft && typeof localDraft.themeDraft === "object") {
-        setThemeDraft((prev) => ({
-          ...prev,
-          brandPrimary: isHexColor(localDraft.themeDraft.brandPrimary)
-            ? localDraft.themeDraft.brandPrimary
-            : prev.brandPrimary,
-          logoUrl: String(localDraft.themeDraft.logoUrl || prev.logoUrl || ""),
-          heroImageUrl: String(localDraft.themeDraft.heroImageUrl || prev.heroImageUrl || ""),
-          heroImagePosition: normalizeHeroImagePosition(
-            localDraft.themeDraft.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
-          ),
-          heroImageSize: normalizeHeroImageSize(
-            localDraft.themeDraft.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
-          )
-        }));
-        if (isHexColor(localDraft.themeDraft.brandPrimary)) {
-          setHasCustomMainColor(true);
-        }
+      if (isHexColor(localDraft.themeDraft.brandPrimary)) {
+        setHasCustomMainColor(true);
       }
-
-      if (localDraft.modulesDraft && typeof localDraft.modulesDraft === "object") {
-        setModulesDraft((prev) => ({
-          ...prev,
-          ...localDraft.modulesDraft
-        }));
-      }
-
-      if (Object.prototype.hasOwnProperty.call(localDraft, "newsletterName")) {
-        setNewsletterName(String(localDraft.newsletterName || ""));
-      }
-
-      if (localDraft.campSpecifics && typeof localDraft.campSpecifics === "object") {
-        setCampSpecifics((prev) => ({
-          ...prev,
-          ageGroupsText: String(localDraft.campSpecifics.ageGroupsText || prev.ageGroupsText || ""),
-          staffRolesText: String(localDraft.campSpecifics.staffRolesText || prev.staffRolesText || ""),
-          homepageQuote: String(localDraft.campSpecifics.homepageQuote || prev.homepageQuote || ""),
-          merchShopUrl: String(localDraft.campSpecifics.merchShopUrl || prev.merchShopUrl || "")
-        }));
-      }
-
-      if (localDraft.billingDetails && typeof localDraft.billingDetails === "object") {
-        setBillingDetails((prev) => ({
-          sameAsMailing:
-            localDraft.billingDetails.sameAsMailing === undefined
-              ? prev.sameAsMailing
-              : Boolean(localDraft.billingDetails.sameAsMailing),
-          mailingAddress: normalizeAddress(
-            localDraft.billingDetails.mailingAddress || prev.mailingAddress || EMPTY_ADDRESS
-          ),
-          billingAddress: normalizeAddress(
-            localDraft.billingDetails.billingAddress || prev.billingAddress || EMPTY_ADDRESS
-          )
-        }));
-      }
-
-      setStep(normalizeWizardStep(localDraft.step, { accountStepRequired }));
-      setDraftRestoredNotice("Draft restored from your previous session.");
-      return;
     }
 
-    const draft = tenant?.onboardingDraft;
+    if (localDraft.modulesDraft && typeof localDraft.modulesDraft === "object") {
+      setModulesDraft((prev) => ({
+        ...prev,
+        ...localDraft.modulesDraft
+      }));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(localDraft, "newsletterName")) {
+      setNewsletterName(String(localDraft.newsletterName || ""));
+    }
+
+    if (localDraft.campSpecifics && typeof localDraft.campSpecifics === "object") {
+      setCampSpecifics((prev) => ({
+        ...prev,
+        ageGroupsText: String(localDraft.campSpecifics.ageGroupsText || prev.ageGroupsText || ""),
+        staffRolesText: String(localDraft.campSpecifics.staffRolesText || prev.staffRolesText || ""),
+        homepageQuote: String(localDraft.campSpecifics.homepageQuote || prev.homepageQuote || ""),
+        merchShopUrl: String(localDraft.campSpecifics.merchShopUrl || prev.merchShopUrl || "")
+      }));
+    }
+
+    if (localDraft.billingDetails && typeof localDraft.billingDetails === "object") {
+      setBillingDetails((prev) => ({
+        sameAsMailing:
+          localDraft.billingDetails.sameAsMailing === undefined
+            ? prev.sameAsMailing
+            : Boolean(localDraft.billingDetails.sameAsMailing),
+        mailingAddress: normalizeAddress(
+          localDraft.billingDetails.mailingAddress || prev.mailingAddress || EMPTY_ADDRESS
+        ),
+        billingAddress: normalizeAddress(
+          localDraft.billingDetails.billingAddress || prev.billingAddress || EMPTY_ADDRESS
+        )
+      }));
+    }
+
+    setStep(normalizeWizardStep(localDraft.step, { accountStepRequired }));
+    setDraftRestoredNotice("Draft restored from your previous session.");
+    serverDraftHydratedRef.current = true;
+  }, [accountStepRequired, slug]);
+
+  useEffect(() => {
+    if (serverDraftHydratedRef.current || !serverDraftLoaded) return;
+
+    const draft = serverOnboardingSnapshot?.draft;
     if (!draft) return;
+    serverDraftHydratedRef.current = true;
 
     if (draft.theme && typeof draft.theme === "object") {
       setThemeDraft((prev) => ({
@@ -815,7 +937,18 @@ function DirectorCreateAccountWizardPage() {
           : prev.billingAddress
       }));
     }
-  }, [accountStepRequired, slug, tenant?.onboardingDraft]);
+
+    setStep(
+      resolveServerResumeStep(
+        {
+          draft,
+          onboardingStep: serverOnboardingSnapshot?.onboardingStep || ""
+        },
+        { accountStepRequired }
+      )
+    );
+    setDraftRestoredNotice("Draft restored from your saved progress.");
+  }, [accountStepRequired, serverDraftLoaded, serverOnboardingSnapshot]);
 
   function buildLocalDraftSnapshot(nextStep = step) {
     const next = normalizeWizardStep(nextStep, { accountStepRequired });
@@ -861,15 +994,26 @@ function DirectorCreateAccountWizardPage() {
     writeWizardDraft(slug, buildLocalDraftSnapshot(nextStep));
   }
 
-  function saveDraftForStep(completedStep, { nextStep = step } = {}) {
-    saveLocalDraft(nextStep);
-    if (completedStep === STEP_ACCOUNT) return;
+  function buildServerDraftPatch({
+    completedStep = "",
+    nextStep = step,
+    includeAllSections = false
+  } = {}) {
+    const normalizedNextStep = normalizeWizardStep(nextStep, { accountStepRequired });
+    const payload = {
+      wizard: {
+        step: normalizedNextStep,
+        savedAt: new Date().toISOString(),
+        source: "director_create_account"
+      }
+    };
 
-    const token = authToken;
-    if (!token) return;
+    const shouldIncludeTheme = includeAllSections || completedStep === STEP_DESIGN;
+    const shouldIncludeFeatureChoices = includeAllSections || completedStep === STEP_FEATURES;
+    const shouldIncludeCampSpecifics = includeAllSections || completedStep === STEP_CAMP_SPECIFICS;
+    const shouldIncludeBilling = includeAllSections || completedStep === STEP_BILLING_PLAN;
 
-    const payload = {};
-    if (completedStep === STEP_DESIGN) {
+    if (shouldIncludeTheme) {
       payload.theme = {
         brandPrimary: themeDraft.brandPrimary,
         brandSecondary: deriveSecondaryHex(themeDraft.brandPrimary),
@@ -878,17 +1022,27 @@ function DirectorCreateAccountWizardPage() {
         heroImagePosition: themeDraft.heroImagePosition,
         heroImageSize: themeDraft.heroImageSize
       };
-    } else if (completedStep === STEP_FEATURES) {
+    }
+
+    if (shouldIncludeFeatureChoices) {
       payload.modules = { ...modulesDraft };
-      payload.content = { newsletterName: String(newsletterName || "").trim() || "Newsletter" };
-    } else if (completedStep === STEP_CAMP_SPECIFICS) {
       payload.content = {
+        ...(payload.content || {}),
+        newsletterName: String(newsletterName || "").trim() || "Newsletter"
+      };
+    }
+
+    if (shouldIncludeCampSpecifics) {
+      payload.content = {
+        ...(payload.content || {}),
         ageGroups: parseLineList(campSpecifics.ageGroupsText),
         staffRoles: parseLineList(campSpecifics.staffRolesText),
         welcomeBody: campSpecifics.homepageQuote,
         merchShopUrl: campSpecifics.merchShopUrl
       };
-    } else if (completedStep === STEP_BILLING_PLAN) {
+    }
+
+    if (shouldIncludeBilling) {
       payload.billingDetails = {
         sameAsMailing: Boolean(billingDetails.sameAsMailing),
         mailingAddress: normalizeAddress(billingDetails.mailingAddress),
@@ -898,13 +1052,53 @@ function DirectorCreateAccountWizardPage() {
       };
     }
 
-    if (Object.keys(payload).length === 0) return;
+    return payload;
+  }
+
+  function saveDraftForStep(completedStep, { nextStep = step } = {}) {
+    saveLocalDraft(nextStep);
+
+    const token = authToken;
+    if (!token) return;
+
+    const payload = buildServerDraftPatch({ completedStep, nextStep });
 
     requestJson("/api/tenants/me/onboarding/draft", {
       method: "PATCH",
       token,
       body: payload
     }).catch(() => {});
+  }
+
+  async function onSaveAndContinueLater() {
+    saveLocalDraft(step);
+    setSubmitError("");
+    setSaveLaterStatus("");
+
+    const token = String(authToken || "").trim();
+    if (!token) {
+      setSaveLaterStatus(
+        "Draft saved on this device. Sign in on this browser to continue where you left off."
+      );
+      return;
+    }
+
+    setSavingForLater(true);
+    try {
+      await requestJson("/api/tenants/me/onboarding/draft", {
+        method: "PATCH",
+        token,
+        body: buildServerDraftPatch({
+          nextStep: step,
+          includeAllSections: true
+        })
+      });
+      setSaveLaterStatus("Progress saved. Next time you sign in, onboarding will reopen at this step.");
+    } catch {
+      setSaveLaterStatus("Saved on this device, but we could not sync your draft to the server.");
+    } finally {
+      setSavingForLater(false);
+    }
   }
 
   function updateField(field, value) {
@@ -1301,6 +1495,16 @@ function DirectorCreateAccountWizardPage() {
     if (moduleKey === "newsletter" && !enabled) {
       setShowNewsletterSettings(false);
     }
+    setSubmitError("");
+  }
+
+  function applyFeatureSetPreset(nextSet = "premium") {
+    const usePremium = String(nextSet || "").trim().toLowerCase() === "premium";
+    setModulesDraft((prev) => ({
+      ...prev,
+      ...DEFAULT_FEATURE_MODULES,
+      familyTrees: usePremium
+    }));
     setSubmitError("");
   }
 
@@ -1759,9 +1963,33 @@ function DirectorCreateAccountWizardPage() {
             </button>
           </div>
 
+          {accountStepRequired ? (
+            <div className="director-existing-account-callout">
+              <span>Already created your director account?</span>
+              <Link to={loginPath}>Log in and continue onboarding</Link>
+            </div>
+          ) : null}
+
+          <div className="director-save-later-bar">
+            <button
+              type="button"
+              className="wizard1-btn-secondary director-save-later-btn"
+              onClick={onSaveAndContinueLater}
+              disabled={finishing || savingForLater}
+            >
+              {savingForLater ? "Saving..." : "Save and continue later"}
+            </button>
+            <p className="director-save-later-copy">
+              Save now, close this tab, and come back later. After sign-in, we will return you to this step.
+            </p>
+          </div>
+
           <div className="director-step-content" key={step}>
           {draftRestoredNotice ? (
             <p className="director-draft-restored">{draftRestoredNotice}</p>
+          ) : null}
+          {saveLaterStatus ? (
+            <p className="director-draft-restored director-draft-restored--info">{saveLaterStatus}</p>
           ) : null}
           {step === STEP_ACCOUNT ? (
             <>
@@ -2090,6 +2318,38 @@ function DirectorCreateAccountWizardPage() {
               <form className="director-create-form" onSubmit={onContinueToCampSpecifics} noValidate>
                 <div className="wizard1-grid wizard1-gap director-create-fields director-feature-fields">
                   <div className="wizard1-span-12">
+                    <div className="director-feature-set-panel">
+                      <div className="director-feature-set-head">
+                        <strong>Feature set</strong>
+                        <span>
+                          Recommended for selected plan:{" "}
+                          {recommendedFeatureSet === "premium" ? "Premium" : "Base"}
+                        </span>
+                      </div>
+                      <div className="director-feature-set-toggle" role="group" aria-label="Choose feature set">
+                        <button
+                          type="button"
+                          className={`director-feature-set-btn ${activeFeatureSet === "base" ? "active" : ""}`}
+                          onClick={() => applyFeatureSetPreset("base")}
+                        >
+                          Base features
+                        </button>
+                        <button
+                          type="button"
+                          className={`director-feature-set-btn ${activeFeatureSet === "premium" ? "active" : ""}`}
+                          onClick={() => applyFeatureSetPreset("premium")}
+                        >
+                          Premium features
+                        </button>
+                        {activeFeatureSet === "custom" ? (
+                          <span className="director-feature-set-custom">Custom selection</span>
+                        ) : null}
+                      </div>
+                      <p className="director-feature-set-note">
+                        Base keeps core modules enabled and turns off Family Trees. Premium enables all modules.
+                      </p>
+                    </div>
+
                     <div className="director-feature-grid">
                       {FEATURE_OPTIONS.map((item) => (
                         <div className="director-feature-item" key={item.key}>
@@ -2590,154 +2850,185 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Review and launch</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    Review your setup details below, then complete onboarding to open your launch center.
+                    Final pass before launch. Confirm your settings and publish your network.
                   </p>
                 </div>
               </div>
 
               <form className="director-create-form" onSubmit={onCompleteSetup} noValidate>
-                <div className="wizard1-grid wizard1-gap director-create-fields director-review-fields">
-                  <div className="wizard1-span-6">
-                    <article className="director-summary-card">
+                <div className="director-review-shell">
+                  <section className="director-review-hero">
+                    <div className="director-review-hero-main">
+                      <p className="director-review-eyebrow">Launch Snapshot</p>
+                      <h2>{form.campName || "Your Camp"} Alumni Network</h2>
+                      <p>Everything is ready for a final review. Launch will publish these settings live.</p>
+                      <div className="director-review-pill-row">
+                        <span className="director-review-pill is-brand">{billingPlanLabel(selectedBillingPlanCode)}</span>
+                        <span className="director-review-pill">{enabledModulesCount} modules enabled</span>
+                        <span className="director-review-pill">{onboardingFeeStatusText}</span>
+                      </div>
+                    </div>
+                    <div className="director-review-hero-side">
+                      <div className="director-review-domain-card">
+                        <span>Network domain</span>
+                        <strong>{provisionedDomainPreview}</strong>
+                      </div>
+                      <div className="director-review-color-swatch-row">
+                        <span>Main brand color</span>
+                        <code>{themeDraft.brandPrimary}</code>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className="director-review-grid">
+                    <article className="director-review-card">
                       <h3>Account</h3>
-                      <ul className="director-review-list">
-                        <li>
-                          <strong>Name:</strong> {`${form.firstName} ${form.lastName}`.trim() || "Not set"}
-                        </li>
-                        <li>
-                          <strong>Email:</strong> {form.email || "Not set"}
-                        </li>
-                        <li>
-                          <strong>Camp:</strong> {form.campName || "Not set"}
-                        </li>
-                        <li>
-                          <strong>Plan:</strong> {billingPlanLabel(selectedBillingPlanCode)}
-                        </li>
-                      </ul>
+                      <dl className="director-review-kv">
+                        <div>
+                          <dt>Name</dt>
+                          <dd>{reviewDirectorName}</dd>
+                        </div>
+                        <div>
+                          <dt>Email</dt>
+                          <dd>{form.email || "Not set"}</dd>
+                        </div>
+                        <div>
+                          <dt>Camp</dt>
+                          <dd>{form.campName || "Not set"}</dd>
+                        </div>
+                        <div>
+                          <dt>Plan</dt>
+                          <dd>{billingPlanLabel(selectedBillingPlanCode)}</dd>
+                        </div>
+                      </dl>
                     </article>
-                  </div>
 
-                  <div className="wizard1-span-6">
-                    <article className="director-summary-card">
+                    <article className="director-review-card">
                       <h3>Design</h3>
-                      <ul className="director-review-list">
-                        <li>
-                          <strong>Main color:</strong> {themeDraft.brandPrimary}
-                        </li>
-                        <li>
-                          <strong>Logo:</strong> {themeDraft.logoUrl ? "Uploaded" : "Not uploaded"}
-                        </li>
-                        <li>
-                          <strong>Main photo:</strong> {themeDraft.heroImageUrl ? "Uploaded" : "Not uploaded"}
-                        </li>
-                        <li>
-                          <strong>Main photo framing:</strong>{" "}
-                          {(HERO_POSITION_OPTIONS.find((item) => item.value === themeDraft.heroImagePosition)
-                            ?.label || "Center")}{" "}
-                          /{" "}
-                          {(HERO_SIZE_OPTIONS.find((item) => item.value === themeDraft.heroImageSize)?.label ||
-                            "Fill frame")}
-                        </li>
-                      </ul>
-                    </article>
-                  </div>
-
-                  <div className="wizard1-span-6">
-                    <article className="director-summary-card">
-                      <h3>Features</h3>
-                      <ul className="director-review-list">
-                        <li>
-                          <strong>Enabled:</strong> {enabledFeatureLabels.join(", ") || "None"}
-                        </li>
-                        {modulesDraft.newsletter ? (
-                          <li>
-                            <strong>Newsletter label:</strong>{" "}
-                            {String(newsletterName || "").trim() || "Newsletter"}
-                          </li>
-                        ) : null}
-                      </ul>
-                    </article>
-                  </div>
-
-                  <div className="wizard1-span-6">
-                    <article className="director-summary-card">
-                      <h3>Camp specifics</h3>
-                      <ul className="director-review-list">
-                        <li>
-                          <strong>Age groups:</strong> {reviewAgeGroups.join(", ") || "Not set"}
-                        </li>
-                        <li>
-                          <strong>Staff roles:</strong> {reviewStaffRoles.join(", ") || "Not set"}
-                        </li>
-                        <li>
-                          <strong>Homepage quote:</strong>{" "}
-                          {String(campSpecifics.homepageQuote || "").trim() || "Not set"}
-                        </li>
-                        {modulesDraft.merchShop ? (
-                          <li>
-                            <strong>Merch link:</strong>{" "}
-                            {String(campSpecifics.merchShopUrl || "").trim() || "Not set"}
-                          </li>
-                        ) : null}
-                      </ul>
-                    </article>
-                  </div>
-
-                  <div className="wizard1-span-12">
-                    <article className="director-summary-card">
-                      <h3>Billing and plan</h3>
-                      <ul className="director-review-list">
-                        <li>
-                          <strong>Plan confirmed:</strong>{" "}
-                          {billingPlanLabel(selectedBillingPlanCode)}
-                        </li>
-                        <li>
-                          <strong>Onboarding fee:</strong> {formatMoney(onboardingFeeAmount)}
-                        </li>
-                        <li>
-                          <strong>Status:</strong> {onboardingFeeStatusText}
-                        </li>
-                        <li>
-                          <strong>Mailing address:</strong> {formatAddress(normalizedMailingAddress) || "Not set"}
-                        </li>
-                        <li>
-                          <strong>Billing address:</strong>{" "}
-                          {billingDetails.sameAsMailing
-                            ? "Same as mailing address"
-                            : formatAddress(normalizedBillingAddress) || "Not set"}
-                        </li>
-                        <li>
-                          <strong>Network domain:</strong> {provisionedDomainPreview}
-                        </li>
-                      </ul>
-                    </article>
-                  </div>
-
-                  <div className="wizard1-span-12">
-                    <article className="director-summary-card director-legal-card">
-                      <h3>Terms, agreements, and privacy</h3>
-                      <label className={`director-inline-checkbox ${legalAgreementError ? "has-error" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={legalAgreementAccepted}
-                          onChange={(event) => {
-                            setLegalAgreementAccepted(event.target.checked);
-                            setLegalAgreementError("");
-                            setSubmitError("");
-                          }}
+                      <div className="director-review-mini-preview">
+                        <div className="director-review-mini-preview-top" style={{ background: themeDraft.brandPrimary }}>
+                          {themeDraft.logoUrl ? <img src={themeDraft.logoUrl} alt="" /> : <span>PB</span>}
+                          <strong>{form.campName || "Your Camp"} Alumni Network</strong>
+                        </div>
+                        <div
+                          className="director-review-mini-preview-hero"
+                          style={designPreviewHeroStyle}
                         />
-                        <span>
-                          I agree to PondBridge Terms, Director Agreement, and Privacy Policy for launching this
-                          network.
-                        </span>
-                      </label>
-                      <p className="director-field-hint">
-                        Required before launch. You can review{" "}
-                        <Link to={`/t/${slug}/legal`}>Terms &amp; Privacy</Link>.
-                      </p>
-                      {legalAgreementError ? <p className="wizard1-error">{legalAgreementError}</p> : null}
+                      </div>
+                      <dl className="director-review-kv">
+                        <div>
+                          <dt>Logo</dt>
+                          <dd>{themeDraft.logoUrl ? "Uploaded" : "Not uploaded"}</dd>
+                        </div>
+                        <div>
+                          <dt>Main photo</dt>
+                          <dd>{themeDraft.heroImageUrl ? "Uploaded" : "Not uploaded"}</dd>
+                        </div>
+                        <div>
+                          <dt>Framing</dt>
+                          <dd>{mainPhotoFramingLabel}</dd>
+                        </div>
+                      </dl>
+                    </article>
+
+                    <article className="director-review-card">
+                      <h3>Features</h3>
+                      <div className="director-review-feature-pills">
+                        {enabledFeatureLabels.length ? (
+                          enabledFeatureLabels.map((label) => (
+                            <span key={label}>{label}</span>
+                          ))
+                        ) : (
+                          <span>None</span>
+                        )}
+                      </div>
+                      {modulesDraft.newsletter ? (
+                        <dl className="director-review-kv director-review-kv--compact">
+                          <div>
+                            <dt>Newsletter label</dt>
+                            <dd>{String(newsletterName || "").trim() || "Newsletter"}</dd>
+                          </div>
+                        </dl>
+                      ) : null}
+                    </article>
+
+                    <article className="director-review-card">
+                      <h3>Camp specifics</h3>
+                      <dl className="director-review-kv">
+                        <div>
+                          <dt>Age groups</dt>
+                          <dd>{reviewAgeGroups.join(", ") || "Not set"}</dd>
+                        </div>
+                        <div>
+                          <dt>Staff roles</dt>
+                          <dd>{reviewStaffRoles.join(", ") || "Not set"}</dd>
+                        </div>
+                        <div>
+                          <dt>Homepage quote</dt>
+                          <dd>{String(campSpecifics.homepageQuote || "").trim() || "Not set"}</dd>
+                        </div>
+                        {modulesDraft.merchShop ? (
+                          <div>
+                            <dt>Merch link</dt>
+                            <dd>{String(campSpecifics.merchShopUrl || "").trim() || "Not set"}</dd>
+                          </div>
+                        ) : null}
+                      </dl>
+                    </article>
+
+                    <article className="director-review-card director-review-card--wide">
+                      <h3>Billing and plan</h3>
+                      <dl className="director-review-kv director-review-kv--two">
+                        <div>
+                          <dt>Plan confirmed</dt>
+                          <dd>{billingPlanLabel(selectedBillingPlanCode)}</dd>
+                        </div>
+                        <div>
+                          <dt>Onboarding fee</dt>
+                          <dd>{formatMoney(onboardingFeeAmount)}</dd>
+                        </div>
+                        <div>
+                          <dt>Status</dt>
+                          <dd>{onboardingFeeStatusText}</dd>
+                        </div>
+                        <div>
+                          <dt>Mailing address</dt>
+                          <dd>{formatAddress(normalizedMailingAddress) || "Not set"}</dd>
+                        </div>
+                        <div>
+                          <dt>Billing address</dt>
+                          <dd>
+                            {billingDetails.sameAsMailing
+                              ? "Same as mailing address"
+                              : formatAddress(normalizedBillingAddress) || "Not set"}
+                          </dd>
+                        </div>
+                      </dl>
                     </article>
                   </div>
+
+                  <article className="director-review-legal-card">
+                    <h3>Legal confirmation required</h3>
+                    <label className={`director-inline-checkbox ${legalAgreementError ? "has-error" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={legalAgreementAccepted}
+                        onChange={(event) => {
+                          setLegalAgreementAccepted(event.target.checked);
+                          setLegalAgreementError("");
+                          setSubmitError("");
+                        }}
+                      />
+                      <span>
+                        I agree to PondBridge Terms, Director Agreement, and Privacy Policy for launching this network.
+                      </span>
+                    </label>
+                    <p className="director-field-hint">
+                      Required before launch. Review{" "}
+                      <Link to={`/t/${slug}/legal`}>Terms &amp; Privacy</Link>.
+                    </p>
+                    {legalAgreementError ? <p className="wizard1-error">{legalAgreementError}</p> : null}
+                  </article>
                 </div>
 
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
