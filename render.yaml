@@ -8,7 +8,7 @@ services:
     buildCommand: npm install
     startCommand: npm --workspace @pondbridge/api run start
     healthCheckPath: /health
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
