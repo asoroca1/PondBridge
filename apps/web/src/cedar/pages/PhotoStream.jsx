@@ -562,65 +562,62 @@ export default function PhotoStream() {
 
 
       <div className="ps-container nav2-page-shell">
-        {/* White scrollable surface */}
-        <div className="ps-surface">
-          <CedarPageHeader
-            className="ps-page-header"
-            icon={<Images size={18} />}
-            title="Photo Stream"
-            subtitle={`Share old and new camp photos with the ${campName} community. Click a photo to enlarge.`}
-          >
-            <div className="ps-header-right">
-              <SortDropdown value={sort} onChange={setSort} />
-              <button className="ps-btn primary" onClick={() => setUploadOpen(true)}>Upload Photo</button>
-            </div>
-          </CedarPageHeader>
+        <CedarPageHeader
+          className="ps-page-header"
+          icon={<Images size={18} />}
+          title="Photo Stream"
+          subtitle={`Share old and new camp photos with the ${campName} community. Click a photo to enlarge.`}
+        >
+          <div className="ps-header-right">
+            <SortDropdown value={sort} onChange={setSort} />
+            <button className="ps-btn primary" onClick={() => setUploadOpen(true)}>Upload Photo</button>
+          </div>
+        </CedarPageHeader>
 
-          <div className="ps-feed-grid">
-            {items.map(p => {
-              const ownerId = String(p.ownerId ?? p.userId ?? p.createdBy ?? "");
-              const info = authorInfo[ownerId] || { name: p.ownerName, avatar: "" };
-              return (
-                <div key={p._id || p.id} className="ps-card">
-                  <button className="ps-media-wrap" onClick={() => setViewerPost(p)} aria-label="Open photo">
-                    <img className="ps-media" src={p.thumbUrl || p.imageUrl} alt={p.caption || "Camp photo"} loading="lazy" />
-                  </button>
+        <div className="ps-feed-grid">
+          {items.map(p => {
+            const ownerId = String(p.ownerId ?? p.userId ?? p.createdBy ?? "");
+            const info = authorInfo[ownerId] || { name: p.ownerName, avatar: "" };
+            return (
+              <div key={p._id || p.id} className="ps-card">
+                <button className="ps-media-wrap" onClick={() => setViewerPost(p)} aria-label="Open photo">
+                  <img className="ps-media" src={p.thumbUrl || p.imageUrl} alt={p.caption || "Camp photo"} loading="lazy" />
+                </button>
 
-                  {p.caption && (
-                    <div className="ps-caption">
-                      <MentionText text={p.caption} mentions={p.captionMentions} />
-                    </div>
-                  )}
-
-                  <div className="ps-meta">
-                    <div className="ps-meta-left">
-                      <AvatarLink userId={ownerId} name={info.name || p.ownerName || "Unknown"} url={info.avatar} />
-                      <div>
-                        <Link to={`/profile/${ownerId}`} className="ps-name">
-                          {info.name || p.ownerName || "Unknown"}
-                        </Link>
-                        <div className="ps-date">{fmtDate(p.createdAt)}</div>
-                      </div>
-                    </div>
+                {p.caption && (
+                  <div className="ps-caption">
+                    <MentionText text={p.caption} mentions={p.captionMentions} />
                   </div>
+                )}
 
-                  <div className="ps-actions">
-                    <button className="ps-btn-icon" onClick={() => toggleLike(p._id)} aria-label="Like"><span>❤️</span><span>{p.likes || 0}</span></button>
-                    <button className="ps-btn-icon" onClick={() => setViewerPost(p)} aria-label="View comments"><span>💬</span><span>{p.commentsCount || 0}</span></button>
-                    {p.mine && <button className="ps-btn-icon danger" onClick={() => deletePhoto(p._id)} aria-label="Delete">Delete</button>}
+                <div className="ps-meta">
+                  <div className="ps-meta-left">
+                    <AvatarLink userId={ownerId} name={info.name || p.ownerName || "Unknown"} url={info.avatar} />
+                    <div>
+                      <Link to={`/profile/${ownerId}`} className="ps-name">
+                        {info.name || p.ownerName || "Unknown"}
+                      </Link>
+                      <div className="ps-date">{fmtDate(p.createdAt)}</div>
+                    </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
 
-          <div ref={loaderRef} style={{ height: 1 }} />
-          {loading && <CedarSkeleton.Lines lines={2} />}
-          {!loading && items.length === 0 && (
-            <div className="ps-empty">{`📷 No photos yet - be the first to share a ${campName} memory.`}</div>
-          )}
-          {((sort !== "top" && !nextCursor && items.length > 0) || (sort === "top" && !nextPage && items.length > 0)) && <div className="ps-end">You’re all caught up.</div>}
+                <div className="ps-actions">
+                  <button className="ps-btn-icon" onClick={() => toggleLike(p._id)} aria-label="Like"><span>❤️</span><span>{p.likes || 0}</span></button>
+                  <button className="ps-btn-icon" onClick={() => setViewerPost(p)} aria-label="View comments"><span>💬</span><span>{p.commentsCount || 0}</span></button>
+                  {p.mine && <button className="ps-btn-icon danger" onClick={() => deletePhoto(p._id)} aria-label="Delete">Delete</button>}
+                </div>
+              </div>
+            );
+          })}
         </div>
+
+        <div ref={loaderRef} style={{ height: 1 }} />
+        {loading && <CedarSkeleton.Lines lines={2} />}
+        {!loading && items.length === 0 && (
+          <div className="ps-empty">{`📷 No photos yet - be the first to share a ${campName} memory.`}</div>
+        )}
+        {((sort !== "top" && !nextCursor && items.length > 0) || (sort === "top" && !nextPage && items.length > 0)) && <div className="ps-end">You’re all caught up.</div>}
       </div>
 
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onPosted={handlePosted} />
