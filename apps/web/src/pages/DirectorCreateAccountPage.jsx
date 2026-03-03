@@ -1970,20 +1970,6 @@ function DirectorCreateAccountWizardPage() {
             </div>
           ) : null}
 
-          <div className="director-save-later-bar">
-            <button
-              type="button"
-              className="wizard1-btn-secondary director-save-later-btn"
-              onClick={onSaveAndContinueLater}
-              disabled={finishing || savingForLater}
-            >
-              {savingForLater ? "Saving..." : "Save and continue later"}
-            </button>
-            <p className="director-save-later-copy">
-              Save now, close this tab, and come back later. After sign-in, we will return you to this step.
-            </p>
-          </div>
-
           <div className="director-step-content" key={step}>
           {draftRestoredNotice ? (
             <p className="director-draft-restored">{draftRestoredNotice}</p>
@@ -2132,14 +2118,24 @@ function DirectorCreateAccountWizardPage() {
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
 
                 <div className="wizard1-actions director-create-actions">
-                  <button
-                    type="button"
-                    className="wizard1-btn-secondary"
-                    onClick={() => navigate(backPath)}
-                    disabled={finishing}
-                  >
-                    Back
-                  </button>
+                  <div className="director-create-actions-left">
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary"
+                      onClick={() => navigate(backPath)}
+                      disabled={finishing}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary director-save-later-btn"
+                      onClick={onSaveAndContinueLater}
+                      disabled={finishing || savingForLater}
+                    >
+                      {savingForLater ? "Saving..." : "Save and continue later"}
+                    </button>
+                  </div>
                   <div className="wizard1-actions-right">
                     <button
                       type="submit"
@@ -2280,16 +2276,26 @@ function DirectorCreateAccountWizardPage() {
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
 
                 <div className="wizard1-actions director-create-actions">
-                  <button
-                    type="button"
-                    className="wizard1-btn-secondary"
-                    onClick={() =>
-                      accountStepRequired ? setStep(STEP_ACCOUNT) : navigate(backPath)
-                    }
-                    disabled={finishing}
-                  >
-                    {accountStepRequired ? "Back" : "Back to claim page"}
-                  </button>
+                  <div className="director-create-actions-left">
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary"
+                      onClick={() =>
+                        accountStepRequired ? setStep(STEP_ACCOUNT) : navigate(backPath)
+                      }
+                      disabled={finishing}
+                    >
+                      {accountStepRequired ? "Back" : "Back to claim page"}
+                    </button>
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary director-save-later-btn"
+                      onClick={onSaveAndContinueLater}
+                      disabled={finishing || savingForLater}
+                    >
+                      {savingForLater ? "Saving..." : "Save and continue later"}
+                    </button>
+                  </div>
                   <div className="wizard1-actions-right">
                     <button
                       type="submit"
@@ -2414,14 +2420,24 @@ function DirectorCreateAccountWizardPage() {
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
 
                 <div className="wizard1-actions director-create-actions">
-                  <button
-                    type="button"
-                    className="wizard1-btn-secondary"
-                    onClick={() => setStep(STEP_DESIGN)}
-                    disabled={finishing}
-                  >
-                    Back
-                  </button>
+                  <div className="director-create-actions-left">
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary"
+                      onClick={() => setStep(STEP_DESIGN)}
+                      disabled={finishing}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary director-save-later-btn"
+                      onClick={onSaveAndContinueLater}
+                      disabled={finishing || savingForLater}
+                    >
+                      {savingForLater ? "Saving..." : "Save and continue later"}
+                    </button>
+                  </div>
                   <div className="wizard1-actions-right">
                     <button
                       type="submit"
@@ -2528,14 +2544,24 @@ function DirectorCreateAccountWizardPage() {
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
 
                 <div className="wizard1-actions director-create-actions">
-                  <button
-                    type="button"
-                    className="wizard1-btn-secondary"
-                    onClick={() => setStep(STEP_FEATURES)}
-                    disabled={finishing}
-                  >
-                    Back
-                  </button>
+                  <div className="director-create-actions-left">
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary"
+                      onClick={() => setStep(STEP_FEATURES)}
+                      disabled={finishing}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary director-save-later-btn"
+                      onClick={onSaveAndContinueLater}
+                      disabled={finishing || savingForLater}
+                    >
+                      {savingForLater ? "Saving..." : "Save and continue later"}
+                    </button>
+                  </div>
                   <div className="wizard1-actions-right">
                     <button
                       type="submit"
@@ -2822,14 +2848,24 @@ function DirectorCreateAccountWizardPage() {
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
 
                 <div className="wizard1-actions director-create-actions">
-                  <button
-                    type="button"
-                    className="wizard1-btn-secondary"
-                    onClick={() => setStep(STEP_CAMP_SPECIFICS)}
-                    disabled={finishing}
-                  >
-                    Back
-                  </button>
+                  <div className="director-create-actions-left">
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary"
+                      onClick={() => setStep(STEP_CAMP_SPECIFICS)}
+                      disabled={finishing}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary director-save-later-btn"
+                      onClick={onSaveAndContinueLater}
+                      disabled={finishing || savingForLater}
+                    >
+                      {savingForLater ? "Saving..." : "Save and continue later"}
+                    </button>
+                  </div>
                   <div className="wizard1-actions-right">
                     <button
                       type="submit"
@@ -3034,14 +3070,24 @@ function DirectorCreateAccountWizardPage() {
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
 
                 <div className="wizard1-actions director-create-actions">
-                  <button
-                    type="button"
-                    className="wizard1-btn-secondary"
-                    onClick={() => setStep(STEP_BILLING_PLAN)}
-                    disabled={finishing}
-                  >
-                    Back
-                  </button>
+                  <div className="director-create-actions-left">
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary"
+                      onClick={() => setStep(STEP_BILLING_PLAN)}
+                      disabled={finishing}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary director-save-later-btn"
+                      onClick={onSaveAndContinueLater}
+                      disabled={finishing || savingForLater}
+                    >
+                      {savingForLater ? "Saving..." : "Save and continue later"}
+                    </button>
+                  </div>
                   <div className="wizard1-actions-right">
                     <button
                       type="submit"
