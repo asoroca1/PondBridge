@@ -2894,7 +2894,7 @@ export function DirectorAdminSettingsNetworkPage() {
   const [form, setForm] = useState({
     campName: "",
     networkName: "",
-    tagline: "",
+    homepageQuote: "",
     aboutText: "",
     contactEmail: "",
     websiteUrl: ""
@@ -2906,7 +2906,7 @@ export function DirectorAdminSettingsNetworkPage() {
     setForm({
       campName,
       networkName: payload.identity.networkName || (campName ? `${campName} Alumni Network` : ""),
-      tagline: payload.identity.tagline || "",
+      homepageQuote: payload.identity.homepageQuote || payload.identity.tagline || "",
       aboutText: payload.identity.aboutText || "",
       contactEmail: payload.identity.contactEmail || "",
       websiteUrl: payload.identity.websiteUrl || payload.tenant?.appUrl || ""
@@ -2943,9 +2943,14 @@ export function DirectorAdminSettingsNetworkPage() {
           Network Name
           <Input value={form.networkName} onChange={(event) => setForm((prev) => ({ ...prev, networkName: event.target.value }))} />
         </label>
-        <label>
-          Tagline
-          <Input value={form.tagline} maxLength={120} onChange={(event) => setForm((prev) => ({ ...prev, tagline: event.target.value }))} />
+        <label className="full-width">
+          Homepage quote (before login)
+          <Textarea
+            value={form.homepageQuote}
+            maxLength={220}
+            onChange={(event) => setForm((prev) => ({ ...prev, homepageQuote: event.target.value }))}
+          />
+          <span className="muted">Displayed on the public homepage hero before login.</span>
         </label>
         <label className="full-width">
           About Text
@@ -3176,7 +3181,7 @@ export function DirectorAdminSettingsBrandingPage() {
             logoUrl={form.logoUrl}
             brandPrimary={previewBrandPrimary}
             campName={payload?.identity?.campName || payload?.tenant?.name || "Your Camp"}
-            welcomeBody={payload?.identity?.tagline || ""}
+            welcomeBody={payload?.identity?.homepageQuote || payload?.identity?.tagline || ""}
             onChangePosition={(nextValue) =>
               setForm((prev) => ({
                 ...prev,
