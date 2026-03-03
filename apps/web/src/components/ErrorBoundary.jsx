@@ -1,4 +1,5 @@
 import { Component } from "react";
+import { recoverFromMissingChunk } from "../lib/chunkRecovery.js";
 
 /**
  * Catches render errors in child components and displays a recovery UI
@@ -26,6 +27,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error(`[ErrorBoundary:${this.props.level || "page"}]`, error, errorInfo);
+    recoverFromMissingChunk(error);
   }
 
   handleRetry = () => {

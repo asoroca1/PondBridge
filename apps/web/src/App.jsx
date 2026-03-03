@@ -9,94 +9,107 @@ import TenantAuthCallbackPage from "./pages/TenantAuthCallbackPage.jsx";
 import SuperLoginPage from "./pages/SuperLoginPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import { defaultTenantDomain, inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
+import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
 
-const CedarHomePage = lazy(() => import("./cedar/pages/Home.jsx"));
-const CedarLoginPage = lazy(() => import("./cedar/pages/Login.jsx"));
-const CedarForgotPasswordPage = lazy(() => import("./cedar/pages/ForgotPassword.jsx"));
-const CedarCreateProfileWizardPage = lazy(() => import("./cedar/pages/CreateProfileWizard.jsx"));
-const CedarMainHomePage = lazy(() => import("./cedar/pages/MainHome.jsx"));
-const CedarMyProfilePage = lazy(() => import("./cedar/pages/MyProfile.jsx"));
-const CedarEditProfilePage = lazy(() => import("./cedar/pages/EditProfile.jsx"));
-const CedarAdvancedSearchPage = lazy(() => import("./cedar/pages/AdvancedSearch.jsx"));
-const CedarPhotoStreamPage = lazy(() => import("./cedar/pages/PhotoStream.jsx"));
-const CedarChatAndForumsPage = lazy(() => import("./cedar/pages/ChatAndForums.jsx"));
-const CedarChestPage = lazy(() => import("./cedar/pages/CedarChest.jsx"));
-const CedarLocationMapPage = lazy(() => import("./cedar/pages/LocationMap.jsx"));
-const CedarSearchResultsPage = lazy(() => import("./cedar/pages/SearchResults.jsx"));
-const CedarPublicProfilePage = lazy(() => import("./cedar/pages/PublicProfile.jsx"));
-const CedarLegalPage = lazy(() => import("./cedar/pages/Legal.jsx"));
-const CedarFamilyTreesPage = lazy(() => import("./cedar/pages/FamilyTrees.jsx"));
-const CedarFamilyTreeCreatePage = lazy(() => import("./cedar/pages/FamilyTreeCreate.jsx"));
-const CedarFamilyTreeViewPage = lazy(() => import("./cedar/pages/FamilyTreeView.jsx"));
+function lazyPage(loader) {
+  return lazy(() =>
+    loader().catch((error) => {
+      if (recoverFromMissingChunk(error)) {
+        // Keep suspense pending while the one-time recovery navigation starts.
+        return new Promise(() => {});
+      }
+      throw error;
+    })
+  );
+}
 
-const DirectorOnboardingCommandCenterPage = lazy(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
-const DirectorClaimPage = lazy(() => import("./pages/DirectorClaimPage.jsx"));
-const DirectorCreateAccountPage = lazy(() => import("./pages/DirectorCreateAccountPage.jsx"));
-const DirectorAdminLayout = lazy(() => import("./pages/admin/DirectorAdminLayout.jsx"));
-const DirectorAdminBillingPage = lazy(() =>
+const CedarHomePage = lazyPage(() => import("./cedar/pages/Home.jsx"));
+const CedarLoginPage = lazyPage(() => import("./cedar/pages/Login.jsx"));
+const CedarForgotPasswordPage = lazyPage(() => import("./cedar/pages/ForgotPassword.jsx"));
+const CedarCreateProfileWizardPage = lazyPage(() => import("./cedar/pages/CreateProfileWizard.jsx"));
+const CedarMainHomePage = lazyPage(() => import("./cedar/pages/MainHome.jsx"));
+const CedarMyProfilePage = lazyPage(() => import("./cedar/pages/MyProfile.jsx"));
+const CedarEditProfilePage = lazyPage(() => import("./cedar/pages/EditProfile.jsx"));
+const CedarAdvancedSearchPage = lazyPage(() => import("./cedar/pages/AdvancedSearch.jsx"));
+const CedarPhotoStreamPage = lazyPage(() => import("./cedar/pages/PhotoStream.jsx"));
+const CedarChatAndForumsPage = lazyPage(() => import("./cedar/pages/ChatAndForums.jsx"));
+const CedarChestPage = lazyPage(() => import("./cedar/pages/CedarChest.jsx"));
+const CedarLocationMapPage = lazyPage(() => import("./cedar/pages/LocationMap.jsx"));
+const CedarSearchResultsPage = lazyPage(() => import("./cedar/pages/SearchResults.jsx"));
+const CedarPublicProfilePage = lazyPage(() => import("./cedar/pages/PublicProfile.jsx"));
+const CedarLegalPage = lazyPage(() => import("./cedar/pages/Legal.jsx"));
+const CedarFamilyTreesPage = lazyPage(() => import("./cedar/pages/FamilyTrees.jsx"));
+const CedarFamilyTreeCreatePage = lazyPage(() => import("./cedar/pages/FamilyTreeCreate.jsx"));
+const CedarFamilyTreeViewPage = lazyPage(() => import("./cedar/pages/FamilyTreeView.jsx"));
+
+const DirectorOnboardingCommandCenterPage = lazyPage(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
+const DirectorClaimPage = lazyPage(() => import("./pages/DirectorClaimPage.jsx"));
+const DirectorCreateAccountPage = lazyPage(() => import("./pages/DirectorCreateAccountPage.jsx"));
+const DirectorAdminLayout = lazyPage(() => import("./pages/admin/DirectorAdminLayout.jsx"));
+const DirectorAdminBillingPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminBillingPage }))
 );
-const DirectorAdminDashboardPage = lazy(() =>
+const DirectorAdminDashboardPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminDashboardPage }))
 );
-const DirectorAdminEmailComposePage = lazy(() =>
+const DirectorAdminEmailComposePage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailComposePage }))
 );
-const DirectorAdminEmailHistoryPage = lazy(() =>
+const DirectorAdminEmailHistoryPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailHistoryPage }))
 );
-const DirectorAdminFeaturesPage = lazy(() =>
+const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
 );
-const DirectorAdminInvitesPage = lazy(() =>
+const DirectorAdminInvitesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminInvitesPage }))
 );
-const DirectorAdminMembersPage = lazy(() =>
+const DirectorAdminMembersPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
 );
-const DirectorAdminSettingsAdminsPage = lazy(() =>
+const DirectorAdminSettingsAdminsPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsAdminsPage
   }))
 );
-const DirectorAdminSettingsBrandingPage = lazy(() =>
+const DirectorAdminSettingsBrandingPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsBrandingPage
   }))
 );
-const DirectorAdminSettingsDangerPage = lazy(() =>
+const DirectorAdminSettingsDangerPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsDangerPage
   }))
 );
-const DirectorAdminSettingsLayout = lazy(() =>
+const DirectorAdminSettingsLayout = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminSettingsLayout }))
 );
-const DirectorAdminSettingsNetworkPage = lazy(() =>
+const DirectorAdminSettingsNetworkPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsNetworkPage
   }))
 );
-const SuperShellLayout = lazy(() => import("./pages/super/SuperShellLayout.jsx"));
-const SuperBillingFailedPage = lazy(() =>
+const SuperShellLayout = lazyPage(() => import("./pages/super/SuperShellLayout.jsx"));
+const SuperBillingFailedPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingFailedPage }))
 );
-const SuperBillingTenantsPage = lazy(() =>
+const SuperBillingTenantsPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingTenantsPage }))
 );
-const SuperEmailTransactionalPage = lazy(() =>
+const SuperEmailTransactionalPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperEmailTransactionalPage }))
 );
-const SuperPlatformPulsePage = lazy(() =>
+const SuperPlatformPulsePage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperPlatformPulsePage }))
 );
-const SuperSettingsPage = lazy(() =>
+const SuperSettingsPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperSettingsPage }))
 );
-const SuperTenantCreatePage = lazy(() =>
+const SuperTenantCreatePage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperTenantCreatePage }))
 );
-const SuperTenantsPage = lazy(() =>
+const SuperTenantsPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperTenantsPage }))
 );
 

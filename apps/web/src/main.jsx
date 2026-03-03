@@ -6,12 +6,14 @@ import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { clerkUiEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
+import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
 import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";
 
 // Build marker used to force fresh hashed assets after CDN cache corruption.
-window.__PONDBRIDGE_BUILD__ = "2026-02-27T19:45Z";
+window.__PONDBRIDGE_BUILD__ = String(import.meta.env.VITE_BUILD_ID || "2026-03-03T00:00Z");
+installChunkRecoveryListeners();
 
 const clerkNoSocialAppearance = {
   elements: {

@@ -369,8 +369,20 @@ function ClerkBackedAuthProvider({ children }) {
         return null;
       }
 
+      const hasExistingUser = Boolean(
+        String(userRef.current?.id || userRef.current?._id || "").trim()
+      );
+      const isInitialBootstrap = !bootstrapDoneRef.current;
       const clerkToken = await resolveBootstrapToken();
       if (!clerkToken) {
+        if (hasExistingUser) {
+          markTabSessionAuthenticated();
+          if (isInitialBootstrap) {
+            bootstrapDoneRef.current = true;
+            setSessionRefreshing(false);
+          }
+          return null;
+        }
         throw createPendingClerkTokenError();
       }
 
@@ -378,7 +390,6 @@ function ClerkBackedAuthProvider({ children }) {
       // subsequent refreshes (e.g. membership-sync) must NOT toggle
       // sessionRefreshing – otherwise isReady flickers true→false→true,
       // causing the entire AppShell / NavBar tree to unmount and remount.
-      const isInitialBootstrap = !bootstrapDoneRef.current;
       if (isInitialBootstrap) setSessionRefreshing(true);
       setToken(clerkToken);
 
@@ -398,6 +409,11 @@ function ClerkBackedAuthProvider({ children }) {
         return payload;
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
+          if (hasExistingUser && isSignedIn) {
+            writeAuthToStorage(clerkToken, userRef.current);
+            markTabSessionAuthenticated();
+            return null;
+          }
           clearLocalAuth();
           clearTabSessionAuthenticated();
           clearTabLoginIntent();
@@ -407,9 +423,6 @@ function ClerkBackedAuthProvider({ children }) {
         // cached user (e.g. returning visitor, or second refresh after a
         // successful bootstrap), keep the cached auth instead of clearing
         // everything and bouncing the user to the login screen.
-        const hasExistingUser = Boolean(
-          String(userRef.current?.id || userRef.current?._id || "").trim()
-        );
         if (hasExistingUser) {
           writeAuthToStorage(clerkToken, userRef.current);
           markTabSessionAuthenticated();
@@ -533,6 +546,15 @@ function ClerkBackedAuthProvider({ children }) {
               retryTimer = null;
               bootstrapSession();
             }, 320);
+            return;
+          }
+          const hasExistingUser = Boolean(
+            String(userRef.current?.id || userRef.current?._id || "").trim()
+          );
+          if (hasExistingUser && error?.code === "AUTH_TOKEN_PENDING") {
+            pendingBootstrapRetriesRef.current = 0;
+            bootstrapDoneRef.current = true;
+            setSessionRefreshing(false);
             return;
           }
           pendingBootstrapRetriesRef.current = 0;
