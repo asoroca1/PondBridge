@@ -1147,18 +1147,8 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
     tenantName: String(tenant.name || "")
   });
 
-  await writeAudit(tenant._id, req.user.id, "super_tenant_hard_deleted", {
-    removed: {
-      tenantId: String(tenant._id || ""),
-      slug: String(tenant.slug || ""),
-      name: String(tenant.name || "")
-    },
-    counts,
-    domainCleanup,
-    objectStorageCleanup,
-    clerkCleanup,
-    globalUserCleanup
-  });
+  // Do not write tenant-scoped audit rows at this stage: the tenant record is
+  // about to be deleted and FK constraints would block the delete.
 
   await TenantModel.deleteBySuperAdmin(tenant._id, {
     actorUserId: req.user.id,
