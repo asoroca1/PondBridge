@@ -720,8 +720,10 @@
   border-radius: 12px;
   background: #ffffff;
   padding: 12px 13px 22px;
-  display: grid;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 12px;
 }
 
 .director-review-card h3 {
@@ -732,7 +734,7 @@
 }
 
 .director-review-card > h3 + * {
-  margin-top: -10px;
+  margin-top: 0;
 }
 
 .director-review-card--wide {
