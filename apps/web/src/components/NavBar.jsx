@@ -34,8 +34,13 @@ const MIN_SEARCH_CHARS = 1;
 function getPhotoUrl(user = {}) {
   return (
     user?.uploads?.photoUrl ||
+    user?.uploads?.photo ||
     user?.photoUrl ||
+    user?.avatarUrl ||
     user?.profilePhotoUrl ||
+    user?.profile?.uploads?.photoUrl ||
+    user?.profile?.uploads?.photo ||
+    user?.profile?.photoUrl ||
     user?.profile?.avatarUrl ||
     ""
   );
