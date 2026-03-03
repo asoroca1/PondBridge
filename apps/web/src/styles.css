@@ -3854,7 +3854,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-row-menu{
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
+  top: auto;
+  bottom: calc(100% + 6px);
   min-width: 160px;
   border: 1px solid #d5dfec;
   border-radius: 10px;
