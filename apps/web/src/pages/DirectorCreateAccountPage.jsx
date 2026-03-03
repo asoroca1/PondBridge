@@ -12,6 +12,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
 import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/storage.js";
+import HeroImageEditor from "../components/HeroImageEditor.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
 
 const STEP_ACCOUNT = "account";
@@ -2018,131 +2019,33 @@ function DirectorCreateAccountWizardPage() {
                     />
                   </div>
 
-                  <div className="wizard1-field wizard1-span-6">
-                    <label className="wizard1-label" htmlFor="director-main-photo-position">
-                      Main photo position
-                    </label>
-                    <select
-                      id="director-main-photo-position"
-                      className="wizard1-input"
-                      value={themeDraft.heroImagePosition}
-                      onChange={(event) =>
+                  <div className="wizard1-span-12">
+                    <HeroImageEditor
+                      label="Live preview"
+                      variant="onboarding"
+                      heroImageUrl={themeDraft.heroImageUrl}
+                      heroImagePosition={themeDraft.heroImagePosition}
+                      heroImageSize={themeDraft.heroImageSize}
+                      logoUrl={themeDraft.logoUrl}
+                      brandPrimary={effectiveMainColor}
+                      campName={form.campName || "Your Camp"}
+                      welcomeBody={campSpecifics.homepageQuote || "Reconnect with your camp community."}
+                      enabledFeatureLabels={FEATURE_OPTIONS.filter((item) => modulesDraft[item.key]).map(
+                        (item) => item.title
+                      )}
+                      onChangePosition={(nextValue) =>
                         updateThemeField(
                           "heroImagePosition",
-                          normalizeHeroImagePosition(
-                            event.target.value || DEFAULT_HERO_IMAGE_POSITION
-                          )
+                          normalizeHeroImagePosition(nextValue || DEFAULT_HERO_IMAGE_POSITION)
                         )
                       }
-                    >
-                      {HERO_POSITION_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="wizard1-field wizard1-span-6">
-                    <label className="wizard1-label" htmlFor="director-main-photo-size">
-                      Main photo sizing
-                    </label>
-                    <select
-                      id="director-main-photo-size"
-                      className="wizard1-input"
-                      value={themeDraft.heroImageSize}
-                      onChange={(event) =>
+                      onChangeSize={(nextValue) =>
                         updateThemeField(
                           "heroImageSize",
-                          normalizeHeroImageSize(event.target.value || DEFAULT_HERO_IMAGE_SIZE)
+                          normalizeHeroImageSize(nextValue || DEFAULT_HERO_IMAGE_SIZE)
                         )
                       }
-                    >
-                      {HERO_SIZE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="wizard1-span-12">
-                    <p className="wizard1-label">Live preview</p>
-                    <div className="director-live-preview-frame">
-                      <div
-                        className="director-live-preview"
-                        style={{
-                          "--preview-brand": isHexColor(themeDraft.brandPrimary)
-                            ? themeDraft.brandPrimary
-                            : initialBrandColor,
-                          "--preview-brand-dark": darkenHex(
-                            isHexColor(themeDraft.brandPrimary)
-                              ? themeDraft.brandPrimary
-                              : initialBrandColor
-                          ),
-                          "--preview-secondary": deriveSecondaryHex(
-                            isHexColor(themeDraft.brandPrimary)
-                              ? themeDraft.brandPrimary
-                              : initialBrandColor
-                          ),
-                          "--preview-hero": themeDraft.heroImageUrl
-                            ? `url("${themeDraft.heroImageUrl}")`
-                            : "none",
-                          "--preview-hero-position": normalizeHeroImagePosition(
-                            themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
-                          ),
-                          "--preview-hero-size": normalizeHeroImageSize(
-                            themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
-                          )
-                        }}
-                      >
-                        <div className="director-live-preview-nav">
-                          {themeDraft.logoUrl ? (
-                            <img
-                              src={themeDraft.logoUrl}
-                              alt=""
-                              className="director-live-preview-logo"
-                            />
-                          ) : (
-                            <span className="director-live-preview-logo-placeholder" />
-                          )}
-                          <strong>{form.campName || "Your Camp"} Alumni Network</strong>
-                        </div>
-
-                        <div className="director-live-preview-hero" />
-
-                        <div className="director-live-preview-welcome">
-                          <div className="director-live-preview-welcome-left">
-                            <h3>Welcome to {form.campName || "Your Camp"} Alumni Network</h3>
-                            <p>
-                              {campSpecifics.homepageQuote ||
-                                "Reconnect with your camp community."}
-                            </p>
-                            <div className="director-live-preview-actions">
-                              <span className="director-live-preview-btn-primary">Sign in</span>
-                              <span className="director-live-preview-btn-secondary">
-                                Create account
-                              </span>
-                            </div>
-                          </div>
-                          <div className="director-live-preview-pulse">
-                            <span className="director-live-preview-pulse-head">Network Pulse</span>
-                            <div className="director-live-preview-pulse-pills">
-                              <span>0 Members</span>
-                              <span>0 Photos</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="director-live-preview-quickactions">
-                          {FEATURE_OPTIONS.filter((item) => modulesDraft[item.key])
-                            .slice(0, 4)
-                            .map((item) => (
-                              <span key={item.key}>{item.title}</span>
-                            ))}
-                        </div>
-                      </div>
-                    </div>
+                    />
                   </div>
                 </div>
 

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import {
   DataTable,
   FilterBar,
@@ -2977,7 +2979,9 @@ export function DirectorAdminSettingsBrandingPage() {
   const [form, setForm] = useState({
     brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
-    heroImageUrl: ""
+    heroImageUrl: "",
+    heroImagePosition: "center center",
+    heroImageSize: "cover"
   });
 
   useEffect(() => {
@@ -2985,7 +2989,9 @@ export function DirectorAdminSettingsBrandingPage() {
     setForm({
       brandPrimary: normalizeBrandHex(payload.branding.brandPrimary, DEFAULT_BRAND_PRIMARY),
       logoUrl: payload.branding.logoUrl || "",
-      heroImageUrl: payload.branding.heroImageUrl || ""
+      heroImageUrl: payload.branding.heroImageUrl || "",
+      heroImagePosition: normalizeHeroImagePosition(payload.branding.heroImagePosition || "center center"),
+      heroImageSize: normalizeHeroImageSize(payload.branding.heroImageSize || "cover")
     });
   }, [payload?.branding]);
 
@@ -3040,6 +3046,8 @@ export function DirectorAdminSettingsBrandingPage() {
     try {
       const payloadToSave = { ...form };
       payloadToSave.brandPrimary = normalizeBrandHex(payloadToSave.brandPrimary, DEFAULT_BRAND_PRIMARY);
+      payloadToSave.heroImagePosition = normalizeHeroImagePosition(payloadToSave.heroImagePosition || "center center");
+      payloadToSave.heroImageSize = normalizeHeroImageSize(payloadToSave.heroImageSize || "cover");
       const currentBrandPrimary = normalizeBrandHex(payload?.branding?.brandPrimary, DEFAULT_BRAND_PRIMARY);
       const brandColorChanged = currentBrandPrimary !== payloadToSave.brandPrimary;
       if (String(payloadToSave.logoUrl || "").startsWith("data:")) {
@@ -3157,6 +3165,31 @@ export function DirectorAdminSettingsBrandingPage() {
           <div className="director-admin-brand-preview-body">
             {form.heroImageUrl ? <img src={form.heroImageUrl} alt="" /> : <p className="muted">Hero preview</p>}
           </div>
+        </div>
+        <div className="full-width">
+          <HeroImageEditor
+            label="Interactive hero composition"
+            variant="admin"
+            heroImageUrl={form.heroImageUrl}
+            heroImagePosition={form.heroImagePosition}
+            heroImageSize={form.heroImageSize}
+            logoUrl={form.logoUrl}
+            brandPrimary={previewBrandPrimary}
+            campName={payload?.identity?.campName || payload?.tenant?.name || "Your Camp"}
+            welcomeBody={payload?.identity?.tagline || ""}
+            onChangePosition={(nextValue) =>
+              setForm((prev) => ({
+                ...prev,
+                heroImagePosition: normalizeHeroImagePosition(nextValue || "center center")
+              }))
+            }
+            onChangeSize={(nextValue) =>
+              setForm((prev) => ({
+                ...prev,
+                heroImageSize: normalizeHeroImageSize(nextValue || "cover")
+              }))
+            }
+          />
         </div>
         <div className="director-admin-form-actions full-width">
           <Button type="submit" disabled={saving || Boolean(uploadingField)}>

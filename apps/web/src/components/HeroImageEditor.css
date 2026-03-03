@@ -1,0 +1,503 @@
+.hero-image-editor {
+  border: 1px solid #d5deea;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.hero-image-editor__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-image-editor__label {
+  margin: 0;
+  color: #17304f;
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.hero-image-editor__reset {
+  border: 1px solid #c8d5e8;
+  background: #f7faff;
+  color: #1f3f63;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hero-image-editor__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hero-image-editor__field {
+  display: grid;
+  gap: 6px;
+  color: #203a58;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.hero-image-editor__field select {
+  min-height: 40px;
+  border-radius: 9px;
+  border: 1px solid #cad6e8;
+  background: #fff;
+  color: #1c314d;
+  padding: 0 10px;
+  font-size: 0.9rem;
+}
+
+.hero-image-editor__quick-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 10px;
+}
+
+.hero-image-editor__quick-group {
+  border: 1px solid #dae4f0;
+  border-radius: 10px;
+  background: #f9fbfe;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.hero-image-editor__quick-group > span {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #557094;
+  font-weight: 800;
+}
+
+.hero-image-editor__position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.hero-image-editor__position-btn {
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid #cad8ea;
+  background: #fff;
+  color: #314c6e;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hero-image-editor__position-btn.is-active {
+  border-color: color-mix(in srgb, var(--brand-primary, #0f2747) 35%, #b9c9dd);
+  background: color-mix(in srgb, var(--brand-primary, #0f2747) 10%, #ffffff);
+  color: var(--brand-primary, #0f2747);
+}
+
+.hero-image-editor__zoom-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hero-image-editor__zoom-chip {
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid #cad8ea;
+  background: #fff;
+  color: #314c6e;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.hero-image-editor__zoom-chip.is-active {
+  border-color: color-mix(in srgb, var(--brand-primary, #0f2747) 35%, #b9c9dd);
+  background: color-mix(in srgb, var(--brand-primary, #0f2747) 12%, #ffffff);
+  color: var(--brand-primary, #0f2747);
+}
+
+.hero-image-editor__zoom-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-image-editor__zoom-row label {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #203a58;
+}
+
+.hero-image-editor__zoom-row input[type="range"] {
+  width: 100%;
+}
+
+.hero-image-editor__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #4b6788;
+  font-size: 0.84rem;
+}
+
+.hero-image-editor__status strong {
+  color: #17304f;
+}
+
+.hero-image-editor__preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hero-image-editor__preview-card {
+  border: 1px solid #d8e2ee;
+  border-radius: 12px;
+  background: #f6f9fd;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.hero-image-editor__preview-card > header {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #dde5f1;
+  background: #ffffff;
+}
+
+.hero-image-editor__preview-card > header h4 {
+  margin: 0;
+  color: #17304f;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.hero-image-editor__preview-card > header p {
+  margin: 0;
+  color: #5a7290;
+  font-size: 0.8rem;
+}
+
+.hero-image-editor__preview-stage {
+  position: relative;
+  height: 315px;
+  background: #eef3f9;
+  overflow: hidden;
+  contain: layout paint;
+}
+
+.hero-image-editor__landing-nav {
+  min-height: 36px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  gap: 8px;
+}
+
+.hero-image-editor__landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hero-image-editor__landing-brand strong {
+  font-size: 0.73rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hero-image-editor__landing-brand span,
+.hero-image-editor__landing-brand img {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.hero-image-editor__landing-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hero-image-editor__landing-actions span {
+  font-size: 0.66rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 4px 7px;
+}
+
+.hero-image-editor__landing-hero {
+  position: relative;
+  height: calc(100% - 36px);
+  background-color: #d7dee8;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  will-change: background-position, background-size;
+}
+
+.hero-image-editor__landing-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 56%, rgba(0, 0, 0, 0.09) 0%, rgba(0, 0, 0, 0.28) 48%, rgba(0, 0, 0, 0.72) 100%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.78));
+}
+
+.hero-image-editor__landing-copy {
+  position: absolute;
+  inset: auto 12px 14px 12px;
+  z-index: 2;
+  display: grid;
+  gap: 5px;
+  text-align: center;
+}
+
+.hero-image-editor__landing-copy span {
+  color: rgba(255, 255, 255, 0.88);
+  letter-spacing: 0.16em;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.hero-image-editor__landing-copy h3 {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-display, "Roboto Slab", serif);
+  font-size: clamp(1rem, 1.8vw, 1.3rem);
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+.hero-image-editor__landing-copy p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.73rem;
+  line-height: 1.32;
+}
+
+.hero-image-editor__member-topbar {
+  min-height: 16px;
+}
+
+.hero-image-editor__member-masthead {
+  position: relative;
+  height: 120px;
+  background-color: #d7dee8;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  will-change: background-position, background-size;
+}
+
+.hero-image-editor__member-masthead-fade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0) 46%, rgba(245, 247, 250, 0.94) 100%);
+}
+
+.hero-image-editor__member-welcome {
+  position: relative;
+  margin: -30px 10px 0;
+  border: 1px solid #d9e3ef;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  z-index: 1;
+}
+
+.hero-image-editor__member-welcome-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hero-image-editor__member-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-primary, #0f2747) 18%, #ffffff);
+  color: var(--brand-primary, #0f2747);
+  font-size: 0.74rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-image-editor__member-welcome-main h5 {
+  margin: 0;
+  color: #17304f;
+  font-size: 0.86rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hero-image-editor__member-welcome-main p {
+  margin: 2px 0 0;
+  color: #5d738f;
+  font-size: 0.68rem;
+  max-width: 27ch;
+  line-height: 1.35;
+}
+
+.hero-image-editor__member-pulse {
+  flex: 0 0 auto;
+  border: 1px solid #d5e0ed;
+  border-radius: 8px;
+  background: #f9fbff;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.hero-image-editor__member-pulse strong {
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4f6785;
+}
+
+.hero-image-editor__member-pulse span {
+  font-size: 0.64rem;
+  color: #3e5672;
+}
+
+.hero-image-editor__member-quick-actions {
+  margin: 8px 10px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.hero-image-editor__member-quick-actions span {
+  border: 1px solid #d9e2ee;
+  border-radius: 8px;
+  background: #fff;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #214365;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0 6px;
+}
+
+.hero-image-editor__drag-surface {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+  touch-action: none;
+  outline: none;
+}
+
+.hero-image-editor__drag-surface:disabled {
+  cursor: default;
+}
+
+.hero-image-editor__drag-surface.is-active {
+  cursor: grab;
+}
+
+.hero-image-editor.is-dragging .hero-image-editor__drag-surface.is-active {
+  cursor: grabbing;
+}
+
+.hero-image-editor__drag-surface:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.82), inset 0 0 0 4px rgba(15, 39, 71, 0.58);
+}
+
+.hero-image-editor__empty-state {
+  position: absolute;
+  inset: auto 10px 10px;
+  margin: 0;
+  z-index: 2;
+  border: 1px dashed #c1cedf;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #5a7290;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 8px 10px;
+}
+
+.hero-image-editor__hint {
+  margin: 0;
+  color: #5c7390;
+  font-size: 0.8rem;
+}
+
+.hero-image-editor--admin {
+  margin-top: 8px;
+}
+
+@media (max-width: 1040px) {
+  .hero-image-editor__controls,
+  .hero-image-editor__quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-image-editor__preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-image-editor {
+    padding: 12px;
+  }
+
+  .hero-image-editor__preview-stage {
+    height: 280px;
+  }
+
+  .hero-image-editor__member-welcome {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-image-editor__member-pulse {
+    width: 100%;
+  }
+}

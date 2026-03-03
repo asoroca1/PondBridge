@@ -40,8 +40,8 @@
 }
 
 .product-header-inner {
-  width: min(1240px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   padding: 0 24px;
 }
 
@@ -218,7 +218,7 @@
 }
 
 .product-director-create-clerk-page {
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   overflow: visible;
   padding: clamp(20px, 4vh, 44px) clamp(28px, 5vw, 60px) clamp(20px, 4vh, 44px);
@@ -1336,6 +1336,11 @@
 
   .product-director-create-clerk-page,
   .product-director-claim-page {
+    min-height: calc(100vh - 72px);
+    min-height: calc(100svh - 72px);
+    min-height: calc(100dvh - 72px);
+    align-items: center;
+    justify-content: center;
     padding-left: 24px;
     padding-right: 24px;
   }

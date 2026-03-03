@@ -55,14 +55,88 @@ const HERO_IMAGE_POSITION_ALIASES = {
   left: "left center",
   right: "right center"
 };
+const HERO_IMAGE_POSITION_PERCENT_PAIR = /^(-?\d+(?:\.\d+)?)%\s+(-?\d+(?:\.\d+)?)%$/;
+const HERO_IMAGE_POSITION_PRESET_PERCENT = {
+  "left top": { x: 0, y: 0 },
+  "center top": { x: 50, y: 0 },
+  "right top": { x: 100, y: 0 },
+  "left center": { x: 0, y: 50 },
+  "center center": { x: 50, y: 50 },
+  "right center": { x: 100, y: 50 },
+  "left bottom": { x: 0, y: 100 },
+  "center bottom": { x: 50, y: 100 },
+  "right bottom": { x: 100, y: 100 }
+};
+
+function clampNumber(value, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return min;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function normalizePositionCoords(value = {}) {
+  return {
+    x: clampNumber(value.x, 0, 100),
+    y: clampNumber(value.y, 0, 100)
+  };
+}
+
+function parsePercentPair(value = "") {
+  const match = String(value || "").match(HERO_IMAGE_POSITION_PERCENT_PAIR);
+  if (!match) return null;
+  const x = Number.parseFloat(match[1]);
+  const y = Number.parseFloat(match[2]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return normalizePositionCoords({ x, y });
+}
+
+function formatPercent(value, precision = 1) {
+  const clamped = clampNumber(value, 0, 100);
+  const scale = 10 ** Math.max(0, Number(precision) || 0);
+  const rounded = Math.round(clamped * scale) / scale;
+  if (Number.isInteger(rounded)) return `${rounded}`;
+  return `${rounded}`.replace(/(\.\d*?[1-9])0+$/, "$1");
+}
+
+function parsePositionFallback(value) {
+  if (value && typeof value === "object") {
+    return normalizePositionCoords(value);
+  }
+
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return { x: 50, y: 50 };
+  const aliased = HERO_IMAGE_POSITION_ALIASES[normalized] || normalized;
+  if (HERO_IMAGE_POSITION_PRESET_PERCENT[aliased]) {
+    return HERO_IMAGE_POSITION_PRESET_PERCENT[aliased];
+  }
+  return parsePercentPair(aliased) || { x: 50, y: 50 };
+}
+
+export function formatHeroImagePositionPercent(x = 50, y = 50, { precision = 1 } = {}) {
+  return `${formatPercent(x, precision)}% ${formatPercent(y, precision)}%`;
+}
+
+export function parseHeroImagePosition(value = "", fallback = { x: 50, y: 50 }) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return parsePositionFallback(fallback);
+
+  const aliased = HERO_IMAGE_POSITION_ALIASES[normalized] || normalized;
+  if (HERO_IMAGE_POSITION_PRESET_PERCENT[aliased]) {
+    return HERO_IMAGE_POSITION_PRESET_PERCENT[aliased];
+  }
+
+  return parsePercentPair(aliased) || parsePositionFallback(fallback);
+}
 
 export function normalizeHeroImagePosition(value = "", fallback = "center center") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return fallback;
-  if (Object.prototype.hasOwnProperty.call(HERO_IMAGE_POSITION_ALIASES, normalized)) {
-    return HERO_IMAGE_POSITION_ALIASES[normalized];
-  }
-  if (HERO_IMAGE_POSITION_SET.has(normalized)) return normalized;
+  const aliased = Object.prototype.hasOwnProperty.call(HERO_IMAGE_POSITION_ALIASES, normalized)
+    ? HERO_IMAGE_POSITION_ALIASES[normalized]
+    : normalized;
+  if (HERO_IMAGE_POSITION_SET.has(aliased)) return aliased;
+  const percentPair = parsePercentPair(aliased);
+  if (percentPair) return formatHeroImagePositionPercent(percentPair.x, percentPair.y);
   return fallback;
 }
 

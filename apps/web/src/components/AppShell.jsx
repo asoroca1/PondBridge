@@ -22,10 +22,17 @@ export default function AppShell({ children }) {
     [location.pathname]
   );
   const useProductLayout = useMemo(
-    () =>
-      PRODUCT_LAYOUT_MATCHERS.some((part) => location.pathname.includes(part)) ||
-      (isTenantRoot && onboardingIncomplete),
-    [location.pathname, isTenantRoot, onboardingIncomplete]
+    () => {
+      const onDirectorBootstrapCallback =
+        location.pathname.includes("/auth/callback") &&
+        new URLSearchParams(location.search || "").get("directorBootstrap") === "1";
+      return (
+        PRODUCT_LAYOUT_MATCHERS.some((part) => location.pathname.includes(part)) ||
+        onDirectorBootstrapCallback ||
+        (isTenantRoot && onboardingIncomplete)
+      );
+    },
+    [location.pathname, location.search, isTenantRoot, onboardingIncomplete]
   );
 
   if (useProductLayout) {
