@@ -2882,15 +2882,6 @@ function DirectorCreateAccountWizardPage() {
 
           {step === STEP_REVIEW_LAUNCH ? (
             <>
-              <div className="director-design-head director-design-head--styled">
-                <div className="director-design-intro">
-                  <h1>Review and launch</h1>
-                  <p className="product-claim-body director-create-subtitle">
-                    Final pass before launch. Confirm your settings and publish your network.
-                  </p>
-                </div>
-              </div>
-
               <form className="director-create-form" onSubmit={onCompleteSetup} noValidate>
                 <div className="director-review-shell">
                   <section className="director-review-hero">
