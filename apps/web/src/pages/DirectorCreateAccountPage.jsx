@@ -516,6 +516,7 @@ function DirectorCreateAccountWizardPage() {
   const [showNewsletterSettings, setShowNewsletterSettings] = useState(false);
   const campSpecificsHydratedRef = useRef(false);
   const planHydratedRef = useRef(false);
+  const previousBillingPlanRef = useRef("");
   const initialThemeVarsRef = useRef(null);
   const skipAccountHydratedRef = useRef(false);
 
@@ -706,21 +707,31 @@ function DirectorCreateAccountWizardPage() {
   )
     .trim()
     .toLowerCase();
-  const enabledFeatureLabels = FEATURE_OPTIONS.filter((item) => Boolean(modulesDraft[item.key])).map(
+  const isPremiumCamp = selectedBillingPlanCode === "institutional";
+  const planScopedModulesDraft = useMemo(() => {
+    const next = { ...modulesDraft };
+    if (!isPremiumCamp) {
+      PREMIUM_ONLY_MODULE_KEYS.forEach((key) => {
+        next[key] = false;
+      });
+    }
+    return next;
+  }, [isPremiumCamp, modulesDraft]);
+  const enabledFeatureLabels = FEATURE_OPTIONS.filter((item) => Boolean(planScopedModulesDraft[item.key])).map(
     (item) => item.title
   );
-  const recommendedFeatureSet = selectedBillingPlanCode === "institutional" ? "premium" : "base";
+  const recommendedFeatureSet = isPremiumCamp ? "premium" : "base";
   const activeFeatureSet = useMemo(() => {
-    const hasPremiumSet = PREMIUM_FEATURE_SET_KEYS.every((key) => Boolean(modulesDraft[key]));
+    const hasPremiumSet = PREMIUM_FEATURE_SET_KEYS.every((key) => Boolean(planScopedModulesDraft[key]));
     if (hasPremiumSet) return "premium";
 
     const hasBaseSet =
-      BASE_FEATURE_SET_KEYS.every((key) => Boolean(modulesDraft[key])) &&
-      PREMIUM_ONLY_MODULE_KEYS.every((key) => !Boolean(modulesDraft[key]));
+      BASE_FEATURE_SET_KEYS.every((key) => Boolean(planScopedModulesDraft[key])) &&
+      PREMIUM_ONLY_MODULE_KEYS.every((key) => !Boolean(planScopedModulesDraft[key]));
     if (hasBaseSet) return "base";
 
     return "custom";
-  }, [modulesDraft]);
+  }, [planScopedModulesDraft]);
   const reviewDirectorName = `${form.firstName} ${form.lastName}`.trim() || "Not set";
   const mainPhotoFramingLabel = `${
     HERO_POSITION_OPTIONS.find((item) => item.value === themeDraft.heroImagePosition)?.label || "Center"
@@ -803,6 +814,35 @@ function DirectorCreateAccountWizardPage() {
       setNewsletterName((prev) => prev || sourceName);
     }
   }, [tenant?.content?.newsletterName]);
+
+  useEffect(() => {
+    const previousPlanCode = normalizeBillingPlanCode(previousBillingPlanRef.current);
+    const switchedToPremium = previousPlanCode !== "institutional" && isPremiumCamp;
+
+    setModulesDraft((prev) => {
+      if (switchedToPremium) {
+        return {
+          ...prev,
+          ...DEFAULT_FEATURE_MODULES,
+          familyTrees: true
+        };
+      }
+
+      if (isPremiumCamp) return prev;
+
+      let changed = false;
+      const next = { ...prev };
+      PREMIUM_ONLY_MODULE_KEYS.forEach((key) => {
+        if (next[key]) {
+          next[key] = false;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+
+    previousBillingPlanRef.current = selectedBillingPlanCode;
+  }, [isPremiumCamp, selectedBillingPlanCode]);
 
   useEffect(() => {
     if (!tenant || planHydratedRef.current) return;
@@ -1016,7 +1056,7 @@ function DirectorCreateAccountWizardPage() {
         ),
         heroImageSize: normalizeHeroImageSize(themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE)
       },
-      modulesDraft: { ...modulesDraft },
+      modulesDraft: { ...planScopedModulesDraft },
       newsletterName: String(newsletterName || ""),
       campSpecifics: {
         ageGroupsText: String(campSpecifics.ageGroupsText || ""),
@@ -1071,7 +1111,7 @@ function DirectorCreateAccountWizardPage() {
     }
 
     if (shouldIncludeFeatureChoices) {
-      payload.modules = { ...modulesDraft };
+      payload.modules = { ...planScopedModulesDraft };
       payload.content = {
         ...(payload.content || {}),
         newsletterName: String(newsletterName || "").trim() || "Newsletter"
@@ -1253,7 +1293,7 @@ function DirectorCreateAccountWizardPage() {
     if (!homepageQuote) {
       next.homepageQuote = "Add the quote shown on your pre-login homepage.";
     }
-    if (modulesDraft.merchShop && merchShopUrl && !urlLooksValid(merchShopUrl)) {
+    if (planScopedModulesDraft.merchShop && merchShopUrl && !urlLooksValid(merchShopUrl)) {
       next.merchShopUrl = "Enter a valid URL starting with http:// or https://";
     }
 
@@ -1537,6 +1577,9 @@ function DirectorCreateAccountWizardPage() {
   }
 
   function updateModule(moduleKey, enabled) {
+    if (!isPremiumCamp && PREMIUM_ONLY_MODULE_KEYS.includes(moduleKey)) {
+      return;
+    }
     setModulesDraft((prev) => ({ ...prev, [moduleKey]: enabled }));
     if (moduleKey === "newsletter" && !enabled) {
       setShowNewsletterSettings(false);
@@ -1546,6 +1589,9 @@ function DirectorCreateAccountWizardPage() {
 
   function applyFeatureSetPreset(nextSet = "premium") {
     const usePremium = String(nextSet || "").trim().toLowerCase() === "premium";
+    if (usePremium && !isPremiumCamp) {
+      return;
+    }
     setModulesDraft((prev) => ({
       ...prev,
       ...DEFAULT_FEATURE_MODULES,
@@ -1811,15 +1857,15 @@ function DirectorCreateAccountWizardPage() {
         token,
         body: {
           modules: {
-            directory: Boolean(modulesDraft.directory),
-            search: Boolean(modulesDraft.search),
-            photoStream: Boolean(modulesDraft.photoStream),
-            chat: Boolean(modulesDraft.chat),
-            map: Boolean(modulesDraft.map),
-            familyTrees: Boolean(modulesDraft.familyTrees),
-            relatedProfiles: Boolean(modulesDraft.relatedProfiles),
-            newsletter: Boolean(modulesDraft.newsletter),
-            merchShop: Boolean(modulesDraft.merchShop)
+            directory: Boolean(planScopedModulesDraft.directory),
+            search: Boolean(planScopedModulesDraft.search),
+            photoStream: Boolean(planScopedModulesDraft.photoStream),
+            chat: Boolean(planScopedModulesDraft.chat),
+            map: Boolean(planScopedModulesDraft.map),
+            familyTrees: Boolean(planScopedModulesDraft.familyTrees),
+            relatedProfiles: Boolean(planScopedModulesDraft.relatedProfiles),
+            newsletter: Boolean(planScopedModulesDraft.newsletter),
+            merchShop: Boolean(planScopedModulesDraft.merchShop)
           }
         }
       });
@@ -2300,9 +2346,7 @@ function DirectorCreateAccountWizardPage() {
                       brandPrimary={effectiveMainColor}
                       campName={form.campName || "Your Camp"}
                       welcomeBody={campSpecifics.homepageQuote || "Reconnect with your camp community."}
-                      enabledFeatureLabels={FEATURE_OPTIONS.filter((item) => modulesDraft[item.key]).map(
-                        (item) => item.title
-                      )}
+                      enabledFeatureLabels={enabledFeatureLabels}
                       onChangePosition={(nextValue) =>
                         updateThemeField(
                           "heroImagePosition",
@@ -2390,6 +2434,7 @@ function DirectorCreateAccountWizardPage() {
                           type="button"
                           className={`director-feature-set-btn ${activeFeatureSet === "premium" ? "active" : ""}`}
                           onClick={() => applyFeatureSetPreset("premium")}
+                          disabled={!isPremiumCamp}
                         >
                           Premium features
                         </button>
@@ -2403,25 +2448,41 @@ function DirectorCreateAccountWizardPage() {
                     </div>
 
                     <div className="director-feature-grid">
-                      {FEATURE_OPTIONS.map((item) => (
-                        <div className="director-feature-item" key={item.key}>
-                          <div>
-                            <div className="director-feature-copy">
-                              <strong>{item.title}</strong>
-                              <span>{item.description}</span>
+                      {FEATURE_OPTIONS.map((item) => {
+                        const premiumOnly = PREMIUM_ONLY_MODULE_KEYS.includes(item.key);
+                        const isLocked = premiumOnly && !isPremiumCamp;
+                        return (
+                          <div
+                            className={`director-feature-item ${isLocked ? "is-locked" : ""}`}
+                            key={item.key}
+                          >
+                            <div>
+                              <div className="director-feature-copy">
+                                <div className="director-feature-title-row">
+                                  <strong>{item.title}</strong>
+                                  {premiumOnly ? <span className="director-feature-tier-pill">Premium</span> : null}
+                                </div>
+                                <span>{item.description}</span>
+                                {isLocked ? (
+                                  <p className="director-feature-lock-note">
+                                    Upgrade this camp to Premium to enable this feature.
+                                  </p>
+                                ) : null}
+                              </div>
                             </div>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(planScopedModulesDraft[item.key])}
+                              onChange={(event) => updateModule(item.key, event.target.checked)}
+                              aria-label={`Enable ${item.title}`}
+                              disabled={isLocked}
+                            />
                           </div>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(modulesDraft[item.key])}
-                            onChange={(event) => updateModule(item.key, event.target.checked)}
-                            aria-label={`Enable ${item.title}`}
-                          />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
-                    {modulesDraft.newsletter ? (
+                    {planScopedModulesDraft.newsletter ? (
                       <div className="director-newsletter-panel">
                         <button
                           type="button"
@@ -2564,7 +2625,7 @@ function DirectorCreateAccountWizardPage() {
                     ) : null}
                   </div>
 
-                  {modulesDraft.merchShop ? (
+                  {planScopedModulesDraft.merchShop ? (
                     <div className="wizard1-field wizard1-span-12">
                       <label className="wizard1-label" htmlFor="director-merch-shop-url">
                         Merch shop link
@@ -3022,7 +3083,7 @@ function DirectorCreateAccountWizardPage() {
                           <span>None</span>
                         )}
                       </div>
-                      {modulesDraft.newsletter ? (
+                      {planScopedModulesDraft.newsletter ? (
                         <dl className="director-review-kv director-review-kv--compact">
                           <div>
                             <dt>Newsletter label</dt>
@@ -3047,7 +3108,7 @@ function DirectorCreateAccountWizardPage() {
                           <dt>Homepage quote</dt>
                           <dd>{String(campSpecifics.homepageQuote || "").trim() || "Not set"}</dd>
                         </div>
-                        {modulesDraft.merchShop ? (
+                        {planScopedModulesDraft.merchShop ? (
                           <div>
                             <dt>Merch link</dt>
                             <dd>{String(campSpecifics.merchShopUrl || "").trim() || "Not set"}</dd>
