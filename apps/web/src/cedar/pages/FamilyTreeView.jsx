@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
-import { getToken, displayName, initialsOf } from "../lib/helpers.js";
+import { getToken, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
 import "./family-trees.css";
 
 const REL_TYPES = [
@@ -42,7 +42,7 @@ function normalizeMember(raw = {}) {
   const firstName = raw.firstName || "";
   const lastName = raw.lastName || "";
   const nickname = raw.nickname || "";
-  const photoUrl = raw.photoUrl || raw?.uploads?.photoUrl || "";
+  const photoUrl = avatarUrl(raw);
   const currentJob = raw.currentJob || "";
   return { id, firstName, lastName, nickname, photoUrl, currentJob };
 }

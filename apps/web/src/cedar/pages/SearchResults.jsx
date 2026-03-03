@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { API_BASE } from "../lib/api";
-import { getToken } from "../lib/helpers.js";
+import { getToken, avatarUrl } from "../lib/helpers.js";
 
 /* ------------ helpers (keep OUTSIDE the component) ------------ */
 function pickCurrentJob(p = {}) {
@@ -178,7 +178,7 @@ export default function SearchResults() {
                   if (!id || id === "undefined" || id === "null") return null;
 
                   // Photo
-                  const photo = p.photoUrl || p?.uploads?.photoUrl || "";
+                  const photo = avatarUrl(p);
 
                   // Industry chip (several fallbacks)
                   const industry =

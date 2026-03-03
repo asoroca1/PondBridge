@@ -812,11 +812,12 @@ function photoToClient(photo = {}, currentUserId = "") {
   };
 }
 
-function commentToClient(comment = {}) {
+function commentToClient(comment = {}, resolvedAvatarUrl = "") {
   return {
     _id: String(comment._id || generateObjectId()),
     authorId: String(comment.authorId || ""),
     authorName: String(comment.authorName || ""),
+    authorAvatarUrl: String(comment.authorAvatarUrl || resolvedAvatarUrl || ""),
     text: String(comment.text || ""),
     commentMentions: Array.isArray(comment.commentMentions) ? comment.commentMentions : [],
     createdAt: comment.createdAt ? new Date(comment.createdAt).toISOString() : new Date().toISOString()
@@ -1681,10 +1682,26 @@ router.get("/photos/:id/comments", async (req, res) => {
   const photo = await PhotoModel.findOne(req.tenant._id, { _id: id });
   if (!photo) return res.status(404).json({ items: [], nextCursor: null });
 
-  const items = (photo.comments || [])
+  const orderedComments = (photo.comments || [])
     .slice()
-    .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
-    .map((comment) => commentToClient(comment));
+    .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+  const authorIds = [...new Set(
+    orderedComments
+      .map((comment) => String(comment?.authorId || "").trim())
+      .filter(Boolean)
+  )];
+  const avatarEntries = await Promise.all(
+    authorIds.map(async (authorId) => {
+      const profile = await ProfileModel.findOne(req.tenant._id, { userId: authorId });
+      return [authorId, String(profile?.avatarUrl || "").trim()];
+    })
+  );
+  const avatarByAuthorId = new Map(avatarEntries);
+
+  const items = orderedComments.map((comment) =>
+    commentToClient(comment, avatarByAuthorId.get(String(comment?.authorId || "").trim()))
+  );
   return res.json({ items, nextCursor: null });
 });
 
@@ -1700,12 +1717,14 @@ router.post("/photos/:id/comments", async (req, res) => {
 
   const profile = await ProfileModel.findOne(req.tenant._id, { userId: req.user.id });
   const authorName = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || "Member";
+  const authorAvatarUrl = String(profile?.avatarUrl || "").trim();
   const commentId = generateObjectId();
 
   await PhotoModel.addComment(id, {
     _id: commentId,
     authorId: req.user.id,
     authorName,
+    authorAvatarUrl,
     text,
     commentMentions: Array.isArray(req.body?.commentMentions) ? req.body.commentMentions : []
   });
@@ -1715,10 +1734,11 @@ router.post("/photos/:id/comments", async (req, res) => {
       _id: commentId,
       authorId: req.user.id,
       authorName,
+      authorAvatarUrl,
       text,
       commentMentions: Array.isArray(req.body?.commentMentions) ? req.body.commentMentions : [],
       createdAt: new Date()
-    })
+    }, authorAvatarUrl)
   );
 });
 

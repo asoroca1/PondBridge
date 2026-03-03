@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
-import { getToken, displayName, initialsOf } from "../lib/helpers.js";
+import { getToken, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
 import "./family-trees.css";
 
 const REL_TYPES = [
@@ -36,7 +36,7 @@ function readCurrentUser() {
         const j = Array.isArray(raw.currentJobs) ? raw.currentJobs[0] : null;
         return j ? [j.role, j.company].filter(Boolean).join(" @ ") : "";
       })(),
-      photoUrl: raw?.uploads?.photoUrl || raw.photoUrl || "",
+      photoUrl: avatarUrl(raw),
       isCurrentUser: true,
     };
   } catch {
@@ -50,7 +50,7 @@ function normalizeSearchResult(item = {}) {
   const lastName = item.lastName || "";
   const nickname = item.nickname || "";
   const currentJob = item.currentJob || "";
-  const photoUrl = item.photoUrl || item?.uploads?.photoUrl || "";
+  const photoUrl = avatarUrl(item);
   return { id, firstName, lastName, nickname, currentJob, photoUrl };
 }
 

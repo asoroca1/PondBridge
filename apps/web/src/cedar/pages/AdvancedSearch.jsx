@@ -19,7 +19,7 @@ import {
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { API_BASE } from "../lib/api";
-import { getToken } from "../lib/helpers.js";
+import { getToken, avatarUrl } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./advanced-search.css";
@@ -951,7 +951,7 @@ export default function AdvancedSearch() {
 
                             const first = profile.firstName || profile.first || "";
                             const last = profile.lastName || profile.last || "";
-                            const photo = profile.photoUrl || profile?.uploads?.photoUrl || null;
+                            const photo = avatarUrl(profile);
 
                             const industry =
                               profile.industry ||

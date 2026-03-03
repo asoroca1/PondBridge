@@ -7,7 +7,7 @@ import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { MapPin, RotateCcw, X } from "lucide-react";
 import { API_BASE } from "../lib/api";
-import { getToken, initialsOf } from "../lib/helpers.js";
+import { getToken, initialsOf, avatarUrl } from "../lib/helpers.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import "./location-map.css";
@@ -120,8 +120,7 @@ export default function LocationMap() {
         id: p.id || p._id,
         firstName: p.firstName || "",
         lastName: p.lastName || "",
-        uploads: p.uploads || {},
-        photoUrl: p.photoUrl,
+        photoUrl: avatarUrl(p),
         industry: p.industry || p.primaryIndustry || "",
         currentJob: p.currentJob || p.currentJobTitle || "",
         company: p.currentCompany || p.company || "",
@@ -600,7 +599,7 @@ export default function LocationMap() {
                     if (!profileId || profileId === "undefined" || profileId === "null")
                       return null;
 
-                    const photo = person.uploads?.photoUrl || person.photoUrl || "";
+                    const photo = avatarUrl(person);
                     const initials = initialsOf(person);
                     const profileHref = tenantRoute(slug, `/profile/${profileId}`);
                     const dmHref = tenantRoute(

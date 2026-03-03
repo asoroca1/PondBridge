@@ -434,7 +434,7 @@ export default function NavBar() {
               `${entry.firstName || ""} ${entry.lastName || ""}`.trim() ||
               "Unknown",
             subtitle: searchSubtitleFrom(entry),
-            avatarUrl: entry?.uploads?.photoUrl || entry?.avatarUrl || entry?.profilePhotoUrl || ""
+            avatarUrl: getPhotoUrl(entry)
           }))
           .filter((entry) => {
             if (!entry.id || entry.id === "undefined" || entry.id === "null" || seen.has(entry.id)) return false;

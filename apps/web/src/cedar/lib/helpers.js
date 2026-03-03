@@ -128,14 +128,25 @@ export function isPlaceholderAvatarUrl(value = "") {
  */
 export function avatarUrl(u = {}) {
   const up = u?.uploads || {};
+  const profile = u?.profile || {};
+  const profileUploads = profile?.uploads || {};
   const resolved =
     up.photoUrl ||
+    up.photo ||
     up.profilePhoto?.url ||
+    up.avatarUrl ||
     u?.photoUrl ||
     u?.profilePhotoUrl ||
     u?.avatarUrl ||
     u?.imageUrl ||
     u?.profilePhoto ||
+    profileUploads.photoUrl ||
+    profileUploads.photo ||
+    profile?.photoUrl ||
+    profile?.profilePhotoUrl ||
+    profile?.avatarUrl ||
+    profile?.imageUrl ||
+    profile?.profilePhoto ||
     "";
   return isPlaceholderAvatarUrl(resolved) ? "" : resolved;
 }

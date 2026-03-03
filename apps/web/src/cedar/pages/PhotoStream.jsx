@@ -22,6 +22,15 @@ function getCurrentUserId() {
   }
 }
 
+function getCurrentUserAvatar() {
+  try {
+    const u = JSON.parse(localStorage.getItem("user") || "null");
+    return avatarUrl(u);
+  } catch {
+    return "";
+  }
+}
+
 /** Fetch a user by id (re-uses your search endpoint) */
 async function fetchUser(id) {
   const r = await fetch(`${API}/search/user/${id}`, {
@@ -176,6 +185,7 @@ function CommentsPanel({ photoId, canModerate }) {
   const loaderRef = useRef(null);
 
   const myId = getCurrentUserId();
+  const myAvatar = getCurrentUserAvatar();
 
   // Prevent double initial fetch in React 18 StrictMode
   const didInitial = useRef(false);
@@ -241,6 +251,7 @@ function CommentsPanel({ photoId, canModerate }) {
       photoId,
       authorId: myId || "me",
       authorName: "You",
+      authorAvatarUrl: myAvatar || "",
       text: t,
       commentMentions: [],
       createdAt: new Date().toISOString(),
@@ -300,9 +311,12 @@ function CommentsPanel({ photoId, canModerate }) {
         {items.map((c) => (
           // ✅ rely on stable ids only; no index fallback
           <div key={c._id} className="ps-comment-row">
-            <Link to={`/profile/${c.authorId}`} className="ps-avatar-link" title={c.authorName}>
-              <div className="ps-comment-avatar">{initialsOf(c.authorName)}</div>
-            </Link>
+            <AvatarLink
+              userId={c.authorId}
+              name={c.authorName}
+              url={avatarUrl(c)}
+              size={28}
+            />
             <div className="ps-comment-body">
               <div className="ps-comment-topline">
                 <div className="ps-comment-author">{c.authorName}</div>
