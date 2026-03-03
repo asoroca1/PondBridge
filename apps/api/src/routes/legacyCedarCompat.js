@@ -1612,7 +1612,7 @@ router.get("/photos", async (req, res) => {
   const ownerId = String(req.query.ownerId || "").trim();
 
   const filter = {};
-  if (ownerId && isValidObjectId(ownerId)) {
+  if (ownerId) {
     filter.ownerId = ownerId;
   }
 

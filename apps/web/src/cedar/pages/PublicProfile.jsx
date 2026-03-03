@@ -131,6 +131,7 @@ function normalizeProfile(src = {}) {
   return {
     id: src._id || src.id || "",
     _id: src._id || src.id || "",
+    userId: src.userId || src.authUserId || "",
     firstName: src.firstName || "",
     lastName: src.lastName || "",
     nickname,
@@ -161,12 +162,13 @@ function PhotosMosaic({ userId }) {
   useEffect(() => {
     let abort = false;
     async function run() {
-      if (!userId) return;
+      const ownerId = String(userId || "").trim();
+      if (!ownerId) return;
       try {
         setLoading(true);
         const qs = new URLSearchParams({
           sort: "new",
-          ownerId: String(userId),
+          ownerId,
           limit: "100",
         });
         const r = await fetch(`${API_BASE}/photos?${qs}`, { headers: authHeaders() });
@@ -572,7 +574,7 @@ export default function PublicProfile() {
                   </div>
                 </aside>
 
-                <PhotosMosaic userId={targetId} />
+                <PhotosMosaic userId={profile.userId || targetId} />
               </div>
             </div>
           </div>
