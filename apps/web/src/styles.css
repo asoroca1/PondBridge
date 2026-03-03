@@ -5951,6 +5951,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
   font-size: 1rem;
 }
 
+.super-shell-boot-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .super-main .pb-card {
   border-radius: 6px;
   border: 1px solid #d7e1ee;

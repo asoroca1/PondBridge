@@ -60,6 +60,7 @@ export default function SuperShellLayout() {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [bootstrapStalled, setBootstrapStalled] = useState(false);
   const searchCacheRef = useRef(new Map());
 
   const role = roleFromUser(user);
@@ -71,6 +72,19 @@ export default function SuperShellLayout() {
     if (role === "finance_admin") return FINANCE_NAV;
     return SUPER_NAV;
   }, [role]);
+
+  useEffect(() => {
+    if (isReady) {
+      setBootstrapStalled(false);
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setBootstrapStalled(true);
+    }, 12_000);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isReady]);
 
   useEffect(() => {
     if (!token || !allowed) return undefined;
@@ -170,8 +184,26 @@ export default function SuperShellLayout() {
     return (
       <section className="super-shell-boot">
         <div className="super-shell-boot-card">
-          <h2>Preparing Super Admin Console</h2>
-          <p>Loading secure session...</p>
+          <h2>{bootstrapStalled ? "Session Check Timed Out" : "Preparing Super Admin Console"}</h2>
+          <p>
+            {bootstrapStalled
+              ? "Your session could not be confirmed. Continue to login and sign in again."
+              : "Loading secure session..."}
+          </p>
+          {bootstrapStalled ? (
+            <div className="super-shell-boot-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => window.location.reload()}>
+                Retry
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate("/super/login?sessionRetry=1", { replace: true, state: { from: location } })}
+              >
+                Go to Login
+              </button>
+            </div>
+          ) : null}
         </div>
       </section>
     );

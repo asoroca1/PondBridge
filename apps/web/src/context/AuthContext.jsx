@@ -23,6 +23,7 @@ const AUTO_LOGOUT_TIMEOUT_MS =
     : 0;
 const CLERK_TOKEN_SYNC_INTERVAL_MS = 45 * 1000;
 const SESSION_TOKEN_STORAGE_KEY = "pondbridgeSessionToken";
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 12_000;
 const SESSION_WARNING_TIMEOUT_MS =
   AUTO_LOGOUT_TIMEOUT_MS > SESSION_WARNING_MINUTES * 60 * 1000
     ? AUTO_LOGOUT_TIMEOUT_MS - SESSION_WARNING_MINUTES * 60 * 1000
@@ -72,6 +73,12 @@ function wait(ms = 0) {
 function createPendingClerkTokenError() {
   const error = new Error("Clerk session token is not ready yet.");
   error.code = "AUTH_TOKEN_PENDING";
+  return error;
+}
+
+function createAuthBootstrapTimeoutError() {
+  const error = new Error("Auth bootstrap timed out.");
+  error.code = "AUTH_BOOTSTRAP_TIMEOUT";
   return error;
 }
 
@@ -613,7 +620,12 @@ function ClerkBackedAuthProvider({ children }) {
     const bootstrapSession = () => {
       const doRefresh = refreshSessionRef.current;
       if (!doRefresh) return;
-      doRefresh({ tenantSlug })
+      Promise.race([
+        Promise.resolve(doRefresh({ tenantSlug })),
+        wait(AUTH_BOOTSTRAP_TIMEOUT_MS).then(() => {
+          throw createAuthBootstrapTimeoutError();
+        })
+      ])
         .then(() => {
           if (!active) return;
           pendingBootstrapRetriesRef.current = 0;
@@ -634,6 +646,14 @@ function ClerkBackedAuthProvider({ children }) {
           const hasExistingUser = Boolean(
             String(userRef.current?.id || userRef.current?._id || "").trim()
           );
+          if (error?.code === "AUTH_BOOTSTRAP_TIMEOUT") {
+            pendingBootstrapRetriesRef.current = 0;
+            if (hasExistingUser) {
+              bootstrapDoneRef.current = true;
+              setSessionRefreshing(false);
+              return;
+            }
+          }
           if (hasExistingUser && error?.code === "AUTH_TOKEN_PENDING") {
             pendingBootstrapRetriesRef.current = 0;
             bootstrapDoneRef.current = true;
