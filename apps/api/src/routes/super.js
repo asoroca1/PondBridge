@@ -1168,6 +1168,42 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
   });
 });
 
+// ── Demo camp reset ──────────────────────────────────────────────────
+// Resets a demo/test tenant's data back to a clean slate.  Only works
+// on tenants matching the HIDDEN_TENANT_PATTERN so production camps are
+// never accidentally wiped.
+router.post("/tenants/:tenantId/reset-demo", requireSuperMutation, async (req, res) => {
+  const tenant = await TenantModel.findById(req.params.tenantId);
+  if (!tenant) {
+    return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
+  }
+
+  const slug = String(tenant.slug || "").trim().toLowerCase();
+  const name = String(tenant.name || "").trim();
+  if (!HIDDEN_TENANT_PATTERN.test(slug) && !HIDDEN_TENANT_PATTERN.test(name)) {
+    return res.status(400).json({
+      error: {
+        code: "NOT_DEMO_TENANT",
+        message: "This endpoint only works on demo/test/sandbox tenants."
+      }
+    });
+  }
+
+  const counts = await purgeTenantRows(tenant._id);
+
+  await writeAudit(tenant._id, req.user.id, "super_demo_tenant_reset", {
+    tenantId: String(tenant._id),
+    slug,
+    counts
+  });
+
+  return res.json({
+    ok: true,
+    message: `Demo tenant "${slug}" has been reset. Re-run the seed:demo script to repopulate.`,
+    counts
+  });
+});
+
 router.post("/tenants/:tenantId/provision-domain", requireSuperMutation, async (req, res) => {
   const tenant = await TenantModel.findById(req.params.tenantId);
   if (!tenant) {

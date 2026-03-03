@@ -8,7 +8,7 @@
     "prebuild": "node ../../scripts/validateCloudflareRedirects.mjs ./public/_redirects && node ../../scripts/validateWebBuildEnv.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint src/App.jsx src/components src/context src/lib src/pages --ext .js,.jsx",
+    "lint": "eslint src --ext .js,.jsx",
     "test": "echo \"No tests yet\""
   },
   "dependencies": {

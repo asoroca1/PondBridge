@@ -7,6 +7,47 @@
 
 ---
 
+## IMPLEMENTATION PROGRESS
+
+> Last updated: March 2, 2026
+
+### COMPLETED (Code changes already made)
+
+| # | Task | Status | Files Changed |
+|---|------|--------|---------------|
+| 1 | **Session idle timeout 30 -> 60 min** | DONE | `apps/web/src/context/AuthContext.jsx` (line 18), `apps/web/.env` |
+| 2 | **Persist auth token to sessionStorage** | DONE | `apps/web/src/context/AuthContext.jsx` (new functions: `readSessionToken`, `writeSessionToken`, `clearSessionToken`; token init from sessionStorage; writes on every token update) |
+| 3 | **Pre-emptive token refresh before JWT expiry** | DONE | `apps/web/src/context/AuthContext.jsx` (new `getTokenExpiry()` helper; sync effect checks expiry 30s ahead; forces refresh proactively) |
+| 4 | **Session expiry warning banner** | DONE | New: `apps/web/src/components/SessionWarningBanner.jsx`; wired into `apps/web/src/components/AppShell.jsx`; `useIdleLogout` hook now accepts `onSessionWarning` callback; `AuthContext` exposes `sessionWarningMinutes` + `dismissSessionWarning` |
+| 5 | **Render auto-deploy disabled** | DONE | `render.yaml` line 11: `autoDeploy: false` |
+| 6 | **Production DB URL safety guard** | DONE | `apps/api/src/config/env.js` (new assertion: refuses to start in production with localhost DB URL) |
+| 7 | **Rate limiting on profile updates** | DONE | `apps/api/src/routes/profiles.js` (added `profileUpdateLimiter`: 30 req / 5 min) |
+| 8 | **CI/CD pipeline** | DONE | New: `.github/workflows/ci.yml` (lint, test, build, db:preflight on push to main/staging) |
+| 9 | **Feature flag middleware** | DONE | New: `apps/api/src/middleware/featureFlag.js` (JSON env var `FEATURE_FLAGS`, tenant-scoped, `requireFeature()` middleware, `isFeatureEnabled()` helper) |
+| 10 | **Demo camp seed script** | DONE | New: `apps/api/scripts/seedDemoCamp.js` (25 fake profiles, forums, conversations; `--reset` flag; safety: only works on demo/test tenants). Package.json: `seed:demo`, `seed:demo:reset` |
+| 11 | **Demo camp reset endpoint** | DONE | `apps/api/src/routes/super.js` (new `POST /api/super/tenants/:tenantId/reset-demo`; only works on hidden/test tenants; purges all rows; writes audit log) |
+| 12 | **ESLint coverage extended** | DONE | `apps/web/package.json` lint script: `eslint src` (was excluding cedar/ dir) |
+| 13 | **Empty catch blocks fixed (ChatAndForums)** | DONE | `apps/web/src/cedar/pages/ChatAndForums.jsx` (10 silent `.catch(() => {})` replaced with proper `setActionError()` calls) |
+| 14 | **VITE_AUTO_LOGOUT_MINUTES set** | DONE | `apps/web/.env` |
+
+### STILL TODO (Lead engineer must complete)
+
+| # | Task | Priority | Notes |
+|---|------|----------|-------|
+| A | **Check Clerk Dashboard session lifetime** | URGENT | Go to dashboard.clerk.com > Sessions. If session lifetime or inactivity timeout is set to 10 min, change to 3600 seconds (1 hour). This is the most likely cause of the 10-minute logout. |
+| B | **Set up staging Supabase project** | HIGH | Create `pondbridge-staging` Supabase project. Create staging Render service + Cloudflare Pages project. Configure `staging` branch deploys. |
+| C | **Add GitHub Actions secrets** | HIGH | In GitHub repo settings, add secrets: `VITE_CLERK_PUBLISHABLE_KEY`, `TEST_SUPABASE_URL`, `TEST_SUPABASE_SERVICE_ROLE_KEY`, `TEST_SUPABASE_DB_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`, `JWT_SECRET`, `CLERK_SECRET_KEY` |
+| D | **Run the demo seed script** | MEDIUM | `npm --workspace @pondbridge/api run seed:demo` to create the demo camp with 25 profiles. Verify at `/t/demo`. |
+| E | **Integrate error reporting (Sentry)** | HIGH | Install `@sentry/react` in web, `@sentry/node` in API. Wrap ErrorBoundary with Sentry. Replace remaining console.error calls with Sentry.captureException. |
+| F | **Add frontend tests** | MEDIUM | Start with AuthContext.jsx (most critical). Add tests for http.js, ProtectedRoute.jsx. Use Vitest (already have Vite). |
+| G | **Audit database indexes** | MEDIUM | Run `npm run db:preflight` against production. Verify indexes on `users(tenant_id, email)`, `profiles(tenant_id, user_id)`, `messages(conversation_id)`. |
+| H | **Lazy-load map component** | LOW | Wrap `LocationMap` import with `React.lazy()` to avoid 250KB maplibre-gl bundle on every route. |
+| I | **Remove remaining console.log statements** | LOW | ~85 remaining across API and web. Replace with structured logger (pino) on API side. See Section 4.5.1 for full list. |
+| J | **Set VITE_AUTO_LOGOUT_MINUTES=60 in production build env** | URGENT | This is a build-time variable. Must be set in whatever environment runs `vite build` for production (Cloudflare Pages build settings, or CI env vars). |
+| K | **Rotate any secrets that were ever committed to git** | HIGH | Run `git log --all --diff-filter=A -- '*.env'` to check if .env was ever committed. If so, rotate Clerk, Stripe, Cloudflare, Supabase, and R2 keys. |
+
+---
+
 ## Table of Contents
 
 1. [Zero-Downtime Deployment & Data Safety](#1-zero-downtime-deployment--data-safety)

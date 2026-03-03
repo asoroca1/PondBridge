@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { isValidObjectId } from "../utils/objectId.js";
 import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { UserModel, ProfileModel } from "../db/models/index.js";
@@ -12,6 +13,19 @@ import {
 } from "../utils/location.js";
 
 const router = Router({ mergeParams: true });
+
+const profileUpdateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many profile updates. Please wait a few minutes and try again."
+    }
+  }
+});
 
 router.use(...requireTenantAuthScope);
 
@@ -80,7 +94,7 @@ router.get("/me", async (req, res) => {
   return res.json({ user, profile: withNickname(profile) });
 });
 
-router.put("/me", async (req, res) => {
+router.put("/me", profileUpdateLimiter, async (req, res) => {
   const user = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   if (!user) {
     return res.status(404).json({

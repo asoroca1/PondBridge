@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import NavBar from "./NavBar.jsx";
 import ProductHeader from "./ProductHeader.jsx";
+import SessionWarningBanner from "./SessionWarningBanner.jsx";
 import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
@@ -30,6 +31,7 @@ export default function AppShell({ children }) {
   if (useProductLayout) {
     return (
       <div className="app-shell product-app-shell">
+        <SessionWarningBanner />
         <ProductHeader />
         <main className="product-app-main">{children}</main>
       </div>
@@ -38,6 +40,7 @@ export default function AppShell({ children }) {
 
   return (
     <div className="app-shell alumni-app-shell">
+      <SessionWarningBanner />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <div className="app-shell-content">
         <NavBar />

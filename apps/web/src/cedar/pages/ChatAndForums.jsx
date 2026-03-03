@@ -980,7 +980,7 @@ function PersonalTab({ socket }) {
                   key={c._id}
                   className={`cf-list-item ${active?._id === c._id ? "is-active" : ""}`}
                 >
-                  <button className="cf-li-btn" onClick={() => onOpen(c).catch(() => {})}>
+                  <button className="cf-li-btn" onClick={() => onOpen(c).catch((e) => setActionError(String(e?.message || "Failed to open conversation.")))}>
                     <div className="cf-li-row">
                       <Avatar name={title} url={info?.avatar} size="md" userId={otherId} />
                       <div className="cf-li-text">
@@ -1531,7 +1531,7 @@ function GroupsTab({ socket }) {
           <CreateGroupButton
             onCreated={(g) => {
               loadList();
-              openGroup(g).catch(() => {});
+              openGroup(g).catch((e) => setActionError(String(e?.message || "Failed to open group.")));
             }}
           />
         </div>
@@ -1551,7 +1551,7 @@ function GroupsTab({ socket }) {
             icon={Users}
             title="No groups yet"
             subtitle="Create a private chat for your crew."
-            action={<CreateGroupButton onCreated={(g) => { loadList(); openGroup(g).catch(() => {}); }} />}
+            action={<CreateGroupButton onCreated={(g) => { loadList(); openGroup(g).catch((e) => setActionError(String(e?.message || "Failed to open group."))); }} />}
           />
         ) : filteredGroups.length === 0 ? (
           <div className="cf-loading">No matches found.</div>
@@ -1559,7 +1559,7 @@ function GroupsTab({ socket }) {
           <ul className="cf-list">
             {filteredGroups.map((g) => (
               <li key={g._id} className={`cf-list-item ${active?._id === g._id ? "is-active" : ""}`}>
-                <button className="cf-li-btn" onClick={() => openGroup(g).catch(() => {})}>
+                <button className="cf-li-btn" onClick={() => openGroup(g).catch((e) => setActionError(String(e?.message || "Failed to open group.")))}>
                   <div className="cf-li-row">
                     <div className="cf-group-avatar">
                       <span>{initialsOf(g.name || "G")}</span>
@@ -1666,7 +1666,7 @@ function GroupsTab({ socket }) {
                         placeholder="e.g., 2015 Counselors"
                       />
                       <div>
-                        <button className="cf-btn" onClick={() => saveGroupName().catch(() => {})}>
+                        <button className="cf-btn" onClick={() => saveGroupName().catch((e) => setActionError(String(e?.message || "Failed to save group name.")))}>
                           Save Name
                         </button>
                       </div>
@@ -1688,7 +1688,7 @@ function GroupsTab({ socket }) {
                                 <div className="pp-name">{nm}</div>
                               </div>
                               {canKick && (
-                                <button className="cf-ghost-btn" onClick={() => removeMember(id).catch(() => {})}>
+                                <button className="cf-ghost-btn" onClick={() => removeMember(id).catch((e) => setActionError(String(e?.message || "Failed to remove member.")))}>
                                   Remove
                                 </button>
                               )}
@@ -1700,7 +1700,7 @@ function GroupsTab({ socket }) {
 
                     <div className="cf-field">
                       <div className="cf-label">Add People</div>
-                      <PeoplePicker multi onSelect={(u) => addMember(u).catch(() => {})} />
+                      <PeoplePicker multi onSelect={(u) => addMember(u).catch((e) => setActionError(String(e?.message || "Failed to add member.")))} />
                       <div className="pp-sub">Selecting a person adds them immediately.</div>
                     </div>
                   </div>
@@ -2039,7 +2039,7 @@ function ForumsTab({ socket }) {
     setCreating(false);
     setNewName("");
     loadList();
-    openForum(normalizedForum).catch(() => {});
+    openForum(normalizedForum).catch((e) => setActionError(String(e?.message || "Failed to open forum.")));
   }
 
   async function onSend({ kind, text, media }) {
@@ -2199,7 +2199,7 @@ function ForumsTab({ socket }) {
                 key={f._id}
                 className={`cf-list-item ${active?._id === f._id ? "is-active" : ""}`}
               >
-                <button className="cf-li-btn" onClick={() => openForum(f).catch(() => {})}>
+                <button className="cf-li-btn" onClick={() => openForum(f).catch((e) => setActionError(String(e?.message || "Failed to open forum.")))}>
                   <div className="cf-li-row">
                     <div className="cf-forum-badge">
                       <Megaphone size={14} />
@@ -2239,11 +2239,11 @@ function ForumsTab({ socket }) {
                   </button>
 
                   {isMember(active) ? (
-                    <button className="cf-ghost-btn" onClick={() => leave(active._id).catch(() => {})}>
+                    <button className="cf-ghost-btn" onClick={() => leave(active._id).catch((e) => setActionError(String(e?.message || "Failed to leave forum.")))}>
                       Leave
                     </button>
                   ) : (
-                    <button className="cf-ghost-btn" onClick={() => join(active._id).catch(() => {})}>
+                    <button className="cf-ghost-btn" onClick={() => join(active._id).catch((e) => setActionError(String(e?.message || "Failed to join forum.")))}>
                       Join
                     </button>
                   )}

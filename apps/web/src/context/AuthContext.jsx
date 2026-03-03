@@ -15,12 +15,18 @@ const AuthContext = createContext(null);
 const IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
 const TAB_AUTH_SESSION_KEY = "pondbridgeTabAuthSession";
 const TAB_LOGIN_INTENT_KEY = "pondbridgeTabLoginIntent";
-const AUTO_LOGOUT_MINUTES = Number(import.meta.env.VITE_AUTO_LOGOUT_MINUTES || 30);
+const AUTO_LOGOUT_MINUTES = Number(import.meta.env.VITE_AUTO_LOGOUT_MINUTES || 60);
+const SESSION_WARNING_MINUTES = 5;
 const AUTO_LOGOUT_TIMEOUT_MS =
   Number.isFinite(AUTO_LOGOUT_MINUTES) && AUTO_LOGOUT_MINUTES > 0
     ? AUTO_LOGOUT_MINUTES * 60 * 1000
     : 0;
 const CLERK_TOKEN_SYNC_INTERVAL_MS = 45 * 1000;
+const SESSION_TOKEN_STORAGE_KEY = "pondbridgeSessionToken";
+const SESSION_WARNING_TIMEOUT_MS =
+  AUTO_LOGOUT_TIMEOUT_MS > SESSION_WARNING_MINUTES * 60 * 1000
+    ? AUTO_LOGOUT_TIMEOUT_MS - SESSION_WARNING_MINUTES * 60 * 1000
+    : 0;
 const CLERK_BOOTSTRAP_RETRY_DELAYS_MS = [0, 160, 420, 900];
 const CLERK_BOOTSTRAP_MAX_RETRIES = 4;
 const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
@@ -103,8 +109,9 @@ export function noteTabLoginIntent() {
   markTabLoginIntent();
 }
 
-function useIdleLogout({ enabled, isAuthenticated, onLogout }) {
+function useIdleLogout({ enabled, isAuthenticated, onLogout, onSessionWarning }) {
   const timeoutRef = useRef(null);
+  const warningRef = useRef(null);
   const logoutInFlightRef = useRef(false);
 
   const clearTimer = useCallback(() => {
@@ -112,11 +119,23 @@ function useIdleLogout({ enabled, isAuthenticated, onLogout }) {
       window.clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    if (warningRef.current) {
+      window.clearTimeout(warningRef.current);
+      warningRef.current = null;
+    }
   }, []);
 
   const schedule = useCallback(() => {
     if (!enabled || !isAuthenticated || AUTO_LOGOUT_TIMEOUT_MS <= 0) return;
     clearTimer();
+
+    // Schedule a warning before the actual logout.
+    if (SESSION_WARNING_TIMEOUT_MS > 0 && onSessionWarning) {
+      warningRef.current = window.setTimeout(() => {
+        onSessionWarning(SESSION_WARNING_MINUTES);
+      }, SESSION_WARNING_TIMEOUT_MS);
+    }
+
     timeoutRef.current = window.setTimeout(() => {
       if (logoutInFlightRef.current) return;
       logoutInFlightRef.current = true;
@@ -124,7 +143,7 @@ function useIdleLogout({ enabled, isAuthenticated, onLogout }) {
         logoutInFlightRef.current = false;
       });
     }, AUTO_LOGOUT_TIMEOUT_MS);
-  }, [clearTimer, enabled, isAuthenticated, onLogout]);
+  }, [clearTimer, enabled, isAuthenticated, onLogout, onSessionWarning]);
 
   useEffect(() => {
     if (!enabled || !isAuthenticated || AUTO_LOGOUT_TIMEOUT_MS <= 0) {
@@ -225,7 +244,8 @@ function LegacyAuthProvider({ children }) {
   useIdleLogout({
     enabled: true,
     isAuthenticated: Boolean(token),
-    onLogout: logout
+    onLogout: logout,
+    onSessionWarning: null
   });
 
   const refreshSession = useCallback(
@@ -278,6 +298,8 @@ function LegacyAuthProvider({ children }) {
       isReady: true,
       authProvider: "legacy",
       authConfigError: "",
+      sessionWarningMinutes: 0,
+      dismissSessionWarning: () => {},
       login,
       logout,
       getAuthToken: async () => token || "",
@@ -294,14 +316,58 @@ function LegacyAuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+function readSessionToken() {
+  try {
+    return window.sessionStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSessionToken(value) {
+  try {
+    if (value) {
+      window.sessionStorage.setItem(SESSION_TOKEN_STORAGE_KEY, value);
+    } else {
+      window.sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearSessionToken() {
+  try {
+    window.sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Decode a JWT payload to check expiry. Returns seconds-since-epoch or 0.
+ */
+function getTokenExpiry(jwt) {
+  if (!jwt) return 0;
+  try {
+    const parts = jwt.split(".");
+    if (parts.length < 2) return 0;
+    const payload = JSON.parse(atob(parts[1]));
+    return (payload.exp || 0) * 1000; // convert to ms
+  } catch {
+    return 0;
+  }
+}
+
 function ClerkBackedAuthProvider({ children }) {
   // Hydrate cached user from localStorage on mount so returning users
   // see content immediately instead of a blank flash while Clerk loads.
   const cachedAuth = readAuthFromStorage();
   const shouldHydrate = !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(() => (shouldHydrate ? readSessionToken() : ""));
   const [user, setUser] = useState(shouldHydrate ? normalizeUserShape(cachedAuth.user) : null);
   const [sessionRefreshing, setSessionRefreshing] = useState(true);
+  const [sessionWarningMinutes, setSessionWarningMinutes] = useState(0);
   const { isLoaded, isSignedIn, getToken, sessionId } = useClerkAuth();
   const { signOut } = useClerk();
   const userRef = useRef(null);
@@ -330,6 +396,8 @@ function ClerkBackedAuthProvider({ children }) {
     setUser(null);
     clearAuthStorage();
     clearTabSessionAuthenticated();
+    clearSessionToken();
+    setSessionWarningMinutes(0);
     bootstrappedSessionIdRef.current = "";
     pendingBootstrapRetriesRef.current = 0;
   }, []);
@@ -340,6 +408,7 @@ function ClerkBackedAuthProvider({ children }) {
       const nextToken = (await getToken(forceRefresh ? { skipCache: true } : undefined)) || "";
       if (nextToken) {
         setToken(nextToken);
+        writeSessionToken(nextToken);
         writeAuthToStorage(nextToken, normalizeUserShape(userRef.current));
       }
       return nextToken;
@@ -392,6 +461,7 @@ function ClerkBackedAuthProvider({ children }) {
       // causing the entire AppShell / NavBar tree to unmount and remount.
       if (isInitialBootstrap) setSessionRefreshing(true);
       setToken(clerkToken);
+      writeSessionToken(clerkToken);
 
       try {
         const payload = await requestJson("/api/auth/session", {
@@ -440,13 +510,26 @@ function ClerkBackedAuthProvider({ children }) {
   );
 
   // Keep volatile token storage in sync for Cedar pages that still issue
-  // direct fetch() calls with getToken() helpers.
+  // direct fetch() calls with getToken() helpers.  Also pre-emptively
+  // refresh the token 30 seconds before it expires so API calls never
+  // hit a stale JWT.
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return undefined;
     let active = true;
 
     const syncToken = async (forceRefresh = false) => {
       try {
+        // Pre-emptive refresh: if the current token expires within 30s,
+        // force a refresh now instead of waiting for the next interval.
+        if (!forceRefresh) {
+          const currentToken = tokenRef.current;
+          if (currentToken) {
+            const expiresAt = getTokenExpiry(currentToken);
+            if (expiresAt > 0 && Date.now() >= expiresAt - 30_000) {
+              forceRefresh = true;
+            }
+          }
+        }
         await getAuthToken({ forceRefresh });
       } catch {
         // Ignore token refresh failures; request-level code handles auth errors.
@@ -599,11 +682,20 @@ function ClerkBackedAuthProvider({ children }) {
     }
   }, [clearLocalAuth, signOut]);
 
+  const onSessionWarning = useCallback((minutes) => {
+    setSessionWarningMinutes(minutes);
+  }, []);
+
   useIdleLogout({
     enabled: Boolean(isLoaded),
     isAuthenticated: Boolean(isSignedIn),
-    onLogout: logout
+    onLogout: logout,
+    onSessionWarning
   });
+
+  const dismissSessionWarning = useCallback(() => {
+    setSessionWarningMinutes(0);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -613,6 +705,8 @@ function ClerkBackedAuthProvider({ children }) {
       isReady: Boolean(isLoaded) && !sessionRefreshing,
       authProvider: AUTH_PROVIDER,
       authConfigError: "",
+      sessionWarningMinutes,
+      dismissSessionWarning,
       login,
       logout,
       getAuthToken,
@@ -623,7 +717,7 @@ function ClerkBackedAuthProvider({ children }) {
         writeAuthToStorage(token || "", normalized);
       }
     }),
-    [getAuthToken, isLoaded, login, logout, refreshSession, sessionRefreshing, token, user]
+    [dismissSessionWarning, getAuthToken, isLoaded, login, logout, refreshSession, sessionRefreshing, sessionWarningMinutes, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -645,6 +739,8 @@ function ClerkUnavailableAuthProvider({ children }) {
       isReady: true,
       authProvider: AUTH_PROVIDER,
       authConfigError: configError,
+      sessionWarningMinutes: 0,
+      dismissSessionWarning: () => {},
       login: () => {},
       logout,
       getAuthToken: async () => "",

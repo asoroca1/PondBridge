@@ -292,3 +292,14 @@ if (!env.SUPABASE_URL) {
 if (!env.SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY in apps/api/.env");
 }
+
+// Production safety: refuse to start if the database URL points to localhost.
+if (env.NODE_ENV === "production" && env.SUPABASE_DB_URL) {
+  const lowerDbUrl = env.SUPABASE_DB_URL.toLowerCase();
+  if (lowerDbUrl.includes("localhost") || lowerDbUrl.includes("127.0.0.1")) {
+    throw new Error(
+      "FATAL: Production server configured with a localhost database URL. " +
+        "Set SUPABASE_DB_URL to the production Supabase connection string."
+    );
+  }
+}
