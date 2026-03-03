@@ -1200,8 +1200,10 @@ export async function createBillingPortalUrl({ tenant, returnUrl, returnPath }) 
 
 export function buildBillingPublicSnapshot(tenant = {}) {
   const readiness = isBillingReadyForLaunch(tenant);
+  const catalogEntry = getCatalogEntry(readiness.billingPlan);
   return {
     billingPlan: readiness.billingPlan,
+    annualAmount: catalogEntry.annualAmount,
     lifecycleStatus: readiness.lifecycleStatus,
     billingStatus: readiness.legacyStatus,
     onboardingFeeStatus: readiness.onboardingFeeStatus,

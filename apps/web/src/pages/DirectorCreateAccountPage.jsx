@@ -269,6 +269,13 @@ function formatMoney(value) {
   }).format(Number(value || 0));
 }
 
+function sanitizeMoneyValue(value, fallback = 0) {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed)) return parsed;
+  const fallbackParsed = Number(fallback);
+  return Number.isFinite(fallbackParsed) ? fallbackParsed : 0;
+}
+
 function normalizeAddress(value = {}) {
   return {
     line1: String(value.line1 || "").trim(),
@@ -637,12 +644,51 @@ function DirectorCreateAccountWizardPage() {
   ];
 
   const selectedBillingPlanCode = normalizeBillingPlanCode(form.billingPlanCode);
-  const selectedBillingPlan = BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) || BILLING_PLAN_OPTIONS[0];
-  const billingStatus = String(tenant?.billingStatus || "").trim().toLowerCase();
-  const onboardingFeeAmount = Number(
-    tenant?.onboardingFeeAmount ?? selectedBillingPlan.onboardingFeeAmount ?? 0
+  const selectedBillingPlan =
+    BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) ||
+    BILLING_PLAN_OPTIONS[0];
+  const tenantBillingPlanCode = normalizeBillingPlanCode(
+    tenant?.billingPlan || tenant?.billing?.billingPlan || selectedBillingPlanCode
   );
-  const onboardingFeePaid = Boolean(tenant?.onboardingFeePaid);
+  const tenantBillingPlan =
+    BILLING_PLAN_OPTIONS.find((item) => item.code === tenantBillingPlanCode) ||
+    selectedBillingPlan;
+  const hasTenantAnnualAmount = Number.isFinite(Number(tenant?.billing?.annualAmount));
+  const hasTenantOnboardingFeeAmount =
+    Object.prototype.hasOwnProperty.call(tenant || {}, "onboardingFeeAmount") ||
+    Object.prototype.hasOwnProperty.call(tenant?.billing || {}, "onboardingFeeAmount");
+  const configuredAnnualAmount = hasTenantAnnualAmount
+    ? sanitizeMoneyValue(tenant?.billing?.annualAmount, tenantBillingPlan.annualAmount)
+    : sanitizeMoneyValue(tenantBillingPlan.annualAmount, selectedBillingPlan.annualAmount);
+  const configuredOnboardingFeeAmount = hasTenantOnboardingFeeAmount
+    ? sanitizeMoneyValue(
+        tenant?.onboardingFeeAmount ?? tenant?.billing?.onboardingFeeAmount,
+        tenantBillingPlan.onboardingFeeAmount
+      )
+    : sanitizeMoneyValue(tenantBillingPlan.onboardingFeeAmount, selectedBillingPlan.onboardingFeeAmount);
+  const selectedPlanAnnualAmount =
+    selectedBillingPlanCode === tenantBillingPlanCode
+      ? configuredAnnualAmount
+      : sanitizeMoneyValue(selectedBillingPlan.annualAmount, 0);
+  const selectedPlanOnboardingFeeAmount =
+    selectedBillingPlanCode === tenantBillingPlanCode
+      ? configuredOnboardingFeeAmount
+      : sanitizeMoneyValue(selectedBillingPlan.onboardingFeeAmount, 0);
+  const annualAmountForPlanOption = (planCode = "") => {
+    if (normalizeBillingPlanCode(planCode) === tenantBillingPlanCode) return configuredAnnualAmount;
+    const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(planCode));
+    return sanitizeMoneyValue(option?.annualAmount, 0);
+  };
+  const onboardingFeeAmountForPlanOption = (planCode = "") => {
+    if (normalizeBillingPlanCode(planCode) === tenantBillingPlanCode) return configuredOnboardingFeeAmount;
+    const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(planCode));
+    return sanitizeMoneyValue(option?.onboardingFeeAmount, 0);
+  };
+  const billingStatus = String(tenant?.billingStatus || tenant?.billing?.billingStatus || "")
+    .trim()
+    .toLowerCase();
+  const onboardingFeeAmount = configuredOnboardingFeeAmount;
+  const onboardingFeePaid = Boolean(tenant?.onboardingFeePaid ?? tenant?.billing?.onboardingFeePaid);
   const checkoutInProgress =
     String(tenant?.billingLifecycleStatus || tenant?.billing?.lifecycleStatus || "")
       .trim()
@@ -2101,10 +2147,10 @@ function DirectorCreateAccountWizardPage() {
                             <strong>{option.title}</strong>
                             <span>{option.summary}</span>
                             <span>
-                              {formatMoney(option.annualAmount)}/year
+                              {formatMoney(annualAmountForPlanOption(option.code))}/year
                               {" · "}
-                              {option.onboardingFeeAmount > 0
-                                ? `${formatMoney(option.onboardingFeeAmount)} onboarding fee`
+                              {onboardingFeeAmountForPlanOption(option.code) > 0
+                                ? `${formatMoney(onboardingFeeAmountForPlanOption(option.code))} onboarding fee`
                                 : "No onboarding fee"}
                             </span>
                           </div>
@@ -2596,10 +2642,10 @@ function DirectorCreateAccountWizardPage() {
                         {billingPlanLabel(selectedBillingPlanCode)}
                       </p>
                       <p className="director-field-hint">
-                        {formatMoney(selectedBillingPlan.annualAmount)} yearly
+                        {formatMoney(selectedPlanAnnualAmount)} yearly
                         {" · "}
-                        {selectedBillingPlan.onboardingFeeAmount > 0
-                          ? `${formatMoney(selectedBillingPlan.onboardingFeeAmount)} onboarding fee`
+                        {selectedPlanOnboardingFeeAmount > 0
+                          ? `${formatMoney(selectedPlanOnboardingFeeAmount)} onboarding fee`
                           : "No onboarding fee"}
                       </p>
                     </article>
