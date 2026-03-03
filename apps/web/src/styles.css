@@ -3369,47 +3369,76 @@ img[draggable="false"] { -webkit-user-drag: none; }
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.pb-cedar-page .director-admin-stat-grid-hero{
+  margin-top: 0;
+}
+
 .pb-cedar-page .director-admin-stat-card{
-  border: 1px solid #d9e4f1;
+  border: 1px solid #d7e4f4;
   border-radius: 12px;
-  background: #f9fbff;
-  padding: 11px 12px;
+  background: #ffffff;
+  padding: 12px 13px;
   display: grid;
-  gap: 4px;
+  gap: 5px;
+  box-shadow: 0 4px 14px rgba(21, 55, 93, 0.04);
+}
+
+.pb-cedar-page .director-admin-stat-card-top{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pb-cedar-page .director-admin-stat-icon{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #bfd5f0;
+  background: linear-gradient(180deg, #edf5ff 0%, #e4efff 100%);
+  color: #13438b;
+  flex: 0 0 34px;
+}
+
+.pb-cedar-page .director-admin-stat-icon svg{
+  width: 18px;
+  height: 18px;
 }
 
 .pb-cedar-page .director-admin-stat-card span{
-  color: #4e627b;
-  font-size: .8rem;
+  color: #58708c;
+  font-size: .78rem;
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: .03em;
   font-weight: 700;
 }
 
 .pb-cedar-page .director-admin-stat-card strong{
-  font-size: 1.4rem;
+  font-size: 1.32rem;
   color: #102a48;
   line-height: 1.15;
 }
 
 .pb-cedar-page .director-admin-stat-card small{
-  color: #5b6e86;
-  font-size: .82rem;
+  color: #607894;
+  font-size: .8rem;
 }
 
 .pb-cedar-page .director-admin-stat-card.tone-success{
-  border-color: #cae5d7;
-  background: #f2fbf5;
+  border-color: #d7e4f4;
+  background: #ffffff;
 }
 
 .pb-cedar-page .director-admin-stat-card.tone-warning{
-  border-color: #ecd9a8;
-  background: #fffaf0;
+  border-color: #d7e4f4;
+  background: #ffffff;
 }
 
 .pb-cedar-page .director-admin-stat-card.tone-danger{
-  border-color: #efc9c5;
-  background: #fff5f5;
+  border-color: #d7e4f4;
+  background: #ffffff;
 }
 
 .pb-cedar-page .director-admin-two-col{

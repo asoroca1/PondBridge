@@ -161,11 +161,52 @@ function useAdminApi() {
 
 const AdminPageHeader = PageHeader;
 
-function StatCard({ label, value, hint = "", tone = "neutral" }) {
+function StatIcon({ kind = "members" }) {
+  if (kind === "active") {
+    return (
+      <svg viewBox="0 0 20 20" role="img" aria-hidden="true">
+        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M6.8 10.1 9.2 12.4 13.4 7.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "signups") {
+    return (
+      <svg viewBox="0 0 20 20" role="img" aria-hidden="true">
+        <path d="M5.8 13.8 14.2 5.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M9.5 5.8h4.7v4.7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5.8 5.8v8h8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (kind === "completion") {
+    return (
+      <svg viewBox="0 0 20 20" role="img" aria-hidden="true">
+        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M10 3v7h6.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 20 20" role="img" aria-hidden="true">
+      <circle cx="7.2" cy="7.4" r="2.3" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="13.1" cy="8.2" r="1.8" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M3.8 14.2c.5-2.3 2-3.5 4.4-3.5s3.9 1.2 4.4 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M11.4 14.2c.4-1.4 1.4-2.1 2.8-2.1 1.2 0 2.1.6 2.6 1.8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function StatCard({ label, value, hint = "", tone = "neutral", icon = "members" }) {
   return (
     <article className={`director-admin-stat-card tone-${tone}`.trim()}>
+      <div className="director-admin-stat-card-top">
+        <span className="director-admin-stat-icon" aria-hidden="true">
+          <StatIcon kind={icon} />
+        </span>
+        <strong>{value}</strong>
+      </div>
       <span>{label}</span>
-      <strong>{value}</strong>
       {hint ? <small>{hint}</small> : null}
     </article>
   );
@@ -575,51 +616,50 @@ export function DirectorAdminDashboardPage() {
       label: "Total Members",
       value: totalMembers,
       hint: `${stats.totalMembersDelta >= 0 ? "+" : ""}${stats.totalMembersDelta || 0}% vs prior window`,
-      tone: "success"
+      tone: "success",
+      icon: "members"
     },
     {
       key: "active-members",
       label: "Active Members",
       value: activeMembers,
       hint: `${totalMembers ? Math.round((activeMembers / totalMembers) * 100) : 0}% currently active`,
-      tone: "neutral"
+      tone: "neutral",
+      icon: "active"
     },
     {
       key: "recent-signups",
       label: "Recent Signups",
       value: recentSignups,
       hint: "Last 7 days",
-      tone: recentSignups > 0 ? "success" : "neutral"
+      tone: recentSignups > 0 ? "success" : "neutral",
+      icon: "signups"
     },
     {
       key: "profile-completion",
       label: "Profile Completion",
       value: `${profileCompletion}%`,
       hint: "Average across members",
-      tone: profileCompletion >= 70 ? "success" : "neutral"
+      tone: profileCompletion >= 70 ? "success" : "neutral",
+      icon: "completion"
     }
   ];
 
   return (
     <div className="director-admin-stack">
-      <Card>
-        <AdminPageHeader
-          title="Admin Overview"
-          className="director-admin-page-head"
-        />
-        {error ? <p className="error-text">{error}</p> : null}
-        <div className="director-admin-stat-grid">
-          {statCards.map((item) => (
-            <StatCard
-              key={item.key}
-              label={item.label}
-              value={item.value}
-              hint={item.hint}
-              tone={item.tone}
-            />
-          ))}
-        </div>
-      </Card>
+      {error ? <p className="error-text">{error}</p> : null}
+      <div className="director-admin-stat-grid director-admin-stat-grid-hero">
+        {statCards.map((item) => (
+          <StatCard
+            key={item.key}
+            label={item.label}
+            value={item.value}
+            hint={item.hint}
+            tone={item.tone}
+            icon={item.icon}
+          />
+        ))}
+      </div>
 
       <div className="director-admin-two-col director-admin-dashboard-charts">
         <div className="director-admin-dashboard-left">
