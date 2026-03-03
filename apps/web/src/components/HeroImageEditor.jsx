@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   formatHeroImagePositionPercent,
   normalizeHeroImagePosition,
@@ -461,98 +462,104 @@ export default function HeroImageEditor({
   }
 
   const activePreviewMeta = PREVIEW_META[activePreview] || null;
+  const modalPortal =
+    activePreviewMeta && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="hero-image-editor__modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                closePreviewEditor();
+              }
+            }}
+          >
+            <div
+              className="hero-image-editor__modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`hero-image-editor-modal-title-${variant}`}
+            >
+              <header className="hero-image-editor__modal-header">
+                <div>
+                  <h4 id={`hero-image-editor-modal-title-${variant}`}>{activePreviewMeta.title}</h4>
+                  <p>{activePreviewMeta.subtitle}</p>
+                </div>
+                <button
+                  type="button"
+                  className="hero-image-editor__modal-close"
+                  onClick={closePreviewEditor}
+                >
+                  Close
+                </button>
+              </header>
+              <div className="hero-image-editor__modal-content">
+                {activePreviewMeta.key === PREVIEW_META.landing.key
+                  ? renderLandingPreview({ interactive: true, modal: true })
+                  : renderMemberPreview({ interactive: true, modal: true })}
+              </div>
+              <p className="hero-image-editor__modal-hint">
+                Use drag/trackpad for quick framing. Arrow keys nudge the photo, and +/- changes zoom.
+              </p>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
-    <section className={rootClassName}>
-      <div className="hero-image-editor__header">
-        <p className="hero-image-editor__label">{label}</p>
-        <button
-          type="button"
-          className="hero-image-editor__reset"
-          onClick={resetHeroComposition}
-        >
-          Reset to default
-        </button>
-      </div>
-
-      <div className="hero-image-editor__preview-grid">
-        <article className="hero-image-editor__preview-card">
-          <header>
-            <h4>{PREVIEW_META.landing.title}</h4>
-            <p>{PREVIEW_META.landing.subtitle}</p>
-          </header>
+    <>
+      <section className={rootClassName}>
+        <div className="hero-image-editor__header">
+          <p className="hero-image-editor__label">{label}</p>
           <button
             type="button"
-            className="hero-image-editor__preview-launcher"
-            onClick={() => setActivePreview(PREVIEW_META.landing.key)}
-            aria-label={PREVIEW_META.landing.aria}
+            className="hero-image-editor__reset"
+            onClick={resetHeroComposition}
           >
-            {renderLandingPreview()}
-            <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
+            Reset to default
           </button>
-        </article>
-
-        <article className="hero-image-editor__preview-card">
-          <header>
-            <h4>{PREVIEW_META.member.title}</h4>
-            <p>{PREVIEW_META.member.subtitle}</p>
-          </header>
-          <button
-            type="button"
-            className="hero-image-editor__preview-launcher"
-            onClick={() => setActivePreview(PREVIEW_META.member.key)}
-            aria-label={PREVIEW_META.member.aria}
-          >
-            {renderMemberPreview()}
-            <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
-          </button>
-        </article>
-      </div>
-
-      <p className="hero-image-editor__hint">
-        Click either preview to open the full editor. In the popup: drag to reposition, use trackpad or wheel to zoom, or use arrow keys and +/- when focused.
-      </p>
-
-      {activePreviewMeta ? (
-        <div
-          className="hero-image-editor__modal-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closePreviewEditor();
-            }
-          }}
-        >
-          <div
-            className="hero-image-editor__modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={`hero-image-editor-modal-title-${variant}`}
-          >
-            <header className="hero-image-editor__modal-header">
-              <div>
-                <h4 id={`hero-image-editor-modal-title-${variant}`}>{activePreviewMeta.title}</h4>
-                <p>{activePreviewMeta.subtitle}</p>
-              </div>
-              <button
-                type="button"
-                className="hero-image-editor__modal-close"
-                onClick={closePreviewEditor}
-              >
-                Close
-              </button>
-            </header>
-            <div className="hero-image-editor__modal-content">
-              {activePreviewMeta.key === PREVIEW_META.landing.key
-                ? renderLandingPreview({ interactive: true, modal: true })
-                : renderMemberPreview({ interactive: true, modal: true })}
-            </div>
-            <p className="hero-image-editor__modal-hint">
-              Use drag/trackpad for quick framing. Arrow keys nudge the photo, and +/- changes zoom.
-            </p>
-          </div>
         </div>
-      ) : null}
-    </section>
+
+        <div className="hero-image-editor__preview-grid">
+          <article className="hero-image-editor__preview-card">
+            <header>
+              <h4>{PREVIEW_META.landing.title}</h4>
+              <p>{PREVIEW_META.landing.subtitle}</p>
+            </header>
+            <button
+              type="button"
+              className="hero-image-editor__preview-launcher"
+              onClick={() => setActivePreview(PREVIEW_META.landing.key)}
+              aria-label={PREVIEW_META.landing.aria}
+            >
+              {renderLandingPreview()}
+              <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
+            </button>
+          </article>
+
+          <article className="hero-image-editor__preview-card">
+            <header>
+              <h4>{PREVIEW_META.member.title}</h4>
+              <p>{PREVIEW_META.member.subtitle}</p>
+            </header>
+            <button
+              type="button"
+              className="hero-image-editor__preview-launcher"
+              onClick={() => setActivePreview(PREVIEW_META.member.key)}
+              aria-label={PREVIEW_META.member.aria}
+            >
+              {renderMemberPreview()}
+              <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
+            </button>
+          </article>
+        </div>
+
+        <p className="hero-image-editor__hint">
+          Click either preview to open the full editor. In the popup: drag to reposition, use trackpad or wheel to zoom, or use arrow keys and +/- when focused.
+        </p>
+      </section>
+      {modalPortal}
+    </>
   );
 }
