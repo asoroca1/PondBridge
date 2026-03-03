@@ -264,7 +264,13 @@ export const env = {
     )
   ),
   CLERK_SUPER_ADMIN_USER_IDS: dedupe(toCsvList(process.env.CLERK_SUPER_ADMIN_USER_IDS || "")),
-  CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN: toBoolean(process.env.CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN, true)
+  CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN: toBoolean(process.env.CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN, true),
+  ALLOW_PUBLIC_AUTO_BOOTSTRAP_FIRST_TENANT: toBoolean(
+    process.env.ALLOW_PUBLIC_AUTO_BOOTSTRAP_FIRST_TENANT,
+    false
+  ),
+  ALLOW_EMPTY_PRODUCTION_TENANTS: toBoolean(process.env.ALLOW_EMPTY_PRODUCTION_TENANTS, false),
+  PRODUCTION_MIN_TENANTS: Math.max(0, toBoundedInt(process.env.PRODUCTION_MIN_TENANTS, 1, 0, 100000))
 };
 
 assertValidChoice("NODE_ENV", env.NODE_ENV, [

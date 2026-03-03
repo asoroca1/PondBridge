@@ -12,6 +12,7 @@ import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { buildBillingPublicSnapshot } from "../services/billing.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
+import { env } from "../config/env.js";
 
 const router = Router();
 const AUTO_BOOTSTRAP_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,39}$/;
@@ -31,6 +32,10 @@ function defaultChecklistCompletedNow() {
 }
 
 async function maybeAutoBootstrapFirstTenant(slug = "") {
+  const allowAutoBootstrapInRuntime =
+    env.NODE_ENV !== "production" || env.ALLOW_PUBLIC_AUTO_BOOTSTRAP_FIRST_TENANT;
+  if (!allowAutoBootstrapInRuntime) return null;
+
   const normalizedSlug = String(slug || "").trim().toLowerCase();
   if (!canAutoBootstrapSlug(normalizedSlug)) return null;
 

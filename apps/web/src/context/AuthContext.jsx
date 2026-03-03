@@ -473,6 +473,7 @@ function ClerkBackedAuthProvider({ children }) {
       try {
         const payload = await requestJson("/api/auth/session", {
           token: clerkToken,
+          getToken: ({ forceRefresh = false } = {}) => getAuthToken({ forceRefresh }),
           headers: tenantSlug ? { "X-Tenant-Slug": tenantSlug } : {}
         });
         const normalizedUser = normalizeUserShape({
