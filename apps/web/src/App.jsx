@@ -33,9 +33,6 @@ const DirectorOnboardingCommandCenterPage = lazy(() => import("./pages/DirectorO
 const DirectorClaimPage = lazy(() => import("./pages/DirectorClaimPage.jsx"));
 const DirectorCreateAccountPage = lazy(() => import("./pages/DirectorCreateAccountPage.jsx"));
 const DirectorAdminLayout = lazy(() => import("./pages/admin/DirectorAdminLayout.jsx"));
-const DirectorAdminAnalyticsPage = lazy(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminAnalyticsPage }))
-);
 const DirectorAdminBillingPage = lazy(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminBillingPage }))
 );
@@ -516,11 +513,11 @@ function TenantScopeRoutes() {
           <Route path="invites" element={<DirectorAdminInvitesPage />} />
           <Route path="directory" element={<Navigate to="../members" replace />} />
           <Route path="family-trees" element={<Navigate to="../features" replace />} />
-          <Route path="events" element={<Navigate to="../analytics" replace />} />
+          <Route path="events" element={<Navigate to="../dashboard" replace />} />
           <Route path="communications" element={<Navigate to="../email/compose" replace />} />
           <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
           <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
-          <Route path="analytics" element={<DirectorAdminAnalyticsPage />} />
+          <Route path="analytics" element={<Navigate to="../dashboard" replace />} />
           <Route path="features" element={<DirectorAdminFeaturesPage />} />
           <Route path="billing" element={<DirectorAdminBillingPage />} />
           <Route path="settings" element={<DirectorAdminSettingsLayout />}>
@@ -572,7 +569,7 @@ function TenantScopeRoutes() {
         <Route path="search-old" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
         <Route path="admin/onboarding" element={<Navigate to={slug ? `/t/${slug}/onboarding` : "/onboarding"} replace />} />
         <Route path="admin/import" element={<Navigate to={slug ? `/t/${slug}/admin/invites` : "/admin/invites"} replace />} />
-        <Route path="admin/analytics" element={<Navigate to={slug ? `/t/${slug}/admin/analytics` : "/admin/analytics"} replace />} />
+        <Route path="admin/analytics" element={<Navigate to={slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard"} replace />} />
         <Route path="admin/billing" element={<Navigate to={slug ? `/t/${slug}/admin/billing` : "/admin/billing"} replace />} />
 
         <Route path="*" element={<NotFoundPage />} />

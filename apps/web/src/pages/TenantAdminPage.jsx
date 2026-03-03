@@ -204,9 +204,6 @@ export default function TenantAdminPage() {
           <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
             Manage Invites
           </Link>
-          <Link className="link-button secondary" to={`/t/${slug}/admin/analytics`}>
-            Analytics
-          </Link>
           <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>
             Billing
           </Link>
