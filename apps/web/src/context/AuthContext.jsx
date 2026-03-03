@@ -305,12 +305,14 @@ function LegacyAuthProvider({ children }) {
       isReady: true,
       authProvider: "legacy",
       authConfigError: "",
+      bootstrapError: "",
       sessionWarningMinutes: 0,
       dismissSessionWarning: () => {},
       login,
       logout,
       getAuthToken: async () => token || "",
       refreshSession,
+      retryBootstrap: () => {},
       setUser: (nextUser) => {
         const normalized = normalizeUserShape(nextUser);
         setUser(normalized);
@@ -375,6 +377,9 @@ function ClerkBackedAuthProvider({ children }) {
   const [user, setUser] = useState(shouldHydrate ? normalizeUserShape(cachedAuth.user) : null);
   const [sessionRefreshing, setSessionRefreshing] = useState(true);
   const [sessionWarningMinutes, setSessionWarningMinutes] = useState(0);
+  // Tracks bootstrap-level auth errors (e.g. 401 from /api/auth/session)
+  // so login pages can detect the failure and avoid auto-redirect loops.
+  const [bootstrapError, setBootstrapError] = useState("");
   const { isLoaded, isSignedIn, getToken, sessionId } = useClerkAuth();
   const { signOut } = useClerk();
   const userRef = useRef(null);
@@ -407,6 +412,8 @@ function ClerkBackedAuthProvider({ children }) {
     setSessionWarningMinutes(0);
     bootstrappedSessionIdRef.current = "";
     pendingBootstrapRetriesRef.current = 0;
+    // NOTE: intentionally does NOT clear bootstrapError here — the login
+    // page needs to see the error to prevent redirect loops.
   }, []);
 
   const getAuthToken = useCallback(
@@ -484,6 +491,7 @@ function ClerkBackedAuthProvider({ children }) {
         writeAuthToStorage(clerkToken, normalizedUser);
         markTabSessionAuthenticated();
         clearTabLoginIntent();
+        setBootstrapError("");
         return payload;
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
@@ -492,6 +500,16 @@ function ClerkBackedAuthProvider({ children }) {
             markTabSessionAuthenticated();
             return null;
           }
+          // Record the error so login pages can detect this failure and
+          // avoid an infinite redirect loop (Clerk is signed in but the
+          // API rejected the session).
+          const errCode = String(
+            error?.payload?.error?.code || error?.code || ""
+          ).trim();
+          const errMsg = String(
+            error?.payload?.error?.message || error?.message || "Session verification failed"
+          ).trim();
+          setBootstrapError(errCode ? `${errCode}: ${errMsg}` : errMsg);
           clearLocalAuth();
           clearTabSessionAuthenticated();
           clearTabLoginIntent();
@@ -506,6 +524,9 @@ function ClerkBackedAuthProvider({ children }) {
           markTabSessionAuthenticated();
           return null;
         }
+        setBootstrapError(
+          String(error?.message || "Could not reach the API server").trim()
+        );
         throw error;
       } finally {
         if (isInitialBootstrap) {
@@ -718,6 +739,28 @@ function ClerkBackedAuthProvider({ children }) {
     setSessionWarningMinutes(0);
   }, []);
 
+  const retryBootstrap = useCallback(() => {
+    setBootstrapError("");
+    bootstrapDoneRef.current = false;
+    bootstrappedSessionIdRef.current = "";
+    setSessionRefreshing(true);
+    // Force the bootstrap effect to re-run by resetting state that it
+    // inspects synchronously.  The effect depends on isLoaded/isSignedIn/
+    // sessionId — we cannot change those, but we CAN invoke refreshSession
+    // directly here and let the finally-block settle sessionRefreshing.
+    const doRefresh = refreshSessionRef.current;
+    if (doRefresh) {
+      const tenantSlug = inferTenantSlugForSessionRequest();
+      Promise.resolve(doRefresh({ tenantSlug }))
+        .then(() => {
+          if (sessionId) bootstrappedSessionIdRef.current = sessionId;
+        })
+        .catch(() => {
+          // refreshSession already sets bootstrapError internally.
+        });
+    }
+  }, [sessionId]);
+
   const value = useMemo(
     () => ({
       token,
@@ -726,19 +769,21 @@ function ClerkBackedAuthProvider({ children }) {
       isReady: Boolean(isLoaded) && !sessionRefreshing,
       authProvider: AUTH_PROVIDER,
       authConfigError: "",
+      bootstrapError,
       sessionWarningMinutes,
       dismissSessionWarning,
       login,
       logout,
       getAuthToken,
       refreshSession,
+      retryBootstrap,
       setUser: (nextUser) => {
         const normalized = normalizeUserShape(nextUser);
         setUser(normalized);
         writeAuthToStorage(token || "", normalized);
       }
     }),
-    [dismissSessionWarning, getAuthToken, isLoaded, login, logout, refreshSession, sessionRefreshing, sessionWarningMinutes, token, user]
+    [bootstrapError, dismissSessionWarning, getAuthToken, isLoaded, login, logout, refreshSession, retryBootstrap, sessionRefreshing, sessionWarningMinutes, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -760,12 +805,14 @@ function ClerkUnavailableAuthProvider({ children }) {
       isReady: true,
       authProvider: AUTH_PROVIDER,
       authConfigError: configError,
+      bootstrapError: "",
       sessionWarningMinutes: 0,
       dismissSessionWarning: () => {},
       login: () => {},
       logout,
       getAuthToken: async () => "",
       refreshSession,
+      retryBootstrap: () => {},
       setUser: () => {}
     }),
     [configError, logout, refreshSession]

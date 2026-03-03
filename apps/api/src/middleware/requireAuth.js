@@ -95,7 +95,16 @@ export async function requireIdentity(req, res, next) {
         req.authSource = bearerToken ? "bearer" : "cookie";
         return next();
       }
-    } catch {
+    } catch (clerkError) {
+      // Log the error so Clerk identity failures are diagnosable instead
+      // of silently falling through to the legacy path / hard-fail.
+      console.error("[auth] Clerk identity resolution failed", {
+        path: String(req?.originalUrl || req?.url || ""),
+        origin: String(req?.headers?.origin || ""),
+        errorMessage: String(clerkError?.message || ""),
+        errorCode: String(clerkError?.code || ""),
+        hasToken: Boolean(token)
+      });
       // Fall through to legacy/hard-fail below.
     }
   }
@@ -174,6 +183,14 @@ export async function requireAuth(req, res, next) {
     }
 
     if (!appUser) {
+      console.warn("[auth] AUTH_MEMBERSHIP_REQUIRED — no app user found", {
+        path: String(req?.originalUrl || req?.url || ""),
+        provider: String(identity?.provider || ""),
+        clerkUserId: String(identity?.clerkUserId || "").slice(0, 12) + "...",
+        email: String(identity?.email || ""),
+        tenantId: tenantId || "(global)",
+        hasSuperUser: Boolean(superUser)
+      });
       return res.status(401).json({
         error: { code: "AUTH_MEMBERSHIP_REQUIRED", message: "No application membership found for this identity." }
       });

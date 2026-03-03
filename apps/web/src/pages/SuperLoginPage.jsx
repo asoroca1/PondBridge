@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { SignIn } from "@clerk/clerk-react";
+import { SignIn, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
 import { noteTabLoginIntent, useAuth } from "../context/AuthContext.jsx";
 import { clerkConfigError, clerkUiEnabled } from "../lib/authMode.js";
@@ -22,8 +22,10 @@ function superDestinationFromUser(user) {
 }
 
 function ClerkSuperLoginPage() {
-  const { token, user, isReady, logout } = useAuth();
+  const { token, user, isReady, logout, bootstrapError, retryBootstrap } = useAuth();
+  const { isSignedIn, isLoaded: clerkIsLoaded } = useClerkAuth();
   const [signingOutUnauthorized, setSigningOutUnauthorized] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const autoSignOutRef = useRef("");
   useEffect(() => {
     try {
@@ -42,6 +44,17 @@ function ClerkSuperLoginPage() {
     setSigningOutUnauthorized(false);
     noteTabLoginIntent();
   }, [logout]);
+
+  const handleRetryBootstrap = useCallback(() => {
+    setRetrying(true);
+    retryBootstrap();
+  }, [retryBootstrap]);
+
+  // Clear the retrying state when isReady transitions back to true
+  // (bootstrap attempt finished).
+  useEffect(() => {
+    if (isReady) setRetrying(false);
+  }, [isReady]);
 
   useEffect(() => {
     if (!token || !isReady || !user || hasSuperConsoleRole(user)) {
@@ -86,6 +99,48 @@ function ClerkSuperLoginPage() {
             <Button onClick={handleSwitchAccount} disabled>
               Switching account...
             </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // -----------------------------------------------------------------
+  // BOOTSTRAP-FAILURE GATE: Clerk reports the user as signed-in but
+  // the API bootstrap failed (401/403).  Rendering the <SignIn>
+  // component in this state would cause an infinite redirect loop
+  // because Clerk detects the active session and immediately
+  // force-redirects to /super/tenants, which redirects back here.
+  // Instead, show a diagnostic error with retry / sign-out options.
+  // -----------------------------------------------------------------
+  if (isReady && !token && clerkIsLoaded && isSignedIn && bootstrapError) {
+    return (
+      <section className="super-login-shell">
+        <div className="super-login-backdrop" />
+        <div className="super-login-content">
+          <div className="super-login-panel">
+            <div className="super-login-panel-header">
+              <p className="super-login-kicker">PondBridge</p>
+              <h1>Super Admin Console</h1>
+              <p className="error-text">Could not verify your admin access.</p>
+              <p className="super-login-subtitle">
+                You are signed in through Clerk but the server could not establish
+                your super admin session. This usually means the API server is
+                unreachable, your account is not provisioned as a super admin, or
+                there is an environment configuration mismatch.
+              </p>
+              <p className="super-login-subtitle" style={{ fontSize: "0.85em", opacity: 0.75 }}>
+                <code>{bootstrapError}</code>
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+              <Button onClick={handleRetryBootstrap} disabled={retrying || !isReady}>
+                {retrying ? "Retrying..." : "Retry"}
+              </Button>
+              <Button variant="ghost" onClick={handleSwitchAccount}>
+                Sign out &amp; switch account
+              </Button>
+            </div>
           </div>
         </div>
       </section>
