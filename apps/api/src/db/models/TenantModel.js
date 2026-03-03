@@ -39,6 +39,30 @@ const COLUMNS = {
 
 const base = createModel("tenants", COLUMNS);
 const RESERVED_SUBDOMAINS = new Set(["www", "app", "api", "super"]);
+const NODE_ENV = String(process.env.NODE_ENV || "").trim().toLowerCase();
+const ALLOW_SYSTEM_TENANT_DELETE = ["1", "true", "yes", "on"].includes(
+  String(process.env.PONDBRIDGE_ALLOW_TENANT_SYSTEM_DELETE || "")
+    .trim()
+    .toLowerCase()
+);
+
+function canBypassTenantDeleteGuard() {
+  return NODE_ENV === "test" || ALLOW_SYSTEM_TENANT_DELETE;
+}
+
+function assertSuperTenantDeleteIntent(meta = {}) {
+  if (canBypassTenantDeleteGuard()) return;
+
+  const actorRole = String(meta.actorRole || "").trim().toLowerCase();
+  const actorUserId = String(meta.actorUserId || "").trim();
+  const confirmationMode = String(meta.confirmationMode || "").trim().toLowerCase();
+
+  if (actorRole !== "super_admin" || !actorUserId || confirmationMode !== "manual_super_console") {
+    throw new Error(
+      "Refusing tenant deletion. This operation requires an explicit super admin actor and manual_super_console confirmation mode."
+    );
+  }
+}
 
 function sanitizeDomain(value = "") {
   return String(value || "")
@@ -71,6 +95,37 @@ function inferSlugFromDomain(domain = "") {
 
 export const TenantModel = {
   ...base,
+
+  async delete(id, meta = {}) {
+    assertSuperTenantDeleteIntent(meta);
+    return base.delete(id);
+  },
+
+  async deleteMany(tenantIdOrFilter = {}, filter = {}) {
+    if (!canBypassTenantDeleteGuard()) {
+      throw new Error(
+        "Refusing bulk tenant deletion. Use the super-admin hard-delete flow with explicit confirmation."
+      );
+    }
+    return base.deleteMany(tenantIdOrFilter, filter);
+  },
+
+  async deleteBySuperAdmin(id, { actorUserId = "", confirmationMode = "manual_super_console" } = {}) {
+    return this.delete(id, {
+      actorRole: "super_admin",
+      actorUserId,
+      confirmationMode
+    });
+  },
+
+  async unsafeDeleteForSystem(id) {
+    if (!canBypassTenantDeleteGuard()) {
+      throw new Error(
+        "System tenant deletion is blocked. Set PONDBRIDGE_ALLOW_TENANT_SYSTEM_DELETE=1 to enable."
+      );
+    }
+    return base.delete(id);
+  },
 
   async findBySlug(slug) {
     const { data, error } = await getSupabaseAdmin()

@@ -461,6 +461,15 @@ function requireSuperMutation(req, res, next) {
       }
     });
   }
+  const tenantScopedSuper = String(req.user?.tenantId || "").trim();
+  if (tenantScopedSuper) {
+    return res.status(403).json({
+      error: {
+        code: "ROLE_FORBIDDEN",
+        message: "Super admin mutation requires a global super admin session."
+      }
+    });
+  }
   return next();
 }
 
@@ -1151,7 +1160,10 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
     globalUserCleanup
   });
 
-  await TenantModel.delete(tenant._id);
+  await TenantModel.deleteBySuperAdmin(tenant._id, {
+    actorUserId: req.user.id,
+    confirmationMode: confirmationMode
+  });
 
   return res.json({
     ok: true,

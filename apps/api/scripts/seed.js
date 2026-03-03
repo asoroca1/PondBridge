@@ -107,7 +107,7 @@ async function run() {
       ProfileModel.deleteMany(demoTid, {}),
       UserModel.deleteMany(demoTid, {})
     ]);
-    await TenantModel.delete(demoTid);
+    await TenantModel.unsafeDeleteForSystem(demoTid);
   } else if (legacyDemoTenant?._id && !allowLegacyDemoDelete) {
     console.log(
       "[seed] Skipping legacy demo tenant deletion (set PONDBRIDGE_SEED_DELETE_LEGACY_DEMO=1 to enable)."

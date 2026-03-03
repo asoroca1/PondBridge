@@ -117,4 +117,34 @@ describe("Super auth boundary", () => {
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty("generatedAt");
   });
+
+  test("blocks tenant-scoped super admin from super mutation endpoints", async () => {
+    const tenant = await createTenant("super-auth-boundary-3");
+    const passwordHash = await hashPassword("ScopedSuper123!");
+    const scopedSuper = await User.create({
+      tenantId: tenant._id,
+      email: "scoped-super@example.com",
+      passwordHash,
+      roles: ["super_admin"],
+      status: "active"
+    });
+
+    const token = signToken({
+      _id: scopedSuper._id,
+      tenantId: tenant._id,
+      email: scopedSuper.email,
+      roles: ["super_admin"]
+    });
+
+    const response = await request(app)
+      .post("/api/super/tenants")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Blocked Mutation Camp",
+        directorEmail: "director@example.com"
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("ROLE_FORBIDDEN");
+  });
 });
