@@ -16,10 +16,11 @@ import {
   X,
 } from "lucide-react";
 
+import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { requestJson } from "../../lib/http.js";
 import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
-import { API_BASE } from "../lib/api";
-import { getToken, avatarUrl } from "../lib/helpers.js";
+import { avatarUrl } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./advanced-search.css";
@@ -198,7 +199,8 @@ function SectionHead({
 }
 
 export default function AdvancedSearch() {
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
+  const { token, getAuthToken, isReady: authReady } = useAuth();
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
 
   const [params, setParams] = useSearchParams();
@@ -323,11 +325,21 @@ export default function AdvancedSearch() {
 
   useEffect(() => {
     let alive = true;
+    const controller = new AbortController();
+
+    if (!authReady || !slug) {
+      setState((curr) => ({ ...curr, loading: false }));
+      return () => {
+        alive = false;
+        controller.abort();
+      };
+    }
 
     if (!hasActiveFilters) {
       setState({ loading: false, items: [], total: 0, error: null });
       return () => {
         alive = false;
+        controller.abort();
       };
     }
 
@@ -339,23 +351,17 @@ export default function AdvancedSearch() {
           if (value !== "" && value !== null && value !== undefined) qs.set(key, String(value));
         });
 
-        const url = `${API_BASE}/search/users?${qs.toString()}`;
-        const token = String(getToken() || "").trim();
-
-        let res = await fetch(url, {
-          credentials: "include",
+        const data = await requestJson(`/api/t/${slug}/search/users?${qs.toString()}`, {
+          token: token || "",
+          getToken: async ({ forceRefresh = false } = {}) => {
+            if (typeof getAuthToken === "function") {
+              const next = await getAuthToken({ forceRefresh });
+              if (next) return next;
+            }
+            return token || "";
+          },
+          signal: controller.signal
         });
-
-        if (res.status === 401 && token) {
-          res = await fetch(url, {
-            credentials: "include",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-        }
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const data = await res.json();
         if (!alive) return;
 
         setState({
@@ -364,7 +370,8 @@ export default function AdvancedSearch() {
           total: Number.isFinite(data.total) ? data.total : data.items?.length || 0,
           error: null,
         });
-      } catch {
+      } catch (error) {
+        if (error?.name === "AbortError") return;
         if (!alive) return;
         setState({ loading: false, items: [], total: 0, error: "Failed to load results." });
       }
@@ -372,8 +379,9 @@ export default function AdvancedSearch() {
 
     return () => {
       alive = false;
+      controller.abort();
     };
-  }, [debounced, hasActiveFilters]);
+  }, [authReady, debounced, getAuthToken, hasActiveFilters, slug, token]);
 
   const onField = (key) => (event) => {
     const value = event?.target?.value ?? event;

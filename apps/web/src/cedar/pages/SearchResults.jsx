@@ -1,8 +1,10 @@
 // pages/SearchResults.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
-import { API_BASE } from "../lib/api";
-import { getToken, avatarUrl } from "../lib/helpers.js";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { requestJson } from "../../lib/http.js";
+import { avatarUrl } from "../lib/helpers.js";
 
 /* ------------ helpers (keep OUTSIDE the component) ------------ */
 function pickCurrentJob(p = {}) {
@@ -76,6 +78,8 @@ function ResultAvatar({ photo = "", first = "", last = "", name = "" }) {
 }
 
 export default function SearchResults() {
+  const { token, getAuthToken, isReady: authReady } = useAuth();
+  const { slug } = useTenant();
   const [params] = useSearchParams();
   const q = (params.get("q") || "").trim();
   const navigate = useNavigate();
@@ -89,19 +93,28 @@ export default function SearchResults() {
 
   useEffect(() => {
     let alive = true;
-    if (!q) {
+    const controller = new AbortController();
+    if (!authReady || !slug || !q) {
       setState({ loading: false, items: [], total: 0, error: null });
-      return;
+      return () => {
+        alive = false;
+        controller.abort();
+      };
     }
     (async () => {
       try {
         setState((s) => ({ ...s, loading: true, error: null }));
-        const res = await fetch(
-          `${API_BASE}/search/users?q=${encodeURIComponent(q)}&limit=48`,
-          { headers: { Authorization: `Bearer ${getToken()}` } }
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await requestJson(`/api/t/${slug}/search/users?q=${encodeURIComponent(q)}&limit=48`, {
+          token: token || "",
+          getToken: async ({ forceRefresh = false } = {}) => {
+            if (typeof getAuthToken === "function") {
+              const next = await getAuthToken({ forceRefresh });
+              if (next) return next;
+            }
+            return token || "";
+          },
+          signal: controller.signal
+        });
         if (!alive) return;
 
         const items = Array.isArray(data.items)
@@ -116,7 +129,8 @@ export default function SearchResults() {
           total: data.total ?? items.length,
           error: null,
         });
-      } catch {
+      } catch (error) {
+        if (error?.name === "AbortError") return;
         if (!alive) return;
         setState({
           loading: false,
@@ -126,8 +140,11 @@ export default function SearchResults() {
         });
       }
     })();
-    return () => { alive = false; };
-  }, [q]);
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [authReady, getAuthToken, q, slug, token]);
 
   const header = useMemo(() => (!q ? "Search" : `Results for “${q}”`), [q]);
   const goMessage = (id) => navigate(`/chat/${id}`);
