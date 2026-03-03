@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -93,6 +93,12 @@ export default function DirectorCreateAccountClerkPage() {
             <p className="product-claim-body director-create-subtitle">
               Create your director login to start network setup.
             </p>
+            {!showAccountSwitchPrompt ? (
+              <p className="director-create-login-line director-create-login-line--clerk">
+                Already created your director account?{" "}
+                <Link to={signInPath}>Log in and continue onboarding</Link>
+              </p>
+            ) : null}
           </div>
 
           {showAccountSwitchPrompt ? (

@@ -1387,6 +1387,11 @@
   text-decoration: underline;
 }
 
+.director-create-login-line--clerk {
+  margin-top: 10px;
+  text-align: center;
+}
+
 .director-create-back-btn {
   min-height: 46px;
   padding: 0 16px;
