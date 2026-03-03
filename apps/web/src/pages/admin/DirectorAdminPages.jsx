@@ -86,6 +86,17 @@ function parseIdsParam(value = "") {
 }
 
 const INVITE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MEMBER_EXPORT_STORAGE_PREFIX = "pb_admin_members_export_fields";
+const FALLBACK_MEMBER_EXPORT_FIELDS = [
+  { key: "firstName", label: "First Name", description: "Profile first name." },
+  { key: "lastName", label: "Last Name", description: "Profile last name." },
+  { key: "primaryEmail", label: "Primary Email", description: "First email on the profile." },
+  { key: "primaryPhone", label: "Primary Phone", description: "First phone on the profile." },
+  { key: "cityState", label: "Location", description: "City and state/country value." },
+  { key: "roleAtCamp", label: "Role At Camp", description: "Member's role at camp." },
+  { key: "industry", label: "Industry", description: "Industry from profile." }
+];
+const FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS = FALLBACK_MEMBER_EXPORT_FIELDS.map((field) => field.key);
 
 function createInviteRow() {
   return {
@@ -106,6 +117,50 @@ function normalizeInviteEmail(value = "") {
 
 function isValidInviteEmail(value = "") {
   return INVITE_EMAIL_REGEX.test(normalizeInviteEmail(value));
+}
+
+function memberExportStorageKey(slug = "") {
+  return `${MEMBER_EXPORT_STORAGE_PREFIX}:${String(slug || "").trim().toLowerCase()}`;
+}
+
+function readSavedMemberExportFields(slug = "") {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(memberExportStorageKey(slug));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedMemberExportFields(slug = "", keys = []) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(memberExportStorageKey(slug), JSON.stringify(keys));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function normalizeExportFieldSelection(keys = [], allowedKeys = [], fallback = []) {
+  const source = Array.isArray(keys) ? keys : [];
+  const allowSet = new Set(Array.isArray(allowedKeys) ? allowedKeys : []);
+  const normalized = [];
+  for (const key of source) {
+    const next = String(key || "").trim();
+    if (!next || !allowSet.has(next) || normalized.includes(next)) continue;
+    normalized.push(next);
+  }
+  if (normalized.length > 0) return normalized;
+  const fallbackNormalized = [];
+  for (const key of Array.isArray(fallback) ? fallback : []) {
+    const next = String(key || "").trim();
+    if (!next || !allowSet.has(next) || fallbackNormalized.includes(next)) continue;
+    fallbackNormalized.push(next);
+  }
+  return fallbackNormalized;
 }
 
 function useAdminApi() {
@@ -728,12 +783,67 @@ export function DirectorAdminMembersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingMemberId, setDeletingMemberId] = useState("");
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportFieldsCatalog, setExportFieldsCatalog] = useState(FALLBACK_MEMBER_EXPORT_FIELDS);
+  const [exportDefaultFields, setExportDefaultFields] = useState(FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS);
+  const [exportSelectedFields, setExportSelectedFields] = useState(FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS);
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [hasSavedExportPreset, setHasSavedExportPreset] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
   useEffect(() => {
     requestRef.current = request;
   }, [request]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadExportFieldCatalog = async () => {
+      try {
+        const response = await requestRef.current("/export/csv/fields");
+        if (cancelled) return;
+        const fields = Array.isArray(response?.fields) && response.fields.length
+          ? response.fields
+          : FALLBACK_MEMBER_EXPORT_FIELDS;
+        const allowedKeys = fields.map((field) => String(field?.key || "").trim()).filter(Boolean);
+        const defaults = normalizeExportFieldSelection(
+          response?.defaultFields || [],
+          allowedKeys,
+          FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS
+        );
+        const saved = normalizeExportFieldSelection(
+          readSavedMemberExportFields(slug),
+          allowedKeys,
+          defaults
+        );
+        setExportFieldsCatalog(fields);
+        setExportDefaultFields(defaults);
+        setExportSelectedFields(saved.length ? saved : defaults);
+        setHasSavedExportPreset(readSavedMemberExportFields(slug).length > 0);
+      } catch {
+        if (cancelled) return;
+        const allowedKeys = FALLBACK_MEMBER_EXPORT_FIELDS.map((field) => field.key);
+        const defaults = normalizeExportFieldSelection(
+          FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS,
+          allowedKeys,
+          FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS
+        );
+        const saved = normalizeExportFieldSelection(
+          readSavedMemberExportFields(slug),
+          allowedKeys,
+          defaults
+        );
+        setExportFieldsCatalog(FALLBACK_MEMBER_EXPORT_FIELDS);
+        setExportDefaultFields(defaults);
+        setExportSelectedFields(saved.length ? saved : defaults);
+        setHasSavedExportPreset(readSavedMemberExportFields(slug).length > 0);
+      }
+    };
+    loadExportFieldCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
   const totalPages = Math.max(1, Math.ceil(Number(payload?.total || 0) / Number(payload?.pageSize || 25)));
 
@@ -790,18 +900,36 @@ export function DirectorAdminMembersPage() {
     );
   }
 
-  async function downloadCsv() {
+  async function downloadCsv(fieldOrder = exportSelectedFields, { closeAfter = false } = {}) {
+    const allowedKeys = exportFieldsCatalog.map((field) => String(field?.key || "").trim()).filter(Boolean);
+    const normalizedFields = normalizeExportFieldSelection(fieldOrder, allowedKeys, exportDefaultFields);
+    if (normalizedFields.length === 0) {
+      setError("Select at least one field to export.");
+      return;
+    }
+
+    setExportingCsv(true);
     setError("");
     try {
-      const blob = await download("/export/csv");
+      const params = new URLSearchParams();
+      params.set("fields", normalizedFields.join(","));
+      const blob = await download(`/export/csv?${params.toString()}`);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = `${slug}-members.csv`;
       anchor.click();
       URL.revokeObjectURL(url);
+      writeSavedMemberExportFields(slug, normalizedFields);
+      setHasSavedExportPreset(true);
+      setStatus("CSV exported.");
+      if (closeAfter) {
+        setExportModalOpen(false);
+      }
     } catch (requestError) {
       setError(requestError.message || "Failed to export CSV.");
+    } finally {
+      setExportingCsv(false);
     }
   }
 
@@ -892,7 +1020,54 @@ export function DirectorAdminMembersPage() {
   }
 
   const roleOptions = payload?.filters?.roleOptions || [];
-  const yearOptions = payload?.filters?.yearOptions || [];
+  const exportFieldLabelMap = useMemo(
+    () => new Map(exportFieldsCatalog.map((field) => [field.key, field.label || field.key])),
+    [exportFieldsCatalog]
+  );
+  const exportFieldDescriptionMap = useMemo(
+    () => new Map(exportFieldsCatalog.map((field) => [field.key, field.description || ""])),
+    [exportFieldsCatalog]
+  );
+
+  function toggleExportField(fieldKey) {
+    const key = String(fieldKey || "").trim();
+    if (!key) return;
+    setExportSelectedFields((prev) => {
+      if (prev.includes(key)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((item) => item !== key);
+      }
+      return [...prev, key];
+    });
+  }
+
+  function moveExportField(fieldKey, direction = 0) {
+    const delta = Number(direction || 0);
+    if (!delta) return;
+    setExportSelectedFields((prev) => {
+      const index = prev.indexOf(fieldKey);
+      if (index < 0) return prev;
+      const nextIndex = index + delta;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(index, 1);
+      next.splice(nextIndex, 0, item);
+      return next;
+    });
+  }
+
+  function applySavedExportPreset() {
+    const allowedKeys = exportFieldsCatalog.map((field) => String(field?.key || "").trim()).filter(Boolean);
+    const saved = normalizeExportFieldSelection(
+      readSavedMemberExportFields(slug),
+      allowedKeys,
+      exportDefaultFields
+    );
+    if (saved.length > 0) {
+      setExportSelectedFields(saved);
+      setHasSavedExportPreset(true);
+    }
+  }
 
   function resetFilters() {
     setQuery("");
@@ -918,7 +1093,15 @@ export function DirectorAdminMembersPage() {
               <Link className="link-button" to={`/t/${slug}/admin/invites`}>
                 Invite Members
               </Link>
-              <button type="button" className="link-button secondary" onClick={downloadCsv}>
+              <button
+                type="button"
+                className="link-button secondary"
+                onClick={() => {
+                  setStatus("");
+                  setError("");
+                  setExportModalOpen(true);
+                }}
+              >
                 Export CSV
               </button>
             </>
@@ -932,7 +1115,7 @@ export function DirectorAdminMembersPage() {
               setPage(1);
               setQuery(event.target.value);
             }}
-            placeholder="Search by name, email, or year..."
+            placeholder="Search by name or email..."
           />
           <Select
             value={filters.role}
@@ -943,20 +1126,6 @@ export function DirectorAdminMembersPage() {
           >
             <option value="all">All Roles</option>
             {roleOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={filters.year}
-            onChange={(event) => {
-              setPage(1);
-              setFilters((prev) => ({ ...prev, year: event.target.value }));
-            }}
-          >
-            <option value="all">All Years</option>
-            {yearOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -1042,7 +1211,6 @@ export function DirectorAdminMembersPage() {
                 </th>
                 <th>Name</th>
                 <th>Role</th>
-                <th>Years at Camp</th>
                 <th>Location</th>
                 <th>Completion</th>
                 <th>Join Date</th>
@@ -1053,13 +1221,13 @@ export function DirectorAdminMembersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="muted">
+                  <td colSpan={8} className="muted">
                     Loading members...
                   </td>
                 </tr>
               ) : !payload?.items?.length ? (
                 <tr>
-                  <td colSpan={9} className="muted">
+                  <td colSpan={8} className="muted">
                     No members found.
                   </td>
                 </tr>
@@ -1080,7 +1248,6 @@ export function DirectorAdminMembersPage() {
                       </div>
                     </td>
                     <td>{item.role || "Member"}</td>
-                    <td>{item.yearsAtCamp?.join(", ") || "-"}</td>
                     <td>{item.location || "-"}</td>
                     <td>
                       <div className="director-admin-progress">
@@ -1158,6 +1325,145 @@ export function DirectorAdminMembersPage() {
             </Button>
           </div>
         </div>
+
+        {exportModalOpen ? (
+          <div
+            className="director-admin-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Export CSV configuration"
+            onClick={() => {
+              if (!exportingCsv) setExportModalOpen(false);
+            }}
+          >
+            <div className="director-admin-modal director-admin-export-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="director-admin-export-modal-head">
+                <div>
+                  <h2>Export Members CSV</h2>
+                  <p>Choose fields, order them, and export. Your last export setup is saved automatically.</p>
+                </div>
+                <button
+                  type="button"
+                  className="director-admin-row-menu-trigger"
+                  aria-label="Close export dialog"
+                  onClick={() => {
+                    if (!exportingCsv) setExportModalOpen(false);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="director-admin-export-toolbar">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setExportSelectedFields(exportDefaultFields)}
+                >
+                  Reset to default
+                </Button>
+                {hasSavedExportPreset ? (
+                  <Button type="button" variant="secondary" onClick={applySavedExportPreset}>
+                    Use last export setup
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    const keys = exportFieldsCatalog.map((field) => field.key);
+                    setExportSelectedFields(keys);
+                  }}
+                >
+                  Select all fields
+                </Button>
+              </div>
+
+              <div className="director-admin-export-grid">
+                <section className="director-admin-export-panel">
+                  <h3>Included Columns ({exportSelectedFields.length})</h3>
+                  <div className="director-admin-export-list">
+                    {exportSelectedFields.map((fieldKey, index) => (
+                      <div key={fieldKey} className="director-admin-export-row">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => toggleExportField(fieldKey)}
+                            disabled={exportSelectedFields.length <= 1}
+                          />
+                          <span>{exportFieldLabelMap.get(fieldKey) || fieldKey}</span>
+                        </label>
+                        <div className="director-admin-export-row-actions">
+                          <button
+                            type="button"
+                            className="director-admin-inline-link"
+                            onClick={() => moveExportField(fieldKey, -1)}
+                            disabled={index === 0}
+                          >
+                            Up
+                          </button>
+                          <button
+                            type="button"
+                            className="director-admin-inline-link"
+                            onClick={() => moveExportField(fieldKey, 1)}
+                            disabled={index === exportSelectedFields.length - 1}
+                          >
+                            Down
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="director-admin-export-panel">
+                  <h3>Available Profile Fields</h3>
+                  <div className="director-admin-export-list">
+                    {exportFieldsCatalog.map((field) => {
+                      const key = String(field?.key || "");
+                      const selectedField = exportSelectedFields.includes(key);
+                      return (
+                        <div key={key} className="director-admin-export-row">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={selectedField}
+                              onChange={() => toggleExportField(key)}
+                              disabled={selectedField && exportSelectedFields.length <= 1}
+                            />
+                            <span>{field.label || key}</span>
+                          </label>
+                          <small>{exportFieldDescriptionMap.get(key) || ""}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+
+              <div className="director-admin-modal-actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (!exportingCsv) setExportModalOpen(false);
+                  }}
+                  disabled={exportingCsv}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => downloadCsv(exportSelectedFields, { closeAfter: true })}
+                  disabled={exportingCsv || exportSelectedFields.length === 0}
+                >
+                  {exportingCsv ? "Exporting..." : "Export CSV"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       <SlideOverPanel

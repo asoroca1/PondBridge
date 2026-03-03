@@ -347,9 +347,207 @@ const MODULE_CATALOG = [
     description: "External camp merch storefront."
   }
 ];
+const MEMBER_EXPORT_FIELDS = [
+  {
+    key: "profileId",
+    label: "Profile ID",
+    description: "Internal profile identifier.",
+    getValue: (profile) => toObjectIdString(profile?._id)
+  },
+  {
+    key: "firstName",
+    label: "First Name",
+    description: "Profile first name.",
+    getValue: (profile) => String(profile?.firstName || "")
+  },
+  {
+    key: "lastName",
+    label: "Last Name",
+    description: "Profile last name.",
+    getValue: (profile) => String(profile?.lastName || "")
+  },
+  {
+    key: "fullName",
+    label: "Full Name",
+    description: "Combined first and last name.",
+    getValue: (profile) => `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim()
+  },
+  {
+    key: "status",
+    label: "Status",
+    description: "Member access status.",
+    getValue: (profile) => String(profile?.status || "")
+  },
+  {
+    key: "primaryEmail",
+    label: "Primary Email",
+    description: "First email on the profile.",
+    getValue: (profile) => String((profile?.emails || []).find(Boolean) || "")
+  },
+  {
+    key: "allEmails",
+    label: "All Emails",
+    description: "All profile emails.",
+    getValue: (profile) => listToCsvCell(profile?.emails || [])
+  },
+  {
+    key: "primaryPhone",
+    label: "Primary Phone",
+    description: "First phone on the profile.",
+    getValue: (profile) => String((profile?.phones || []).find(Boolean) || "")
+  },
+  {
+    key: "allPhones",
+    label: "All Phones",
+    description: "All profile phones.",
+    getValue: (profile) => listToCsvCell(profile?.phones || [])
+  },
+  {
+    key: "cityState",
+    label: "Location",
+    description: "City and state/country value.",
+    getValue: (profile) => String(profile?.cityState || "")
+  },
+  {
+    key: "roleAtCamp",
+    label: "Role At Camp",
+    description: "Member's role at camp.",
+    getValue: (profile) => String(profile?.roleAtCamp || "")
+  },
+  {
+    key: "industry",
+    label: "Industry",
+    description: "Industry from profile.",
+    getValue: (profile) => String(profile?.industry || "")
+  },
+  {
+    key: "highSchool",
+    label: "High School",
+    description: "High school field from profile.",
+    getValue: (profile) => String(profile?.highSchool || "")
+  },
+  {
+    key: "colleges",
+    label: "Colleges",
+    description: "College history from profile.",
+    getValue: (profile) => listToCsvCell((profile?.colleges || []).map(formatCollegeEntry))
+  },
+  {
+    key: "collegeYears",
+    label: "College Years",
+    description: "College graduation/class years.",
+    getValue: (profile) => listToCsvCell(profile?.collegeYears || [])
+  },
+  {
+    key: "currentCompany",
+    label: "Current Company",
+    description: "Current company from first job entry.",
+    getValue: (profile) => String(resolveJobEntry(profile?.currentJobs || [])?.company || "")
+  },
+  {
+    key: "currentTitle",
+    label: "Current Title",
+    description: "Current title from first job entry.",
+    getValue: (profile) => String(resolveJobEntry(profile?.currentJobs || [])?.title || "")
+  },
+  {
+    key: "currentJobs",
+    label: "Current Jobs",
+    description: "All current job entries.",
+    getValue: (profile) => listToCsvCell((profile?.currentJobs || []).map(formatJobEntry))
+  },
+  {
+    key: "bio",
+    label: "Bio",
+    description: "Profile bio text.",
+    getValue: (profile) => String(profile?.bio || "")
+  },
+  {
+    key: "joinDate",
+    label: "Join Date",
+    description: "Profile creation date (ISO).",
+    getValue: (profile) => toIso(profile?.createdAt)
+  },
+  {
+    key: "updatedAt",
+    label: "Last Updated",
+    description: "Profile last update timestamp (ISO).",
+    getValue: (profile) => toIso(profile?.updatedAt)
+  }
+];
+const MEMBER_EXPORT_DEFAULT_FIELDS = [
+  "firstName",
+  "lastName",
+  "primaryEmail",
+  "primaryPhone",
+  "cityState",
+  "roleAtCamp",
+  "industry"
+];
+const MEMBER_EXPORT_FIELD_MAP = new Map(MEMBER_EXPORT_FIELDS.map((field) => [field.key, field]));
 
 function escapeRegex(value = "") {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function sanitizeCsvCell(value = "") {
+  return sanitizeText(String(value || "").trim());
+}
+
+function listToCsvCell(values = []) {
+  return (Array.isArray(values) ? values : [])
+    .map((item) => sanitizeCsvCell(item))
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function formatCollegeEntry(entry) {
+  if (!entry) return "";
+  if (typeof entry === "string") return sanitizeCsvCell(entry);
+  const name = sanitizeCsvCell(entry.name || entry.college || entry.school || "");
+  const gradYear = sanitizeCsvCell(entry.gradYear || entry.year || "");
+  if (name && gradYear) return `${name} (${gradYear})`;
+  return name || gradYear;
+}
+
+function resolveJobEntry(currentJobs = []) {
+  if (!Array.isArray(currentJobs) || currentJobs.length === 0) return null;
+  const first = currentJobs[0];
+  if (!first) return null;
+  if (typeof first === "string") {
+    return {
+      title: sanitizeCsvCell(first),
+      company: ""
+    };
+  }
+  return {
+    title: sanitizeCsvCell(first.title || first.role || ""),
+    company: sanitizeCsvCell(first.company || first.org || "")
+  };
+}
+
+function formatJobEntry(entry) {
+  if (!entry) return "";
+  if (typeof entry === "string") return sanitizeCsvCell(entry);
+  const title = sanitizeCsvCell(entry.title || entry.role || "");
+  const company = sanitizeCsvCell(entry.company || entry.org || "");
+  if (title && company) return `${title} @ ${company}`;
+  return title || company;
+}
+
+function normalizeMemberExportFieldOrder(input = "") {
+  const requested = String(input || "")
+    .split(",")
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const unique = [];
+  for (const key of requested) {
+    if (!MEMBER_EXPORT_FIELD_MAP.has(key)) continue;
+    if (unique.includes(key)) continue;
+    unique.push(key);
+  }
+  if (unique.length > 0) return unique;
+  return MEMBER_EXPORT_DEFAULT_FIELDS.filter((key) => MEMBER_EXPORT_FIELD_MAP.has(key));
 }
 
 function toObjectIdString(value) {
@@ -3206,22 +3404,41 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
   }
 });
 
+router.get("/export/csv/fields", async (_req, res) => {
+  return res.json({
+    defaultFields: MEMBER_EXPORT_DEFAULT_FIELDS,
+    fields: MEMBER_EXPORT_FIELDS.map((field) => ({
+      key: field.key,
+      label: field.label,
+      description: field.description
+    }))
+  });
+});
+
 router.get("/export/csv", exportLimiter, async (req, res) => {
   const profiles = await ProfileModel.find(req.tenant._id, {}, {
     sort: { lastName: 1, firstName: 1 }
   });
+  const fieldOrder = normalizeMemberExportFieldOrder(req.query?.fields || "");
+  const columns = fieldOrder
+    .map((key) => MEMBER_EXPORT_FIELD_MAP.get(key))
+    .filter(Boolean);
 
-  const records = profiles.map((profile) => ({
-    firstName: profile.firstName,
-    lastName: profile.lastName,
-    email: profile.emails?.[0] || "",
-    phone: profile.phones?.[0] || "",
-    cityState: profile.cityState || "",
-    roleAtCamp: profile.roleAtCamp || "",
-    industry: profile.industry || ""
-  }));
+  const records = profiles.map((profile) => {
+    const row = {};
+    for (const column of columns) {
+      row[column.key] = sanitizeCsvCell(column.getValue(profile));
+    }
+    return row;
+  });
 
-  const csv = stringify(records, { header: true });
+  const csv = stringify(records, {
+    header: true,
+    columns: columns.map((column) => ({
+      key: column.key,
+      header: column.label
+    }))
+  });
 
   res.setHeader("Content-Type", "text/csv");
   res.setHeader(

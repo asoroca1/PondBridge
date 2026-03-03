@@ -3825,7 +3825,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-filter-row{
   margin-top: 14px;
   display: grid;
-  grid-template-columns: minmax(230px, 1.5fr) repeat(5, minmax(140px, 1fr));
+  grid-template-columns: minmax(230px, 1.5fr) repeat(5, minmax(126px, 1fr));
   gap: 8px;
 }
 
@@ -4006,6 +4006,92 @@ img[draggable="false"] { -webkit-user-drag: none; }
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.pb-cedar-page .director-admin-export-modal{
+  width: min(1040px, 100%);
+  padding: 14px;
+}
+
+.pb-cedar-page .director-admin-export-modal-head{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pb-cedar-page .director-admin-export-modal-head h2{
+  margin: 0;
+}
+
+.pb-cedar-page .director-admin-export-modal-head p{
+  margin: 4px 0 0;
+  color: #5d728c;
+  font-size: .9rem;
+}
+
+.pb-cedar-page .director-admin-export-toolbar{
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-export-grid{
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.pb-cedar-page .director-admin-export-panel{
+  border: 1px solid #dce7f4;
+  border-radius: 12px;
+  background: #f9fbff;
+  padding: 10px;
+  min-height: 280px;
+}
+
+.pb-cedar-page .director-admin-export-panel h3{
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.pb-cedar-page .director-admin-export-list{
+  display: grid;
+  gap: 7px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.pb-cedar-page .director-admin-export-row{
+  border: 1px solid #dce8f6;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.pb-cedar-page .director-admin-export-row label{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #17395f;
+  font-size: .9rem;
+  font-weight: 700;
+}
+
+.pb-cedar-page .director-admin-export-row small{
+  color: #5d738f;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.pb-cedar-page .director-admin-export-row-actions{
+  display: inline-flex;
+  gap: 10px;
 }
 
 .pb-cedar-page .director-admin-form-grid{
@@ -4619,6 +4705,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
   .pb-admin-ui-filter-bar{
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pb-cedar-page .director-admin-export-grid{
+    grid-template-columns: 1fr;
   }
 }
 
