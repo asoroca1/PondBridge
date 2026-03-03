@@ -707,7 +707,7 @@
   border: 1px solid #d4ddeb;
   border-radius: 12px;
   background: #ffffff;
-  padding: 12px 13px;
+  padding: 12px 13px 22px;
   display: grid;
   gap: 10px;
 }
@@ -717,6 +717,10 @@
   color: #17304f;
   font-size: 1rem;
   line-height: 1.3;
+}
+
+.director-review-card > h3 + * {
+  margin-top: -10px;
 }
 
 .director-review-card--wide {
