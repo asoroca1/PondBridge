@@ -2902,7 +2902,14 @@ function DirectorCreateAccountWizardPage() {
                       </div>
                       <div className="director-review-color-swatch-row">
                         <span>Main brand color</span>
-                        <code>{themeDraft.brandPrimary}</code>
+                        <div className="director-review-color-value">
+                          <i
+                            className="director-review-color-chip"
+                            style={{ backgroundColor: themeDraft.brandPrimary }}
+                            aria-hidden="true"
+                          />
+                          <code>{themeDraft.brandPrimary}</code>
+                        </div>
                       </div>
                     </div>
                   </section>
