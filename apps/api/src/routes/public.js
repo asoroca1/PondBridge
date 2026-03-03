@@ -4,6 +4,7 @@ import { TenantModel } from "../db/models/index.js";
 import { listFeaturesForPlan } from "@pondbridge/shared";
 import {
   buildTenantConfig,
+  createDefaultChecklist,
   resolveContent,
   resolveTheme
 } from "../services/onboarding.js";
@@ -13,6 +14,93 @@ import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
 
 const router = Router();
+const AUTO_BOOTSTRAP_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,39}$/;
+
+function canAutoBootstrapSlug(slug = "") {
+  const normalized = String(slug || "").trim().toLowerCase();
+  return Boolean(normalized && AUTO_BOOTSTRAP_SLUG_PATTERN.test(normalized));
+}
+
+function defaultChecklistCompletedNow() {
+  const nowIso = new Date().toISOString();
+  return createDefaultChecklist().map((item) => ({
+    ...item,
+    status: "completed",
+    completedAt: nowIso
+  }));
+}
+
+async function maybeAutoBootstrapFirstTenant(slug = "") {
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  if (!canAutoBootstrapSlug(normalizedSlug)) return null;
+
+  const totalTenants = await TenantModel.count({});
+  if (totalTenants > 0) return null;
+
+  const networkName = `${normalizedSlug} Alumni Network`;
+  const tenant = await TenantModel.create({
+    name: networkName,
+    slug: normalizedSlug,
+    status: "active",
+    planTier: "premium",
+    billingStatus: "active",
+    onboardingStatus: "live",
+    onboardingStep: "review_launch",
+    onboardingChecklist: defaultChecklistCompletedNow(),
+    onboardingProgress: {
+      currentStep: 6,
+      completedSteps: [1, 2, 3, 4, 5, 6],
+      lastSavedAt: new Date().toISOString(),
+      launchedAt: new Date().toISOString()
+    },
+    theme: {
+      brandPrimary: "#002b5c",
+      brandSecondary: "#d3dde8",
+      brandAccent: "#f2b134",
+      bg: "#f5f7fa",
+      text: "#0f172a",
+      card: "#ffffff",
+      logoUrl: "",
+      heroImageUrl: "",
+      fontToken: "cedar_default"
+    },
+    content: {
+      networkDisplayName: networkName,
+      welcomeHeadline: `Welcome to ${networkName}`,
+      welcomeBody: "Reconnect with alumni, staff, and directors from every era.",
+      aboutText: "This network was auto-bootstrapped after an empty database recovery event.",
+      contactEmail: "",
+      supportUrl: "",
+      footerLinks: []
+    },
+    settings: {
+      signupMode: "open",
+      accessCodeHash: "",
+      accessCodeHint: "",
+      allowedEmailDomains: [],
+      allowSearchByDefault: true,
+      allowDirectoryBrowse: true,
+      requireProfileCompletion: false
+    },
+    modules: {
+      directory: true,
+      search: true,
+      photoStream: true,
+      chat: true,
+      map: true,
+      familyTrees: true,
+      relatedProfiles: true,
+      newsletter: true,
+      merchShop: true
+    },
+    accessSettings: { signupMode: "open", accessCode: "" },
+    launch: {
+      launchedAt: new Date().toISOString(),
+      launchedByUserId: null
+    }
+  });
+  return tenant;
+}
 
 const publicLookupLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -66,7 +154,7 @@ async function resolveTenantForPublicRequest(req) {
 
 router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
   try {
-    const { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
+    let { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
     if (!lookupValue) {
       return res.status(400).json({
         error: {
@@ -74,6 +162,10 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
           message: "Provide query param 'slug' or 'host'."
         }
       });
+    }
+
+    if (!tenant && lookup === "slug") {
+      tenant = await maybeAutoBootstrapFirstTenant(lookupValue);
     }
 
     if (!tenant) {
