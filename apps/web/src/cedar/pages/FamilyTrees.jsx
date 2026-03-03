@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, TreePine } from "lucide-react";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveAlumniWord } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
@@ -94,6 +96,8 @@ function FamilyTreeCard({ tree, isYour = false, onOpen }) {
 
 export default function FamilyTrees() {
   const navigate = useNavigate();
+  const { tenant } = useTenant();
+  const alumniWord = resolveAlumniWord(tenant);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [state, setState] = useState({
@@ -169,7 +173,7 @@ export default function FamilyTrees() {
         <CedarPageHeader
           icon={<TreePine size={18} />}
           title="Family Trees"
-          subtitle="Explore family tree containers across alumni profiles."
+          subtitle={`Explore family tree containers across ${alumniWord} profiles.`}
         >
           <Link className="btn-cedar" to="/family-trees/new">
             Create New Family Tree

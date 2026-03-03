@@ -9,12 +9,14 @@ import { MapPin, RotateCcw, X } from "lucide-react";
 import { API_BASE } from "../lib/api";
 import { getToken, initialsOf, avatarUrl } from "../lib/helpers.js";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveAlumniWord } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import "./location-map.css";
 
 function nameOf(p) {
   const full = [p.firstName, p.lastName].filter(Boolean).join(" ").trim();
-  return full || "Alumni Member";
+  return full || "Camp Member";
 }
 
 function cityLabel(c) {
@@ -47,6 +49,9 @@ const PEOPLE_CACHE_TTL_MS = 2 * 60 * 1000;
 export default function LocationMap() {
   const { slug = "" } = useParams();
   const { getAuthToken } = useAuth();
+  const { tenant } = useTenant();
+  const alumniWord = resolveAlumniWord(tenant);
+  const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
 
   const mapRef = useRef(null);
   const mapEl = useRef(null);
@@ -87,8 +92,8 @@ export default function LocationMap() {
 
   const subtitleText =
     cities.length > 0
-      ? `${totalAlumni} alumni across ${cities.length} cities`
-      : "Explore where your alumni network lives around the world.";
+      ? `${totalAlumni} ${alumniWord} across ${cities.length} cities`
+      : `Explore where your ${alumniWord} network lives around the world.`;
 
   async function resolveToken() {
     if (typeof getAuthToken === "function") {
@@ -290,7 +295,9 @@ export default function LocationMap() {
         })
           .setLngLat([lng, lat])
           .setHTML(
-            `<div class=\"lm-tip-title\">${escapeHtml(label)}</div><div class=\"lm-tip-meta\">${count} alumni</div>`
+            `<div class=\"lm-tip-title\">${escapeHtml(label)}</div><div class=\"lm-tip-meta\">${count} ${escapeHtml(
+              alumniWord
+            )}</div>`
           )
           .addTo(map);
       });
@@ -523,7 +530,7 @@ export default function LocationMap() {
       <main className="lm-main nav2-page-shell">
         <CedarPageHeader
           icon={<MapPin size={18} />}
-          title="Alumni Location Map"
+          title={`${alumniWordTitle} Location Map`}
           subtitle={subtitleText}
         >
           <button type="button" className="lm-reset-view-btn" onClick={resetMapView}>
@@ -541,23 +548,23 @@ export default function LocationMap() {
             loadingCities ? (
               <div className="lm-prompt lm-prompt-loading">
                 <span className="lm-prompt-spinner" aria-hidden="true" />
-                <p>Loading alumni locations...</p>
+                <p>{`Loading ${alumniWord} locations...`}</p>
               </div>
             ) : cities.length === 0 ? (
               <div className="lm-prompt lm-prompt-empty">
                 <MapPin size={36} className="lm-prompt-icon" aria-hidden="true" />
                 <h3>No locations mapped yet</h3>
                 <p>
-                  Alumni locations will appear here as members add city and state to their profiles.
+                  {`${alumniWordTitle} locations will appear here as members add city and state to their profiles.`}
                 </p>
               </div>
             ) : (
               <div className="lm-prompt">
                 <MapPin size={36} className="lm-prompt-icon" aria-hidden="true" />
                 <h3>Select a city to explore</h3>
-                <p>Click any pin on the map to see alumni who live there.</p>
+                <p>{`Click any pin on the map to see ${alumniWord} who live there.`}</p>
                 <p className="lm-prompt-stat">
-                  {totalAlumni} alumni across {cities.length} cities
+                  {totalAlumni} {alumniWord} across {cities.length} cities
                 </p>
               </div>
             )
@@ -566,7 +573,9 @@ export default function LocationMap() {
               <div className="lm-results-head">
                 <div className="lm-results-title">
                   <h2>{cityLabel(selected)}</h2>
-                  <p>{people.length || Number(selected.count || 0)} alumni</p>
+                  <p>
+                    {people.length || Number(selected.count || 0)} {alumniWord}
+                  </p>
                 </div>
                 <div className="lm-results-actions">
                   <button type="button" className="lm-clear-btn" onClick={clearSelection}>
@@ -588,7 +597,7 @@ export default function LocationMap() {
                 </div>
               ) : people.length === 0 ? (
                 <div className="lm-empty">
-                  No visible alumni profile cards were returned for this location.
+                  {`No visible ${alumniWord} profile cards were returned for this location.`}
                 </div>
               ) : (
                 <div className="lm-grid">

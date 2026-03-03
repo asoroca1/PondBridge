@@ -1,6 +1,11 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { normalizeSlug } from "@pondbridge/shared";
+import {
+  alumniPluralForCampType,
+  defaultNetworkDisplayNameForCamp,
+  normalizeCampType,
+  normalizeSlug
+} from "@pondbridge/shared";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import {
@@ -89,7 +94,7 @@ const FLAG_TEMPLATES = [
   {
     key: "directory_module",
     name: "Directory",
-    description: "Alumni directory and search experience",
+    description: "Member directory and search experience",
     enabled: true,
     rolloutPercent: 100,
     tierConfig: { base: true, premium: true },
@@ -859,6 +864,9 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   const slugInput = String(req.body.slug || name).trim();
   const slug = normalizeSlug(slugInput);
   const directorEmail = normalizeEmail(req.body.directorEmail || "");
+  const campType = normalizeCampType(req.body.campType || "coed");
+  const alumniWord = alumniPluralForCampType(campType, { capitalized: false });
+  const networkName = defaultNetworkDisplayNameForCamp(name, campType);
 
   if (!name || !slug) {
     return res.status(400).json({
@@ -891,14 +899,15 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     planTier: req.body.planTier === "premium" ? "premium" : "base",
     onboardingStatus: "not_started",
     onboardingStep: "name_branding",
-    onboardingChecklist: createDefaultChecklist(),
+    onboardingChecklist: createDefaultChecklist(campType),
     onboardingFeeAmount: Number(req.body.onboardingFeeAmount || 0),
     customDomain: defaultTenantDomain(slug),
     theme: {},
     content: {
-      networkDisplayName: `${name} Alumni Network`,
-      welcomeHeadline: `Welcome to ${name} Alumni Network`,
-      welcomeBody: "Connect with alumni, staff, and directors from every era.",
+      campType,
+      networkDisplayName: networkName,
+      welcomeHeadline: `Welcome to ${networkName}`,
+      welcomeBody: `Connect with ${alumniWord}, staff, and directors from every era.`,
       newsletterName: "Newsletter",
       ageGroups: [
         "Super Warrior",

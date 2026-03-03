@@ -1,8 +1,11 @@
 import {
+  defaultNetworkDisplayNameForCamp,
   hasFeature,
+  normalizeCampType,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
   onboardingPatchSchema,
+  replaceAlumniForCampType,
   tenantContentSchema,
   tenantModulesSchema,
   tenantSettingsSchema,
@@ -45,6 +48,8 @@ const FONT_TOKEN_TO_FAMILY = {
   modern_clean: '"Inter", "Avenir Next", "Segoe UI", sans-serif',
   classic_serif: '"Lora", "Roboto Slab", serif'
 };
+const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function deepClone(value = {}) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -58,6 +63,82 @@ function normalizeFooterLinks(value = []) {
     }))
     .filter((link) => link.label && link.url)
     .slice(0, 8);
+}
+
+function normalizeEmailFooterPresetName(value = "") {
+  return String(value || "").trim().slice(0, 72);
+}
+
+function normalizeEmailFooterField(value = "", max = 140) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function normalizeEmailFooter(value = {}, fallback = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const base = fallback && typeof fallback === "object" ? fallback : {};
+  const senderEmailRaw = normalizeEmailFooterField(source.senderEmail ?? base.senderEmail ?? "", 160).toLowerCase();
+  const logoUrl = normalizeEmailFooterField(source.logoUrl ?? base.logoUrl ?? "", 1200);
+  return {
+    signOff: normalizeEmailFooterField(source.signOff ?? base.signOff ?? "Warmly,", 80),
+    senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120),
+    senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120),
+    senderEmail: SIMPLE_EMAIL_REGEX.test(senderEmailRaw) ? senderEmailRaw : "",
+    senderPhone: normalizeEmailFooterField(source.senderPhone ?? base.senderPhone ?? "", 48),
+    showLogo: source.showLogo !== undefined ? Boolean(source.showLogo) : base.showLogo !== false,
+    logoUrl
+  };
+}
+
+function normalizeEmailFooterPresets(value = [], { fallbackFooter = null } = {}) {
+  const source = Array.isArray(value) ? value : [];
+  const normalized = [];
+  const seen = new Set();
+  const fallback = normalizeEmailFooter(
+    fallbackFooter || {},
+    {
+      signOff: "Warmly,",
+      senderName: "",
+      senderRole: "Director",
+      senderEmail: "",
+      senderPhone: "",
+      showLogo: true,
+      logoUrl: ""
+    }
+  );
+
+  for (let index = 0; index < source.length; index += 1) {
+    const item = source[index] || {};
+    const rawId = String(item?.id || "").trim();
+    const id = rawId
+      ? rawId.slice(0, 90)
+      : `footer_${index + 1}`;
+    if (!id || seen.has(id)) continue;
+
+    const name = normalizeEmailFooterPresetName(item?.name || "");
+    if (!name) continue;
+
+    seen.add(id);
+    normalized.push({
+      id,
+      name,
+      footer: normalizeEmailFooter(item?.footer || {}, fallback),
+      updatedAt: String(item?.updatedAt || "")
+    });
+    if (normalized.length >= 20) break;
+  }
+
+  if (normalized.length === 0) {
+    return [
+      {
+        id: "default_footer",
+        name: "Default Footer",
+        footer: fallback,
+        updatedAt: ""
+      }
+    ];
+  }
+
+  return normalized;
 }
 
 function normalizeDomains(value = []) {
@@ -104,15 +185,34 @@ function normalizeFontToken(value = "") {
   return "cedar_default";
 }
 
-export function createDefaultChecklist() {
+function checklistOrderForCampType(campType = "coed") {
+  const normalizedCampType = normalizeCampType(campType || "coed");
   return CHECKLIST_ORDER.map((item) => ({
+    ...item,
+    label: replaceAlumniForCampType(item.label, normalizedCampType)
+  }));
+}
+
+function resolveChecklistCampType(tenant = null) {
+  return normalizeCampType(
+    tenant?.onboardingDraft?.content?.campType ||
+      tenant?.content?.campType ||
+      tenant?.settings?.campType ||
+      "coed"
+  );
+}
+
+export function createDefaultChecklist(campType = "coed") {
+  return checklistOrderForCampType(campType).map((item) => ({
     ...item,
     status: "not_started",
     completedAt: null
   }));
 }
 
-export function mergeChecklist(current = [], incoming = []) {
+export function mergeChecklist(current = [], incoming = [], campType = "coed") {
+  const normalizedCampType = normalizeCampType(campType || "coed");
+  const checklistOrder = checklistOrderForCampType(normalizedCampType);
   const currentMap = new Map(
     (Array.isArray(current) ? current : [])
       .filter((item) => item && item.id)
@@ -124,12 +224,12 @@ export function mergeChecklist(current = [], incoming = []) {
       .map((item) => [item.id, item])
   );
 
-  return CHECKLIST_ORDER.map((defaultItem) => {
+  return checklistOrder.map((defaultItem) => {
     const next = incomingMap.get(defaultItem.id) || currentMap.get(defaultItem.id);
     const status = next?.status || "not_started";
     return {
       id: defaultItem.id,
-      label: next?.label || defaultItem.label,
+      label: replaceAlumniForCampType(String(next?.label || defaultItem.label), normalizedCampType),
       status,
       completedAt:
         status === "completed"
@@ -183,6 +283,7 @@ export function resolveTheme(tenant) {
 export function resolveContent(tenant) {
   const live = deepClone(tenant?.content || {});
   const tenantName = String(tenant?.name || "Your Camp").trim();
+  const campType = normalizeCampType(live.campType || tenant?.settings?.campType || "coed");
   const defaultAgeGroups = [
     "Super Warrior",
     "Warrior",
@@ -194,18 +295,53 @@ export function resolveContent(tenant) {
     "Senior II"
   ];
   const defaultStaffRoles = ["Camper", "Counselor", "JC", "CIT", "Admin"];
+  const defaultNetworkDisplayName = defaultNetworkDisplayNameForCamp(tenantName, campType);
+  const defaultWelcomeHeadline = replaceAlumniForCampType("Welcome to your alumni network", campType);
+  const defaultWelcomeBody = replaceAlumniForCampType("Connect with your camp alumni community.", campType);
+  const defaultEmailFooter = normalizeEmailFooter(
+    live.defaultEmailFooter || {},
+    {
+      signOff: "Warmly,",
+      senderName: "",
+      senderRole: "Director",
+      senderEmail: String(live.contactEmail || "").trim().toLowerCase(),
+      senderPhone: "",
+      showLogo: true,
+      logoUrl: ""
+    }
+  );
+  const emailFooterPresets = normalizeEmailFooterPresets(live.emailFooterPresets || [], {
+    fallbackFooter: defaultEmailFooter
+  });
+  const requestedDefaultFooterId = String(live.defaultEmailFooterPresetId || "").trim();
+  const defaultEmailFooterPresetId = emailFooterPresets.some((item) => item.id === requestedDefaultFooterId)
+    ? requestedDefaultFooterId
+    : String(emailFooterPresets[0]?.id || "");
+
   return {
-    networkDisplayName: String(live.networkDisplayName || `${tenantName} Alumni Network`),
-    welcomeHeadline: String(live.welcomeHeadline || "Welcome to your alumni network"),
-    welcomeBody: String(live.welcomeBody || "Connect with your camp alumni community."),
+    campType,
+    networkDisplayName: replaceAlumniForCampType(
+      String(live.networkDisplayName || defaultNetworkDisplayName),
+      campType
+    ),
+    welcomeHeadline: replaceAlumniForCampType(
+      String(live.welcomeHeadline || defaultWelcomeHeadline),
+      campType
+    ),
+    welcomeBody: replaceAlumniForCampType(
+      String(live.welcomeBody || defaultWelcomeBody),
+      campType
+    ),
     newsletterName: String(live.newsletterName || "Newsletter"),
     ageGroups: normalizeLabelList(live.ageGroups, defaultAgeGroups),
     staffRoles: normalizeLabelList(live.staffRoles, defaultStaffRoles),
     merchShopUrl: String(live.merchShopUrl || ""),
-    aboutText: String(live.aboutText || ""),
+    aboutText: replaceAlumniForCampType(String(live.aboutText || ""), campType),
     contactEmail: String(live.contactEmail || ""),
     supportUrl: String(live.supportUrl || ""),
-    footerLinks: normalizeFooterLinks(live.footerLinks || [])
+    footerLinks: normalizeFooterLinks(live.footerLinks || []),
+    emailFooterPresets,
+    defaultEmailFooterPresetId
   };
 }
 
@@ -298,6 +434,7 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
       fontToken: theme.fontToken
     },
     content: {
+      campType: content.campType,
       networkDisplayName: content.networkDisplayName,
       welcomeHeadline: content.welcomeHeadline,
       welcomeBody: content.welcomeBody,
@@ -427,7 +564,8 @@ export function serializeChecklist(checklist = []) {
 }
 
 export function getOnboardingProgress(tenant) {
-  const checklist = mergeChecklist(tenant?.onboardingChecklist || []);
+  const campType = resolveChecklistCampType(tenant);
+  const checklist = mergeChecklist(tenant?.onboardingChecklist || [], [], campType);
   return {
     onboardingStatus: tenant?.onboardingStatus || "not_started",
     onboardingStep: tenant?.onboardingStep || getCurrentStepFromChecklist(checklist),
@@ -436,7 +574,8 @@ export function getOnboardingProgress(tenant) {
 }
 
 export function buildOnboardingResponse(tenant, { counts = null, includeDraft = true } = {}) {
-  const checklist = mergeChecklist(tenant?.onboardingChecklist || []);
+  const content = resolveContent(tenant);
+  const checklist = mergeChecklist(tenant?.onboardingChecklist || [], [], content.campType);
   const base = {
     tenant: {
       id: String(tenant._id),
@@ -449,7 +588,7 @@ export function buildOnboardingResponse(tenant, { counts = null, includeDraft = 
       customDomain: tenant.customDomain || "",
       onboardingChecklist: serializeChecklist(checklist),
       theme: resolveTheme(tenant),
-      content: resolveContent(tenant),
+      content,
       settings: {
         ...resolveSettings(tenant),
         accessCodeHash: undefined
@@ -477,6 +616,7 @@ export function buildOnboardingResponse(tenant, { counts = null, includeDraft = 
 export function getReadinessChecklist(tenant, { importedCount = 0 } = {}) {
   const draft = resolveDraft(tenant);
   const billingReadiness = getBillingReadiness(tenant);
+  const campType = normalizeCampType(draft?.content?.campType || resolveChecklistCampType(tenant));
   const checks = [
     {
       id: "logo",
@@ -497,7 +637,7 @@ export function getReadinessChecklist(tenant, { importedCount = 0 } = {}) {
     },
     {
       id: "import",
-      label: "At least 5 alumni imported",
+      label: replaceAlumniForCampType("At least 5 alumni imported", campType),
       ok: Number(importedCount || 0) >= 5
     },
     {
@@ -565,7 +705,16 @@ export async function validateContentPayload(payload = {}) {
     error.details = result.error.flatten();
     throw error;
   }
-  return result.data;
+  const data = result.data;
+  const campType = normalizeCampType(data.campType || "coed");
+  return {
+    ...data,
+    campType,
+    networkDisplayName: replaceAlumniForCampType(String(data.networkDisplayName || ""), campType),
+    welcomeHeadline: replaceAlumniForCampType(String(data.welcomeHeadline || ""), campType),
+    welcomeBody: replaceAlumniForCampType(String(data.welcomeBody || ""), campType),
+    aboutText: replaceAlumniForCampType(String(data.aboutText || ""), campType)
+  };
 }
 
 export async function validateSettingsPayload(payload = {}) {

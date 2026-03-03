@@ -32,7 +32,7 @@
     display:grid; place-items:center; background:var(--brand-primary);
     border:3px solid color-mix(in srgb, var(--brand-primary) 20%, #ffffff);}
   .welcome-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .welcome-avatar span{ font-weight:800; color:#fff; font-size:18px; letter-spacing:.01em; }
+  .welcome-avatar span{ font-weight:800; color:var(--brand-on-primary); font-size:18px; letter-spacing:.01em; }
   
   .welcome-copy{ display:flex; flex-direction:column; gap:6px; }
   .welcome-title{ position:relative; margin:0; font-size:30px; line-height:1.15; color:var(--brand-primary); letter-spacing:.2px; }
@@ -132,7 +132,7 @@
   /* ---------- Announce + feed ---------- */
   .announce-form{ display:flex; gap:8px; padding:8px 10px; background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px; }
   .announce-input{ flex:1; border:0; background:transparent; outline:none; font-size:15px; padding:10px 8px; }
-  .announce-btn{ background:var(--cedar-navy); color:#fff; border:0; border-radius:var(--radius-md); padding:10px 12px; font-weight:700; cursor:pointer; }
+  .announce-btn{ background:var(--cedar-navy); color:var(--brand-on-primary); border:0; border-radius:var(--radius-md); padding:10px 12px; font-weight:700; cursor:pointer; }
   .announce-btn:disabled{ opacity:.6; cursor:not-allowed; }
   
   /* feed list + separators */
@@ -480,7 +480,7 @@
   line-height: 18px;
 
   background: var(--brand-primary);
-  color: #fff;
+  color: var(--brand-on-primary);
 
   border: 2px solid rgba(255,255,255,0.95);
   box-shadow: var(--shadow-md);
@@ -550,7 +550,7 @@
 .profile-prompt-primary {
   border: 1px solid var(--brand-primary);
   background: var(--brand-primary);
-  color: #fff;
+  color: var(--brand-on-primary);
 }
 
 .profile-prompt-primary:hover {

@@ -22,6 +22,7 @@ import { useTenant } from "../context/TenantContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
 import { readAuthFromStorage } from "../lib/storage.js";
 import {
+  resolveAlumniWord,
   resolveNetworkDisplayName,
   resolveNewsletterLabel,
   resolveTenantContent
@@ -182,6 +183,7 @@ export default function NavBar() {
   const needsOnboarding = tenant?.onboardingStatus !== "live";
 
   const title = resolveNetworkDisplayName(tenant);
+  const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const content = resolveTenantContent(tenant);
   const merchShopUrl = String(content.merchShopUrl || "").trim() || "https://thecampspot.com/camphome.aspx";
@@ -250,7 +252,12 @@ export default function NavBar() {
       });
     }
     if (modules.map !== false) {
-      communityItems.push({ id: "map", icon: Map, label: "Alumni Map", to: pathWithCamp(slug, "/location-map") });
+      communityItems.push({
+        id: "map",
+        icon: Map,
+        label: `${alumniWordTitle} Map`,
+        to: pathWithCamp(slug, "/location-map")
+      });
     }
     if (canFamilyTrees) {
       communityItems.push({
@@ -305,6 +312,7 @@ export default function NavBar() {
     isAuthenticated,
     slug,
     canSearch,
+    alumniWordTitle,
     modules.chat,
     modules.map,
     modules.photoStream,

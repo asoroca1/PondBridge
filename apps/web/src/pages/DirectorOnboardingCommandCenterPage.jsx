@@ -4,6 +4,7 @@ import { Badge, Button, Card, PageShell, SectionTitle } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { resolveAlumniWord, resolveNetworkDisplayName } from "../lib/campLabels.js";
 
 const PHASES = [
   {
@@ -73,10 +74,65 @@ function launchGuideDismissedKey(slug = "") {
   return `pondbridge_launch_guide_dismissed_${String(slug || "").trim().toLowerCase() || "default"}`;
 }
 
+function normalizeHexColor(value = "", fallback = "#002b5c") {
+  const raw = String(value || "").trim();
+  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) return `#${hex.toLowerCase()}`;
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    const expanded = hex
+      .split("")
+      .map((part) => `${part}${part}`)
+      .join("");
+    return `#${expanded.toLowerCase()}`;
+  }
+  return fallback;
+}
+
+function hexToRgb(hex = "#002b5c") {
+  const normalized = normalizeHexColor(hex).slice(1);
+  return {
+    r: parseInt(normalized.slice(0, 2), 16),
+    g: parseInt(normalized.slice(2, 4), 16),
+    b: parseInt(normalized.slice(4, 6), 16)
+  };
+}
+
+function srgbChannelToLinear(channel = 0) {
+  const normalized = Math.max(0, Math.min(255, Number(channel) || 0)) / 255;
+  if (normalized <= 0.04045) return normalized / 12.92;
+  return ((normalized + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(hex = "#002b5c") {
+  const { r, g, b } = hexToRgb(hex);
+  return (
+    0.2126 * srgbChannelToLinear(r) +
+    0.7152 * srgbChannelToLinear(g) +
+    0.0722 * srgbChannelToLinear(b)
+  );
+}
+
+function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
+  const base = relativeLuminance(baseHex);
+  const candidate = relativeLuminance(candidateHex);
+  const brightest = Math.max(base, candidate);
+  const darkest = Math.min(base, candidate);
+  return (brightest + 0.05) / (darkest + 0.05);
+}
+
+function readableTextColorOnBrand(brandHex = "#002b5c") {
+  const light = "#ffffff";
+  const dark = "#0f172a";
+  return contrastRatio(brandHex, light) >= contrastRatio(brandHex, dark) ? light : dark;
+}
+
 export default function DirectorOnboardingCommandCenterPage() {
   const { slug } = useParams();
   const { token, user } = useAuth();
   const { tenant } = useTenant();
+  const alumniWord = resolveAlumniWord(tenant);
+  const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
+  const networkDisplayName = resolveNetworkDisplayName(tenant);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -91,6 +147,8 @@ export default function DirectorOnboardingCommandCenterPage() {
   const [syncingBilling, setSyncingBilling] = useState(false);
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
+  const previewBrandPrimary = normalizeHexColor(payload?.tenant?.onboardingDraft?.theme?.brandPrimary || "#002b5c");
+  const previewBrandOnPrimary = readableTextColorOnBrand(previewBrandPrimary);
 
   const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
@@ -359,13 +417,13 @@ export default function DirectorOnboardingCommandCenterPage() {
           <SectionTitle>Your network is live. Here&apos;s what to do next.</SectionTitle>
           <ol className="launch-guide-list">
             <li>
-              Import your alumni list.
+              {`Import your ${alumniWord} list.`}
               <Link className="link-button secondary" to={`/t/${slug}/settings/imports`}>
                 Go to Imports
               </Link>
             </li>
             <li>
-              Invite key alumni to join and seed early activity.
+              {`Invite key ${alumniWord} to join and seed early activity.`}
               <Link className="link-button secondary" to={`/t/${slug}/admin`}>
                 Open Admin
               </Link>
@@ -430,14 +488,14 @@ export default function DirectorOnboardingCommandCenterPage() {
         <Card>
           <SectionTitle>First 3 Things To Do</SectionTitle>
           <p className="muted">
-            Your network is live. Complete these steps to get alumni connected.
+            {`Your network is live. Complete these steps to get ${alumniWord} connected.`}
           </p>
           <div className="post-launch-steps">
             <article className="post-launch-step">
               <div className="post-launch-step-number">1</div>
               <div className="post-launch-step-content">
-                <h4>Import your alumni</h4>
-                <p>Upload a CSV of alumni to populate your network directory.</p>
+                <h4>{`Import your ${alumniWord}`}</h4>
+                <p>{`Upload a CSV of ${alumniWord} to populate your network directory.`}</p>
               </div>
               <Link className="link-button secondary" to={`/t/${slug}/settings/imports`}>
                 Go to Imports
@@ -447,7 +505,7 @@ export default function DirectorOnboardingCommandCenterPage() {
               <div className="post-launch-step-number">2</div>
               <div className="post-launch-step-content">
                 <h4>Send first invitations</h4>
-                <p>Invite alumni by email so they can create accounts and join.</p>
+                <p>{`Invite ${alumniWord} by email so they can create accounts and join.`}</p>
               </div>
               <Link className="link-button secondary" to={`/t/${slug}/admin`}>
                 Manage Invites
@@ -570,7 +628,8 @@ export default function DirectorOnboardingCommandCenterPage() {
         <div
           className="wizard-preview"
           style={{
-            "--brand-primary": payload?.tenant?.onboardingDraft?.theme?.brandPrimary || "#002b5c",
+            "--brand-primary": previewBrandPrimary,
+            "--brand-on-primary": previewBrandOnPrimary,
             "--brand-secondary": payload?.tenant?.onboardingDraft?.theme?.brandSecondary || "#d3dde8",
             "--bg": payload?.tenant?.onboardingDraft?.theme?.bg || "#f5f7fa",
             "--text": payload?.tenant?.onboardingDraft?.theme?.text || "#0f172a",
@@ -583,7 +642,7 @@ export default function DirectorOnboardingCommandCenterPage() {
             {payload?.tenant?.onboardingDraft?.theme?.logoUrl ? (
               <img src={payload.tenant.onboardingDraft.theme.logoUrl} alt="Camp logo preview" />
             ) : null}
-            <strong>{payload?.tenant?.onboardingDraft?.content?.networkDisplayName || `${payload?.tenant?.name || "Your Camp"} Alumni Network`}</strong>
+            <strong>{payload?.tenant?.onboardingDraft?.content?.networkDisplayName || networkDisplayName || `${payload?.tenant?.name || "Your Camp"} ${alumniWordTitle} Network`}</strong>
           </div>
           <div className="wizard-preview-content">
             <article className="wizard-preview-card">

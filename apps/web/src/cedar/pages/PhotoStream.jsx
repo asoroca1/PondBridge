@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import CedarBackground from "../components/CedarBackground";
@@ -7,9 +7,13 @@ import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./photo-stream.css";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
-import { Images } from "lucide-react";
+import { Images, Heart, MessageCircle, Trash2, X, Upload } from "lucide-react";
 
 const API = API_BASE;
+const PHOTO_PREVIEW_WIDTH = 420;
+const PHOTO_PREVIEW_HEIGHT = 315;
+const PHOTO_EXPORT_WIDTH = 1600;
+const PHOTO_EXPORT_HEIGHT = 1200;
 
 /* ========= helpers ========= */
 
@@ -29,6 +33,28 @@ function getCurrentUserAvatar() {
   } catch {
     return "";
   }
+}
+
+function readFileAsImage(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Could not read selected image."));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function canvasToBlob(canvas, type = "image/jpeg", quality = 0.9) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
 }
 
 /** Fetch a user by id (re-uses your search endpoint) */
@@ -119,20 +145,161 @@ function UploadModal({ open, onClose, onPosted }) {
   const [file, setFile] = useState(null);
   const [caption, setCaption] = useState("");
   const [busy, setBusy] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [imageMeta, setImageMeta] = useState({ width: 0, height: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [offsetX, setOffsetX] = useState(0);
+  const [offsetY, setOffsetY] = useState(0);
+  const [stageSize, setStageSize] = useState({ width: PHOTO_PREVIEW_WIDTH, height: PHOTO_PREVIEW_HEIGHT });
+  const fileInputRef = useRef(null);
+  const stageRef = useRef(null);
 
-  useEffect(() => { if (!open) { setFile(null); setCaption(""); setBusy(false); } }, [open]);
+  useEffect(() => {
+    if (!open) {
+      setFile(null);
+      setCaption("");
+      setBusy(false);
+      setPreviewUrl("");
+      setImageMeta({ width: 0, height: 0 });
+      setZoom(1);
+      setOffsetX(0);
+      setOffsetY(0);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl("");
+      setImageMeta({ width: 0, height: 0 });
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  useEffect(() => {
+    if (!previewUrl) return undefined;
+    let active = true;
+    const image = new Image();
+    image.onload = () => {
+      if (!active) return;
+      setImageMeta({
+        width: Number(image.naturalWidth || 0),
+        height: Number(image.naturalHeight || 0),
+      });
+    };
+    image.src = previewUrl;
+    return () => {
+      active = false;
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (!file) return;
+    setZoom(1);
+    setOffsetX(0);
+    setOffsetY(0);
+  }, [file]);
+
+  useEffect(() => {
+    if (!open || !stageRef.current) return undefined;
+    const node = stageRef.current;
+    const updateSize = () => {
+      const rect = node.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      setStageSize({ width: rect.width, height: rect.height });
+    };
+
+    updateSize();
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(updateSize);
+      ro.observe(node);
+    }
+    window.addEventListener("resize", updateSize);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", updateSize);
+    };
+  }, [open, previewUrl]);
+
+  const previewLayout = useMemo(() => {
+    const sourceW = Number(imageMeta.width || 0);
+    const sourceH = Number(imageMeta.height || 0);
+    const targetW = Number(stageSize.width || 0);
+    const targetH = Number(stageSize.height || 0);
+    if (!sourceW || !sourceH || !targetW || !targetH) return null;
+
+    const baseScale = Math.max(targetW / sourceW, targetH / sourceH);
+    const scaledW = sourceW * baseScale * zoom;
+    const scaledH = sourceH * baseScale * zoom;
+    const maxShiftX = Math.max(0, (scaledW - targetW) / 2);
+    const maxShiftY = Math.max(0, (scaledH - targetH) / 2);
+    const shiftX = (offsetX / 100) * maxShiftX;
+    const shiftY = (offsetY / 100) * maxShiftY;
+
+    return {
+      width: scaledW,
+      height: scaledH,
+      left: (targetW - scaledW) / 2 + shiftX,
+      top: (targetH - scaledH) / 2 + shiftY,
+    };
+  }, [imageMeta.height, imageMeta.width, offsetX, offsetY, stageSize.height, stageSize.width, zoom]);
+
+  const buildUploadFile = useCallback(async () => {
+    if (!file) return null;
+    try {
+      const image = await readFileAsImage(file);
+      const sourceW = Number(image.naturalWidth || 0);
+      const sourceH = Number(image.naturalHeight || 0);
+      if (!sourceW || !sourceH) return file;
+
+      const baseScale = Math.max(PHOTO_EXPORT_WIDTH / sourceW, PHOTO_EXPORT_HEIGHT / sourceH);
+      const scaledW = sourceW * baseScale * zoom;
+      const scaledH = sourceH * baseScale * zoom;
+      const maxShiftX = Math.max(0, (scaledW - PHOTO_EXPORT_WIDTH) / 2);
+      const maxShiftY = Math.max(0, (scaledH - PHOTO_EXPORT_HEIGHT) / 2);
+      const shiftX = (offsetX / 100) * maxShiftX;
+      const shiftY = (offsetY / 100) * maxShiftY;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = PHOTO_EXPORT_WIDTH;
+      canvas.height = PHOTO_EXPORT_HEIGHT;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return file;
+
+      ctx.fillStyle = "#0b1220";
+      ctx.fillRect(0, 0, PHOTO_EXPORT_WIDTH, PHOTO_EXPORT_HEIGHT);
+      ctx.drawImage(
+        image,
+        (PHOTO_EXPORT_WIDTH - scaledW) / 2 + shiftX,
+        (PHOTO_EXPORT_HEIGHT - scaledH) / 2 + shiftY,
+        scaledW,
+        scaledH
+      );
+
+      const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
+      if (!blob) return file;
+      const rawName = String(file.name || "photo").replace(/\.[^.]+$/, "");
+      return new File([blob], `${rawName}-framed.jpg`, { type: "image/jpeg" });
+    } catch {
+      return file;
+    }
+  }, [file, offsetX, offsetY, zoom]);
 
   async function handlePost() {
     if (!file) return;
     try {
       setBusy(true);
+      const uploadFile = (await buildUploadFile()) || file;
       const p = await fetch(`${API}/photos/presign`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type || "image/jpeg",
-          fileSize: Number(file.size || 0)
+          fileName: uploadFile.name,
+          fileType: uploadFile.type || "image/jpeg",
+          fileSize: Number(uploadFile.size || 0)
         })
       });
       if (!p.ok) throw new Error("Presign failed");
@@ -140,7 +307,7 @@ function UploadModal({ open, onClose, onPosted }) {
       const up = await fetch(uploadUrl, {
         method: "PUT",
         ...(headers && typeof headers === "object" ? { headers } : {}),
-        body: file
+        body: uploadFile
       });
       if (!up.ok) throw new Error("Upload failed");
 
@@ -162,10 +329,107 @@ function UploadModal({ open, onClose, onPosted }) {
 
   if (!open) return null;
   return (
-    <div className="ps-modal">
-      <div className="ps-modal-card">
-        <h2 className="ps-modal-title">Add a Photo</h2>
-        <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} className="ps-file" />
+    <div className="ps-modal" onClick={() => !busy && onClose?.()}>
+      <div className="ps-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="ps-modal-head">
+          <h2 className="ps-modal-title">Add a Photo</h2>
+          <button type="button" className="ps-modal-close-btn" onClick={onClose} disabled={busy} aria-label="Close">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="ps-upload-file-row">
+          <button
+            type="button"
+            className="ps-btn secondary ps-file-trigger"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
+          >
+            <Upload size={14} />
+            Choose Photo
+          </button>
+          <span className="ps-file-name">{file ? file.name : "JPG, PNG, or WEBP"}</span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="ps-file"
+            hidden
+          />
+        </div>
+
+        {previewUrl ? (
+          <div className="ps-upload-preview-wrap">
+            <div className="ps-upload-preview-stage" ref={stageRef}>
+              <img
+                src={previewUrl}
+                alt="Photo preview"
+                className="ps-upload-preview-image"
+                style={
+                  previewLayout
+                    ? {
+                        width: `${previewLayout.width}px`,
+                        height: `${previewLayout.height}px`,
+                        left: `${previewLayout.left}px`,
+                        top: `${previewLayout.top}px`,
+                      }
+                    : undefined
+                }
+              />
+            </div>
+
+            <div className="ps-upload-controls" aria-label="Photo framing controls">
+              <label className="ps-upload-control">
+                <span>Zoom</span>
+                <input
+                  type="range"
+                  min="100"
+                  max="300"
+                  step="1"
+                  value={Math.round(zoom * 100)}
+                  onChange={(e) => setZoom(Number(e.target.value) / 100)}
+                />
+              </label>
+              <label className="ps-upload-control">
+                <span>Shift Left/Right</span>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="1"
+                  value={offsetX}
+                  onChange={(e) => setOffsetX(Number(e.target.value))}
+                />
+              </label>
+              <label className="ps-upload-control">
+                <span>Shift Up/Down</span>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="1"
+                  value={offsetY}
+                  onChange={(e) => setOffsetY(Number(e.target.value))}
+                />
+              </label>
+              <button
+                type="button"
+                className="ps-btn secondary ps-upload-reset"
+                onClick={() => {
+                  setZoom(1);
+                  setOffsetX(0);
+                  setOffsetY(0);
+                }}
+              >
+                Reset Framing
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="ps-upload-preview-empty">Photo preview will appear here before posting.</div>
+        )}
+
         <textarea value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Write a caption (use @Name to tag)" maxLength={500} className="ps-textarea" />
         <div className="ps-modal-actions">
           <button className="ps-btn secondary" onClick={onClose} disabled={busy}>Cancel</button>
@@ -327,7 +591,7 @@ function CommentsPanel({ photoId, canModerate }) {
                     aria-label="Delete comment"
                     title="Delete comment"
                   >
-                    🗑️
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>
@@ -406,16 +670,18 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
                 <div className="ps-date">{fmtDate(post.createdAt)}</div>
               </div>
             </div>
-            <button className="ps-lightbox-close" onClick={onClose} aria-label="Close">✕</button>
+            <button className="ps-lightbox-close" onClick={onClose} aria-label="Close">
+              <X size={17} />
+            </button>
           </div>
 
           <div className="ps-lb-actions">
-            <button className="ps-icon-btn ps-like-btn" onClick={() => onToggleLike?.(post._id)} aria-label="Like" title="Like">
-              <span className="heart">❤️</span>
+            <button className="ps-icon-btn ps-like-btn" onClick={() => onToggleLike?.(post._id)} aria-label="Like this photo" title="Like this photo">
+              <Heart size={16} strokeWidth={2} />
               <span className="count">{likesCount}</span>
             </button>
             <div className="ps-stat-pill" title="Comments on this photo">
-              <span>💬</span>
+              <MessageCircle size={16} strokeWidth={2} />
               <span>{commentsCount}</span>
             </div>
           </div>
@@ -598,28 +864,45 @@ export default function PhotoStream() {
                   <img className="ps-media" src={p.thumbUrl || p.imageUrl} alt={p.caption || "Camp photo"} loading="lazy" />
                 </button>
 
-                {p.caption && (
-                  <div className="ps-caption">
-                    <MentionText text={p.caption} mentions={p.captionMentions} />
-                  </div>
-                )}
-
-                <div className="ps-meta">
-                  <div className="ps-meta-left">
-                    <AvatarLink userId={ownerId} name={info.name || p.ownerName || "Unknown"} url={info.avatar} />
-                    <div>
-                      <Link to={`/profile/${ownerId}`} className="ps-name">
-                        {info.name || p.ownerName || "Unknown"}
-                      </Link>
-                      <div className="ps-date">{fmtDate(p.createdAt)}</div>
+                <div className="ps-card-body">
+                  <div className="ps-meta">
+                    <div className="ps-meta-left">
+                      <AvatarLink userId={ownerId} name={info.name || p.ownerName || "Unknown"} url={info.avatar} />
+                      <div className="ps-owner-stack">
+                        {ownerId ? (
+                          <Link to={`/profile/${ownerId}`} className="ps-name">
+                            {info.name || p.ownerName || "Unknown"}
+                          </Link>
+                        ) : (
+                          <span className="ps-name">{info.name || p.ownerName || "Unknown"}</span>
+                        )}
+                        <div className="ps-date">{fmtDate(p.createdAt)}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="ps-actions">
-                  <button className="ps-btn-icon" onClick={() => toggleLike(p._id)} aria-label="Like"><span>❤️</span><span>{p.likes || 0}</span></button>
-                  <button className="ps-btn-icon" onClick={() => setViewerPost(p)} aria-label="View comments"><span>💬</span><span>{p.commentsCount || 0}</span></button>
-                  {p.mine && <button className="ps-btn-icon danger" onClick={() => deletePhoto(p._id)} aria-label="Delete">Delete</button>}
+                  {p.caption && (
+                    <div className="ps-caption">
+                      <MentionText text={p.caption} mentions={p.captionMentions} />
+                    </div>
+                  )}
+
+                  <div className="ps-actions">
+                    <button className="ps-btn-icon ps-action-pill" onClick={() => toggleLike(p._id)} aria-label="Like this photo">
+                      <Heart size={16} strokeWidth={2} />
+                      <span>{p.likes || 0}</span>
+                    </button>
+                    <button className="ps-btn-icon ps-action-pill" onClick={() => setViewerPost(p)} aria-label="View comments">
+                      <MessageCircle size={16} strokeWidth={2} />
+                      <span>{p.commentsCount || 0}</span>
+                    </button>
+                    {p.mine && (
+                      <button className="ps-btn-icon danger ps-delete-pill" onClick={() => deletePhoto(p._id)} aria-label="Delete photo">
+                        <Trash2 size={15} />
+                        <span>Delete</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

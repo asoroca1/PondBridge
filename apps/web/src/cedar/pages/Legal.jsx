@@ -1,11 +1,16 @@
 // src/pages/Legal.jsx
 import React, { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveAlumniWord, resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import "./legal.css";
 
 export default function Legal() {
   const location = useLocation();
+  const { tenant } = useTenant();
+  const networkName = resolveNetworkDisplayName(tenant);
+  const alumniWord = resolveAlumniWord(tenant);
 
   // Scroll to hash anchors like /legal#privacy or /legal#terms
   useEffect(() => {
@@ -27,7 +32,7 @@ export default function Legal() {
           <div className="legal-header">
             <h1>Terms & Privacy</h1>
             <p className="legal-sub">
-              Your Camp Alumni Network — Last Updated: <strong>January 5, 2026</strong>
+              {networkName} — Last Updated: <strong>January 5, 2026</strong>
             </p>
           </div>
 
@@ -38,9 +43,9 @@ export default function Legal() {
 
           {/* ===================== Privacy ===================== */}
           <section id="privacy" className="legal-section">
-            <h2>Privacy Policy (Your Camp Alumni Network)</h2>
+            <h2>{`Privacy Policy (${networkName})`}</h2>
             <p className="legal-muted">
-              This Privacy Policy explains how Your Camp Alumni Network (“we,” “us,” or “our”) collects,
+              {`This Privacy Policy explains how ${networkName} (“we,” “us,” or “our”) collects,`}
               uses, and shares information when you use our website and related services (the “Service”).
             </p>
             <p>
@@ -100,8 +105,7 @@ export default function Legal() {
 
             <h4>A. With Other Users (Community Visibility)</h4>
             <p>
-              The Service is an alumni network, and your profile information and content may be visible to other users of
-              the Service. For example:
+              {`The Service is a ${alumniWord} network, and your profile information and content may be visible to other users of the Service. For example:`}
             </p>
             <ul>
               <li>your name, camp role, and profile details you provide</li>
@@ -201,11 +205,9 @@ export default function Legal() {
 
           {/* ===================== Terms ===================== */}
           <section id="terms" className="legal-section">
-            <h2>Terms of Service (Your Camp Alumni Network)</h2>
+            <h2>{`Terms of Service (${networkName})`}</h2>
             <p className="legal-muted">
-              These Terms of Service (“Terms”) govern your access to and use of the camp alumni network website and
-              related services (the “Service”). By using the Service, you agree to these Terms. If you do not agree, do not
-              use the Service.
+              {`These Terms of Service (“Terms”) govern your access to and use of the camp ${alumniWord} network website and related services (the “Service”). By using the Service, you agree to these Terms. If you do not agree, do not use the Service.`}
             </p>
 
             <h3>1) Eligibility</h3>
@@ -223,7 +225,7 @@ export default function Legal() {
             </ul>
 
             <h3>3) Community Nature of the Service</h3>
-            <p>The Service is designed to help your camp alumni connect. You understand that:</p>
+            <p>{`The Service is designed to help your camp ${alumniWord} connect. You understand that:`}</p>
             <ul>
               <li>other users may be able to view your profile information and content you share</li>
               <li>you should not post information you do not want other members to see</li>
@@ -239,9 +241,7 @@ export default function Legal() {
 
             <h4>B. License You Grant Us</h4>
             <p>
-              By submitting User Content, you grant Your Camp Alumni Network a worldwide, non-exclusive, royalty-free,
-              transferable, sublicensable license to host, store, reproduce, display, perform, and distribute your User
-              Content solely for the purpose of operating, providing, and improving the Service.
+              {`By submitting User Content, you grant ${networkName} a worldwide, non-exclusive, royalty-free, transferable, sublicensable license to host, store, reproduce, display, perform, and distribute your User Content solely for the purpose of operating, providing, and improving the Service.`}
             </p>
 
             <h4>C. Your Responsibilities</h4>

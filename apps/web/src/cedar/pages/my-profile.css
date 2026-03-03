@@ -106,9 +106,11 @@
   text-align: center;
   color: var(--cedar-navy);
   font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 .p1-sub {
   color: #4a5568;
@@ -142,7 +144,7 @@
 
 /* Actions */
 .p1-actions { display: flex; justify-content: center; margin-top: 6px; }
-.profile1-btn { background: var(--brand-primary); color:#fff; border: none; border-radius: var(--radius-sm); padding: 8px 14px; cursor: pointer; }
+.profile1-btn { background: var(--brand-primary); color: var(--brand-on-primary); border: none; border-radius: var(--radius-sm); padding: 8px 14px; cursor: pointer; }
 
 .profile1-loading,
 .profile1-empty {
@@ -218,7 +220,7 @@
   display:grid;
   place-items:center;
   background: var(--brand-primary);
-  color:#fff;
+  color: var(--brand-on-primary);
   font-weight:800;
   font-size: clamp(1.6rem, 3.5vw, 2.3rem);
   letter-spacing:.02em;
@@ -344,6 +346,7 @@
   .p1-exp-card { order: 4; }
   .p1-edu-card { order: 5; }
   .p1-camper-card { order: 6; }
+  .p1-staff-card { order: 6; }
   .p1-photos-card { order: 7; }
   .p1-suggest-card { order: 8; }
 

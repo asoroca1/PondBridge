@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
+import {
+  defaultNetworkDisplayNameForCamp,
+  normalizeCampType,
+  normalizeHeroImagePosition,
+  normalizeHeroImageSize
+} from "@pondbridge/shared";
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -68,6 +74,26 @@ function normalizeBrandHex(value = "", fallback = DEFAULT_BRAND_PRIMARY) {
   return fallback;
 }
 
+function isHexColor(value = "") {
+  return /^#([0-9a-fA-F]{6})$/.test(String(value || "").trim());
+}
+
+function darkenHex(hex, factor = 0.18) {
+  if (!isHexColor(hex)) return "#0b1e37";
+  const clean = String(hex).replace("#", "");
+  const channels = [0, 2, 4].map((index) => Number.parseInt(clean.slice(index, index + 2), 16));
+  const darkened = channels.map((value) => Math.max(0, Math.min(255, Math.round(value * (1 - factor)))));
+  return `#${darkened.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function deriveSecondaryHex(hex, blend = 0.82) {
+  if (!isHexColor(hex)) return "#d3dde8";
+  const clean = String(hex).replace("#", "");
+  const channels = [0, 2, 4].map((index) => Number.parseInt(clean.slice(index, index + 2), 16));
+  const lightened = channels.map((value) => Math.min(255, Math.round(value + (255 - value) * blend)));
+  return `#${lightened.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
 function downloadTextAsFile(text, filename, mime = "text/plain;charset=utf-8") {
   const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -89,16 +115,63 @@ function parseIdsParam(value = "") {
 
 const INVITE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MEMBER_EXPORT_STORAGE_PREFIX = "pb_admin_members_export_fields";
+const MEMBER_EXPORT_PRESET_STORAGE_PREFIX = "pb_admin_members_export_presets";
+const INVITE_HIDDEN_STORAGE_PREFIX = "pb_admin_hidden_invites";
+const EMAIL_RECIPIENT_GROUPS_STORAGE_PREFIX = "pb_admin_email_recipient_groups";
 const FALLBACK_MEMBER_EXPORT_FIELDS = [
+  { key: "profileId", label: "Profile ID", description: "Internal profile identifier." },
+  { key: "userId", label: "User ID", description: "Account user identifier linked to this profile." },
   { key: "firstName", label: "First Name", description: "Profile first name." },
+  { key: "nickname", label: "Nickname", description: "Camp nickname from profile/social fields." },
   { key: "lastName", label: "Last Name", description: "Profile last name." },
+  { key: "fullName", label: "Full Name", description: "Combined first and last name." },
+  { key: "status", label: "Status", description: "Member access status." },
   { key: "primaryEmail", label: "Primary Email", description: "First email on the profile." },
+  { key: "allEmails", label: "All Emails", description: "All profile emails." },
   { key: "primaryPhone", label: "Primary Phone", description: "First phone on the profile." },
+  { key: "allPhones", label: "All Phones", description: "All profile phones." },
   { key: "cityState", label: "Location", description: "City and state/country value." },
+  { key: "city", label: "City", description: "City parsed from location." },
+  { key: "state", label: "State", description: "State/region parsed from location." },
+  { key: "country", label: "Country", description: "Country parsed from location." },
   { key: "roleAtCamp", label: "Role At Camp", description: "Member's role at camp." },
-  { key: "industry", label: "Industry", description: "Industry from profile." }
+  { key: "allRoles", label: "All Roles", description: "Primary role plus additional role tags." },
+  { key: "industry", label: "Industry", description: "Industry from profile." },
+  { key: "highSchool", label: "High School", description: "High school field from profile." },
+  { key: "colleges", label: "Colleges", description: "College history from profile." },
+  { key: "collegeYears", label: "College Years", description: "College graduation/class years." },
+  { key: "collegeMajors", label: "College Majors", description: "Majors captured on the profile." },
+  { key: "educationRows", label: "Education Rows", description: "Combined college, year, and major rows." },
+  { key: "currentCompany", label: "Current Company", description: "Current company from first job entry." },
+  { key: "currentTitle", label: "Current Title", description: "Current title from first job entry." },
+  { key: "currentJobs", label: "Current Jobs", description: "All current job entries." },
+  { key: "pastJobs", label: "Past Jobs", description: "All past job entries." },
+  { key: "camperFirstYear", label: "Camper First Year", description: "First camper year from profile stints." },
+  { key: "camperLastYear", label: "Camper Last Year", description: "Last camper year from profile stints." },
+  { key: "camperYearStints", label: "Camper Year Stints", description: "Camper year ranges." },
+  { key: "staffFirstYear", label: "Staff First Year", description: "First staff year from profile stints." },
+  { key: "staffLastYear", label: "Staff Last Year", description: "Last staff year from profile stints." },
+  { key: "staffYearStints", label: "Staff Year Stints", description: "Staff year ranges." },
+  { key: "linkedin", label: "LinkedIn", description: "LinkedIn URL from social links." },
+  { key: "instagram", label: "Instagram", description: "Instagram URL from social links." },
+  { key: "facebook", label: "Facebook", description: "Facebook URL from social links." },
+  { key: "avatarUrl", label: "Avatar URL", description: "Profile avatar image URL." },
+  { key: "bio", label: "Bio", description: "Profile bio text." },
+  { key: "joinDate", label: "Join Date", description: "Profile creation date (ISO)." },
+  { key: "updatedAt", label: "Last Updated", description: "Profile last update timestamp (ISO)." },
+  { key: "socialsJson", label: "Socials JSON", description: "Raw socials object for full fidelity export." },
+  { key: "profileJson", label: "Profile JSON", description: "Raw profile object for full fidelity export." }
 ];
-const FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS = FALLBACK_MEMBER_EXPORT_FIELDS.map((field) => field.key);
+const FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS = [
+  "firstName",
+  "lastName",
+  "nickname",
+  "primaryEmail",
+  "primaryPhone",
+  "cityState",
+  "roleAtCamp",
+  "industry"
+];
 
 function createInviteRow() {
   return {
@@ -125,6 +198,18 @@ function memberExportStorageKey(slug = "") {
   return `${MEMBER_EXPORT_STORAGE_PREFIX}:${String(slug || "").trim().toLowerCase()}`;
 }
 
+function memberExportPresetStorageKey(slug = "") {
+  return `${MEMBER_EXPORT_PRESET_STORAGE_PREFIX}:${String(slug || "").trim().toLowerCase()}`;
+}
+
+function hiddenInviteStorageKey(slug = "") {
+  return `${INVITE_HIDDEN_STORAGE_PREFIX}:${String(slug || "").trim().toLowerCase()}`;
+}
+
+function emailRecipientGroupStorageKey(slug = "") {
+  return `${EMAIL_RECIPIENT_GROUPS_STORAGE_PREFIX}:${String(slug || "").trim().toLowerCase()}`;
+}
+
 function readSavedMemberExportFields(slug = "") {
   if (typeof window === "undefined") return [];
   try {
@@ -146,6 +231,230 @@ function writeSavedMemberExportFields(slug = "", keys = []) {
   }
 }
 
+function normalizeExportPresetName(value = "") {
+  return String(value || "").trim().slice(0, 64);
+}
+
+function readSavedMemberExportPresets(slug = "") {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(memberExportPresetStorageKey(slug));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedMemberExportPresets(slug = "", presets = []) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(memberExportPresetStorageKey(slug), JSON.stringify(presets));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function readHiddenInviteIds(slug = "") {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(hiddenInviteStorageKey(slug));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function writeHiddenInviteIds(slug = "", ids = []) {
+  if (typeof window === "undefined") return;
+  const normalized = [...new Set(
+    (Array.isArray(ids) ? ids : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )].slice(-5000);
+  try {
+    localStorage.setItem(hiddenInviteStorageKey(slug), JSON.stringify(normalized));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function normalizeProfileIdList(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(",")
+        .map((item) => String(item || "").trim());
+  return [...new Set(
+    source
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  )];
+}
+
+function normalizeEmailRecipientGroupName(value = "") {
+  return String(value || "").trim().slice(0, 72);
+}
+
+function readSavedEmailRecipientGroups(slug = "") {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(emailRecipientGroupStorageKey(slug));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const groups = [];
+    for (const item of parsed) {
+      const id = String(item?.id || "").trim();
+      const name = normalizeEmailRecipientGroupName(item?.name || "");
+      const profileIds = normalizeProfileIdList(item?.profileIds || []);
+      if (!id || !name || !profileIds.length) continue;
+      groups.push({
+        id,
+        name,
+        profileIds,
+        updatedAt: String(item?.updatedAt || "")
+      });
+    }
+    return groups.slice(0, 60);
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedEmailRecipientGroups(slug = "", groups = []) {
+  if (typeof window === "undefined") return;
+  const normalized = [];
+  const seen = new Set();
+  for (const item of Array.isArray(groups) ? groups : []) {
+    const id = String(item?.id || "").trim();
+    const name = normalizeEmailRecipientGroupName(item?.name || "");
+    const profileIds = normalizeProfileIdList(item?.profileIds || []);
+    if (!id || !name || !profileIds.length || seen.has(id)) continue;
+    seen.add(id);
+    normalized.push({
+      id,
+      name,
+      profileIds,
+      updatedAt: String(item?.updatedAt || "")
+    });
+    if (normalized.length >= 60) break;
+  }
+  try {
+    localStorage.setItem(emailRecipientGroupStorageKey(slug), JSON.stringify(normalized));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function normalizeEmailFooterPresetName(value = "") {
+  return String(value || "").trim().slice(0, 72);
+}
+
+function normalizeEmailFooterField(value = "", max = 140) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function normalizeEmailFooter(value = {}, fallback = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const base = fallback && typeof fallback === "object" ? fallback : {};
+  const senderEmailRaw = normalizeEmailFooterField(source.senderEmail ?? base.senderEmail ?? "", 160).toLowerCase();
+  const senderEmail = INVITE_EMAIL_REGEX.test(senderEmailRaw) ? senderEmailRaw : "";
+  return {
+    signOff: normalizeEmailFooterField(source.signOff ?? base.signOff ?? "Warmly,", 80) || "Warmly,",
+    senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120),
+    senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120),
+    senderEmail,
+    senderPhone: normalizeEmailFooterField(source.senderPhone ?? base.senderPhone ?? "", 48),
+    showLogo: source.showLogo !== undefined ? Boolean(source.showLogo) : base.showLogo !== false,
+    logoUrl: normalizeEmailFooterField(source.logoUrl ?? base.logoUrl ?? "", 1200)
+  };
+}
+
+function normalizeEmailFooterPresets(presets = [], fallbackFooter = {}) {
+  const source = Array.isArray(presets) ? presets : [];
+  const fallback = normalizeEmailFooter(
+    fallbackFooter,
+    {
+      signOff: "Warmly,",
+      senderName: "",
+      senderRole: "Director",
+      senderEmail: "",
+      senderPhone: "",
+      showLogo: true,
+      logoUrl: ""
+    }
+  );
+  const normalized = [];
+  const seenIds = new Set();
+  for (let index = 0; index < source.length; index += 1) {
+    const item = source[index] || {};
+    const id = String(item?.id || "").trim().slice(0, 90) || `footer_${index + 1}`;
+    if (!id || seenIds.has(id)) continue;
+    const name = normalizeEmailFooterPresetName(item?.name || "");
+    if (!name) continue;
+    seenIds.add(id);
+    normalized.push({
+      id,
+      name,
+      footer: normalizeEmailFooter(item?.footer || {}, fallback),
+      updatedAt: String(item?.updatedAt || "")
+    });
+    if (normalized.length >= 20) break;
+  }
+  if (normalized.length === 0) {
+    normalized.push({
+      id: "default_footer",
+      name: "Default Footer",
+      footer: fallback,
+      updatedAt: ""
+    });
+  }
+  return normalized;
+}
+
+function composeName(value = {}) {
+  const firstName = String(value?.firstName || "").trim();
+  const lastName = String(value?.lastName || "").trim();
+  const full = [firstName, lastName].filter(Boolean).join(" ").trim();
+  if (full) return full;
+  return String(value?.name || "").trim();
+}
+
+function createFallbackEmailFooter({ tenant = null, user = null } = {}) {
+  const senderName = composeName(user);
+  const senderRole = Array.isArray(user?.roles) && user.roles.some((role) => String(role || "").toLowerCase() === "tenant_admin")
+    ? "Director"
+    : "Admin";
+  const senderEmail = String(user?.email || tenant?.content?.contactEmail || "").trim().toLowerCase();
+  return normalizeEmailFooter(
+    {
+      signOff: "Warmly,",
+      senderName,
+      senderRole,
+      senderEmail,
+      senderPhone: "",
+      showLogo: true,
+      logoUrl: String(tenant?.theme?.logoUrl || "").trim()
+    },
+    {}
+  );
+}
+
+function previewTextFromHtmlLike(value = "") {
+  return String(value || "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
 function normalizeExportFieldSelection(keys = [], allowedKeys = [], fallback = []) {
   const source = Array.isArray(keys) ? keys : [];
   const allowSet = new Set(Array.isArray(allowedKeys) ? allowedKeys : []);
@@ -163,6 +472,28 @@ function normalizeExportFieldSelection(keys = [], allowedKeys = [], fallback = [
     fallbackNormalized.push(next);
   }
   return fallbackNormalized;
+}
+
+function normalizeExportPresets(presets = [], allowedKeys = [], fallback = []) {
+  const source = Array.isArray(presets) ? presets : [];
+  const normalized = [];
+  const seenIds = new Set();
+  for (const preset of source) {
+    const name = normalizeExportPresetName(preset?.name || "");
+    if (!name) continue;
+    const fields = normalizeExportFieldSelection(preset?.fields || [], allowedKeys, fallback);
+    if (!fields.length) continue;
+    const id = String(preset?.id || `preset_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    if (!id || seenIds.has(id)) continue;
+    seenIds.add(id);
+    normalized.push({
+      id,
+      name,
+      fields,
+      updatedAt: String(preset?.updatedAt || "")
+    });
+  }
+  return normalized.slice(0, 30);
 }
 
 function useAdminApi() {
@@ -612,7 +943,7 @@ export function DirectorAdminDashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await request("/dashboard");
+      const data = await request(`/dashboard?ts=${Date.now()}`);
       setPayload(data);
     } catch (requestError) {
       setError(requestError.message || "Failed to load dashboard.");
@@ -623,6 +954,30 @@ export function DirectorAdminDashboardPage() {
 
   useEffect(() => {
     loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    const refreshIntervalMs = 60000;
+    const intervalId = window.setInterval(() => {
+      loadDashboard();
+    }, refreshIntervalMs);
+
+    const handleWindowFocus = () => {
+      loadDashboard();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadDashboard();
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [loadDashboard]);
 
   const stats = payload?.stats || {};
@@ -780,7 +1135,7 @@ export function DirectorAdminMembersPage() {
   const [page, setPage] = useState(1);
   const [payload, setPayload] = useState(null);
   const [selected, setSelected] = useState([]);
-  const [rowMenuId, setRowMenuId] = useState("");
+  const [rowMenuState, setRowMenuState] = useState(null);
   const [editingMember, setEditingMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -789,10 +1144,19 @@ export function DirectorAdminMembersPage() {
   const [exportFieldsCatalog, setExportFieldsCatalog] = useState(FALLBACK_MEMBER_EXPORT_FIELDS);
   const [exportDefaultFields, setExportDefaultFields] = useState(FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS);
   const [exportSelectedFields, setExportSelectedFields] = useState(FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS);
+  const [exportPresets, setExportPresets] = useState([]);
+  const [selectedExportPresetId, setSelectedExportPresetId] = useState("");
+  const [exportPresetName, setExportPresetName] = useState("");
+  const [draggingFieldKey, setDraggingFieldKey] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [previewColumns, setPreviewColumns] = useState([]);
+  const [previewRows, setPreviewRows] = useState([]);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [hasSavedExportPreset, setHasSavedExportPreset] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const rowMenuId = rowMenuState?.id || "";
 
   useEffect(() => {
     requestRef.current = request;
@@ -818,9 +1182,18 @@ export function DirectorAdminMembersPage() {
           allowedKeys,
           defaults
         );
+        const presets = normalizeExportPresets(
+          readSavedMemberExportPresets(slug),
+          allowedKeys,
+          defaults
+        );
         setExportFieldsCatalog(fields);
         setExportDefaultFields(defaults);
         setExportSelectedFields(saved.length ? saved : defaults);
+        setExportPresets(presets);
+        setSelectedExportPresetId((prev) =>
+          presets.some((preset) => preset.id === prev) ? prev : presets[0]?.id || ""
+        );
         setHasSavedExportPreset(readSavedMemberExportFields(slug).length > 0);
       } catch {
         if (cancelled) return;
@@ -835,9 +1208,18 @@ export function DirectorAdminMembersPage() {
           allowedKeys,
           defaults
         );
+        const presets = normalizeExportPresets(
+          readSavedMemberExportPresets(slug),
+          allowedKeys,
+          defaults
+        );
         setExportFieldsCatalog(FALLBACK_MEMBER_EXPORT_FIELDS);
         setExportDefaultFields(defaults);
         setExportSelectedFields(saved.length ? saved : defaults);
+        setExportPresets(presets);
+        setSelectedExportPresetId((prev) =>
+          presets.some((preset) => preset.id === prev) ? prev : presets[0]?.id || ""
+        );
         setHasSavedExportPreset(readSavedMemberExportFields(slug).length > 0);
       }
     };
@@ -883,9 +1265,34 @@ export function DirectorAdminMembersPage() {
   useEffect(() => {
     if (!rowMenuId) return;
     if (!payload?.items?.some((item) => item.id === rowMenuId)) {
-      setRowMenuId("");
+      setRowMenuState(null);
     }
   }, [payload?.items, rowMenuId]);
+
+  useEffect(() => {
+    if (!rowMenuState) return;
+    const closeMenu = () => setRowMenuState(null);
+    const handlePointerDown = (event) => {
+      if (!(event?.target instanceof Element)) return;
+      if (event.target.closest(".director-admin-row-menu")) return;
+      if (event.target.closest(".director-admin-row-menu-trigger")) return;
+      closeMenu();
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, [rowMenuState]);
 
   function toggleAll(event) {
     if (!payload?.items?.length) return;
@@ -901,6 +1308,61 @@ export function DirectorAdminMembersPage() {
       prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
     );
   }
+
+  const activeRowMenuMember = useMemo(
+    () => (payload?.items || []).find((item) => item.id === rowMenuId) || null,
+    [payload?.items, rowMenuId]
+  );
+
+  function openRowMenu(event, memberId) {
+    const id = String(memberId || "").trim();
+    if (!id) return;
+    if (rowMenuId === id) {
+      setRowMenuState(null);
+      return;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 196;
+    const menuHeight = 132;
+    const gap = 8;
+    const canOpenBelow = bounds.bottom + gap + menuHeight <= window.innerHeight - 8;
+    const top = canOpenBelow ? bounds.bottom + gap : Math.max(8, bounds.top - menuHeight - gap);
+    const left = Math.max(8, Math.min(bounds.right - menuWidth, window.innerWidth - menuWidth - 8));
+    setRowMenuState({ id, top, left });
+  }
+
+  const loadExportPreview = useCallback(async (fieldOrder = exportSelectedFields) => {
+    const allowedKeys = exportFieldsCatalog.map((field) => String(field?.key || "").trim()).filter(Boolean);
+    const normalizedFields = normalizeExportFieldSelection(fieldOrder, allowedKeys, exportDefaultFields);
+    if (!normalizedFields.length) {
+      setPreviewColumns([]);
+      setPreviewRows([]);
+      setPreviewError("");
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const params = new URLSearchParams();
+      params.set("fields", normalizedFields.join(","));
+      params.set("limit", "6");
+      params.set("ts", String(Date.now()));
+      const response = await request(`/export/csv/preview?${params.toString()}`);
+      setPreviewColumns(Array.isArray(response?.columns) ? response.columns : []);
+      setPreviewRows(Array.isArray(response?.rows) ? response.rows : []);
+    } catch (requestError) {
+      setPreviewColumns([]);
+      setPreviewRows([]);
+      setPreviewError(requestError.message || "Could not load preview rows.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [exportDefaultFields, exportFieldsCatalog, exportSelectedFields, request]);
+
+  useEffect(() => {
+    if (!exportModalOpen) return;
+    loadExportPreview(exportSelectedFields);
+  }, [exportModalOpen, exportSelectedFields, loadExportPreview]);
 
   async function downloadCsv(fieldOrder = exportSelectedFields, { closeAfter = false } = {}) {
     const allowedKeys = exportFieldsCatalog.map((field) => String(field?.key || "").trim()).filter(Boolean);
@@ -1009,7 +1471,7 @@ export function DirectorAdminMembersPage() {
       await request(`/members/${memberId}/hard-delete`, {
         method: "DELETE"
       });
-      setRowMenuId("");
+      setRowMenuState(null);
       setEditingMember((prev) => (prev?.id === memberId ? null : prev));
       setSelected((prev) => prev.filter((id) => id !== memberId));
       setStatus(`${label} was permanently removed from this network.`);
@@ -1058,6 +1520,21 @@ export function DirectorAdminMembersPage() {
     });
   }
 
+  function reorderExportField(sourceKey, targetKey) {
+    const source = String(sourceKey || "").trim();
+    const target = String(targetKey || "").trim();
+    if (!source || !target || source === target) return;
+    setExportSelectedFields((prev) => {
+      const sourceIndex = prev.indexOf(source);
+      const targetIndex = prev.indexOf(target);
+      if (sourceIndex < 0 || targetIndex < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  }
+
   function applySavedExportPreset() {
     const allowedKeys = exportFieldsCatalog.map((field) => String(field?.key || "").trim()).filter(Boolean);
     const saved = normalizeExportFieldSelection(
@@ -1069,6 +1546,72 @@ export function DirectorAdminMembersPage() {
       setExportSelectedFields(saved);
       setHasSavedExportPreset(true);
     }
+  }
+
+  function saveNamedExportPreset() {
+    const name = normalizeExportPresetName(exportPresetName);
+    if (!name) {
+      setError("Enter a preset name before saving.");
+      return;
+    }
+    const allowedKeys = exportFieldsCatalog.map((field) => String(field?.key || "").trim()).filter(Boolean);
+    const normalizedFields = normalizeExportFieldSelection(exportSelectedFields, allowedKeys, exportDefaultFields);
+    if (!normalizedFields.length) {
+      setError("Select at least one field to save a preset.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const existing = exportPresets.find((preset) => preset.name.toLowerCase() === name.toLowerCase());
+    const nextPresets = existing
+      ? exportPresets.map((preset) =>
+          preset.id === existing.id
+            ? {
+                ...preset,
+                name,
+                fields: normalizedFields,
+                updatedAt: now
+              }
+            : preset
+        )
+      : [
+          {
+            id: `preset_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            name,
+            fields: normalizedFields,
+            updatedAt: now
+          },
+          ...exportPresets
+        ].slice(0, 30);
+    writeSavedMemberExportPresets(slug, nextPresets);
+    setExportPresets(nextPresets);
+    const selectedId = existing?.id || nextPresets[0]?.id || "";
+    setSelectedExportPresetId(selectedId);
+    setExportPresetName("");
+    setStatus(`Saved export preset "${name}".`);
+  }
+
+  function applyNamedExportPreset() {
+    if (!selectedExportPresetId) return;
+    const preset = exportPresets.find((item) => item.id === selectedExportPresetId);
+    if (!preset) return;
+    const allowedKeys = exportFieldsCatalog.map((field) => String(field?.key || "").trim()).filter(Boolean);
+    const normalizedFields = normalizeExportFieldSelection(preset.fields || [], allowedKeys, exportDefaultFields);
+    if (!normalizedFields.length) return;
+    setExportSelectedFields(normalizedFields);
+    setStatus(`Loaded preset "${preset.name}".`);
+  }
+
+  function deleteNamedExportPreset() {
+    if (!selectedExportPresetId) return;
+    const preset = exportPresets.find((item) => item.id === selectedExportPresetId);
+    if (!preset) return;
+    const confirmed = window.confirm(`Delete export preset "${preset.name}"?`);
+    if (!confirmed) return;
+    const nextPresets = exportPresets.filter((item) => item.id !== selectedExportPresetId);
+    writeSavedMemberExportPresets(slug, nextPresets);
+    setExportPresets(nextPresets);
+    setSelectedExportPresetId(nextPresets[0]?.id || "");
+    setStatus(`Deleted preset "${preset.name}".`);
   }
 
   function resetFilters() {
@@ -1269,39 +1812,11 @@ export function DirectorAdminMembersPage() {
                           type="button"
                           className="director-admin-row-menu-trigger"
                           aria-label="Open row actions"
-                          onClick={() => setRowMenuId((current) => (current === item.id ? "" : item.id))}
+                          aria-expanded={rowMenuId === item.id}
+                          onClick={(event) => openRowMenu(event, item.id)}
                         >
                           ⋯
                         </button>
-                        {rowMenuId === item.id ? (
-                          <div className="director-admin-row-menu">
-                            <Link
-                              className="director-admin-inline-link"
-                              to={`/t/${slug}/profile/${item.id}`}
-                              onClick={() => setRowMenuId("")}
-                            >
-                              View Profile
-                            </Link>
-                            <button
-                              type="button"
-                              className="director-admin-inline-link"
-                              onClick={() => {
-                                setRowMenuId("");
-                                setEditingMember({ ...item });
-                              }}
-                            >
-                              Edit Member
-                            </button>
-                            <button
-                              type="button"
-                              className="director-admin-inline-link"
-                              disabled={deletingMemberId === item.id}
-                              onClick={() => hardDeleteMember(item)}
-                            >
-                              {deletingMemberId === item.id ? "Deleting..." : "Delete from Network"}
-                            </button>
-                          </div>
-                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -1309,6 +1824,41 @@ export function DirectorAdminMembersPage() {
               )}
             </tbody>
         </DataTable>
+        {rowMenuState && activeRowMenuMember && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                className="director-admin-row-menu is-floating"
+                style={{ top: `${rowMenuState.top}px`, left: `${rowMenuState.left}px` }}
+              >
+                <Link
+                  className="director-admin-inline-link"
+                  to={`/t/${slug}/profile/${activeRowMenuMember.id}`}
+                  onClick={() => setRowMenuState(null)}
+                >
+                  View Profile
+                </Link>
+                <button
+                  type="button"
+                  className="director-admin-inline-link"
+                  onClick={() => {
+                    setRowMenuState(null);
+                    setEditingMember({ ...activeRowMenuMember });
+                  }}
+                >
+                  Edit Member
+                </button>
+                <button
+                  type="button"
+                  className="director-admin-inline-link"
+                  disabled={deletingMemberId === activeRowMenuMember.id}
+                  onClick={() => hardDeleteMember(activeRowMenuMember)}
+                >
+                  {deletingMemberId === activeRowMenuMember.id ? "Deleting..." : "Delete from Network"}
+                </button>
+              </div>,
+              document.body
+            )
+          : null}
 
         <div className="director-admin-pagination">
           <small>
@@ -1342,7 +1892,7 @@ export function DirectorAdminMembersPage() {
               <div className="director-admin-export-modal-head">
                 <div>
                   <h2>Export Members CSV</h2>
-                  <p>Choose fields, order them, and export. Your last export setup is saved automatically.</p>
+                  <p>Choose fields, drag to reorder columns, preview the sheet, then export.</p>
                 </div>
                 <button
                   type="button"
@@ -1380,13 +1930,71 @@ export function DirectorAdminMembersPage() {
                   Select all fields
                 </Button>
               </div>
+              <div className="director-admin-export-preset-bar">
+                <Input
+                  value={exportPresetName}
+                  onChange={(event) => setExportPresetName(event.target.value)}
+                  placeholder="Preset name (e.g., Reunion Outreach)"
+                />
+                <Button type="button" variant="secondary" onClick={saveNamedExportPreset}>
+                  Save Preset
+                </Button>
+                <Select
+                  value={selectedExportPresetId}
+                  onChange={(event) => setSelectedExportPresetId(event.target.value)}
+                  disabled={!exportPresets.length}
+                >
+                  <option value="">Select a saved preset</option>
+                  {exportPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={applyNamedExportPreset}
+                  disabled={!selectedExportPresetId}
+                >
+                  Use Preset
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={deleteNamedExportPreset}
+                  disabled={!selectedExportPresetId}
+                >
+                  Delete Preset
+                </Button>
+              </div>
 
               <div className="director-admin-export-grid">
                 <section className="director-admin-export-panel">
                   <h3>Included Columns ({exportSelectedFields.length})</h3>
                   <div className="director-admin-export-list">
                     {exportSelectedFields.map((fieldKey, index) => (
-                      <div key={fieldKey} className="director-admin-export-row">
+                      <div
+                        key={fieldKey}
+                        className={`director-admin-export-row ${draggingFieldKey === fieldKey ? "is-dragging" : ""}`}
+                        draggable
+                        onDragStart={(event) => {
+                          setDraggingFieldKey(fieldKey);
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", fieldKey);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const sourceKey = draggingFieldKey || event.dataTransfer.getData("text/plain");
+                          reorderExportField(sourceKey, fieldKey);
+                          setDraggingFieldKey("");
+                        }}
+                        onDragEnd={() => setDraggingFieldKey("")}
+                      >
                         <label>
                           <input
                             type="checkbox"
@@ -1394,6 +2002,7 @@ export function DirectorAdminMembersPage() {
                             onChange={() => toggleExportField(fieldKey)}
                             disabled={exportSelectedFields.length <= 1}
                           />
+                          <span className="director-admin-export-drag-handle" aria-hidden="true">⋮⋮</span>
                           <span>{exportFieldLabelMap.get(fieldKey) || fieldKey}</span>
                         </label>
                         <div className="director-admin-export-row-actions">
@@ -1440,6 +2049,44 @@ export function DirectorAdminMembersPage() {
                         </div>
                       );
                     })}
+                  </div>
+                </section>
+                <section className="director-admin-export-panel director-admin-export-preview-panel full-width">
+                  <h3>Spreadsheet Preview</h3>
+                  <small>Live sample of the first members using the selected column order.</small>
+                  <div className="director-admin-export-preview-wrap">
+                    {previewLoading ? (
+                      <p className="muted">Loading preview...</p>
+                    ) : previewError ? (
+                      <p className="error-text">{previewError}</p>
+                    ) : previewColumns.length ? (
+                      <table className="director-admin-export-preview-table">
+                        <thead>
+                          <tr>
+                            {previewColumns.map((column) => (
+                              <th key={column.key}>{column.label || column.key}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewRows.length ? (
+                            previewRows.map((row, rowIndex) => (
+                              <tr key={`preview_${rowIndex}`}>
+                                {previewColumns.map((column) => (
+                                  <td key={`${rowIndex}_${column.key}`}>{String(row?.[column.key] || "") || "-"}</td>
+                                ))}
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={previewColumns.length} className="muted">No members available for preview yet.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="muted">Select at least one column to preview.</p>
+                    )}
                   </div>
                 </section>
               </div>
@@ -1749,9 +2396,14 @@ export function DirectorAdminInvitesPage() {
   const [loadingInvites, setLoadingInvites] = useState(true);
   const [inviteStatusFilter, setInviteStatusFilter] = useState("pending");
   const [invites, setInvites] = useState([]);
+  const [hiddenInviteIds, setHiddenInviteIds] = useState([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    setHiddenInviteIds(readHiddenInviteIds(slug));
+  }, [slug]);
 
   const loadInvites = useCallback(async () => {
     setLoadingInvites(true);
@@ -1771,6 +2423,45 @@ export function DirectorAdminInvitesPage() {
   useEffect(() => {
     loadInvites();
   }, [loadInvites]);
+
+  const visibleInvites = useMemo(() => {
+    if (!invites.length) return [];
+    const hiddenSet = new Set(hiddenInviteIds);
+    return invites.filter((invite) => !hiddenSet.has(String(invite?.id || "")));
+  }, [hiddenInviteIds, invites]);
+
+  const hiddenInvitesInCurrentFilter = Math.max(0, invites.length - visibleInvites.length);
+
+  function hideInviteFromView(inviteId = "") {
+    const normalized = String(inviteId || "").trim();
+    if (!normalized) return;
+    setHiddenInviteIds((current) => {
+      if (current.includes(normalized)) return current;
+      const next = [...current, normalized];
+      writeHiddenInviteIds(slug, next);
+      return next;
+    });
+    setStatus("Invite removed from this view.");
+  }
+
+  function clearVisibleInvitesFromView() {
+    const idsToHide = visibleInvites
+      .map((invite) => String(invite?.id || "").trim())
+      .filter(Boolean);
+    if (!idsToHide.length) return;
+    setHiddenInviteIds((current) => {
+      const next = [...new Set([...current, ...idsToHide])];
+      writeHiddenInviteIds(slug, next);
+      return next;
+    });
+    setStatus(`Cleared ${idsToHide.length} invite${idsToHide.length === 1 ? "" : "s"} from this view.`);
+  }
+
+  function restoreClearedInvites() {
+    setHiddenInviteIds([]);
+    writeHiddenInviteIds(slug, []);
+    setStatus("Restored cleared invites.");
+  }
 
   function updateRow(rowId, key, value) {
     setRows((current) =>
@@ -2018,17 +2709,40 @@ export function DirectorAdminInvitesPage() {
       <Card>
         <div className="director-admin-page-actions">
           <h2 className="pb-section-title">Invite Status</h2>
-          <Select value={inviteStatusFilter} onChange={(event) => setInviteStatusFilter(event.target.value)}>
-            <option value="pending">Pending</option>
-            <option value="used">Used</option>
-            <option value="expired">Expired</option>
-            <option value="all">All</option>
-          </Select>
+          <div className="inline-actions">
+            <Select value={inviteStatusFilter} onChange={(event) => setInviteStatusFilter(event.target.value)}>
+              <option value="pending">Pending</option>
+              <option value="used">Used</option>
+              <option value="expired">Expired</option>
+              <option value="all">All</option>
+            </Select>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={clearVisibleInvitesFromView}
+              disabled={loadingInvites || visibleInvites.length === 0}
+            >
+              Clear Visible
+            </Button>
+            {hiddenInviteIds.length ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={restoreClearedInvites}
+              >
+                Restore Cleared
+              </Button>
+            ) : null}
+          </div>
         </div>
         {loadingInvites ? (
           <p className="muted">Loading invites...</p>
         ) : invites.length === 0 ? (
           <p className="muted">No invites found for this filter.</p>
+        ) : visibleInvites.length === 0 ? (
+          <p className="muted">All invites in this filter are cleared from view.</p>
         ) : (
           <div className="director-admin-table-wrap">
             <table className="director-admin-table">
@@ -2039,10 +2753,11 @@ export function DirectorAdminInvitesPage() {
                   <th>Created</th>
                   <th>Expires</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {invites.map((invite) => {
+                {visibleInvites.map((invite) => {
                   const expired = invite?.expiresAt ? new Date(invite.expiresAt) <= new Date() : false;
                   const inviteStatus = invite?.usedAt ? "used" : expired ? "expired" : "pending";
                   return (
@@ -2056,6 +2771,16 @@ export function DirectorAdminInvitesPage() {
                           {inviteStatus.charAt(0).toUpperCase() + inviteStatus.slice(1)}
                         </Badge>
                       </td>
+                      <td>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => hideInviteFromView(invite.id)}
+                        >
+                          Clear
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -2063,6 +2788,9 @@ export function DirectorAdminInvitesPage() {
             </table>
           </div>
         )}
+        {!loadingInvites && hiddenInvitesInCurrentFilter > 0 ? (
+          <p className="muted">{hiddenInvitesInCurrentFilter} invite(s) currently hidden in this filter.</p>
+        ) : null}
       </Card>
     </div>
   );
@@ -2072,43 +2800,164 @@ export function DirectorAdminEmailComposePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { slug, request } = useAdminApi();
+  const { tenant } = useTenant();
+  const { user } = useAuth();
+  const initialSelectedIds = parseIdsParam(searchParams.get("selected") || "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [recipientPreview, setRecipientPreview] = useState({ count: 0, excludedCount: 0, preview: [] });
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberSearchLoading, setMemberSearchLoading] = useState(false);
+  const [memberSearchResults, setMemberSearchResults] = useState([]);
+  const [selectedMemberById, setSelectedMemberById] = useState({});
+  const [savedRecipientGroups, setSavedRecipientGroups] = useState([]);
+  const [selectedRecipientGroupId, setSelectedRecipientGroupId] = useState("");
+  const [recipientGroupName, setRecipientGroupName] = useState("");
+  const fallbackFooter = useMemo(
+    () => createFallbackEmailFooter({ tenant, user }),
+    [tenant, user]
+  );
+  const [footerPresets, setFooterPresets] = useState([]);
+  const [selectedFooterPresetId, setSelectedFooterPresetId] = useState("");
+  const [footerPresetName, setFooterPresetName] = useState("");
+  const [footerDraft, setFooterDraft] = useState(fallbackFooter);
+  const [footerSaving, setFooterSaving] = useState(false);
+  const [loadingFooterPresets, setLoadingFooterPresets] = useState(true);
   const [form, setForm] = useState({
-    mode: "all",
-    rolesText: "",
-    yearsText: "",
-    customIdsText: parseIdsParam(searchParams.get("selected") || "").join(","),
+    mode: initialSelectedIds.length > 0 ? "individual" : "all",
+    profileIds: initialSelectedIds,
     subject: String(searchParams.get("subject") || ""),
     body: String(searchParams.get("body") || ""),
     scheduleType: "now",
     scheduledFor: ""
   });
 
-  const targeting = useMemo(() => {
-    return {
-      mode: form.mode,
-      roles: form.rolesText
-        .split(/[\n,;]+/g)
-        .map((item) => String(item || "").trim())
-        .filter(Boolean),
-      years: form.yearsText
-        .split(/[\n,;]+/g)
-        .map((item) => String(item || "").trim())
-        .filter(Boolean),
-      profileIds: parseIdsParam(form.customIdsText),
-      label:
-        form.mode === "all"
-          ? "All Members"
-          : form.mode === "role"
-          ? "By Role"
-          : form.mode === "year"
-          ? "By Year"
-          : "Custom Selection"
+  useEffect(() => {
+    const groups = readSavedEmailRecipientGroups(slug);
+    setSavedRecipientGroups(groups);
+    setSelectedRecipientGroupId(groups[0]?.id || "");
+  }, [slug]);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingFooterPresets(true);
+    request("/email/footer-presets")
+      .then((payload) => {
+        if (!active) return;
+        const presets = normalizeEmailFooterPresets(payload?.presets || [], fallbackFooter);
+        const requestedDefaultId = String(payload?.defaultPresetId || "").trim();
+        const selectedId = presets.some((item) => item.id === requestedDefaultId)
+          ? requestedDefaultId
+          : String(presets[0]?.id || "");
+        const selectedPreset = presets.find((item) => item.id === selectedId);
+        const nextFooter = normalizeEmailFooter(payload?.activeFooter || {}, selectedPreset?.footer || fallbackFooter);
+        setFooterPresets(presets);
+        setSelectedFooterPresetId(selectedId);
+        setFooterPresetName(selectedPreset?.name || "");
+        setFooterDraft(nextFooter);
+      })
+      .catch(() => {
+        if (!active) return;
+        const presets = normalizeEmailFooterPresets([], fallbackFooter);
+        const selectedId = String(presets[0]?.id || "");
+        setFooterPresets(presets);
+        setSelectedFooterPresetId(selectedId);
+        setFooterPresetName(String(presets[0]?.name || ""));
+        setFooterDraft(normalizeEmailFooter(presets[0]?.footer || {}, fallbackFooter));
+      })
+      .finally(() => {
+        if (active) setLoadingFooterPresets(false);
+      });
+
+    return () => {
+      active = false;
     };
-  }, [form.customIdsText, form.mode, form.rolesText, form.yearsText]);
+  }, [fallbackFooter, request]);
+
+  const targeting = useMemo(() => {
+    const mode = form.mode === "all" ? "all" : "custom";
+    const activePreset = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId);
+    return {
+      mode,
+      roles: [],
+      years: [],
+      profileIds: mode === "custom" ? normalizeProfileIdList(form.profileIds) : [],
+      label: form.mode === "all"
+        ? "All Members"
+        : form.mode === "individual"
+        ? "Specific People"
+        : normalizeEmailRecipientGroupName(recipientGroupName) || activePreset?.name || "Custom Group"
+    };
+  }, [form.mode, form.profileIds, recipientGroupName, savedRecipientGroups, selectedRecipientGroupId]);
+
+  useEffect(() => {
+    if (form.mode === "all") {
+      setMemberSearchResults([]);
+      setMemberSearchLoading(false);
+      return;
+    }
+    let active = true;
+    const timeout = window.setTimeout(async () => {
+      setMemberSearchLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: "1",
+          pageSize: "12",
+          q: String(memberQuery || "").trim(),
+          role: "all",
+          year: "all",
+          status: "all",
+          completion: "all",
+          sort: "name_asc"
+        });
+        const payload = await request(`/members?${params.toString()}`);
+        if (!active) return;
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        setMemberSearchResults(items.filter((item) => !form.profileIds.includes(item.id)).slice(0, 12));
+      } catch {
+        if (!active) return;
+        setMemberSearchResults([]);
+      } finally {
+        if (active) setMemberSearchLoading(false);
+      }
+    }, 180);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [form.mode, form.profileIds, memberQuery, request]);
+
+  useEffect(() => {
+    if (!form.profileIds.length) return;
+    const missing = form.profileIds.filter((id) => !selectedMemberById[id]);
+    if (!missing.length) return;
+    let active = true;
+    request(`/members/lookup?ids=${encodeURIComponent(missing.join(","))}`)
+      .then((payload) => {
+        if (!active) return;
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        if (!items.length) return;
+        setSelectedMemberById((current) => {
+          const next = { ...current };
+          for (const item of items) {
+            const id = String(item?.id || "").trim();
+            if (!id) continue;
+            next[id] = {
+              id,
+              fullName: String(item?.fullName || "Member").trim() || "Member",
+              email: String(item?.email || "").trim()
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => {})
+      .finally(() => {});
+    return () => {
+      active = false;
+    };
+  }, [form.profileIds, request, selectedMemberById]);
 
   useEffect(() => {
     let active = true;
@@ -2130,6 +2979,249 @@ export function DirectorAdminEmailComposePage() {
     };
   }, [request, targeting]);
 
+  const selectedRecipients = useMemo(
+    () =>
+      normalizeProfileIdList(form.profileIds).map((id) => {
+        const item = selectedMemberById[id];
+        return {
+          id,
+          fullName: String(item?.fullName || `Member ${id.slice(0, 8)}`).trim(),
+          email: String(item?.email || "").trim()
+        };
+      }),
+    [form.profileIds, selectedMemberById]
+  );
+
+  const selectedFooterPreset = useMemo(
+    () => footerPresets.find((item) => item.id === selectedFooterPresetId) || null,
+    [footerPresets, selectedFooterPresetId]
+  );
+
+  const activeFooter = useMemo(
+    () => normalizeEmailFooter(footerDraft, selectedFooterPreset?.footer || fallbackFooter),
+    [fallbackFooter, footerDraft, selectedFooterPreset]
+  );
+
+  const networkName = String(tenant?.content?.networkDisplayName || tenant?.name || "Your Camp Network")
+    .trim();
+  const previewHeaderLogoUrl = String(tenant?.theme?.logoUrl || "").trim();
+  const previewFooterLogoUrl = activeFooter.showLogo
+    ? String(activeFooter.logoUrl || tenant?.theme?.logoUrl || "").trim()
+    : "";
+  const previewInitials = (networkName || "PondBridge")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((item) => item[0]?.toUpperCase() || "")
+    .join("") || "PB";
+  const previewBody = previewTextFromHtmlLike(form.body);
+  const footerContact = [activeFooter.senderEmail, activeFooter.senderPhone].filter(Boolean).join(" • ");
+
+  function addRecipient(member) {
+    const profileId = String(member?.id || "").trim();
+    if (!profileId) return;
+    setForm((prev) => {
+      if (prev.profileIds.includes(profileId)) return prev;
+      return { ...prev, profileIds: [...prev.profileIds, profileId] };
+    });
+    setSelectedMemberById((prev) => ({
+      ...prev,
+      [profileId]: {
+        id: profileId,
+        fullName: String(member?.fullName || member?.name || "Member").trim() || "Member",
+        email: String(member?.email || "").trim()
+      }
+    }));
+    setMemberSearchResults((prev) => prev.filter((item) => String(item?.id || "").trim() !== profileId));
+  }
+
+  function removeRecipient(profileId = "") {
+    const normalized = String(profileId || "").trim();
+    if (!normalized) return;
+    setForm((prev) => ({
+      ...prev,
+      profileIds: prev.profileIds.filter((id) => id !== normalized)
+    }));
+  }
+
+  function saveRecipientGroup() {
+    const name = normalizeEmailRecipientGroupName(recipientGroupName);
+    const profileIds = normalizeProfileIdList(form.profileIds);
+    if (!name) {
+      setError("Enter a group name before saving.");
+      return;
+    }
+    if (!profileIds.length) {
+      setError("Add at least one recipient before saving a group.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const existingById = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId) || null;
+    const existingByName =
+      savedRecipientGroups.find((item) => item.name.toLowerCase() === name.toLowerCase()) || null;
+    const existing = existingById || existingByName;
+    const nextGroups = existing
+      ? savedRecipientGroups.map((item) =>
+          item.id === existing.id
+            ? { ...item, name, profileIds, updatedAt: now }
+            : item
+        )
+      : [
+          {
+            id: `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            name,
+            profileIds,
+            updatedAt: now
+          },
+          ...savedRecipientGroups
+        ].slice(0, 60);
+    writeSavedEmailRecipientGroups(slug, nextGroups);
+    setSavedRecipientGroups(nextGroups);
+    setSelectedRecipientGroupId(existing?.id || nextGroups[0]?.id || "");
+    setStatus(`Saved group "${name}".`);
+    setError("");
+  }
+
+  function applyRecipientGroup() {
+    if (!selectedRecipientGroupId) return;
+    const group = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId);
+    if (!group) return;
+    setForm((prev) => ({
+      ...prev,
+      mode: "custom_group",
+      profileIds: normalizeProfileIdList(group.profileIds || [])
+    }));
+    setRecipientGroupName(group.name || "");
+    setStatus(`Loaded group "${group.name}".`);
+    setError("");
+  }
+
+  function deleteRecipientGroup() {
+    if (!selectedRecipientGroupId) return;
+    const group = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId);
+    if (!group) return;
+    const confirmed = window.confirm(`Delete recipient group "${group.name}"?`);
+    if (!confirmed) return;
+    const nextGroups = savedRecipientGroups.filter((item) => item.id !== selectedRecipientGroupId);
+    writeSavedEmailRecipientGroups(slug, nextGroups);
+    setSavedRecipientGroups(nextGroups);
+    setSelectedRecipientGroupId(nextGroups[0]?.id || "");
+    if (String(recipientGroupName || "").trim().toLowerCase() === String(group.name || "").trim().toLowerCase()) {
+      setRecipientGroupName("");
+    }
+    setStatus(`Deleted group "${group.name}".`);
+    setError("");
+  }
+
+  async function persistFooterPresets(nextPresets = [], defaultPresetId = "", nextSelectedId = "") {
+    setFooterSaving(true);
+    setError("");
+    try {
+      const payload = await request("/email/footer-presets", {
+        method: "PATCH",
+        body: {
+          presets: nextPresets,
+          defaultPresetId
+        }
+      });
+      const presets = normalizeEmailFooterPresets(payload?.presets || nextPresets, fallbackFooter);
+      const selectedIdCandidate = String(nextSelectedId || payload?.defaultPresetId || "").trim();
+      const selectedId = presets.some((item) => item.id === selectedIdCandidate)
+        ? selectedIdCandidate
+        : String(payload?.defaultPresetId || presets[0]?.id || "");
+      const selectedPreset = presets.find((item) => item.id === selectedId) || presets[0];
+      const activeFooterPayload = normalizeEmailFooter(payload?.activeFooter || selectedPreset?.footer || {}, fallbackFooter);
+      setFooterPresets(presets);
+      setSelectedFooterPresetId(selectedId);
+      setFooterPresetName(selectedPreset?.name || "");
+      setFooterDraft(activeFooterPayload);
+      return { ok: true, presets, selectedId, activeFooterPayload };
+    } catch (requestError) {
+      setError(requestError.message || "Failed to save footer presets.");
+      return { ok: false };
+    } finally {
+      setFooterSaving(false);
+    }
+  }
+
+  function applyFooterPreset() {
+    if (!selectedFooterPresetId) return;
+    const preset = footerPresets.find((item) => item.id === selectedFooterPresetId);
+    if (!preset) return;
+    setFooterPresetName(preset.name || "");
+    setFooterDraft(normalizeEmailFooter(preset.footer || {}, fallbackFooter));
+    setStatus(`Loaded footer "${preset.name}".`);
+    setError("");
+  }
+
+  async function saveFooterPreset() {
+    const name = normalizeEmailFooterPresetName(footerPresetName);
+    if (!name) {
+      setError("Enter a footer preset name before saving.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const existingById = footerPresets.find((item) => item.id === selectedFooterPresetId) || null;
+    const existingByName = footerPresets.find((item) => item.name.toLowerCase() === name.toLowerCase()) || null;
+    const existing = existingById || existingByName;
+    const nextPreset = {
+      id: existing?.id || `footer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      footer: activeFooter,
+      updatedAt: now
+    };
+    const nextPresets = existing
+      ? footerPresets.map((item) => (item.id === existing.id ? nextPreset : item))
+      : [nextPreset, ...footerPresets].slice(0, 20);
+    const defaultId = footerPresets.some((item) => item.id === selectedFooterPresetId)
+      ? selectedFooterPresetId
+      : String(nextPresets[0]?.id || "");
+    const result = await persistFooterPresets(nextPresets, defaultId, nextPreset.id);
+    if (result.ok) {
+      setStatus(`Saved footer "${name}".`);
+      setError("");
+    }
+  }
+
+  async function deleteFooterPreset() {
+    if (!selectedFooterPresetId) return;
+    const preset = footerPresets.find((item) => item.id === selectedFooterPresetId);
+    if (!preset) return;
+    const confirmed = window.confirm(`Delete footer "${preset.name}"?`);
+    if (!confirmed) return;
+    const remaining = footerPresets.filter((item) => item.id !== selectedFooterPresetId);
+    const nextPresets = remaining.length
+      ? remaining
+      : normalizeEmailFooterPresets(
+          [
+            {
+              id: `footer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              name: "Default Footer",
+              footer: fallbackFooter,
+              updatedAt: new Date().toISOString()
+            }
+          ],
+          fallbackFooter
+        );
+    const nextDefaultId = String(nextPresets[0]?.id || "");
+    const result = await persistFooterPresets(nextPresets, nextDefaultId, nextDefaultId);
+    if (result.ok) {
+      setStatus(`Deleted footer "${preset.name}".`);
+      setError("");
+    }
+  }
+
+  async function makeFooterDefault() {
+    if (!selectedFooterPresetId) return;
+    const preset = footerPresets.find((item) => item.id === selectedFooterPresetId);
+    if (!preset) return;
+    const result = await persistFooterPresets(footerPresets, selectedFooterPresetId, selectedFooterPresetId);
+    if (result.ok) {
+      setStatus(`"${preset.name}" is now the default footer.`);
+      setError("");
+    }
+  }
+
   async function sendTestEmail() {
     setError("");
     setStatus("");
@@ -2138,7 +3230,8 @@ export function DirectorAdminEmailComposePage() {
         method: "POST",
         body: {
           subject: form.subject,
-          body: form.body
+          body: form.body,
+          footer: activeFooter
         }
       });
       setStatus("Test email sent to your admin inbox.");
@@ -2164,7 +3257,8 @@ export function DirectorAdminEmailComposePage() {
           subject: form.subject,
           body: form.body,
           targeting,
-          scheduledFor: form.scheduleType === "later" ? form.scheduledFor : ""
+          scheduledFor: form.scheduleType === "later" ? form.scheduledFor : "",
+          footer: activeFooter
         }
       });
       setStatus("Email queued successfully.");
@@ -2196,40 +3290,125 @@ export function DirectorAdminEmailComposePage() {
               onChange={(event) => setForm((prev) => ({ ...prev, mode: event.target.value }))}
             >
               <option value="all">All Members</option>
-              <option value="role">By Role</option>
-              <option value="year">By Year</option>
-              <option value="custom">Custom Selection</option>
+              <option value="individual">Specific People</option>
+              <option value="custom_group">Custom Group</option>
             </Select>
           </label>
-          {form.mode === "role" ? (
-            <label>
-              Roles (comma or line separated)
-              <Textarea
-                value={form.rolesText}
-                onChange={(event) => setForm((prev) => ({ ...prev, rolesText: event.target.value }))}
-                placeholder="Camper, Counselor"
-              />
-            </label>
-          ) : null}
-          {form.mode === "year" ? (
-            <label>
-              Years at camp (comma or line separated)
-              <Textarea
-                value={form.yearsText}
-                onChange={(event) => setForm((prev) => ({ ...prev, yearsText: event.target.value }))}
-                placeholder="2018, 2019, 2020"
-              />
-            </label>
-          ) : null}
-          {form.mode === "custom" ? (
-            <label>
-              Member IDs
-              <Textarea
-                value={form.customIdsText}
-                onChange={(event) => setForm((prev) => ({ ...prev, customIdsText: event.target.value }))}
-                placeholder="Paste member profile IDs separated by commas"
-              />
-            </label>
+          {form.mode !== "all" ? (
+            <section className="director-admin-recipient-builder">
+              {form.mode === "custom_group" ? (
+                <div className="director-admin-email-group-bar">
+                  <Input
+                    value={recipientGroupName}
+                    onChange={(event) => setRecipientGroupName(event.target.value)}
+                    placeholder="Group name (e.g., Reunion Outreach)"
+                  />
+                  <Button type="button" variant="secondary" onClick={saveRecipientGroup}>
+                    Save Group
+                  </Button>
+                  <Select
+                    value={selectedRecipientGroupId}
+                    onChange={(event) => {
+                      const nextId = event.target.value;
+                      setSelectedRecipientGroupId(nextId);
+                      const group = savedRecipientGroups.find((item) => item.id === nextId);
+                      if (group) setRecipientGroupName(group.name || "");
+                    }}
+                    disabled={!savedRecipientGroups.length}
+                  >
+                    <option value="">Saved groups</option>
+                    {savedRecipientGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={applyRecipientGroup}
+                    disabled={!selectedRecipientGroupId}
+                  >
+                    Use Group
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={deleteRecipientGroup}
+                    disabled={!selectedRecipientGroupId}
+                  >
+                    Delete Group
+                  </Button>
+                </div>
+              ) : null}
+
+              <label>
+                Find members
+                <Input
+                  value={memberQuery}
+                  onChange={(event) => setMemberQuery(event.target.value)}
+                  placeholder="Search by name or email..."
+                />
+              </label>
+              <div className="director-admin-member-search-results">
+                {memberSearchLoading ? (
+                  <p className="muted">Searching members...</p>
+                ) : memberSearchResults.length ? (
+                  memberSearchResults.map((member) => (
+                    <div key={member.id} className="director-admin-member-search-item">
+                      <div>
+                        <strong>{member.fullName || "Member"}</strong>
+                        <small>{member.email || "No email"}</small>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => addRecipient(member)}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">No matching members found.</p>
+                )}
+              </div>
+              <div className="director-admin-selected-recipient-head">
+                <strong>Selected recipients ({selectedRecipients.length})</strong>
+                {selectedRecipients.length ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setForm((prev) => ({ ...prev, profileIds: [] }))}
+                  >
+                    Clear Selected
+                  </Button>
+                ) : null}
+              </div>
+              {selectedRecipients.length ? (
+                <div className="director-admin-selected-recipient-list">
+                  {selectedRecipients.map((member) => (
+                    <div key={member.id} className="director-admin-selected-chip">
+                      <div>
+                        <strong>{member.fullName || "Member"}</strong>
+                        <small>{member.email || member.id}</small>
+                      </div>
+                      <button
+                        type="button"
+                        className="director-admin-inline-link"
+                        onClick={() => removeRecipient(member.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">No members selected yet.</p>
+              )}
+            </section>
           ) : null}
           <p className="muted">
             {recipientPreview.count || 0} members will receive this email.
@@ -2253,6 +3432,141 @@ export function DirectorAdminEmailComposePage() {
               placeholder="Write your message here..."
             />
           </label>
+
+          <section className="director-admin-email-footer-builder">
+            <div className="director-admin-email-footer-head">
+              <div>
+                <strong>Saved Footers</strong>
+                <small>Personalize signature details and reuse footer presets anytime.</small>
+              </div>
+              <span className="director-admin-email-footer-count">{footerPresets.length} saved</span>
+            </div>
+
+            <div className="director-admin-email-footer-preset-bar">
+              <Input
+                value={footerPresetName}
+                onChange={(event) => setFooterPresetName(event.target.value)}
+                placeholder="Footer preset name (e.g., Director Update)"
+              />
+              <Select
+                value={selectedFooterPresetId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setSelectedFooterPresetId(nextId);
+                  const preset = footerPresets.find((item) => item.id === nextId);
+                  if (preset) setFooterPresetName(preset.name || "");
+                }}
+                disabled={!footerPresets.length}
+              >
+                <option value="">Saved footers</option>
+                {footerPresets.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={applyFooterPreset}
+                disabled={!selectedFooterPresetId || loadingFooterPresets}
+              >
+                Use Footer
+              </Button>
+              <Button type="button" variant="secondary" onClick={saveFooterPreset} disabled={footerSaving}>
+                Save Footer
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={deleteFooterPreset}
+                disabled={!selectedFooterPresetId || footerSaving}
+              >
+                Delete Footer
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={makeFooterDefault}
+                disabled={!selectedFooterPresetId || footerSaving}
+              >
+                Set Default
+              </Button>
+            </div>
+
+            <div className="director-admin-email-footer-grid">
+              <label>
+                Sign-off
+                <Input
+                  value={activeFooter.signOff}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, signOff: event.target.value }, fallbackFooter))
+                  }
+                  placeholder="Warmly,"
+                />
+              </label>
+              <label>
+                Name
+                <Input
+                  value={activeFooter.senderName}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderName: event.target.value }, fallbackFooter))
+                  }
+                  placeholder="Director name"
+                />
+              </label>
+              <label>
+                Role
+                <Input
+                  value={activeFooter.senderRole}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderRole: event.target.value }, fallbackFooter))
+                  }
+                  placeholder="Director"
+                />
+              </label>
+              <label>
+                Email
+                <Input
+                  value={activeFooter.senderEmail}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderEmail: event.target.value }, fallbackFooter))
+                  }
+                  placeholder="name@camp.org"
+                />
+              </label>
+              <label>
+                Phone
+                <Input
+                  value={activeFooter.senderPhone}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderPhone: event.target.value }, fallbackFooter))
+                  }
+                  placeholder="(555) 555-5555"
+                />
+              </label>
+              <label>
+                Logo URL
+                <Input
+                  value={activeFooter.logoUrl}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, logoUrl: event.target.value }, fallbackFooter))
+                  }
+                  placeholder="https://..."
+                />
+              </label>
+              <label className="inline-check director-admin-email-footer-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(activeFooter.showLogo)}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, showLogo: event.target.checked }, fallbackFooter))
+                  }
+                />
+                Include camp logo in footer
+              </label>
+            </div>
+          </section>
 
           <label>
             Send timing
@@ -2286,6 +3600,37 @@ export function DirectorAdminEmailComposePage() {
             </Button>
           </div>
         </section>
+        <aside className="director-admin-email-preview">
+          <h3>Live Preview</h3>
+          <div className="director-admin-email-frame">
+            <div className="director-admin-email-frame-head" style={{ background: "var(--brand-primary)" }}>
+              {previewHeaderLogoUrl ? (
+                <img src={previewHeaderLogoUrl} alt="" />
+              ) : (
+                <span className="director-admin-logo-fallback">{previewInitials}</span>
+              )}
+              <div>
+                <strong>{networkName || "Your Camp Network"}</strong>
+                <small>Community update</small>
+              </div>
+            </div>
+            <div className="director-admin-email-frame-body">
+              <h4>{form.subject.trim() || "Subject line preview"}</h4>
+              <p>{previewBody || "Write your message here and the preview updates in real time."}</p>
+            </div>
+            <div className="director-admin-email-frame-foot">
+              <div className="director-admin-email-signature-preview">
+                <p>{activeFooter.signOff || "Warmly,"}</p>
+                {activeFooter.senderName ? <p><strong>{activeFooter.senderName}</strong></p> : null}
+                {activeFooter.senderRole ? <p>{activeFooter.senderRole}</p> : null}
+                {footerContact ? <p>{footerContact}</p> : null}
+              </div>
+              {previewFooterLogoUrl ? (
+                <img className="director-admin-email-signature-logo" src={previewFooterLogoUrl} alt="" />
+              ) : null}
+            </div>
+          </div>
+        </aside>
       </form>
     </Card>
   );
@@ -2334,8 +3679,6 @@ export function DirectorAdminEmailHistoryPage() {
               <th>Subject</th>
               <th>Recipients</th>
               <th>Sent</th>
-              <th>Open Rate</th>
-              <th>Click Rate</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -2343,13 +3686,13 @@ export function DirectorAdminEmailHistoryPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={5} className="muted">
                   Loading sent emails...
                 </td>
               </tr>
             ) : !items.length ? (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={5}>
                   <div className="director-admin-empty">
                     <h3>No emails sent yet.</h3>
                     <p>Compose your first email to the network.</p>
@@ -2362,8 +3705,6 @@ export function DirectorAdminEmailHistoryPage() {
                   <td>{item.subject}</td>
                   <td>{item.recipientCount || 0}</td>
                   <td>{formatDateTime(item.sentAt || item.createdAt)}</td>
-                  <td>{Number(item.stats?.openRate || 0).toFixed(1)}%</td>
-                  <td>{Number(item.stats?.clickRate || 0).toFixed(1)}%</td>
                   <td>
                     <span className={`director-admin-status-badge tone-${statusTone(item.status)}`.trim()}>
                       {item.status}
@@ -2389,12 +3730,6 @@ export function DirectorAdminEmailHistoryPage() {
             </p>
             <p>
               <strong>Recipients:</strong> {selected.recipientCount}
-            </p>
-            <p>
-              <strong>Open rate:</strong> {Number(selected.stats?.openRate || 0).toFixed(1)}%
-            </p>
-            <p>
-              <strong>Click rate:</strong> {Number(selected.stats?.clickRate || 0).toFixed(1)}%
             </p>
             <Textarea value={selected.body || ""} readOnly />
             <div className="director-admin-modal-actions">
@@ -2429,6 +3764,13 @@ function modulePreviewPath(slug, key) {
   };
   return map[key] || `/t/${slug}/home`;
 }
+
+const MODULE_LAYOUT_HINTS = {
+  newsletter: {
+    row: "bottom",
+    fullWidth: true
+  }
+};
 
 export function DirectorAdminFeaturesPage() {
   const { slug, request } = useAdminApi();
@@ -2482,16 +3824,30 @@ export function DirectorAdminFeaturesPage() {
     );
   }
 
-  const moduleColumns = [[], []];
-  (payload.modules || []).forEach((module, index) => {
-    moduleColumns[index % 2].push(module);
-  });
+  const orderedModules = useMemo(() => {
+    const source = Array.isArray(payload?.modules) ? payload.modules : [];
+    if (!source.length) return [];
+    const topModules = [];
+    const bottomModules = [];
+    source.forEach((module) => {
+      const hint = MODULE_LAYOUT_HINTS[String(module?.key || "").trim()] || null;
+      if (hint?.row === "bottom") {
+        bottomModules.push(module);
+      } else {
+        topModules.push(module);
+      }
+    });
+    return [...topModules, ...bottomModules];
+  }, [payload?.modules]);
 
   function renderModuleCard(module) {
+    const hint = MODULE_LAYOUT_HINTS[String(module?.key || "").trim()] || null;
     return (
       <article
         key={module.key}
-        className={`director-admin-module-card ${module.enabled ? "is-enabled" : ""} ${module.locked ? "is-locked" : ""}`.trim()}
+        className={`director-admin-module-card ${module.enabled ? "is-enabled" : ""} ${module.locked ? "is-locked" : ""} ${
+          hint?.fullWidth ? "is-full-width" : ""
+        }`.trim()}
       >
         <header>
           <div>
@@ -2586,12 +3942,8 @@ export function DirectorAdminFeaturesPage() {
       />
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
-      <div className="director-admin-modules-columns">
-        {moduleColumns.map((column, index) => (
-          <div key={`module-column-${index}`} className="director-admin-modules-column">
-            {column.map((module) => renderModuleCard(module))}
-          </div>
-        ))}
+      <div className="director-admin-modules-grid">
+        {orderedModules.map((module) => renderModuleCard(module))}
       </div>
     </Card>
   );
@@ -2895,7 +4247,6 @@ export function DirectorAdminSettingsNetworkPage() {
     campName: "",
     networkName: "",
     homepageQuote: "",
-    aboutText: "",
     contactEmail: "",
     websiteUrl: ""
   });
@@ -2903,11 +4254,13 @@ export function DirectorAdminSettingsNetworkPage() {
   useEffect(() => {
     if (!payload?.identity) return;
     const campName = String(payload.identity.campName || payload.tenant?.name || "").trim();
+    const campType = normalizeCampType(payload?.tenant?.content?.campType || "coed");
     setForm({
       campName,
-      networkName: payload.identity.networkName || (campName ? `${campName} Alumni Network` : ""),
+      networkName:
+        payload.identity.networkName ||
+        (campName ? defaultNetworkDisplayNameForCamp(campName, campType) : ""),
       homepageQuote: payload.identity.homepageQuote || payload.identity.tagline || "",
-      aboutText: payload.identity.aboutText || "",
       contactEmail: payload.identity.contactEmail || "",
       websiteUrl: payload.identity.websiteUrl || payload.tenant?.appUrl || ""
     });
@@ -2952,10 +4305,6 @@ export function DirectorAdminSettingsNetworkPage() {
           />
           <span className="muted">Displayed on the public homepage hero before login.</span>
         </label>
-        <label className="full-width">
-          About Text
-          <Textarea value={form.aboutText} onChange={(event) => setForm((prev) => ({ ...prev, aboutText: event.target.value }))} />
-        </label>
         <label>
           Contact Email
           <Input type="email" value={form.contactEmail} onChange={(event) => setForm((prev) => ({ ...prev, contactEmail: event.target.value }))} />
@@ -2981,6 +4330,8 @@ export function DirectorAdminSettingsBrandingPage() {
   const [status, setStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadingField, setUploadingField] = useState("");
+  const [logoFileName, setLogoFileName] = useState("");
+  const [heroFileName, setHeroFileName] = useState("");
   const [form, setForm] = useState({
     brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
@@ -3111,10 +4462,25 @@ export function DirectorAdminSettingsBrandingPage() {
     } finally {
       setUploadingField("");
     }
+
+    if (field === "logoUrl") {
+      setLogoFileName(String(file?.name || "").trim());
+    }
+    if (field === "heroImageUrl") {
+      setHeroFileName(String(file?.name || "").trim());
+    }
   }
 
   if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
   const previewBrandPrimary = normalizeBrandHex(form.brandPrimary, DEFAULT_BRAND_PRIMARY);
+  const paletteSwatches = [
+    { label: "Primary", color: previewBrandPrimary },
+    { label: "Action", color: darkenHex(previewBrandPrimary, 0.12) },
+    { label: "Soft", color: deriveSecondaryHex(previewBrandPrimary, 0.72) },
+    { label: "Surface", color: deriveSecondaryHex(previewBrandPrimary, 0.9) }
+  ];
+  const currentLogoUrl = String(payload?.branding?.logoUrl || "").trim();
+  const currentHeroUrl = String(payload?.branding?.heroImageUrl || "").trim();
 
   return (
     <Card>
@@ -3123,57 +4489,92 @@ export function DirectorAdminSettingsBrandingPage() {
       {uploadError ? <p className="error-text">{uploadError}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
       <form className="director-admin-form-grid" onSubmit={saveBranding}>
+        <div className="full-width director-admin-upload-field">
+          <label htmlFor="director-admin-logo-upload">Logo Upload</label>
+          <label className="director-upload-control" htmlFor="director-admin-logo-upload">
+            <span className="director-upload-button">Upload logo</span>
+            <span className="director-upload-name">
+              {logoFileName || "PNG or JPG (optimized automatically)"}
+            </span>
+          </label>
+          <input
+            id="director-admin-logo-upload"
+            type="file"
+            accept="image/*"
+            className="director-upload-input"
+            onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)}
+          />
+          <div className="director-admin-branding-current-media">
+            <small>Currently in use</small>
+            {currentLogoUrl ? (
+              <img src={currentLogoUrl} alt="Current logo" className="director-admin-branding-current-logo" />
+            ) : (
+              <p className="muted">No logo currently set.</p>
+            )}
+          </div>
+        </div>
+        <div className="full-width director-admin-upload-field">
+          <label htmlFor="director-admin-hero-upload">Hero Image Upload</label>
+          <label className="director-upload-control" htmlFor="director-admin-hero-upload">
+            <span className="director-upload-button">Upload main photo</span>
+            <span className="director-upload-name">
+              {heroFileName || "Used on login and home pages. PNG or JPG (optimized automatically)"}
+            </span>
+          </label>
+          <input
+            id="director-admin-hero-upload"
+            type="file"
+            accept="image/*"
+            className="director-upload-input"
+            onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)}
+          />
+          <div className="director-admin-branding-current-media">
+            <small>Currently in use</small>
+            {currentHeroUrl ? (
+              <img src={currentHeroUrl} alt="Current hero image" className="director-admin-branding-current-hero" />
+            ) : (
+              <p className="muted">No hero image currently set.</p>
+            )}
+          </div>
+        </div>
         <label className="full-width">
-          Logo Upload
-          <Input type="file" accept="image/*" onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)} />
-        </label>
-        <label className="full-width">
-          Hero Image Upload
-          <Input type="file" accept="image/*" onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)} />
-        </label>
-        <label>
-          Primary Color
-          <div className="director-admin-color-field">
-            <span
-              className="director-admin-color-swatch"
-              style={{ background: previewBrandPrimary }}
-              aria-hidden="true"
-            />
-            <Input
+          Main color
+          <div className="director-color-row">
+            <input
               type="color"
-              className="director-admin-color-picker"
+              className="director-color-swatch"
               value={previewBrandPrimary}
-              aria-label="Pick primary color"
+              aria-label="Main color picker"
               onChange={(event) =>
                 setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(event.target.value, DEFAULT_BRAND_PRIMARY) }))
               }
             />
-            <span className="director-admin-color-value">{previewBrandPrimary.toUpperCase()}</span>
+            <Input
+              value={form.brandPrimary}
+              placeholder={DEFAULT_BRAND_PRIMARY.toUpperCase()}
+              onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))}
+              onBlur={() =>
+                setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(prev.brandPrimary, DEFAULT_BRAND_PRIMARY) }))
+              }
+            />
+          </div>
+          <div className="director-palette-preview" aria-label="Brand palette preview">
+            {paletteSwatches.map((swatch) => (
+              <div className="director-palette-swatch" key={swatch.label}>
+                <span
+                  className="director-palette-chip"
+                  style={{ backgroundColor: swatch.color }}
+                  aria-hidden="true"
+                />
+                <span>{swatch.label}</span>
+                <code>{swatch.color.toUpperCase()}</code>
+              </div>
+            ))}
           </div>
         </label>
-        <label>
-          Primary Color Hex
-          <Input
-            value={form.brandPrimary}
-            placeholder={DEFAULT_BRAND_PRIMARY}
-            onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))}
-            onBlur={() =>
-              setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(prev.brandPrimary, DEFAULT_BRAND_PRIMARY) }))
-            }
-          />
-        </label>
-        <div className="director-admin-brand-preview full-width" style={{ borderColor: previewBrandPrimary }}>
-          <div className="director-admin-brand-preview-head" style={{ background: previewBrandPrimary }}>
-            {form.logoUrl ? <img src={form.logoUrl} alt="" /> : <span>PB</span>}
-            <strong>Preview — network header</strong>
-          </div>
-          <div className="director-admin-brand-preview-body">
-            {form.heroImageUrl ? <img src={form.heroImageUrl} alt="" /> : <p className="muted">Hero preview</p>}
-          </div>
-        </div>
         <div className="full-width">
           <HeroImageEditor
-            label="Interactive hero composition"
+            label="Live preview"
             variant="admin"
             heroImageUrl={form.heroImageUrl}
             heroImagePosition={form.heroImagePosition}
@@ -3181,6 +4582,7 @@ export function DirectorAdminSettingsBrandingPage() {
             logoUrl={form.logoUrl}
             brandPrimary={previewBrandPrimary}
             campName={payload?.identity?.campName || payload?.tenant?.name || "Your Camp"}
+            campType={payload?.tenant?.content?.campType || "coed"}
             welcomeBody={payload?.identity?.homepageQuote || payload?.identity?.tagline || ""}
             onChangePosition={(nextValue) =>
               setForm((prev) => ({

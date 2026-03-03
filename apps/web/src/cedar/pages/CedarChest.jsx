@@ -11,6 +11,10 @@ import { FileText, Newspaper, Upload, X } from "lucide-react";
 
 const API = API_BASE;
 const DEFAULT_SEASONS = ["Winter", "Spring", "Summer", "Fall"];
+const COVER_PREVIEW_WIDTH = 220;
+const COVER_PREVIEW_HEIGHT = Math.round((COVER_PREVIEW_WIDTH * 4) / 3);
+const COVER_EXPORT_WIDTH = 900;
+const COVER_EXPORT_HEIGHT = 1200;
 
 function normalizeRoleSet(value = {}) {
   const rawRoles = Array.isArray(value?.roles)
@@ -68,6 +72,42 @@ async function parseApiError(response, fallback = "Request failed") {
   }
   const text = await response.text().catch(() => "");
   return text ? String(text) : fallback;
+}
+
+function openInNewTab(url = "") {
+  const target = String(url || "").trim();
+  if (!target) return;
+  const popup = window.open(target, "_blank", "noopener,noreferrer");
+  if (popup) return;
+  const anchor = document.createElement("a");
+  anchor.href = target;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+function readFileAsImage(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Unable to load image."));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function canvasToBlob(canvas, mimeType = "image/jpeg", quality = 0.92) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), mimeType, quality);
+  });
 }
 
 // ===== main page =====
@@ -371,29 +411,31 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
     setOpening(true);
     setOpenErr("");
     try {
+      if (/\/uploads\/object(?:\?|$)/.test(pdfUrl)) {
+        openInNewTab(pdfUrl);
+        return;
+      }
       const token = String(getToken() || "").trim();
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-      const res = await fetch(pdfUrl, {
-        headers,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        throw new Error(res.status === 401 ? "Your session expired. Please sign in again." : "Failed to load PDF.");
+      let res;
+      try {
+        res = await fetch(pdfUrl, {
+          headers,
+          credentials: "include",
+        });
+      } catch {
+        // R2 download redirects can fail CORS for fetch/blob; open directly instead.
+        openInNewTab(pdfUrl);
+        return;
+      }
+      if (!res?.ok) {
+        throw new Error(res?.status === 401 ? "Your session expired. Please sign in again." : "Failed to load PDF.");
       }
 
       const blob = await res.blob();
       if (!blob || !blob.size) throw new Error("PDF file is empty.");
       const objectUrl = URL.createObjectURL(blob);
-      const popup = window.open(objectUrl, "_blank", "noopener,noreferrer");
-      if (!popup) {
-        const anchor = document.createElement("a");
-        anchor.href = objectUrl;
-        anchor.target = "_blank";
-        anchor.rel = "noopener noreferrer";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      }
+      openInNewTab(objectUrl);
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (error) {
       setOpenErr(String(error?.message || "Failed to load PDF."));
@@ -503,6 +545,10 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
   const [pdf, setPdf] = useState(null);
   const [coverImage, setCoverImage] = useState(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState("");
+  const [coverMeta, setCoverMeta] = useState({ width: 0, height: 0 });
+  const [coverZoom, setCoverZoom] = useState(1);
+  const [coverOffsetX, setCoverOffsetX] = useState(0);
+  const [coverOffsetY, setCoverOffsetY] = useState(0);
   const [emailToNetwork, setEmailToNetwork] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -523,6 +569,7 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
   useEffect(() => {
     if (!coverImage) {
       setCoverPreviewUrl("");
+      setCoverMeta({ width: 0, height: 0 });
       return;
     }
 
@@ -530,6 +577,89 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
     setCoverPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [coverImage]);
+
+  useEffect(() => {
+    if (!coverPreviewUrl) return undefined;
+    let active = true;
+    const image = new Image();
+    image.onload = () => {
+      if (!active) return;
+      setCoverMeta({
+        width: Number(image.naturalWidth || 0),
+        height: Number(image.naturalHeight || 0),
+      });
+    };
+    image.src = coverPreviewUrl;
+    return () => {
+      active = false;
+    };
+  }, [coverPreviewUrl]);
+
+  useEffect(() => {
+    setCoverZoom(1);
+    setCoverOffsetX(0);
+    setCoverOffsetY(0);
+  }, [coverImage]);
+
+  const coverPreviewLayout = useMemo(() => {
+    const sourceW = Number(coverMeta.width || 0);
+    const sourceH = Number(coverMeta.height || 0);
+    if (!sourceW || !sourceH) return null;
+    const baseScale = Math.max(COVER_PREVIEW_WIDTH / sourceW, COVER_PREVIEW_HEIGHT / sourceH);
+    const scaledW = sourceW * baseScale * coverZoom;
+    const scaledH = sourceH * baseScale * coverZoom;
+    const maxShiftX = Math.max(0, (scaledW - COVER_PREVIEW_WIDTH) / 2);
+    const maxShiftY = Math.max(0, (scaledH - COVER_PREVIEW_HEIGHT) / 2);
+    const shiftX = (coverOffsetX / 100) * maxShiftX;
+    const shiftY = (coverOffsetY / 100) * maxShiftY;
+    return {
+      width: scaledW,
+      height: scaledH,
+      left: (COVER_PREVIEW_WIDTH - scaledW) / 2 + shiftX,
+      top: (COVER_PREVIEW_HEIGHT - scaledH) / 2 + shiftY,
+    };
+  }, [coverMeta.height, coverMeta.width, coverOffsetX, coverOffsetY, coverZoom]);
+
+  const buildCoverUploadFile = useCallback(async () => {
+    if (!coverImage) return null;
+    try {
+      const image = await readFileAsImage(coverImage);
+      const sourceW = Number(image.naturalWidth || 0);
+      const sourceH = Number(image.naturalHeight || 0);
+      if (!sourceW || !sourceH) return coverImage;
+
+      const baseScale = Math.max(COVER_EXPORT_WIDTH / sourceW, COVER_EXPORT_HEIGHT / sourceH);
+      const scaledW = sourceW * baseScale * coverZoom;
+      const scaledH = sourceH * baseScale * coverZoom;
+      const maxShiftX = Math.max(0, (scaledW - COVER_EXPORT_WIDTH) / 2);
+      const maxShiftY = Math.max(0, (scaledH - COVER_EXPORT_HEIGHT) / 2);
+      const shiftX = (coverOffsetX / 100) * maxShiftX;
+      const shiftY = (coverOffsetY / 100) * maxShiftY;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = COVER_EXPORT_WIDTH;
+      canvas.height = COVER_EXPORT_HEIGHT;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return coverImage;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, COVER_EXPORT_WIDTH, COVER_EXPORT_HEIGHT);
+      ctx.drawImage(
+        image,
+        (COVER_EXPORT_WIDTH - scaledW) / 2 + shiftX,
+        (COVER_EXPORT_HEIGHT - scaledH) / 2 + shiftY,
+        scaledW,
+        scaledH
+      );
+
+      const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
+      if (!blob) return coverImage;
+      const rawName = String(coverImage.name || "cover").replace(/\.[^.]+$/, "");
+      return new File([blob], `${rawName}-cover.jpg`, { type: "image/jpeg" });
+    } catch {
+      return coverImage;
+    }
+  }, [coverImage, coverOffsetX, coverOffsetY, coverZoom]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -557,7 +687,8 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
       fd.append("year", String(year));
       fd.append("emailToNetwork", String(emailToNetwork));
       fd.append("file", pdf);
-      fd.append("coverImage", coverImage);
+      const preparedCoverImage = await buildCoverUploadFile();
+      fd.append("coverImage", preparedCoverImage || coverImage);
 
       const res = await fetch(`${API}/newsletters`, {
         method: "POST",
@@ -680,7 +811,69 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
 
         {coverPreviewUrl ? (
           <div className="cc-cover-preview-wrap">
-            <img src={coverPreviewUrl} alt="Selected cover preview" className="cc-cover-preview" />
+            <div className="cc-cover-preview-stage">
+              <img
+                src={coverPreviewUrl}
+                alt="Selected cover preview"
+                className="cc-cover-preview-image"
+                style={
+                  coverPreviewLayout
+                    ? {
+                        width: `${coverPreviewLayout.width}px`,
+                        height: `${coverPreviewLayout.height}px`,
+                        left: `${coverPreviewLayout.left}px`,
+                        top: `${coverPreviewLayout.top}px`,
+                      }
+                    : undefined
+                }
+              />
+            </div>
+            <div className="cc-cover-controls" aria-label="Cover image controls">
+              <label className="cc-cover-control">
+                <span>Zoom</span>
+                <input
+                  type="range"
+                  min="100"
+                  max="300"
+                  step="1"
+                  value={Math.round(coverZoom * 100)}
+                  onChange={(event) => setCoverZoom(Number(event.target.value) / 100)}
+                />
+              </label>
+              <label className="cc-cover-control">
+                <span>Shift Left/Right</span>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="1"
+                  value={coverOffsetX}
+                  onChange={(event) => setCoverOffsetX(Number(event.target.value))}
+                />
+              </label>
+              <label className="cc-cover-control">
+                <span>Shift Up/Down</span>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="1"
+                  value={coverOffsetY}
+                  onChange={(event) => setCoverOffsetY(Number(event.target.value))}
+                />
+              </label>
+              <button
+                type="button"
+                className="cc-file-btn"
+                onClick={() => {
+                  setCoverZoom(1);
+                  setCoverOffsetX(0);
+                  setCoverOffsetY(0);
+                }}
+              >
+                Reset Cover Framing
+              </button>
+            </div>
           </div>
         ) : (
           <div className="cc-cover-preview-empty">Cover preview appears here</div>

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveAlumniWord } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
@@ -206,6 +208,8 @@ function buildTreeLayout(members = [], edges = []) {
 }
 
 export default function FamilyTreeView() {
+  const { tenant } = useTenant();
+  const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -698,7 +702,7 @@ export default function FamilyTreeView() {
                 <section className="ft-form-card">
                   <h2 className="ft-form-title">Add Members</h2>
                   <label className="ft-field">
-                    <span className="ft-label">Search Alumni Profiles</span>
+                    <span className="ft-label">{`Search ${alumniWordTitle} Profiles`}</span>
                     <input
                       className="ft-input"
                       value={query}

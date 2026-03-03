@@ -1,7 +1,7 @@
 {
   "name": "PondBridge",
   "short_name": "PondBridge",
-  "description": "Alumni network management platform for camps and organizations",
+  "description": "Camp network management platform for camps and organizations",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f5f7fa",

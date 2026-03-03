@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { Button, Card, Input, PageShell, SectionTitle } from "@pondbridge/ui";
 import { requestBlob, requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useTenant } from "../context/TenantContext.jsx";
+import { resolveAlumniWord } from "../lib/campLabels.js";
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -21,6 +23,8 @@ function isCsvFile(file) {
 export default function TenantImportPage() {
   const { slug } = useParams();
   const { token } = useAuth();
+  const { tenant } = useTenant();
+  const alumniWord = resolveAlumniWord(tenant);
   const fileInputRef = useRef(null);
 
   const [dragActive, setDragActive] = useState(false);
@@ -110,7 +114,7 @@ export default function TenantImportPage() {
     <PageShell className="pb-cedar-page">
       <Card>
         <h1>CSV Import</h1>
-        <p className="muted">Upload alumni rows safely with duplicate detection and row-level errors.</p>
+        <p className="muted">{`Upload ${alumniWord} rows safely with duplicate detection and row-level errors.`}</p>
         <p className="muted">
           Expected columns: <code>firstName,lastName,email,phone,cityState,roleAtCamp,gradYear</code>
         </p>

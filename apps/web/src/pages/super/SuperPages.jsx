@@ -609,6 +609,9 @@ export function SuperTenantCreatePage() {
         slug: payload?.tenant?.slug || form.slug,
         planTier: payload?.tenant?.planTier || form.planTier,
         onboardingFeeAmount: Number(payload?.tenant?.onboardingFeeAmount ?? form.onboardingFeeAmount ?? 0),
+        networkDisplayName: String(payload?.tenant?.content?.networkDisplayName || "").trim(),
+        welcomeHeadline: String(payload?.tenant?.content?.welcomeHeadline || "").trim(),
+        welcomeBody: String(payload?.tenant?.content?.welcomeBody || "").trim(),
         domain,
         claimLink,
         networkClaimLink,
@@ -771,12 +774,12 @@ export function SuperTenantCreatePage() {
             <p className="super-create-result-label">Network preview</p>
             <div className="super-camp-create-network-preview-frame">
               <header className="super-camp-create-network-preview-nav">
-                <strong>{createResult.campName} Alumni Network</strong>
+                <strong>{createResult.networkDisplayName || `${createResult.campName} Network`}</strong>
                 <span>{createResult.domain || `${createResult.slug}.pondbridgealumni.com`}</span>
               </header>
               <div className="super-camp-create-network-preview-body">
-                <h3>{`Welcome to ${createResult.campName} Alumni Network`}</h3>
-                <p>Reconnect with alumni, staff, and directors from every era.</p>
+                <h3>{createResult.welcomeHeadline || `Welcome to ${createResult.networkDisplayName || `${createResult.campName} Network`}`}</h3>
+                <p>{createResult.welcomeBody || "Reconnect with members, staff, and directors from every era."}</p>
                 <div className="super-camp-create-network-preview-actions">
                   <span>Sign in</span>
                   <span>Create account</span>

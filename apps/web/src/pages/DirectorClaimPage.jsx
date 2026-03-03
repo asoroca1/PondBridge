@@ -2,12 +2,14 @@ import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
 import { useTenant } from "../context/TenantContext.jsx";
+import { resolveAlumniWord } from "../lib/campLabels.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 
 export default function DirectorClaimPage() {
   const { slug: paramSlug } = useParams();
-  const { slug: tenantSlug } = useTenant();
+  const { slug: tenantSlug, tenant } = useTenant();
   const navigate = useNavigate();
+  const alumniWord = resolveAlumniWord(tenant);
 
   const slug = String(paramSlug || tenantSlug || "").trim().toLowerCase();
   const createAccountPath = useMemo(
@@ -20,10 +22,10 @@ export default function DirectorClaimPage() {
       <div className="product-claim-wrap product-director-claim-wrap">
         <article className="product-claim-card product-director-claim-card">
           <p className="product-director-create-kicker">Director Onboarding</p>
-          <h1>Welcome to the future of your camp&apos;s alumni network.</h1>
+          <h1>{`Welcome to the future of your camp's ${alumniWord} network.`}</h1>
           <p className="product-claim-body director-claim-subtitle">
             Create your director account to start setup. You&apos;ll be guided through branding,
-            access settings, alumni import, and launch.
+            {` access settings, ${alumniWord} import, and launch.`}
           </p>
           <div className="product-claim-actions director-claim-actions">
             <Button onClick={() => navigate(createAccountPath)}>Create director account</Button>

@@ -22,6 +22,7 @@ export const onboardingStepIds = [
 export const onboardingChecklistStatuses = ["not_started", "in_progress", "completed"];
 export const signupModes = ["open", "code", "invite_only", "approval_queue"];
 export const fontTokens = ["cedar_default", "modern_clean", "classic_serif"];
+export const campTypes = ["coed", "all_girls", "all_boys"];
 export const heroImagePositionPresets = [
   "left top",
   "center top",
@@ -48,6 +49,25 @@ export const defaultCampStaffRoles = ["Camper", "Counselor", "JC", "CIT", "Admin
 
 const HERO_IMAGE_POSITION_SET = new Set(heroImagePositionPresets);
 const HERO_IMAGE_SIZE_SET = new Set(heroImageSizePresets);
+const CAMP_TYPE_SET = new Set(campTypes);
+const CAMP_TYPE_ALIASES = {
+  coed: "coed",
+  "co-ed": "coed",
+  "co ed": "coed",
+  mixed: "coed",
+  allgirls: "all_girls",
+  all_girls: "all_girls",
+  "all-girls": "all_girls",
+  girls: "all_girls",
+  female: "all_girls",
+  women: "all_girls",
+  allboys: "all_boys",
+  all_boys: "all_boys",
+  "all-boys": "all_boys",
+  boys: "all_boys",
+  male: "all_boys",
+  men: "all_boys"
+};
 const HERO_IMAGE_POSITION_ALIASES = {
   center: "center center",
   top: "center top",
@@ -151,6 +171,43 @@ export function normalizeHeroImageSize(value = "", fallback = "cover") {
   return fallback;
 }
 
+export function normalizeCampType(value = "", fallback = "coed") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return CAMP_TYPE_SET.has(fallback) ? fallback : "coed";
+  const mapped = Object.prototype.hasOwnProperty.call(CAMP_TYPE_ALIASES, normalized)
+    ? CAMP_TYPE_ALIASES[normalized]
+    : normalized;
+  if (CAMP_TYPE_SET.has(mapped)) return mapped;
+  return CAMP_TYPE_SET.has(fallback) ? fallback : "coed";
+}
+
+export function isAllGirlsCampType(value = "") {
+  return normalizeCampType(value) === "all_girls";
+}
+
+export function alumniPluralForCampType(campType = "", { capitalized = false } = {}) {
+  const word = isAllGirlsCampType(campType) ? "alumnae" : "alumni";
+  if (!capitalized) return word;
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+export function replaceAlumniForCampType(text = "", campType = "") {
+  const source = String(text || "");
+  if (!source) return source;
+  const lowerWord = alumniPluralForCampType(campType, { capitalized: false });
+  const upperWord = alumniPluralForCampType(campType, { capitalized: true });
+  return source.replace(/\balumni\b/gi, (match) => (match[0] === "A" ? upperWord : lowerWord));
+}
+
+export function defaultNetworkDisplayNameForCamp(campName = "Your Camp", campType = "coed") {
+  const safeName = String(campName || "").trim() || "Your Camp";
+  const networkWord = alumniPluralForCampType(campType, { capitalized: true });
+  if (/\bcamp\b/i.test(safeName)) {
+    return `${safeName} ${networkWord} Network`;
+  }
+  return `${safeName} Camp ${networkWord} Network`;
+}
+
 const jobSchema = z
   .object({
     role: z.string().trim().optional().default(""),
@@ -212,7 +269,25 @@ export const tenantFooterLinkSchema = z.object({
   url: z.string().trim().url()
 });
 
+export const tenantEmailFooterSchema = z.object({
+  signOff: z.string().trim().max(80).default("Warmly,"),
+  senderName: z.string().trim().max(120).default(""),
+  senderRole: z.string().trim().max(120).default("Director"),
+  senderEmail: z.string().trim().email().or(z.literal("")).default(""),
+  senderPhone: z.string().trim().max(48).default(""),
+  showLogo: z.boolean().default(true),
+  logoUrl: z.string().trim().url().or(z.literal("")).default("")
+});
+
+export const tenantEmailFooterPresetSchema = z.object({
+  id: z.string().trim().min(1).max(90),
+  name: z.string().trim().min(1).max(72),
+  footer: tenantEmailFooterSchema.default({}),
+  updatedAt: z.string().trim().max(80).default("")
+});
+
 export const tenantContentSchema = z.object({
+  campType: z.enum(campTypes).default("coed"),
   networkDisplayName: z.string().trim().max(120).default("Your Camp Alumni Network"),
   welcomeHeadline: z.string().trim().max(120).default("Welcome to your alumni network"),
   welcomeBody: z.string().trim().max(1200).default("Connect with your camp alumni community."),
@@ -223,7 +298,9 @@ export const tenantContentSchema = z.object({
   aboutText: z.string().trim().max(2000).default(""),
   contactEmail: z.string().trim().email().or(z.literal("")).default(""),
   supportUrl: z.string().trim().url().or(z.literal("")).default(""),
-  footerLinks: z.array(tenantFooterLinkSchema).max(8).default([])
+  footerLinks: z.array(tenantFooterLinkSchema).max(8).default([]),
+  emailFooterPresets: z.array(tenantEmailFooterPresetSchema).max(20).default([]),
+  defaultEmailFooterPresetId: z.string().trim().max(90).default("")
 });
 
 export const tenantSettingsSchema = z.object({

@@ -19,7 +19,7 @@ import {
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { requestJson } from "../../lib/http.js";
-import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
+import { resolveAlumniWord, resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { avatarUrl } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
@@ -201,6 +201,7 @@ function SectionHead({
 export default function AdvancedSearch() {
   const { tenant, slug } = useTenant();
   const { token, getAuthToken, isReady: authReady } = useAuth();
+  const alumniWord = resolveAlumniWord(tenant);
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
 
   const [params, setParams] = useSearchParams();
@@ -495,7 +496,7 @@ export default function AdvancedSearch() {
           <CedarPageHeader
             icon={<SlidersHorizontal size={18} />}
             title="Advanced Search"
-            subtitle="Find alumni by name, camp role, industry, education, and location."
+            subtitle={`Find ${alumniWord} by name, camp role, industry, education, and location.`}
           />
         </div>
 
@@ -855,14 +856,14 @@ export default function AdvancedSearch() {
                   </div>
                   <h3>Start an advanced search</h3>
                   <p className="muted">
-                    Use filters to find alumni by name, role, industry, college, years, or location.
+                    {`Use filters to find ${alumniWord} by name, role, industry, college, years, or location.`}
                   </p>
                   <ul className="as2-emptylist">
                     <li>
                       Search by name with <span className="kbd">Name</span>
                     </li>
                     <li>
-                      Find alumni in <span className="kbd">Industry</span>
+                      {`Find ${alumniWord} in `}<span className="kbd">Industry</span>
                     </li>
                     <li>
                       Discover who went to your <span className="kbd">College</span>

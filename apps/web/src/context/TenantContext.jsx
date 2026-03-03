@@ -65,6 +65,35 @@ function rgbaFromHex(hex, alpha = 1) {
   return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
 }
 
+function linearizeSrgbChannel(channel = 0) {
+  const normalized = Math.max(0, Math.min(255, Number(channel) || 0)) / 255;
+  if (normalized <= 0.04045) return normalized / 12.92;
+  return ((normalized + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(hex = "#002b5c") {
+  const { r, g, b } = hexToRgb(hex);
+  return (
+    0.2126 * linearizeSrgbChannel(r) +
+    0.7152 * linearizeSrgbChannel(g) +
+    0.0722 * linearizeSrgbChannel(b)
+  );
+}
+
+function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
+  const base = relativeLuminance(baseHex);
+  const candidate = relativeLuminance(candidateHex);
+  const brightest = Math.max(base, candidate);
+  const darkest = Math.min(base, candidate);
+  return (brightest + 0.05) / (darkest + 0.05);
+}
+
+function readableTextColorOnBrand(brandHex = "#002b5c") {
+  const light = "#ffffff";
+  const dark = "#0f172a";
+  return contrastRatio(brandHex, light) >= contrastRatio(brandHex, dark) ? light : dark;
+}
+
 function applyTheme(config = {}) {
   const root = document.documentElement;
   const branding = config?.branding || config?.theme || {};
@@ -79,6 +108,8 @@ function applyTheme(config = {}) {
   const brandPrimarySoft = mixHex(brandPrimary, "#ffffff", 0.46);
   const brandPrimarySoftStrong = mixHex(brandPrimary, "#ffffff", 0.28);
   const brandPrimaryRgb = hexToRgb(brandPrimary);
+  const brandOnPrimary = readableTextColorOnBrand(brandPrimary);
+  const brandOnPrimaryRgb = hexToRgb(brandOnPrimary);
 
   root.style.setProperty("--brand-primary", brandPrimary);
   root.style.setProperty("--brand-primary-hover", brandPrimaryHover);
@@ -86,6 +117,8 @@ function applyTheme(config = {}) {
   root.style.setProperty("--brand-primary-soft", brandPrimarySoft);
   root.style.setProperty("--brand-primary-soft-strong", brandPrimarySoftStrong);
   root.style.setProperty("--brand-primary-rgb", `${brandPrimaryRgb.r}, ${brandPrimaryRgb.g}, ${brandPrimaryRgb.b}`);
+  root.style.setProperty("--brand-on-primary", brandOnPrimary);
+  root.style.setProperty("--brand-on-primary-rgb", `${brandOnPrimaryRgb.r}, ${brandOnPrimaryRgb.g}, ${brandOnPrimaryRgb.b}`);
   root.style.setProperty("--brand-primary-shadow", rgbaFromHex(brandPrimary, 0.2));
   root.style.setProperty("--brand-primary-focus", rgbaFromHex(brandPrimary, 0.22));
   root.style.setProperty("--brand-primary-tint", rgbaFromHex(brandPrimary, 0.12));

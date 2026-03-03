@@ -337,7 +337,7 @@ function TenantScopeRoutes() {
         <div className="app-status-card">
           <h1>Wrong network for this account</h1>
           <p>
-            Your session belongs to a different alumni network and has been signed out for security.
+            Your session belongs to a different camp network and has been signed out for security.
           </p>
           {destination ? (
             <p>

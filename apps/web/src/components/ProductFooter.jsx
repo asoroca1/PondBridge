@@ -6,7 +6,7 @@ export default function ProductFooter() {
       <div className="product-footer-inner">
         <section className="product-footer-col">
           <h3>PondBridge</h3>
-          <p>A modern alumni network platform built for camp communities.</p>
+          <p>A modern camp network platform built for camp communities.</p>
         </section>
 
         <section className="product-footer-col">

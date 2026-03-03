@@ -1,22 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  alumniPluralForCampType,
   formatHeroImagePositionPercent,
+  normalizeCampType,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
-  parseHeroImagePosition
+  parseHeroImagePosition,
+  replaceAlumniForCampType
 } from "@pondbridge/shared";
 import "./HeroImageEditor.css";
 
-const DEFAULT_FEATURE_LABELS = [
-  "Advanced Search",
-  "Alumni Map",
-  "Chats & Forums",
-  "Cedar Chest"
-];
-
-const DEFAULT_WELCOME_BODY =
-  "Reconnect with alumni, staff, and directors from every era.";
 const DRAG_CLAMP_MIN = 0;
 const DRAG_CLAMP_MAX = 100;
 const ZOOM_MIN = 60;
@@ -80,6 +74,7 @@ export default function HeroImageEditor({
   logoUrl = "",
   brandPrimary = "#0f2747",
   campName = "Your Camp",
+  campType = "coed",
   welcomeBody = "",
   enabledFeatureLabels = [],
   onChangePosition,
@@ -87,8 +82,15 @@ export default function HeroImageEditor({
   variant = "onboarding",
   className = ""
 }) {
+  const normalizedCampType = normalizeCampType(campType || "coed");
+  const alumniWordTitle = alumniPluralForCampType(normalizedCampType, { capitalized: true });
+  const fallbackWelcomeBody = replaceAlumniForCampType(
+    "Reconnect with alumni, staff, and directors from every era.",
+    normalizedCampType
+  );
   const safeCampName = String(campName || "").trim() || "Your Camp";
-  const safeWelcomeBody = String(welcomeBody || "").trim() || DEFAULT_WELCOME_BODY;
+  const safeWelcomeBody =
+    replaceAlumniForCampType(String(welcomeBody || "").trim(), normalizedCampType) || fallbackWelcomeBody;
   const hasHeroImage = Boolean(String(heroImageUrl || "").trim());
   const normalizedPosition = normalizeHeroImagePosition(heroImagePosition || "center center");
   const { normalizedSize, zoomValue, customZoom } = useMemo(
@@ -99,8 +101,9 @@ export default function HeroImageEditor({
     const provided = Array.isArray(enabledFeatureLabels)
       ? enabledFeatureLabels.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
-    return (provided.length ? provided : DEFAULT_FEATURE_LABELS).slice(0, 4);
-  }, [enabledFeatureLabels]);
+    const fallback = ["Advanced Search", `${alumniWordTitle} Map`, "Chats & Forums", "Cedar Chest"];
+    return (provided.length ? provided : fallback).slice(0, 4);
+  }, [alumniWordTitle, enabledFeatureLabels]);
 
   const positionCoords = useMemo(
     () => parseHeroImagePosition(normalizedPosition, { x: 50, y: 50 }),
@@ -366,7 +369,9 @@ export default function HeroImageEditor({
             </p>
           ) : null}
           <div className="hero-image-editor__landing-content">
-            <h3>Welcome to the {safeCampName} Alumni Network</h3>
+            <h3>
+              Welcome to the {safeCampName} {alumniWordTitle} Network
+            </h3>
             <p>{safeWelcomeBody}</p>
             <div className="hero-image-editor__landing-actions">
               <span className="hero-image-editor__landing-action-btn">Create Account</span>
@@ -440,7 +445,7 @@ export default function HeroImageEditor({
                 <div className="hero-image-editor__pulse-rows">
                   <span className="hero-image-editor__pulse-row">
                     <span className="hero-image-editor__pulse-num">281</span>
-                    <span className="hero-image-editor__pulse-label">Alumni</span>
+                    <span className="hero-image-editor__pulse-label">{alumniWordTitle}</span>
                   </span>
                   <span className="hero-image-editor__pulse-row">
                     <span className="hero-image-editor__pulse-num">124</span>

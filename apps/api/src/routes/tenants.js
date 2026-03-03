@@ -295,7 +295,13 @@ async function resolveTenantForAdmin(req, { allowSuperAdmin = true } = {}) {
 router.use("/me", ...requireTenantAuthScope);
 
 function applyChecklistAndStep(tenant, { currentChecklist, stepToComplete, nextStep }) {
-  let checklist = mergeChecklist(currentChecklist || tenant.onboardingChecklist || createDefaultChecklist());
+  const campType =
+    tenant?.onboardingDraft?.content?.campType || tenant?.content?.campType || tenant?.settings?.campType || "coed";
+  let checklist = mergeChecklist(
+    currentChecklist || tenant.onboardingChecklist || createDefaultChecklist(campType),
+    [],
+    campType
+  );
 
   if (stepToComplete) {
     checklist = markChecklistForStep(checklist, stepToComplete, "completed");
@@ -436,7 +442,9 @@ router.patch("/me/onboarding", async (req, res, next) => {
     const { tenant } = resolved;
     const parsed = await validateOnboardingPatchPayload(req.body || {});
 
-    const checklist = mergeChecklist(tenant.onboardingChecklist || [], parsed.checklist || []);
+    const campType =
+      tenant?.onboardingDraft?.content?.campType || tenant?.content?.campType || tenant?.settings?.campType || "coed";
+    const checklist = mergeChecklist(tenant.onboardingChecklist || [], parsed.checklist || [], campType);
     const onboardingStep = parsed.onboardingStep || getCurrentStepFromChecklist(checklist);
 
     const onboardingProgress = buildProgressUpdate(tenant, {
@@ -968,7 +976,11 @@ router.post("/me/launch", async (req, res) => {
 
   const draft = resolveDraft(tenant);
   const checklist = markChecklistForStep(
-    mergeChecklist(tenant.onboardingChecklist || []),
+    mergeChecklist(
+      tenant.onboardingChecklist || [],
+      [],
+      tenant?.onboardingDraft?.content?.campType || tenant?.content?.campType || tenant?.settings?.campType || "coed"
+    ),
     "review_launch",
     "completed"
   );

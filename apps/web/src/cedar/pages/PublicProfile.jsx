@@ -49,18 +49,47 @@ function normalizeRoleChips(src = {}) {
   return ordered;
 }
 
-function normalizeCamperYears(value = {}) {
-  const input = value && typeof value === "object" ? value : {};
+function normalizeYearStints(value = null) {
   const normalizeYear = (raw = "") => {
     const year = String(raw || "").trim();
     return /^\d{4}$/.test(year) ? year : "";
   };
-  return {
-    firstYear: normalizeYear(input.firstYear),
-    firstGroup: String(input.firstGroup || "").trim(),
-    lastYear: normalizeYear(input.lastYear),
-    lastGroup: String(input.lastGroup || "").trim()
+
+  const stints = [];
+  const pushStint = (entry = {}) => {
+    const startYear = normalizeYear(entry.startYear || entry.firstYear || entry.yearStart || "");
+    const endYear = normalizeYear(entry.endYear || entry.lastYear || entry.yearEnd || "");
+    if (!startYear && !endYear) return;
+    const start = startYear || endYear;
+    const end = endYear || startYear;
+    if (!start || !end) return;
+    const startNum = Number(start);
+    const endNum = Number(end);
+    stints.push({
+      startYear: String(Math.min(startNum, endNum)),
+      endYear: String(Math.max(startNum, endNum))
+    });
   };
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => pushStint(entry));
+  } else if (value && typeof value === "object") {
+    if (Array.isArray(value.stints)) {
+      value.stints.forEach((entry) => pushStint(entry));
+    } else if (value.firstYear || value.lastYear || value.startYear || value.endYear) {
+      pushStint(value);
+    }
+  }
+
+  return stints.sort((a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear));
+}
+
+function formatYearStint(stint = {}) {
+  const startYear = String(stint.startYear || "").trim();
+  const endYear = String(stint.endYear || "").trim();
+  if (!startYear && !endYear) return "";
+  if (startYear && endYear && startYear !== endYear) return `${startYear} • ${endYear}`;
+  return startYear || endYear;
 }
 
 function fmtLocation(p) {
@@ -128,6 +157,12 @@ function normalizeProfile(src = {}) {
       : socialSource?.camperYears && typeof socialSource.camperYears === "object"
       ? socialSource.camperYears
       : {};
+  const staffYearsSource =
+    src.staffYears && typeof src.staffYears === "object"
+      ? src.staffYears
+      : socialSource?.staffYears && typeof socialSource.staffYears === "object"
+      ? socialSource.staffYears
+      : {};
   return {
     id: src._id || src.id || "",
     _id: src._id || src.id || "",
@@ -144,7 +179,8 @@ function normalizeProfile(src = {}) {
     roleAtCamp: String(src.roleAtCamp || normalizedRoles[0] || "").trim(),
     roles: normalizedRoles,
     uploads: src.uploads || { photoUrl: src.photoUrl || src.avatarUrl || "" },
-    camperYears: normalizeCamperYears(camperYearsSource),
+    camperYearStints: normalizeYearStints(camperYearsSource),
+    staffYearStints: normalizeYearStints(staffYearsSource),
     highSchool: src.highSchool || "",
     education: normalizedEducation,
     industry: src.industry || "",
@@ -390,9 +426,8 @@ export default function PublicProfile() {
 
   const targetId = profile.id || profile._id;
 
-  const cy = profile.camperYears || {};
-  const cyFirst = [cy.firstYear, cy.firstGroup].filter(Boolean).join(" • ");
-  const cyLast  = [cy.lastYear, cy.lastGroup].filter(Boolean).join(" • ");
+  const camperStints = Array.isArray(profile.camperYearStints) ? profile.camperYearStints : [];
+  const staffStints = Array.isArray(profile.staffYearStints) ? profile.staffYearStints : [];
 
   return (
     <div style={{ position: "relative", minHeight: "100vh" }}>
@@ -430,9 +465,7 @@ export default function PublicProfile() {
                   </div>
 
                   <div className="p1-fixed-inner">
-                    <AutoFitText as="h1" className="p1-name" min={18} shrinkOnly={true} weight={800}>
-                      {fullName || "Unnamed Alum"}
-                    </AutoFitText>
+                    <h1 className="p1-name">{fullName || "Unnamed Alum"}</h1>
 
                     {(profile.city || profile.state) && (
                       <AutoFitText as="div" className="p1-sub" min={12} shrinkOnly={true} weight={500}>
@@ -512,25 +545,33 @@ export default function PublicProfile() {
                 {/* ✅ Camper Years ABOVE Social */}
                 <aside className="p1-card p1-camper-card">
                   <h2 className="p1-h2">Camper Years</h2>
-                  {(!cyFirst && !cyLast) ? (
+                  {camperStints.length === 0 ? (
                     <div className="p1-empty">Not added yet.</div>
                   ) : (
                     <div className="p1-edu-grid">
-                      {cyFirst && (
-                        <div className="p1-edu-item">
-                          <div className="p1-edu-college">First Year</div>
-                          <div className="p1-edu-sub">{cyFirst}</div>
+                      {camperStints.map((stint, idx) => (
+                        <div key={`camper-stint-${idx}`} className="p1-edu-item">
+                          <div className="p1-edu-college">Stint {idx + 1}</div>
+                          <div className="p1-edu-sub">{formatYearStint(stint)}</div>
                         </div>
-                      )}
-                      {cyLast && (
-                        <div className="p1-edu-item">
-                          <div className="p1-edu-college">Last Year</div>
-                          <div className="p1-edu-sub">{cyLast}</div>
-                        </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </aside>
+
+                {staffStints.length > 0 && (
+                  <aside className="p1-card p1-staff-card">
+                    <h2 className="p1-h2">Staff Years</h2>
+                    <div className="p1-edu-grid">
+                      {staffStints.map((stint, idx) => (
+                        <div key={`staff-stint-${idx}`} className="p1-edu-item">
+                          <div className="p1-edu-college">Stint {idx + 1}</div>
+                          <div className="p1-edu-sub">{formatYearStint(stint)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </aside>
+                )}
 
                 <aside className="p1-card p1-social-card">
                   <h2 className="p1-h2">Social</h2>

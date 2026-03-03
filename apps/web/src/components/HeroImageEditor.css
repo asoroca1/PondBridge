@@ -214,7 +214,7 @@
 
 .hero-image-editor__nav {
   height: var(--pe-nav-h);
-  color: #fff;
+  color: var(--brand-on-primary, #fff);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -301,7 +301,7 @@
   justify-content: center;
   font-size: 0.5rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--brand-on-primary, #fff);
 }
 
 .hero-image-editor__nav-burger {
@@ -419,7 +419,7 @@
   padding: 3px 7px;
   border-radius: 6px;
   background: var(--brand-primary, #0f2747);
-  color: #fff;
+  color: var(--brand-on-primary, #fff);
 }
 
 .hero-image-editor__welcome-btn--secondary {

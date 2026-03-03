@@ -118,7 +118,7 @@
 /* Buttons / actions */
 .wizard2-actions{display:flex;justify-content:space-between;margin-top:16px;}
 .wizard2-btn-primary{min-width:140px;height:44px;border-radius:8px;border:2px solid var(--brand-primary);background:#fff;color:var(--brand-primary);font-weight:800;font-size: 0.8rem;cursor:pointer;transition:all .2s;}
-.wizard2-btn-primary:hover{background:var(--brand-primary);color:#fff;border-color:gray;}
+.wizard2-btn-primary:hover{background: var(--brand-primary); color: var(--brand-on-primary);border-color:gray;}
 .wizard2-btn-secondary{height:40px;border-radius:8px;border:1px solid #cbd6e2;background:#fff;color:var(--brand-primary);font-weight:700;padding:0 12px;cursor:pointer;transition:all .15s;}
 .wizard2-btn-secondary:hover{border-color:var(--brand-primary);}
 .wizard2-btn-text{background:transparent;border:0;color:var(--brand-primary);font-weight:700;padding:4px 6px;border-radius:6px;cursor:pointer;}

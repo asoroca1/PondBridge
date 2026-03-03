@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
+  alumniPluralForCampType,
+  defaultNetworkDisplayNameForCamp,
   heroImagePositionPresets,
+  normalizeCampType,
   heroImageSizePresets,
   normalizeHeroImagePosition,
-  normalizeHeroImageSize
+  normalizeHeroImageSize,
+  replaceAlumniForCampType
 } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
 import { defaultTenantDomain } from "../lib/domain.js";
@@ -98,6 +102,11 @@ const DEFAULT_TERMS_VERSION = "2026-02-21";
 const DEFAULT_PRIVACY_VERSION = "2026-02-21";
 const DEFAULT_HERO_IMAGE_POSITION = "center center";
 const DEFAULT_HERO_IMAGE_SIZE = "cover";
+const CAMP_TYPE_OPTIONS = [
+  { value: "coed", label: "Co-ed camp" },
+  { value: "all_girls", label: "All-girls camp" },
+  { value: "all_boys", label: "All-boys camp" }
+];
 const EMPTY_ADDRESS = {
   line1: "",
   line2: "",
@@ -112,7 +121,7 @@ const BILLING_PLAN_OPTIONS = [
     title: "Legacy Plan",
     annualAmount: 3500,
     onboardingFeeAmount: 350,
-    summary: "Core alumni network features with annual billing."
+    summary: "Core network features with annual billing."
   },
   {
     code: "founders",
@@ -171,12 +180,12 @@ const FEATURE_OPTIONS = [
   {
     key: "search",
     title: "Advanced Search",
-    description: "Search alumni by name, camp role, location, industry, and more."
+    description: "Search members by name, camp role, location, industry, and more."
   },
   {
     key: "photoStream",
     title: "Photo Stream",
-    description: "Shared photo gallery where alumni upload and browse camp photos."
+    description: "Shared photo gallery where members upload and browse camp photos."
   },
   {
     key: "chat",
@@ -185,8 +194,8 @@ const FEATURE_OPTIONS = [
   },
   {
     key: "map",
-    title: "Alumni Location Map",
-    description: "Interactive map showing where your alumni live and work."
+    title: "Location Map",
+    description: "Interactive map showing where your members live and work."
   },
   {
     key: "familyTrees",
@@ -196,7 +205,7 @@ const FEATURE_OPTIONS = [
   {
     key: "relatedProfiles",
     title: "Related Profiles",
-    description: "Show connections between alumni across profile pages sitewide."
+    description: "Show connections between members across profile pages sitewide."
   },
   {
     key: "merchShop",
@@ -222,6 +231,45 @@ function emailLooksValid(value = "") {
 
 function isHexColor(value = "") {
   return /^#([0-9a-fA-F]{6})$/.test(String(value).trim());
+}
+
+function hexToRgb(hex = "#002b5c") {
+  if (!isHexColor(hex)) return { r: 0, g: 43, b: 92 };
+  const clean = String(hex).replace("#", "");
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16)
+  };
+}
+
+function srgbChannelToLinear(channel = 0) {
+  const normalized = Math.max(0, Math.min(255, Number(channel) || 0)) / 255;
+  if (normalized <= 0.04045) return normalized / 12.92;
+  return ((normalized + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(hex = "#002b5c") {
+  const { r, g, b } = hexToRgb(hex);
+  return (
+    0.2126 * srgbChannelToLinear(r) +
+    0.7152 * srgbChannelToLinear(g) +
+    0.0722 * srgbChannelToLinear(b)
+  );
+}
+
+function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
+  const a = relativeLuminance(baseHex);
+  const b = relativeLuminance(candidateHex);
+  const brightest = Math.max(a, b);
+  const darkest = Math.min(a, b);
+  return (brightest + 0.05) / (darkest + 0.05);
+}
+
+function readableTextColorOnBrand(brandHex = "#002b5c") {
+  const light = "#ffffff";
+  const dark = "#0f172a";
+  return contrastRatio(brandHex, light) >= contrastRatio(brandHex, dark) ? light : dark;
 }
 
 function darkenHex(hex, factor = 0.18) {
@@ -482,6 +530,7 @@ function DirectorCreateAccountWizardPage() {
     password: "",
     confirmPassword: "",
     campName: "",
+    campType: "coed",
     billingPlanCode: "legacy"
   });
   const [errors, setErrors] = useState({});
@@ -515,6 +564,7 @@ function DirectorCreateAccountWizardPage() {
   const [specificsErrors, setSpecificsErrors] = useState({});
   const [showNewsletterSettings, setShowNewsletterSettings] = useState(false);
   const campSpecificsHydratedRef = useRef(false);
+  const campTypeHydratedRef = useRef(false);
   const planHydratedRef = useRef(false);
   const previousBillingPlanRef = useRef("");
   const initialThemeVarsRef = useRef(null);
@@ -578,6 +628,16 @@ function DirectorCreateAccountWizardPage() {
       campName: prev.campName || tenantName
     }));
   }, [isDirectorUser, tenant?.name, user?.email, user?.name]);
+
+  useEffect(() => {
+    if (campTypeHydratedRef.current) return;
+    const sourceCampType = normalizeCampType(
+      tenant?.content?.campType || tenant?.onboardingDraft?.content?.campType || ""
+    );
+    if (!sourceCampType) return;
+    setForm((prev) => ({ ...prev, campType: sourceCampType }));
+    campTypeHydratedRef.current = true;
+  }, [tenant?.content?.campType, tenant?.onboardingDraft?.content?.campType]);
 
   useEffect(() => {
     if (!slug || !authToken || !isDirectorUser) {
@@ -707,6 +767,22 @@ function DirectorCreateAccountWizardPage() {
   )
     .trim()
     .toLowerCase();
+  const selectedCampType = normalizeCampType(form.campType || tenant?.content?.campType || "coed");
+  const alumniWord = alumniPluralForCampType(selectedCampType, { capitalized: false });
+  const alumniWordTitle = alumniPluralForCampType(selectedCampType, { capitalized: true });
+  const networkDisplayNamePreview = defaultNetworkDisplayNameForCamp(
+    form.campName || "Your Camp",
+    selectedCampType
+  );
+  const featureOptionsForCopy = useMemo(
+    () =>
+      FEATURE_OPTIONS.map((item) => ({
+        ...item,
+        title: item.key === "map" ? `${alumniWordTitle} Location Map` : item.title,
+        description: replaceAlumniForCampType(item.description, selectedCampType)
+      })),
+    [alumniWordTitle, selectedCampType]
+  );
   const isPremiumCamp = selectedBillingPlanCode === "institutional";
   const planScopedModulesDraft = useMemo(() => {
     const next = { ...modulesDraft };
@@ -717,9 +793,9 @@ function DirectorCreateAccountWizardPage() {
     }
     return next;
   }, [isPremiumCamp, modulesDraft]);
-  const enabledFeatureLabels = FEATURE_OPTIONS.filter((item) => Boolean(planScopedModulesDraft[item.key])).map(
-    (item) => item.title
-  );
+  const enabledFeatureLabels = featureOptionsForCopy
+    .filter((item) => Boolean(planScopedModulesDraft[item.key]))
+    .map((item) => item.title);
   const recommendedFeatureSet = isPremiumCamp ? "premium" : "base";
   const activeFeatureSet = useMemo(() => {
     const hasPremiumSet = PREMIUM_FEATURE_SET_KEYS.every((key) => Boolean(planScopedModulesDraft[key]));
@@ -759,13 +835,20 @@ function DirectorCreateAccountWizardPage() {
       initialThemeVarsRef.current = {
         poBrand: root.style.getPropertyValue("--po-brand"),
         poBrandStrong: root.style.getPropertyValue("--po-brand-strong"),
-        brandPrimary: root.style.getPropertyValue("--brand-primary")
+        brandPrimary: root.style.getPropertyValue("--brand-primary"),
+        brandOnPrimary: root.style.getPropertyValue("--brand-on-primary"),
+        brandOnPrimaryRgb: root.style.getPropertyValue("--brand-on-primary-rgb")
       };
     }
+
+    const brandOnPrimary = readableTextColorOnBrand(effectiveMainColor);
+    const onPrimaryRgb = hexToRgb(brandOnPrimary);
 
     root.style.setProperty("--po-brand", effectiveMainColor);
     root.style.setProperty("--po-brand-strong", darkenHex(effectiveMainColor));
     root.style.setProperty("--brand-primary", effectiveMainColor);
+    root.style.setProperty("--brand-on-primary", brandOnPrimary);
+    root.style.setProperty("--brand-on-primary-rgb", `${onPrimaryRgb.r}, ${onPrimaryRgb.g}, ${onPrimaryRgb.b}`);
   }, [effectiveMainColor, tenant?.id, tenant?.slug, tenant?.theme?.brandPrimary]);
 
   useEffect(
@@ -782,6 +865,12 @@ function DirectorCreateAccountWizardPage() {
 
       if (previous.brandPrimary) root.style.setProperty("--brand-primary", previous.brandPrimary);
       else root.style.removeProperty("--brand-primary");
+
+      if (previous.brandOnPrimary) root.style.setProperty("--brand-on-primary", previous.brandOnPrimary);
+      else root.style.removeProperty("--brand-on-primary");
+
+      if (previous.brandOnPrimaryRgb) root.style.setProperty("--brand-on-primary-rgb", previous.brandOnPrimaryRgb);
+      else root.style.removeProperty("--brand-on-primary-rgb");
     },
     []
   );
@@ -898,6 +987,9 @@ function DirectorCreateAccountWizardPage() {
       lastName: String(draftForm.lastName || prev.lastName || ""),
       email: String(draftForm.email || prev.email || ""),
       campName: String(draftForm.campName || prev.campName || ""),
+      campType: normalizeCampType(
+        draftForm.campType || localDraft?.content?.campType || prev.campType || "coed"
+      ),
       billingPlanCode: normalizeBillingPlanCode(
         draftForm.billingPlanCode || draftForm.selectedPlanCode || prev.billingPlanCode
       )
@@ -1002,6 +1094,9 @@ function DirectorCreateAccountWizardPage() {
     if (draft.content) {
       const c = draft.content;
       if (c.newsletterName) setNewsletterName(c.newsletterName);
+      if (c.campType) {
+        setForm((prev) => ({ ...prev, campType: normalizeCampType(c.campType, prev.campType || "coed") }));
+      }
       if (c.ageGroups?.length || c.staffRoles?.length || c.welcomeBody || c.merchShopUrl) {
         setCampSpecifics((prev) => ({
           ageGroupsText: c.ageGroups?.length ? c.ageGroups.join("\n") : prev.ageGroupsText,
@@ -1045,6 +1140,7 @@ function DirectorCreateAccountWizardPage() {
         lastName: String(form.lastName || "").trim(),
         email: String(form.email || "").trim().toLowerCase(),
         campName: String(form.campName || "").trim(),
+        campType: normalizeCampType(form.campType || "coed"),
         billingPlanCode: normalizeBillingPlanCode(form.billingPlanCode)
       },
       themeDraft: {
@@ -1095,6 +1191,7 @@ function DirectorCreateAccountWizardPage() {
     };
 
     const shouldIncludeTheme = includeAllSections || completedStep === STEP_DESIGN;
+    const shouldIncludeAccount = includeAllSections || completedStep === STEP_ACCOUNT;
     const shouldIncludeFeatureChoices = includeAllSections || completedStep === STEP_FEATURES;
     const shouldIncludeCampSpecifics = includeAllSections || completedStep === STEP_CAMP_SPECIFICS;
     const shouldIncludeBilling = includeAllSections || completedStep === STEP_BILLING_PLAN;
@@ -1107,6 +1204,13 @@ function DirectorCreateAccountWizardPage() {
         heroImageUrl: themeDraft.heroImageUrl,
         heroImagePosition: themeDraft.heroImagePosition,
         heroImageSize: themeDraft.heroImageSize
+      };
+    }
+
+    if (shouldIncludeAccount) {
+      payload.content = {
+        ...(payload.content || {}),
+        campType: normalizeCampType(form.campType || "coed")
       };
     }
 
@@ -1259,6 +1363,9 @@ function DirectorCreateAccountWizardPage() {
     else if (form.password !== form.confirmPassword) next.confirmPassword = "Passwords do not match.";
 
     if (!String(form.campName || "").trim()) next.campName = "Please enter your camp name.";
+    if (!CAMP_TYPE_OPTIONS.some((item) => item.value === normalizeCampType(form.campType || ""))) {
+      next.campType = "Please choose your camp type.";
+    }
     if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
       next.billingPlanCode = "Please choose a plan.";
     }
@@ -1875,10 +1982,11 @@ function DirectorCreateAccountWizardPage() {
         token,
         body: {
           content: {
-            networkDisplayName: `${finalCampName} Alumni Network`,
-            welcomeHeadline: `Welcome to ${finalCampName} Alumni Network`,
+            campType: selectedCampType,
+            networkDisplayName: defaultNetworkDisplayNameForCamp(finalCampName, selectedCampType),
+            welcomeHeadline: `Welcome to ${defaultNetworkDisplayNameForCamp(finalCampName, selectedCampType)}`,
             welcomeBody: finalHomepageQuote,
-            aboutText: `${finalCampName} alumni can reconnect, share memories, and support each other.`,
+            aboutText: `${finalCampName} ${alumniWord} can reconnect, share memories, and support each other.`,
             contactEmail: String(form.email || "").trim().toLowerCase(),
             newsletterName: finalNewsletterName,
             ageGroups: finalAgeGroups,
@@ -1989,7 +2097,7 @@ function DirectorCreateAccountWizardPage() {
           <div className="director-celebration-burst" aria-hidden="true" />
           <h1 className="director-celebration-title">Your network is live!</h1>
           <p className="director-celebration-camp">
-            {form.campName || "Your Camp"} Alumni Network
+            {networkDisplayNamePreview}
           </p>
           <p className="director-celebration-domain">{provisionedDomainPreview}</p>
           <button
@@ -2157,7 +2265,7 @@ function DirectorCreateAccountWizardPage() {
                     ) : null}
                   </div>
 
-                  <div className="wizard1-field wizard1-span-12">
+                  <div className="wizard1-field wizard1-span-6">
                     <label className="wizard1-label" htmlFor="director-camp-name">
                       Camp name<span className="req" aria-hidden="true"> *</span>
                     </label>
@@ -2170,11 +2278,30 @@ function DirectorCreateAccountWizardPage() {
                     {errors.campName ? <p className="wizard1-error">{errors.campName}</p> : null}
                   </div>
 
+                  <div className="wizard1-field wizard1-span-6">
+                    <label className="wizard1-label" htmlFor="director-camp-type">
+                      Camp type<span className="req" aria-hidden="true"> *</span>
+                    </label>
+                    <select
+                      id="director-camp-type"
+                      className={`wizard1-input ${errors.campType ? "has-error" : ""}`}
+                      value={normalizeCampType(form.campType || "coed")}
+                      onChange={(event) => updateField("campType", event.target.value)}
+                    >
+                      {CAMP_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.campType ? <p className="wizard1-error">{errors.campType}</p> : null}
+                  </div>
+
                   <div className="wizard1-field wizard1-span-12">
                     <label className="wizard1-label">
-                      Choose alumni network plan<span className="req" aria-hidden="true"> *</span>
+                      Choose {alumniWord} network plan<span className="req" aria-hidden="true"> *</span>
                     </label>
-                    <div className="director-plan-grid" role="radiogroup" aria-label="Choose alumni network plan">
+                    <div className="director-plan-grid" role="radiogroup" aria-label={`Choose ${alumniWord} network plan`}>
                       {BILLING_PLAN_OPTIONS.map((option) => (
                         <label
                           key={option.code}
@@ -2252,7 +2379,7 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Design your network</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    Choose your camp colors and logo. This styling will be applied across your alumni network.
+                    {`Choose your camp colors and logo. This styling will be applied across your ${alumniWord} network.`}
                   </p>
                 </div>
               </div>
@@ -2345,6 +2472,7 @@ function DirectorCreateAccountWizardPage() {
                       logoUrl={themeDraft.logoUrl}
                       brandPrimary={effectiveMainColor}
                       campName={form.campName || "Your Camp"}
+                      campType={selectedCampType}
                       welcomeBody={campSpecifics.homepageQuote || "Reconnect with your camp community."}
                       enabledFeatureLabels={enabledFeatureLabels}
                       onChangePosition={(nextValue) =>
@@ -2448,7 +2576,7 @@ function DirectorCreateAccountWizardPage() {
                     </div>
 
                     <div className="director-feature-grid">
-                      {FEATURE_OPTIONS.map((item) => {
+                      {featureOptionsForCopy.map((item) => {
                         const premiumOnly = PREMIUM_ONLY_MODULE_KEYS.includes(item.key);
                         const isLocked = premiumOnly && !isPremiumCamp;
                         return (
@@ -2698,7 +2826,7 @@ function DirectorCreateAccountWizardPage() {
                 <div className="wizard1-grid wizard1-gap director-create-fields director-billing-fields">
                   <div className="wizard1-span-12">
                     <article className="director-summary-card">
-                      <h3>Selected alumni network plan</h3>
+                      <h3>{`Selected ${alumniWord} network plan`}</h3>
                       <p className="director-summary-main">
                         {billingPlanLabel(selectedBillingPlanCode)}
                       </p>
@@ -2994,7 +3122,7 @@ function DirectorCreateAccountWizardPage() {
                   <section className="director-review-hero">
                     <div className="director-review-hero-main">
                       <p className="director-review-eyebrow">Launch Snapshot</p>
-                      <h2>{form.campName || "Your Camp"} Alumni Network</h2>
+                      <h2>{networkDisplayNamePreview}</h2>
                       <p>Everything is ready for a final review. Launch will publish these settings live.</p>
                       <div className="director-review-pill-row">
                         <span className="director-review-pill is-brand">{billingPlanLabel(selectedBillingPlanCode)}</span>
@@ -3049,7 +3177,7 @@ function DirectorCreateAccountWizardPage() {
                       <div className="director-review-mini-preview">
                         <div className="director-review-mini-preview-top" style={{ background: themeDraft.brandPrimary }}>
                           {themeDraft.logoUrl ? <img src={themeDraft.logoUrl} alt="" /> : <span>PB</span>}
-                          <strong>{form.campName || "Your Camp"} Alumni Network</strong>
+                          <strong>{networkDisplayNamePreview}</strong>
                         </div>
                         <div
                           className="director-review-mini-preview-hero"

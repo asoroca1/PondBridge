@@ -368,7 +368,7 @@ select.ft-input {
   display: grid;
   place-items: center;
   background: var(--brand-primary);
-  color: #fff;
+  color: var(--brand-on-primary);
   font-weight: 800;
   font-size: 0.82rem;
   letter-spacing: 0.01em;
@@ -743,7 +743,7 @@ select.ft-input {
   display: grid;
   place-items: center;
   background: var(--brand-primary);
-  color: #fff;
+  color: var(--brand-on-primary);
   font-weight: 800;
   font-size: 0.9rem;
   letter-spacing: 0.01em;

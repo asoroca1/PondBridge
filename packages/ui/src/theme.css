@@ -6,6 +6,8 @@
   --brand-primary-soft: #5f85b3;
   --brand-primary-soft-strong: #3c679b;
   --brand-primary-rgb: 0, 43, 92;
+  --brand-on-primary: #ffffff;
+  --brand-on-primary-rgb: 255, 255, 255;
   --brand-primary-shadow: rgba(0, 43, 92, 0.2);
   --brand-primary-focus: rgba(0, 43, 92, 0.22);
   --brand-primary-tint: rgba(0, 43, 92, 0.12);
@@ -162,7 +164,7 @@ a {
 
 .pb-btn-primary {
   background: var(--brand-primary);
-  color: #fff;
+  color: var(--brand-on-primary);
   box-shadow: 0 3px 10px var(--brand-primary-shadow);
 }
 

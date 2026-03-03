@@ -2,11 +2,13 @@ import { Link, useParams } from "react-router-dom";
 import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { Button, Card, PageShell } from "@pondbridge/ui";
 import { useTenant } from "../context/TenantContext.jsx";
+import { resolveNetworkDisplayName } from "../lib/campLabels.js";
 import cedarField from "../assets/cedar-field.jpeg";
 
 export default function TenantLanding() {
   const { slug } = useParams();
   const { tenant } = useTenant();
+  const networkDisplayName = resolveNetworkDisplayName(tenant);
   const isDemo = tenant?.onboardingStatus !== "live";
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
   const heroImage = heroBranding.heroImageUrl || cedarField;
@@ -29,7 +31,7 @@ export default function TenantLanding() {
             <div className="welcome-left">
               <div className="welcome-copy">
                 <h1 className="welcome-title">
-                  Welcome to {tenant?.name || slug} Alumni Network
+                  Welcome to {networkDisplayName}
                   <span className="title-accent" />
                 </h1>
                 <p className="welcome-sub">

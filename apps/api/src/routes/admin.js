@@ -5,7 +5,12 @@ import rateLimit from "express-rate-limit";
 import PDFDocument from "pdfkit";
 import { stringify } from "csv-stringify/sync";
 import { parse as parseCsv } from "csv-parse/sync";
-import { listFeaturesForPlan, hasFeature } from "@pondbridge/shared";
+import {
+  alumniPluralForCampType,
+  hasFeature,
+  listFeaturesForPlan,
+  replaceAlumniForCampType
+} from "@pondbridge/shared";
 import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
 import { requireFeature } from "../middleware/requireFeature.js";
 import {
@@ -31,6 +36,7 @@ import {
 import { findImportReportForTenant } from "../services/csvImport.js";
 import { env } from "../config/env.js";
 import {
+  buildTenantEmailBranding,
   sendBulkTransactionalEmail,
   sendInviteEmail,
   sendTransactionalEmail,
@@ -179,6 +185,274 @@ function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+const EMAIL_FOOTER_PRESET_LIMIT = 20;
+
+function escapeEmailHtml(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeEmailFooterPresetName(value = "") {
+  return sanitizeText(String(value || "").trim()).slice(0, 72);
+}
+
+function normalizeEmailFooterField(value = "", max = 140) {
+  return sanitizeText(String(value || "").trim()).slice(0, max);
+}
+
+function normalizeHttpUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeEmailFooterData(value = {}, fallback = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const base = fallback && typeof fallback === "object" ? fallback : {};
+  const senderEmailRaw = normalizeEmailFooterField(source.senderEmail ?? base.senderEmail ?? "", 160).toLowerCase();
+  const logoUrlRaw = normalizeHttpUrl(source.logoUrl ?? base.logoUrl ?? "");
+  const signOff = normalizeEmailFooterField(source.signOff ?? base.signOff ?? "Warmly,", 80);
+  return {
+    signOff: signOff || "Warmly,",
+    senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120),
+    senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120),
+    senderEmail: isEmail(senderEmailRaw) ? senderEmailRaw : "",
+    senderPhone: normalizeEmailFooterField(source.senderPhone ?? base.senderPhone ?? "", 48),
+    showLogo: source.showLogo !== undefined ? Boolean(source.showLogo) : base.showLogo !== false,
+    logoUrl: logoUrlRaw
+  };
+}
+
+function normalizeEmailFooterPresetList(value = [], { fallbackFooter = null } = {}) {
+  const source = Array.isArray(value) ? value : [];
+  const fallback = normalizeEmailFooterData(
+    fallbackFooter || {},
+    {
+      signOff: "Warmly,",
+      senderName: "",
+      senderRole: "Director",
+      senderEmail: "",
+      senderPhone: "",
+      showLogo: true,
+      logoUrl: ""
+    }
+  );
+  const presets = [];
+  const seenIds = new Set();
+
+  for (let index = 0; index < source.length; index += 1) {
+    const item = source[index] || {};
+    const id = sanitizeText(String(item?.id || "").trim()).slice(0, 90) ||
+      `footer_${index + 1}`;
+    if (!id || seenIds.has(id)) continue;
+    const name = normalizeEmailFooterPresetName(item?.name || "");
+    if (!name) continue;
+    seenIds.add(id);
+    presets.push({
+      id,
+      name,
+      footer: normalizeEmailFooterData(item?.footer || {}, fallback),
+      updatedAt: String(item?.updatedAt || "")
+    });
+    if (presets.length >= EMAIL_FOOTER_PRESET_LIMIT) break;
+  }
+
+  if (presets.length === 0) {
+    return [
+      {
+        id: "default_footer",
+        name: "Default Footer",
+        footer: fallback,
+        updatedAt: ""
+      }
+    ];
+  }
+
+  return presets;
+}
+
+function profileDisplayName(profile = null, user = null) {
+  const profileName = [String(profile?.firstName || "").trim(), String(profile?.lastName || "").trim()]
+    .filter(Boolean)
+    .join(" ");
+  if (profileName) return profileName;
+
+  const userName = [String(user?.firstName || "").trim(), String(user?.lastName || "").trim()]
+    .filter(Boolean)
+    .join(" ");
+  if (userName) return userName;
+
+  return sanitizeText(String(user?.name || "").trim()).slice(0, 120);
+}
+
+async function resolveDirectorFooterDefaults({ tenant, user }) {
+  const tenantId = tenant?._id;
+  const userId = String(user?.id || user?._id || "").trim();
+  const [userRecord, profile] = await Promise.all([
+    userId ? UserModel.findOne(tenantId, { _id: userId }) : null,
+    userId
+      ? ProfileModel.findOne(tenantId, { userId }, {
+          select: ["firstName", "lastName", "emails", "phones", "roleAtCamp"]
+        })
+      : null
+  ]);
+  const theme = resolveTheme(tenant);
+  const userRoles = Array.isArray(user?.roles) ? user.roles.map((role) => String(role || "").toLowerCase()) : [];
+  const defaultRole = userRoles.includes("tenant_admin") ? "Director" : "Admin";
+  const senderName = profileDisplayName(profile, userRecord || user);
+  const senderEmail = normalizeEmail(
+    String(profile?.emails?.[0] || userRecord?.email || user?.email || "").trim()
+  );
+  const senderPhone = normalizeEmailFooterField(String(profile?.phones?.[0] || "").trim(), 48);
+  const senderRole = normalizeEmailFooterField(String(profile?.roleAtCamp || defaultRole).trim(), 120) || defaultRole;
+
+  return normalizeEmailFooterData(
+    {
+      signOff: "Warmly,",
+      senderName,
+      senderRole,
+      senderEmail,
+      senderPhone,
+      showLogo: true,
+      logoUrl: theme.logoUrl || ""
+    },
+    {}
+  );
+}
+
+async function resolveDirectorEmailFooterSettings({ tenant, user }) {
+  const content = resolveContent(tenant);
+  const fallbackFooter = await resolveDirectorFooterDefaults({ tenant, user });
+  const presets = normalizeEmailFooterPresetList(content.emailFooterPresets || [], {
+    fallbackFooter
+  });
+  const requestedDefaultId = sanitizeText(String(content.defaultEmailFooterPresetId || "").trim()).slice(0, 90);
+  const defaultPreset = presets.find((item) => item.id === requestedDefaultId) || presets[0];
+  return {
+    presets,
+    defaultPresetId: String(defaultPreset?.id || ""),
+    activeFooter: normalizeEmailFooterData(defaultPreset?.footer || {}, fallbackFooter),
+    fallbackFooter
+  };
+}
+
+function toPlainTextFromHtml(html = "") {
+  const withLineBreaks = String(html || "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<li>/gi, "- ")
+    .replace(/<\/li>/gi, "\n");
+  return sanitizeText(withLineBreaks).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "", footer = {} }) {
+  const theme = resolveTheme(tenant);
+  const content = resolveContent(tenant);
+  const safeSubject = sanitizeText(String(subject || "").trim()).slice(0, 160) || "Update from your network";
+  const safeBodyHtml = sanitizeHtmlContent(String(bodyHtml || "").trim());
+  const normalizedFooter = normalizeEmailFooterData(footer, {
+    signOff: "Warmly,",
+    senderName: "",
+    senderRole: "Director",
+    senderEmail: "",
+    senderPhone: "",
+    showLogo: true,
+    logoUrl: theme.logoUrl || ""
+  });
+  const tenantName = escapeEmailHtml(String(content.networkDisplayName || tenant?.name || "Your Camp").trim());
+  const brandPrimary = String(theme.brandPrimary || "#002b5c").trim() || "#002b5c";
+  const bodyText = toPlainTextFromHtml(safeBodyHtml);
+  const footerContactParts = [normalizedFooter.senderEmail, normalizedFooter.senderPhone].filter(Boolean);
+  const footerContact = escapeEmailHtml(footerContactParts.join("  •  "));
+  const safeSignOff = escapeEmailHtml(normalizedFooter.signOff || "Warmly,");
+  const safeSenderName = escapeEmailHtml(normalizedFooter.senderName || "");
+  const safeSenderRole = escapeEmailHtml(normalizedFooter.senderRole || "");
+  const headerLogoUrl = normalizeHttpUrl(theme.logoUrl || "");
+  const footerLogoUrl = normalizedFooter.showLogo
+    ? normalizeHttpUrl(normalizedFooter.logoUrl || theme.logoUrl || "")
+    : "";
+  const headerLogoMarkup = headerLogoUrl
+    ? `<img src="${escapeEmailHtml(headerLogoUrl)}" alt="" width="42" height="42" style="display:block;width:42px;height:42px;border-radius:10px;object-fit:cover;border:0;outline:none;text-decoration:none;" />`
+    : `<div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,0.18);color:#ffffff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;line-height:42px;text-align:center;">PB</div>`;
+  const footerLogoMarkup = footerLogoUrl
+    ? `<img src="${escapeEmailHtml(footerLogoUrl)}" alt="" width="52" height="52" style="display:block;width:52px;height:52px;border-radius:10px;object-fit:cover;border:1px solid #dbe6f3;outline:none;text-decoration:none;" />`
+    : "";
+  const safeBodyForEmail = safeBodyHtml || "<p style=\"margin:0;\">&nbsp;</p>";
+
+  const html = `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#eef3fa;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef3fa;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;border-radius:18px;overflow:hidden;background:#ffffff;border:1px solid #d6e2f0;">
+            <tr>
+              <td style="padding:18px 20px;background:${escapeEmailHtml(brandPrimary)};color:#ffffff;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="width:52px;vertical-align:middle;">${headerLogoMarkup}</td>
+                    <td style="vertical-align:middle;font-family:Arial,sans-serif;">
+                      <div style="font-size:17px;font-weight:700;line-height:1.3;">${tenantName}</div>
+                      <div style="font-size:13px;opacity:0.9;line-height:1.4;">Community update</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 22px 18px 22px;font-family:Arial,sans-serif;color:#13263f;">
+                <h1 style="margin:0 0 14px 0;font-size:24px;line-height:1.28;color:#13263f;">${escapeEmailHtml(safeSubject)}</h1>
+                <div style="font-size:15px;line-height:1.65;color:#1d3552;">${safeBodyForEmail}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 22px 22px 22px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3ebf6;margin-top:6px;">
+                  <tr>
+                    <td style="padding-top:16px;font-family:Arial,sans-serif;color:#35506f;font-size:14px;line-height:1.6;vertical-align:top;">
+                      <div>${safeSignOff}</div>
+                      ${safeSenderName ? `<div style="margin-top:6px;font-weight:700;color:#143457;">${safeSenderName}</div>` : ""}
+                      ${safeSenderRole ? `<div style="color:#4a6483;">${safeSenderRole}</div>` : ""}
+                      ${footerContact ? `<div style="margin-top:4px;color:#4a6483;">${footerContact}</div>` : ""}
+                    </td>
+                    ${footerLogoMarkup ? `<td style="padding-top:16px;width:64px;vertical-align:top;text-align:right;">${footerLogoMarkup}</td>` : ""}
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  const footerTextLines = [
+    normalizedFooter.signOff || "Warmly,",
+    normalizedFooter.senderName,
+    normalizedFooter.senderRole,
+    footerContactParts.join(" • ")
+  ].filter(Boolean);
+  const text = [bodyText, footerTextLines.join("\n")].filter(Boolean).join("\n\n");
+
+  return {
+    html,
+    text: text || " ",
+    footer: normalizedFooter
+  };
+}
+
 function normalizeInviteName(value = "") {
   return sanitizeText(String(value || "").trim()).slice(0, 80);
 }
@@ -308,7 +582,7 @@ const MODULE_CATALOG = [
   {
     key: "search",
     label: "Advanced Search",
-    description: "Search alumni by name, role, location, and industry."
+    description: "Search members by name, role, location, and industry."
   },
   {
     key: "photoStream",
@@ -322,8 +596,8 @@ const MODULE_CATALOG = [
   },
   {
     key: "map",
-    label: "Alumni Map",
-    description: "Location map for alumni profiles."
+    label: "Location Map",
+    description: "Location map for member profiles."
   },
   {
     key: "familyTrees",
@@ -355,10 +629,22 @@ const MEMBER_EXPORT_FIELDS = [
     getValue: (profile) => toObjectIdString(profile?._id)
   },
   {
+    key: "userId",
+    label: "User ID",
+    description: "Account user identifier linked to this profile.",
+    getValue: (profile) => toObjectIdString(profile?.userId)
+  },
+  {
     key: "firstName",
     label: "First Name",
     description: "Profile first name.",
     getValue: (profile) => String(profile?.firstName || "")
+  },
+  {
+    key: "nickname",
+    label: "Nickname",
+    description: "Camp nickname from profile/social fields.",
+    getValue: (profile) => resolveProfileNicknameForExport(profile)
   },
   {
     key: "lastName",
@@ -409,10 +695,34 @@ const MEMBER_EXPORT_FIELDS = [
     getValue: (profile) => String(profile?.cityState || "")
   },
   {
+    key: "city",
+    label: "City",
+    description: "City parsed from location.",
+    getValue: (profile) => parseExportCityState(profile?.cityState).city
+  },
+  {
+    key: "state",
+    label: "State",
+    description: "State/region parsed from location.",
+    getValue: (profile) => parseExportCityState(profile?.cityState).state
+  },
+  {
+    key: "country",
+    label: "Country",
+    description: "Country parsed from location.",
+    getValue: (profile) => parseExportCityState(profile?.cityState).country
+  },
+  {
     key: "roleAtCamp",
     label: "Role At Camp",
     description: "Member's role at camp.",
     getValue: (profile) => String(profile?.roleAtCamp || "")
+  },
+  {
+    key: "allRoles",
+    label: "All Roles",
+    description: "Primary role plus additional role tags.",
+    getValue: (profile) => listToCsvCell(resolveExportRoles(profile))
   },
   {
     key: "industry",
@@ -439,6 +749,18 @@ const MEMBER_EXPORT_FIELDS = [
     getValue: (profile) => listToCsvCell(profile?.collegeYears || [])
   },
   {
+    key: "collegeMajors",
+    label: "College Majors",
+    description: "Majors captured on the profile.",
+    getValue: (profile) => listToCsvCell(resolveExportCollegeMajors(profile))
+  },
+  {
+    key: "educationRows",
+    label: "Education Rows",
+    description: "Combined college, year, and major rows.",
+    getValue: (profile) => listToCsvCell(resolveExportEducationRows(profile))
+  },
+  {
     key: "currentCompany",
     label: "Current Company",
     description: "Current company from first job entry.",
@@ -457,6 +779,72 @@ const MEMBER_EXPORT_FIELDS = [
     getValue: (profile) => listToCsvCell((profile?.currentJobs || []).map(formatJobEntry))
   },
   {
+    key: "pastJobs",
+    label: "Past Jobs",
+    description: "All past job entries.",
+    getValue: (profile) => listToCsvCell((profile?.pastJobs || []).map(formatJobEntry))
+  },
+  {
+    key: "camperFirstYear",
+    label: "Camper First Year",
+    description: "First camper year from profile stints.",
+    getValue: (profile) => resolveExportCamperYearRange(profile).firstYear
+  },
+  {
+    key: "camperLastYear",
+    label: "Camper Last Year",
+    description: "Last camper year from profile stints.",
+    getValue: (profile) => resolveExportCamperYearRange(profile).lastYear
+  },
+  {
+    key: "camperYearStints",
+    label: "Camper Year Stints",
+    description: "Camper year ranges.",
+    getValue: (profile) => formatExportYearStints(resolveExportCamperYears(profile))
+  },
+  {
+    key: "staffFirstYear",
+    label: "Staff First Year",
+    description: "First staff year from profile stints.",
+    getValue: (profile) => resolveExportStaffYearRange(profile).firstYear
+  },
+  {
+    key: "staffLastYear",
+    label: "Staff Last Year",
+    description: "Last staff year from profile stints.",
+    getValue: (profile) => resolveExportStaffYearRange(profile).lastYear
+  },
+  {
+    key: "staffYearStints",
+    label: "Staff Year Stints",
+    description: "Staff year ranges.",
+    getValue: (profile) => formatExportYearStints(resolveExportStaffYears(profile))
+  },
+  {
+    key: "linkedin",
+    label: "LinkedIn",
+    description: "LinkedIn URL from social links.",
+    getValue: (profile) => String(resolveExportSocials(profile)?.linkedin || "")
+  },
+  {
+    key: "instagram",
+    label: "Instagram",
+    description: "Instagram URL from social links.",
+    getValue: (profile) => String(resolveExportSocials(profile)?.instagram || "")
+  },
+  {
+    key: "facebook",
+    label: "Facebook",
+    description: "Facebook URL from social links.",
+    getValue: (profile) => String(resolveExportSocials(profile)?.facebook || "")
+  },
+  {
+    key: "avatarUrl",
+    label: "Avatar URL",
+    description: "Profile avatar image URL.",
+    getValue: (profile) => String(profile?.avatarUrl || "")
+  },
+  {
     key: "bio",
     label: "Bio",
     description: "Profile bio text.",
@@ -473,11 +861,24 @@ const MEMBER_EXPORT_FIELDS = [
     label: "Last Updated",
     description: "Profile last update timestamp (ISO).",
     getValue: (profile) => toIso(profile?.updatedAt)
+  },
+  {
+    key: "socialsJson",
+    label: "Socials JSON",
+    description: "Raw socials object for full fidelity export.",
+    getValue: (profile) => toExportJsonCell(resolveExportSocials(profile))
+  },
+  {
+    key: "profileJson",
+    label: "Profile JSON",
+    description: "Raw profile object for full fidelity export.",
+    getValue: (profile) => toExportJsonCell(profile || {})
   }
 ];
 const MEMBER_EXPORT_DEFAULT_FIELDS = [
   "firstName",
   "lastName",
+  "nickname",
   "primaryEmail",
   "primaryPhone",
   "cityState",
@@ -499,6 +900,171 @@ function listToCsvCell(values = []) {
     .map((item) => sanitizeCsvCell(item))
     .filter(Boolean)
     .join(" | ");
+}
+
+function toExportJsonCell(value = null) {
+  try {
+    return JSON.stringify(value ?? {});
+  } catch {
+    return "";
+  }
+}
+
+function resolveExportSocials(profile = {}) {
+  return profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+}
+
+function resolveProfileNicknameForExport(profile = {}) {
+  const socials = resolveExportSocials(profile);
+  return String(profile?.nickname || socials?.nickname || socials?.campNickname || "").trim();
+}
+
+function parseExportCityState(value = "") {
+  const parsed = parseCityStateDetailed(String(value || "").trim());
+  return {
+    city: String(parsed?.city || "").trim(),
+    state: String(parsed?.state || "").trim(),
+    country: String(parsed?.country || "").trim()
+  };
+}
+
+function normalizeExportYear(value = "") {
+  return /^\d{4}$/.test(String(value || "").trim()) ? String(value || "").trim() : "";
+}
+
+function normalizeExportYearStints(value = {}) {
+  const input = value && typeof value === "object" ? value : {};
+  const source = Array.isArray(input.stints) ? input.stints : [];
+  let stints = source
+    .map((stint) => {
+      const startYear = normalizeExportYear(stint?.startYear || stint?.firstYear || "");
+      const endYear = normalizeExportYear(stint?.endYear || stint?.lastYear || "");
+      if (!startYear && !endYear) return null;
+      const normalizedStart = startYear || endYear;
+      const normalizedEnd = endYear || startYear;
+      if (!normalizedStart || !normalizedEnd) return null;
+      const startNum = Number(normalizedStart);
+      const endNum = Number(normalizedEnd);
+      return {
+        startYear: String(Math.min(startNum, endNum)),
+        endYear: String(Math.max(startNum, endNum))
+      };
+    })
+    .filter(Boolean);
+
+  if (!stints.length) {
+    const firstYear = normalizeExportYear(input.firstYear || "");
+    const lastYear = normalizeExportYear(input.lastYear || "");
+    if (firstYear || lastYear) {
+      const normalizedStart = firstYear || lastYear;
+      const normalizedEnd = lastYear || firstYear;
+      if (normalizedStart && normalizedEnd) {
+        const startNum = Number(normalizedStart);
+        const endNum = Number(normalizedEnd);
+        stints = [
+          {
+            startYear: String(Math.min(startNum, endNum)),
+            endYear: String(Math.max(startNum, endNum))
+          }
+        ];
+      }
+    }
+  }
+
+  return stints.sort((left, right) => {
+    const leftStart = Number(left?.startYear || 0);
+    const rightStart = Number(right?.startYear || 0);
+    if (leftStart !== rightStart) return leftStart - rightStart;
+    return Number(left?.endYear || 0) - Number(right?.endYear || 0);
+  });
+}
+
+function formatExportYearStints(value = {}) {
+  return listToCsvCell(
+    normalizeExportYearStints(value).map((stint) =>
+      stint.startYear === stint.endYear ? stint.startYear : `${stint.startYear}-${stint.endYear}`
+    )
+  );
+}
+
+function resolveExportYearRange(value = {}) {
+  const stints = normalizeExportYearStints(value);
+  return {
+    firstYear: stints[0]?.startYear || "",
+    lastYear: stints.length ? stints[stints.length - 1].endYear : ""
+  };
+}
+
+function resolveExportCamperYears(profile = {}) {
+  const socials = resolveExportSocials(profile);
+  const source = socials?.camperYears && typeof socials.camperYears === "object"
+    ? socials.camperYears
+    : profile?.camperYears && typeof profile.camperYears === "object"
+    ? profile.camperYears
+    : {};
+  return source;
+}
+
+function resolveExportStaffYears(profile = {}) {
+  const socials = resolveExportSocials(profile);
+  const source = socials?.staffYears && typeof socials.staffYears === "object"
+    ? socials.staffYears
+    : profile?.staffYears && typeof profile.staffYears === "object"
+    ? profile.staffYears
+    : {};
+  return source;
+}
+
+function resolveExportCamperYearRange(profile = {}) {
+  return resolveExportYearRange(resolveExportCamperYears(profile));
+}
+
+function resolveExportStaffYearRange(profile = {}) {
+  return resolveExportYearRange(resolveExportStaffYears(profile));
+}
+
+function resolveExportRoles(profile = {}) {
+  const socials = resolveExportSocials(profile);
+  const source = [
+    String(profile?.roleAtCamp || "").trim(),
+    ...(Array.isArray(socials?.roles) ? socials.roles : [])
+  ];
+  const seen = new Set();
+  return source
+    .map((value) => String(value || "").trim())
+    .filter((value) => {
+      if (!value) return false;
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function resolveExportCollegeMajors(profile = {}) {
+  const socials = resolveExportSocials(profile);
+  const majors = Array.isArray(socials?.collegeMajors)
+    ? socials.collegeMajors
+    : Array.isArray(socials?.educationMajors)
+    ? socials.educationMajors
+    : [];
+  return majors.map((value) => String(value || "").trim()).filter(Boolean);
+}
+
+function resolveExportEducationRows(profile = {}) {
+  const colleges = Array.isArray(profile?.colleges) ? profile.colleges : [];
+  const years = Array.isArray(profile?.collegeYears) ? profile.collegeYears : [];
+  const majors = resolveExportCollegeMajors(profile);
+  const max = Math.max(colleges.length, years.length, majors.length);
+  const rows = [];
+  for (let index = 0; index < max; index += 1) {
+    const college = String(colleges[index] || "").trim();
+    const year = String(years[index] || "").trim();
+    const major = String(majors[index] || "").trim();
+    if (!college && !year && !major) continue;
+    rows.push([college, year, major].filter(Boolean).join(" | "));
+  }
+  return rows;
 }
 
 function formatCollegeEntry(entry) {
@@ -1294,7 +1860,19 @@ router.get("/dashboard", async (req, res, next) => {
         }),
         AccessRequestModel.count(tenantId, { status: "pending" }),
         ProfileModel.find(tenantId, { status: { $ne: "removed" } }, {
-          select: ["firstName", "lastName", "emails", "phones", "cityState", "roleAtCamp", "highSchool", "colleges", "currentJobs", "bio"]
+          select: [
+            "userId",
+            "firstName",
+            "lastName",
+            "emails",
+            "phones",
+            "cityState",
+            "roleAtCamp",
+            "highSchool",
+            "colleges",
+            "currentJobs",
+            "bio"
+          ]
         }),
         EmailBroadcastModel.find(tenantId, {}, {
           sort: { sentAt: -1, createdAt: -1 },
@@ -1385,6 +1963,7 @@ router.get("/dashboard", async (req, res, next) => {
       })
       .slice(0, 5);
 
+    res.set("Cache-Control", "no-store");
     return res.json({
       tenant: {
         id: toObjectIdString(req.tenant._id),
@@ -1597,6 +2176,59 @@ router.get("/members", async (req, res, next) => {
         statusOptions: ["active", "pending", "flagged", "removed"]
       }
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/members/lookup", async (req, res, next) => {
+  try {
+    const ids = [...new Set(
+      String(req.query.ids || "")
+        .split(",")
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+    )].slice(0, 250);
+    if (!ids.length) {
+      return res.json({ items: [] });
+    }
+
+    const profiles = await ProfileModel.find(req.tenant._id, {
+      _id: { $in: ids },
+      status: { $ne: "removed" }
+    });
+    if (!profiles.length) {
+      return res.json({ items: [] });
+    }
+
+    const userIds = [...new Set(profiles.map((profile) => toObjectIdString(profile.userId)).filter(Boolean))];
+    const users = userIds.length > 0
+      ? await UserModel.find(req.tenant._id, { _id: { $in: userIds } }, {
+          select: ["id", "email", "status", "lastLoginAt", "roles"]
+        })
+      : [];
+    const usersById = new Map(users.map((item) => [toObjectIdString(item._id), item]));
+    const profilesById = new Map(profiles.map((profile) => [toObjectIdString(profile._id), profile]));
+
+    const items = ids
+      .map((id) => {
+        const profile = profilesById.get(id);
+        if (!profile) return null;
+        const user = usersById.get(toObjectIdString(profile.userId)) || null;
+        const row = mapMemberRow(profile, user, {});
+        return {
+          id: row.id,
+          fullName: row.fullName || "Member",
+          email: row.email || "",
+          role: row.role || "Member",
+          location: row.location || "",
+          status: row.status || "active",
+          avatarUrl: row.avatarUrl || ""
+        };
+      })
+      .filter(Boolean);
+
+    return res.json({ items });
   } catch (error) {
     return next(error);
   }
@@ -2128,6 +2760,68 @@ router.get("/email/history/:broadcastId", async (req, res) => {
   return res.json({ item: serializeEmailBroadcast(item) });
 });
 
+router.get("/email/footer-presets", async (req, res) => {
+  const footerSettings = await resolveDirectorEmailFooterSettings({
+    tenant: req.tenant,
+    user: req.user
+  });
+
+  return res.json({
+    presets: footerSettings.presets,
+    defaultPresetId: footerSettings.defaultPresetId,
+    activeFooter: footerSettings.activeFooter
+  });
+});
+
+router.patch("/email/footer-presets", async (req, res) => {
+  const footerSettings = await resolveDirectorEmailFooterSettings({
+    tenant: req.tenant,
+    user: req.user
+  });
+  const incomingPresets = Array.isArray(req.body?.presets) ? req.body.presets : [];
+  const presets = normalizeEmailFooterPresetList(incomingPresets, {
+    fallbackFooter: footerSettings.fallbackFooter
+  });
+  const requestedDefaultId = sanitizeText(String(req.body?.defaultPresetId || "").trim()).slice(0, 90);
+  const defaultPresetId = presets.some((item) => item.id === requestedDefaultId)
+    ? requestedDefaultId
+    : String(presets[0]?.id || "");
+
+  const draft = resolveDraft(req.tenant);
+  const content = draft.content || resolveContent(req.tenant);
+  const nextContent = {
+    ...content,
+    emailFooterPresets: presets,
+    defaultEmailFooterPresetId: defaultPresetId
+  };
+
+  const tenant = await TenantModel.update(req.tenant._id, {
+    content: nextContent,
+    onboardingDraft: {
+      ...draft,
+      content: {
+        ...draft.content,
+        emailFooterPresets: presets,
+        defaultEmailFooterPresetId: defaultPresetId
+      },
+      updatedAt: new Date(),
+      updatedByUserId: req.user.id
+    }
+  });
+
+  const resolved = await resolveDirectorEmailFooterSettings({
+    tenant,
+    user: req.user
+  });
+
+  return res.json({
+    ok: true,
+    presets: resolved.presets,
+    defaultPresetId: resolved.defaultPresetId,
+    activeFooter: resolved.activeFooter
+  });
+});
+
 router.post("/email/recipients-preview", async (req, res) => {
   const targeting = normalizeTargeting(req.body?.targeting || {});
   const { profiles, recipients } = await resolveRecipientsForTargeting(req.tenant._id, targeting);
@@ -2168,11 +2862,26 @@ router.post("/email/test", async (req, res) => {
     });
   }
 
+  const footerSettings = await resolveDirectorEmailFooterSettings({
+    tenant: req.tenant,
+    user: req.user
+  });
+  const emailBranding = buildTenantEmailBranding(req.tenant);
+  const resolvedReplyTo = isEmail(replyTo) ? replyTo : emailBranding.replyTo;
+  const composed = buildDirectorBroadcastEmailContent({
+    tenant: req.tenant,
+    subject,
+    bodyHtml: body,
+    footer: normalizeEmailFooterData(req.body?.footer || {}, footerSettings.activeFooter)
+  });
+
   await sendTransactionalEmail({
+    from: emailBranding.from,
     to,
     subject: `[Test] ${subject}`,
-    text: body,
-    ...(isEmail(replyTo) ? { replyTo } : {})
+    text: composed.text,
+    html: composed.html,
+    ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {})
   });
 
   return res.json({ ok: true, sentTo: to });
@@ -2194,6 +2903,19 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       }
     });
   }
+
+  const footerSettings = await resolveDirectorEmailFooterSettings({
+    tenant: req.tenant,
+    user: req.user
+  });
+  const emailBranding = buildTenantEmailBranding(req.tenant);
+  const resolvedReplyTo = isEmail(actorReplyTo) ? actorReplyTo : emailBranding.replyTo;
+  const composed = buildDirectorBroadcastEmailContent({
+    tenant: req.tenant,
+    subject,
+    bodyHtml: body,
+    footer: normalizeEmailFooterData(req.body?.footer || {}, footerSettings.activeFooter)
+  });
 
   const { recipients } = await resolveRecipientsForTargeting(req.tenant._id, targeting);
   if (recipients.length === 0) {
@@ -2233,10 +2955,12 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
 
   if (!isScheduled) {
     const delivery = await sendBulkTransactionalEmail({
+      from: emailBranding.from,
       recipients,
       subject,
-      text: body,
-      ...(isEmail(actorReplyTo) ? { replyTo: actorReplyTo } : {}),
+      text: composed.text,
+      html: composed.html,
+      ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {}),
       tags: [
         { name: "category", value: "director_broadcast" },
         { name: "tenant", value: req.tenant.slug || "tenant" }
@@ -2432,12 +3156,15 @@ router.get("/features", async (req, res) => {
   const content = resolveContent(req.tenant);
   const modules = resolveModules(req.tenant, { applyPlanGating: false });
   const features = listFeaturesForPlan(req.tenant.planTier, req.tenant.addOns || []);
+  const campType = content.campType || "coed";
   const items = MODULE_CATALOG.map((module) => {
     const locked = module.requiredFeature
       ? !hasFeature(req.tenant.planTier, module.requiredFeature, req.tenant.addOns || [])
       : false;
     return {
       ...module,
+      label: replaceAlumniForCampType(module.label, campType),
+      description: replaceAlumniForCampType(module.description, campType),
       enabled: locked ? false : Boolean(modules[module.key]),
       locked
     };
@@ -2973,7 +3700,8 @@ router.post("/settings/admins/invite", inviteSendLimiter, async (req, res) => {
     email,
     token,
     roleToAssign: "tenant_admin",
-    expiresAt: invite.expiresAt
+    expiresAt: invite.expiresAt,
+    replyTo: normalizeEmail(req.user?.email || "")
   }).catch((error) => {
     console.warn("[email] director invite failed", {
       tenantId: String(req.tenant._id || ""),
@@ -3248,6 +3976,7 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
           token,
           roleToAssign,
           expiresAt: invite.expiresAt,
+          replyTo: normalizeEmail(req.user?.email || ""),
           firstName: recipient.firstName || "",
           lastName: recipient.lastName || ""
         });
@@ -3418,6 +4147,38 @@ router.get("/export/csv/fields", async (_req, res) => {
   });
 });
 
+router.get("/export/csv/preview", async (req, res) => {
+  const fieldOrder = normalizeMemberExportFieldOrder(req.query?.fields || "");
+  const columns = fieldOrder
+    .map((key) => MEMBER_EXPORT_FIELD_MAP.get(key))
+    .filter(Boolean);
+  const requestedLimit = Number.parseInt(String(req.query?.limit || "6"), 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 20)
+    : 6;
+  const profiles = await ProfileModel.find(req.tenant._id, {}, {
+    sort: { lastName: 1, firstName: 1 },
+    limit
+  });
+
+  const rows = profiles.map((profile) => {
+    const row = {};
+    for (const column of columns) {
+      row[column.key] = sanitizeCsvCell(column.getValue(profile));
+    }
+    return row;
+  });
+
+  res.set("Cache-Control", "no-store");
+  return res.json({
+    columns: columns.map((column) => ({
+      key: column.key,
+      label: column.label
+    })),
+    rows
+  });
+});
+
 router.get("/export/csv", exportLimiter, async (req, res) => {
   const profiles = await ProfileModel.find(req.tenant._id, {}, {
     sort: { lastName: 1, firstName: 1 }
@@ -3455,6 +4216,8 @@ router.get("/export/pdf", exportLimiter, requireFeature("pdfExport"), async (req
   const profiles = await ProfileModel.find(req.tenant._id, {}, {
     sort: { lastName: 1, firstName: 1 }
   });
+  const content = resolveContent(req.tenant);
+  const alumniWordTitle = alumniPluralForCampType(content.campType || "coed", { capitalized: true });
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader(
@@ -3465,7 +4228,7 @@ router.get("/export/pdf", exportLimiter, requireFeature("pdfExport"), async (req
   const doc = new PDFDocument({ margin: 40 });
   doc.pipe(res);
 
-  doc.fontSize(18).text(`${req.tenant.name} Alumni Directory`, { underline: true });
+  doc.fontSize(18).text(`${req.tenant.name} ${alumniWordTitle} Directory`, { underline: true });
   doc.moveDown(0.8);
 
   let currentLetter = "";

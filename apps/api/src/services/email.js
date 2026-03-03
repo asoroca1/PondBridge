@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { defaultNetworkDisplayNameForCamp, normalizeCampType } from "@pondbridge/shared";
 import { env } from "../config/env.js";
 import { EmailSuppressionModel } from "../db/models/index.js";
 import {
@@ -69,6 +70,120 @@ function dedupeList(values = []) {
 
 function normalizeString(value = "") {
   return String(value || "").trim();
+}
+
+function sanitizeSenderName(value = "", fallback = "PondBridge") {
+  const cleaned = String(value || "")
+    .replace(/[<>\r\n"]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 96);
+  return cleaned || fallback;
+}
+
+function normalizeNetworkDisplayName(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function genericNetworkDisplayName(value = "") {
+  const normalized = normalizeNetworkDisplayName(value);
+  if (!normalized) return true;
+  return [
+    "camp alumni network",
+    "camp alumnae network",
+    "your camp alumni network",
+    "your camp alumnae network",
+    "alumni network",
+    "alumnae network"
+  ].includes(normalized);
+}
+
+function titleCaseWords(value = "") {
+  return String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+    .trim();
+}
+
+function nameFromTenantSlug(slug = "") {
+  const words = String(slug || "")
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ");
+  return titleCaseWords(words);
+}
+
+function resolveTenantNetworkName(tenant = {}) {
+  const campType = normalizeCampType(tenant?.content?.campType || tenant?.settings?.campType || "coed");
+  const configured = String(tenant?.content?.networkDisplayName || "").trim();
+  if (configured && !genericNetworkDisplayName(configured)) return configured;
+  const tenantName = String(tenant?.name || "").trim();
+  if (tenantName) return defaultNetworkDisplayNameForCamp(tenantName, campType);
+  const slugName = nameFromTenantSlug(tenant?.slug || "");
+  if (slugName) return defaultNetworkDisplayNameForCamp(slugName, campType);
+  return defaultNetworkDisplayNameForCamp("Your Camp", campType);
+}
+
+function tenantFromAddress(baseAddress = "", tenant = {}) {
+  const normalizedBase = extractEmailAddress(baseAddress);
+  if (!normalizedBase) return "";
+  const atIndex = normalizedBase.lastIndexOf("@");
+  if (atIndex <= 0 || atIndex === normalizedBase.length - 1) return normalizedBase;
+  const domain = normalizedBase.slice(atIndex + 1);
+  const mode = getEmailMode();
+  if (mode !== "resend") return normalizedBase;
+
+  const tenantToken = String(tenant?.slug || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 42);
+  if (!tenantToken) return normalizedBase;
+
+  const localPartPrefix = "network";
+  const maxLocalLength = 64;
+  const suffixBudget = Math.max(0, maxLocalLength - (localPartPrefix.length + 1));
+  const boundedToken = tenantToken.slice(0, suffixBudget);
+  return `${localPartPrefix}+${boundedToken}@${domain}`;
+}
+
+function normalizeFromAddress(value = "") {
+  const candidate = normalizeString(value || env.EMAIL_FROM || "");
+  if (!candidate) {
+    throw createEmailError("Sender from-address is required.", "EMAIL_FROM_REQUIRED", 500);
+  }
+  if (!isValidFromAddress(candidate)) {
+    throw createEmailError(
+      `Invalid sender from-address: ${candidate}`,
+      "INVALID_FROM_ADDRESS",
+      400
+    );
+  }
+  return candidate;
+}
+
+export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) {
+  const networkName = resolveTenantNetworkName(tenant);
+  const safeSenderName = sanitizeSenderName(senderName || networkName, "PondBridge");
+  const baseFromAddress = tenantFromAddress(env.EMAIL_FROM || "", tenant);
+  const from = baseFromAddress
+    ? `${safeSenderName} <${baseFromAddress}>`
+    : normalizeFromAddress(env.EMAIL_FROM || "");
+  const contactEmail = normalizeEmailAddress(tenant?.content?.contactEmail || "");
+  const replyTo = isValidEmailAddress(contactEmail) ? contactEmail : "";
+  return {
+    networkName,
+    from: normalizeFromAddress(from),
+    replyTo
+  };
 }
 
 function toAddressList(value) {
@@ -477,6 +592,7 @@ function getTransport() {
 }
 
 async function sendResendEmail({
+  from,
   to,
   cc,
   bcc,
@@ -499,6 +615,7 @@ async function sendResendEmail({
   const normalizedTags = normalizeResendTags(tags);
   const normalizedTopicId = normalizeTopicId(topicId);
   const normalizedScheduledAt = normalizeScheduledAt(scheduledAt);
+  const normalizedFrom = normalizeFromAddress(from || env.EMAIL_FROM);
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
@@ -509,7 +626,7 @@ async function sendResendEmail({
   }
 
   const payload = {
-    from: env.EMAIL_FROM,
+    from: normalizedFrom,
     to: normalized.to,
     subject: cleanSubject
   };
@@ -547,6 +664,7 @@ async function sendResendEmail({
 }
 
 async function sendSmtpEmail({
+  from,
   to,
   cc,
   bcc,
@@ -563,6 +681,7 @@ async function sendSmtpEmail({
   const normalizedAttachments = normalizeAttachments(attachments);
   const normalizedHeaders = normalizeResendHeaders(headers);
   const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey || "");
+  const normalizedFrom = normalizeFromAddress(from || env.EMAIL_FROM);
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
@@ -579,7 +698,7 @@ async function sendSmtpEmail({
   };
 
   const result = await getTransport().sendMail({
-    from: env.EMAIL_FROM,
+    from: normalizedFrom,
     to: normalized.to,
     cc: normalized.cc.length > 0 ? normalized.cc : undefined,
     bcc: normalized.bcc.length > 0 ? normalized.bcc : undefined,
@@ -612,6 +731,7 @@ export function magicLink({ tenantSlug, token }) {
 }
 
 export async function sendTransactionalEmail({
+  from,
   to,
   cc,
   bcc,
@@ -629,6 +749,7 @@ export async function sendTransactionalEmail({
 }) {
   const mode = String(modeOverride || getEmailMode()).trim().toLowerCase();
   assertEmailMode(mode);
+  const normalizedFrom = normalizeFromAddress(from || env.EMAIL_FROM);
 
   if (mode === "mock") {
     const normalized = normalizeRecipients({ to, cc, bcc, replyTo });
@@ -641,6 +762,7 @@ export async function sendTransactionalEmail({
       throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
     }
     console.log("[email:mock]", {
+      from: normalizedFrom,
       to: normalized.to,
       cc: normalized.cc,
       bcc: normalized.bcc,
@@ -657,6 +779,7 @@ export async function sendTransactionalEmail({
 
   if (mode === "resend") {
     return sendResendEmail({
+      from: normalizedFrom,
       to,
       cc,
       bcc,
@@ -675,6 +798,7 @@ export async function sendTransactionalEmail({
 
   if (mode === "smtp") {
     return sendSmtpEmail({
+      from: normalizedFrom,
       to,
       cc,
       bcc,
@@ -706,6 +830,7 @@ function chunk(values, size) {
 }
 
 export async function sendBulkTransactionalEmail({
+  from,
   recipients = [],
   cc,
   bcc,
@@ -762,6 +887,7 @@ export async function sendBulkTransactionalEmail({
   const normalizedTopicId = normalizeTopicId(topicId);
   const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey || "");
   const normalizedStrategy = String(strategy || "per-recipient").trim().toLowerCase();
+  const normalizedFrom = normalizeFromAddress(from || env.EMAIL_FROM);
   const resendBatchEnabled = asBoolean(env.RESEND_BATCH_ENABLED, true);
 
   const canUseResendBatchApi =
@@ -798,7 +924,7 @@ export async function sendBulkTransactionalEmail({
         const ccSet = new Set(ccFiltered);
         const bccFiltered = bccList.filter((email) => email !== recipient && !ccSet.has(email));
         const item = {
-          from: env.EMAIL_FROM,
+          from: normalizedFrom,
           to: [recipient],
           subject: cleanSubject
         };
@@ -849,6 +975,7 @@ export async function sendBulkTransactionalEmail({
       const batchBcc = dedupeList([...(batch.slice(1) || []), ...bccList]);
       try {
         const result = await sendTransactionalEmail({
+          from: normalizedFrom,
           to,
           cc,
           bcc: batchBcc.length > 0 ? batchBcc : undefined,
@@ -883,6 +1010,7 @@ export async function sendBulkTransactionalEmail({
         attemptedCursor += 1;
         try {
           const result = await sendTransactionalEmail({
+            from: normalizedFrom,
             to: recipient,
             cc,
             bcc,
@@ -941,12 +1069,17 @@ export async function sendInviteEmail({
   token,
   roleToAssign,
   expiresAt,
+  replyTo = "",
   firstName = "",
   lastName = ""
 }) {
+  const branding = buildTenantEmailBranding(tenant);
+  const resolvedReplyTo = isValidEmailAddress(replyTo)
+    ? normalizeEmailAddress(replyTo)
+    : branding.replyTo;
   const link = inviteLink({ tenantSlug: tenant.slug, token, email });
   const { subject, text, html } = inviteTemplate({
-    tenantName: tenant.name,
+    tenantName: branding.networkName,
     link,
     roleToAssign,
     expiresAt,
@@ -955,7 +1088,9 @@ export async function sendInviteEmail({
   });
 
   return sendTransactionalEmail({
+    from: branding.from,
     to: email,
+    ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {}),
     subject,
     text,
     html,
@@ -968,15 +1103,18 @@ export async function sendInviteEmail({
 }
 
 export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
+  const branding = buildTenantEmailBranding(tenant);
   const link = magicLink({ tenantSlug: tenant.slug, token });
   const { subject, text, html } = magicLinkTemplate({
-    tenantName: tenant.name,
+    tenantName: branding.networkName,
     link,
     expiresAt
   });
 
   return sendTransactionalEmail({
+    from: branding.from,
     to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
     subject,
     text,
     html,
@@ -989,13 +1127,16 @@ export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
 }
 
 export async function sendWelcomeEmail({ tenant, firstName, email }) {
+  const branding = buildTenantEmailBranding(tenant);
   const { subject, text, html } = welcomeTemplate({
-    tenantName: tenant.name,
+    tenantName: branding.networkName,
     firstName
   });
 
   return sendTransactionalEmail({
+    from: branding.from,
     to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
     subject,
     text,
     html,
@@ -1008,15 +1149,18 @@ export async function sendWelcomeEmail({ tenant, firstName, email }) {
 }
 
 export async function sendAccessDecisionEmail({ tenant, email, firstName, approved, reason, loginUrl }) {
+  const branding = buildTenantEmailBranding(tenant);
   if (approved) {
     const resolvedLoginUrl = loginUrl || `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/login`;
     const { subject, text, html } = accessApprovedTemplate({
-      tenantName: tenant.name,
+      tenantName: branding.networkName,
       firstName,
       loginUrl: resolvedLoginUrl
     });
     return sendTransactionalEmail({
+      from: branding.from,
       to: email,
+      ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
       subject,
       text,
       html,
@@ -1028,12 +1172,14 @@ export async function sendAccessDecisionEmail({ tenant, email, firstName, approv
   }
 
   const { subject, text, html } = accessDeniedTemplate({
-    tenantName: tenant.name,
+    tenantName: branding.networkName,
     firstName,
     reason
   });
   return sendTransactionalEmail({
+    from: branding.from,
     to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
     subject,
     text,
     html,

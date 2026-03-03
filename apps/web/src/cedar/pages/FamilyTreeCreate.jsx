@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveAlumniWord } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
@@ -84,6 +86,8 @@ function ResultAvatar({ person = {} }) {
 
 export default function FamilyTreeCreate() {
   const navigate = useNavigate();
+  const { tenant } = useTenant();
+  const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const me = useMemo(() => readCurrentUser(), []);
 
   const [name, setName] = useState("");
@@ -237,7 +241,7 @@ export default function FamilyTreeCreate() {
           <div>
             <h1 className="ft-title">Create Family Tree</h1>
             <p className="ft-sub">
-              Name your tree, add alumni members, then define relationships.
+              {`Name your tree, add ${alumniWordTitle.toLowerCase()} members, then define relationships.`}
             </p>
           </div>
           <Link className="btn-ghost" to="/family-trees">
@@ -264,7 +268,7 @@ export default function FamilyTreeCreate() {
           <section className="ft-form-card">
             <h2 className="ft-form-title">B) Add Members</h2>
             <label className="ft-field">
-              <span className="ft-label">Search Alumni Profiles</span>
+              <span className="ft-label">{`Search ${alumniWordTitle} Profiles`}</span>
               <input
                 className="ft-input"
                 type="text"

@@ -23,7 +23,7 @@ import {
   createPresignedDownloadUrl,
   deleteObjectFromR2
 } from "../services/objectStorage.js";
-import { sendBulkTransactionalEmail } from "../services/email.js";
+import { buildTenantEmailBranding, sendBulkTransactionalEmail } from "../services/email.js";
 import { broadcastTemplate } from "../services/emailTemplates.js";
 import { cityKey, geocodeCity } from "../utils/geocode.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
@@ -572,19 +572,85 @@ function resolveLegacyNameFallback(identity = {}, fallbackEmail = "") {
   return deriveNameFromEmail(identity?.email || fallbackEmail || "");
 }
 
+function normalizeYearStints(value = null) {
+  const validYear = (raw = "") => {
+    const year = String(raw || "").trim();
+    return /^\d{4}$/.test(year) ? year : "";
+  };
+  const stints = [];
+
+  const pushStint = (entry = {}) => {
+    const startYear = validYear(entry.startYear || entry.firstYear || entry.yearStart || "");
+    const endYear = validYear(entry.endYear || entry.lastYear || entry.yearEnd || "");
+    if (!startYear || !endYear) return;
+    const startNum = Number(startYear);
+    const endNum = Number(endYear);
+    if (!Number.isFinite(startNum) || !Number.isFinite(endNum)) return;
+    stints.push({
+      startYear: String(Math.min(startNum, endNum)),
+      endYear: String(Math.max(startNum, endNum))
+    });
+  };
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => pushStint(entry));
+  } else if (value && typeof value === "object") {
+    if (Array.isArray(value.stints)) {
+      value.stints.forEach((entry) => pushStint(entry));
+    } else if (value.firstYear || value.lastYear || value.startYear || value.endYear) {
+      pushStint(value);
+    }
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  stints
+    .sort((a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear))
+    .forEach((entry) => {
+      const key = `${entry.startYear}-${entry.endYear}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      deduped.push(entry);
+    });
+  return deduped;
+}
+
 function normalizeCamperYears(value = {}) {
   const input = value && typeof value === "object" ? value : {};
-  const firstYear = String(input.firstYear || "").trim();
   const firstGroup = String(input.firstGroup || "").trim();
-  const lastYear = String(input.lastYear || "").trim();
   const lastGroup = String(input.lastGroup || "").trim();
-  const validYear = (year = "") => (/^\d{4}$/.test(year) ? year : "");
+  let stints = normalizeYearStints(value);
+  const validYear = (year = "") => (/^\d{4}$/.test(String(year || "").trim()) ? String(year || "").trim() : "");
+
+  let firstYear = validYear(input.firstYear || "");
+  let lastYear = validYear(input.lastYear || "");
+
+  if (!stints.length && (firstYear || lastYear)) {
+    if (!firstYear) firstYear = lastYear;
+    if (!lastYear) lastYear = firstYear;
+    if (firstYear && lastYear) {
+      const startNum = Math.min(Number(firstYear), Number(lastYear));
+      const endNum = Math.max(Number(firstYear), Number(lastYear));
+      stints = [{ startYear: String(startNum), endYear: String(endNum) }];
+    }
+  }
+
+  if (stints.length) {
+    firstYear = stints[0].startYear;
+    lastYear = stints[stints.length - 1].endYear;
+  }
+
   return {
-    firstYear: validYear(firstYear),
+    firstYear,
     firstGroup,
-    lastYear: validYear(lastYear),
-    lastGroup
+    lastYear,
+    lastGroup,
+    stints
   };
+}
+
+function normalizeStaffYears(value = {}) {
+  return { stints: normalizeYearStints(value) };
 }
 
 function normalizeRoleList(value = []) {
@@ -636,6 +702,7 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
   const roleList = normalizeRoleList([profile.roleAtCamp, ...(Array.isArray(socials.roles) ? socials.roles : [])]);
   const primaryRole = roleList[0] || "";
   const camperYears = normalizeCamperYears(socials.camperYears || profile.camperYears || {});
+  const staffYears = normalizeStaffYears(socials.staffYears || profile.staffYears || {});
   const fallbackNames = resolveLegacyNameFallback(identity, fallbackEmail);
   const firstName = String(profile.firstName || fallbackNames.firstName || "").trim();
   const lastName = String(profile.lastName || fallbackNames.lastName || "").trim();
@@ -667,6 +734,7 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
       facebook: String(socials.facebook || "").trim()
     },
     camperYears,
+    staffYears,
     roles: roleList,
     collegeMajors,
     education: (profile.colleges || []).map((college, idx) => ({
@@ -1173,10 +1241,10 @@ router.put("/me", async (req, res) => {
   }
 
   const incomingPhone = String(req.body?.phone || "").trim();
-  const incomingCamperYears =
-    req.body?.camperYears && typeof req.body.camperYears === "object"
-      ? normalizeCamperYears(req.body.camperYears)
-      : null;
+  const incomingCamperYearsProvided = req.body?.camperYears !== undefined;
+  const incomingCamperYears = incomingCamperYearsProvided ? normalizeCamperYears(req.body.camperYears) : null;
+  const incomingStaffYearsProvided = req.body?.staffYears !== undefined;
+  const incomingStaffYears = incomingStaffYearsProvided ? normalizeStaffYears(req.body.staffYears) : null;
   const incomingRolesProvided = Array.isArray(req.body?.roles) || req.body?.roleAtCamp !== undefined;
   const incomingRoles = incomingRolesProvided
     ? normalizeRoleList(Array.isArray(req.body?.roles) ? req.body.roles : [req.body?.roleAtCamp])
@@ -1226,7 +1294,8 @@ router.put("/me", async (req, res) => {
   const hasSocialPatch = Boolean(req.body.social || req.body.socials);
   const nextSocials =
     hasSocialPatch ||
-    incomingCamperYears ||
+    incomingCamperYearsProvided ||
+    incomingStaffYearsProvided ||
     incomingRolesProvided ||
     incomingNicknameProvided ||
     incomingCollegeMajorsProvided
@@ -1239,7 +1308,8 @@ router.put("/me", async (req, res) => {
               facebook: String(req.body.social?.facebook || req.body.socials?.facebook || "").trim()
             }
           : {}),
-        ...(incomingCamperYears ? { camperYears: incomingCamperYears } : {}),
+        ...(incomingCamperYearsProvided ? { camperYears: incomingCamperYears } : {}),
+        ...(incomingStaffYearsProvided ? { staffYears: incomingStaffYears } : {}),
         ...(incomingRolesProvided ? { roles: incomingRoles } : {}),
         ...(incomingNicknameProvided ? { nickname: incomingNickname, campNickname: incomingNickname } : {}),
         ...(incomingCollegeMajorsProvided
@@ -2573,14 +2643,19 @@ router.post(
         subject: emailSubject,
         bodyHtml
       });
+      const emailBranding = buildTenantEmailBranding(req.tenant);
+      const resolvedReplyTo = isValidEmail(req.user?.email || "")
+        ? normalizeEmail(req.user.email)
+        : emailBranding.replyTo || undefined;
 
       try {
         const delivery = await sendBulkTransactionalEmail({
+          from: emailBranding.from,
           recipients,
           subject,
           text,
           html,
-          replyTo: isValidEmail(req.user?.email || "") ? normalizeEmail(req.user.email) : undefined,
+          replyTo: resolvedReplyTo,
           tags: [
             { name: "category", value: "newsletter_pdf" },
             { name: "tenant", value: req.tenant.slug || "tenant" }

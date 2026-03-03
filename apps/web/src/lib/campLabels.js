@@ -1,3 +1,10 @@
+import {
+  alumniPluralForCampType,
+  defaultNetworkDisplayNameForCamp,
+  normalizeCampType,
+  replaceAlumniForCampType
+} from "@pondbridge/shared";
+
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
 const DEFAULT_AGE_GROUPS = [
   "Super Warrior",
@@ -34,12 +41,31 @@ export function resolveCampName(tenant) {
   return String(tenant?.name || "Your Camp").trim() || "Your Camp";
 }
 
+export function resolveCampType(tenant) {
+  const content = resolveTenantContent(tenant);
+  return normalizeCampType(
+    content?.campType || tenant?.content?.campType || tenant?.settings?.campType || "coed"
+  );
+}
+
+export function resolveAlumniWord(tenant, { capitalized = false } = {}) {
+  return alumniPluralForCampType(resolveCampType(tenant), { capitalized });
+}
+
+export function withCampAlumniTerms(tenant, text = "") {
+  return replaceAlumniForCampType(text, resolveCampType(tenant));
+}
+
+function defaultNetworkDisplayName(tenant) {
+  const campName = resolveCampName(tenant);
+  return defaultNetworkDisplayNameForCamp(campName, resolveCampType(tenant));
+}
+
 export function resolveNetworkDisplayName(tenant) {
   const content = resolveTenantContent(tenant);
-  return (
-    String(content.networkDisplayName || "").trim() ||
-    `${resolveCampName(tenant)} Alumni Network`
-  );
+  const fallback = defaultNetworkDisplayName(tenant);
+  const raw = String(content.networkDisplayName || "").trim() || fallback;
+  return withCampAlumniTerms(tenant, raw);
 }
 
 export function resolveNewsletterLabel(tenant) {
@@ -56,4 +82,3 @@ export function resolveAgeGroupOptions(tenant) {
   const content = resolveTenantContent(tenant);
   return normalizeLabelList(content.ageGroups, DEFAULT_AGE_GROUPS);
 }
-

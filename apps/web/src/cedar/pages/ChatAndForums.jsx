@@ -1789,7 +1789,7 @@ function CreateGroupButton({ onCreated }) {
                   className="cf-input"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Alumni NYC"
+                  placeholder="e.g., Camp NYC"
                 />
               </label>
 
@@ -2395,7 +2395,7 @@ function ForumsTab({ socket }) {
                     className="cf-input"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g., Boston Alumni"
+                    placeholder="e.g., Boston Camp"
                   />
                 </label>
               </div>

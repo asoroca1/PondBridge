@@ -46,7 +46,7 @@
 }
 
 .product-header-brand {
-  color: #ffffff;
+  color: var(--brand-on-primary, #ffffff);
   font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
   font-weight: 700;
   font-size: clamp(1.6rem, 2.3vw, 2rem);
@@ -402,6 +402,7 @@
   font-size: 1rem;
   font-weight: 700;
   background: var(--brand-primary);
+  color: var(--brand-on-primary);
   box-shadow: none;
 }
 
@@ -788,7 +789,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #ffffff;
+  color: var(--brand-on-primary, #ffffff);
 }
 
 .director-review-mini-preview-top strong {
@@ -1299,7 +1300,7 @@
   gap: 12px;
   padding: 10px 14px;
   background: var(--preview-main, var(--brand-primary));
-  color: #fff;
+  color: var(--brand-on-primary, #fff);
 }
 
 .director-logo-preview,
@@ -1547,7 +1548,7 @@
   gap: 12px;
   padding: 14px 24px;
   background: var(--preview-brand, var(--brand-primary));
-  color: #fff;
+  color: var(--brand-on-primary, #fff);
   font-size: 16px;
   font-weight: 700;
 }
@@ -1614,7 +1615,7 @@
   align-items: center;
   padding: 8px 20px;
   background: var(--preview-brand, var(--brand-primary));
-  color: #fff;
+  color: var(--brand-on-primary, #fff);
   border-radius: 8px;
   font-weight: 700;
   font-size: 13px;

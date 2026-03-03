@@ -1,7 +1,12 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { TenantModel } from "../db/models/index.js";
-import { listFeaturesForPlan } from "@pondbridge/shared";
+import {
+  alumniPluralForCampType,
+  defaultNetworkDisplayNameForCamp,
+  listFeaturesForPlan,
+  normalizeCampType
+} from "@pondbridge/shared";
 import {
   buildTenantConfig,
   createDefaultChecklist,
@@ -22,9 +27,9 @@ function canAutoBootstrapSlug(slug = "") {
   return Boolean(normalized && AUTO_BOOTSTRAP_SLUG_PATTERN.test(normalized));
 }
 
-function defaultChecklistCompletedNow() {
+function defaultChecklistCompletedNow(campType = "coed") {
   const nowIso = new Date().toISOString();
-  return createDefaultChecklist().map((item) => ({
+  return createDefaultChecklist(campType).map((item) => ({
     ...item,
     status: "completed",
     completedAt: nowIso
@@ -42,7 +47,9 @@ async function maybeAutoBootstrapFirstTenant(slug = "") {
   const totalTenants = await TenantModel.count({});
   if (totalTenants > 0) return null;
 
-  const networkName = `${normalizedSlug} Alumni Network`;
+  const campType = normalizeCampType("coed");
+  const alumniWord = alumniPluralForCampType(campType, { capitalized: false });
+  const networkName = defaultNetworkDisplayNameForCamp(normalizedSlug, campType);
   const tenant = await TenantModel.create({
     name: networkName,
     slug: normalizedSlug,
@@ -51,7 +58,7 @@ async function maybeAutoBootstrapFirstTenant(slug = "") {
     billingStatus: "active",
     onboardingStatus: "live",
     onboardingStep: "review_launch",
-    onboardingChecklist: defaultChecklistCompletedNow(),
+    onboardingChecklist: defaultChecklistCompletedNow(campType),
     onboardingProgress: {
       currentStep: 6,
       completedSteps: [1, 2, 3, 4, 5, 6],
@@ -70,9 +77,10 @@ async function maybeAutoBootstrapFirstTenant(slug = "") {
       fontToken: "cedar_default"
     },
     content: {
+      campType,
       networkDisplayName: networkName,
       welcomeHeadline: `Welcome to ${networkName}`,
-      welcomeBody: "Reconnect with alumni, staff, and directors from every era.",
+      welcomeBody: `Reconnect with ${alumniWord}, staff, and directors from every era.`,
       aboutText: "This network was auto-bootstrapped after an empty database recovery event.",
       contactEmail: "",
       supportUrl: "",

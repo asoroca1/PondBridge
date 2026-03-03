@@ -44,8 +44,8 @@ function formatDate(value) {
   });
 }
 
-function wordmark() {
-  return `<span style="font-size:22px;font-weight:700;color:${BRAND.primary};letter-spacing:-0.5px;font-family:${BRAND.fontStack};">PondBridge</span>`;
+function wordmark(value = "PondBridge") {
+  return `<span style="font-size:22px;font-weight:700;color:${BRAND.primary};letter-spacing:-0.5px;font-family:${BRAND.fontStack};">${escapeHtml(value)}</span>`;
 }
 
 function ctaButton(href, label) {
@@ -61,7 +61,11 @@ function ctaButton(href, label) {
     </table>`;
 }
 
-function footerHtml(unsubscribeUrl = "") {
+function footerHtml({ unsubscribeUrl = "", contextName = "" } = {}) {
+  const context = String(contextName || "").trim();
+  const poweredByLine = context
+    ? `Sent for ${escapeHtml(context)} via ${wordmark("PondBridge")}`
+    : `Powered by ${wordmark("PondBridge")}`;
   const unsubLine = unsubscribeUrl
     ? `<br/><a href="${escapeHtml(unsubscribeUrl)}" style="color:${BRAND.muted};text-decoration:underline;font-size:12px;">Unsubscribe</a>`
     : `<br/><span style="font-size:11px;color:${BRAND.muted};">To stop receiving these emails, update your notification preferences in your account settings.</span>`;
@@ -69,20 +73,23 @@ function footerHtml(unsubscribeUrl = "") {
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:32px;border-top:1px solid ${BRAND.border};padding-top:20px;">
       <tr>
         <td align="center" style="font-size:12px;color:${BRAND.muted};font-family:${BRAND.fontStack};line-height:1.6;">
-          Powered by ${wordmark()}${unsubLine}
+          ${poweredByLine}${unsubLine}
         </td>
       </tr>
     </table>`;
 }
 
-function wrapLayout(bodyInner, unsubscribeUrl = "") {
+function wrapLayout(bodyInner, options = {}) {
+  const opts = typeof options === "string" ? { unsubscribeUrl: options } : options || {};
+  const contextName = String(opts.contextName || "").trim();
+  const titleLabel = contextName || "PondBridge";
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-  <title>PondBridge</title>
+  <title>${escapeHtml(titleLabel)}</title>
   <!--[if mso]>
   <style>table,td{font-family:Arial,Helvetica,sans-serif !important;}</style>
   <![endif]-->
@@ -93,7 +100,7 @@ function wrapLayout(bodyInner, unsubscribeUrl = "") {
       <td align="center" style="padding:32px 16px;">
         <!-- Wordmark -->
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
-          <tr><td align="center">${wordmark()}</td></tr>
+          <tr><td align="center">${wordmark(contextName || "PondBridge")}</td></tr>
         </table>
         <!-- Card -->
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background-color:${BRAND.white};border-radius:8px;border:1px solid ${BRAND.border};">
@@ -106,7 +113,7 @@ function wrapLayout(bodyInner, unsubscribeUrl = "") {
         <!-- Footer -->
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
           <tr>
-            <td>${footerHtml(unsubscribeUrl)}</td>
+            <td>${footerHtml({ unsubscribeUrl: opts.unsubscribeUrl || "", contextName })}</td>
           </tr>
         </table>
       </td>
@@ -136,7 +143,7 @@ export function inviteTemplate({
   const safeRecipientName = escapeHtml(recipientName || "there");
   const expiresStr = formatDate(expiresAt);
 
-  const subject = `You are invited to ${tenantName} on PondBridge`;
+  const subject = `You are invited to ${tenantName}`;
 
   const text = [
     `Hi ${recipientName || "there"},`,
@@ -150,13 +157,13 @@ export function inviteTemplate({
   const html = wrapLayout(`
     <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">You're Invited!</h1>
     <p style="margin:0 0 12px;">Hi <strong>${safeRecipientName}</strong>,</p>
-    <p style="margin:0 0 12px;">You've been invited to join <strong>${safeTenant}</strong> on PondBridge.</p>
+    <p style="margin:0 0 12px;">You've been invited to join <strong>${safeTenant}</strong>.</p>
     <p style="margin:0 0 12px;">Your assigned role: <strong>${safeRole}</strong></p>
     ${expiresStr ? `<p style="margin:0 0 12px;font-size:13px;color:${BRAND.muted};">This invite expires on ${escapeHtml(expiresStr)}.</p>` : ""}
     ${ctaButton(link, "Create Your Account")}
     <p style="margin:0;font-size:13px;color:${BRAND.muted};">If the button above doesn't work, copy and paste this link into your browser:</p>
     <p style="margin:4px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>
-  `);
+  `, { contextName: tenantName });
 
   return { subject, text, html };
 }
@@ -184,7 +191,7 @@ export function magicLinkTemplate({ tenantName, link, expiresAt }) {
     ${ctaButton(link, "Sign In")}
     <p style="margin:0;font-size:13px;color:${BRAND.muted};">If you didn't request this link, you can safely ignore this email.</p>
     <p style="margin:4px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>
-  `);
+  `, { contextName: tenantName });
 
   return { subject, text, html };
 }
@@ -202,12 +209,12 @@ export function welcomeTemplate({ tenantName, firstName }) {
   const text = [
     `Hi ${firstName || "there"},`,
     "",
-    `Welcome to ${tenantName} on PondBridge! Your account has been created successfully.`,
+    `Welcome to ${tenantName}! Your account has been created successfully.`,
     "",
     "Here's what you can do next:",
     "- Complete your profile so other members can find you",
     "- Browse the member directory",
-    "- Connect with fellow alumni",
+    "- Connect with fellow members",
     "",
     "We're glad you're here!"
   ].join("\n");
@@ -229,12 +236,12 @@ export function welcomeTemplate({ tenantName, firstName }) {
       </tr>
       <tr>
         <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:#1f2937;">
-          &#x2022;&nbsp; Connect with fellow alumni
+          &#x2022;&nbsp; Connect with fellow members
         </td>
       </tr>
     </table>
     <p style="margin:0;color:${BRAND.muted};font-size:14px;">If you have any questions, reach out to your camp director.</p>
-  `);
+  `, { contextName: tenantName });
 
   return { subject, text, html };
 }
@@ -264,7 +271,7 @@ export function accessApprovedTemplate({ tenantName, firstName, loginUrl }) {
     <p style="margin:0 0 12px;">You can now log in and start exploring the network.</p>
     ${loginUrl ? ctaButton(loginUrl, "Log In to Your Network") : ""}
     ${loginUrl ? `<p style="margin:0;font-size:13px;color:${BRAND.muted};word-break:break-all;"><a href="${escapeHtml(loginUrl)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(loginUrl)}</a></p>` : ""}
-  `);
+  `, { contextName: tenantName });
 
   return { subject, text, html };
 }
@@ -295,7 +302,7 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
     <p style="margin:0 0 12px;">Unfortunately, your request to join <strong>${safeTenant}</strong> was not approved at this time.</p>
     ${safeReason ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0;"><tr><td style="padding:12px 16px;background-color:${BRAND.bg};border-radius:6px;border-left:4px solid ${BRAND.secondary};font-family:${BRAND.fontStack};font-size:14px;color:#374151;"><strong>Reason:</strong> ${safeReason}</td></tr></table>` : ""}
     <p style="margin:0;font-size:14px;color:${BRAND.muted};">If you have questions, please reach out to the camp director for more details.</p>
-  `);
+  `, { contextName: tenantName });
 
   return { subject, text, html };
 }
@@ -340,7 +347,7 @@ export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUr
     <div style="font-size:15px;line-height:1.6;color:#1f2937;">
       ${safeBodyHtml}
     </div>
-  `, unsubscribeUrl);
+  `, { unsubscribeUrl, contextName: tenantName });
 
   return { subject: safeSubject, text, html };
 }

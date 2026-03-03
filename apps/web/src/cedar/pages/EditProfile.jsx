@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import {
-  resolveAgeGroupOptions,
   resolveStaffRoleOptions
 } from "../../lib/campLabels.js";
 import AvatarCropper from "../components/AvatarCropper";
@@ -29,10 +28,6 @@ const US_STATE_NAMES = {
   TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia",
   WI: "Wisconsin", WY: "Wyoming"
 };
-const US_STATE_OPTIONS = US_STATES.map((code) => ({
-  code,
-  label: `${US_STATE_NAMES[code] || code} (${code})`
-}));
 
 const INDUSTRIES = [
   "Accounting", "Advertising", "Aerospace", "Agriculture",
@@ -54,12 +49,6 @@ function normalizeErrorMessage(payload, fallback) {
   if (typeof payload?.errors?.[0]?.msg === "string") return payload.errors[0].msg;
   return fallback;
 }
-
-// --- Location Modes (match CreateProfileWizard) ---
-const LOCATION_MODES = {
-  US: "US",
-  INTL: "INTL",
-};
 
 const COUNTRY_ALIASES = new Map([
   ["usa", "United States"],
@@ -235,39 +224,77 @@ const canonicalizeCity = (value = "", { state = "", country = "", options = [] }
   return toTitleCase(raw);
 };
 
-const mergeCityOptions = (...sources) => {
-  const seen = new Set();
-  const merged = [];
-  for (const source of sources) {
-    for (const city of Array.isArray(source) ? source : []) {
-      const normalized = normalizeCity(city);
-      const key = normalizeLocationToken(normalized);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      merged.push(normalized);
-    }
-  }
-  return merged.sort((a, b) => a.localeCompare(b));
+const US_STATE_NAME_TO_CODE = new Map(
+  Object.entries(US_STATE_NAMES).map(([code, name]) => [normalizeLocationToken(name), code])
+);
+
+const normalizeUsStateCode = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const upper = raw.toUpperCase();
+  if (US_STATES.includes(upper)) return upper;
+  const token = normalizeLocationToken(raw);
+  return US_STATE_NAME_TO_CODE.get(token) || "";
 };
 
 // Supports "City, ST" OR "City, Country" OR "City, Region, Country"
 const splitCityState = (cityState = "") => {
-  const parts = String(cityState || "").split(",").map(s => s.trim()).filter(Boolean);
-  const city = parts[0] || "";
+  const raw = String(cityState || "").replace(/\s+/g, " ").trim();
+  if (!raw) return { city: "", state: "", country: "" };
 
-  if (parts.length < 2) return { city, state: "", country: "" };
+  const fromParts = (cityPart = "", regionPart = "", remainder = []) => {
+    const stateCode = normalizeUsStateCode(regionPart);
+    if (stateCode) {
+      const country = remainder.length
+        ? normalizeCountry(remainder[remainder.length - 1] || "")
+        : "";
+      return {
+        city: canonicalizeCity(cityPart, { state: stateCode, country }),
+        state: stateCode,
+        country
+      };
+    }
 
-  const second = parts[1] || "";
-  const secondUpper = second.toUpperCase();
+    const countryToken = remainder.length ? remainder[remainder.length - 1] : regionPart;
+    const country = normalizeCountry(countryToken);
+    return {
+      city: canonicalizeCity(cityPart, { country }),
+      state: "",
+      country
+    };
+  };
 
-  if (US_STATES.includes(secondUpper)) {
-    const state = secondUpper;
-    const country = parts.length >= 3 ? parts[parts.length - 1] : "";
-    return { city, state, country: normalizeCountry(country) };
+  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return fromParts(parts[0] || "", parts[1] || "", parts.slice(2));
   }
 
-  const country = parts[parts.length - 1] || second;
-  return { city, state: "", country: normalizeCountry(country) };
+  const tokens = raw.split(" ").filter(Boolean);
+  for (let len = 3; len >= 1; len -= 1) {
+    if (tokens.length <= len) continue;
+    const region = tokens.slice(tokens.length - len).join(" ");
+    const stateCode = normalizeUsStateCode(region);
+    if (!stateCode) continue;
+    const cityPart = tokens.slice(0, tokens.length - len).join(" ");
+    return fromParts(cityPart, stateCode, []);
+  }
+
+  if (tokens.length >= 2) {
+    const region = tokens[tokens.length - 1];
+    const aliased = COUNTRY_ALIASES.get(normalizeLocationToken(region));
+    if (aliased) {
+      const cityPart = tokens.slice(0, -1).join(" ");
+      return fromParts(cityPart, aliased, []);
+    }
+  }
+
+  return { city: canonicalizeCity(raw), state: "", country: "" };
+};
+
+const composeCityStateLabel = (input = "") => {
+  const { city, state, country } = splitCityState(input);
+  if (!city || (!state && !country)) return "";
+  return state ? `${city}, ${state}` : `${city}, ${country}`;
 };
 
 /* ================= Year parsing + job sort ================= */
@@ -304,6 +331,37 @@ function sortJobsByRecency(list = []) {
     if (B.e !== A.e) return B.e - A.e;
     return B.s - A.s;
   });
+}
+
+function emptyYearStint() {
+  return { startYear: "", endYear: "" };
+}
+
+function normalizeYearStints(value = null) {
+  const normalizeYear = (raw = "") => {
+    const year = String(raw || "").trim();
+    return /^\d{4}$/.test(year) ? year : "";
+  };
+
+  const pushStint = (target, entry = {}) => {
+    const startYear = normalizeYear(entry.startYear || entry.firstYear || entry.yearStart || "");
+    const endYear = normalizeYear(entry.endYear || entry.lastYear || entry.yearEnd || "");
+    if (!startYear || !endYear) return;
+    target.push({ startYear, endYear });
+  };
+
+  const normalized = [];
+  if (Array.isArray(value)) {
+    value.forEach((entry) => pushStint(normalized, entry));
+  } else if (value && typeof value === "object") {
+    if (Array.isArray(value.stints)) {
+      value.stints.forEach((entry) => pushStint(normalized, entry));
+    } else if (value.firstYear || value.lastYear || value.startYear || value.endYear) {
+      pushStint(normalized, value);
+    }
+  }
+
+  return normalized;
 }
 
 /* Small multi-select dropdown */
@@ -428,17 +486,12 @@ export default function EditProfile() {
   const { tenant } = useTenant();
   const { getAuthToken } = useAuth();
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
-  const ageGroupOptions = useMemo(() => resolveAgeGroupOptions(tenant), [tenant]);
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showStaffYears, setShowStaffYears] = useState(false);
 
   const [errors, setErrors] = useState({});
-
-  const [cityOptions, setCityOptions] = useState([]);
-  const [citiesLoading, setCitiesLoading] = useState(false);
-  const staticUsCitiesCache = useRef(new Map());
-  const [citySearchTerm, setCitySearchTerm] = useState("");
 
   const [form, setForm] = useState({
     uploads: { photo: null, photoUrl: "", pdfs: [] },
@@ -447,15 +500,12 @@ export default function EditProfile() {
     email: "", // read-only in UI
     phone: "",
 
-    // ✅ Location (match CreateProfileWizard)
-    locationMode: LOCATION_MODES.US,
-    city: "",
-    state: "",
-    country: "",
+    cityState: "",
 
     roles: [],
 
-    camperYears: { firstYear: "", firstGroup: "", lastYear: "", lastGroup: "" },
+    camperYearStints: [emptyYearStint()],
+    staffYearStints: [],
 
     highSchool: "",
     education: [{ college: "", year: "", major: "" }],
@@ -469,8 +519,20 @@ export default function EditProfile() {
 
   const setField = (patch) => setForm((f) => ({ ...f, ...patch }));
   const setSocial = (patch) => setForm((f) => ({ ...f, social: { ...f.social, ...patch } }));
-  const setCamperYears = (patch) =>
-    setForm((f) => ({ ...f, camperYears: { ...(f.camperYears || {}), ...patch } }));
+  const setYearStints = (key, nextStints) =>
+    setForm((f) => ({ ...f, [key]: Array.isArray(nextStints) ? nextStints : [] }));
+  const addYearStint = (key) =>
+    setForm((f) => ({ ...f, [key]: [...(Array.isArray(f[key]) ? f[key] : []), emptyYearStint()] }));
+  const updateYearStint = (key, idx, patch) =>
+    setForm((f) => ({
+      ...f,
+      [key]: (Array.isArray(f[key]) ? f[key] : []).map((entry, i) => (i === idx ? { ...entry, ...patch } : entry))
+    }));
+  const removeYearStint = (key, idx) =>
+    setForm((f) => ({
+      ...f,
+      [key]: (Array.isArray(f[key]) ? f[key] : []).filter((_, i) => i !== idx)
+    }));
 
   const resolveAuthToken = useCallback(
     async ({ forceRefresh = false } = {}) => {
@@ -541,83 +603,6 @@ export default function EditProfile() {
     }
   }, [resolveAuthToken]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setCitySearchTerm(normalizeCity(form.city));
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [form.city]);
-
-  // --- Load city options for US state or international country ---
-  useEffect(() => {
-    const mode = form.locationMode || LOCATION_MODES.US;
-    const state = String(form.state || "").trim().toUpperCase();
-    const country = canonicalizeCountry(form.country);
-
-    if (mode === LOCATION_MODES.US && !state) {
-      setCityOptions([]);
-      setCitiesLoading(false);
-      return;
-    }
-    if (mode === LOCATION_MODES.INTL && !country) {
-      setCityOptions([]);
-      setCitiesLoading(false);
-      return;
-    }
-
-    let alive = true;
-    setCitiesLoading(true);
-
-    const q = citySearchTerm;
-    const params = new URLSearchParams();
-    params.set("limit", "150");
-    if (q.length >= 2) params.set("q", q);
-    if (mode === LOCATION_MODES.US) {
-      params.set("state", state);
-    } else {
-      params.set("country", country);
-    }
-
-    const remotePromise = fetch(`${API_BASE}/locations/cities?${params.toString()}`)
-      .then((response) => (response.ok ? response.json() : []))
-      .catch(() => []);
-
-    const staticPromise =
-      mode === LOCATION_MODES.US
-        ? (async () => {
-            if (staticUsCitiesCache.current.has(state)) {
-              return staticUsCitiesCache.current.get(state) || [];
-            }
-            const response = await fetch(`/cities/${state}.json`);
-            const items = response.ok ? await response.json() : [];
-            const normalized = Array.isArray(items) ? items : [];
-            staticUsCitiesCache.current.set(state, normalized);
-            return normalized;
-          })().catch(() => [])
-        : Promise.resolve([]);
-
-    Promise.all([staticPromise, remotePromise])
-      .then(([baseCities, remoteCities]) => {
-        if (!alive) return;
-        const merged = mergeCityOptions(baseCities, remoteCities);
-        const typed = canonicalizeCity(citySearchTerm, {
-          state,
-          country,
-          options: merged
-        });
-        const next = typed ? mergeCityOptions([typed], merged) : merged;
-        setCityOptions(next);
-      })
-      .finally(() => {
-        if (!alive) return;
-        setCitiesLoading(false);
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [form.locationMode, form.state, form.country, citySearchTerm]);
-
   // load current profile
   useEffect(() => {
     let cancelled = false;
@@ -639,24 +624,22 @@ export default function EditProfile() {
 
         if (!fresh || cancelled) return;
 
-        // Determine location mode based on stored fields (or legacy cityState string if present)
-        let locMode = fresh.locationMode;
-        let city = fresh.city || "";
-        let state = fresh.state || "";
-        let country = fresh.country || "";
-
-        // Legacy fallback if some old "cityState" exists (safe noop if missing)
-        if ((!city && !state && !country) && fresh.cityState) {
-          const split = splitCityState(fresh.cityState);
-          city = split.city || "";
-          state = split.state || "";
-          country = split.country || "";
-        }
-
-        // If backend doesn't store locationMode yet, infer it
-        if (locMode !== LOCATION_MODES.US && locMode !== LOCATION_MODES.INTL) {
-          locMode = state ? LOCATION_MODES.US : (country ? LOCATION_MODES.INTL : LOCATION_MODES.US);
-        }
+        const socialSource =
+          fresh.social && typeof fresh.social === "object"
+            ? fresh.social
+            : fresh.socials && typeof fresh.socials === "object"
+            ? fresh.socials
+            : {};
+        const camperYearStints = normalizeYearStints(
+          fresh.camperYears && typeof fresh.camperYears === "object" ? fresh.camperYears : socialSource.camperYears
+        );
+        const staffYearStints = normalizeYearStints(
+          fresh.staffYears && typeof fresh.staffYears === "object" ? fresh.staffYears : socialSource.staffYears
+        );
+        const fallbackLocation = fresh.state
+          ? [fresh.city, fresh.state].filter(Boolean).join(", ")
+          : [fresh.city, fresh.country].filter(Boolean).join(", ");
+        const normalizedLocation = composeCityStateLabel(fresh.cityState || fallbackLocation);
 
         const normalized = {
           uploads: { photo: null, pdfs: [], photoUrl: fresh?.uploads?.photoUrl || fresh?.photoUrl || "" },
@@ -669,14 +652,12 @@ export default function EditProfile() {
           email: fresh.email || "",
           phone: fresh.phone || "",
 
-          locationMode: locMode,
-          city: canonicalizeCity(city, { state, country }) || "",
-          state: (state || "").trim().toUpperCase(),
-          country: canonicalizeCountry(country) || "",
+          cityState: normalizedLocation || normalizeCity(fresh.cityState || fallbackLocation),
 
           roles: Array.isArray(fresh.roles) ? fresh.roles : (fresh.roles ? [fresh.roles] : []),
 
-          camperYears: fresh.camperYears || { firstYear: "", firstGroup: "", lastYear: "", lastGroup: "" },
+          camperYearStints: camperYearStints.length ? camperYearStints : [emptyYearStint()],
+          staffYearStints,
 
           highSchool: fresh.highSchool || "",
           education:
@@ -698,6 +679,7 @@ export default function EditProfile() {
         };
 
         setForm(normalized);
+        setShowStaffYears(staffYearStints.length > 0);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -744,31 +726,37 @@ export default function EditProfile() {
     if (!form.firstName.trim()) e.firstName = "First name is required.";
     if (!form.lastName.trim())  e.lastName  = "Last name is required.";
 
-    // ✅ Location validation (match CreateProfileWizard)
-    if (!normalizeCity(form.city)) e.city = "City is required.";
-    if ((form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.US) {
-      if (!form.state) e.state = "Select a state.";
-    } else {
-      if (!normalizeCountry(form.country)) e.country = "Select a country.";
+    const normalizedLocation = composeCityStateLabel(form.cityState);
+    if (!normalizedLocation) {
+      e.cityState = "Enter location as City, State (US) or City, Country.";
     }
 
-    // camper years (optional)
-    const cy = form.camperYears || {};
-    const yearOk = (y) => !y || /^\d{4}$/.test(String(y).trim());
+    const validateYearStints = (stints, prefix, label) => {
+      (Array.isArray(stints) ? stints : []).forEach((stint, idx) => {
+        const startYear = String(stint?.startYear || "").trim();
+        const endYear = String(stint?.endYear || "").trim();
+        const hasStart = Boolean(startYear);
+        const hasEnd = Boolean(endYear);
+        const hasAny = hasStart || hasEnd;
+        if (!hasAny) return;
+        if (!/^\d{4}$/.test(startYear || "")) {
+          e[`${prefix}_${idx}_start`] = "Use a 4-digit year (e.g., 2016).";
+        }
+        if (!/^\d{4}$/.test(endYear || "")) {
+          e[`${prefix}_${idx}_end`] = "Use a 4-digit year (e.g., 2022).";
+        }
+        if (hasStart !== hasEnd) {
+          e[`${prefix}_${idx}_pair`] = `${label}: include both Start Year and End Year.`;
+          return;
+        }
+        if (/^\d{4}$/.test(startYear) && /^\d{4}$/.test(endYear) && Number(startYear) > Number(endYear)) {
+          e[`${prefix}_${idx}_order`] = `${label}: Start Year can’t be after End Year.`;
+        }
+      });
+    };
 
-    if (!yearOk(cy.firstYear)) e.camper_firstYear = "Use a 4-digit year (e.g., 2016).";
-    if (!yearOk(cy.lastYear))  e.camper_lastYear  = "Use a 4-digit year (e.g., 2022).";
-
-    if ((cy.firstYear && !cy.firstGroup) || (!cy.firstYear && cy.firstGroup)) {
-      e.camper_firstPair = "Please include both First Year and Age Group (or leave both blank).";
-    }
-    if ((cy.lastYear && !cy.lastGroup) || (!cy.lastYear && cy.lastGroup)) {
-      e.camper_lastPair = "Please include both Last Year and Age Group (or leave both blank).";
-    }
-
-    const fy = cy.firstYear ? parseInt(cy.firstYear, 10) : null;
-    const ly = cy.lastYear ? parseInt(cy.lastYear, 10) : null;
-    if (fy && ly && fy > ly) e.camper_order = "First Year can’t be after Last Year.";
+    validateYearStints(form.camperYearStints, "camper_stint", "Camper stint");
+    validateYearStints(form.staffYearStints, "staff_stint", "Staff stint");
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -939,9 +927,26 @@ export default function EditProfile() {
 
   function buildUpdatePayload(form) {
     const pastJobsSorted = sortJobsByRecency(form.pastJobs || []);
-    const mode = form.locationMode || LOCATION_MODES.US;
+    const camperYearStints = normalizeYearStints(form.camperYearStints);
+    const staffYearStints = normalizeYearStints(form.staffYearStints);
+    const cityState = composeCityStateLabel(form.cityState);
+    const splitLocation = splitCityState(cityState || form.cityState);
 
     const photoUrl = form.uploads?.photoUrl || "";
+    const legacyCamperFirstYear =
+      camperYearStints.length > 0
+        ? [...camperYearStints]
+            .map((stint) => Number(stint.startYear))
+            .sort((a, b) => a - b)[0]
+            .toString()
+        : "";
+    const legacyCamperLastYear =
+      camperYearStints.length > 0
+        ? [...camperYearStints]
+            .map((stint) => Number(stint.endYear))
+            .sort((a, b) => b - a)[0]
+            .toString()
+        : "";
 
     return {
       firstName: form.firstName,
@@ -949,15 +954,10 @@ export default function EditProfile() {
       nickname: form.nickname,
       phone: form.phone,
 
-      // ✅ Location payload (US: city+state, Intl: city+country)
-      locationMode: mode,
-      city: canonicalizeCity(form.city, {
-        state: mode === LOCATION_MODES.US ? (form.state || "").trim().toUpperCase() : "",
-        country: mode === LOCATION_MODES.INTL ? canonicalizeCountry(form.country) : "",
-        options: cityOptions
-      }),
-      state: mode === LOCATION_MODES.US ? (form.state || "").trim().toUpperCase() : "",
-      country: mode === LOCATION_MODES.INTL ? canonicalizeCountry(form.country) : "",
+      cityState,
+      city: splitLocation.city,
+      state: splitLocation.state,
+      country: splitLocation.country,
 
       roles: form.roles,
 
@@ -966,11 +966,13 @@ export default function EditProfile() {
       photoUrl,
 
       camperYears: {
-        firstYear: (form.camperYears?.firstYear || "").trim(),
-        firstGroup: (form.camperYears?.firstGroup || "").trim(),
-        lastYear: (form.camperYears?.lastYear || "").trim(),
-        lastGroup: (form.camperYears?.lastGroup || "").trim(),
+        firstYear: legacyCamperFirstYear,
+        firstGroup: "",
+        lastYear: legacyCamperLastYear,
+        lastGroup: "",
+        stints: camperYearStints
       },
+      staffYears: { stints: staffYearStints },
 
       highSchool: form.highSchool,
       education: (form.education || [])
@@ -1101,193 +1103,25 @@ export default function EditProfile() {
               </div>
             </div>
 
-            {/* ✅ Location mode toggle */}
             <div className="wizard1-span-12">
               <div className="wizard1-field">
-                <label className="wizard1-label">Current Location Type</label>
-                <div className="wizard1-segment">
-                  <button
-                    type="button"
-                    className={`wizard1-segment-btn ${(form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.US ? "is-active" : ""}`}
-                    onClick={() => {
-                      setField({
-                        locationMode: LOCATION_MODES.US,
-                        country: "",
-                        state: (form.state || "").trim().toUpperCase(),
-                        city: canonicalizeCity(form.city, {
-                          state: form.state,
-                          country: "United States",
-                          options: cityOptions
-                        }),
-                      });
-                    }}
-                  >
-                    United States
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`wizard1-segment-btn ${(form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.INTL ? "is-active" : ""}`}
-                    onClick={() => {
-                      setField({
-                        locationMode: LOCATION_MODES.INTL,
-                        state: "",
-                        country: canonicalizeCountry(form.country),
-                        city: canonicalizeCity(form.city, {
-                          country: form.country,
-                          options: cityOptions
-                        }),
-                      });
-                      setCityOptions([]);
-                      setCitiesLoading(false);
-                    }}
-                  >
-                    International
-                  </button>
-                </div>
+                <label className="wizard1-label">Current Location <span className="req">*</span></label>
+                <input
+                  className={`wizard1-input ${errors.cityState ? "has-error" : ""}`}
+                  value={form.cityState}
+                  placeholder="City, State (US) or City, Country"
+                  onChange={(e) => setField({ cityState: e.target.value })}
+                  onBlur={(e) => {
+                    const normalized = composeCityStateLabel(e.target.value);
+                    setField({ cityState: normalized || normalizeCity(e.target.value) });
+                  }}
+                />
                 <p className="wizard1-hint" style={{ marginTop: 6 }}>
-                  Choose “International” if you live outside the U.S.
+                  Examples: New York, NY or London, United Kingdom
                 </p>
+                {errors.cityState && <p className="wizard1-error">{errors.cityState}</p>}
               </div>
             </div>
-
-            {/* ✅ US location: City + State */}
-            {(form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.US && (
-              <>
-                <div className="wizard1-span-6">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">
-                      Current City <span className="req">*</span>
-                    </label>
-
-                    <input
-                      className={`wizard1-input ${errors.city ? "has-error" : ""}`}
-                      value={form.city}
-                      disabled={!form.state}
-                      placeholder={form.state ? "Start typing city…" : "Select a state first"}
-                      list={form.state ? "city-options" : undefined}
-                      onChange={(e) => setField({ city: e.target.value })}
-                      onBlur={(e) =>
-                        setField({
-                          city: canonicalizeCity(e.target.value, {
-                            state: form.state,
-                            country: "United States",
-                            options: cityOptions
-                          })
-                        })
-                      }
-                    />
-
-                    {form.state && (
-                      <datalist id="city-options">
-                        {cityOptions.map((name) => (
-                          <option key={name} value={name} />
-                        ))}
-                      </datalist>
-                    )}
-
-                    {citiesLoading && form.state && (
-                      <p className="wizard1-hint">Loading cities…</p>
-                    )}
-
-                    {form.state && cityOptions.length > 0 && (
-                      <p className="wizard1-hint">Pick the standardized city result whenever possible.</p>
-                    )}
-
-                    {errors.city && <p className="wizard1-error">{errors.city}</p>}
-                  </div>
-                </div>
-
-                <div className="wizard1-span-3">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">
-                      Current State <span className="req">*</span>
-                    </label>
-                    <select
-                      className={`wizard1-input wizard1-select ${errors.state ? "has-error" : ""}`}
-                      value={form.state}
-                      onChange={(e) => {
-                        const st = (e.target.value || "").trim().toUpperCase();
-                        setField({ state: st, city: "" });
-                      }}
-                    >
-                      <option value="">Select…</option>
-                      {US_STATE_OPTIONS.map(({ code, label }) => (
-                        <option key={code} value={code}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.state && <p className="wizard1-error">{errors.state}</p>}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* ✅ International location: City + Country */}
-            {(form.locationMode || LOCATION_MODES.US) === LOCATION_MODES.INTL && (
-              <>
-                <div className="wizard1-span-6">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">
-                      Current City <span className="req">*</span>
-                    </label>
-                    <input
-                      className={`wizard1-input ${errors.city ? "has-error" : ""}`}
-                      value={form.city}
-                      placeholder={normalizeCountry(form.country) ? "Start typing city…" : "Select country first"}
-                      list={normalizeCountry(form.country) ? "intl-city-options" : undefined}
-                      disabled={!normalizeCountry(form.country)}
-                      onChange={(e) => setField({ city: e.target.value })}
-                      onBlur={(e) =>
-                        setField({
-                          city: canonicalizeCity(e.target.value, {
-                            country: form.country,
-                            options: cityOptions
-                          })
-                        })
-                      }
-                    />
-                    {normalizeCountry(form.country) && (
-                      <datalist id="intl-city-options">
-                        {cityOptions.map((name) => (
-                          <option key={name} value={name} />
-                        ))}
-                      </datalist>
-                    )}
-                    {!normalizeCountry(form.country) && (
-                      <p className="wizard1-hint">Select your country first for city suggestions.</p>
-                    )}
-                    {errors.city && <p className="wizard1-error">{errors.city}</p>}
-                  </div>
-                </div>
-
-                <div className="wizard1-span-6">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">
-                      Country <span className="req">*</span>
-                    </label>
-
-                    <input
-                      className={`wizard1-input ${errors.country ? "has-error" : ""}`}
-                      value={form.country}
-                      placeholder="Start typing…"
-                      list="country-options"
-                      onChange={(e) => setField({ country: e.target.value })}
-                      onBlur={(e) => setField({ country: canonicalizeCountry(e.target.value) })}
-                    />
-
-                    <datalist id="country-options">
-                      {COUNTRIES.map((c) => (
-                        <option key={c} value={c} />
-                      ))}
-                    </datalist>
-
-                    {errors.country && <p className="wizard1-error">{errors.country}</p>}
-                  </div>
-                </div>
-              </>
-            )}
 
             {/* ✅ Roles */}
             <div className="wizard1-span-12">
@@ -1301,75 +1135,165 @@ export default function EditProfile() {
               />
             </div>
 
-            {/* ✅ Camper Years */}
             <div className="wizard1-span-12" style={{ marginTop: 4 }}>
               <div className="wizard1-subtitle">Years at Camp (Camper)</div>
-
-              <div className="wizard1-grid wizard1-gap" style={{ alignItems: "end" }}>
-                <div className="wizard1-span-3">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">First Year</label>
-                    <input
-                      className={`wizard1-input ${errors.camper_firstYear ? "has-error" : ""}`}
-                      value={form.camperYears?.firstYear || ""}
-                      onChange={(e) => setCamperYears({ firstYear: e.target.value })}
-                      placeholder="e.g., 2016"
-                      inputMode="numeric"
-                    />
-                    {errors.camper_firstYear && <p className="wizard1-error">{errors.camper_firstYear}</p>}
-                  </div>
+              <div className="wizard1-grid wizard1-gap">
+                {(Array.isArray(form.camperYearStints) ? form.camperYearStints : []).map((stint, idx) => {
+                  const rowError =
+                    errors[`camper_stint_${idx}_start`] ||
+                    errors[`camper_stint_${idx}_end`] ||
+                    errors[`camper_stint_${idx}_pair`] ||
+                    errors[`camper_stint_${idx}_order`];
+                  return (
+                    <div key={`camper-stint-${idx}`} className="wizard1-span-12 wizard1-camp-section">
+                      <div className="wizard1-grid wizard1-gap" style={{ alignItems: "end" }}>
+                        <div className="wizard1-span-5">
+                          <div className="wizard1-field">
+                            <label className="wizard1-label">Start Year</label>
+                            <input
+                              className={`wizard1-input ${errors[`camper_stint_${idx}_start`] ? "has-error" : ""}`}
+                              value={stint?.startYear || ""}
+                              onChange={(e) =>
+                                updateYearStint("camperYearStints", idx, { startYear: e.target.value })
+                              }
+                              placeholder="e.g., 2014"
+                              inputMode="numeric"
+                            />
+                          </div>
+                        </div>
+                        <div className="wizard1-span-5">
+                          <div className="wizard1-field">
+                            <label className="wizard1-label">End Year</label>
+                            <input
+                              className={`wizard1-input ${errors[`camper_stint_${idx}_end`] ? "has-error" : ""}`}
+                              value={stint?.endYear || ""}
+                              onChange={(e) =>
+                                updateYearStint("camperYearStints", idx, { endYear: e.target.value })
+                              }
+                              placeholder="e.g., 2020"
+                              inputMode="numeric"
+                            />
+                          </div>
+                        </div>
+                        <div className="wizard1-span-2">
+                          <button
+                            type="button"
+                            className="wizard1-btn-secondary"
+                            onClick={() => removeYearStint("camperYearStints", idx)}
+                            disabled={(form.camperYearStints || []).length <= 1}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        {rowError && (
+                          <div className="wizard1-span-12">
+                            <p className="wizard1-error">{rowError}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="wizard1-span-12">
+                  <button type="button" className="wizard1-btn-secondary" onClick={() => addYearStint("camperYearStints")}>
+                    Add Camper Stint
+                  </button>
                 </div>
-
-                <div className="wizard1-span-3">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">Age Group</label>
-                    <select
-                      className={`wizard1-input wizard1-select ${errors.camper_firstPair ? "has-error" : ""}`}
-                      value={form.camperYears?.firstGroup || ""}
-                      onChange={(e) => setCamperYears({ firstGroup: e.target.value })}
-                    >
-                      <option value="">Select…</option>
-                      {ageGroupOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="wizard1-span-3">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">Last Year</label>
-                    <input
-                      className={`wizard1-input ${errors.camper_lastYear ? "has-error" : ""}`}
-                      value={form.camperYears?.lastYear || ""}
-                      onChange={(e) => setCamperYears({ lastYear: e.target.value })}
-                      placeholder="e.g., 2022"
-                      inputMode="numeric"
-                    />
-                    {errors.camper_lastYear && <p className="wizard1-error">{errors.camper_lastYear}</p>}
-                  </div>
-                </div>
-
-                <div className="wizard1-span-3">
-                  <div className="wizard1-field">
-                    <label className="wizard1-label">Age Group</label>
-                    <select
-                      className={`wizard1-input wizard1-select ${errors.camper_lastPair ? "has-error" : ""}`}
-                      value={form.camperYears?.lastGroup || ""}
-                      onChange={(e) => setCamperYears({ lastGroup: e.target.value })}
-                    >
-                      <option value="">Select…</option>
-                      {ageGroupOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {(errors.camper_firstPair || errors.camper_lastPair || errors.camper_order) && (
-                  <div className="wizard1-span-12">
-                    <p className="wizard1-error">
-                      {errors.camper_firstPair || errors.camper_lastPair || errors.camper_order}
-                    </p>
-                  </div>
-                )}
               </div>
+            </div>
+
+            <div className="wizard1-span-12" style={{ marginTop: 8 }}>
+              {!showStaffYears ? (
+                <button
+                  type="button"
+                  className="wizard1-btn-secondary"
+                  onClick={() => {
+                    setShowStaffYears(true);
+                    if (!Array.isArray(form.staffYearStints) || form.staffYearStints.length === 0) {
+                      setYearStints("staffYearStints", [emptyYearStint()]);
+                    }
+                  }}
+                >
+                  Add Staff Years
+                </button>
+              ) : (
+                <>
+                  <div className="wizard1-subtitle">Years at Camp (Staff)</div>
+                  <div className="wizard1-grid wizard1-gap">
+                    {(Array.isArray(form.staffYearStints) ? form.staffYearStints : []).map((stint, idx) => {
+                      const rowError =
+                        errors[`staff_stint_${idx}_start`] ||
+                        errors[`staff_stint_${idx}_end`] ||
+                        errors[`staff_stint_${idx}_pair`] ||
+                        errors[`staff_stint_${idx}_order`];
+                      return (
+                        <div key={`staff-stint-${idx}`} className="wizard1-span-12 wizard1-camp-section">
+                          <div className="wizard1-grid wizard1-gap" style={{ alignItems: "end" }}>
+                            <div className="wizard1-span-5">
+                              <div className="wizard1-field">
+                                <label className="wizard1-label">Start Year</label>
+                                <input
+                                  className={`wizard1-input ${errors[`staff_stint_${idx}_start`] ? "has-error" : ""}`}
+                                  value={stint?.startYear || ""}
+                                  onChange={(e) =>
+                                    updateYearStint("staffYearStints", idx, { startYear: e.target.value })
+                                  }
+                                  placeholder="e.g., 2021"
+                                  inputMode="numeric"
+                                />
+                              </div>
+                            </div>
+                            <div className="wizard1-span-5">
+                              <div className="wizard1-field">
+                                <label className="wizard1-label">End Year</label>
+                                <input
+                                  className={`wizard1-input ${errors[`staff_stint_${idx}_end`] ? "has-error" : ""}`}
+                                  value={stint?.endYear || ""}
+                                  onChange={(e) =>
+                                    updateYearStint("staffYearStints", idx, { endYear: e.target.value })
+                                  }
+                                  placeholder="e.g., 2024"
+                                  inputMode="numeric"
+                                />
+                              </div>
+                            </div>
+                            <div className="wizard1-span-2">
+                              <button
+                                type="button"
+                                className="wizard1-btn-secondary"
+                                onClick={() => removeYearStint("staffYearStints", idx)}
+                                disabled={(form.staffYearStints || []).length <= 1}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            {rowError && (
+                              <div className="wizard1-span-12">
+                                <p className="wizard1-error">{rowError}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="wizard1-span-12" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" className="wizard1-btn-secondary" onClick={() => addYearStint("staffYearStints")}>
+                        Add Staff Stint
+                      </button>
+                      <button
+                        type="button"
+                        className="wizard1-btn-text"
+                        onClick={() => {
+                          setShowStaffYears(false);
+                          setYearStints("staffYearStints", []);
+                        }}
+                      >
+                        Remove Staff Years Section
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
           </div>

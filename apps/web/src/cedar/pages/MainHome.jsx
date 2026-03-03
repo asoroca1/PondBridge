@@ -4,7 +4,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { resolveNewsletterLabel, resolveTenantContent } from "../../lib/campLabels.js";
+import {
+  resolveAlumniWord,
+  resolveNewsletterLabel,
+  resolveTenantContent,
+  withCampAlumniTerms
+} from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import cedarField from "../assets/cedar-field.jpeg";
 import { API_BASE, getMe } from "../lib/api";
@@ -392,7 +397,7 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
     return (
       <EmptyHint
         title="No announcements yet"
-        desc="When alumni post photos, join threads, or newsletters are added, they’ll show up here."
+        desc="When members post photos, join threads, or newsletters are added, they’ll show up here."
       />
     );
   }
@@ -566,6 +571,8 @@ export default function MainHome() {
   const [locationsSummary, setLocationsSummary] = useState(null); // unique locations
   const firstName = useMemo(() => me?.firstName || "Welcome", [me]);
   const content = resolveTenantContent(tenant);
+  const alumniWord = resolveAlumniWord(tenant);
+  const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const modules = tenant?.config?.modules || tenant?.modules || {};
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
@@ -709,7 +716,13 @@ export default function MainHome() {
   const quickActions = useMemo(() => {
     const preferred = [
       { key: "search", to: "/search", label: "Advanced Search", icon: Users, enabled: true },
-      { key: "map", to: "/location-map", label: "Alumni Map", icon: MapPin, enabled: modules.map !== false },
+      {
+        key: "map",
+        to: "/location-map",
+        label: `${alumniWordTitle} Map`,
+        icon: MapPin,
+        enabled: modules.map !== false
+      },
       {
         key: "chat",
         to: "/chat-rooms?tab=personal",
@@ -755,6 +768,7 @@ export default function MainHome() {
     modules.map,
     modules.newsletter,
     modules.photoStream,
+    alumniWordTitle,
     newsletterLabel
   ]);
 
@@ -849,8 +863,11 @@ export default function MainHome() {
                 <span className="title-accent" aria-hidden="true"></span>
               </h1>
               <p className="welcome-sub">
-                {content.welcomeBody ||
-                  "Reconnect with bunkmates, explore alumni updates, and discover the network."}
+                {withCampAlumniTerms(
+                  tenant,
+                  content.welcomeBody ||
+                    "Reconnect with bunkmates, explore alumni updates, and discover the network."
+                )}
               </p>
             </div>
           </div>
@@ -862,7 +879,7 @@ export default function MainHome() {
               <div className="pulse-rows">
                 <div className="pulse-row">
                   <div className="pulse-num">{formatK(stats?.totalAlumni)}</div>
-                  <div className="pulse-label">Alumni</div>
+                  <div className="pulse-label">{alumniWordTitle}</div>
                 </div>
                 <div className="pulse-row">
                   <div className="pulse-num">{formatK(locCount)}</div>
@@ -957,7 +974,7 @@ export default function MainHome() {
           <div className="profile-prompt-card">
             <h2 id="profile-prompt-title">Complete Your Profile</h2>
             <p>
-              Add your profile details so camp alumni can find you and connect.
+              {`Add your profile details so camp ${alumniWord} can find you and connect.`}
               <strong> You are {profileCompletion}% complete.</strong>
             </p>
             <div className="profile-prompt-actions">

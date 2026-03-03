@@ -844,7 +844,7 @@
   display:grid;
   place-items:center;
   background: var(--brand-primary);
-  color:#fff;
+  color: var(--brand-on-primary);
   font-weight:800;
   font-size:.82rem;
   letter-spacing:.01em;
