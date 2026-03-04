@@ -12,7 +12,6 @@ function classNames(...values) {
 
 export default function BrandImageColorPicker({
   value = "",
-  sourceImageUrl = "",
   onPickColor = () => {},
   className = ""
 }) {
@@ -21,13 +20,12 @@ export default function BrandImageColorPicker({
   const fileInputRef = useRef(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [uploadedImageName, setUploadedImageName] = useState("");
-  const [uploadedObjectUrl, setUploadedObjectUrl] = useState("");
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [pickerError, setPickerError] = useState("");
 
   const activeImageUrl = useMemo(
-    () => String(uploadedImageUrl || sourceImageUrl || "").trim(),
-    [sourceImageUrl, uploadedImageUrl]
+    () => String(uploadedImageUrl || "").trim(),
+    [uploadedImageUrl]
   );
 
   const canUseSystemDropper = typeof window !== "undefined" && "EyeDropper" in window;
@@ -36,13 +34,20 @@ export default function BrandImageColorPicker({
     setImageLoadFailed(false);
   }, [activeImageUrl]);
 
-  useEffect(() => {
-    return () => {
-      if (uploadedObjectUrl) URL.revokeObjectURL(uploadedObjectUrl);
-    };
-  }, [uploadedObjectUrl]);
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        reject(new Error("No file selected."));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Unable to read that image."));
+      reader.readAsDataURL(file);
+    });
+  }
 
-  function handleUpload(event) {
+  async function handleUpload(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!String(file.type || "").startsWith("image/")) {
@@ -51,23 +56,20 @@ export default function BrandImageColorPicker({
     }
 
     try {
-      if (uploadedObjectUrl) URL.revokeObjectURL(uploadedObjectUrl);
-      const objectUrl = URL.createObjectURL(file);
-      setUploadedObjectUrl(objectUrl);
-      setUploadedImageUrl(objectUrl);
+      const dataUrl = await fileToDataUrl(file);
+      setUploadedImageUrl(dataUrl);
       setUploadedImageName(String(file.name || "").trim());
       setImageLoadFailed(false);
       setPickerError("");
+      event.target.value = "";
     } catch {
       setPickerError("Unable to read that image.");
     }
   }
 
   function clearUploadedImage() {
-    if (uploadedObjectUrl) URL.revokeObjectURL(uploadedObjectUrl);
     setUploadedImageUrl("");
     setUploadedImageName("");
-    setUploadedObjectUrl("");
     setImageLoadFailed(false);
     setPickerError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -155,7 +157,7 @@ export default function BrandImageColorPicker({
             className="brand-image-picker-btn"
             onClick={clearUploadedImage}
           >
-            Use Camp Media
+            Clear Reference
           </button>
         ) : null}
         {canUseSystemDropper ? (
@@ -181,17 +183,13 @@ export default function BrandImageColorPicker({
             }}
             onError={() => {
               setImageLoadFailed(true);
-              if (uploadedImageUrl) {
-                setPickerError("Uploaded image preview failed. Please try a different image.");
-              } else {
-                setPickerError("Current source image could not be loaded. Upload a reference image to sample colors.");
-              }
+              setPickerError("Uploaded image preview failed. Please try a different image.");
             }}
           />
         </div>
       ) : (
         <div className="brand-image-picker-empty">
-          Upload a reference image, or upload your logo/main photo first.
+          Upload a reference image to sample colors.
         </div>
       )}
       {pickerError ? <p className="brand-image-picker-error">{pickerError}</p> : null}

@@ -25,7 +25,7 @@ const TABLES_FOR_CLEANUP = [
   "tenants"
 ];
 
-const DEFAULT_TEST_DB_MARKERS = ["localhost", "127.0.0.1"];
+const DEFAULT_TEST_DB_MARKERS = ["localhost", "127.0.0.1", "host.docker.internal"];
 
 function parseMarkers(raw = "") {
   const markers = String(raw || "")
@@ -45,6 +45,10 @@ function looksLikeSafeTestDatabase(markers = DEFAULT_TEST_DB_MARKERS) {
 
   if (!haystack) return false;
   return markers.some((marker) => haystack.includes(marker));
+}
+
+function looksLikeLocalDatabase() {
+  return looksLikeSafeTestDatabase(DEFAULT_TEST_DB_MARKERS);
 }
 
 async function databaseHasRealTenants() {
@@ -79,10 +83,11 @@ async function assertDestructiveResetAllowed() {
   );
   const markers = parseMarkers(process.env.PONDBRIDGE_TEST_DB_MARKERS || "");
   const safeByMarker = markerGuardDisabled || looksLikeSafeTestDatabase(markers);
+  const safeLocalOnly = looksLikeLocalDatabase();
 
-  if (!isTestEnv || !explicitOptIn || !explicitAcknowledge || !safeByMarker) {
+  if (!isTestEnv || !explicitOptIn || !explicitAcknowledge || !safeByMarker || !safeLocalOnly) {
     throw new Error(
-      "Refusing destructive database reset. Require NODE_ENV=test, PONDBRIDGE_ALLOW_DB_RESET=1, PONDBRIDGE_TEST_RESET_ACK=1, and a non-production database marker match."
+      "Refusing destructive database reset. Require NODE_ENV=test, PONDBRIDGE_ALLOW_DB_RESET=1, PONDBRIDGE_TEST_RESET_ACK=1, a non-production marker match, and a local database host (localhost / 127.0.0.1 / host.docker.internal)."
     );
   }
 

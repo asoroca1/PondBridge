@@ -2433,7 +2433,6 @@ function DirectorCreateAccountWizardPage() {
                     </div>
                     <BrandImageColorPicker
                       value={themeDraft.brandPrimary}
-                      sourceImageUrl={themeDraft.logoUrl || themeDraft.heroImageUrl || ""}
                       onPickColor={(nextHex) => updateThemeField("brandPrimary", nextHex)}
                     />
                     {themeErrors.brandPrimary ? (

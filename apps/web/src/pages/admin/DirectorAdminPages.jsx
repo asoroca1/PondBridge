@@ -4454,7 +4454,10 @@ export function DirectorAdminSettingsBrandingPage() {
   const [uploadingField, setUploadingField] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
-  const [lastPreviewMediaField, setLastPreviewMediaField] = useState("");
+  const [pendingLogoFile, setPendingLogoFile] = useState(null);
+  const [pendingHeroFile, setPendingHeroFile] = useState(null);
+  const [pendingLogoPreviewUrl, setPendingLogoPreviewUrl] = useState("");
+  const [pendingHeroPreviewUrl, setPendingHeroPreviewUrl] = useState("");
   const [form, setForm] = useState({
     brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
@@ -4472,7 +4475,10 @@ export function DirectorAdminSettingsBrandingPage() {
       heroImagePosition: normalizeHeroImagePosition(payload.branding.heroImagePosition || "center center"),
       heroImageSize: normalizeHeroImageSize(payload.branding.heroImageSize || "cover")
     });
-    setLastPreviewMediaField("");
+    setPendingLogoFile(null);
+    setPendingHeroFile(null);
+    setPendingLogoPreviewUrl("");
+    setPendingHeroPreviewUrl("");
   }, [payload?.branding]);
 
   async function uploadBrandingBlob({ blob, fileType, scope }) {
@@ -4530,7 +4536,13 @@ export function DirectorAdminSettingsBrandingPage() {
       payloadToSave.heroImageSize = normalizeHeroImageSize(payloadToSave.heroImageSize || "cover");
       const currentBrandPrimary = normalizeBrandHex(payload?.branding?.brandPrimary, DEFAULT_BRAND_PRIMARY);
       const brandColorChanged = currentBrandPrimary !== payloadToSave.brandPrimary;
-      if (String(payloadToSave.logoUrl || "").startsWith("data:")) {
+      if (pendingLogoFile) {
+        payloadToSave.logoUrl = await uploadBrandingBlob({
+          blob: pendingLogoFile,
+          fileType: pendingLogoFile.type || "image/jpeg",
+          scope: "branding-logo"
+        });
+      } else if (String(payloadToSave.logoUrl || "").startsWith("data:")) {
         const blob = await fetch(payloadToSave.logoUrl).then((response) => response.blob());
         payloadToSave.logoUrl = await uploadBrandingBlob({
           blob,
@@ -4538,7 +4550,13 @@ export function DirectorAdminSettingsBrandingPage() {
           scope: "branding-logo"
         });
       }
-      if (String(payloadToSave.heroImageUrl || "").startsWith("data:")) {
+      if (pendingHeroFile) {
+        payloadToSave.heroImageUrl = await uploadBrandingBlob({
+          blob: pendingHeroFile,
+          fileType: pendingHeroFile.type || "image/jpeg",
+          scope: "branding-hero"
+        });
+      } else if (String(payloadToSave.heroImageUrl || "").startsWith("data:")) {
         const blob = await fetch(payloadToSave.heroImageUrl).then((response) => response.blob());
         payloadToSave.heroImageUrl = await uploadBrandingBlob({
           blob,
@@ -4549,6 +4567,10 @@ export function DirectorAdminSettingsBrandingPage() {
 
       await request("/settings/branding", { method: "PATCH", body: payloadToSave });
       setForm(payloadToSave);
+      setPendingLogoFile(null);
+      setPendingHeroFile(null);
+      setPendingLogoPreviewUrl("");
+      setPendingHeroPreviewUrl("");
       if (brandColorChanged) {
         window.location.reload();
         return;
@@ -4583,8 +4605,13 @@ export function DirectorAdminSettingsBrandingPage() {
 
     try {
       const previewDataUrl = await fileToDataUrl(file);
-      setForm((prev) => ({ ...prev, [field]: previewDataUrl }));
-      setLastPreviewMediaField(field);
+      if (field === "logoUrl") {
+        setPendingLogoFile(file);
+        setPendingLogoPreviewUrl(previewDataUrl);
+      } else {
+        setPendingHeroFile(file);
+        setPendingHeroPreviewUrl(previewDataUrl);
+      }
       setStatus("Image preview updated. Click Save Branding to publish this change.");
     } catch (uploadErrorState) {
       setUploadError(uploadErrorState.message || "Unable to process image.");
@@ -4612,18 +4639,10 @@ export function DirectorAdminSettingsBrandingPage() {
   const currentHeroUrl = String(payload?.branding?.heroImageUrl || "").trim();
   const draftLogoUrl = String(form.logoUrl || "").trim();
   const draftHeroUrl = String(form.heroImageUrl || "").trim();
-  const liveLogoPreviewUrl = draftLogoUrl || currentLogoUrl;
-  const liveHeroPreviewUrl = draftHeroUrl || currentHeroUrl;
-  const hasPendingLogoUpdate = Boolean(draftLogoUrl) && draftLogoUrl !== currentLogoUrl;
-  const hasPendingHeroUpdate = Boolean(draftHeroUrl) && draftHeroUrl !== currentHeroUrl;
-  const brandPickerSourceUrl =
-    (lastPreviewMediaField === "heroImageUrl" ? liveHeroPreviewUrl : "") ||
-    (lastPreviewMediaField === "logoUrl" ? liveLogoPreviewUrl : "") ||
-    (hasPendingHeroUpdate ? liveHeroPreviewUrl : "") ||
-    (hasPendingLogoUpdate ? liveLogoPreviewUrl : "") ||
-    liveLogoPreviewUrl ||
-    liveHeroPreviewUrl ||
-    "";
+  const liveLogoPreviewUrl = pendingLogoPreviewUrl || draftLogoUrl || currentLogoUrl;
+  const liveHeroPreviewUrl = pendingHeroPreviewUrl || draftHeroUrl || currentHeroUrl;
+  const hasPendingLogoUpdate = Boolean(pendingLogoFile) || (Boolean(draftLogoUrl) && draftLogoUrl !== currentLogoUrl);
+  const hasPendingHeroUpdate = Boolean(pendingHeroFile) || (Boolean(draftHeroUrl) && draftHeroUrl !== currentHeroUrl);
 
   return (
     <Card>
@@ -4712,7 +4731,6 @@ export function DirectorAdminSettingsBrandingPage() {
           </div>
           <BrandImageColorPicker
             value={form.brandPrimary}
-            sourceImageUrl={brandPickerSourceUrl}
             onPickColor={(nextHex) =>
               setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(nextHex, DEFAULT_BRAND_PRIMARY) }))
             }
@@ -4735,10 +4753,10 @@ export function DirectorAdminSettingsBrandingPage() {
           <HeroImageEditor
             label="Live preview"
             variant="admin"
-            heroImageUrl={form.heroImageUrl}
+            heroImageUrl={liveHeroPreviewUrl}
             heroImagePosition={form.heroImagePosition}
             heroImageSize={form.heroImageSize}
-            logoUrl={form.logoUrl}
+            logoUrl={liveLogoPreviewUrl}
             brandPrimary={previewBrandPrimary}
             campName={payload?.identity?.campName || payload?.tenant?.name || "Your Camp"}
             campType={payload?.tenant?.content?.campType || "coed"}
