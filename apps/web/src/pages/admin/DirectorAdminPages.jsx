@@ -4447,7 +4447,8 @@ export function DirectorAdminSettingsNetworkPage() {
 
 export function DirectorAdminSettingsBrandingPage() {
   const { request, slug, token } = useAdminApi();
-  const { payload, loading, error, load } = useSettingsLoader();
+  const { refreshTenant } = useTenant();
+  const { payload, setPayload, loading, error, load } = useSettingsLoader();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
@@ -4567,10 +4568,30 @@ export function DirectorAdminSettingsBrandingPage() {
 
       await request("/settings/branding", { method: "PATCH", body: payloadToSave });
       setForm(payloadToSave);
+      setPayload((previous) => {
+        if (!previous || typeof previous !== "object") return previous;
+        const nextBranding = {
+          ...(previous.branding || {}),
+          logoUrl: String(payloadToSave.logoUrl || ""),
+          heroImageUrl: String(payloadToSave.heroImageUrl || ""),
+          heroImagePosition: String(payloadToSave.heroImagePosition || "center center"),
+          heroImageSize: String(payloadToSave.heroImageSize || "cover"),
+          brandPrimary: normalizeBrandHex(payloadToSave.brandPrimary, DEFAULT_BRAND_PRIMARY)
+        };
+        return {
+          ...previous,
+          branding: nextBranding
+        };
+      });
       setPendingLogoFile(null);
       setPendingHeroFile(null);
       setPendingLogoPreviewUrl("");
       setPendingHeroPreviewUrl("");
+      try {
+        await refreshTenant(slug);
+      } catch {
+        // Branding save already succeeded; skip blocking UI on tenant-config refresh.
+      }
       if (brandColorChanged) {
         window.location.reload();
         return;
