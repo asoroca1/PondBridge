@@ -4469,6 +4469,15 @@ export function DirectorAdminSettingsBrandingPage() {
 
   useEffect(() => {
     if (!payload?.branding) return;
+    // Do not clobber in-progress local media edits with background payload refresh.
+    if (
+      pendingLogoFile ||
+      pendingHeroFile ||
+      String(form.logoUrl || "").startsWith("data:") ||
+      String(form.heroImageUrl || "").startsWith("data:")
+    ) {
+      return;
+    }
     setForm({
       brandPrimary: normalizeBrandHex(payload.branding.brandPrimary, DEFAULT_BRAND_PRIMARY),
       logoUrl: payload.branding.logoUrl || "",
@@ -4480,7 +4489,13 @@ export function DirectorAdminSettingsBrandingPage() {
     setPendingHeroFile(null);
     setPendingLogoPreviewUrl("");
     setPendingHeroPreviewUrl("");
-  }, [payload?.branding]);
+  }, [
+    form.heroImageUrl,
+    form.logoUrl,
+    payload?.branding,
+    pendingHeroFile,
+    pendingLogoFile
+  ]);
 
   async function uploadBrandingBlob({ blob, fileType, scope }) {
     const extension =
@@ -4626,6 +4641,7 @@ export function DirectorAdminSettingsBrandingPage() {
 
     try {
       const previewDataUrl = await fileToDataUrl(file);
+      setForm((prev) => ({ ...prev, [field]: previewDataUrl }));
       if (field === "logoUrl") {
         setPendingLogoFile(file);
         setPendingLogoPreviewUrl(previewDataUrl);
