@@ -64,7 +64,15 @@ function defaultNetworkDisplayName(tenant) {
 export function resolveNetworkDisplayName(tenant) {
   const content = resolveTenantContent(tenant);
   const fallback = defaultNetworkDisplayName(tenant);
-  const raw = String(content.networkDisplayName || "").trim() || fallback;
+  const configuredName = String(content.networkDisplayName || "").trim();
+  const normalizedConfiguredName = configuredName.toLowerCase().replace(/\s+/g, " ");
+  const isVendorPlaceholder = [
+    "pondbridge",
+    "pondbridge network",
+    "pondbridge alumni network",
+    "pondbridge alumnae network"
+  ].includes(normalizedConfiguredName);
+  const raw = configuredName && !isVendorPlaceholder ? configuredName : fallback;
   return withCampAlumniTerms(tenant, raw);
 }
 
