@@ -4671,10 +4671,11 @@ export function DirectorAdminSettingsBrandingPage() {
             {hasPendingHeroUpdate ? <p className="muted">Saving will replace the current main photo.</p> : null}
           </div>
         </div>
-        <label className="full-width">
-          Main color
+        <div className="full-width">
+          <label htmlFor="director-admin-brand-primary">Main color</label>
           <div className="director-color-row">
             <input
+              id="director-admin-brand-primary"
               type="color"
               className="director-color-swatch"
               value={previewBrandPrimary}
@@ -4712,7 +4713,7 @@ export function DirectorAdminSettingsBrandingPage() {
               </div>
             ))}
           </div>
-        </label>
+        </div>
         <div className="full-width">
           <HeroImageEditor
             label="Live preview"
