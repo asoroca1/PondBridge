@@ -136,6 +136,19 @@ function downloadTextAsFile(text, filename, mime = "text/plain;charset=utf-8") {
   URL.revokeObjectURL(url);
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error("No file selected."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Unable to read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function parseIdsParam(value = "") {
   return [...new Set(
     String(value || "")
@@ -4553,21 +4566,25 @@ export function DirectorAdminSettingsBrandingPage() {
       setUploadError("Only image files are supported for branding uploads.");
       return;
     }
-
-    const scope = field === "logoUrl" ? "branding-logo" : "branding-hero";
+    const maxBytes = field === "logoUrl" ? 12 * 1024 * 1024 : 15 * 1024 * 1024;
+    if (Number(file.size || 0) > maxBytes) {
+      setUploadError(
+        field === "logoUrl"
+          ? "Logo file must be under 12MB."
+          : "Main photo file must be under 15MB."
+      );
+      return;
+    }
     setUploadError("");
     setStatus("");
     setUploadingField(field);
 
     try {
-      const objectUrl = await uploadBrandingBlob({
-        blob: file,
-        fileType: file.type || "image/jpeg",
-        scope
-      });
-      setForm((prev) => ({ ...prev, [field]: objectUrl }));
+      const previewDataUrl = await fileToDataUrl(file);
+      setForm((prev) => ({ ...prev, [field]: previewDataUrl }));
+      setStatus("Image preview updated. Click Save Branding to publish this change.");
     } catch (uploadErrorState) {
-      setUploadError(uploadErrorState.message || "Unable to upload image.");
+      setUploadError(uploadErrorState.message || "Unable to process image.");
     } finally {
       setUploadingField("");
     }
@@ -4590,6 +4607,12 @@ export function DirectorAdminSettingsBrandingPage() {
   ];
   const currentLogoUrl = String(payload?.branding?.logoUrl || "").trim();
   const currentHeroUrl = String(payload?.branding?.heroImageUrl || "").trim();
+  const draftLogoUrl = String(form.logoUrl || "").trim();
+  const draftHeroUrl = String(form.heroImageUrl || "").trim();
+  const liveLogoPreviewUrl = draftLogoUrl || currentLogoUrl;
+  const liveHeroPreviewUrl = draftHeroUrl || currentHeroUrl;
+  const hasPendingLogoUpdate = Boolean(draftLogoUrl) && draftLogoUrl !== currentLogoUrl;
+  const hasPendingHeroUpdate = Boolean(draftHeroUrl) && draftHeroUrl !== currentHeroUrl;
 
   return (
     <Card>
@@ -4614,12 +4637,13 @@ export function DirectorAdminSettingsBrandingPage() {
             onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)}
           />
           <div className="director-admin-branding-current-media">
-            <small>Currently in use</small>
-            {currentLogoUrl ? (
-              <img src={currentLogoUrl} alt="Current logo" className="director-admin-branding-current-logo" />
+            <small>{hasPendingLogoUpdate ? "Preview (pending save)" : "Currently in use"}</small>
+            {liveLogoPreviewUrl ? (
+              <img src={liveLogoPreviewUrl} alt="Current logo" className="director-admin-branding-current-logo" />
             ) : (
               <p className="muted">No logo currently set.</p>
             )}
+            {hasPendingLogoUpdate ? <p className="muted">Saving will replace the current logo.</p> : null}
           </div>
         </div>
         <div className="full-width director-admin-upload-field">
@@ -4638,12 +4662,13 @@ export function DirectorAdminSettingsBrandingPage() {
             onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)}
           />
           <div className="director-admin-branding-current-media">
-            <small>Currently in use</small>
-            {currentHeroUrl ? (
-              <img src={currentHeroUrl} alt="Current hero image" className="director-admin-branding-current-hero" />
+            <small>{hasPendingHeroUpdate ? "Preview (pending save)" : "Currently in use"}</small>
+            {liveHeroPreviewUrl ? (
+              <img src={liveHeroPreviewUrl} alt="Current hero image" className="director-admin-branding-current-hero" />
             ) : (
               <p className="muted">No hero image currently set.</p>
             )}
+            {hasPendingHeroUpdate ? <p className="muted">Saving will replace the current main photo.</p> : null}
           </div>
         </div>
         <label className="full-width">
