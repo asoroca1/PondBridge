@@ -11,8 +11,12 @@ function Home() {
   const alumniWord = resolveAlumniWord(tenant, { capitalized: true });
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
   const heroImage = String(heroBranding.heroImageUrl || "").trim();
-  const heroImagePosition = normalizeHeroImagePosition(heroBranding.heroImagePosition || "");
-  const heroImageSize = normalizeHeroImageSize(heroBranding.heroImageSize || "");
+  const heroImagePosition = normalizeHeroImagePosition(
+    heroBranding.heroImagePositionLanding || heroBranding.heroImagePosition || ""
+  );
+  const heroImageSize = normalizeHeroImageSize(
+    heroBranding.heroImageSizeLanding || heroBranding.heroImageSize || ""
+  );
 
   return (
     <section

@@ -100,8 +100,12 @@ function applyTheme(config = {}) {
   const fontToken = String(branding.fontToken || "cedar_default");
   const font = FONT_TOKEN_MAP[fontToken] || FONT_TOKEN_MAP.cedar_default;
   const heroImage = branding.heroImageUrl || "";
-  const heroImagePosition = normalizeHeroImagePosition(branding.heroImagePosition || "");
-  const heroImageSize = normalizeHeroImageSize(branding.heroImageSize || "");
+  const heroImagePosition = normalizeHeroImagePosition(
+    branding.heroImagePositionLanding || branding.heroImagePosition || ""
+  );
+  const heroImageSize = normalizeHeroImageSize(
+    branding.heroImageSizeLanding || branding.heroImageSize || ""
+  );
   const brandPrimary = normalizeHexColor(branding.brandPrimary || "#002b5c");
   const brandPrimaryHover = mixHex(brandPrimary, "#000000", 0.16);
   const brandPrimaryStrong = mixHex(brandPrimary, "#000000", 0.24);

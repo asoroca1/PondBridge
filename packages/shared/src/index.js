@@ -260,6 +260,26 @@ export const tenantThemeSchema = z.object({
     .trim()
     .default("cover")
     .transform((value) => normalizeHeroImageSize(value)),
+  heroImagePositionLanding: z
+    .string()
+    .trim()
+    .default("center center")
+    .transform((value) => normalizeHeroImagePosition(value)),
+  heroImageSizeLanding: z
+    .string()
+    .trim()
+    .default("cover")
+    .transform((value) => normalizeHeroImageSize(value)),
+  heroImagePositionMember: z
+    .string()
+    .trim()
+    .default("center center")
+    .transform((value) => normalizeHeroImagePosition(value)),
+  heroImageSizeMember: z
+    .string()
+    .trim()
+    .default("cover")
+    .transform((value) => normalizeHeroImageSize(value)),
   fontFamily: z.string().trim().default("Inter"),
   fontToken: z.enum(fontTokens).default("cedar_default")
 });

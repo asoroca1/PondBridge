@@ -3375,6 +3375,10 @@ router.get("/settings", async (req, res) => {
       heroImageUrl: theme.heroImageUrl,
       heroImagePosition: theme.heroImagePosition,
       heroImageSize: theme.heroImageSize,
+      heroImagePositionLanding: theme.heroImagePositionLanding,
+      heroImageSizeLanding: theme.heroImageSizeLanding,
+      heroImagePositionMember: theme.heroImagePositionMember,
+      heroImageSizeMember: theme.heroImageSizeMember,
       brandPrimary: theme.brandPrimary
     },
     access: {
@@ -3461,7 +3465,27 @@ router.patch("/settings/branding", async (req, res) => {
       logoUrl: String(req.body?.logoUrl ?? (theme.logoUrl || "")).trim(),
       heroImageUrl: String(req.body?.heroImageUrl ?? (theme.heroImageUrl || "")).trim(),
       heroImagePosition: String(req.body?.heroImagePosition ?? (theme.heroImagePosition || "")).trim(),
-      heroImageSize: String(req.body?.heroImageSize ?? (theme.heroImageSize || "")).trim()
+      heroImageSize: String(req.body?.heroImageSize ?? (theme.heroImageSize || "")).trim(),
+      heroImagePositionLanding: String(
+        req.body?.heroImagePositionLanding ??
+          req.body?.heroImagePosition ??
+          (theme.heroImagePositionLanding || theme.heroImagePosition || "")
+      ).trim(),
+      heroImageSizeLanding: String(
+        req.body?.heroImageSizeLanding ??
+          req.body?.heroImageSize ??
+          (theme.heroImageSizeLanding || theme.heroImageSize || "")
+      ).trim(),
+      heroImagePositionMember: String(
+        req.body?.heroImagePositionMember ??
+          req.body?.heroImagePosition ??
+          (theme.heroImagePositionMember || theme.heroImagePosition || "")
+      ).trim(),
+      heroImageSizeMember: String(
+        req.body?.heroImageSizeMember ??
+          req.body?.heroImageSize ??
+          (theme.heroImageSizeMember || theme.heroImageSize || "")
+      ).trim()
     }
   });
 
@@ -3473,7 +3497,11 @@ router.patch("/settings/branding", async (req, res) => {
       logoUrl: next.logoUrl,
       heroImageUrl: next.heroImageUrl,
       heroImagePosition: next.heroImagePosition,
-      heroImageSize: next.heroImageSize
+      heroImageSize: next.heroImageSize,
+      heroImagePositionLanding: next.heroImagePositionLanding,
+      heroImageSizeLanding: next.heroImageSizeLanding,
+      heroImagePositionMember: next.heroImagePositionMember,
+      heroImageSizeMember: next.heroImageSizeMember
     },
     onboardingDraft: {
       ...draft,
@@ -3483,7 +3511,11 @@ router.patch("/settings/branding", async (req, res) => {
         logoUrl: next.logoUrl,
         heroImageUrl: next.heroImageUrl,
         heroImagePosition: next.heroImagePosition,
-        heroImageSize: next.heroImageSize
+        heroImageSize: next.heroImageSize,
+        heroImagePositionLanding: next.heroImagePositionLanding,
+        heroImageSizeLanding: next.heroImageSizeLanding,
+        heroImagePositionMember: next.heroImagePositionMember,
+        heroImageSizeMember: next.heroImageSizeMember
       },
       updatedAt: new Date(),
       updatedByUserId: req.user.id
@@ -4318,6 +4350,10 @@ router.put("/branding", async (req, res) => {
       heroImageUrl: String(theme.heroImageUrl || currentTheme.heroImageUrl),
       heroImagePosition: String(theme.heroImagePosition || currentTheme.heroImagePosition),
       heroImageSize: String(theme.heroImageSize || currentTheme.heroImageSize),
+      heroImagePositionLanding: String(theme.heroImagePositionLanding || currentTheme.heroImagePositionLanding || theme.heroImagePosition || currentTheme.heroImagePosition),
+      heroImageSizeLanding: String(theme.heroImageSizeLanding || currentTheme.heroImageSizeLanding || theme.heroImageSize || currentTheme.heroImageSize),
+      heroImagePositionMember: String(theme.heroImagePositionMember || currentTheme.heroImagePositionMember || theme.heroImagePosition || currentTheme.heroImagePosition),
+      heroImageSizeMember: String(theme.heroImageSizeMember || currentTheme.heroImageSizeMember || theme.heroImageSize || currentTheme.heroImageSize),
       typography: String(theme.typography || currentTheme.typography)
     },
     onboardingStatus: "in_progress"

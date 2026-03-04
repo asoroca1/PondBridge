@@ -541,7 +541,11 @@ function DirectorCreateAccountWizardPage() {
     logoUrl: "",
     heroImageUrl: "",
     heroImagePosition: DEFAULT_HERO_IMAGE_POSITION,
-    heroImageSize: DEFAULT_HERO_IMAGE_SIZE
+    heroImageSize: DEFAULT_HERO_IMAGE_SIZE,
+    heroImagePositionLanding: DEFAULT_HERO_IMAGE_POSITION,
+    heroImageSizeLanding: DEFAULT_HERO_IMAGE_SIZE,
+    heroImagePositionMember: DEFAULT_HERO_IMAGE_POSITION,
+    heroImageSizeMember: DEFAULT_HERO_IMAGE_SIZE
   });
   const [hasCustomMainColor, setHasCustomMainColor] = useState(false);
   const [modulesDraft, setModulesDraft] = useState({
@@ -811,16 +815,20 @@ function DirectorCreateAccountWizardPage() {
   }, [planScopedModulesDraft]);
   const reviewDirectorName = `${form.firstName} ${form.lastName}`.trim() || "Not set";
   const mainPhotoFramingLabel = `${
-    HERO_POSITION_OPTIONS.find((item) => item.value === themeDraft.heroImagePosition)?.label || "Center"
+    HERO_POSITION_OPTIONS.find((item) => item.value === themeDraft.heroImagePositionLanding)?.label || "Center"
   } / ${
-    HERO_SIZE_OPTIONS.find((item) => item.value === themeDraft.heroImageSize)?.label || "Fill frame"
+    HERO_SIZE_OPTIONS.find((item) => item.value === themeDraft.heroImageSizeLanding)?.label || "Fill frame"
   }`;
   const enabledModulesCount = enabledFeatureLabels.length;
   const designPreviewHeroStyle = themeDraft.heroImageUrl
     ? {
         backgroundImage: `url("${themeDraft.heroImageUrl}")`,
-        backgroundPosition: normalizeHeroImagePosition(themeDraft.heroImagePosition || "center center"),
-        backgroundSize: normalizeHeroImageSize(themeDraft.heroImageSize || "cover")
+        backgroundPosition: normalizeHeroImagePosition(
+          themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || "center center"
+        ),
+        backgroundSize: normalizeHeroImageSize(
+          themeDraft.heroImageSizeLanding || themeDraft.heroImageSize || "cover"
+        )
       }
     : undefined;
   const reviewAgeGroups = parseLineList(campSpecifics.ageGroupsText);
@@ -883,10 +891,46 @@ function DirectorCreateAccountWizardPage() {
       logoUrl: String(source.logoUrl || prev.logoUrl || ""),
       heroImageUrl: String(source.heroImageUrl || prev.heroImageUrl || ""),
       heroImagePosition: normalizeHeroImagePosition(
-        source.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        source.heroImagePositionLanding ||
+          source.heroImagePosition ||
+          prev.heroImagePositionLanding ||
+          prev.heroImagePosition ||
+          DEFAULT_HERO_IMAGE_POSITION
       ),
       heroImageSize: normalizeHeroImageSize(
-        source.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        source.heroImageSizeLanding ||
+          source.heroImageSize ||
+          prev.heroImageSizeLanding ||
+          prev.heroImageSize ||
+          DEFAULT_HERO_IMAGE_SIZE
+      ),
+      heroImagePositionLanding: normalizeHeroImagePosition(
+        source.heroImagePositionLanding ||
+          source.heroImagePosition ||
+          prev.heroImagePositionLanding ||
+          prev.heroImagePosition ||
+          DEFAULT_HERO_IMAGE_POSITION
+      ),
+      heroImageSizeLanding: normalizeHeroImageSize(
+        source.heroImageSizeLanding ||
+          source.heroImageSize ||
+          prev.heroImageSizeLanding ||
+          prev.heroImageSize ||
+          DEFAULT_HERO_IMAGE_SIZE
+      ),
+      heroImagePositionMember: normalizeHeroImagePosition(
+        source.heroImagePositionMember ||
+          source.heroImagePosition ||
+          prev.heroImagePositionMember ||
+          prev.heroImagePosition ||
+          DEFAULT_HERO_IMAGE_POSITION
+      ),
+      heroImageSizeMember: normalizeHeroImageSize(
+        source.heroImageSizeMember ||
+          source.heroImageSize ||
+          prev.heroImageSizeMember ||
+          prev.heroImageSize ||
+          DEFAULT_HERO_IMAGE_SIZE
       )
     }));
   }, [
@@ -895,7 +939,11 @@ function DirectorCreateAccountWizardPage() {
     tenant?.theme?.logoUrl,
     tenant?.theme?.heroImageUrl,
     tenant?.theme?.heroImagePosition,
-    tenant?.theme?.heroImageSize
+    tenant?.theme?.heroImageSize,
+    tenant?.theme?.heroImagePositionLanding,
+    tenant?.theme?.heroImageSizeLanding,
+    tenant?.theme?.heroImagePositionMember,
+    tenant?.theme?.heroImageSizeMember
   ]);
 
   useEffect(() => {
@@ -1005,10 +1053,46 @@ function DirectorCreateAccountWizardPage() {
         logoUrl: String(localDraft.themeDraft.logoUrl || prev.logoUrl || ""),
         heroImageUrl: String(localDraft.themeDraft.heroImageUrl || prev.heroImageUrl || ""),
         heroImagePosition: normalizeHeroImagePosition(
-          localDraft.themeDraft.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+          localDraft.themeDraft.heroImagePositionLanding ||
+            localDraft.themeDraft.heroImagePosition ||
+            prev.heroImagePositionLanding ||
+            prev.heroImagePosition ||
+            DEFAULT_HERO_IMAGE_POSITION
         ),
         heroImageSize: normalizeHeroImageSize(
-          localDraft.themeDraft.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+          localDraft.themeDraft.heroImageSizeLanding ||
+            localDraft.themeDraft.heroImageSize ||
+            prev.heroImageSizeLanding ||
+            prev.heroImageSize ||
+            DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionLanding: normalizeHeroImagePosition(
+          localDraft.themeDraft.heroImagePositionLanding ||
+            localDraft.themeDraft.heroImagePosition ||
+            prev.heroImagePositionLanding ||
+            prev.heroImagePosition ||
+            DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeLanding: normalizeHeroImageSize(
+          localDraft.themeDraft.heroImageSizeLanding ||
+            localDraft.themeDraft.heroImageSize ||
+            prev.heroImageSizeLanding ||
+            prev.heroImageSize ||
+            DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionMember: normalizeHeroImagePosition(
+          localDraft.themeDraft.heroImagePositionMember ||
+            localDraft.themeDraft.heroImagePosition ||
+            prev.heroImagePositionMember ||
+            prev.heroImagePosition ||
+            DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeMember: normalizeHeroImageSize(
+          localDraft.themeDraft.heroImageSizeMember ||
+            localDraft.themeDraft.heroImageSize ||
+            prev.heroImageSizeMember ||
+            prev.heroImageSize ||
+            DEFAULT_HERO_IMAGE_SIZE
         )
       }));
       if (isHexColor(localDraft.themeDraft.brandPrimary)) {
@@ -1073,10 +1157,46 @@ function DirectorCreateAccountWizardPage() {
         logoUrl: draft.theme.logoUrl || prev.logoUrl,
         heroImageUrl: draft.theme.heroImageUrl || prev.heroImageUrl,
         heroImagePosition: normalizeHeroImagePosition(
-          draft.theme.heroImagePosition || prev.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+          draft.theme.heroImagePositionLanding ||
+            draft.theme.heroImagePosition ||
+            prev.heroImagePositionLanding ||
+            prev.heroImagePosition ||
+            DEFAULT_HERO_IMAGE_POSITION
         ),
         heroImageSize: normalizeHeroImageSize(
-          draft.theme.heroImageSize || prev.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+          draft.theme.heroImageSizeLanding ||
+            draft.theme.heroImageSize ||
+            prev.heroImageSizeLanding ||
+            prev.heroImageSize ||
+            DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionLanding: normalizeHeroImagePosition(
+          draft.theme.heroImagePositionLanding ||
+            draft.theme.heroImagePosition ||
+            prev.heroImagePositionLanding ||
+            prev.heroImagePosition ||
+            DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeLanding: normalizeHeroImageSize(
+          draft.theme.heroImageSizeLanding ||
+            draft.theme.heroImageSize ||
+            prev.heroImageSizeLanding ||
+            prev.heroImageSize ||
+            DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionMember: normalizeHeroImagePosition(
+          draft.theme.heroImagePositionMember ||
+            draft.theme.heroImagePosition ||
+            prev.heroImagePositionMember ||
+            prev.heroImagePosition ||
+            DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeMember: normalizeHeroImageSize(
+          draft.theme.heroImageSizeMember ||
+            draft.theme.heroImageSize ||
+            prev.heroImageSizeMember ||
+            prev.heroImageSize ||
+            DEFAULT_HERO_IMAGE_SIZE
         )
       }));
       if (draft.theme.brandPrimary && isHexColor(draft.theme.brandPrimary)) {
@@ -1149,9 +1269,23 @@ function DirectorCreateAccountWizardPage() {
         logoUrl: String(themeDraft.logoUrl || ""),
         heroImageUrl: String(themeDraft.heroImageUrl || ""),
         heroImagePosition: normalizeHeroImagePosition(
-          themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+          themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
         ),
-        heroImageSize: normalizeHeroImageSize(themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE)
+        heroImageSize: normalizeHeroImageSize(
+          themeDraft.heroImageSizeLanding || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionLanding: normalizeHeroImagePosition(
+          themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeLanding: normalizeHeroImageSize(
+          themeDraft.heroImageSizeLanding || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionMember: normalizeHeroImagePosition(
+          themeDraft.heroImagePositionMember || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeMember: normalizeHeroImageSize(
+          themeDraft.heroImageSizeMember || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        )
       },
       modulesDraft: { ...planScopedModulesDraft },
       newsletterName: String(newsletterName || ""),
@@ -1203,8 +1337,24 @@ function DirectorCreateAccountWizardPage() {
         brandSecondary: deriveSecondaryHex(themeDraft.brandPrimary),
         logoUrl: themeDraft.logoUrl,
         heroImageUrl: themeDraft.heroImageUrl,
-        heroImagePosition: themeDraft.heroImagePosition,
-        heroImageSize: themeDraft.heroImageSize
+        heroImagePosition: normalizeHeroImagePosition(
+          themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSize: normalizeHeroImageSize(
+          themeDraft.heroImageSizeLanding || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionLanding: normalizeHeroImagePosition(
+          themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeLanding: normalizeHeroImageSize(
+          themeDraft.heroImageSizeLanding || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        ),
+        heroImagePositionMember: normalizeHeroImagePosition(
+          themeDraft.heroImagePositionMember || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+        ),
+        heroImageSizeMember: normalizeHeroImageSize(
+          themeDraft.heroImageSizeMember || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+        )
       };
     }
 
@@ -1952,10 +2102,22 @@ function DirectorCreateAccountWizardPage() {
             card: String(baseTheme.card || "#ffffff"),
             heroImageUrl: finalHeroImageUrl,
             heroImagePosition: normalizeHeroImagePosition(
-              themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+              themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
             ),
             heroImageSize: normalizeHeroImageSize(
-              themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+              themeDraft.heroImageSizeLanding || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+            ),
+            heroImagePositionLanding: normalizeHeroImagePosition(
+              themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+            ),
+            heroImageSizeLanding: normalizeHeroImageSize(
+              themeDraft.heroImageSizeLanding || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
+            ),
+            heroImagePositionMember: normalizeHeroImagePosition(
+              themeDraft.heroImagePositionMember || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
+            ),
+            heroImageSizeMember: normalizeHeroImageSize(
+              themeDraft.heroImageSizeMember || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
             ),
             fontFamily: String(baseTheme.fontFamily || "Inter"),
             fontToken: String(baseTheme.fontToken || "cedar_default")
@@ -2496,25 +2658,49 @@ function DirectorCreateAccountWizardPage() {
                       label="Live preview"
                       variant="onboarding"
                       heroImageUrl={themeDraft.heroImageUrl}
-                      heroImagePosition={themeDraft.heroImagePosition}
-                      heroImageSize={themeDraft.heroImageSize}
+                      landingImagePosition={themeDraft.heroImagePositionLanding}
+                      landingImageSize={themeDraft.heroImageSizeLanding}
+                      memberImagePosition={themeDraft.heroImagePositionMember}
+                      memberImageSize={themeDraft.heroImageSizeMember}
                       logoUrl={themeDraft.logoUrl}
                       brandPrimary={effectiveMainColor}
                       campName={form.campName || "Your Camp"}
                       campType={selectedCampType}
                       welcomeBody={campSpecifics.homepageQuote || "Reconnect with your camp community."}
                       enabledFeatureLabels={enabledFeatureLabels}
-                      onChangePosition={(nextValue) =>
-                        updateThemeField(
-                          "heroImagePosition",
-                          normalizeHeroImagePosition(nextValue || DEFAULT_HERO_IMAGE_POSITION)
-                        )
+                      onChangeLandingPosition={(nextValue) =>
+                        setThemeDraft((prev) => ({
+                          ...prev,
+                          heroImagePosition: normalizeHeroImagePosition(
+                            nextValue || DEFAULT_HERO_IMAGE_POSITION
+                          ),
+                          heroImagePositionLanding: normalizeHeroImagePosition(
+                            nextValue || DEFAULT_HERO_IMAGE_POSITION
+                          )
+                        }))
                       }
-                      onChangeSize={(nextValue) =>
-                        updateThemeField(
-                          "heroImageSize",
-                          normalizeHeroImageSize(nextValue || DEFAULT_HERO_IMAGE_SIZE)
-                        )
+                      onChangeLandingSize={(nextValue) =>
+                        setThemeDraft((prev) => ({
+                          ...prev,
+                          heroImageSize: normalizeHeroImageSize(nextValue || DEFAULT_HERO_IMAGE_SIZE),
+                          heroImageSizeLanding: normalizeHeroImageSize(
+                            nextValue || DEFAULT_HERO_IMAGE_SIZE
+                          )
+                        }))
+                      }
+                      onChangeMemberPosition={(nextValue) =>
+                        setThemeDraft((prev) => ({
+                          ...prev,
+                          heroImagePositionMember: normalizeHeroImagePosition(
+                            nextValue || DEFAULT_HERO_IMAGE_POSITION
+                          )
+                        }))
+                      }
+                      onChangeMemberSize={(nextValue) =>
+                        setThemeDraft((prev) => ({
+                          ...prev,
+                          heroImageSizeMember: normalizeHeroImageSize(nextValue || DEFAULT_HERO_IMAGE_SIZE)
+                        }))
                       }
                     />
                   </div>

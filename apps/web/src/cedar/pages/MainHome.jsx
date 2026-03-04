@@ -577,8 +577,12 @@ export default function MainHome() {
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
   const heroImage = heroBranding.heroImageUrl || cedarField;
-  const heroImagePosition = normalizeHeroImagePosition(heroBranding.heroImagePosition || "");
-  const heroImageSize = normalizeHeroImageSize(heroBranding.heroImageSize || "");
+  const heroImagePosition = normalizeHeroImagePosition(
+    heroBranding.heroImagePositionMember || heroBranding.heroImagePosition || ""
+  );
+  const heroImageSize = normalizeHeroImageSize(
+    heroBranding.heroImageSizeMember || heroBranding.heroImageSize || ""
+  );
 
   // NEW: unread DM+Group badge count
   const unreadChats = useUnreadChatsCount();

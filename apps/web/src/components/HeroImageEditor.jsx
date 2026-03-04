@@ -71,6 +71,10 @@ export default function HeroImageEditor({
   heroImageUrl = "",
   heroImagePosition = "center center",
   heroImageSize = "cover",
+  landingImagePosition = "",
+  landingImageSize = "",
+  memberImagePosition = "",
+  memberImageSize = "",
   logoUrl = "",
   brandPrimary = "#0f2747",
   campName = "Your Camp",
@@ -79,6 +83,10 @@ export default function HeroImageEditor({
   enabledFeatureLabels = [],
   onChangePosition,
   onChangeSize,
+  onChangeLandingPosition,
+  onChangeLandingSize,
+  onChangeMemberPosition,
+  onChangeMemberSize,
   variant = "onboarding",
   className = ""
 }) {
@@ -92,11 +100,36 @@ export default function HeroImageEditor({
   const safeWelcomeBody =
     replaceAlumniForCampType(String(welcomeBody || "").trim(), normalizedCampType) || fallbackWelcomeBody;
   const hasHeroImage = Boolean(String(heroImageUrl || "").trim());
-  const normalizedPosition = normalizeHeroImagePosition(heroImagePosition || "center center");
-  const { normalizedSize, zoomValue, customZoom } = useMemo(
-    () => parseZoom(heroImageSize || "cover"),
-    [heroImageSize]
-  );
+  const landingComposition = useMemo(() => {
+    const position = normalizeHeroImagePosition(
+      landingImagePosition || heroImagePosition || "center center"
+    );
+    const { normalizedSize, zoomValue, customZoom } = parseZoom(
+      landingImageSize || heroImageSize || "cover"
+    );
+    return {
+      position,
+      normalizedSize,
+      zoomValue,
+      customZoom,
+      positionCoords: parseHeroImagePosition(position, { x: 50, y: 50 })
+    };
+  }, [heroImagePosition, heroImageSize, landingImagePosition, landingImageSize]);
+  const memberComposition = useMemo(() => {
+    const position = normalizeHeroImagePosition(
+      memberImagePosition || heroImagePosition || "center center"
+    );
+    const { normalizedSize, zoomValue, customZoom } = parseZoom(
+      memberImageSize || heroImageSize || "cover"
+    );
+    return {
+      position,
+      normalizedSize,
+      zoomValue,
+      customZoom,
+      positionCoords: parseHeroImagePosition(position, { x: 50, y: 50 })
+    };
+  }, [heroImagePosition, heroImageSize, memberImagePosition, memberImageSize]);
   const featureLabels = useMemo(() => {
     const provided = Array.isArray(enabledFeatureLabels)
       ? enabledFeatureLabels.map((item) => String(item || "").trim()).filter(Boolean)
@@ -105,39 +138,52 @@ export default function HeroImageEditor({
     return (provided.length ? provided : fallback).slice(0, 4);
   }, [alumniWordTitle, enabledFeatureLabels]);
 
-  const positionCoords = useMemo(
-    () => parseHeroImagePosition(normalizedPosition, { x: 50, y: 50 }),
-    [normalizedPosition]
-  );
-
   const [isDragging, setIsDragging] = useState(false);
   const [activePreview, setActivePreview] = useState("");
   const dragPointerIdRef = useRef(null);
   const pendingPositionRef = useRef(null);
   const positionFrameRef = useRef(0);
   const modalSurfaceRef = useRef(null);
+  const activePreviewKey = activePreview === PREVIEW_META.member.key
+    ? PREVIEW_META.member.key
+    : PREVIEW_META.landing.key;
+  const activeComposition = activePreviewKey === PREVIEW_META.member.key
+    ? memberComposition
+    : landingComposition;
 
   const applyPosition = useCallback(
-    (nextCoords) => {
-      if (typeof onChangePosition !== "function") return;
+    (previewKey, nextCoords) => {
       const x = clamp(nextCoords?.x, DRAG_CLAMP_MIN, DRAG_CLAMP_MAX);
       const y = clamp(nextCoords?.y, DRAG_CLAMP_MIN, DRAG_CLAMP_MAX);
-      onChangePosition(formatHeroImagePositionPercent(x, y));
+      const nextValue = formatHeroImagePositionPercent(x, y);
+      if (previewKey === PREVIEW_META.member.key) {
+        if (typeof onChangeMemberPosition === "function") {
+          onChangeMemberPosition(nextValue);
+          return;
+        }
+      } else if (typeof onChangeLandingPosition === "function") {
+        onChangeLandingPosition(nextValue);
+        return;
+      }
+      if (typeof onChangePosition === "function") {
+        onChangePosition(nextValue);
+      }
     },
-    [onChangePosition]
+    [onChangeLandingPosition, onChangeMemberPosition, onChangePosition]
   );
 
   const flushPendingPosition = useCallback(() => {
     positionFrameRef.current = 0;
     if (!pendingPositionRef.current) return;
-    const coords = pendingPositionRef.current;
+    const { previewKey, x, y } = pendingPositionRef.current;
     pendingPositionRef.current = null;
-    applyPosition(coords);
+    applyPosition(previewKey, { x, y });
   }, [applyPosition]);
 
   const schedulePosition = useCallback(
-    (nextCoords) => {
+    (nextCoords, previewKey = PREVIEW_META.landing.key) => {
       pendingPositionRef.current = {
+        previewKey,
         x: clamp(nextCoords?.x, DRAG_CLAMP_MIN, DRAG_CLAMP_MAX),
         y: clamp(nextCoords?.y, DRAG_CLAMP_MIN, DRAG_CLAMP_MAX)
       };
@@ -148,27 +194,41 @@ export default function HeroImageEditor({
   );
 
   const applySize = useCallback(
-    (nextValue) => {
-      if (typeof onChangeSize !== "function") return;
-      onChangeSize(normalizeHeroImageSize(nextValue || "cover"));
+    (previewKey, nextValue) => {
+      const normalizedValue = normalizeHeroImageSize(nextValue || "cover");
+      if (previewKey === PREVIEW_META.member.key) {
+        if (typeof onChangeMemberSize === "function") {
+          onChangeMemberSize(normalizedValue);
+          return;
+        }
+      } else if (typeof onChangeLandingSize === "function") {
+        onChangeLandingSize(normalizedValue);
+        return;
+      }
+      if (typeof onChangeSize === "function") {
+        onChangeSize(normalizedValue);
+      }
     },
-    [onChangeSize]
+    [onChangeLandingSize, onChangeMemberSize, onChangeSize]
   );
 
   const applyZoomValue = useCallback(
-    (value) => {
+    (previewKey, value) => {
       const clamped = Math.round(clamp(value, ZOOM_MIN, ZOOM_MAX));
-      applySize(`${clamped}%`);
+      applySize(previewKey, `${clamped}%`);
     },
     [applySize]
   );
 
   const applyZoomDelta = useCallback(
-    (delta) => {
-      const base = customZoom ? zoomValue : normalizeZoomFromSize(normalizedSize);
-      applyZoomValue(base + delta);
+    (previewKey, delta) => {
+      const composition = previewKey === PREVIEW_META.member.key ? memberComposition : landingComposition;
+      const base = composition.customZoom
+        ? composition.zoomValue
+        : normalizeZoomFromSize(composition.normalizedSize);
+      applyZoomValue(previewKey, base + delta);
     },
-    [applyZoomValue, customZoom, normalizedSize, zoomValue]
+    [applyZoomValue, landingComposition, memberComposition]
   );
 
   useEffect(
@@ -220,13 +280,13 @@ export default function HeroImageEditor({
   }, [activePreview]);
 
   const updatePositionFromPointer = useCallback(
-    (event) => {
+    (event, previewKey) => {
       const frame = event.currentTarget;
       const rect = frame.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
       const x = ((event.clientX - rect.left) / rect.width) * 100;
       const y = ((event.clientY - rect.top) / rect.height) * 100;
-      schedulePosition({ x, y });
+      schedulePosition({ x, y }, previewKey);
     },
     [schedulePosition]
   );
@@ -238,19 +298,19 @@ export default function HeroImageEditor({
       setIsDragging(true);
       event.currentTarget.focus();
       event.currentTarget.setPointerCapture(event.pointerId);
-      updatePositionFromPointer(event);
+      updatePositionFromPointer(event, activePreviewKey);
       event.preventDefault();
     },
-    [hasHeroImage, updatePositionFromPointer]
+    [hasHeroImage, updatePositionFromPointer, activePreviewKey]
   );
 
   const onDragMove = useCallback(
     (event) => {
       if (dragPointerIdRef.current !== event.pointerId) return;
-      updatePositionFromPointer(event);
+      updatePositionFromPointer(event, activePreviewKey);
       event.preventDefault();
     },
-    [updatePositionFromPointer]
+    [activePreviewKey, updatePositionFromPointer]
   );
 
   const finishDrag = useCallback((event) => {
@@ -266,10 +326,10 @@ export default function HeroImageEditor({
     (event) => {
       if (!hasHeroImage) return;
       const direction = event.deltaY < 0 ? 1 : -1;
-      applyZoomDelta(direction * ZOOM_STEP);
+      applyZoomDelta(activePreviewKey, direction * ZOOM_STEP);
       event.preventDefault();
     },
-    [applyZoomDelta, hasHeroImage]
+    [activePreviewKey, applyZoomDelta, hasHeroImage]
   );
 
   const onPreviewKeyDown = useCallback(
@@ -277,55 +337,95 @@ export default function HeroImageEditor({
       if (!hasHeroImage) return;
       const key = String(event.key || "");
       const nudge = event.shiftKey ? 4 : 1;
+      const positionCoords = activeComposition.positionCoords;
 
       if (key === "ArrowLeft") {
-        schedulePosition({ x: positionCoords.x - nudge, y: positionCoords.y });
+        schedulePosition({ x: positionCoords.x - nudge, y: positionCoords.y }, activePreviewKey);
         event.preventDefault();
         return;
       }
       if (key === "ArrowRight") {
-        schedulePosition({ x: positionCoords.x + nudge, y: positionCoords.y });
+        schedulePosition({ x: positionCoords.x + nudge, y: positionCoords.y }, activePreviewKey);
         event.preventDefault();
         return;
       }
       if (key === "ArrowUp") {
-        schedulePosition({ x: positionCoords.x, y: positionCoords.y - nudge });
+        schedulePosition({ x: positionCoords.x, y: positionCoords.y - nudge }, activePreviewKey);
         event.preventDefault();
         return;
       }
       if (key === "ArrowDown") {
-        schedulePosition({ x: positionCoords.x, y: positionCoords.y + nudge });
+        schedulePosition({ x: positionCoords.x, y: positionCoords.y + nudge }, activePreviewKey);
         event.preventDefault();
         return;
       }
       if (key === "+" || key === "=" || key === "Add") {
-        applyZoomDelta(ZOOM_STEP);
+        applyZoomDelta(activePreviewKey, ZOOM_STEP);
         event.preventDefault();
         return;
       }
       if (key === "-" || key === "_" || key === "Subtract") {
-        applyZoomDelta(-ZOOM_STEP);
+        applyZoomDelta(activePreviewKey, -ZOOM_STEP);
         event.preventDefault();
       }
     },
-    [applyZoomDelta, hasHeroImage, positionCoords.x, positionCoords.y, schedulePosition]
+    [activeComposition.positionCoords, activePreviewKey, applyZoomDelta, hasHeroImage, schedulePosition]
   );
 
   const resetHeroComposition = useCallback(() => {
-    if (typeof onChangePosition === "function") onChangePosition("center center");
-    if (typeof onChangeSize === "function") onChangeSize("cover");
-  }, [onChangePosition, onChangeSize]);
+    if (typeof onChangeLandingPosition === "function") onChangeLandingPosition("center center");
+    if (typeof onChangeLandingSize === "function") onChangeLandingSize("cover");
+    if (typeof onChangeMemberPosition === "function") onChangeMemberPosition("center center");
+    if (typeof onChangeMemberSize === "function") onChangeMemberSize("cover");
+    if (
+      typeof onChangeLandingPosition !== "function" &&
+      typeof onChangeMemberPosition !== "function" &&
+      typeof onChangePosition === "function"
+    ) {
+      onChangePosition("center center");
+    }
+    if (
+      typeof onChangeLandingSize !== "function" &&
+      typeof onChangeMemberSize !== "function" &&
+      typeof onChangeSize === "function"
+    ) {
+      onChangeSize("cover");
+    }
+  }, [
+    onChangeLandingPosition,
+    onChangeLandingSize,
+    onChangeMemberPosition,
+    onChangeMemberSize,
+    onChangePosition,
+    onChangeSize
+  ]);
 
-  const heroBackgroundStyle = useMemo(
+  const landingBackgroundStyle = useMemo(
     () =>
       hasHeroImage
         ? {
             backgroundImage: backgroundImageValue(heroImageUrl),
-            backgroundPosition: normalizedPosition,
-            backgroundSize: normalizedSize
+            backgroundPosition: landingComposition.position,
+            backgroundSize: landingComposition.normalizedSize
           }
         : undefined,
-    [hasHeroImage, heroImageUrl, normalizedPosition, normalizedSize]
+    [
+      hasHeroImage,
+      heroImageUrl,
+      landingComposition.normalizedSize,
+      landingComposition.position
+    ]
+  );
+  const memberBackgroundStyle = useMemo(
+    () =>
+      hasHeroImage
+        ? {
+            backgroundImage: backgroundImageValue(heroImageUrl),
+            backgroundPosition: memberComposition.position,
+            backgroundSize: memberComposition.normalizedSize
+          }
+        : undefined,
+    [hasHeroImage, heroImageUrl, memberComposition.normalizedSize, memberComposition.position]
   );
 
   const rootClassName = [
@@ -346,7 +446,7 @@ export default function HeroImageEditor({
           modal && "hero-image-editor__preview-stage--modal"
         ].filter(Boolean).join(" ")}
       >
-        <div className="hero-image-editor__landing-screen" style={heroBackgroundStyle}>
+        <div className="hero-image-editor__landing-screen" style={landingBackgroundStyle}>
           <div className="hero-image-editor__landing-overlay" />
           {interactive ? (
             <button
@@ -412,7 +512,7 @@ export default function HeroImageEditor({
           </div>
         </div>
 
-        <div className="hero-image-editor__masthead" style={heroBackgroundStyle}>
+        <div className="hero-image-editor__masthead" style={memberBackgroundStyle}>
           {interactive ? (
             <button
               ref={modalSurfaceRef}

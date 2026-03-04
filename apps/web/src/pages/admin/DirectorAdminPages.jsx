@@ -4464,7 +4464,11 @@ export function DirectorAdminSettingsBrandingPage() {
     logoUrl: "",
     heroImageUrl: "",
     heroImagePosition: "center center",
-    heroImageSize: "cover"
+    heroImageSize: "cover",
+    heroImagePositionLanding: "center center",
+    heroImageSizeLanding: "cover",
+    heroImagePositionMember: "center center",
+    heroImageSizeMember: "cover"
   });
 
   useEffect(() => {
@@ -4483,7 +4487,19 @@ export function DirectorAdminSettingsBrandingPage() {
       logoUrl: payload.branding.logoUrl || "",
       heroImageUrl: payload.branding.heroImageUrl || "",
       heroImagePosition: normalizeHeroImagePosition(payload.branding.heroImagePosition || "center center"),
-      heroImageSize: normalizeHeroImageSize(payload.branding.heroImageSize || "cover")
+      heroImageSize: normalizeHeroImageSize(payload.branding.heroImageSize || "cover"),
+      heroImagePositionLanding: normalizeHeroImagePosition(
+        payload.branding.heroImagePositionLanding || payload.branding.heroImagePosition || "center center"
+      ),
+      heroImageSizeLanding: normalizeHeroImageSize(
+        payload.branding.heroImageSizeLanding || payload.branding.heroImageSize || "cover"
+      ),
+      heroImagePositionMember: normalizeHeroImagePosition(
+        payload.branding.heroImagePositionMember || payload.branding.heroImagePosition || "center center"
+      ),
+      heroImageSizeMember: normalizeHeroImageSize(
+        payload.branding.heroImageSizeMember || payload.branding.heroImageSize || "cover"
+      )
     });
     setPendingLogoFile(null);
     setPendingHeroFile(null);
@@ -4548,8 +4564,21 @@ export function DirectorAdminSettingsBrandingPage() {
     try {
       const payloadToSave = { ...form };
       payloadToSave.brandPrimary = normalizeBrandHex(payloadToSave.brandPrimary, DEFAULT_BRAND_PRIMARY);
-      payloadToSave.heroImagePosition = normalizeHeroImagePosition(payloadToSave.heroImagePosition || "center center");
-      payloadToSave.heroImageSize = normalizeHeroImageSize(payloadToSave.heroImageSize || "cover");
+      payloadToSave.heroImagePositionLanding = normalizeHeroImagePosition(
+        payloadToSave.heroImagePositionLanding || payloadToSave.heroImagePosition || "center center"
+      );
+      payloadToSave.heroImageSizeLanding = normalizeHeroImageSize(
+        payloadToSave.heroImageSizeLanding || payloadToSave.heroImageSize || "cover"
+      );
+      payloadToSave.heroImagePositionMember = normalizeHeroImagePosition(
+        payloadToSave.heroImagePositionMember || payloadToSave.heroImagePosition || "center center"
+      );
+      payloadToSave.heroImageSizeMember = normalizeHeroImageSize(
+        payloadToSave.heroImageSizeMember || payloadToSave.heroImageSize || "cover"
+      );
+      // Backward-compatible shared fields mirror the landing framing.
+      payloadToSave.heroImagePosition = payloadToSave.heroImagePositionLanding;
+      payloadToSave.heroImageSize = payloadToSave.heroImageSizeLanding;
       const currentBrandPrimary = normalizeBrandHex(payload?.branding?.brandPrimary, DEFAULT_BRAND_PRIMARY);
       const brandColorChanged = currentBrandPrimary !== payloadToSave.brandPrimary;
       if (pendingLogoFile) {
@@ -4591,6 +4620,10 @@ export function DirectorAdminSettingsBrandingPage() {
           heroImageUrl: String(payloadToSave.heroImageUrl || ""),
           heroImagePosition: String(payloadToSave.heroImagePosition || "center center"),
           heroImageSize: String(payloadToSave.heroImageSize || "cover"),
+          heroImagePositionLanding: String(payloadToSave.heroImagePositionLanding || "center center"),
+          heroImageSizeLanding: String(payloadToSave.heroImageSizeLanding || "cover"),
+          heroImagePositionMember: String(payloadToSave.heroImagePositionMember || "center center"),
+          heroImageSizeMember: String(payloadToSave.heroImageSizeMember || "cover"),
           brandPrimary: normalizeBrandHex(payloadToSave.brandPrimary, DEFAULT_BRAND_PRIMARY)
         };
         return {
@@ -4791,23 +4824,39 @@ export function DirectorAdminSettingsBrandingPage() {
             label="Live preview"
             variant="admin"
             heroImageUrl={liveHeroPreviewUrl}
-            heroImagePosition={form.heroImagePosition}
-            heroImageSize={form.heroImageSize}
+            landingImagePosition={form.heroImagePositionLanding}
+            landingImageSize={form.heroImageSizeLanding}
+            memberImagePosition={form.heroImagePositionMember}
+            memberImageSize={form.heroImageSizeMember}
             logoUrl={liveLogoPreviewUrl}
             brandPrimary={previewBrandPrimary}
             campName={payload?.identity?.campName || payload?.tenant?.name || "Your Camp"}
             campType={payload?.tenant?.content?.campType || "coed"}
             welcomeBody={payload?.identity?.homepageQuote || payload?.identity?.tagline || ""}
-            onChangePosition={(nextValue) =>
+            onChangeLandingPosition={(nextValue) =>
               setForm((prev) => ({
                 ...prev,
-                heroImagePosition: normalizeHeroImagePosition(nextValue || "center center")
+                heroImagePosition: normalizeHeroImagePosition(nextValue || "center center"),
+                heroImagePositionLanding: normalizeHeroImagePosition(nextValue || "center center")
               }))
             }
-            onChangeSize={(nextValue) =>
+            onChangeLandingSize={(nextValue) =>
               setForm((prev) => ({
                 ...prev,
-                heroImageSize: normalizeHeroImageSize(nextValue || "cover")
+                heroImageSize: normalizeHeroImageSize(nextValue || "cover"),
+                heroImageSizeLanding: normalizeHeroImageSize(nextValue || "cover")
+              }))
+            }
+            onChangeMemberPosition={(nextValue) =>
+              setForm((prev) => ({
+                ...prev,
+                heroImagePositionMember: normalizeHeroImagePosition(nextValue || "center center")
+              }))
+            }
+            onChangeMemberSize={(nextValue) =>
+              setForm((prev) => ({
+                ...prev,
+                heroImageSizeMember: normalizeHeroImageSize(nextValue || "cover")
               }))
             }
           />

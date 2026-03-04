@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import { connectToDatabase } from "../src/db/connect.js";
 import { TenantModel, UserModel, ProfileModel } from "../src/db/models/index.js";
+import { hashPassword } from "../src/utils/auth.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url).pathname });
 
@@ -12,6 +13,17 @@ const FIRST_NAMES = [
   "Drew", "Skyler", "Reese", "Blair", "Rowan", "Hayden", "Lennox", "Sage", "Quinn", "Emerson",
   "Cameron", "Dakota", "Finley", "Ellis", "Marlowe", "Noah", "Mia", "Ethan", "Chloe", "Lucas",
   "Nora", "Owen", "Lila", "Mason", "Ruby", "Logan", "Zoe", "Levi", "Ivy", "Asher"
+];
+
+const WOMEN_FIRST_NAMES = [
+  "Abigail", "Addison", "Adeline", "Ainsley", "Alexandra", "Alice", "Amelia", "Anna", "Aria", "Aubrey",
+  "Audrey", "Ava", "Bailey", "Bella", "Brianna", "Brooke", "Camila", "Caroline", "Charlotte", "Chloe",
+  "Claire", "Clara", "Delaney", "Eleanor", "Elena", "Eliana", "Eliza", "Ella", "Ellie", "Emily",
+  "Emma", "Eva", "Evelyn", "Gabriella", "Genevieve", "Grace", "Hailey", "Hannah", "Harper", "Hazel",
+  "Isabella", "Isla", "Jade", "Josephine", "Julia", "Kayla", "Kennedy", "Layla", "Leah", "Lily",
+  "Lillian", "Lucy", "Madeline", "Madison", "Maya", "Mia", "Naomi", "Natalie", "Nora", "Olivia",
+  "Paige", "Penelope", "Piper", "Quinn", "Riley", "Ruby", "Samantha", "Savannah", "Scarlett", "Sienna",
+  "Sofia", "Sophia", "Stella", "Sydney", "Taylor", "Valentina", "Victoria", "Violet", "Willow", "Zoey"
 ];
 
 const LAST_NAMES = [
@@ -83,6 +95,7 @@ function parseArgs(argv = []) {
     count: 50,
     dryRun: false,
     allowLive: false,
+    womenOnly: false,
     help: false
   };
 
@@ -98,6 +111,10 @@ function parseArgs(argv = []) {
     }
     if (token === "--allow-live") {
       options.allowLive = true;
+      continue;
+    }
+    if (token === "--women-only") {
+      options.womenOnly = true;
       continue;
     }
     if (token === "--slug") {
@@ -132,10 +149,10 @@ function parseArgs(argv = []) {
 
 function printUsage() {
   console.log("Usage:");
-  console.log("  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug <tenant-slug> [--count 50] [--allow-live] [--dry-run]");
+  console.log("  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug <tenant-slug> [--count 50] [--allow-live] [--women-only] [--dry-run]");
   console.log("");
   console.log("Examples:");
-  console.log("  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug cedar --count 50 --allow-live");
+  console.log("  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug tripplake --count 300 --allow-live --women-only");
   console.log("  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug demo --count 50");
 }
 
@@ -145,8 +162,9 @@ function isHiddenTenant(tenant = {}) {
   return HIDDEN_TENANT_PATTERN.test(slug) || HIDDEN_TENANT_PATTERN.test(name);
 }
 
-function buildProfile(index, tenantSlug) {
-  const firstName = pick(FIRST_NAMES, index, 1);
+function buildProfile(index, tenantSlug, { womenOnly = false } = {}) {
+  const namePool = womenOnly ? WOMEN_FIRST_NAMES : FIRST_NAMES;
+  const firstName = pick(namePool, index, 1);
   const lastName = pick(LAST_NAMES, index, 2);
   const cityState = pick(CITIES, index, 3);
   const roleAtCamp = pick(CAMP_ROLES, index, 4);
@@ -154,6 +172,8 @@ function buildProfile(index, tenantSlug) {
   const college = pick(COLLEGES, index, 6);
   const collegeYear = String(2008 + (index % 15));
   const email = `fake.${tenantSlug}.${String(index).padStart(3, "0")}@seed.pondbridge.local`;
+  const nickname = `${firstName}-${String(index).padStart(3, "0")}`;
+  const handle = `${firstName}.${lastName}.${index}`.toLowerCase();
 
   return {
     firstName,
@@ -179,7 +199,13 @@ function buildProfile(index, tenantSlug) {
         years: "2018-2021"
       }
     ],
-    bio: `Fictional seed profile ${index} for tenant ${tenantSlug}.`
+    socials: {
+      linkedin: `https://www.linkedin.com/in/${handle}`,
+      instagram: `https://instagram.com/${handle}`,
+      facebook: `https://facebook.com/${handle}`,
+      nickname
+    },
+    bio: `Fictional seed profile ${index} for tenant ${tenantSlug}. Alumni community member and camp supporter.`
   };
 }
 
@@ -244,6 +270,9 @@ async function run() {
     console.log(
       `[seed:camp-profiles] Would upsert ${args.count} profiles into tenant "${tenant.slug}" (${tenant._id}).`
     );
+    console.log(
+      `[seed:camp-profiles] womenOnly=${args.womenOnly ? "true" : "false"}`
+    );
     return;
   }
 
@@ -251,21 +280,26 @@ async function run() {
   let updatedUsers = 0;
   let createdProfiles = 0;
   let updatedProfiles = 0;
+  const defaultPasswordHash = await hashPassword("Pondbridge123!");
 
   for (let index = 1; index <= args.count; index += 1) {
-    const fake = buildProfile(index, tenant.slug);
+    const fake = buildProfile(index, tenant.slug, {
+      womenOnly: args.womenOnly
+    });
 
     let user = await UserModel.findOne(tenant._id, { email: fake.email });
     if (!user) {
       user = await UserModel.create({
         tenantId: tenant._id,
         email: fake.email,
+        passwordHash: defaultPasswordHash,
         roles: ["user"],
         status: "active"
       });
       createdUsers += 1;
     } else {
       user = await UserModel.update(user._id, {
+        passwordHash: user.passwordHash || defaultPasswordHash,
         roles: Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : ["user"],
         status: "active"
       });
@@ -287,7 +321,7 @@ async function run() {
       currentJobs: fake.currentJobs,
       pastJobs: fake.pastJobs,
       industry: fake.industry,
-      socials: { linkedin: "", instagram: "", facebook: "", nickname: "" },
+      socials: fake.socials,
       avatarUrl: "",
       bio: fake.bio,
       status: "active"
@@ -311,6 +345,7 @@ async function run() {
   console.log("[seed:camp-profiles] Complete.");
   console.log(`[seed:camp-profiles] Tenant: ${tenant.slug} (${tenant._id})`);
   console.log(`[seed:camp-profiles] Requested count: ${args.count}`);
+  console.log(`[seed:camp-profiles] womenOnly: ${args.womenOnly ? "true" : "false"}`);
   console.log(`[seed:camp-profiles] Users created/updated: ${createdUsers}/${updatedUsers}`);
   console.log(`[seed:camp-profiles] Profiles created/updated: ${createdProfiles}/${updatedProfiles}`);
 }

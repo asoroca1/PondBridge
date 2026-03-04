@@ -263,6 +263,8 @@ export function getCurrentStepFromChecklist(checklist = [], fallback = "name_bra
 export function resolveTheme(tenant) {
   const live = deepClone(tenant?.theme || {});
   const fontToken = normalizeFontToken(live.fontToken || "cedar_default");
+  const defaultPosition = normalizeHeroImagePosition(live.heroImagePosition || "");
+  const defaultSize = normalizeHeroImageSize(live.heroImageSize || "");
   return {
     brandPrimary: String(live.brandPrimary || "#002b5c"),
     brandSecondary: String(live.brandSecondary || "#d3dde8"),
@@ -272,8 +274,20 @@ export function resolveTheme(tenant) {
     card: String(live.card || "#ffffff"),
     logoUrl: String(live.logoUrl || ""),
     heroImageUrl: String(live.heroImageUrl || ""),
-    heroImagePosition: normalizeHeroImagePosition(live.heroImagePosition || ""),
-    heroImageSize: normalizeHeroImageSize(live.heroImageSize || ""),
+    heroImagePosition: defaultPosition,
+    heroImageSize: defaultSize,
+    heroImagePositionLanding: normalizeHeroImagePosition(
+      live.heroImagePositionLanding || live.heroImagePosition || ""
+    ),
+    heroImageSizeLanding: normalizeHeroImageSize(
+      live.heroImageSizeLanding || live.heroImageSize || ""
+    ),
+    heroImagePositionMember: normalizeHeroImagePosition(
+      live.heroImagePositionMember || live.heroImagePosition || ""
+    ),
+    heroImageSizeMember: normalizeHeroImageSize(
+      live.heroImageSizeMember || live.heroImageSize || ""
+    ),
     fontFamily: String(live.fontFamily || FONT_TOKEN_TO_FAMILY[fontToken]),
     typography: String(live.typography || live.fontFamily || "Inter"),
     fontToken
@@ -431,6 +445,10 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
       heroImageUrl: theme.heroImageUrl,
       heroImagePosition: theme.heroImagePosition,
       heroImageSize: theme.heroImageSize,
+      heroImagePositionLanding: theme.heroImagePositionLanding,
+      heroImageSizeLanding: theme.heroImageSizeLanding,
+      heroImagePositionMember: theme.heroImagePositionMember,
+      heroImageSizeMember: theme.heroImageSizeMember,
       fontToken: theme.fontToken
     },
     content: {

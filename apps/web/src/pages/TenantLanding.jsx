@@ -12,8 +12,12 @@ export default function TenantLanding() {
   const isDemo = tenant?.onboardingStatus !== "live";
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
   const heroImage = heroBranding.heroImageUrl || cedarField;
-  const heroImagePosition = normalizeHeroImagePosition(heroBranding.heroImagePosition || "");
-  const heroImageSize = normalizeHeroImageSize(heroBranding.heroImageSize || "");
+  const heroImagePosition = normalizeHeroImagePosition(
+    heroBranding.heroImagePositionLanding || heroBranding.heroImagePosition || ""
+  );
+  const heroImageSize = normalizeHeroImageSize(
+    heroBranding.heroImageSizeLanding || heroBranding.heroImageSize || ""
+  );
 
   return (
     <div className={`home1 ${isDemo ? "home1-demo" : ""}`}>
@@ -21,8 +25,8 @@ export default function TenantLanding() {
         className="home-masthead"
         style={{
           backgroundImage: `url(${heroImage})`,
-          backgroundPosition: heroImagePosition,
-          backgroundSize: heroImageSize
+          backgroundPosition: heroImagePosition || "center center",
+          backgroundSize: heroImageSize || "cover"
         }}
       />
       <PageShell className="home-content-shell">
