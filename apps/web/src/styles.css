@@ -4130,7 +4130,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
   background: #f5f8fd;
 }
 
-.pb-cedar-page .director-admin-row-menu{
+.pb-cedar-page .director-admin-row-menu,
+.director-admin-row-menu{
   position: absolute;
   right: 0;
   top: auto;
@@ -4146,7 +4147,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
   z-index: 60;
 }
 
-.pb-cedar-page .director-admin-row-menu.is-floating{
+.pb-cedar-page .director-admin-row-menu.is-floating,
+.director-admin-row-menu.is-floating{
   position: fixed;
   right: auto;
   top: 0;
@@ -4154,7 +4156,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
   z-index: 380;
 }
 
-.pb-cedar-page .director-admin-row-menu .director-admin-inline-link{
+.pb-cedar-page .director-admin-row-menu .director-admin-inline-link,
+.director-admin-row-menu .director-admin-inline-link{
   text-align: left;
   width: 100%;
   border-radius: 8px;
@@ -4163,7 +4166,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
   color: #1f3d63;
 }
 
-.pb-cedar-page .director-admin-row-menu .director-admin-inline-link:hover{
+.pb-cedar-page .director-admin-row-menu .director-admin-inline-link:hover,
+.director-admin-row-menu .director-admin-inline-link:hover{
   background: #f3f8fe;
   text-decoration: none;
 }
