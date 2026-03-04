@@ -17,13 +17,14 @@ function initialsFromLabel(label = "") {
 
 export default function ProductHeader() {
   const { tenant } = useTenant();
+  const branding = tenant?.config?.branding || tenant?.theme || {};
   const networkName = useMemo(() => {
     const resolved = String(resolveNetworkDisplayName(tenant) || "").trim();
     if (resolved) return resolved;
     const campName = String(tenant?.name || "").trim();
     return campName ? `${campName} Network` : "Camp Network";
   }, [tenant]);
-  const logoUrl = String(tenant?.theme?.logoUrl || tenant?.config?.branding?.logoUrl || "").trim();
+  const logoUrl = String(branding.logoUrl || "").trim();
   const logoInitials = useMemo(() => initialsFromLabel(networkName), [networkName]);
 
   return (
