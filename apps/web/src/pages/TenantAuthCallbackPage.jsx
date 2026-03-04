@@ -6,6 +6,10 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
 import { normalizeTenantRouteForHost, tenantRoute } from "../lib/tenantRouting.js";
+import {
+  clearPendingLegalAgreement,
+  readPendingLegalAgreement
+} from "../lib/legalAgreement.js";
 
 function truthy(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -70,6 +74,13 @@ function isDirectorBootstrapDisabledError(err) {
     .trim()
     .toLowerCase();
   return code === "DIRECTOR_BOOTSTRAP_DISABLED" || message.includes("only available before launch");
+}
+
+function isLegalAgreementRequiredError(err) {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  return code === "LEGAL_AGREEMENT_REQUIRED";
 }
 
 function resolveAuthCallbackError(err, slug, inviteToken = "") {
@@ -202,6 +213,7 @@ function ClerkAuthCallbackPage() {
 
         const token = await getToken();
         if (!token) throw new Error("No authenticated session token from Clerk.");
+        const pendingLegalAgreement = readPendingLegalAgreement(slug);
 
         setPhaseMessage("Checking your network access...");
         let payload = await requestJson(
@@ -250,7 +262,10 @@ function ClerkAuthCallbackPage() {
           await requestJson(`/api/t/${slug}/access/invite/accept`, {
             method: "POST",
             token,
-            body: { inviteToken }
+            body: {
+              inviteToken,
+              legalAgreement: pendingLegalAgreement
+            }
           });
         } else if (decision.action === "join_network") {
           clearDirectorBootstrapIntent(slug);
@@ -258,7 +273,9 @@ function ClerkAuthCallbackPage() {
           await requestJson(`/api/t/${slug}/access/join`, {
             method: "POST",
             token,
-            body: {}
+            body: {
+              legalAgreement: pendingLegalAgreement
+            }
           });
         }
 
@@ -271,10 +288,21 @@ function ClerkAuthCallbackPage() {
           slug,
           String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home")
         );
+        clearPendingLegalAgreement(slug);
         redirected = true;
         navigate(next, { replace: true });
       } catch (err) {
         if (cancelled) return;
+        if (isLegalAgreementRequiredError(err)) {
+          const params = new URLSearchParams();
+          if (inviteToken) params.set("inviteToken", inviteToken);
+          params.set("legalRequired", "1");
+          redirected = true;
+          navigate(routeWithSlug(slug, `/create-account?${params.toString()}`), {
+            replace: true
+          });
+          return;
+        }
         if (isTenantScopeMismatchError(err)) {
           clearDirectorBootstrapIntent(slug);
           setPhaseMessage("Resetting sign-in so you can use the correct network account...");

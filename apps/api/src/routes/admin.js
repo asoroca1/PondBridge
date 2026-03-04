@@ -150,6 +150,17 @@ const exportLimiter = rateLimit({
   }
 });
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
+const DEFAULT_AGE_GROUPS = [
+  "Super Warrior",
+  "Warrior",
+  "Freshman",
+  "Sophomore",
+  "Junior",
+  "Intermediate",
+  "Senior I",
+  "Senior II"
+];
+const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
 
 function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
   const parsed = Number(value);
@@ -184,6 +195,31 @@ function normalizeEmail(value = "") {
 
 function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function normalizeIdentityLabelList(value = [], fallback = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/\r?\n|,/)
+        .map((item) => String(item || "").trim());
+  const seen = new Set();
+  const labels = [];
+  for (const item of source) {
+    const label = sanitizeText(String(item || "").trim()).slice(0, 64);
+    const key = label.toLowerCase();
+    if (!label || seen.has(key)) continue;
+    seen.add(key);
+    labels.push(label);
+    if (labels.length >= 20) break;
+  }
+  if (labels.length) return labels;
+
+  const fallbackList = Array.isArray(fallback) ? fallback : [];
+  return fallbackList
+    .map((item) => sanitizeText(String(item || "").trim()).slice(0, 64))
+    .filter(Boolean)
+    .slice(0, 20);
 }
 
 const EMAIL_FOOTER_PRESET_LIMIT = 20;
@@ -1325,6 +1361,174 @@ function mapMemberRow(profile = {}, user = null, { directorUserId = "" } = {}) {
   };
 }
 
+function sanitizeStringList(values = [], { lower = false } = {}) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : [])
+    .map((value) => {
+      const next = sanitizeText(String(value || "").trim());
+      return lower ? next.toLowerCase() : next;
+    })
+    .filter((value) => {
+      if (!value) return false;
+      const key = lower ? value : value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeMemberYear(value = "") {
+  const year = String(value || "").trim();
+  return /^\d{4}$/.test(year) ? year : "";
+}
+
+function normalizeMemberYearStints(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  let stints = Array.isArray(source.stints)
+    ? source.stints
+        .map((stint) => {
+          const startYear = normalizeMemberYear(stint?.startYear || stint?.firstYear || "");
+          const endYear = normalizeMemberYear(stint?.endYear || stint?.lastYear || "");
+          if (!startYear && !endYear) return null;
+          const normalizedStart = startYear || endYear;
+          const normalizedEnd = endYear || startYear;
+          if (!normalizedStart || !normalizedEnd) return null;
+          const startNum = Number(normalizedStart);
+          const endNum = Number(normalizedEnd);
+          const startAgeGroup = sanitizeText(String(stint?.startAgeGroup || stint?.ageGroup || "").trim());
+          const endAgeGroup = sanitizeText(String(stint?.endAgeGroup || stint?.ageGroup || "").trim());
+          const ageGroup = sanitizeText(String(stint?.ageGroup || "").trim());
+          return {
+            startYear: String(Math.min(startNum, endNum)),
+            endYear: String(Math.max(startNum, endNum)),
+            ...(startAgeGroup ? { startAgeGroup } : {}),
+            ...(endAgeGroup ? { endAgeGroup } : {}),
+            ...(ageGroup ? { ageGroup } : {})
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  if (!stints.length) {
+    const firstYear = normalizeMemberYear(source.firstYear || "");
+    const lastYear = normalizeMemberYear(source.lastYear || "");
+    if (firstYear || lastYear) {
+      const normalizedStart = firstYear || lastYear;
+      const normalizedEnd = lastYear || firstYear;
+      if (normalizedStart && normalizedEnd) {
+        const startNum = Number(normalizedStart);
+        const endNum = Number(normalizedEnd);
+        stints = [
+          {
+            startYear: String(Math.min(startNum, endNum)),
+            endYear: String(Math.max(startNum, endNum))
+          }
+        ];
+      }
+    }
+  }
+
+  return stints.sort(
+    (left, right) =>
+      Number(left?.startYear || 0) - Number(right?.startYear || 0) ||
+      Number(left?.endYear || 0) - Number(right?.endYear || 0)
+  );
+}
+
+function normalizeMemberCamperYears(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const stints = normalizeMemberYearStints(source);
+  return {
+    firstYear: normalizeMemberYear(source.firstYear || "") || stints[0]?.startYear || "",
+    firstGroup: sanitizeText(String(source.firstGroup || "").trim()),
+    lastYear: normalizeMemberYear(source.lastYear || "") || stints[stints.length - 1]?.endYear || "",
+    lastGroup: sanitizeText(String(source.lastGroup || "").trim()),
+    stints
+  };
+}
+
+function normalizeMemberStaffYears(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    stints: normalizeMemberYearStints(source)
+  };
+}
+
+function normalizeMemberRoleList(value = []) {
+  return sanitizeStringList(value);
+}
+
+function normalizeMemberEducationRows(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((row) => ({
+      college: sanitizeText(String(row?.college || "").trim()),
+      year: sanitizeText(String(row?.year || "").trim()),
+      major: sanitizeText(String(row?.major || "").trim())
+    }))
+    .filter((row) => row.college || row.year || row.major);
+}
+
+function mapAdminMemberProfile(profile = {}, user = null) {
+  const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  const roleList = normalizeMemberRoleList([
+    profile?.roleAtCamp || "",
+    ...(Array.isArray(socials?.roles) ? socials.roles : [])
+  ]);
+  const camperYears = normalizeMemberCamperYears(
+    socials?.camperYears && typeof socials.camperYears === "object" ? socials.camperYears : {}
+  );
+  const staffYears = normalizeMemberStaffYears(
+    socials?.staffYears && typeof socials.staffYears === "object" ? socials.staffYears : {}
+  );
+  const colleges = Array.isArray(profile?.colleges) ? profile.colleges : [];
+  const collegeYears = Array.isArray(profile?.collegeYears) ? profile.collegeYears : [];
+  const collegeMajors = Array.isArray(socials?.collegeMajors)
+    ? socials.collegeMajors
+    : Array.isArray(socials?.educationMajors)
+    ? socials.educationMajors
+    : [];
+  const educationRows = [];
+  const rowCount = Math.max(colleges.length, collegeYears.length, collegeMajors.length, 1);
+  for (let index = 0; index < rowCount; index += 1) {
+    educationRows.push({
+      college: sanitizeText(String(colleges[index] || "").trim()),
+      year: sanitizeText(String(collegeYears[index] || "").trim()),
+      major: sanitizeText(String(collegeMajors[index] || "").trim())
+    });
+  }
+
+  return {
+    id: toObjectIdString(profile?._id || profile?.id),
+    userId: toObjectIdString(profile?.userId),
+    firstName: profile?.firstName || "",
+    lastName: profile?.lastName || "",
+    nickname: String(profile?.nickname || socials?.nickname || socials?.campNickname || "").trim(),
+    email: profile?.emails?.find(Boolean) || user?.email || "",
+    emails: sanitizeStringList(profile?.emails || [], { lower: true }),
+    phone: profile?.phones?.find(Boolean) || "",
+    phones: sanitizeStringList(profile?.phones || []),
+    cityState: profile?.cityState || "",
+    roleAtCamp: profile?.roleAtCamp || "",
+    roles: roleList,
+    status: profile?.status || (user?.status === "inactive" ? "removed" : "active"),
+    flaggedReason: profile?.flaggedReason || "",
+    highSchool: profile?.highSchool || "",
+    industry: profile?.industry || "",
+    bio: profile?.bio || "",
+    avatarUrl: profile?.avatarUrl || "",
+    camperYears,
+    staffYears,
+    education: normalizeMemberEducationRows(educationRows),
+    currentJobs: Array.isArray(profile?.currentJobs) ? profile.currentJobs : [],
+    pastJobs: Array.isArray(profile?.pastJobs) ? profile.pastJobs : [],
+    social: {
+      linkedin: String(socials?.linkedin || "").trim(),
+      instagram: String(socials?.instagram || "").trim(),
+      facebook: String(socials?.facebook || "").trim()
+    }
+  };
+}
+
 function parseIds(input) {
   if (!Array.isArray(input)) return [];
   return [...new Set(
@@ -2278,6 +2482,215 @@ router.get("/invites/template.csv", async (_req, res) => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", 'attachment; filename="pondbridge-invites-template.csv"');
   return res.send(csv);
+});
+
+router.get("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
+  const profileId = String(req.params.profileId || "").trim();
+  const profile = await ProfileModel.findOne(req.tenant._id, { _id: profileId });
+  if (!profile) {
+    return res.status(404).json({
+      error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }
+    });
+  }
+
+  const userId = toObjectIdString(profile.userId);
+  const user = userId ? await UserModel.findOne(req.tenant._id, { _id: userId }) : null;
+
+  return res.json({
+    profile: mapAdminMemberProfile(profile, user)
+  });
+});
+
+router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
+  const profileId = String(req.params.profileId || "").trim();
+  const profile = await ProfileModel.findOne(req.tenant._id, { _id: profileId });
+  if (!profile) {
+    return res.status(404).json({
+      error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }
+    });
+  }
+
+  const userId = toObjectIdString(profile.userId);
+  const user = userId ? await UserModel.findOne(req.tenant._id, { _id: userId }) : null;
+  const incoming = req.body || {};
+
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(incoming, key);
+  const incomingPhone = sanitizeText(String(incoming.phone || "").trim());
+  const incomingRolesProvided = Array.isArray(incoming.roles) || hasOwn("roleAtCamp");
+  const incomingRoles = incomingRolesProvided
+    ? normalizeMemberRoleList(Array.isArray(incoming.roles) ? incoming.roles : [incoming.roleAtCamp])
+    : [];
+  const incomingNicknameProvided =
+    hasOwn("nickname") ||
+    hasOwn("campNickname") ||
+    incoming?.social?.nickname !== undefined ||
+    incoming?.socials?.nickname !== undefined ||
+    incoming?.socials?.campNickname !== undefined;
+  const incomingNickname = incomingNicknameProvided
+    ? sanitizeText(
+        String(
+          incoming?.nickname ??
+            incoming?.campNickname ??
+            incoming?.social?.nickname ??
+            incoming?.socials?.nickname ??
+            incoming?.socials?.campNickname ??
+            ""
+        ).trim()
+      )
+    : "";
+  const incomingCamperYearsProvided = incoming.camperYears !== undefined;
+  const incomingStaffYearsProvided = incoming.staffYears !== undefined;
+  const incomingCamperYears = incomingCamperYearsProvided ? normalizeMemberCamperYears(incoming.camperYears) : null;
+  const incomingStaffYears = incomingStaffYearsProvided ? normalizeMemberStaffYears(incoming.staffYears) : null;
+  const incomingEducationRows = Array.isArray(incoming.education)
+    ? normalizeMemberEducationRows(incoming.education)
+    : [];
+  const incomingCollegeMajorsProvided =
+    Array.isArray(incoming.education) ||
+    Array.isArray(incoming.collegeMajors) ||
+    Array.isArray(incoming?.social?.collegeMajors) ||
+    Array.isArray(incoming?.socials?.collegeMajors) ||
+    Array.isArray(incoming?.social?.educationMajors) ||
+    Array.isArray(incoming?.socials?.educationMajors);
+  const incomingCollegeMajors = sanitizeStringList(
+    Array.isArray(incoming.collegeMajors)
+      ? incoming.collegeMajors
+      : incomingEducationRows.length
+      ? incomingEducationRows.map((row) => row.major)
+      : Array.isArray(incoming?.social?.collegeMajors)
+      ? incoming.social.collegeMajors
+      : Array.isArray(incoming?.socials?.collegeMajors)
+      ? incoming.socials.collegeMajors
+      : Array.isArray(incoming?.social?.educationMajors)
+      ? incoming.social.educationMajors
+      : Array.isArray(incoming?.socials?.educationMajors)
+      ? incoming.socials.educationMajors
+      : []
+  );
+  const hasSocialPatch = Boolean(incoming.social || incoming.socials);
+  const existingSocials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  const nextSocials =
+    hasSocialPatch ||
+    incomingCamperYearsProvided ||
+    incomingStaffYearsProvided ||
+    incomingRolesProvided ||
+    incomingNicknameProvided ||
+    incomingCollegeMajorsProvided
+      ? {
+          ...existingSocials,
+          ...(hasSocialPatch
+            ? {
+                linkedin: String(incoming?.social?.linkedin || incoming?.socials?.linkedin || "").trim(),
+                instagram: String(incoming?.social?.instagram || incoming?.socials?.instagram || "").trim(),
+                facebook: String(incoming?.social?.facebook || incoming?.socials?.facebook || "").trim()
+              }
+            : {}),
+          ...(incomingCamperYearsProvided ? { camperYears: incomingCamperYears } : {}),
+          ...(incomingStaffYearsProvided ? { staffYears: incomingStaffYears } : {}),
+          ...(incomingRolesProvided ? { roles: incomingRoles } : {}),
+          ...(incomingNicknameProvided ? { nickname: incomingNickname, campNickname: incomingNickname } : {}),
+          ...(incomingCollegeMajorsProvided
+            ? { collegeMajors: incomingCollegeMajors, educationMajors: incomingCollegeMajors }
+            : {})
+        }
+      : undefined;
+  const hasLocationFields = hasOwn("cityState") || hasOwn("city") || hasOwn("state") || hasOwn("country");
+  const nextCityState = hasLocationFields
+    ? (() => {
+        const direct = String(incoming.cityState || "").trim();
+        if (direct) return composeCityState(parseCityStateDetailed(direct));
+        const state = String(incoming.state || "").trim().toUpperCase();
+        const country = canonicalizeCountryName(String(incoming.country || "").trim());
+        const city = canonicalizeCityName(String(incoming.city || "").trim(), { state, country });
+        return composeCityState({ city, state, country });
+      })()
+    : undefined;
+
+  const patch = {
+    firstName: hasOwn("firstName") ? sanitizeText(String(incoming.firstName || "").trim()) : undefined,
+    lastName: hasOwn("lastName") ? sanitizeText(String(incoming.lastName || "").trim()) : undefined,
+    emails: Array.isArray(incoming.emails) ? sanitizeStringList(incoming.emails, { lower: true }) : undefined,
+    phones:
+      incoming.phone !== undefined
+        ? (incomingPhone ? [incomingPhone] : [])
+        : Array.isArray(incoming.phones)
+        ? sanitizeStringList(incoming.phones)
+        : undefined,
+    cityState: nextCityState,
+    roleAtCamp: incomingRolesProvided
+      ? sanitizeText(String(incomingRoles[0] || "").trim())
+      : hasOwn("roleAtCamp")
+      ? sanitizeText(String(incoming.roleAtCamp || "").trim())
+      : undefined,
+    highSchool: hasOwn("highSchool") ? sanitizeText(String(incoming.highSchool || "").trim()) : undefined,
+    colleges: Array.isArray(incoming.education)
+      ? incomingEducationRows.map((row) => row.college)
+      : Array.isArray(incoming.colleges)
+      ? sanitizeStringList(incoming.colleges)
+      : undefined,
+    collegeYears: Array.isArray(incoming.education)
+      ? incomingEducationRows.map((row) => row.year)
+      : Array.isArray(incoming.collegeYears)
+      ? sanitizeStringList(incoming.collegeYears)
+      : undefined,
+    currentJobs: Array.isArray(incoming.currentJobs)
+      ? incoming.currentJobs.map((job) => ({
+          role: sanitizeText(String(job?.role || "").trim()),
+          company: sanitizeText(String(job?.company || "").trim()),
+          years: sanitizeText(String(job?.years || "").trim())
+        }))
+      : undefined,
+    pastJobs: Array.isArray(incoming.pastJobs)
+      ? incoming.pastJobs.map((job) => ({
+          role: sanitizeText(String(job?.role || "").trim()),
+          company: sanitizeText(String(job?.company || "").trim()),
+          years: sanitizeText(String(job?.years || "").trim())
+        }))
+      : undefined,
+    industry: hasOwn("industry") ? sanitizeText(String(incoming.industry || "").trim()) : undefined,
+    socials: nextSocials,
+    avatarUrl:
+      incoming?.uploads?.photoUrl !== undefined || hasOwn("photoUrl") || hasOwn("avatarUrl")
+        ? String(incoming?.uploads?.photoUrl || incoming.photoUrl || incoming.avatarUrl || "").trim()
+        : undefined,
+    bio: hasOwn("bio") ? sanitizeText(String(incoming.bio || "").trim()) : undefined,
+    flaggedReason: hasOwn("flaggedReason") ? sanitizeText(String(incoming.flaggedReason || "").trim()) : undefined
+  };
+
+  if (hasOwn("status")) {
+    const nextStatus = String(incoming.status || "").trim().toLowerCase();
+    if (!["active", "pending", "flagged", "removed"].includes(nextStatus)) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATUS",
+          message: "Status must be active, pending, flagged, or removed."
+        }
+      });
+    }
+    patch.status = nextStatus;
+  }
+
+  const cleanPatch = Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
+  const updated = await ProfileModel.update(profile._id, cleanPatch);
+
+  if (cleanPatch.status && userId) {
+    const nextUserStatus = cleanPatch.status === "removed" ? "inactive" : "active";
+    await UserModel.update(userId, { status: nextUserStatus });
+  }
+
+  await writeAdminAudit(req, "admin_member_full_profile_updated", {
+    profileId: toObjectIdString(updated._id),
+    userId,
+    changedFields: Object.keys(cleanPatch)
+  });
+
+  const refreshedUser = userId ? await UserModel.findOne(req.tenant._id, { _id: userId }) : null;
+  return res.json({
+    ok: true,
+    profile: mapAdminMemberProfile(updated, refreshedUser || user)
+  });
 });
 
 router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
@@ -3368,7 +3781,9 @@ router.get("/settings", async (req, res) => {
       tagline: String(content.welcomeBody || content.welcomeHeadline || "").trim(),
       aboutText: content.aboutText,
       contactEmail: content.contactEmail,
-      websiteUrl
+      websiteUrl,
+      ageGroups: normalizeIdentityLabelList(content.ageGroups, DEFAULT_AGE_GROUPS),
+      staffRoles: normalizeIdentityLabelList(content.staffRoles, DEFAULT_STAFF_ROLES)
     },
     branding: {
       logoUrl: theme.logoUrl,
@@ -3420,6 +3835,32 @@ router.patch("/settings/identity", async (req, res) => {
         (content.welcomeBody || content.welcomeHeadline || "")
     ).trim()
   );
+  const nextAgeGroups = normalizeIdentityLabelList(
+    req.body?.ageGroups,
+    content.ageGroups && content.ageGroups.length ? content.ageGroups : DEFAULT_AGE_GROUPS
+  );
+  const nextStaffRoles = normalizeIdentityLabelList(
+    req.body?.staffRoles,
+    content.staffRoles && content.staffRoles.length ? content.staffRoles : DEFAULT_STAFF_ROLES
+  );
+
+  if (!nextAgeGroups.length) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_AGE_GROUPS",
+        message: "Add at least one camper age group."
+      }
+    });
+  }
+  if (!nextStaffRoles.length) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_STAFF_ROLES",
+        message: "Add at least one staff role."
+      }
+    });
+  }
+
   const next = {
     campType: nextCampType,
     networkDisplayName: nextNetworkName,
@@ -3429,7 +3870,9 @@ router.patch("/settings/identity", async (req, res) => {
       nextCampType
     ),
     contactEmail: normalizeEmail(req.body?.contactEmail ?? (content.contactEmail || "")),
-    supportUrl: String(req.body?.websiteUrl ?? (content.supportUrl || "")).trim()
+    supportUrl: String(req.body?.websiteUrl ?? (content.supportUrl || "")).trim(),
+    ageGroups: nextAgeGroups,
+    staffRoles: nextStaffRoles
   };
 
   if (next.contactEmail && !isEmail(next.contactEmail)) {

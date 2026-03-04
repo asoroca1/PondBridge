@@ -26,6 +26,8 @@ import {
 } from "../utils/location.js";
 
 const router = Router({ mergeParams: true });
+const DEFAULT_TERMS_VERSION = "2026-03-04";
+const DEFAULT_PRIVACY_VERSION = "2026-03-04";
 function authLimiterKey(req, { includeEmail = false } = {}) {
   const tenantSlug = String(req.params?.slug || req.tenant?.slug || "").trim().toLowerCase();
   const ip = String(req.ip || "").trim();
@@ -189,14 +191,59 @@ function normalizeJobRows(rows = []) {
   }));
 }
 
+function normalizeBoolean(value = false) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+function normalizeLegalAgreementFromBody(body = {}) {
+  const provided = body && typeof body === "object" ? body : {};
+  const nested = provided.legalAgreement && typeof provided.legalAgreement === "object" ? provided.legalAgreement : {};
+  const accepted = normalizeBoolean(
+    provided.legalAgreementAccepted ??
+      provided.acceptedLegal ??
+      provided.acceptTerms ??
+      provided.termsAccepted ??
+      nested.accepted
+  );
+  const rawAcceptedAt = String(nested.acceptedAt || provided.legalAgreementAcceptedAt || "").trim();
+  const acceptedAtDate = rawAcceptedAt ? new Date(rawAcceptedAt) : new Date();
+  const acceptedAt = Number.isNaN(acceptedAtDate.getTime()) ? new Date().toISOString() : acceptedAtDate.toISOString();
+  const termsVersion =
+    String(nested.termsVersion || provided.termsVersion || DEFAULT_TERMS_VERSION).trim() || DEFAULT_TERMS_VERSION;
+  const privacyVersion =
+    String(nested.privacyVersion || provided.privacyVersion || DEFAULT_PRIVACY_VERSION).trim() ||
+    DEFAULT_PRIVACY_VERSION;
+  return {
+    accepted,
+    acceptedAt,
+    termsVersion,
+    privacyVersion
+  };
+}
+
 function profileFromBody(body) {
   const education = Array.isArray(body.education) ? body.education : [];
   const roles = normalizeRoleList(Array.isArray(body.roles) ? body.roles : [body.roleAtCamp]);
+  const normalizedSocials = normalizeSocialsFromBody(body, roles);
+  const legalAgreement = normalizeLegalAgreementFromBody(body);
   const phones = Array.isArray(body.phones)
     ? body.phones.map((entry) => String(entry || "").trim()).filter(Boolean)
     : body.phone
     ? [String(body.phone).trim()]
     : [];
+  const socials = legalAgreement.accepted
+    ? {
+        ...normalizedSocials,
+        legalAgreement: {
+          accepted: true,
+          acceptedAt: legalAgreement.acceptedAt,
+          termsVersion: legalAgreement.termsVersion,
+          privacyVersion: legalAgreement.privacyVersion
+        }
+      }
+    : normalizedSocials;
   return {
     firstName: String(body.firstName || "").trim(),
     lastName: String(body.lastName || "").trim(),
@@ -214,7 +261,7 @@ function profileFromBody(body) {
     currentJobs: normalizeJobRows(body.currentJobs),
     pastJobs: normalizeJobRows(body.pastJobs),
     industry: String(body.industry || "").trim(),
-    socials: normalizeSocialsFromBody(body, roles),
+    socials,
     bio: String(body.bio || "").trim(),
     avatarUrl: String(body.uploads?.photoUrl || body.avatarUrl || body.photoUrl || "").trim()
   };
@@ -232,6 +279,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
   const campName = String(req.body.campName || "").trim();
   const inviteToken = String(req.body.inviteToken || "").trim();
   const directorSignup = Boolean(req.body.directorSignup);
+  const legalAgreement = normalizeLegalAgreementFromBody(req.body);
 
   if (!email || !password || password.length < 8 || !firstName || !lastName) {
     return res.status(400).json({
@@ -316,6 +364,15 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
         });
       }
     }
+  }
+
+  if (!legalAgreement.accepted) {
+    return res.status(400).json({
+      error: {
+        code: "LEGAL_AGREEMENT_REQUIRED",
+        message: "You must agree to Terms and Privacy before creating an account."
+      }
+    });
   }
 
   const existing = await UserModel.findOne(req.tenant._id, { email });

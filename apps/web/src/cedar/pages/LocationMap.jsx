@@ -41,10 +41,12 @@ function escapeHtml(value = "") {
 }
 
 const DEFAULT_VIEW = { center: [-98.5795, 39.8283], zoom: 3.5 };
-const CITIES_CACHE_KEY = "map:cities:v1";
+const CITIES_CACHE_PREFIX = "map:cities:v2:";
 const CITIES_CACHE_TTL_MS = 5 * 60 * 1000;
-const PEOPLE_CACHE_PREFIX = "map:city:people:v1:";
+const PEOPLE_CACHE_PREFIX = "map:city:people:v2:";
 const PEOPLE_CACHE_TTL_MS = 2 * 60 * 1000;
+const CITY_SYNC_RETRY_LIMIT = 8;
+const CITY_SYNC_RETRY_BASE_DELAY_MS = 1500;
 
 export default function LocationMap() {
   const { slug = "" } = useParams();
@@ -65,12 +67,29 @@ export default function LocationMap() {
   const loadedRef = useRef(false);
   const peopleReqRef = useRef(0);
   const peopleCacheRef = useRef(new Map());
+  const cityRefreshAttemptsRef = useRef(0);
+  const cityRefreshTimerRef = useRef(null);
+  const hasLoadedCitiesOnceRef = useRef(false);
 
   const [cities, setCities] = useState([]);
   const [selected, setSelected] = useState(null);
   const [people, setPeople] = useState([]);
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingCities, setLoadingCities] = useState(true);
+  const [pendingCityGeocodes, setPendingCityGeocodes] = useState(0);
+
+  const tenantCacheSuffix = useMemo(
+    () => String(slug || "").trim().toLowerCase() || "default",
+    [slug]
+  );
+  const citiesCacheKey = useMemo(
+    () => `${CITIES_CACHE_PREFIX}${tenantCacheSuffix}`,
+    [tenantCacheSuffix]
+  );
+  const peopleCachePrefix = useMemo(
+    () => `${PEOPLE_CACHE_PREFIX}${tenantCacheSuffix}:`,
+    [tenantCacheSuffix]
+  );
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -92,7 +111,9 @@ export default function LocationMap() {
 
   const subtitleText =
     cities.length > 0
-      ? `${totalAlumni} ${alumniWord} across ${cities.length} cities`
+      ? pendingCityGeocodes > 0
+        ? `${totalAlumni} ${alumniWord} across ${cities.length} cities • mapping ${pendingCityGeocodes} more`
+        : `${totalAlumni} ${alumniWord} across ${cities.length} cities`
       : `Explore where your ${alumniWord} network lives around the world.`;
 
   async function resolveToken() {
@@ -146,7 +167,7 @@ export default function LocationMap() {
     }
 
     try {
-      const raw = sessionStorage.getItem(`${PEOPLE_CACHE_PREFIX}${cityKey}`);
+      const raw = sessionStorage.getItem(`${peopleCachePrefix}${cityKey}`);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (now - Number(parsed?.ts || 0) > PEOPLE_CACHE_TTL_MS) return null;
@@ -162,7 +183,7 @@ export default function LocationMap() {
   function setCachedPeople(cityKey, data) {
     if (!Array.isArray(data) || data.length === 0) {
       try {
-        sessionStorage.removeItem(`${PEOPLE_CACHE_PREFIX}${cityKey}`);
+        sessionStorage.removeItem(`${peopleCachePrefix}${cityKey}`);
       } catch {
         // ignore cache removal failures
       }
@@ -176,7 +197,7 @@ export default function LocationMap() {
       if (firstKey && firstKey !== cityKey) peopleCacheRef.current.delete(firstKey);
     }
     try {
-      sessionStorage.setItem(`${PEOPLE_CACHE_PREFIX}${cityKey}`, JSON.stringify(entry));
+      sessionStorage.setItem(`${peopleCachePrefix}${cityKey}`, JSON.stringify(entry));
     } catch {
       // ignore cache write failures
     }
@@ -396,68 +417,116 @@ export default function LocationMap() {
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
-      setLoadingCities(true);
-      try {
-        const cachedRaw = sessionStorage.getItem(CITIES_CACHE_KEY);
-        if (cachedRaw) {
-          const cached = JSON.parse(cachedRaw);
-          const ts = Number(cached?.ts || 0);
-          if (Date.now() - ts <= CITIES_CACHE_TTL_MS) {
-            const cachedList = normalizeCities(cached?.data || []);
-            if (cachedList.length && !cancelled) {
-              setCities(cachedList);
-              citiesRef.current = cachedList;
-              if (loadedRef.current) renderMarkers(cachedList);
+    const clearRetryTimer = () => {
+      if (cityRefreshTimerRef.current) {
+        window.clearTimeout(cityRefreshTimerRef.current);
+        cityRefreshTimerRef.current = null;
+      }
+    };
+
+    const scheduleRetry = () => {
+      if (cancelled) return;
+      if (cityRefreshAttemptsRef.current >= CITY_SYNC_RETRY_LIMIT) return;
+      clearRetryTimer();
+      cityRefreshAttemptsRef.current += 1;
+      const delay = Math.min(5000, CITY_SYNC_RETRY_BASE_DELAY_MS * cityRefreshAttemptsRef.current);
+      cityRefreshTimerRef.current = window.setTimeout(() => {
+        void loadCities({ allowSessionCache: false, bypassHttpCache: true });
+      }, delay);
+    };
+
+    const loadCities = async ({ allowSessionCache = true, bypassHttpCache = false } = {}) => {
+      if (!cancelled && !hasLoadedCitiesOnceRef.current) {
+        setLoadingCities(true);
+      }
+
+      if (allowSessionCache) {
+        try {
+          const cachedRaw = sessionStorage.getItem(citiesCacheKey);
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            const ts = Number(cached?.ts || 0);
+            if (Date.now() - ts <= CITIES_CACHE_TTL_MS) {
+              const cachedList = normalizeCities(cached?.data || []);
+              const cachedPending = Math.max(0, Number(cached?.data?.unresolvedCityCount || 0));
+              if (cachedList.length && !cancelled) {
+                setCities(cachedList);
+                citiesRef.current = cachedList;
+                setPendingCityGeocodes(cachedPending);
+                if (loadedRef.current) renderMarkers(cachedList);
+              }
             }
           }
+        } catch {
+          // ignore broken session cache
         }
-      } catch {
-        // ignore broken session cache
       }
 
       try {
         const token = await resolveToken();
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-        const res = await fetch(`${API_BASE}/map/cities`, { headers });
+        const url = bypassHttpCache
+          ? `${API_BASE}/map/cities?refresh=${Date.now()}`
+          : `${API_BASE}/map/cities`;
+        const res = await fetch(url, { headers });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
         const list = normalizeCities(data);
+        const unresolvedCityCount = Math.max(0, Number(data?.unresolvedCityCount || 0));
 
         if (!cancelled) {
-          if (list.length === 0 && citiesRef.current.length) return;
+          setPendingCityGeocodes(unresolvedCityCount);
 
-          setCities(list);
-          citiesRef.current = list;
-          try {
-            sessionStorage.setItem(
-              CITIES_CACHE_KEY,
-              JSON.stringify({ ts: Date.now(), data: list })
-            );
-          } catch {
-            // ignore cache write failures
+          if (list.length === 0 && citiesRef.current.length === 0) {
+            setCities([]);
+            citiesRef.current = [];
+            if (loadedRef.current) renderMarkers([]);
+          } else if (list.length > 0) {
+            setCities(list);
+            citiesRef.current = list;
+            try {
+              sessionStorage.setItem(citiesCacheKey, JSON.stringify({ ts: Date.now(), data }));
+            } catch {
+              // ignore cache write failures
+            }
+            if (loadedRef.current) renderMarkers(list);
           }
 
-          if (loadedRef.current) renderMarkers(list);
+          if (unresolvedCityCount > 0) {
+            scheduleRetry();
+          } else {
+            cityRefreshAttemptsRef.current = 0;
+            clearRetryTimer();
+          }
         }
       } catch (error) {
         console.error("Failed to load city map data", error);
-        if (!cancelled) {
-          if (citiesRef.current.length) return;
+        if (!cancelled && citiesRef.current.length === 0) {
           setCities([]);
           citiesRef.current = [];
+          setPendingCityGeocodes(0);
           if (loadedRef.current) renderMarkers([]);
         }
       } finally {
-        if (!cancelled) setLoadingCities(false);
+        if (!cancelled && !hasLoadedCitiesOnceRef.current) {
+          hasLoadedCitiesOnceRef.current = true;
+          setLoadingCities(false);
+        }
       }
-    })();
+    };
+
+    clearRetryTimer();
+    cityRefreshAttemptsRef.current = 0;
+    hasLoadedCitiesOnceRef.current = false;
+    peopleCacheRef.current = new Map();
+    void loadCities({ allowSessionCache: true, bypassHttpCache: false });
 
     return () => {
       cancelled = true;
+      clearRetryTimer();
     };
-  }, []);
+  }, [citiesCacheKey]);
 
   async function loadPeople(citySel) {
     const reqId = ++peopleReqRef.current;

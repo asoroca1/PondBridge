@@ -43,14 +43,73 @@
   width: 100%;
   margin: 0;
   padding: 0 24px;
+  display: flex;
+  align-items: center;
 }
 
 .product-header-brand {
+  max-width: min(100%, 680px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand-on-primary, #fff) 28%, transparent);
+  background: color-mix(in srgb, var(--brand-on-primary, #fff) 14%, transparent);
+  color: var(--brand-on-primary, #ffffff);
+}
+
+.product-header-brand-logo,
+.product-header-brand-logo-fallback {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--brand-on-primary, #fff) 42%, transparent);
+}
+
+.product-header-brand-logo {
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.product-header-brand-logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--brand-on-primary, #fff) 16%, transparent);
+  color: var(--brand-on-primary, #ffffff);
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.product-header-brand-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.product-header-brand-copy strong {
+  margin: 0;
   color: var(--brand-on-primary, #ffffff);
   font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
   font-weight: 700;
-  font-size: clamp(1.6rem, 2.3vw, 2rem);
+  font-size: clamp(1.1rem, 2vw, 1.55rem);
   letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-header-brand-copy span {
+  margin: 0;
+  color: color-mix(in srgb, var(--brand-on-primary, #fff) 84%, transparent);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
 }
 
 .product-claim-page {
@@ -1776,6 +1835,29 @@
   .product-footer-bottom {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .product-header-brand {
+    max-width: 100%;
+    min-height: 44px;
+    padding: 5px 11px;
+    gap: 8px;
+  }
+
+  .product-header-brand-logo,
+  .product-header-brand-logo-fallback {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+    border-radius: 7px;
+  }
+
+  .product-header-brand-copy strong {
+    font-size: clamp(1rem, 4vw, 1.22rem);
+  }
+
+  .product-header-brand-copy span {
+    font-size: 0.66rem;
   }
 
   .product-footer-inner {

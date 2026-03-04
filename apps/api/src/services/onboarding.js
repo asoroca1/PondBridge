@@ -425,8 +425,8 @@ export function resolveDirectorLegalAgreement(tenant) {
     accepted: Boolean(live.accepted),
     acceptedAt: live.acceptedAt || null,
     acceptedByUserId: live.acceptedByUserId || null,
-    termsVersion: String(live.termsVersion || "2026-02-21"),
-    privacyVersion: String(live.privacyVersion || "2026-02-21")
+    termsVersion: String(live.termsVersion || "2026-03-04"),
+    privacyVersion: String(live.privacyVersion || "2026-03-04")
   };
 }
 
@@ -560,8 +560,8 @@ export function resolveDraft(tenant) {
         draftLegal.accepted !== undefined ? Boolean(draftLegal.accepted) : Boolean(baseLegal.accepted),
       acceptedAt: draftLegal.acceptedAt || baseLegal.acceptedAt || null,
       acceptedByUserId: draftLegal.acceptedByUserId || baseLegal.acceptedByUserId || null,
-      termsVersion: String(draftLegal.termsVersion || baseLegal.termsVersion || "2026-02-21"),
-      privacyVersion: String(draftLegal.privacyVersion || baseLegal.privacyVersion || "2026-02-21")
+      termsVersion: String(draftLegal.termsVersion || baseLegal.termsVersion || "2026-03-04"),
+      privacyVersion: String(draftLegal.privacyVersion || baseLegal.privacyVersion || "2026-03-04")
     },
     wizard: {
       step: String(draftWizard.step || "").trim().toLowerCase(),

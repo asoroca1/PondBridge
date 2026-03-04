@@ -147,8 +147,29 @@ export default function DirectorOnboardingCommandCenterPage() {
   const [syncingBilling, setSyncingBilling] = useState(false);
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
-  const previewBrandPrimary = normalizeHexColor(payload?.tenant?.onboardingDraft?.theme?.brandPrimary || "#002b5c");
+  const previewTheme = payload?.tenant?.onboardingDraft?.theme || {};
+  const previewContent = payload?.tenant?.onboardingDraft?.content || {};
+  const previewBrandPrimary = normalizeHexColor(
+    previewTheme.brandPrimary || payload?.tenant?.theme?.brandPrimary || tenant?.theme?.brandPrimary || "#002b5c"
+  );
   const previewBrandOnPrimary = readableTextColorOnBrand(previewBrandPrimary);
+  const previewLogoUrl = String(
+    previewTheme.logoUrl || payload?.tenant?.theme?.logoUrl || tenant?.theme?.logoUrl || ""
+  ).trim();
+  const previewNetworkName = String(
+    previewContent.networkDisplayName ||
+      payload?.tenant?.content?.networkDisplayName ||
+      networkDisplayName ||
+      `${payload?.tenant?.name || tenant?.name || "Your Camp"} ${alumniWordTitle} Network`
+  ).trim();
+  const previewLogoInitials =
+    previewNetworkName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "CN";
 
   const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
@@ -630,24 +651,28 @@ export default function DirectorOnboardingCommandCenterPage() {
           style={{
             "--brand-primary": previewBrandPrimary,
             "--brand-on-primary": previewBrandOnPrimary,
-            "--brand-secondary": payload?.tenant?.onboardingDraft?.theme?.brandSecondary || "#d3dde8",
-            "--bg": payload?.tenant?.onboardingDraft?.theme?.bg || "#f5f7fa",
-            "--text": payload?.tenant?.onboardingDraft?.theme?.text || "#0f172a",
-            "--card": payload?.tenant?.onboardingDraft?.theme?.card || "#ffffff",
+            "--brand-secondary": previewTheme.brandSecondary || "#d3dde8",
+            "--bg": previewTheme.bg || "#f5f7fa",
+            "--text": previewTheme.text || "#0f172a",
+            "--card": previewTheme.card || "#ffffff",
             "--font-display": "\"Roboto Slab\", \"Avenir Next\", serif",
             "--font-body": "\"Inter\", \"Avenir Next\", \"Segoe UI\", sans-serif"
           }}
         >
           <div className="wizard-preview-nav">
-            {payload?.tenant?.onboardingDraft?.theme?.logoUrl ? (
-              <img src={payload.tenant.onboardingDraft.theme.logoUrl} alt="Camp logo preview" />
-            ) : null}
-            <strong>{payload?.tenant?.onboardingDraft?.content?.networkDisplayName || networkDisplayName || `${payload?.tenant?.name || "Your Camp"} ${alumniWordTitle} Network`}</strong>
+            {previewLogoUrl ? (
+              <img src={previewLogoUrl} alt="Camp logo preview" />
+            ) : (
+              <span className="wizard-preview-nav-fallback" aria-hidden="true">
+                {previewLogoInitials}
+              </span>
+            )}
+            <strong>{previewNetworkName}</strong>
           </div>
           <div className="wizard-preview-content">
             <article className="wizard-preview-card">
-              <h3>{payload?.tenant?.onboardingDraft?.content?.welcomeHeadline || "Welcome to your network"}</h3>
-              <p>{payload?.tenant?.onboardingDraft?.content?.welcomeBody || "Your welcome message appears here."}</p>
+              <h3>{previewContent.welcomeHeadline || "Welcome to your network"}</h3>
+              <p>{previewContent.welcomeBody || "Your welcome message appears here."}</p>
             </article>
           </div>
         </div>

@@ -99,8 +99,8 @@ const DEFAULT_AGE_GROUPS = [
   "Senior II"
 ];
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
-const DEFAULT_TERMS_VERSION = "2026-02-21";
-const DEFAULT_PRIVACY_VERSION = "2026-02-21";
+const DEFAULT_TERMS_VERSION = "2026-03-04";
+const DEFAULT_PRIVACY_VERSION = "2026-03-04";
 const DEFAULT_HERO_IMAGE_POSITION = "center center";
 const DEFAULT_HERO_IMAGE_SIZE = "cover";
 const CAMP_TYPE_OPTIONS = [
@@ -779,6 +779,14 @@ function DirectorCreateAccountWizardPage() {
     form.campName || "Your Camp",
     selectedCampType
   );
+  const networkPreviewInitials =
+    networkDisplayNamePreview
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "CN";
   const featureOptionsForCopy = useMemo(
     () =>
       FEATURE_OPTIONS.map((item) => ({
@@ -2031,7 +2039,16 @@ function DirectorCreateAccountWizardPage() {
             email: String(form.email || "").trim().toLowerCase(),
             password: form.password,
             campName: String(form.campName || "").trim(),
-            directorSignup: true
+            directorSignup: true,
+            legalAgreementAccepted: true,
+            termsVersion: DEFAULT_TERMS_VERSION,
+            privacyVersion: DEFAULT_PRIVACY_VERSION,
+            legalAgreement: {
+              accepted: true,
+              acceptedAt: new Date().toISOString(),
+              termsVersion: DEFAULT_TERMS_VERSION,
+              privacyVersion: DEFAULT_PRIVACY_VERSION
+            }
           }
         });
         token = registerPayload.token;
@@ -3391,7 +3408,7 @@ function DirectorCreateAccountWizardPage() {
                       <h3>Design</h3>
                       <div className="director-review-mini-preview">
                         <div className="director-review-mini-preview-top" style={{ background: themeDraft.brandPrimary }}>
-                          {themeDraft.logoUrl ? <img src={themeDraft.logoUrl} alt="" /> : <span>PB</span>}
+                          {themeDraft.logoUrl ? <img src={themeDraft.logoUrl} alt="" /> : <span>{networkPreviewInitials}</span>}
                           <strong>{networkDisplayNamePreview}</strong>
                         </div>
                         <div

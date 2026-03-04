@@ -5,6 +5,11 @@ import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
+import {
+  LEGAL_PRIVACY_VERSION,
+  LEGAL_TERMS_VERSION,
+  buildAcceptedLegalAgreementPayload
+} from "../lib/legalAgreement.js";
 
 const initialForm = {
   firstName: "",
@@ -30,6 +35,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [resumeUploading, setResumeUploading] = useState(false);
+  const [legalAgreementAccepted, setLegalAgreementAccepted] = useState(false);
   const canUseResumeParsing = tenantHasFeature(tenant, "resumeParsing");
   const signupEnabled = tenant?.accessSettings?.signupEnabled !== false;
 
@@ -105,15 +111,24 @@ export default function RegisterPage() {
   async function onSubmit(event) {
     event.preventDefault();
     setError("");
+    if (!legalAgreementAccepted) {
+      setError("You must agree to Terms and Privacy to create your account.");
+      return;
+    }
     setSaving(true);
 
     try {
+      const legalAgreement = buildAcceptedLegalAgreementPayload();
       const payload = await requestJson(`/api/t/${slug}/auth/register`, {
         method: "POST",
         body: {
           ...form,
           ...resumeData,
-          inviteToken
+          inviteToken,
+          legalAgreementAccepted: true,
+          termsVersion: LEGAL_TERMS_VERSION,
+          privacyVersion: LEGAL_PRIVACY_VERSION,
+          legalAgreement
         }
       });
 
@@ -203,6 +218,25 @@ export default function RegisterPage() {
               value={form.bio}
               onChange={(event) => setForm((prev) => ({ ...prev, bio: event.target.value }))}
             />
+          </label>
+
+          <label className="wizard1-legal-check">
+            <input
+              type="checkbox"
+              checked={legalAgreementAccepted}
+              onChange={(event) => setLegalAgreementAccepted(event.target.checked)}
+            />
+            <span>
+              I agree to the{" "}
+              <a href={`/t/${slug}/legal#terms`} target="_blank" rel="noreferrer">
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a href={`/t/${slug}/legal#privacy`} target="_blank" rel="noreferrer">
+                Privacy Policy
+              </a>
+              .
+            </span>
           </label>
 
           {error ? <p className="error-text">{error}</p> : null}

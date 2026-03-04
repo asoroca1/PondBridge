@@ -1,10 +1,14 @@
 // src/pages/Legal.jsx
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord, resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import "./legal.css";
+
+const LEGAL_LAST_UPDATED = "March 4, 2026";
+const LEGAL_CONTACT_EMAIL = "support@pondbridgealumni.com";
+const GOVERNING_STATE = "New York";
 
 export default function Legal() {
   const location = useLocation();
@@ -32,7 +36,7 @@ export default function Legal() {
           <div className="legal-header">
             <h1>Terms & Privacy</h1>
             <p className="legal-sub">
-              {networkName} — Last Updated: <strong>January 5, 2026</strong>
+              {networkName} — Last Updated: <strong>{LEGAL_LAST_UPDATED}</strong>
             </p>
           </div>
 
@@ -50,7 +54,7 @@ export default function Legal() {
             </p>
             <p>
               If you have questions or requests about privacy, contact us at{" "}
-              <a href="mailto:support@pondbridge.co">support@pondbridge.co</a>.
+              <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a>.
             </p>
 
             <h3>1) Information We Collect</h3>
@@ -146,7 +150,7 @@ export default function Legal() {
             <h4>B. Delete Your Account</h4>
             <p>
               You may request account deletion by contacting{" "}
-              <a href="mailto:support@pondbridge.co">support@pondbridge.co</a>. We’ll take reasonable steps to
+              <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a>. We’ll take reasonable steps to
               delete your account and associated profile information, subject to legal and security requirements.
             </p>
 
@@ -175,7 +179,7 @@ export default function Legal() {
             <p>
               The Service is intended for users <strong>14 years of age or older</strong>. We do not knowingly collect personal
               information from anyone under 14. If you believe someone under 14 has provided personal information, contact{" "}
-              <a href="mailto:support@pondbridge.co">support@pondbridge.co</a> and we will take steps to delete it.
+              <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a> and we will take steps to delete it.
             </p>
 
             <h3>8) International Users</h3>
@@ -199,7 +203,7 @@ export default function Legal() {
             <h3>11) Contact Us</h3>
             <p>
               For privacy questions or requests, contact:{" "}
-              <a href="mailto:support@pondbridge.co">support@pondbridge.co</a>
+              <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a>
             </p>
           </section>
 
@@ -283,7 +287,10 @@ export default function Legal() {
             </p>
 
             <h3>8) Copyright Complaints</h3>
-            <p>If you believe content on the Service infringes your copyright, email <a href="mailto:support@pondbridge.co">support@pondbridge.co</a> with:</p>
+            <p>
+              If you believe content on the Service infringes your copyright, email{" "}
+              <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a> with:
+            </p>
             <ul>
               <li>identification of the copyrighted work you believe was infringed</li>
               <li>identification of the material you believe is infringing and where it appears on the Service</li>
@@ -341,16 +348,16 @@ export default function Legal() {
 
             <h3>15) Governing Law and Venue</h3>
             <p>
-              These Terms are governed by the laws of the <strong>Commonwealth of Massachusetts</strong>, without regard to
+              These Terms are governed by the laws of the State of <strong>{GOVERNING_STATE}</strong>, without regard to
               conflict of law principles. Any dispute arising out of or relating to these Terms or the Service will be
-              brought in the state or federal courts located in Massachusetts, and you consent to personal jurisdiction and
-              venue there.
+              brought in the state or federal courts located in {GOVERNING_STATE}, and you consent to personal jurisdiction
+              and venue there.
             </p>
 
             <h3>16) Contact</h3>
             <p>
               Questions about these Terms:{" "}
-              <a href="mailto:support@pondbridge.co">support@pondbridge.co</a>
+              <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a>
             </p>
           </section>
 

@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
   UserModel,
+  ProfileModel,
   AccessRequestModel,
   InviteModel,
   TenantAdminAuditLogModel,
@@ -34,6 +35,8 @@ import {
 } from "../utils/location.js";
 
 const router = Router({ mergeParams: true });
+const DEFAULT_TERMS_VERSION = "2026-03-04";
+const DEFAULT_PRIVACY_VERSION = "2026-03-04";
 
 function accessLimiterKey(req, { includeIdentity = false } = {}) {
   const tenantSlug = String(req.params?.slug || req.tenant?.slug || "").trim().toLowerCase();
@@ -114,6 +117,68 @@ function rolesFromInvite(invite) {
 
 function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function normalizeBoolean(value = false) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+function normalizeLegalAgreement(body = {}) {
+  const provided = body && typeof body === "object" ? body : {};
+  const nested = provided.legalAgreement && typeof provided.legalAgreement === "object" ? provided.legalAgreement : {};
+  const accepted = normalizeBoolean(
+    provided.legalAgreementAccepted ??
+      provided.acceptedLegal ??
+      provided.acceptTerms ??
+      provided.termsAccepted ??
+      nested.accepted
+  );
+  const rawAcceptedAt = String(nested.acceptedAt || provided.legalAgreementAcceptedAt || "").trim();
+  const acceptedAtDate = rawAcceptedAt ? new Date(rawAcceptedAt) : new Date();
+  const acceptedAt = Number.isNaN(acceptedAtDate.getTime()) ? new Date().toISOString() : acceptedAtDate.toISOString();
+  const termsVersion =
+    String(nested.termsVersion || provided.termsVersion || DEFAULT_TERMS_VERSION).trim() || DEFAULT_TERMS_VERSION;
+  const privacyVersion =
+    String(nested.privacyVersion || provided.privacyVersion || DEFAULT_PRIVACY_VERSION).trim() ||
+    DEFAULT_PRIVACY_VERSION;
+  return {
+    accepted,
+    acceptedAt,
+    termsVersion,
+    privacyVersion
+  };
+}
+
+async function persistProfileLegalAgreement(profile, legalAgreement = null) {
+  if (!profile?._id || !legalAgreement?.accepted) return profile;
+
+  const currentSocials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  const existingAgreement =
+    currentSocials?.legalAgreement && typeof currentSocials.legalAgreement === "object"
+      ? currentSocials.legalAgreement
+      : {};
+  const nextAgreement = {
+    accepted: true,
+    acceptedAt: legalAgreement.acceptedAt || existingAgreement.acceptedAt || new Date().toISOString(),
+    termsVersion: legalAgreement.termsVersion || existingAgreement.termsVersion || DEFAULT_TERMS_VERSION,
+    privacyVersion: legalAgreement.privacyVersion || existingAgreement.privacyVersion || DEFAULT_PRIVACY_VERSION
+  };
+
+  const needsPatch =
+    !existingAgreement.accepted ||
+    String(existingAgreement.acceptedAt || "") !== String(nextAgreement.acceptedAt || "") ||
+    String(existingAgreement.termsVersion || "") !== String(nextAgreement.termsVersion || "") ||
+    String(existingAgreement.privacyVersion || "") !== String(nextAgreement.privacyVersion || "");
+  if (!needsPatch) return profile;
+
+  return ProfileModel.update(profile._id, {
+    socials: {
+      ...currentSocials,
+      legalAgreement: nextAgreement
+    }
+  });
 }
 
 function tenantJoinMode(_tenant) {
@@ -575,6 +640,15 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
       error: { code: "IDENTITY_EMAIL_REQUIRED", message: "A verified email is required to join this network." }
     });
   }
+  const legalAgreement = normalizeLegalAgreement(req.body || {});
+  if (!legalAgreement.accepted) {
+    return res.status(400).json({
+      error: {
+        code: "LEGAL_AGREEMENT_REQUIRED",
+        message: "You must agree to Terms and Privacy before creating an account."
+      }
+    });
+  }
 
   let member = await findTenantUserForIdentity(req.tenant._id, identity);
   if (!member) {
@@ -595,11 +669,12 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
     });
   }
 
-  const profile = await ensureProfileForUser({
+  const profileRecord = await ensureProfileForUser({
     tenantId: req.tenant._id,
     user: member,
     identity
   });
+  const profile = await persistProfileLegalAgreement(profileRecord, legalAgreement);
 
   await logTenantEvent({
     tenantId: req.tenant._id,
@@ -811,6 +886,15 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
       }
     });
   }
+  const legalAgreement = normalizeLegalAgreement(req.body || {});
+  if (!legalAgreement.accepted) {
+    return res.status(400).json({
+      error: {
+        code: "LEGAL_AGREEMENT_REQUIRED",
+        message: "You must agree to Terms and Privacy before creating an account."
+      }
+    });
+  }
 
   let member = await findTenantUserForIdentity(req.tenant._id, identity);
   if (!member) {
@@ -838,11 +922,12 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
     }
   }
 
-  await ensureProfileForUser({
+  const profileRecord = await ensureProfileForUser({
     tenantId: req.tenant._id,
     user: member,
     identity
   });
+  await persistProfileLegalAgreement(profileRecord, legalAgreement);
 
   await markInviteUsed(invite, member._id);
 

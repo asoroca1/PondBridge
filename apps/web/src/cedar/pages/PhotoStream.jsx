@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import CedarBackground from "../components/CedarBackground";
@@ -327,8 +328,8 @@ function UploadModal({ open, onClose, onPosted }) {
     }
   }
 
-  if (!open) return null;
-  return (
+  if (!open || typeof document === "undefined") return null;
+  return createPortal(
     <div className="ps-modal" onClick={() => !busy && onClose?.()}>
       <div className="ps-modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="ps-modal-head">
@@ -372,7 +373,7 @@ function UploadModal({ open, onClose, onPosted }) {
                         width: `${previewLayout.width}px`,
                         height: `${previewLayout.height}px`,
                         left: `${previewLayout.left}px`,
-                        top: `${previewLayout.top}px`,
+                        top: `${previewLayout.top}px`
                       }
                     : undefined
                 }
@@ -436,7 +437,8 @@ function UploadModal({ open, onClose, onPosted }) {
           <button className="ps-btn primary" onClick={handlePost} disabled={!file || busy}>{busy ? "Posting…" : "Post"}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -644,9 +646,9 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
     };
   }, [post, onClose]);
 
-  if (!post) return null;
+  if (!post || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="ps-lightbox" onClick={onClose} aria-modal="true" role="dialog">
       <div className="ps-lightbox-card" onClick={(e) => e.stopPropagation()}>
         {/* MEDIA */}
@@ -695,7 +697,8 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
           <CommentsPanel photoId={post._id} canModerate={!!post.mine} />
         </aside>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

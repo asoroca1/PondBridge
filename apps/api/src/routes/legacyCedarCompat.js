@@ -67,6 +67,10 @@ const privateUploadPresignLimiter = rateLimit({
   }
 });
 const CITIES_CACHE_TTL_MS = Math.max(5000, Number(process.env.MAP_CITIES_CACHE_TTL_MS || 60000));
+const CITIES_CACHE_PENDING_TTL_MS = Math.max(
+  1000,
+  Number(process.env.MAP_CITIES_PENDING_CACHE_TTL_MS || 4000)
+);
 const CITY_PEOPLE_CACHE_TTL_MS = Math.max(
   5000,
   Number(process.env.MAP_CITY_PEOPLE_CACHE_TTL_MS || 120000)
@@ -440,6 +444,7 @@ function queueCityGeocode(row) {
 async function runGeocodeWorker() {
   if (geocodeWorkerRunning) return;
   geocodeWorkerRunning = true;
+  let geocodeUpdated = false;
   try {
     while (geocodeQueue.size) {
       const [key, row] = geocodeQueue.entries().next().value || [];
@@ -458,12 +463,18 @@ async function runGeocodeWorker() {
           lng: Number(coords.lng),
           source: coords.source || "unknown"
         });
+        geocodeUpdated = true;
       } catch {
         // Ignore individual geocode failures.
       }
     }
   } finally {
     geocodeWorkerRunning = false;
+    if (geocodeUpdated) {
+      // Fresh city coordinates can unblock map points for any tenant. Force
+      // a fast re-query on the next /map/cities request.
+      citiesCacheByTenant.clear();
+    }
   }
 }
 
@@ -2860,7 +2871,12 @@ router.get("/map/cities", async (req, res) => {
   if (!cached?.inflight) {
     const inflight = (async () => {
       const counts = await aggregateCityCounts(req.tenant._id);
-      if (!counts.length) return [];
+      if (!counts.length) {
+        return {
+          cities: [],
+          unresolvedCityCount: 0
+        };
+      }
 
       const keys = counts.map((row) => row.key);
       const geos = await CityGeoModel.find({ key: { $in: keys } }, { select: ["key", "city", "state", "lat", "lng"] });
@@ -2912,22 +2928,31 @@ router.get("/map/cities", async (req, res) => {
       for (const row of missing.slice(MAP_SYNC_GEOCODE_LIMIT)) queueCityGeocode(row);
 
       resolved.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
-      return resolved;
+      return {
+        cities: resolved,
+        unresolvedCityCount: missing.length
+      };
     })();
 
     citiesCacheByTenant.set(tenantId, { data: cached?.data || null, expiresAt: 0, inflight });
   }
 
   const current = citiesCacheByTenant.get(tenantId);
-  let output = Array.isArray(cached?.data) ? cached.data : [];
+  let output = Array.isArray(cached?.data)
+    ? { cities: cached.data, unresolvedCityCount: 0 }
+    : cached?.data && typeof cached.data === "object"
+    ? cached.data
+    : { cities: [], unresolvedCityCount: 0 };
   try {
     output = await current.inflight;
   } catch (error) {
     console.error("[Map] Failed to resolve city counts", error);
   } finally {
+    const unresolvedCount = Number(output?.unresolvedCityCount || 0);
+    const ttlMs = unresolvedCount > 0 ? CITIES_CACHE_PENDING_TTL_MS : CITIES_CACHE_TTL_MS;
     citiesCacheByTenant.set(tenantId, {
       data: output,
-      expiresAt: Date.now() + CITIES_CACHE_TTL_MS,
+      expiresAt: Date.now() + ttlMs,
       inflight: null
     });
   }

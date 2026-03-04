@@ -67,6 +67,11 @@ const DirectorAdminInvitesPage = lazyPage(() =>
 const DirectorAdminMembersPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
 );
+const DirectorAdminMemberEditPage = lazyPage(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminMemberEditPage
+  }))
+);
 const DirectorAdminSettingsAdminsPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsAdminsPage
@@ -521,6 +526,7 @@ function TenantScopeRoutes() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DirectorAdminDashboardPage />} />
           <Route path="members" element={<DirectorAdminMembersPage />} />
+          <Route path="members/:profileId/edit" element={<DirectorAdminMemberEditPage />} />
           <Route path="members/approvals" element={<Navigate to="../members" replace />} />
           <Route path="members/import" element={<Navigate to="../invites" replace />} />
           <Route path="invites" element={<DirectorAdminInvitesPage />} />

@@ -111,6 +111,8 @@ function applyTheme(config = {}) {
   const brandPrimaryStrong = mixHex(brandPrimary, "#000000", 0.24);
   const brandPrimarySoft = mixHex(brandPrimary, "#ffffff", 0.46);
   const brandPrimarySoftStrong = mixHex(brandPrimary, "#ffffff", 0.28);
+  const cardBorder = mixHex(brandPrimary, "#dfe6ef", 0.84);
+  const textMuted = mixHex(brandPrimary, "#64748b", 0.74);
   const brandPrimaryRgb = hexToRgb(brandPrimary);
   const brandOnPrimary = readableTextColorOnBrand(brandPrimary);
   const brandOnPrimaryRgb = hexToRgb(brandOnPrimary);
@@ -130,7 +132,9 @@ function applyTheme(config = {}) {
   root.style.setProperty("--brand-accent", branding.brandAccent || "#f2b134");
   root.style.setProperty("--bg", branding.bg || "#f5f7fa");
   root.style.setProperty("--text", branding.text || "#0f172a");
+  root.style.setProperty("--text-muted", branding.textMuted || textMuted);
   root.style.setProperty("--card", branding.card || "#ffffff");
+  root.style.setProperty("--card-border", branding.cardBorder || cardBorder);
   root.style.setProperty("--font-display", font.display);
   root.style.setProperty("--font-body", font.body);
   root.style.setProperty("--font-family", font.body);

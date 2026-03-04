@@ -19,8 +19,7 @@ import {
   FilterBar,
   LoadingSkeleton,
   ModalConfirm,
-  PageHeader,
-  SlideOverPanel
+  PageHeader
 } from "../../components/admin/AdminUi.jsx";
 
 function formatDate(value) {
@@ -91,6 +90,39 @@ function billingPlanLabel(code = "") {
 }
 
 const DEFAULT_BRAND_PRIMARY = "#002b5c";
+const DEFAULT_AGE_GROUPS = [
+  "Super Warrior",
+  "Warrior",
+  "Freshman",
+  "Sophomore",
+  "Junior",
+  "Intermediate",
+  "Senior I",
+  "Senior II"
+];
+const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
+
+function normalizeAdminLabelList(value = [], fallback = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/\r?\n|,/)
+        .map((item) => String(item || "").trim());
+  const seen = new Set();
+  const cleaned = [];
+
+  for (const raw of source) {
+    const label = String(raw || "").trim();
+    const key = label.toLowerCase();
+    if (!label || seen.has(key)) continue;
+    seen.add(key);
+    cleaned.push(label);
+    if (cleaned.length >= 20) break;
+  }
+
+  if (cleaned.length) return cleaned;
+  return Array.isArray(fallback) ? fallback.slice(0, 20) : [];
+}
 
 function normalizeBrandHex(value = "", fallback = DEFAULT_BRAND_PRIMARY) {
   const raw = String(value || "").trim();
@@ -1198,9 +1230,7 @@ export function DirectorAdminMembersPage() {
   const [payload, setPayload] = useState(null);
   const [selected, setSelected] = useState([]);
   const [rowMenuState, setRowMenuState] = useState(null);
-  const [editingMember, setEditingMember] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [deletingMemberId, setDeletingMemberId] = useState("");
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportFieldsCatalog, setExportFieldsCatalog] = useState(FALLBACK_MEMBER_EXPORT_FIELDS);
@@ -1498,33 +1528,6 @@ export function DirectorAdminMembersPage() {
     }
   }
 
-  async function saveMemberEdit(event) {
-    event.preventDefault();
-    if (!editingMember?.id) return;
-    setSaving(true);
-    setError("");
-    try {
-      await request(`/members/${editingMember.id}`, {
-        method: "PATCH",
-        body: {
-          firstName: editingMember.firstName,
-          lastName: editingMember.lastName,
-          cityState: editingMember.location,
-          roleAtCamp: editingMember.role,
-          status: editingMember.status,
-          bio: editingMember.bio || "",
-          emails: editingMember.email ? [editingMember.email] : []
-        }
-      });
-      setEditingMember(null);
-      await loadMembers();
-    } catch (requestError) {
-      setError(requestError.message || "Failed to save member.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function hardDeleteMember(member) {
     const memberId = String(member?.id || "").trim();
     if (!memberId) return;
@@ -1543,7 +1546,6 @@ export function DirectorAdminMembersPage() {
         method: "DELETE"
       });
       setRowMenuState(null);
-      setEditingMember((prev) => (prev?.id === memberId ? null : prev));
       setSelected((prev) => prev.filter((id) => id !== memberId));
       setStatus(`${label} was permanently removed from this network.`);
       await loadMembers();
@@ -1933,7 +1935,7 @@ export function DirectorAdminMembersPage() {
                   disabled={!activeRowMenuMemberId}
                   onClick={() => {
                     setRowMenuState(null);
-                    setEditingMember({ ...activeRowMenuMember, id: activeRowMenuMemberId });
+                    navigate(`/t/${slug}/admin/members/${activeRowMenuMemberId}/edit`);
                   }}
                 >
                   Edit Member
@@ -2206,115 +2208,610 @@ export function DirectorAdminMembersPage() {
         ) : null}
       </Card>
 
-      <SlideOverPanel
-        open={Boolean(editingMember)}
-        title={`Edit Member - ${editingMember?.fullName || "Member"}`}
-        subtitle="Update profile details without leaving the members table."
-        onClose={() => setEditingMember(null)}
-        footer={
+    </div>
+  );
+}
+
+function emptyMemberEditorYearStint() {
+  return { startYear: "", endYear: "", startAgeGroup: "", endAgeGroup: "" };
+}
+
+function normalizeMemberEditorYearStints(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const rows = source.map((entry) => ({
+    startYear: String(entry?.startYear || "").trim(),
+    endYear: String(entry?.endYear || "").trim(),
+    startAgeGroup: String(entry?.startAgeGroup || "").trim(),
+    endAgeGroup: String(entry?.endAgeGroup || "").trim()
+  }));
+  return rows.length ? rows : [emptyMemberEditorYearStint()];
+}
+
+function normalizeMemberEditorEducation(value = []) {
+  const rows = (Array.isArray(value) ? value : []).map((row) => ({
+    college: String(row?.college || "").trim(),
+    year: String(row?.year || "").trim(),
+    major: String(row?.major || "").trim()
+  }));
+  return rows.length ? rows : [{ college: "", year: "", major: "" }];
+}
+
+function normalizeMemberEditorJobs(value = []) {
+  const rows = (Array.isArray(value) ? value : []).map((row) => ({
+    role: String(row?.role || "").trim(),
+    company: String(row?.company || "").trim(),
+    years: String(row?.years || "").trim()
+  }));
+  return rows.length ? rows : [{ role: "", company: "", years: "" }];
+}
+
+function normalizeMemberEditorForm(profile = null) {
+  const safe = profile && typeof profile === "object" ? profile : {};
+  const camperStints = normalizeMemberEditorYearStints(safe?.camperYears?.stints || []);
+  const staffStints = normalizeMemberEditorYearStints(safe?.staffYears?.stints || []);
+  return {
+    firstName: String(safe.firstName || "").trim(),
+    lastName: String(safe.lastName || "").trim(),
+    nickname: String(safe.nickname || "").trim(),
+    email: String(safe.email || "").trim(),
+    phone: String(safe.phone || "").trim(),
+    cityState: String(safe.cityState || "").trim(),
+    roleAtCamp: String(safe.roleAtCamp || "").trim(),
+    rolesText: (Array.isArray(safe.roles) ? safe.roles : []).join(", "),
+    status: String(safe.status || "active").trim().toLowerCase() || "active",
+    flaggedReason: String(safe.flaggedReason || "").trim(),
+    highSchool: String(safe.highSchool || "").trim(),
+    industry: String(safe.industry || "").trim(),
+    bio: String(safe.bio || "").trim(),
+    avatarUrl: String(safe.avatarUrl || "").trim(),
+    camperYearStints: camperStints,
+    staffYearStints: staffStints,
+    education: normalizeMemberEditorEducation(safe.education || []),
+    currentJobs: normalizeMemberEditorJobs(safe.currentJobs || []),
+    pastJobs: normalizeMemberEditorJobs(safe.pastJobs || []),
+    social: {
+      linkedin: String(safe?.social?.linkedin || "").trim(),
+      instagram: String(safe?.social?.instagram || "").trim(),
+      facebook: String(safe?.social?.facebook || "").trim()
+    }
+  };
+}
+
+function normalizeMemberEditorPayloadYearStints(rows = [], { includeAgeGroups = false } = {}) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((entry) => {
+      const startYear = String(entry?.startYear || "").trim();
+      const endYear = String(entry?.endYear || "").trim();
+      if (!startYear && !endYear) return null;
+      if (!/^\d{4}$/.test(startYear) || !/^\d{4}$/.test(endYear)) return null;
+      const start = Number(startYear);
+      const end = Number(endYear);
+      const payload = {
+        startYear: String(Math.min(start, end)),
+        endYear: String(Math.max(start, end))
+      };
+      if (includeAgeGroups) {
+        const startAgeGroup = String(entry?.startAgeGroup || "").trim();
+        const endAgeGroup = String(entry?.endAgeGroup || "").trim();
+        if (startAgeGroup) payload.startAgeGroup = startAgeGroup;
+        if (endAgeGroup) payload.endAgeGroup = endAgeGroup;
+        if (startAgeGroup && startAgeGroup === endAgeGroup) payload.ageGroup = startAgeGroup;
+      }
+      return payload;
+    })
+    .filter(Boolean);
+}
+
+export function DirectorAdminMemberEditPage() {
+  const navigate = useNavigate();
+  const { profileId = "" } = useParams();
+  const { slug, request } = useAdminApi();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [form, setForm] = useState(() => normalizeMemberEditorForm(null));
+
+  const normalizedProfileId = String(profileId || "").trim();
+
+  const loadProfile = useCallback(async () => {
+    if (!normalizedProfileId) {
+      setError("Missing member id.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await request(`/members/${normalizedProfileId}/full`);
+      setForm(normalizeMemberEditorForm(response?.profile || null));
+    } catch (requestError) {
+      setError(requestError.message || "Failed to load member profile.");
+    } finally {
+      setLoading(false);
+    }
+  }, [normalizedProfileId, request]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  function setField(patch = {}) {
+    setForm((prev) => ({ ...prev, ...patch }));
+  }
+
+  function setSocial(patch = {}) {
+    setForm((prev) => ({ ...prev, social: { ...(prev.social || {}), ...patch } }));
+  }
+
+  function updateRow(listKey, index, patch) {
+    setForm((prev) => ({
+      ...prev,
+      [listKey]: (Array.isArray(prev[listKey]) ? prev[listKey] : []).map((row, rowIndex) =>
+        rowIndex === index ? { ...row, ...patch } : row
+      )
+    }));
+  }
+
+  function addRow(listKey, emptyRow) {
+    setForm((prev) => ({
+      ...prev,
+      [listKey]: [...(Array.isArray(prev[listKey]) ? prev[listKey] : []), emptyRow]
+    }));
+  }
+
+  function removeRow(listKey, index) {
+    setForm((prev) => {
+      const next = (Array.isArray(prev[listKey]) ? prev[listKey] : []).filter(
+        (_row, rowIndex) => rowIndex !== index
+      );
+      const fallback =
+        listKey === "education"
+          ? [{ college: "", year: "", major: "" }]
+          : listKey === "currentJobs" || listKey === "pastJobs"
+          ? [{ role: "", company: "", years: "" }]
+          : [emptyMemberEditorYearStint()];
+      return {
+        ...prev,
+        [listKey]: next.length ? next : fallback
+      };
+    });
+  }
+
+  async function saveMember(event) {
+    event.preventDefault();
+    if (!normalizedProfileId) return;
+
+    setSaving(true);
+    setError("");
+    setStatus("");
+    try {
+      const roles = [...new Set(
+        String(form.rolesText || "")
+          .split(",")
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      )];
+      const camperYearStints = normalizeMemberEditorPayloadYearStints(form.camperYearStints, {
+        includeAgeGroups: true
+      });
+      const staffYearStints = normalizeMemberEditorPayloadYearStints(form.staffYearStints);
+      const payload = {
+        firstName: String(form.firstName || "").trim(),
+        lastName: String(form.lastName || "").trim(),
+        nickname: String(form.nickname || "").trim(),
+        emails: form.email ? [String(form.email || "").trim()] : [],
+        phone: String(form.phone || "").trim(),
+        cityState: String(form.cityState || "").trim(),
+        roleAtCamp: String(form.roleAtCamp || "").trim(),
+        roles,
+        status: String(form.status || "active").trim().toLowerCase(),
+        flaggedReason: String(form.flaggedReason || "").trim(),
+        highSchool: String(form.highSchool || "").trim(),
+        industry: String(form.industry || "").trim(),
+        bio: String(form.bio || "").trim(),
+        avatarUrl: String(form.avatarUrl || "").trim(),
+        camperYears: {
+          firstYear: camperYearStints[0]?.startYear || "",
+          firstGroup: camperYearStints[0]?.startAgeGroup || "",
+          lastYear: camperYearStints.length ? camperYearStints[camperYearStints.length - 1]?.endYear || "" : "",
+          lastGroup: camperYearStints.length
+            ? camperYearStints[camperYearStints.length - 1]?.endAgeGroup || ""
+            : "",
+          stints: camperYearStints
+        },
+        staffYears: { stints: staffYearStints },
+        education: (Array.isArray(form.education) ? form.education : []).filter((row) =>
+          Boolean(String(row?.college || row?.year || row?.major || "").trim())
+        ),
+        currentJobs: (Array.isArray(form.currentJobs) ? form.currentJobs : []).filter((row) =>
+          Boolean(String(row?.role || row?.company || row?.years || "").trim())
+        ),
+        pastJobs: (Array.isArray(form.pastJobs) ? form.pastJobs : []).filter((row) =>
+          Boolean(String(row?.role || row?.company || row?.years || "").trim())
+        ),
+        social: {
+          linkedin: String(form?.social?.linkedin || "").trim(),
+          instagram: String(form?.social?.instagram || "").trim(),
+          facebook: String(form?.social?.facebook || "").trim()
+        }
+      };
+      const response = await request(`/members/${normalizedProfileId}/full`, {
+        method: "PUT",
+        body: payload
+      });
+      setForm(normalizeMemberEditorForm(response?.profile || null));
+      setStatus("Member profile updated.");
+    } catch (requestError) {
+      setError(requestError.message || "Failed to save member profile.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <AdminPageHeader
+        title="Edit Member"
+        subtitle="Full profile editor for this member."
+        actions={
           <>
-            <Link className="link-button secondary" to={`/t/${slug}/profile/${editingMember?.id || ""}`}>
-              View Full Profile
+            <Link className="link-button secondary" to={`/t/${slug}/profile/${normalizedProfileId}`}>
+              View Public Profile
             </Link>
-            <div className="inline-actions">
-              <Button type="button" variant="secondary" onClick={() => setEditingMember(null)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={saving || !editingMember?.id}
-                onClick={() => {
-                  const formEl = document.getElementById("director-admin-member-edit-form");
-                  formEl?.requestSubmit();
-                }}
-              >
-                {saving ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
+            <Link className="link-button secondary" to={`/t/${slug}/admin/members`}>
+              Back to Members
+            </Link>
           </>
         }
-      >
-        {editingMember ? (
-          <form id="director-admin-member-edit-form" className="director-admin-form-grid" onSubmit={saveMemberEdit}>
-            <h3 className="full-width pb-section-title">Identity</h3>
-            <label>
-              First name
-              <Input
-                value={editingMember.firstName || ""}
-                onChange={(event) =>
-                  setEditingMember((prev) => ({ ...prev, firstName: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Last name
-              <Input
-                value={editingMember.lastName || ""}
-                onChange={(event) =>
-                  setEditingMember((prev) => ({ ...prev, lastName: event.target.value }))
-                }
-              />
-            </label>
+      />
+      {error ? <p className="error-text">{error}</p> : null}
+      {status ? <p className="success-text">{status}</p> : null}
+      {loading ? (
+        <LoadingSkeleton lines={8} />
+      ) : (
+        <form className="director-admin-form-grid" onSubmit={saveMember}>
+          <h3 className="full-width pb-section-title">Identity</h3>
+          <label>
+            First name
+            <Input value={form.firstName} onChange={(event) => setField({ firstName: event.target.value })} />
+          </label>
+          <label>
+            Last name
+            <Input value={form.lastName} onChange={(event) => setField({ lastName: event.target.value })} />
+          </label>
+          <label>
+            Camp nickname
+            <Input value={form.nickname} onChange={(event) => setField({ nickname: event.target.value })} />
+          </label>
+          <label>
+            Avatar URL
+            <Input value={form.avatarUrl} onChange={(event) => setField({ avatarUrl: event.target.value })} />
+          </label>
 
-            <h3 className="full-width pb-section-title">Contact</h3>
-            <label className="full-width">
-              Email
-              <Input
-                value={editingMember.email || ""}
-                onChange={(event) =>
-                  setEditingMember((prev) => ({ ...prev, email: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Location
-              <Input
-                value={editingMember.location || ""}
-                onChange={(event) =>
-                  setEditingMember((prev) => ({ ...prev, location: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Role at camp
-              <Input
-                value={editingMember.role || ""}
-                onChange={(event) =>
-                  setEditingMember((prev) => ({ ...prev, role: event.target.value }))
-                }
-              />
-            </label>
+          <h3 className="full-width pb-section-title">Contact</h3>
+          <label>
+            Email
+            <Input value={form.email} onChange={(event) => setField({ email: event.target.value })} />
+          </label>
+          <label>
+            Phone
+            <Input value={form.phone} onChange={(event) => setField({ phone: event.target.value })} />
+          </label>
+          <label className="full-width">
+            Current location
+            <Input value={form.cityState} onChange={(event) => setField({ cityState: event.target.value })} />
+          </label>
 
-            <h3 className="full-width pb-section-title">Notes</h3>
-            <label className="full-width">
-              Bio
-              <Textarea
-                value={editingMember.bio || ""}
-                onChange={(event) =>
-                  setEditingMember((prev) => ({ ...prev, bio: event.target.value }))
-                }
-              />
-            </label>
+          <h3 className="full-width pb-section-title">Camp Info</h3>
+          <label>
+            Role at camp
+            <Input value={form.roleAtCamp} onChange={(event) => setField({ roleAtCamp: event.target.value })} />
+          </label>
+          <label>
+            Additional roles (comma-separated)
+            <Input value={form.rolesText} onChange={(event) => setField({ rolesText: event.target.value })} />
+          </label>
+          <label>
+            High school
+            <Input value={form.highSchool} onChange={(event) => setField({ highSchool: event.target.value })} />
+          </label>
+          <label>
+            Industry
+            <Input value={form.industry} onChange={(event) => setField({ industry: event.target.value })} />
+          </label>
+          <label className="full-width">
+            Bio
+            <Textarea value={form.bio} onChange={(event) => setField({ bio: event.target.value })} />
+          </label>
 
-            <h3 className="full-width pb-section-title">Access</h3>
-            <label>
-              Status
-              <Select
-                value={editingMember.status || "active"}
-                onChange={(event) =>
-                  setEditingMember((prev) => ({ ...prev, status: event.target.value }))
-                }
-              >
-                <option value="active">Active</option>
-                <option value="pending">Pending</option>
-                <option value="flagged">Flagged</option>
-                <option value="removed">Removed</option>
-              </Select>
-            </label>
-          </form>
-        ) : null}
-      </SlideOverPanel>
-    </div>
+          <h3 className="full-width pb-section-title">Camper Years</h3>
+          {(Array.isArray(form.camperYearStints) ? form.camperYearStints : []).map((stint, index) => (
+            <div key={`camper-${index}`} className="director-admin-member-edit-block full-width">
+              <div className="director-admin-member-edit-grid">
+                <label>
+                  Start Year
+                  <Input
+                    value={stint.startYear || ""}
+                    onChange={(event) =>
+                      updateRow("camperYearStints", index, { startYear: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  End Year
+                  <Input
+                    value={stint.endYear || ""}
+                    onChange={(event) =>
+                      updateRow("camperYearStints", index, { endYear: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Start Age Group
+                  <Input
+                    value={stint.startAgeGroup || ""}
+                    onChange={(event) =>
+                      updateRow("camperYearStints", index, { startAgeGroup: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  End Age Group
+                  <Input
+                    value={stint.endAgeGroup || ""}
+                    onChange={(event) =>
+                      updateRow("camperYearStints", index, { endAgeGroup: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
+              <div className="director-admin-form-actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => removeRow("camperYearStints", index)}
+                >
+                  Remove Row
+                </Button>
+              </div>
+            </div>
+          ))}
+          <div className="director-admin-form-actions full-width">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => addRow("camperYearStints", emptyMemberEditorYearStint())}
+            >
+              Add Camper Row
+            </Button>
+          </div>
+
+          <h3 className="full-width pb-section-title">Staff Years</h3>
+          {(Array.isArray(form.staffYearStints) ? form.staffYearStints : []).map((stint, index) => (
+            <div key={`staff-${index}`} className="director-admin-member-edit-block full-width">
+              <div className="director-admin-member-edit-grid">
+                <label>
+                  Start Year
+                  <Input
+                    value={stint.startYear || ""}
+                    onChange={(event) =>
+                      updateRow("staffYearStints", index, { startYear: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  End Year
+                  <Input
+                    value={stint.endYear || ""}
+                    onChange={(event) =>
+                      updateRow("staffYearStints", index, { endYear: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
+              <div className="director-admin-form-actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => removeRow("staffYearStints", index)}
+                >
+                  Remove Row
+                </Button>
+              </div>
+            </div>
+          ))}
+          <div className="director-admin-form-actions full-width">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => addRow("staffYearStints", emptyMemberEditorYearStint())}
+            >
+              Add Staff Row
+            </Button>
+          </div>
+
+          <h3 className="full-width pb-section-title">Education</h3>
+          {(Array.isArray(form.education) ? form.education : []).map((row, index) => (
+            <div key={`education-${index}`} className="director-admin-member-edit-block full-width">
+              <div className="director-admin-member-edit-grid">
+                <label>
+                  College
+                  <Input
+                    value={row.college || ""}
+                    onChange={(event) => updateRow("education", index, { college: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Year
+                  <Input
+                    value={row.year || ""}
+                    onChange={(event) => updateRow("education", index, { year: event.target.value })}
+                  />
+                </label>
+                <label className="full-width">
+                  Major
+                  <Input
+                    value={row.major || ""}
+                    onChange={(event) => updateRow("education", index, { major: event.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="director-admin-form-actions">
+                <Button type="button" variant="secondary" onClick={() => removeRow("education", index)}>
+                  Remove Row
+                </Button>
+              </div>
+            </div>
+          ))}
+          <div className="director-admin-form-actions full-width">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => addRow("education", { college: "", year: "", major: "" })}
+            >
+              Add Education Row
+            </Button>
+          </div>
+
+          <h3 className="full-width pb-section-title">Current Jobs</h3>
+          {(Array.isArray(form.currentJobs) ? form.currentJobs : []).map((row, index) => (
+            <div key={`current-job-${index}`} className="director-admin-member-edit-block full-width">
+              <div className="director-admin-member-edit-grid">
+                <label>
+                  Role
+                  <Input
+                    value={row.role || ""}
+                    onChange={(event) => updateRow("currentJobs", index, { role: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Company
+                  <Input
+                    value={row.company || ""}
+                    onChange={(event) => updateRow("currentJobs", index, { company: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Years
+                  <Input
+                    value={row.years || ""}
+                    onChange={(event) => updateRow("currentJobs", index, { years: event.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="director-admin-form-actions">
+                <Button type="button" variant="secondary" onClick={() => removeRow("currentJobs", index)}>
+                  Remove Row
+                </Button>
+              </div>
+            </div>
+          ))}
+          <div className="director-admin-form-actions full-width">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => addRow("currentJobs", { role: "", company: "", years: "" })}
+            >
+              Add Current Job
+            </Button>
+          </div>
+
+          <h3 className="full-width pb-section-title">Past Jobs</h3>
+          {(Array.isArray(form.pastJobs) ? form.pastJobs : []).map((row, index) => (
+            <div key={`past-job-${index}`} className="director-admin-member-edit-block full-width">
+              <div className="director-admin-member-edit-grid">
+                <label>
+                  Role
+                  <Input
+                    value={row.role || ""}
+                    onChange={(event) => updateRow("pastJobs", index, { role: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Company
+                  <Input
+                    value={row.company || ""}
+                    onChange={(event) => updateRow("pastJobs", index, { company: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Years
+                  <Input
+                    value={row.years || ""}
+                    onChange={(event) => updateRow("pastJobs", index, { years: event.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="director-admin-form-actions">
+                <Button type="button" variant="secondary" onClick={() => removeRow("pastJobs", index)}>
+                  Remove Row
+                </Button>
+              </div>
+            </div>
+          ))}
+          <div className="director-admin-form-actions full-width">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => addRow("pastJobs", { role: "", company: "", years: "" })}
+            >
+              Add Past Job
+            </Button>
+          </div>
+
+          <h3 className="full-width pb-section-title">Social</h3>
+          <label>
+            LinkedIn
+            <Input
+              value={form?.social?.linkedin || ""}
+              onChange={(event) => setSocial({ linkedin: event.target.value })}
+            />
+          </label>
+          <label>
+            Instagram
+            <Input
+              value={form?.social?.instagram || ""}
+              onChange={(event) => setSocial({ instagram: event.target.value })}
+            />
+          </label>
+          <label>
+            Facebook
+            <Input
+              value={form?.social?.facebook || ""}
+              onChange={(event) => setSocial({ facebook: event.target.value })}
+            />
+          </label>
+
+          <h3 className="full-width pb-section-title">Access</h3>
+          <label>
+            Status
+            <Select value={form.status || "active"} onChange={(event) => setField({ status: event.target.value })}>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="flagged">Flagged</option>
+              <option value="removed">Removed</option>
+            </Select>
+          </label>
+          <label className="full-width">
+            Flag reason
+            <Textarea
+              value={form.flaggedReason || ""}
+              onChange={(event) => setField({ flaggedReason: event.target.value })}
+            />
+          </label>
+
+          <div className="director-admin-form-actions full-width director-admin-network-form-actions">
+            <Button type="button" variant="secondary" onClick={() => navigate(`/t/${slug}/admin/members`)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Card>
   );
 }
 
@@ -2921,6 +3418,7 @@ export function DirectorAdminEmailComposePage() {
   const [footerDraft, setFooterDraft] = useState(fallbackFooter);
   const [footerSaving, setFooterSaving] = useState(false);
   const [loadingFooterPresets, setLoadingFooterPresets] = useState(true);
+  const [footerPanelOpen, setFooterPanelOpen] = useState(false);
   const [form, setForm] = useState({
     mode: initialSelectedIds.length > 0 ? "individual" : "all",
     profileIds: initialSelectedIds,
@@ -3536,134 +4034,153 @@ export function DirectorAdminEmailComposePage() {
                 <strong>Saved Footers</strong>
                 <small>Personalize signature details and reuse footer presets anytime.</small>
               </div>
-              <span className="director-admin-email-footer-count">{footerPresets.length} saved</span>
+              <div className="director-admin-email-footer-head-actions">
+                <span className="director-admin-email-footer-count">{footerPresets.length} saved</span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFooterPanelOpen((prev) => !prev)}
+                  aria-expanded={footerPanelOpen}
+                >
+                  {footerPanelOpen ? "Hide" : "Edit"}
+                </Button>
+              </div>
             </div>
 
-            <div className="director-admin-email-footer-preset-bar">
-              <Input
-                value={footerPresetName}
-                onChange={(event) => setFooterPresetName(event.target.value)}
-                placeholder="Footer preset name (e.g., Director Update)"
-              />
-              <Select
-                value={selectedFooterPresetId}
-                onChange={(event) => {
-                  const nextId = event.target.value;
-                  setSelectedFooterPresetId(nextId);
-                  const preset = footerPresets.find((item) => item.id === nextId);
-                  if (preset) setFooterPresetName(preset.name || "");
-                }}
-                disabled={!footerPresets.length}
-              >
-                <option value="">Saved footers</option>
-                {footerPresets.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.name}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={applyFooterPreset}
-                disabled={!selectedFooterPresetId || loadingFooterPresets}
-              >
-                Use Footer
-              </Button>
-              <Button type="button" variant="secondary" onClick={saveFooterPreset} disabled={footerSaving}>
-                Save Footer
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={deleteFooterPreset}
-                disabled={!selectedFooterPresetId || footerSaving}
-              >
-                Delete Footer
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={makeFooterDefault}
-                disabled={!selectedFooterPresetId || footerSaving}
-              >
-                Set Default
-              </Button>
-            </div>
+            {footerPanelOpen ? (
+              <>
+                <div className="director-admin-email-footer-preset-bar">
+                  <Input
+                    value={footerPresetName}
+                    onChange={(event) => setFooterPresetName(event.target.value)}
+                    placeholder="Footer preset name (e.g., Director Update)"
+                  />
+                  <Select
+                    value={selectedFooterPresetId}
+                    onChange={(event) => {
+                      const nextId = event.target.value;
+                      setSelectedFooterPresetId(nextId);
+                      const preset = footerPresets.find((item) => item.id === nextId);
+                      if (preset) setFooterPresetName(preset.name || "");
+                    }}
+                    disabled={!footerPresets.length}
+                  >
+                    <option value="">Saved footers</option>
+                    {footerPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={applyFooterPreset}
+                    disabled={!selectedFooterPresetId || loadingFooterPresets}
+                  >
+                    Use Footer
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={saveFooterPreset} disabled={footerSaving}>
+                    Save Footer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={deleteFooterPreset}
+                    disabled={!selectedFooterPresetId || footerSaving}
+                  >
+                    Delete Footer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={makeFooterDefault}
+                    disabled={!selectedFooterPresetId || footerSaving}
+                  >
+                    Set Default
+                  </Button>
+                </div>
 
-            <div className="director-admin-email-footer-grid">
-              <label>
-                Header label
-                <Input
-                  value={activeFooter.headerTagline}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, headerTagline: event.target.value }, fallbackFooter))
-                  }
-                  placeholder="Community update"
-                />
-              </label>
-              <label>
-                Sign-off
-                <Input
-                  value={activeFooter.signOff}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, signOff: event.target.value }, fallbackFooter))
-                  }
-                  placeholder="Warmly,"
-                />
-              </label>
-              <label>
-                Name
-                <Input
-                  value={activeFooter.senderName}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderName: event.target.value }, fallbackFooter))
-                  }
-                  placeholder="Director name"
-                />
-              </label>
-              <label>
-                Role
-                <Input
-                  value={activeFooter.senderRole}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderRole: event.target.value }, fallbackFooter))
-                  }
-                  placeholder="Director"
-                />
-              </label>
-              <label>
-                Email
-                <Input
-                  value={activeFooter.senderEmail}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderEmail: event.target.value }, fallbackFooter))
-                  }
-                  placeholder="name@camp.org"
-                />
-              </label>
-              <label>
-                Phone
-                <Input
-                  value={activeFooter.senderPhone}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderPhone: event.target.value }, fallbackFooter))
-                  }
-                  placeholder="(555) 555-5555"
-                />
-              </label>
-              <label className="inline-check director-admin-email-footer-toggle">
-                <input
-                  type="checkbox"
-                  checked={Boolean(activeFooter.showLogo)}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, showLogo: event.target.checked }, fallbackFooter))
-                  }
-                />
-                Include camp logo in footer
-              </label>
-              <p className="muted director-admin-email-footer-note">Footer logo uses your active camp branding logo automatically.</p>
-            </div>
+                <div className="director-admin-email-footer-grid">
+                  <label>
+                    Header label
+                    <Input
+                      value={activeFooter.headerTagline}
+                      onChange={(event) =>
+                        setFooterDraft((prev) => normalizeEmailFooter({ ...prev, headerTagline: event.target.value }, fallbackFooter))
+                      }
+                      placeholder="Community update"
+                    />
+                  </label>
+                  <label>
+                    Sign-off
+                    <Input
+                      value={activeFooter.signOff}
+                      onChange={(event) =>
+                        setFooterDraft((prev) => normalizeEmailFooter({ ...prev, signOff: event.target.value }, fallbackFooter))
+                      }
+                      placeholder="Warmly,"
+                    />
+                  </label>
+                  <label>
+                    Name
+                    <Input
+                      value={activeFooter.senderName}
+                      onChange={(event) =>
+                        setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderName: event.target.value }, fallbackFooter))
+                      }
+                      placeholder="Director name"
+                    />
+                  </label>
+                  <label>
+                    Role
+                    <Input
+                      value={activeFooter.senderRole}
+                      onChange={(event) =>
+                        setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderRole: event.target.value }, fallbackFooter))
+                      }
+                      placeholder="Director"
+                    />
+                  </label>
+                  <label>
+                    Email
+                    <Input
+                      value={activeFooter.senderEmail}
+                      onChange={(event) =>
+                        setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderEmail: event.target.value }, fallbackFooter))
+                      }
+                      placeholder="name@camp.org"
+                    />
+                  </label>
+                  <label>
+                    Phone
+                    <Input
+                      value={activeFooter.senderPhone}
+                      onChange={(event) =>
+                        setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderPhone: event.target.value }, fallbackFooter))
+                      }
+                      placeholder="(555) 555-5555"
+                    />
+                  </label>
+                  <label className="inline-check director-admin-email-footer-toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(activeFooter.showLogo)}
+                      onChange={(event) =>
+                        setFooterDraft((prev) => normalizeEmailFooter({ ...prev, showLogo: event.target.checked }, fallbackFooter))
+                      }
+                    />
+                    Include camp logo in footer
+                  </label>
+                  <p className="muted director-admin-email-footer-note">Footer logo uses your active camp branding logo automatically.</p>
+                </div>
+              </>
+            ) : (
+              <p className="muted director-admin-email-footer-collapsed-note">
+                Footer details hidden. Click Edit to expand.
+              </p>
+            )}
           </section>
 
           <label>
@@ -4341,13 +4858,18 @@ export function DirectorAdminSettingsNetworkPage() {
   const { payload, loading, error, load } = useSettingsLoader();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [ageGroupDraft, setAgeGroupDraft] = useState("");
+  const [staffRoleDraft, setStaffRoleDraft] = useState("");
+  const [listErrors, setListErrors] = useState({ ageGroups: "", staffRoles: "" });
   const [form, setForm] = useState({
     campName: "",
     campType: "coed",
     networkName: "",
     homepageQuote: "",
     contactEmail: "",
-    websiteUrl: ""
+    websiteUrl: "",
+    ageGroups: DEFAULT_AGE_GROUPS,
+    staffRoles: DEFAULT_STAFF_ROLES
   });
 
   useEffect(() => {
@@ -4362,16 +4884,59 @@ export function DirectorAdminSettingsNetworkPage() {
         (campName ? defaultNetworkDisplayNameForCamp(campName, campType) : ""),
       homepageQuote: payload.identity.homepageQuote || payload.identity.tagline || "",
       contactEmail: payload.identity.contactEmail || "",
-      websiteUrl: payload.identity.websiteUrl || payload.tenant?.appUrl || ""
+      websiteUrl: payload.identity.websiteUrl || payload.tenant?.appUrl || "",
+      ageGroups: normalizeAdminLabelList(
+        payload?.identity?.ageGroups || payload?.tenant?.content?.ageGroups,
+        DEFAULT_AGE_GROUPS
+      ),
+      staffRoles: normalizeAdminLabelList(
+        payload?.identity?.staffRoles || payload?.tenant?.content?.staffRoles,
+        DEFAULT_STAFF_ROLES
+      )
     });
-  }, [payload?.identity, payload?.tenant?.name, payload?.tenant?.appUrl]);
+    setAgeGroupDraft("");
+    setStaffRoleDraft("");
+    setListErrors({ ageGroups: "", staffRoles: "" });
+  }, [payload?.identity, payload?.tenant?.name, payload?.tenant?.appUrl, payload?.tenant?.content?.ageGroups, payload?.tenant?.content?.staffRoles]);
+
+  function addLabel(field, rawValue) {
+    const nextLabel = String(rawValue || "").trim();
+    if (!nextLabel) return;
+    setForm((prev) => {
+      const current = Array.isArray(prev[field]) ? prev[field] : [];
+      const exists = current.some((item) => String(item || "").trim().toLowerCase() === nextLabel.toLowerCase());
+      if (exists || current.length >= 20) return prev;
+      return { ...prev, [field]: [...current, nextLabel] };
+    });
+    setListErrors((prev) => ({ ...prev, [field]: "" }));
+  }
+
+  function removeLabel(field, index) {
+    setForm((prev) => {
+      const current = Array.isArray(prev[field]) ? prev[field] : [];
+      return { ...prev, [field]: current.filter((_, itemIndex) => itemIndex !== index) };
+    });
+  }
 
   async function saveIdentity(event) {
     event.preventDefault();
+    const nextAgeGroups = normalizeAdminLabelList(form.ageGroups, []);
+    const nextStaffRoles = normalizeAdminLabelList(form.staffRoles, []);
+    const nextErrors = {
+      ageGroups: nextAgeGroups.length ? "" : "Add at least one camper age group.",
+      staffRoles: nextStaffRoles.length ? "" : "Add at least one staff role."
+    };
+    setListErrors(nextErrors);
+    if (nextErrors.ageGroups || nextErrors.staffRoles) return;
+
     setSaving(true);
     setStatus("");
     try {
-      const { campName: _unusedCampName, ...identityPayload } = form;
+      const { campName: _unusedCampName, ...identityPayload } = {
+        ...form,
+        ageGroups: nextAgeGroups,
+        staffRoles: nextStaffRoles
+      };
       await request("/settings/identity", { method: "PATCH", body: identityPayload });
       setStatus("Network identity saved.");
       await load();
@@ -4427,6 +4992,102 @@ export function DirectorAdminSettingsNetworkPage() {
           />
           <span className="muted director-admin-network-quote-help">Displayed on the public homepage hero before login.</span>
         </label>
+        <div className="full-width director-admin-network-taxonomy">
+          <section className="director-admin-network-taxonomy-card">
+            <div className="director-admin-network-taxonomy-head">
+              <h3>Camper Age Groups</h3>
+              <span>{form.ageGroups.length}/20</span>
+            </div>
+            <p className="muted">Used in camper year start/end age-group selectors.</p>
+            <div className="director-admin-network-taxonomy-input-row">
+              <Input
+                value={ageGroupDraft}
+                placeholder="Add age group (ex: Senior I)"
+                onChange={(event) => setAgeGroupDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  addLabel("ageGroups", ageGroupDraft);
+                  setAgeGroupDraft("");
+                }}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  addLabel("ageGroups", ageGroupDraft);
+                  setAgeGroupDraft("");
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            {listErrors.ageGroups ? <p className="error-text">{listErrors.ageGroups}</p> : null}
+            <div className="director-admin-network-chip-list">
+              {form.ageGroups.map((label, index) => (
+                <span className="director-admin-network-chip" key={`${label}_${index}`}>
+                  <span>{label}</span>
+                  <button
+                    type="button"
+                    className="director-admin-network-chip-remove"
+                    onClick={() => removeLabel("ageGroups", index)}
+                    aria-label={`Remove age group ${label}`}
+                  >
+                    Remove
+                  </button>
+                </span>
+              ))}
+            </div>
+          </section>
+          <section className="director-admin-network-taxonomy-card">
+            <div className="director-admin-network-taxonomy-head">
+              <h3>Staff Roles</h3>
+              <span>{form.staffRoles.length}/20</span>
+            </div>
+            <p className="muted">Used in member role-at-camp forms and filters.</p>
+            <div className="director-admin-network-taxonomy-input-row">
+              <Input
+                value={staffRoleDraft}
+                placeholder="Add role (ex: Waterfront Director)"
+                onChange={(event) => setStaffRoleDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  addLabel("staffRoles", staffRoleDraft);
+                  setStaffRoleDraft("");
+                }}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  addLabel("staffRoles", staffRoleDraft);
+                  setStaffRoleDraft("");
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            {listErrors.staffRoles ? <p className="error-text">{listErrors.staffRoles}</p> : null}
+            <div className="director-admin-network-chip-list">
+              {form.staffRoles.map((label, index) => (
+                <span className="director-admin-network-chip" key={`${label}_${index}`}>
+                  <span>{label}</span>
+                  <button
+                    type="button"
+                    className="director-admin-network-chip-remove"
+                    onClick={() => removeLabel("staffRoles", index)}
+                    aria-label={`Remove role ${label}`}
+                  >
+                    Remove
+                  </button>
+                </span>
+              ))}
+            </div>
+          </section>
+        </div>
         <label>
           Contact Email
           <Input type="email" value={form.contactEmail} onChange={(event) => setForm((prev) => ({ ...prev, contactEmail: event.target.value }))} />

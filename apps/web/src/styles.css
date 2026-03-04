@@ -1028,6 +1028,43 @@ body{
   margin-right: auto;
 }
 
+.alumni-create-legal-block {
+  width: min(620px, 100%);
+  margin: 4px auto 10px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, #d6e0ed);
+  background: color-mix(in srgb, var(--brand-primary) 4%, #ffffff);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.alumni-create-legal-block.has-error {
+  border-color: #d33f49;
+  background: #fff6f7;
+}
+
+.alumni-create-legal-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.alumni-create-legal-check input {
+  margin-top: 2px;
+}
+
+.alumni-create-legal-check a {
+  color: var(--brand-primary);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.alumni-create-legal-error {
+  margin-top: 8px;
+}
+
 /* ============ Mobile tweaks ============ */
 @media (max-width: 680px) {
   .login1-main {
@@ -1051,6 +1088,10 @@ body{
   .alumni-create-clerk-card {
     padding: 18px 16px;
     width: 100%;
+  }
+
+  .alumni-create-legal-block {
+    padding: 10px;
   }
 }
 
@@ -2106,12 +2147,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
   transform:rotate(45deg);
 }
 .navbar2-dropdown-scroll{
-  max-height: min(76vh, calc(100dvh - var(--nav-h) - 24px));
+  max-height: min(82vh, calc(100dvh - var(--nav-h) - 12px - env(safe-area-inset-bottom, 0px)));
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   border-radius: 12px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 }
 .navbar2-dropdown .dropdown-section{ padding:8px 0; border-top:1px solid rgba(2,33,71,.09); }
 .navbar2-dropdown .dropdown-section:first-child{ border-top:0; padding-top:2px; }
@@ -2839,13 +2881,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .link-button.secondary{
   background: #fff;
   color: var(--brand-primary);
-  border: 1.5px solid #d3dde8;
+  border: 1.5px solid var(--card-border, #d3dde8);
   box-shadow: 0 1px 2px rgba(16,24,40,.06);
 }
 
 .pb-cedar-page .link-button.secondary:hover{
-  background: #f2f5fa;
-  border-color: #cad6e6;
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--card-border, #cad6e6));
   box-shadow: 0 6px 16px rgba(16,24,40,.08);
 }
 
@@ -4449,6 +4491,21 @@ img[draggable="false"] { -webkit-user-drag: none; }
   gap: 12px;
 }
 
+.pb-cedar-page .director-admin-member-edit-block{
+  border: 1px solid #d9e6f5;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-member-edit-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .pb-cedar-page .director-admin-network-identity-card{
   padding: 16px;
 }
@@ -4489,6 +4546,95 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-network-quote-help{
   margin-top: 1px;
   font-size: .82rem;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy-card{
+  border: 1px solid #d7e4f3;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy-head h3{
+  margin: 0;
+  font-size: .98rem;
+  color: #18395c;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy-head span{
+  font-size: .78rem;
+  color: #5d728c;
+  border: 1px solid #d2deec;
+  background: #eef5fd;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 700;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy-card .muted{
+  margin: 0;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy-input-row{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.pb-cedar-page .director-admin-network-taxonomy-input-row .pb-btn{
+  min-width: 74px;
+}
+
+.pb-cedar-page .director-admin-network-chip-list{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-network-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c8d8ea;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 5px 7px 5px 10px;
+  color: #143458;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.pb-cedar-page .director-admin-network-chip-remove{
+  border: 1px solid #c8d8ea;
+  background: #f6f9fe;
+  border-radius: 999px;
+  color: #355b84;
+  font-size: .72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.pb-cedar-page .director-admin-network-chip-remove:hover{
+  background: #edf4fc;
+  border-color: #b8cde4;
 }
 
 .pb-cedar-page .full-width{
@@ -4837,6 +4983,12 @@ img[draggable="false"] { -webkit-user-drag: none; }
   gap: 8px;
 }
 
+.pb-cedar-page .director-admin-email-footer-head-actions{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .pb-cedar-page .director-admin-email-footer-head strong{
   display: block;
   font-size: .95rem;
@@ -4882,6 +5034,11 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-email-footer-note{
   grid-column: 1 / -1;
   margin: -2px 0 0;
+}
+
+.pb-cedar-page .director-admin-email-footer-collapsed-note{
+  margin: 0;
+  padding: 4px 2px 0;
 }
 
 .pb-cedar-page .director-admin-preview-recipient-list{
@@ -5342,6 +5499,138 @@ img[draggable="false"] { -webkit-user-drag: none; }
   margin-bottom: 6px;
 }
 
+/* Ensure director admin UI fully tracks tenant main color (remove legacy blue accents). */
+.pb-cedar-page .director-admin-scope{
+  --director-admin-surface-border: color-mix(in srgb, var(--brand-primary) 22%, #dbe4ef);
+  --director-admin-surface-border-strong: color-mix(in srgb, var(--brand-primary) 32%, #d2dfef);
+  --director-admin-surface-border-soft: color-mix(in srgb, var(--brand-primary) 14%, #e4ecf5);
+  --director-admin-surface-bg: color-mix(in srgb, var(--brand-primary) 4%, #ffffff);
+  --director-admin-surface-bg-strong: color-mix(in srgb, var(--brand-primary) 9%, #ffffff);
+}
+
+.pb-cedar-page .director-admin-scope .pb-card,
+.pb-cedar-page .director-admin-scope .director-admin-table-wrap,
+.pb-cedar-page .director-admin-scope .director-admin-row-menu,
+.pb-cedar-page .director-admin-scope .director-admin-bulk-bar,
+.pb-cedar-page .director-admin-scope .director-admin-export-panel,
+.pb-cedar-page .director-admin-scope .director-admin-export-row,
+.pb-cedar-page .director-admin-scope .director-admin-export-preview-wrap,
+.pb-cedar-page .director-admin-scope .director-admin-member-edit-block,
+.pb-cedar-page .director-admin-scope .director-admin-info-banner,
+.pb-cedar-page .director-admin-scope .director-admin-upload-box,
+.pb-cedar-page .director-admin-scope .director-admin-recipient-builder,
+.pb-cedar-page .director-admin-scope .director-admin-member-search-results,
+.pb-cedar-page .director-admin-scope .director-admin-selected-chip,
+.pb-cedar-page .director-admin-scope .director-admin-recipient-preview,
+.pb-cedar-page .director-admin-scope .director-admin-email-preview,
+.pb-cedar-page .director-admin-scope .director-admin-email-frame,
+.pb-cedar-page .director-admin-scope .director-admin-email-footer-builder,
+.pb-cedar-page .director-admin-scope .director-admin-preview-recipient-list li,
+.pb-cedar-page .director-admin-scope .director-admin-module-card,
+.pb-cedar-page .director-admin-scope .director-admin-simple-list li,
+.pb-cedar-page .director-admin-scope .director-admin-brand-preview{
+  border-color: var(--director-admin-surface-border);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-table th{
+  background: var(--director-admin-surface-bg-strong);
+  color: var(--director-admin-ink);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-table th,
+.pb-cedar-page .director-admin-scope .director-admin-table td,
+.pb-cedar-page .director-admin-scope .director-admin-breakdown-head,
+.pb-cedar-page .director-admin-scope .director-admin-breakdown-row-item,
+.pb-cedar-page .director-admin-scope .director-admin-member-search-item{
+  border-bottom-color: var(--director-admin-surface-border-soft);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-table tbody tr:hover,
+.pb-cedar-page .director-admin-scope .director-admin-export-panel,
+.pb-cedar-page .director-admin-scope .director-admin-member-edit-block,
+.pb-cedar-page .director-admin-scope .director-admin-info-banner,
+.pb-cedar-page .director-admin-scope .director-admin-upload-box,
+.pb-cedar-page .director-admin-scope .director-admin-recipient-builder,
+.pb-cedar-page .director-admin-scope .director-admin-recipient-preview,
+.pb-cedar-page .director-admin-scope .director-admin-email-preview,
+.pb-cedar-page .director-admin-scope .director-admin-email-footer-builder,
+.pb-cedar-page .director-admin-scope .director-admin-simple-list li,
+.pb-cedar-page .director-admin-scope .director-admin-brand-preview-body{
+  background: var(--director-admin-surface-bg);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-breakdown-table-head,
+.pb-cedar-page .director-admin-scope .director-admin-breakdown-empty,
+.pb-cedar-page .director-admin-scope .director-admin-chart-axis-label,
+.pb-cedar-page .director-admin-scope .director-admin-chart-ytick,
+.pb-cedar-page .director-admin-scope .director-admin-chart-xtick,
+.pb-cedar-page .director-admin-scope .director-admin-export-head p,
+.pb-cedar-page .director-admin-scope .director-admin-export-drag-handle,
+.pb-cedar-page .director-admin-scope .director-admin-export-row small,
+.pb-cedar-page .director-admin-scope .director-admin-network-identity-head p,
+.pb-cedar-page .director-admin-scope .director-admin-search-item-main span,
+.pb-cedar-page .director-admin-scope .director-admin-branding-current-media > small,
+.pb-cedar-page .director-admin-scope .director-admin-color-value{
+  color: var(--director-admin-ink-soft);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-breakdown-label,
+.pb-cedar-page .director-admin-scope .director-admin-breakdown-row-item strong,
+.pb-cedar-page .director-admin-scope .director-admin-row-menu-trigger,
+.pb-cedar-page .director-admin-scope .director-admin-row-menu .director-admin-inline-link,
+.pb-cedar-page .director-admin-scope .director-admin-export-row label,
+.pb-cedar-page .director-admin-scope .director-admin-member-search-item strong,
+.pb-cedar-page .director-admin-scope .director-admin-selected-chip strong,
+.pb-cedar-page .director-admin-scope .director-admin-selected-chip small,
+.pb-cedar-page .director-admin-scope .director-admin-email-frame-body h4,
+.pb-cedar-page .director-admin-scope .director-admin-email-frame-body p,
+.pb-cedar-page .director-admin-scope .director-admin-email-signature-preview p,
+.pb-cedar-page .director-admin-scope .director-admin-email-signature-preview strong,
+.pb-cedar-page .director-admin-scope .director-admin-email-footer-head strong,
+.pb-cedar-page .director-admin-scope .director-admin-email-footer-head small,
+.pb-cedar-page .director-admin-scope .director-admin-preview-recipient-list small,
+.pb-cedar-page .director-admin-scope .director-admin-bar-row strong,
+.pb-cedar-page .director-admin-scope .director-admin-module-card p,
+.pb-cedar-page .director-admin-scope .director-admin-switch{
+  color: var(--director-admin-ink);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-breakdown-rank{
+  border-color: var(--director-admin-surface-border);
+  background: var(--director-admin-surface-bg);
+  color: var(--director-admin-ink-soft);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-row-menu-trigger:hover,
+.pb-cedar-page .director-admin-scope .director-admin-row-menu .director-admin-inline-link:hover{
+  background: var(--director-admin-surface-bg);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-chart-grid-line{
+  stroke: var(--director-admin-surface-border);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-chart-grid-line.minor{
+  stroke: var(--director-admin-surface-border-soft);
+}
+
+.pb-cedar-page .director-admin-scope .director-admin-step-pill{
+  border-color: var(--director-admin-surface-border);
+  color: var(--director-admin-ink-soft);
+  background: var(--director-admin-surface-bg);
+}
+
+.pb-cedar-page .director-admin-scope .link-button.secondary,
+.pb-cedar-page .director-admin-scope .pb-btn-secondary{
+  border-color: var(--director-admin-surface-border);
+}
+
+.pb-cedar-page .director-admin-scope .link-button.secondary:hover,
+.pb-cedar-page .director-admin-scope .pb-btn-secondary:hover{
+  border-color: var(--director-admin-surface-border-strong);
+  background: var(--director-admin-surface-bg);
+}
+
 @media (max-width: 1200px){
   .pb-cedar-page .director-admin-filter-row{
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5527,6 +5816,18 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .pb-cedar-page .director-admin-form-grid{
+    grid-template-columns: 1fr;
+  }
+
+  .pb-cedar-page .director-admin-network-taxonomy{
+    grid-template-columns: 1fr;
+  }
+
+  .pb-cedar-page .director-admin-network-taxonomy-input-row{
+    grid-template-columns: 1fr;
+  }
+
+  .pb-cedar-page .director-admin-member-edit-grid{
     grid-template-columns: 1fr;
   }
 
@@ -6004,6 +6305,20 @@ img[draggable="false"] { -webkit-user-drag: none; }
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid rgba(255,255,255,.45);
+}
+
+.wizard-preview-nav-fallback{
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.45);
+  background: rgba(255,255,255,.18);
+  color: var(--brand-on-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wizard-preview-content{

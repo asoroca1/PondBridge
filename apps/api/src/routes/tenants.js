@@ -81,8 +81,8 @@ function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
   return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
-const DEFAULT_TERMS_VERSION = "2026-02-21";
-const DEFAULT_PRIVACY_VERSION = "2026-02-21";
+const DEFAULT_TERMS_VERSION = "2026-03-04";
+const DEFAULT_PRIVACY_VERSION = "2026-03-04";
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 
 function hasOwn(source, key) {

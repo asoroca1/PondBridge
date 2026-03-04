@@ -6,6 +6,11 @@ import { noteTabLoginIntent } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
+import {
+  clearPendingLegalAgreement,
+  readPendingLegalAgreement,
+  setPendingLegalAgreementAccepted
+} from "../../lib/legalAgreement.js";
 
 function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
@@ -19,12 +24,33 @@ export default function ClerkCreateAccountFlow() {
   const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const legalRequired = String(searchParams.get("legalRequired") || "").trim() === "1";
   const { isLoaded, isSignedIn } = useClerkAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
+  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [legalError, setLegalError] = useState("");
 
   useEffect(() => {
     noteTabLoginIntent();
   }, []);
+
+  useEffect(() => {
+    const pending = readPendingLegalAgreement(slug);
+    setLegalAccepted(Boolean(pending?.accepted));
+  }, [slug]);
+
+  useEffect(() => {
+    if (!legalRequired) return;
+    setLegalError("You must agree to Terms and Privacy to create your account.");
+  }, [legalRequired]);
+
+  useEffect(() => {
+    if (legalAccepted) {
+      setPendingLegalAgreementAccepted(slug);
+      return;
+    }
+    clearPendingLegalAgreement(slug);
+  }, [legalAccepted, slug]);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -55,6 +81,17 @@ export default function ClerkCreateAccountFlow() {
     `/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
   );
   const signInUrl = routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
+  const legalPath = routeWithSlug(slug, "/legal");
+  const onSignUpSubmitCapture = (event) => {
+    if (legalAccepted) {
+      setLegalError("");
+      setPendingLegalAgreementAccepted(slug);
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setLegalError("You must agree to Terms and Privacy to create your account.");
+  };
 
   return (
     <section className="product-claim-page product-director-create-page product-director-create-clerk-page alumni-create-clerk-page">
@@ -69,7 +106,31 @@ export default function ClerkCreateAccountFlow() {
               Invite recognized for <strong>{inviteMeta.email || "this account"}</strong>.
             </p>
           ) : null}
-          <div className="alumni-create-clerk-host">
+          <div className={`alumni-create-legal-block ${legalError ? "has-error" : ""}`}>
+            <label className="alumni-create-legal-check">
+              <input
+                type="checkbox"
+                checked={legalAccepted}
+                onChange={(event) => {
+                  setLegalAccepted(event.target.checked);
+                  setLegalError("");
+                }}
+              />
+              <span>
+                I agree to the{" "}
+                <a href={`${legalPath}#terms`} target="_blank" rel="noreferrer">
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a href={`${legalPath}#privacy`} target="_blank" rel="noreferrer">
+                  Privacy Policy
+                </a>
+                .
+              </span>
+            </label>
+            {legalError ? <p className="error-text alumni-create-legal-error">{legalError}</p> : null}
+          </div>
+          <div className="alumni-create-clerk-host" onSubmitCapture={onSignUpSubmitCapture}>
             <SignUp
               path={path}
               routing="path"
