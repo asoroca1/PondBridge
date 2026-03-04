@@ -210,6 +210,7 @@ export default function AdvancedSearch() {
 
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
+  const currentParamsKey = params.toString();
 
   const [form, setForm] = useState(() => ({
     q: params.get("q") || "",
@@ -252,8 +253,18 @@ export default function AdvancedSearch() {
 
   const nameInputRef = useRef(null);
   const resultsRef = useRef(null);
+  const authTokenRef = useRef(token || "");
+  const getAuthTokenRef = useRef(getAuthToken);
 
   const debounced = useDebounced(form);
+
+  useEffect(() => {
+    authTokenRef.current = token || "";
+  }, [token]);
+
+  useEffect(() => {
+    getAuthTokenRef.current = getAuthToken;
+  }, [getAuthToken]);
 
   const hasActiveFilters = useMemo(() => {
     const {
@@ -325,8 +336,9 @@ export default function AdvancedSearch() {
     Object.entries(debounced).forEach(([key, value]) => {
       if (value !== "" && value !== null && value !== undefined) p.set(key, String(value));
     });
+    if (p.toString() === currentParamsKey) return;
     setParams(p, { replace: true });
-  }, [debounced, setParams]);
+  }, [currentParamsKey, debounced, setParams]);
 
   useEffect(() => {
     let alive = true;
@@ -355,15 +367,16 @@ export default function AdvancedSearch() {
         Object.entries(debounced).forEach(([key, value]) => {
           if (value !== "" && value !== null && value !== undefined) qs.set(key, String(value));
         });
+        qs.set("fetchLimit", "1000");
 
         const data = await requestJson(`/api/t/${slug}/search/users?${qs.toString()}`, {
-          token: token || "",
+          token: authTokenRef.current,
           getToken: async ({ forceRefresh = false } = {}) => {
-            if (typeof getAuthToken === "function") {
-              const next = await getAuthToken({ forceRefresh });
+            if (typeof getAuthTokenRef.current === "function") {
+              const next = await getAuthTokenRef.current({ forceRefresh });
               if (next) return next;
             }
-            return token || "";
+            return authTokenRef.current;
           },
           signal: controller.signal
         });
@@ -386,7 +399,7 @@ export default function AdvancedSearch() {
       alive = false;
       controller.abort();
     };
-  }, [authReady, debounced, getAuthToken, hasActiveFilters, slug, token]);
+  }, [authReady, debounced, hasActiveFilters, slug]);
 
   const onField = (key) => (event) => {
     const value = event?.target?.value ?? event;

@@ -40,6 +40,12 @@ function clampLimit(value, fallback = 30, max = 100) {
   return Math.min(Math.max(Math.trunc(parsed), 1), max);
 }
 
+function clampOffset(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.trunc(parsed));
+}
+
 function normalizeSearchText(value, maxLength = 120) {
   return String(value || "")
     .trim()
@@ -54,8 +60,11 @@ function parseSearchInput(req) {
   const city = normalizeSearchText(req.query.city, 80);
   const state = normalizeSearchText(req.query.state, 40);
   const cityState = normalizeSearchText(req.query.cityState || [city, state].filter(Boolean).join(" "), 120);
-  const limit = clampLimit(req.query.limit, 30, 100);
-  return { q, roleAtCamp, industry, cityState, limit };
+  const sort = String(req.query.sort || "name").trim().toLowerCase() === "recent" ? "recent" : "name";
+  const limit = clampLimit(req.query.limit, 24, 100);
+  const offset = clampOffset(req.query.offset, 0);
+  const fetchLimit = clampLimit(req.query.fetchLimit, 500, 1000);
+  return { q, roleAtCamp, industry, cityState, sort, limit, offset, fetchLimit };
 }
 
 function mapNameResult(profile = {}) {
@@ -94,15 +103,40 @@ function normalizeEntityId(value = "") {
   return id;
 }
 
+function sortSearchItems(items = [], sort = "name") {
+  const list = Array.isArray(items) ? [...items] : [];
+  if (sort === "recent") {
+    return list.sort((left, right) => {
+      const leftTs = new Date(left?.createdAt || left?.updatedAt || 0).getTime();
+      const rightTs = new Date(right?.createdAt || right?.updatedAt || 0).getTime();
+      if (leftTs !== rightTs) return rightTs - leftTs;
+      const leftName = `${left?.lastName || ""} ${left?.firstName || ""}`.trim().toLowerCase();
+      const rightName = `${right?.lastName || ""} ${right?.firstName || ""}`.trim().toLowerCase();
+      return leftName.localeCompare(rightName);
+    });
+  }
+  return list.sort((left, right) => {
+    const leftName = `${left?.lastName || ""} ${left?.firstName || ""}`.trim().toLowerCase();
+    const rightName = `${right?.lastName || ""} ${right?.firstName || ""}`.trim().toLowerCase();
+    if (leftName !== rightName) return leftName.localeCompare(rightName);
+    const leftTs = new Date(left?.createdAt || left?.updatedAt || 0).getTime();
+    const rightTs = new Date(right?.createdAt || right?.updatedAt || 0).getTime();
+    return rightTs - leftTs;
+  });
+}
+
 async function runSearch(req) {
-  const { q, roleAtCamp, industry, cityState, limit } = parseSearchInput(req);
+  const { q, roleAtCamp, industry, cityState, sort, limit, offset, fetchLimit } = parseSearchInput(req);
   const rawItems = await ProfileModel.search(req.tenant._id, q, {
     roleAtCamp: roleAtCamp || null,
     industry: industry || null,
     cityState: cityState || null,
-    limit
+    limit: fetchLimit,
+    maxLimit: 1000
   });
-  const items = rawItems.map((profile) => withNickname(profile));
+  const allItems = sortSearchItems(rawItems.map((profile) => withNickname(profile)), sort);
+  const total = allItems.length;
+  const items = allItems.slice(offset, offset + limit);
 
   if (q) {
     await logTenantEvent({
@@ -111,7 +145,7 @@ async function runSearch(req) {
       eventType: "directory_search",
       metadata: {
         term: q,
-        resultCount: items.length
+        resultCount: total
       }
     }).catch(() => {});
   }
@@ -121,7 +155,10 @@ async function runSearch(req) {
     roleAtCamp,
     industry,
     cityState,
+    sort,
     limit,
+    offset,
+    total,
     items
   };
 }
@@ -133,13 +170,15 @@ router.get("/", async (req, res) => {
   const result = await runSearch(req);
 
   return res.json({
-    total: result.items.length,
+    total: result.total,
     items: result.items,
     query: {
       q: result.q,
       roleAtCamp: result.roleAtCamp,
       industry: result.industry,
       cityState: result.cityState,
+      sort: result.sort,
+      offset: result.offset,
       limit: result.limit
     }
   });
@@ -151,7 +190,7 @@ router.get("/users", async (req, res) => {
 
   const result = await runSearch(req);
   return res.json({
-    total: result.items.length,
+    total: result.total,
     items: result.items,
     results: result.items,
     query: {
@@ -159,6 +198,8 @@ router.get("/users", async (req, res) => {
       roleAtCamp: result.roleAtCamp,
       industry: result.industry,
       cityState: result.cityState,
+      sort: result.sort,
+      offset: result.offset,
       limit: result.limit
     }
   });

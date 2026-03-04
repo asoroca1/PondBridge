@@ -422,6 +422,7 @@ select.as2-input {
 
 .as2-results {
   min-width: 0;
+  scroll-margin-top: 120px;
 }
 
 .as2-results-head {

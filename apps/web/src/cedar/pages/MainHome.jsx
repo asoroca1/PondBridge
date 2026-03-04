@@ -230,6 +230,7 @@ function hasDirectorPrivileges(...sources) {
 function RelatedProfilesCard({ targetUserId }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [avatarErrorIds, setAvatarErrorIds] = useState(() => new Set());
 
   useEffect(() => {
     let abort = false;
@@ -247,7 +248,10 @@ function RelatedProfilesCard({ targetUserId }) {
         const r = await fetch(`${API_BASE}/suggestions?${qs.toString()}`, { headers: authHeaders() });
         if (!r.ok) throw new Error("suggestions fetch failed");
         const data = await r.json();
-        if (!abort) setItems((data.items || []).slice(0, 5));
+        if (!abort) {
+          setItems((data.items || []).slice(0, 5));
+          setAvatarErrorIds(new Set());
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -275,6 +279,7 @@ function RelatedProfilesCard({ targetUserId }) {
             const job = topCurrentJob(u);
             const url = avatarUrl(u);
             const initials = initialsOf(u.firstName, u.lastName, u.nickname);
+            const showImage = Boolean(url) && !avatarErrorIds.has(id);
             return (
               <li key={id} className="p1-suggest-item">
                 <Link
@@ -282,8 +287,20 @@ function RelatedProfilesCard({ targetUserId }) {
                   className="p1-suggest-avatar"
                   aria-label={`Open ${name}'s profile`}
                 >
-                  {url ? (
-                    <img className="p1-suggest-img" src={url} alt={name} />
+                  {showImage ? (
+                    <img
+                      className="p1-suggest-img"
+                      src={url}
+                      alt={name}
+                      onError={() =>
+                        setAvatarErrorIds((prev) => {
+                          if (prev.has(id)) return prev;
+                          const next = new Set(prev);
+                          next.add(id);
+                          return next;
+                        })
+                      }
+                    />
                   ) : (
                     <div className="p1-suggest-fallback">{initials || "?"}</div>
                   )}

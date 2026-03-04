@@ -319,7 +319,8 @@ export const ProfileModel = {
   COLUMNS,
 
   async search(tenantId, query, opts = {}) {
-    const limit = clampLimit(opts.limit || 30, 30, 100);
+    const maxLimit = clampLimit(opts.maxLimit || 100, 100, 1000);
+    const limit = clampLimit(opts.limit || 30, 30, maxLimit);
     const normalizedQuery = normalizeText(query || "");
     const strictLimit = normalizedQuery ? Math.max(limit, 60) : limit;
 
