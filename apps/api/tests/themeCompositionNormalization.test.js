@@ -72,7 +72,10 @@ beforeAll(async () => {
   process.env.BCRYPT_ROUNDS = "4";
   process.env.FRONTEND_ORIGIN = "http://localhost:5173";
   process.env.APP_BASE_DOMAIN = "pondbridge.test";
-  process.env.PONDBRIDGE_DISABLE_DB_MARKER_GUARD = "1";
+  // REMOVED: process.env.PONDBRIDGE_DISABLE_DB_MARKER_GUARD = "1";
+  // This flag was disabling the production database safety guard, causing
+  // clearAllDocuments() to wipe production data when tests ran against the
+  // real Supabase database. Tests must ONLY run against a local database.
 
   ({ connectToDatabase } = await import("../src/db/connect.js"));
   ({ clearAllDocuments } = await import("../src/db/supabaseDocumentModel.js"));

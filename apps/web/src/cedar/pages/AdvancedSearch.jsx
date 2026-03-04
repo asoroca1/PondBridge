@@ -122,7 +122,11 @@ function RolesMultiSelect({ options, value, onChange }) {
         tabIndex={0}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") setOpen((v) => !v);
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen((v) => !v);
+          }
         }}
         aria-haspopup="listbox"
         aria-expanded={open}

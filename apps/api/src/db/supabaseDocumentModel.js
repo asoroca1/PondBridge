@@ -47,7 +47,20 @@ function looksLikeSafeTestDatabase(markers = DEFAULT_TEST_DB_MARKERS) {
   return markers.some((marker) => haystack.includes(marker));
 }
 
-function assertDestructiveResetAllowed() {
+async function databaseHasRealTenants() {
+  try {
+    const sb = getSupabaseAdmin();
+    const { count, error } = await sb
+      .from("tenants")
+      .select("id", { count: "exact", head: true });
+    if (error) return true; // Assume real data on error (fail safe).
+    return (count || 0) > 0;
+  } catch {
+    return true; // Fail safe: assume real data exists.
+  }
+}
+
+async function assertDestructiveResetAllowed() {
   const isTestEnv = String(process.env.NODE_ENV || "").toLowerCase() === "test";
   const explicitOptIn = ["1", "true", "yes", "on"].includes(
     String(process.env.PONDBRIDGE_ALLOW_DB_RESET || "")
@@ -71,6 +84,25 @@ function assertDestructiveResetAllowed() {
     throw new Error(
       "Refusing destructive database reset. Require NODE_ENV=test, PONDBRIDGE_ALLOW_DB_RESET=1, PONDBRIDGE_TEST_RESET_ACK=1, and a non-production database marker match."
     );
+  }
+
+  // Final safeguard: even if all flags pass, refuse to wipe a database that
+  // contains real tenant data. This protects against cases where dev/test
+  // accidentally points to a production database.
+  if (await databaseHasRealTenants()) {
+    const iConfirmWipe = ["1", "true", "yes", "on"].includes(
+      String(process.env.PONDBRIDGE_CONFIRM_WIPE_EXISTING_TENANTS || "")
+        .trim()
+        .toLowerCase()
+    );
+    if (!iConfirmWipe) {
+      throw new Error(
+        "REFUSING destructive database reset: the database contains existing tenant data. " +
+          "This safeguard prevents accidental data loss. If you are absolutely certain this is " +
+          "a test database, set PONDBRIDGE_CONFIRM_WIPE_EXISTING_TENANTS=1 in addition to " +
+          "the other reset flags."
+      );
+    }
   }
 }
 
@@ -132,7 +164,7 @@ async function truncateViaSupabaseApi() {
 }
 
 export async function clearAllDocuments() {
-  assertDestructiveResetAllowed();
+  await assertDestructiveResetAllowed();
 
   try {
     const usedSql = await truncateViaDirectSql();

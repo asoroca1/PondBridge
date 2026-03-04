@@ -307,7 +307,7 @@
     color:#4e627d;
     background:#f8fbff;
   }
-  .ps-file{ display:block; width:100%; margin-top:6px; }
+  .ps-file{ display:none !important; }
   .ps-textarea{
     width:100%;
     margin-top:10px;

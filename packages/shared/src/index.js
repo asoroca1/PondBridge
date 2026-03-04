@@ -196,7 +196,7 @@ export function replaceAlumniForCampType(text = "", campType = "") {
   if (!source) return source;
   const lowerWord = alumniPluralForCampType(campType, { capitalized: false });
   const upperWord = alumniPluralForCampType(campType, { capitalized: true });
-  return source.replace(/\balumni\b/gi, (match) => (match[0] === "A" ? upperWord : lowerWord));
+  return source.replace(/\b(alumni|alumnae)\b/gi, (match) => (match[0] === "A" ? upperWord : lowerWord));
 }
 
 export function defaultNetworkDisplayNameForCamp(campName = "Your Camp", campType = "coed") {

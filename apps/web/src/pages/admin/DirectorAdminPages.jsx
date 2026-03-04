@@ -5,7 +5,8 @@ import {
   defaultNetworkDisplayNameForCamp,
   normalizeCampType,
   normalizeHeroImagePosition,
-  normalizeHeroImageSize
+  normalizeHeroImageSize,
+  replaceAlumniForCampType
 } from "@pondbridge/shared";
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { requestBlob, requestJson } from "../../lib/http.js";
@@ -33,6 +34,36 @@ function formatDateTime(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "-";
   return parsed.toLocaleString();
+}
+
+function getNiceTickStep(maxValue = 1, targetTickCount = 5) {
+  const safeMax = Math.max(1, Number(maxValue || 0));
+  const roughStep = safeMax / Math.max(1, targetTickCount - 1);
+  const exponent = Math.floor(Math.log10(roughStep));
+  const base = 10 ** exponent;
+  const fraction = roughStep / base;
+
+  let niceFraction = 1;
+  if (fraction <= 1) {
+    niceFraction = 1;
+  } else if (fraction <= 2) {
+    niceFraction = 2;
+  } else if (fraction <= 2.5) {
+    niceFraction = 2.5;
+  } else if (fraction <= 5) {
+    niceFraction = 5;
+  } else {
+    niceFraction = 10;
+  }
+
+  return niceFraction * base;
+}
+
+function formatChartTickValue(value = 0) {
+  const n = Number(value || 0);
+  if (Number.isInteger(n)) return String(n);
+  const rounded = Math.abs(n) < 1 ? n.toFixed(2) : n.toFixed(1);
+  return rounded.replace(/\.0$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
 }
 
 function formatMoney(value = 0) {
@@ -111,6 +142,10 @@ function parseIdsParam(value = "") {
       .map((item) => String(item || "").trim())
       .filter(Boolean)
   )];
+}
+
+function normalizeMemberRowId(member = null) {
+  return String(member?.id || "").trim();
 }
 
 const INVITE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -367,6 +402,7 @@ function normalizeEmailFooter(value = {}, fallback = {}) {
   const senderEmailRaw = normalizeEmailFooterField(source.senderEmail ?? base.senderEmail ?? "", 160).toLowerCase();
   const senderEmail = INVITE_EMAIL_REGEX.test(senderEmailRaw) ? senderEmailRaw : "";
   return {
+    headerTagline: normalizeEmailFooterField(source.headerTagline ?? base.headerTagline ?? "Community update", 72) || "Community update",
     signOff: normalizeEmailFooterField(source.signOff ?? base.signOff ?? "Warmly,", 80) || "Warmly,",
     senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120),
     senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120),
@@ -383,6 +419,7 @@ function normalizeEmailFooterPresets(presets = [], fallbackFooter = {}) {
     fallbackFooter,
     {
       signOff: "Warmly,",
+      headerTagline: "Community update",
       senderName: "",
       senderRole: "Director",
       senderEmail: "",
@@ -436,6 +473,7 @@ function createFallbackEmailFooter({ tenant = null, user = null } = {}) {
   return normalizeEmailFooter(
     {
       signOff: "Warmly,",
+      headerTagline: "Community update",
       senderName,
       senderRole,
       senderEmail,
@@ -736,7 +774,8 @@ function TimeSeriesChartCard({
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
   const maxObservedValue = Math.max(0, ...weekSeries.map((point) => point.value));
-  const maxValue = Math.max(1, Math.ceil(maxObservedValue));
+  const tickStep = getNiceTickStep(maxObservedValue, 5);
+  const maxValue = Math.max(tickStep, Math.ceil(Math.max(1, maxObservedValue) / tickStep) * tickStep);
   const xStep = weekSeries.length > 1 ? plotWidth / (weekSeries.length - 1) : 0;
 
   const chartPoints = weekSeries.map((point, index) => {
@@ -750,13 +789,17 @@ function TimeSeriesChartCard({
     .join(" ");
 
   const areaPath = `${linePath} L ${padding.left + plotWidth} ${(padding.top + plotHeight).toFixed(2)} L ${padding.left} ${(padding.top + plotHeight).toFixed(2)} Z`;
-  const yTicks = Array.from({ length: maxValue + 1 }, (_unused, index) => index);
-  const majorGridYKeys = new Set(
-    yTicks.map((value) => (padding.top + (1 - value / maxValue) * plotHeight).toFixed(2))
-  );
-  const minorGridYs = [0.25, 0.5, 0.75]
-    .map((ratio) => padding.top + (1 - ratio) * plotHeight)
-    .filter((y) => !majorGridYKeys.has(y.toFixed(2)));
+  const yTicks = [];
+  for (let value = 0; value <= maxValue + tickStep * 0.5; value += tickStep) {
+    yTicks.push(Number(value.toFixed(4)));
+  }
+  const minorGridYs =
+    yTicks.length >= 2
+      ? yTicks.slice(0, -1).map((value) => {
+          const midpoint = value + tickStep / 2;
+          return padding.top + (1 - midpoint / maxValue) * plotHeight;
+        })
+      : [];
   const xLabelStep = Math.max(1, Math.round(weekSeries.length / 6));
   const xLabelIndexes = new Set(
     weekSeries
@@ -860,7 +903,7 @@ function TimeSeriesChartCard({
                   y2={y}
                 />
                 <text className="director-admin-chart-ytick" x={padding.left - 8} y={y + 4}>
-                  {value}
+                  {formatChartTickValue(value)}
                 </text>
               </g>
             );
@@ -1259,12 +1302,14 @@ export function DirectorAdminMembersPage() {
   }, [loadMembers]);
 
   useEffect(() => {
-    setSelected((prev) => prev.filter((id) => payload?.items?.some((item) => item.id === id)));
+    setSelected((prev) =>
+      prev.filter((id) => payload?.items?.some((item) => normalizeMemberRowId(item) === id))
+    );
   }, [payload?.items]);
 
   useEffect(() => {
     if (!rowMenuId) return;
-    if (!payload?.items?.some((item) => item.id === rowMenuId)) {
+    if (!payload?.items?.some((item) => normalizeMemberRowId(item) === rowMenuId)) {
       setRowMenuState(null);
     }
   }, [payload?.items, rowMenuId]);
@@ -1297,22 +1342,29 @@ export function DirectorAdminMembersPage() {
   function toggleAll(event) {
     if (!payload?.items?.length) return;
     if (event.target.checked) {
-      setSelected(payload.items.map((item) => item.id));
+      setSelected(
+        [...new Set(payload.items.map((item) => normalizeMemberRowId(item)).filter(Boolean))]
+      );
       return;
     }
     setSelected([]);
   }
 
   function toggleOne(memberId) {
+    const normalizedId = String(memberId || "").trim();
+    if (!normalizedId) return;
     setSelected((prev) =>
-      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+      prev.includes(normalizedId)
+        ? prev.filter((id) => id !== normalizedId)
+        : [...prev, normalizedId]
     );
   }
 
   const activeRowMenuMember = useMemo(
-    () => (payload?.items || []).find((item) => item.id === rowMenuId) || null,
+    () => (payload?.items || []).find((item) => normalizeMemberRowId(item) === rowMenuId) || null,
     [payload?.items, rowMenuId]
   );
+  const activeRowMenuMemberId = normalizeMemberRowId(activeRowMenuMember);
 
   function openRowMenu(event, memberId) {
     const id = String(memberId || "").trim();
@@ -1750,8 +1802,15 @@ export function DirectorAdminMembersPage() {
                 <th>
                   <input
                     type="checkbox"
-                    checked={Boolean(payload?.items?.length) && selected.length === payload.items.length}
+                    checked={
+                      (payload?.items || [])
+                        .map((item) => normalizeMemberRowId(item))
+                        .filter(Boolean)
+                        .every((id) => selected.includes(id)) &&
+                      (payload?.items || []).some((item) => Boolean(normalizeMemberRowId(item)))
+                    }
                     onChange={toggleAll}
+                    disabled={!(payload?.items || []).some((item) => Boolean(normalizeMemberRowId(item)))}
                   />
                 </th>
                 <th>Name</th>
@@ -1777,13 +1836,17 @@ export function DirectorAdminMembersPage() {
                   </td>
                 </tr>
               ) : (
-                payload.items.map((item) => (
-                  <tr key={item.id}>
+                payload.items.map((item, index) => {
+                  const memberId = normalizeMemberRowId(item);
+                  const rowKey = memberId || String(item?.userId || item?.email || `member-row-${index}`);
+                  return (
+                    <tr key={rowKey}>
                     <td>
                       <input
                         type="checkbox"
-                        checked={selected.includes(item.id)}
-                        onChange={() => toggleOne(item.id)}
+                        checked={memberId ? selected.includes(memberId) : false}
+                        onChange={() => toggleOne(memberId)}
+                        disabled={!memberId}
                       />
                     </td>
                     <td>
@@ -1812,15 +1875,17 @@ export function DirectorAdminMembersPage() {
                           type="button"
                           className="director-admin-row-menu-trigger"
                           aria-label="Open row actions"
-                          aria-expanded={rowMenuId === item.id}
-                          onClick={(event) => openRowMenu(event, item.id)}
+                          aria-expanded={rowMenuId === memberId}
+                          disabled={!memberId}
+                          onClick={(event) => openRowMenu(event, memberId)}
                         >
                           ⋯
                         </button>
                       </div>
                     </td>
-                  </tr>
-                ))
+                    </tr>
+                  );
+                })
               )}
             </tbody>
         </DataTable>
@@ -1830,19 +1895,26 @@ export function DirectorAdminMembersPage() {
                 className="director-admin-row-menu is-floating"
                 style={{ top: `${rowMenuState.top}px`, left: `${rowMenuState.left}px` }}
               >
-                <Link
-                  className="director-admin-inline-link"
-                  to={`/t/${slug}/profile/${activeRowMenuMember.id}`}
-                  onClick={() => setRowMenuState(null)}
-                >
-                  View Profile
-                </Link>
+                {activeRowMenuMemberId ? (
+                  <Link
+                    className="director-admin-inline-link"
+                    to={`/t/${slug}/profile/${activeRowMenuMemberId}`}
+                    onClick={() => setRowMenuState(null)}
+                  >
+                    View Profile
+                  </Link>
+                ) : (
+                  <button type="button" className="director-admin-inline-link" disabled>
+                    View Profile
+                  </button>
+                )}
                 <button
                   type="button"
                   className="director-admin-inline-link"
+                  disabled={!activeRowMenuMemberId}
                   onClick={() => {
                     setRowMenuState(null);
-                    setEditingMember({ ...activeRowMenuMember });
+                    setEditingMember({ ...activeRowMenuMember, id: activeRowMenuMemberId });
                   }}
                 >
                   Edit Member
@@ -1850,10 +1922,10 @@ export function DirectorAdminMembersPage() {
                 <button
                   type="button"
                   className="director-admin-inline-link"
-                  disabled={deletingMemberId === activeRowMenuMember.id}
-                  onClick={() => hardDeleteMember(activeRowMenuMember)}
+                  disabled={!activeRowMenuMemberId || deletingMemberId === activeRowMenuMemberId}
+                  onClick={() => hardDeleteMember({ ...activeRowMenuMember, id: activeRowMenuMemberId })}
                 >
-                  {deletingMemberId === activeRowMenuMember.id ? "Deleting..." : "Delete from Network"}
+                  {deletingMemberId === activeRowMenuMemberId ? "Deleting..." : "Delete from Network"}
                 </button>
               </div>,
               document.body
@@ -3006,7 +3078,7 @@ export function DirectorAdminEmailComposePage() {
     .trim();
   const previewHeaderLogoUrl = String(tenant?.theme?.logoUrl || "").trim();
   const previewFooterLogoUrl = activeFooter.showLogo
-    ? String(activeFooter.logoUrl || tenant?.theme?.logoUrl || "").trim()
+    ? String(tenant?.theme?.logoUrl || activeFooter.logoUrl || "").trim()
     : "";
   const previewInitials = (networkName || "PondBridge")
     .split(/\s+/)
@@ -3496,6 +3568,16 @@ export function DirectorAdminEmailComposePage() {
 
             <div className="director-admin-email-footer-grid">
               <label>
+                Header label
+                <Input
+                  value={activeFooter.headerTagline}
+                  onChange={(event) =>
+                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, headerTagline: event.target.value }, fallbackFooter))
+                  }
+                  placeholder="Community update"
+                />
+              </label>
+              <label>
                 Sign-off
                 <Input
                   value={activeFooter.signOff}
@@ -3545,16 +3627,6 @@ export function DirectorAdminEmailComposePage() {
                   placeholder="(555) 555-5555"
                 />
               </label>
-              <label>
-                Logo URL
-                <Input
-                  value={activeFooter.logoUrl}
-                  onChange={(event) =>
-                    setFooterDraft((prev) => normalizeEmailFooter({ ...prev, logoUrl: event.target.value }, fallbackFooter))
-                  }
-                  placeholder="https://..."
-                />
-              </label>
               <label className="inline-check director-admin-email-footer-toggle">
                 <input
                   type="checkbox"
@@ -3565,6 +3637,7 @@ export function DirectorAdminEmailComposePage() {
                 />
                 Include camp logo in footer
               </label>
+              <p className="muted director-admin-email-footer-note">Footer logo uses your active camp branding logo automatically.</p>
             </div>
           </section>
 
@@ -3611,7 +3684,7 @@ export function DirectorAdminEmailComposePage() {
               )}
               <div>
                 <strong>{networkName || "Your Camp Network"}</strong>
-                <small>Community update</small>
+                <small>{activeFooter.headerTagline || "Community update"}</small>
               </div>
             </div>
             <div className="director-admin-email-frame-body">
@@ -4245,6 +4318,7 @@ export function DirectorAdminSettingsNetworkPage() {
   const [status, setStatus] = useState("");
   const [form, setForm] = useState({
     campName: "",
+    campType: "coed",
     networkName: "",
     homepageQuote: "",
     contactEmail: "",
@@ -4254,9 +4328,10 @@ export function DirectorAdminSettingsNetworkPage() {
   useEffect(() => {
     if (!payload?.identity) return;
     const campName = String(payload.identity.campName || payload.tenant?.name || "").trim();
-    const campType = normalizeCampType(payload?.tenant?.content?.campType || "coed");
+    const campType = normalizeCampType(payload?.identity?.campType || payload?.tenant?.content?.campType || "coed");
     setForm({
       campName,
+      campType,
       networkName:
         payload.identity.networkName ||
         (campName ? defaultNetworkDisplayNameForCamp(campName, campType) : ""),
@@ -4291,6 +4366,25 @@ export function DirectorAdminSettingsNetworkPage() {
         <label>
           Camp Name
           <Input value={form.campName} readOnly />
+        </label>
+        <label>
+          Camp Type
+          <Select
+            value={normalizeCampType(form.campType || "coed")}
+            onChange={(event) => {
+              const nextCampType = normalizeCampType(event.target.value || "coed");
+              setForm((prev) => ({
+                ...prev,
+                campType: nextCampType,
+                networkName: replaceAlumniForCampType(prev.networkName, nextCampType),
+                homepageQuote: replaceAlumniForCampType(prev.homepageQuote, nextCampType)
+              }));
+            }}
+          >
+            <option value="coed">Co-ed camp</option>
+            <option value="all_girls">All-girls camp</option>
+            <option value="all_boys">All-boys camp</option>
+          </Select>
         </label>
         <label>
           Network Name

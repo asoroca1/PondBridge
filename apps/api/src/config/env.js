@@ -321,3 +321,18 @@ if (env.NODE_ENV === "production" && env.SUPABASE_DB_URL) {
     );
   }
 }
+
+// Test safety: refuse to run tests with DB reset flags against a remote database.
+if (env.NODE_ENV === "test" && env.SUPABASE_DB_URL) {
+  const lowerDbUrl = env.SUPABASE_DB_URL.toLowerCase();
+  const isLocalDb = lowerDbUrl.includes("localhost") || lowerDbUrl.includes("127.0.0.1");
+  const resetEnabled = toBoolean(process.env.PONDBRIDGE_ALLOW_DB_RESET, false);
+  if (!isLocalDb && resetEnabled) {
+    throw new Error(
+      "FATAL: Test suite has PONDBRIDGE_ALLOW_DB_RESET=1 but SUPABASE_DB_URL points to a " +
+        "remote database. Tests with database reset enabled must ONLY run against a local " +
+        "database (localhost / 127.0.0.1). Either point SUPABASE_DB_URL to a local database " +
+        "or remove PONDBRIDGE_ALLOW_DB_RESET from your test command."
+    );
+  }
+}

@@ -1344,8 +1344,11 @@ function DirectorCreateAccountWizardPage() {
   }
 
   function validateAccountStep() {
+    const campTypeValid = CAMP_TYPE_OPTIONS.some(
+      (item) => item.value === normalizeCampType(form.campType || "")
+    );
     if (!accountStepRequired) {
-      return {};
+      return campTypeValid ? {} : { campType: "Please choose your camp type." };
     }
 
     const next = {};
@@ -1363,7 +1366,7 @@ function DirectorCreateAccountWizardPage() {
     else if (form.password !== form.confirmPassword) next.confirmPassword = "Passwords do not match.";
 
     if (!String(form.campName || "").trim()) next.campName = "Please enter your camp name.";
-    if (!CAMP_TYPE_OPTIONS.some((item) => item.value === normalizeCampType(form.campType || ""))) {
+    if (!campTypeValid) {
       next.campType = "Please choose your camp type.";
     }
     if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
@@ -2386,6 +2389,27 @@ function DirectorCreateAccountWizardPage() {
 
               <form className="director-create-form" onSubmit={onContinueToFeatures} noValidate>
                 <div className="wizard1-grid wizard1-gap director-create-fields director-design-fields">
+                  {!accountStepRequired ? (
+                    <div className="wizard1-field wizard1-span-6">
+                      <label className="wizard1-label" htmlFor="director-design-camp-type">
+                        Camp type<span className="req" aria-hidden="true"> *</span>
+                      </label>
+                      <select
+                        id="director-design-camp-type"
+                        className={`wizard1-input ${errors.campType ? "has-error" : ""}`}
+                        value={normalizeCampType(form.campType || "coed")}
+                        onChange={(event) => updateField("campType", event.target.value)}
+                      >
+                        {CAMP_TYPE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {errors.campType ? <p className="wizard1-error">{errors.campType}</p> : null}
+                    </div>
+                  ) : null}
+
                   <div className="wizard1-field wizard1-span-12">
                     <label className="wizard1-label" htmlFor="director-brand-primary">
                       Main color<span className="req" aria-hidden="true"> *</span>

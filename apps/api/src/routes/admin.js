@@ -9,6 +9,7 @@ import {
   alumniPluralForCampType,
   hasFeature,
   listFeaturesForPlan,
+  normalizeCampType,
   replaceAlumniForCampType
 } from "@pondbridge/shared";
 import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
@@ -223,6 +224,7 @@ function normalizeEmailFooterData(value = {}, fallback = {}) {
   const logoUrlRaw = normalizeHttpUrl(source.logoUrl ?? base.logoUrl ?? "");
   const signOff = normalizeEmailFooterField(source.signOff ?? base.signOff ?? "Warmly,", 80);
   return {
+    headerTagline: normalizeEmailFooterField(source.headerTagline ?? base.headerTagline ?? "Community update", 72) || "Community update",
     signOff: signOff || "Warmly,",
     senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120),
     senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120),
@@ -239,6 +241,7 @@ function normalizeEmailFooterPresetList(value = [], { fallbackFooter = null } = 
     fallbackFooter || {},
     {
       signOff: "Warmly,",
+      headerTagline: "Community update",
       senderName: "",
       senderRole: "Director",
       senderEmail: "",
@@ -319,6 +322,7 @@ async function resolveDirectorFooterDefaults({ tenant, user }) {
   return normalizeEmailFooterData(
     {
       signOff: "Warmly,",
+      headerTagline: "Community update",
       senderName,
       senderRole,
       senderEmail,
@@ -363,6 +367,7 @@ function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "
   const safeBodyHtml = sanitizeHtmlContent(String(bodyHtml || "").trim());
   const normalizedFooter = normalizeEmailFooterData(footer, {
     signOff: "Warmly,",
+    headerTagline: "Community update",
     senderName: "",
     senderRole: "Director",
     senderEmail: "",
@@ -378,9 +383,10 @@ function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "
   const safeSignOff = escapeEmailHtml(normalizedFooter.signOff || "Warmly,");
   const safeSenderName = escapeEmailHtml(normalizedFooter.senderName || "");
   const safeSenderRole = escapeEmailHtml(normalizedFooter.senderRole || "");
+  const safeHeaderTagline = escapeEmailHtml(normalizedFooter.headerTagline || "Community update");
   const headerLogoUrl = normalizeHttpUrl(theme.logoUrl || "");
   const footerLogoUrl = normalizedFooter.showLogo
-    ? normalizeHttpUrl(normalizedFooter.logoUrl || theme.logoUrl || "")
+    ? normalizeHttpUrl(theme.logoUrl || normalizedFooter.logoUrl || "")
     : "";
   const headerLogoMarkup = headerLogoUrl
     ? `<img src="${escapeEmailHtml(headerLogoUrl)}" alt="" width="42" height="42" style="display:block;width:42px;height:42px;border-radius:10px;object-fit:cover;border:0;outline:none;text-decoration:none;" />`
@@ -404,7 +410,7 @@ function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "
                     <td style="width:52px;vertical-align:middle;">${headerLogoMarkup}</td>
                     <td style="vertical-align:middle;font-family:Arial,sans-serif;">
                       <div style="font-size:17px;font-weight:700;line-height:1.3;">${tenantName}</div>
-                      <div style="font-size:13px;opacity:0.9;line-height:1.4;">Community update</div>
+                      <div style="font-size:13px;opacity:0.9;line-height:1.4;">${safeHeaderTagline}</div>
                     </td>
                   </tr>
                 </table>
@@ -1298,7 +1304,7 @@ function mapMemberRow(profile = {}, user = null, { directorUserId = "" } = {}) {
   const email = profile?.emails?.find(Boolean) || user?.email || "";
   const accountRoleLabel = resolveAccountRoleLabel(user, directorUserId);
   return {
-    id: toObjectIdString(profile._id),
+    id: toObjectIdString(profile._id || profile.id),
     userId: toObjectIdString(profile.userId),
     firstName: profile.firstName || "",
     lastName: profile.lastName || "",
@@ -1949,7 +1955,7 @@ router.get("/dashboard", async (req, res, next) => {
         if (!profile) return null;
         const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
         return {
-          profileId: toObjectIdString(profile._id),
+          profileId: toObjectIdString(profile._id || profile.id),
           userId,
           fullName: fullName || "Member",
           logins: Number(logins || 0)
@@ -2208,7 +2214,9 @@ router.get("/members/lookup", async (req, res, next) => {
         })
       : [];
     const usersById = new Map(users.map((item) => [toObjectIdString(item._id), item]));
-    const profilesById = new Map(profiles.map((profile) => [toObjectIdString(profile._id), profile]));
+    const profilesById = new Map(
+      profiles.map((profile) => [toObjectIdString(profile._id || profile.id), profile])
+    );
 
     const items = ids
       .map((id) => {
@@ -3354,6 +3362,7 @@ router.get("/settings", async (req, res) => {
     },
     identity: {
       campName: String(req.tenant.name || ""),
+      campType: normalizeCampType(content.campType || "coed"),
       networkName: content.networkDisplayName,
       homepageQuote: String(content.welcomeBody || "").trim(),
       tagline: String(content.welcomeBody || content.welcomeHeadline || "").trim(),
@@ -3395,6 +3404,11 @@ router.get("/settings", async (req, res) => {
 router.patch("/settings/identity", async (req, res) => {
   const draft = resolveDraft(req.tenant);
   const content = draft.content || resolveContent(req.tenant);
+  const nextCampType = normalizeCampType(req.body?.campType ?? content.campType ?? "coed");
+  const nextNetworkName = replaceAlumniForCampType(
+    sanitizeText(String(req.body?.networkName ?? (content.networkDisplayName || "")).trim()),
+    nextCampType
+  );
   const nextHomepageQuote = sanitizeText(
     String(
       req.body?.homepageQuote ??
@@ -3403,9 +3417,13 @@ router.patch("/settings/identity", async (req, res) => {
     ).trim()
   );
   const next = {
-    networkDisplayName: sanitizeText(String(req.body?.networkName ?? (content.networkDisplayName || "")).trim()),
-    welcomeBody: nextHomepageQuote,
-    aboutText: sanitizeText(String(req.body?.aboutText ?? (content.aboutText || "")).trim()),
+    campType: nextCampType,
+    networkDisplayName: nextNetworkName,
+    welcomeBody: replaceAlumniForCampType(nextHomepageQuote, nextCampType),
+    aboutText: replaceAlumniForCampType(
+      sanitizeText(String(req.body?.aboutText ?? (content.aboutText || "")).trim()),
+      nextCampType
+    ),
     contactEmail: normalizeEmail(req.body?.contactEmail ?? (content.contactEmail || "")),
     supportUrl: String(req.body?.websiteUrl ?? (content.supportUrl || "")).trim()
   };

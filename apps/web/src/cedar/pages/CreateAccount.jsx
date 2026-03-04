@@ -42,7 +42,13 @@ function MultiSelect({ label, placeholder, options, selected, setSelected, name 
         role="button"
         tabIndex={0}
         onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setOpen((o) => !o)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
