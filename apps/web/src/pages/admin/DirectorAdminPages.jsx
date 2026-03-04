@@ -4861,6 +4861,7 @@ export function DirectorAdminSettingsNetworkPage() {
   const [ageGroupDraft, setAgeGroupDraft] = useState("");
   const [staffRoleDraft, setStaffRoleDraft] = useState("");
   const [listErrors, setListErrors] = useState({ ageGroups: "", staffRoles: "" });
+  const [taxonomyExpanded, setTaxonomyExpanded] = useState({ ageGroups: false, staffRoles: false });
   const [form, setForm] = useState({
     campName: "",
     campType: "coed",
@@ -4918,6 +4919,10 @@ export function DirectorAdminSettingsNetworkPage() {
     });
   }
 
+  function toggleTaxonomySection(section) {
+    setTaxonomyExpanded((prev) => ({ ...prev, [section]: !prev[section] }));
+  }
+
   async function saveIdentity(event) {
     event.preventDefault();
     const nextAgeGroups = normalizeAdminLabelList(form.ageGroups, []);
@@ -4927,7 +4932,14 @@ export function DirectorAdminSettingsNetworkPage() {
       staffRoles: nextStaffRoles.length ? "" : "Add at least one staff role."
     };
     setListErrors(nextErrors);
-    if (nextErrors.ageGroups || nextErrors.staffRoles) return;
+    if (nextErrors.ageGroups || nextErrors.staffRoles) {
+      setTaxonomyExpanded((prev) => ({
+        ...prev,
+        ageGroups: nextErrors.ageGroups ? true : prev.ageGroups,
+        staffRoles: nextErrors.staffRoles ? true : prev.staffRoles
+      }));
+      return;
+    }
 
     setSaving(true);
     setStatus("");
@@ -4994,98 +5006,138 @@ export function DirectorAdminSettingsNetworkPage() {
         </label>
         <div className="full-width director-admin-network-taxonomy">
           <section className="director-admin-network-taxonomy-card">
-            <div className="director-admin-network-taxonomy-head">
-              <h3>Camper Age Groups</h3>
-              <span>{form.ageGroups.length}/20</span>
-            </div>
-            <p className="muted">Used in camper year start/end age-group selectors.</p>
-            <div className="director-admin-network-taxonomy-input-row">
-              <Input
-                value={ageGroupDraft}
-                placeholder="Add age group (ex: Senior I)"
-                onChange={(event) => setAgeGroupDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  addLabel("ageGroups", ageGroupDraft);
-                  setAgeGroupDraft("");
-                }}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  addLabel("ageGroups", ageGroupDraft);
-                  setAgeGroupDraft("");
-                }}
-              >
-                Add
-              </Button>
-            </div>
-            {listErrors.ageGroups ? <p className="error-text">{listErrors.ageGroups}</p> : null}
-            <div className="director-admin-network-chip-list">
-              {form.ageGroups.map((label, index) => (
-                <span className="director-admin-network-chip" key={`${label}_${index}`}>
-                  <span>{label}</span>
-                  <button
-                    type="button"
-                    className="director-admin-network-chip-remove"
-                    onClick={() => removeLabel("ageGroups", index)}
-                    aria-label={`Remove age group ${label}`}
-                  >
-                    Remove
-                  </button>
+            <button
+              type="button"
+              className="director-admin-network-taxonomy-toggle"
+              onClick={() => toggleTaxonomySection("ageGroups")}
+              aria-expanded={taxonomyExpanded.ageGroups}
+              aria-controls="director-admin-age-groups-panel"
+            >
+              <span className="director-admin-network-taxonomy-toggle-copy">
+                <h3>Camper Age Groups</h3>
+                <small>Used in camper year start/end age-group selectors.</small>
+              </span>
+              <span className="director-admin-network-taxonomy-toggle-meta">
+                <span className="director-admin-network-taxonomy-count">{form.ageGroups.length}/20</span>
+                <span
+                  className={`director-admin-network-taxonomy-caret ${taxonomyExpanded.ageGroups ? "is-open" : ""}`.trim()}
+                  aria-hidden="true"
+                >
+                  ▾
                 </span>
-              ))}
-            </div>
+              </span>
+            </button>
+            {taxonomyExpanded.ageGroups ? (
+              <div className="director-admin-network-taxonomy-body" id="director-admin-age-groups-panel">
+                <div className="director-admin-network-taxonomy-input-row">
+                  <Input
+                    value={ageGroupDraft}
+                    placeholder="Add age group (ex: Senior I)"
+                    onChange={(event) => setAgeGroupDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      addLabel("ageGroups", ageGroupDraft);
+                      setAgeGroupDraft("");
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      addLabel("ageGroups", ageGroupDraft);
+                      setAgeGroupDraft("");
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {listErrors.ageGroups ? <p className="error-text">{listErrors.ageGroups}</p> : null}
+                <div className="director-admin-network-chip-list">
+                  {form.ageGroups.map((label, index) => (
+                    <span className="director-admin-network-chip" key={`${label}_${index}`}>
+                      <span>{label}</span>
+                      <button
+                        type="button"
+                        className="director-admin-network-chip-remove"
+                        onClick={() => removeLabel("ageGroups", index)}
+                        aria-label={`Remove age group ${label}`}
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
           <section className="director-admin-network-taxonomy-card">
-            <div className="director-admin-network-taxonomy-head">
-              <h3>Staff Roles</h3>
-              <span>{form.staffRoles.length}/20</span>
-            </div>
-            <p className="muted">Used in member role-at-camp forms and filters.</p>
-            <div className="director-admin-network-taxonomy-input-row">
-              <Input
-                value={staffRoleDraft}
-                placeholder="Add role (ex: Waterfront Director)"
-                onChange={(event) => setStaffRoleDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  addLabel("staffRoles", staffRoleDraft);
-                  setStaffRoleDraft("");
-                }}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  addLabel("staffRoles", staffRoleDraft);
-                  setStaffRoleDraft("");
-                }}
-              >
-                Add
-              </Button>
-            </div>
-            {listErrors.staffRoles ? <p className="error-text">{listErrors.staffRoles}</p> : null}
-            <div className="director-admin-network-chip-list">
-              {form.staffRoles.map((label, index) => (
-                <span className="director-admin-network-chip" key={`${label}_${index}`}>
-                  <span>{label}</span>
-                  <button
-                    type="button"
-                    className="director-admin-network-chip-remove"
-                    onClick={() => removeLabel("staffRoles", index)}
-                    aria-label={`Remove role ${label}`}
-                  >
-                    Remove
-                  </button>
+            <button
+              type="button"
+              className="director-admin-network-taxonomy-toggle"
+              onClick={() => toggleTaxonomySection("staffRoles")}
+              aria-expanded={taxonomyExpanded.staffRoles}
+              aria-controls="director-admin-staff-roles-panel"
+            >
+              <span className="director-admin-network-taxonomy-toggle-copy">
+                <h3>Staff Roles</h3>
+                <small>Used in member role-at-camp forms and filters.</small>
+              </span>
+              <span className="director-admin-network-taxonomy-toggle-meta">
+                <span className="director-admin-network-taxonomy-count">{form.staffRoles.length}/20</span>
+                <span
+                  className={`director-admin-network-taxonomy-caret ${taxonomyExpanded.staffRoles ? "is-open" : ""}`.trim()}
+                  aria-hidden="true"
+                >
+                  ▾
                 </span>
-              ))}
-            </div>
+              </span>
+            </button>
+            {taxonomyExpanded.staffRoles ? (
+              <div className="director-admin-network-taxonomy-body" id="director-admin-staff-roles-panel">
+                <div className="director-admin-network-taxonomy-input-row">
+                  <Input
+                    value={staffRoleDraft}
+                    placeholder="Add role (ex: Waterfront Director)"
+                    onChange={(event) => setStaffRoleDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      addLabel("staffRoles", staffRoleDraft);
+                      setStaffRoleDraft("");
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      addLabel("staffRoles", staffRoleDraft);
+                      setStaffRoleDraft("");
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {listErrors.staffRoles ? <p className="error-text">{listErrors.staffRoles}</p> : null}
+                <div className="director-admin-network-chip-list">
+                  {form.staffRoles.map((label, index) => (
+                    <span className="director-admin-network-chip" key={`${label}_${index}`}>
+                      <span>{label}</span>
+                      <button
+                        type="button"
+                        className="director-admin-network-chip-remove"
+                        onClick={() => removeLabel("staffRoles", index)}
+                        aria-label={`Remove role ${label}`}
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
         </div>
         <label>
