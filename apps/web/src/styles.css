@@ -1400,7 +1400,7 @@ body{
 }
 
 .wizard1-year-fields-camper{
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .wizard1-year-fields-staff{

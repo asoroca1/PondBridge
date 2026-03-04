@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function rgbToHex(r = 0, g = 0, b = 0) {
   return `#${[r, g, b]
@@ -21,6 +21,8 @@ export default function BrandImageColorPicker({
   const fileInputRef = useRef(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [uploadedImageName, setUploadedImageName] = useState("");
+  const [uploadedObjectUrl, setUploadedObjectUrl] = useState("");
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [pickerError, setPickerError] = useState("");
 
   const activeImageUrl = useMemo(
@@ -30,6 +32,16 @@ export default function BrandImageColorPicker({
 
   const canUseSystemDropper = typeof window !== "undefined" && "EyeDropper" in window;
 
+  useEffect(() => {
+    setImageLoadFailed(false);
+  }, [activeImageUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (uploadedObjectUrl) URL.revokeObjectURL(uploadedObjectUrl);
+    };
+  }, [uploadedObjectUrl]);
+
   function handleUpload(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -38,21 +50,25 @@ export default function BrandImageColorPicker({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setUploadedImageUrl(String(reader.result || ""));
+    try {
+      if (uploadedObjectUrl) URL.revokeObjectURL(uploadedObjectUrl);
+      const objectUrl = URL.createObjectURL(file);
+      setUploadedObjectUrl(objectUrl);
+      setUploadedImageUrl(objectUrl);
       setUploadedImageName(String(file.name || "").trim());
+      setImageLoadFailed(false);
       setPickerError("");
-    };
-    reader.onerror = () => {
+    } catch {
       setPickerError("Unable to read that image.");
-    };
-    reader.readAsDataURL(file);
+    }
   }
 
   function clearUploadedImage() {
+    if (uploadedObjectUrl) URL.revokeObjectURL(uploadedObjectUrl);
     setUploadedImageUrl("");
     setUploadedImageName("");
+    setUploadedObjectUrl("");
+    setImageLoadFailed(false);
     setPickerError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -119,16 +135,20 @@ export default function BrandImageColorPicker({
         Upload a logo/photo reference, then click on the image to set your main color.
       </p>
       <div className="brand-image-picker-actions">
-        <label className="brand-image-picker-btn brand-image-picker-btn-primary">
+        <button
+          type="button"
+          className="brand-image-picker-btn brand-image-picker-btn-primary"
+          onClick={() => fileInputRef.current?.click()}
+        >
           Upload Reference
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleUpload}
-            className="brand-image-picker-file-input"
-          />
-        </label>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleUpload}
+          className="brand-image-picker-file-input"
+        />
         {uploadedImageUrl ? (
           <button
             type="button"
@@ -147,15 +167,26 @@ export default function BrandImageColorPicker({
       {uploadedImageName ? (
         <p className="brand-image-picker-meta">Using upload: {uploadedImageName}</p>
       ) : null}
-      {activeImageUrl ? (
+      {activeImageUrl && !imageLoadFailed ? (
         <div className="brand-image-picker-preview">
           <img
             ref={imageRef}
             src={activeImageUrl}
             alt="Color sampling source"
             className="brand-image-picker-preview-image"
-            crossOrigin="anonymous"
             onClick={sampleFromRenderedImage}
+            onLoad={() => {
+              setImageLoadFailed(false);
+              if (pickerError.includes("could not be loaded")) setPickerError("");
+            }}
+            onError={() => {
+              setImageLoadFailed(true);
+              if (uploadedImageUrl) {
+                setPickerError("Uploaded image preview failed. Please try a different image.");
+              } else {
+                setPickerError("Current source image could not be loaded. Upload a reference image to sample colors.");
+              }
+            }}
           />
         </div>
       ) : (

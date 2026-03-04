@@ -1,5 +1,7 @@
 const CHUNK_RECOVERY_PARAM = "pb_recover";
-const CHUNK_RECOVERY_KEY_PREFIX = "pondbridge_chunk_recovery_attempted";
+const CHUNK_RECOVERY_KEY_PREFIX = "pondbridge_chunk_recovery_state";
+const CHUNK_RECOVERY_MAX_ATTEMPTS = 3;
+const CHUNK_RECOVERY_ATTEMPT_TTL_MS = 5 * 60 * 1000;
 
 function getBuildMarker() {
   if (typeof window === "undefined") return "server";
@@ -8,6 +10,32 @@ function getBuildMarker() {
 
 function getRecoveryStorageKey() {
   return `${CHUNK_RECOVERY_KEY_PREFIX}:${getBuildMarker()}`;
+}
+
+function getRouteRecoveryKey() {
+  if (typeof window === "undefined") return "server-route";
+  return String(window.location.pathname || "/");
+}
+
+function readRecoveryState() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.sessionStorage.getItem(getRecoveryStorageKey());
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRecoveryState(nextState = {}) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(getRecoveryStorageKey(), JSON.stringify(nextState));
+  } catch {
+    // Best effort only.
+  }
 }
 
 function extractErrorMessage(value) {
@@ -35,18 +63,24 @@ export function recoverFromMissingChunk(errorLike) {
   if (typeof window === "undefined") return false;
   if (!isLikelyMissingChunkError(errorLike)) return false;
 
-  const storageKey = getRecoveryStorageKey();
-  try {
-    if (window.sessionStorage.getItem(storageKey) === "1") {
-      return false;
-    }
-    window.sessionStorage.setItem(storageKey, "1");
-  } catch {
-    // Proceed with best effort.
-  }
+  const routeKey = getRouteRecoveryKey();
+  const state = readRecoveryState();
+  const prev = state[routeKey] && typeof state[routeKey] === "object" ? state[routeKey] : {};
+  const lastAttemptAt = Number(prev.lastAttemptAt || 0);
+  const now = Date.now();
+  const stale = !lastAttemptAt || now - lastAttemptAt > CHUNK_RECOVERY_ATTEMPT_TTL_MS;
+  const attemptCount = stale ? 0 : Number(prev.attemptCount || 0);
+
+  if (attemptCount >= CHUNK_RECOVERY_MAX_ATTEMPTS) return false;
+
+  state[routeKey] = {
+    attemptCount: attemptCount + 1,
+    lastAttemptAt: now
+  };
+  writeRecoveryState(state);
 
   const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.set(CHUNK_RECOVERY_PARAM, String(Date.now()));
+  nextUrl.searchParams.set(CHUNK_RECOVERY_PARAM, String(now));
   window.location.replace(nextUrl.toString());
   return true;
 }

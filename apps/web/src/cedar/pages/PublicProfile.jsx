@@ -71,8 +71,20 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
       endYear: String(Math.max(startNum, endNum))
     };
     if (includeAgeGroup) {
-      const ageGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
-      if (ageGroup) normalized.ageGroup = ageGroup;
+      const sharedAgeGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
+      const startAgeGroup = normalizeAgeGroup(
+        entry.startAgeGroup || entry.firstGroup || entry.ageGroupStart || sharedAgeGroup || ""
+      );
+      const endAgeGroup = normalizeAgeGroup(
+        entry.endAgeGroup || entry.lastGroup || entry.ageGroupEnd || sharedAgeGroup || ""
+      );
+      if (startAgeGroup) normalized.startAgeGroup = startAgeGroup;
+      if (endAgeGroup) normalized.endAgeGroup = endAgeGroup;
+      if (startAgeGroup && endAgeGroup && startAgeGroup === endAgeGroup) {
+        normalized.ageGroup = startAgeGroup;
+      } else if (sharedAgeGroup) {
+        normalized.ageGroup = sharedAgeGroup;
+      }
     }
     stints.push(normalized);
   };
@@ -94,22 +106,41 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   if (includeAgeGroup && value && typeof value === "object" && normalizedStints.length) {
     const firstGroup = normalizeAgeGroup(value.firstGroup || "");
     const lastGroup = normalizeAgeGroup(value.lastGroup || "");
-    if (firstGroup && !normalizedStints[0].ageGroup) {
-      normalizedStints[0].ageGroup = firstGroup;
+    if (firstGroup && !normalizedStints[0].startAgeGroup) {
+      normalizedStints[0].startAgeGroup = firstGroup;
     }
-    if (lastGroup && !normalizedStints[normalizedStints.length - 1].ageGroup) {
-      normalizedStints[normalizedStints.length - 1].ageGroup = lastGroup;
+    if (lastGroup && !normalizedStints[normalizedStints.length - 1].endAgeGroup) {
+      normalizedStints[normalizedStints.length - 1].endAgeGroup = lastGroup;
     }
   }
 
+  if (includeAgeGroup) {
+    normalizedStints.forEach((entry) => {
+      const fallback = normalizeAgeGroup(entry.ageGroup || "");
+      if (!entry.startAgeGroup && fallback) entry.startAgeGroup = fallback;
+      if (!entry.endAgeGroup && fallback) entry.endAgeGroup = fallback;
+      if (!entry.ageGroup && entry.startAgeGroup && entry.startAgeGroup === entry.endAgeGroup) {
+        entry.ageGroup = entry.startAgeGroup;
+      }
+    });
+  }
+
   return normalizedStints;
+}
+
+function formatCamperAgeGroup(stint = {}) {
+  const startAgeGroup = String(stint.startAgeGroup || stint.ageGroup || "").trim();
+  const endAgeGroup = String(stint.endAgeGroup || stint.ageGroup || "").trim();
+  if (!startAgeGroup && !endAgeGroup) return "";
+  if (startAgeGroup && endAgeGroup && startAgeGroup !== endAgeGroup) return `${startAgeGroup} - ${endAgeGroup}`;
+  return startAgeGroup || endAgeGroup;
 }
 
 function formatYearStint(stint = {}) {
   const startYear = String(stint.startYear || "").trim();
   const endYear = String(stint.endYear || "").trim();
   if (!startYear && !endYear) return "";
-  if (startYear && endYear && startYear !== endYear) return `${startYear} • ${endYear}`;
+  if (startYear && endYear && startYear !== endYear) return `${startYear} - ${endYear}`;
   return startYear || endYear;
 }
 
@@ -573,7 +604,7 @@ export default function PublicProfile() {
                       {camperStints.map((stint, idx) => (
                         <div key={`camper-stint-${idx}`} className="p1-edu-item p1-year-item">
                           <div className="p1-year-main">{formatYearStint(stint)}</div>
-                          {stint?.ageGroup ? <div className="p1-year-meta">{stint.ageGroup}</div> : null}
+                          {formatCamperAgeGroup(stint) ? <div className="p1-year-meta">{formatCamperAgeGroup(stint)}</div> : null}
                         </div>
                       ))}
                     </div>

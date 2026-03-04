@@ -2461,7 +2461,7 @@ function DirectorCreateAccountWizardPage() {
                     <label className="director-upload-control" htmlFor="director-logo-upload">
                       <span className="director-upload-button">Upload logo</span>
                       <span className="director-upload-name">
-                        {logoFileName || "PNG or JPG (optimized automatically)"}
+                        {logoFileName || "PNG or JPG"}
                       </span>
                     </label>
                     <input
@@ -2480,7 +2480,7 @@ function DirectorCreateAccountWizardPage() {
                     <label className="director-upload-control" htmlFor="director-main-photo-upload">
                       <span className="director-upload-button">Upload main photo</span>
                       <span className="director-upload-name">
-                        {heroFileName || "Used on login and home pages. PNG or JPG (optimized automatically)"}
+                        {heroFileName || "Used on login and home pages. PNG or JPG"}
                       </span>
                     </label>
                     <input

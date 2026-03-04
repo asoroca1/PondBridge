@@ -11,8 +11,19 @@ import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";
 
-// Build marker used to force fresh hashed assets after CDN cache corruption.
-window.__PONDBRIDGE_BUILD__ = String(import.meta.env.VITE_BUILD_ID || "2026-03-03T00:00Z");
+// Build marker used to scope chunk-recovery attempts to the current deployed bundle.
+const inferredBuildMarker = (() => {
+  const configured = String(import.meta.env.VITE_BUILD_ID || "").trim();
+  if (configured) return configured;
+  try {
+    const url = new URL(import.meta.url, window.location.href);
+    const fileName = String(url.pathname.split("/").pop() || "").trim();
+    return fileName || "runtime-build";
+  } catch {
+    return "runtime-build";
+  }
+})();
+window.__PONDBRIDGE_BUILD__ = inferredBuildMarker;
 installChunkRecoveryListeners();
 
 const clerkNoSocialAppearance = {

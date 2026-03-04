@@ -626,8 +626,20 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
       endYear: String(Math.max(startNum, endNum))
     };
     if (includeAgeGroup) {
-      const ageGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
-      if (ageGroup) normalized.ageGroup = ageGroup;
+      const sharedAgeGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
+      const startAgeGroup = normalizeAgeGroup(
+        entry.startAgeGroup || entry.firstGroup || entry.ageGroupStart || sharedAgeGroup || ""
+      );
+      const endAgeGroup = normalizeAgeGroup(
+        entry.endAgeGroup || entry.lastGroup || entry.ageGroupEnd || sharedAgeGroup || ""
+      );
+      if (startAgeGroup) normalized.startAgeGroup = startAgeGroup;
+      if (endAgeGroup) normalized.endAgeGroup = endAgeGroup;
+      if (startAgeGroup && endAgeGroup && startAgeGroup === endAgeGroup) {
+        normalized.ageGroup = startAgeGroup;
+      } else if (sharedAgeGroup) {
+        normalized.ageGroup = sharedAgeGroup;
+      }
     }
     stints.push(normalized);
   };
@@ -647,8 +659,9 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   stints
     .sort((a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear))
     .forEach((entry) => {
-      const ageGroupKey = includeAgeGroup ? String(entry.ageGroup || "").trim().toLowerCase() : "";
-      const key = `${entry.startYear}-${entry.endYear}-${ageGroupKey}`;
+      const startAgeGroupKey = includeAgeGroup ? String(entry.startAgeGroup || entry.ageGroup || "").trim().toLowerCase() : "";
+      const endAgeGroupKey = includeAgeGroup ? String(entry.endAgeGroup || entry.ageGroup || "").trim().toLowerCase() : "";
+      const key = `${entry.startYear}-${entry.endYear}-${startAgeGroupKey}-${endAgeGroupKey}`;
       if (seen.has(key)) return;
       seen.add(key);
       deduped.push(entry);
@@ -657,12 +670,29 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   if (includeAgeGroup && value && typeof value === "object" && deduped.length) {
     const firstGroup = normalizeAgeGroup(value.firstGroup || "");
     const lastGroup = normalizeAgeGroup(value.lastGroup || "");
-    if (firstGroup && !deduped[0].ageGroup) {
-      deduped[0].ageGroup = firstGroup;
+    if (firstGroup && !deduped[0].startAgeGroup) {
+      deduped[0].startAgeGroup = firstGroup;
     }
-    if (lastGroup && !deduped[deduped.length - 1].ageGroup) {
-      deduped[deduped.length - 1].ageGroup = lastGroup;
+    if (lastGroup && !deduped[deduped.length - 1].endAgeGroup) {
+      deduped[deduped.length - 1].endAgeGroup = lastGroup;
     }
+    deduped.forEach((entry) => {
+      const startAgeGroup = normalizeAgeGroup(entry.startAgeGroup || "");
+      const endAgeGroup = normalizeAgeGroup(entry.endAgeGroup || "");
+      if (startAgeGroup && endAgeGroup && startAgeGroup === endAgeGroup) {
+        entry.ageGroup = startAgeGroup;
+      } else if (!entry.ageGroup && (startAgeGroup || endAgeGroup)) {
+        entry.ageGroup = startAgeGroup || endAgeGroup;
+      }
+      if (!entry.startAgeGroup && entry.ageGroup) entry.startAgeGroup = entry.ageGroup;
+      if (!entry.endAgeGroup && entry.ageGroup) entry.endAgeGroup = entry.ageGroup;
+    });
+  } else if (includeAgeGroup) {
+    deduped.forEach((entry) => {
+      const ageGroup = normalizeAgeGroup(entry.ageGroup || "");
+      if (!entry.startAgeGroup && ageGroup) entry.startAgeGroup = ageGroup;
+      if (!entry.endAgeGroup && ageGroup) entry.endAgeGroup = ageGroup;
+    });
   }
 
   return deduped;
@@ -686,6 +716,12 @@ function normalizeCamperYears(value = {}) {
         {
           startYear: String(startNum),
           endYear: String(endNum),
+          ...(String(input.firstGroup || "").trim()
+            ? { startAgeGroup: String(input.firstGroup || "").trim() }
+            : {}),
+          ...(String(input.lastGroup || "").trim()
+            ? { endAgeGroup: String(input.lastGroup || "").trim() }
+            : {}),
           ...(String(input.firstGroup || input.lastGroup || "").trim()
             ? { ageGroup: String(input.firstGroup || input.lastGroup || "").trim() }
             : {})
@@ -699,8 +735,12 @@ function normalizeCamperYears(value = {}) {
     lastYear = stints[stints.length - 1].endYear;
   }
 
-  const firstGroup = String(stints[0]?.ageGroup || input.firstGroup || "").trim();
-  const lastGroup = String(stints[stints.length - 1]?.ageGroup || input.lastGroup || "").trim();
+  const firstGroup = String(
+    stints[0]?.startAgeGroup || stints[0]?.ageGroup || input.firstGroup || ""
+  ).trim();
+  const lastGroup = String(
+    stints[stints.length - 1]?.endAgeGroup || stints[stints.length - 1]?.ageGroup || input.lastGroup || ""
+  ).trim();
 
   return {
     firstYear,

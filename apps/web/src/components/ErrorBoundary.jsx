@@ -31,6 +31,9 @@ export default class ErrorBoundary extends Component {
   }
 
   handleRetry = () => {
+    if (recoverFromMissingChunk(this.state.error)) {
+      return;
+    }
     this.setState({ hasError: false, error: null });
   };
 

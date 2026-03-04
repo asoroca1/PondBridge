@@ -335,7 +335,7 @@ function sortJobsByRecency(list = []) {
 }
 
 function emptyYearStint() {
-  return { startYear: "", endYear: "", ageGroup: "" };
+  return { startYear: "", endYear: "", startAgeGroup: "", endAgeGroup: "" };
 }
 
 function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
@@ -356,8 +356,20 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
       endYear: String(Math.max(startNum, endNum))
     };
     if (includeAgeGroup) {
-      const ageGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
-      if (ageGroup) normalized.ageGroup = ageGroup;
+      const sharedAgeGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
+      const startAgeGroup = normalizeAgeGroup(
+        entry.startAgeGroup || entry.firstGroup || entry.ageGroupStart || sharedAgeGroup || ""
+      );
+      const endAgeGroup = normalizeAgeGroup(
+        entry.endAgeGroup || entry.lastGroup || entry.ageGroupEnd || sharedAgeGroup || ""
+      );
+      if (startAgeGroup) normalized.startAgeGroup = startAgeGroup;
+      if (endAgeGroup) normalized.endAgeGroup = endAgeGroup;
+      if (startAgeGroup && endAgeGroup && startAgeGroup === endAgeGroup) {
+        normalized.ageGroup = startAgeGroup;
+      } else if (sharedAgeGroup) {
+        normalized.ageGroup = sharedAgeGroup;
+      }
     }
     target.push(normalized);
   };
@@ -378,8 +390,9 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   normalized
     .sort((a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear))
     .forEach((entry) => {
-      const ageGroupKey = includeAgeGroup ? String(entry.ageGroup || "").trim().toLowerCase() : "";
-      const key = `${entry.startYear}-${entry.endYear}-${ageGroupKey}`;
+      const startAgeGroupKey = includeAgeGroup ? String(entry.startAgeGroup || entry.ageGroup || "").trim().toLowerCase() : "";
+      const endAgeGroupKey = includeAgeGroup ? String(entry.endAgeGroup || entry.ageGroup || "").trim().toLowerCase() : "";
+      const key = `${entry.startYear}-${entry.endYear}-${startAgeGroupKey}-${endAgeGroupKey}`;
       if (seen.has(key)) return;
       seen.add(key);
       deduped.push(entry);
@@ -388,12 +401,29 @@ function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   if (includeAgeGroup && value && typeof value === "object" && deduped.length) {
     const firstGroup = normalizeAgeGroup(value.firstGroup || "");
     const lastGroup = normalizeAgeGroup(value.lastGroup || "");
-    if (firstGroup && !deduped[0].ageGroup) {
-      deduped[0].ageGroup = firstGroup;
+    if (firstGroup && !deduped[0].startAgeGroup) {
+      deduped[0].startAgeGroup = firstGroup;
     }
-    if (lastGroup && !deduped[deduped.length - 1].ageGroup) {
-      deduped[deduped.length - 1].ageGroup = lastGroup;
+    if (lastGroup && !deduped[deduped.length - 1].endAgeGroup) {
+      deduped[deduped.length - 1].endAgeGroup = lastGroup;
     }
+    deduped.forEach((entry) => {
+      const startAgeGroup = String(entry.startAgeGroup || "").trim();
+      const endAgeGroup = String(entry.endAgeGroup || "").trim();
+      if (startAgeGroup && endAgeGroup && startAgeGroup === endAgeGroup) {
+        entry.ageGroup = startAgeGroup;
+      } else if (!entry.ageGroup && (startAgeGroup || endAgeGroup)) {
+        entry.ageGroup = startAgeGroup || endAgeGroup;
+      }
+      if (!entry.startAgeGroup && entry.ageGroup) entry.startAgeGroup = entry.ageGroup;
+      if (!entry.endAgeGroup && entry.ageGroup) entry.endAgeGroup = entry.ageGroup;
+    });
+  } else if (includeAgeGroup) {
+    deduped.forEach((entry) => {
+      const fallback = String(entry.ageGroup || "").trim();
+      if (!entry.startAgeGroup && fallback) entry.startAgeGroup = fallback;
+      if (!entry.endAgeGroup && fallback) entry.endAgeGroup = fallback;
+    });
   }
 
   return deduped;
@@ -1010,9 +1040,13 @@ export default function EditProfile() {
 
       camperYears: {
         firstYear: legacyCamperFirstYear,
-        firstGroup: camperYearStints[0]?.ageGroup || "",
+        firstGroup: camperYearStints[0]?.startAgeGroup || camperYearStints[0]?.ageGroup || "",
         lastYear: legacyCamperLastYear,
-        lastGroup: camperYearStints.length ? camperYearStints[camperYearStints.length - 1]?.ageGroup || "" : "",
+        lastGroup: camperYearStints.length
+          ? camperYearStints[camperYearStints.length - 1]?.endAgeGroup ||
+            camperYearStints[camperYearStints.length - 1]?.ageGroup ||
+            ""
+          : "",
         stints: camperYearStints
       },
       staffYears: { stints: staffYearStints },
@@ -1203,6 +1237,23 @@ export default function EditProfile() {
                           />
                         </div>
                         <div className="wizard1-field wizard1-year-field">
+                          <label className="wizard1-label">Start Age Group</label>
+                          <select
+                            className="wizard1-input wizard1-select"
+                            value={stint?.startAgeGroup || ""}
+                            onChange={(e) =>
+                              updateYearStint("camperYearStints", idx, { startAgeGroup: e.target.value })
+                            }
+                          >
+                            <option value="">Select age group</option>
+                            {ageGroupOptions.map((group) => (
+                              <option key={group} value={group}>
+                                {group}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="wizard1-field wizard1-year-field">
                           <label className="wizard1-label">End Year</label>
                           <input
                             className={`wizard1-input ${errors[`camper_stint_${idx}_end`] ? "has-error" : ""}`}
@@ -1215,12 +1266,12 @@ export default function EditProfile() {
                           />
                         </div>
                         <div className="wizard1-field wizard1-year-field">
-                          <label className="wizard1-label">Age Group</label>
+                          <label className="wizard1-label">End Age Group</label>
                           <select
                             className="wizard1-input wizard1-select"
-                            value={stint?.ageGroup || ""}
+                            value={stint?.endAgeGroup || ""}
                             onChange={(e) =>
-                              updateYearStint("camperYearStints", idx, { ageGroup: e.target.value })
+                              updateYearStint("camperYearStints", idx, { endAgeGroup: e.target.value })
                             }
                           >
                             <option value="">Select age group</option>

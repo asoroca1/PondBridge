@@ -381,6 +381,10 @@ body,
 }
 
 .cc-modal {
+  --cc-navy: var(--brand-primary, #1f4aa8);
+  --cc-border: var(--card-border, #e5e7eb);
+  --cc-border-strong: #9fb3cb;
+
   position: fixed;
   inset: 0;
   z-index: 60;
@@ -633,8 +637,8 @@ body,
   gap: 8px;
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid var(--cc-navy);
-  background: var(--cc-navy);
+  border: 1px solid var(--cc-navy, #1f4aa8);
+  background: var(--cc-navy, #1f4aa8);
   color: #fff;
   font-weight: 600;
   cursor: pointer;

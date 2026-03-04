@@ -424,7 +424,7 @@ function normalizeEmailFooter(value = {}, fallback = {}) {
     headerTagline: normalizeEmailFooterField(source.headerTagline ?? base.headerTagline ?? "Community update", 72) || "Community update",
     signOff: normalizeEmailFooterField(source.signOff ?? base.signOff ?? "Warmly,", 80) || "Warmly,",
     senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120, { trimMode: "start" }),
-    senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120),
+    senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120, { trimMode: "start" }),
     senderEmail,
     senderPhone: normalizeEmailFooterField(source.senderPhone ?? base.senderPhone ?? "", 48),
     showLogo: source.showLogo !== undefined ? Boolean(source.showLogo) : base.showLogo !== false,
@@ -4626,7 +4626,7 @@ export function DirectorAdminSettingsBrandingPage() {
           <label className="director-upload-control" htmlFor="director-admin-logo-upload">
             <span className="director-upload-button">Upload logo</span>
             <span className="director-upload-name">
-              {logoFileName || "PNG or JPG (optimized automatically)"}
+              {logoFileName || "PNG or JPG"}
             </span>
           </label>
           <input
@@ -4651,7 +4651,7 @@ export function DirectorAdminSettingsBrandingPage() {
           <label className="director-upload-control" htmlFor="director-admin-hero-upload">
             <span className="director-upload-button">Upload main photo</span>
             <span className="director-upload-name">
-              {heroFileName || "Used on login and home pages. PNG or JPG (optimized automatically)"}
+              {heroFileName || "Used on login and home pages. PNG or JPG"}
             </span>
           </label>
           <input
