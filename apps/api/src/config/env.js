@@ -229,6 +229,18 @@ export const env = {
     250,
     10000
   ),
+  SUPER_TENANT_HARD_DELETE_ENABLED: toBoolean(process.env.SUPER_TENANT_HARD_DELETE_ENABLED, false),
+  SUPER_TENANT_PRODUCTION_WIPE_ENABLED: toBoolean(
+    process.env.SUPER_TENANT_PRODUCTION_WIPE_ENABLED,
+    false
+  ),
+  SUPER_TENANT_DEMO_RESET_ENABLED: toBoolean(process.env.SUPER_TENANT_DEMO_RESET_ENABLED, false),
+  SUPER_TENANT_DELETION_GRACE_HOURS: toBoundedInt(
+    process.env.SUPER_TENANT_DELETION_GRACE_HOURS,
+    24,
+    1,
+    720
+  ),
   R2_BUCKET_NAME: r2BucketName,
   R2_ACCESS_KEY_ID: r2AccessKeyId,
   R2_SECRET_ACCESS_KEY: r2SecretAccessKey,

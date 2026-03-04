@@ -21,6 +21,11 @@ For production rollout with wildcard subdomains and cookie/JWT strategy, see `do
   - `CLOUDFLARE_WEB_CNAME_TARGET` (defaults to `<project>.pages.dev` when omitted)
   - `CLOUDFLARE_WEB_PROXIED` (default `true`)
   - `CLOUDFLARE_TTL` (default `1`)
+- Tenant-deletion safety switches (recommended defaults shown):
+  - `SUPER_TENANT_HARD_DELETE_ENABLED=false`
+  - `SUPER_TENANT_PRODUCTION_WIPE_ENABLED=false`
+  - `SUPER_TENANT_DEMO_RESET_ENABLED=false`
+  - `SUPER_TENANT_DELETION_GRACE_HOURS=24`
 
 ### Web (`apps/web/.env`)
 - `VITE_API_BASE` (public API URL)

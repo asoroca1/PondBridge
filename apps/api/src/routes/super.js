@@ -58,6 +58,7 @@ const superSearchLimiter = rateLimit({
 
 const SUPER_CONSOLE_ROLES = ["super_admin", "support_admin", "finance_admin"];
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const BILLING_PLAN_MRR = {
   legacy: 3500 / 12,
   founders: 2800 / 12,
@@ -291,6 +292,50 @@ function hasPrivilegedGlobalRole(roles = []) {
     if (set.has(role)) return true;
   }
   return false;
+}
+
+function parseDateValue(value) {
+  const ts = Date.parse(String(value || ""));
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function evaluateDeletionRequestWindow(tenant = {}) {
+  const deletionRequest =
+    tenant?.deletionRequest && typeof tenant.deletionRequest === "object"
+      ? tenant.deletionRequest
+      : {};
+
+  if (String(deletionRequest.status || "").trim().toLowerCase() !== "requested") {
+    return {
+      allowed: false,
+      code: "DELETION_REQUEST_REQUIRED",
+      message:
+        "Production tenant hard delete is blocked until the camp submits a delete request from Director Admin > Danger Zone."
+    };
+  }
+
+  const requestedAtMs = parseDateValue(deletionRequest.requestedAt);
+  if (!requestedAtMs) {
+    return {
+      allowed: false,
+      code: "DELETION_REQUEST_INVALID",
+      message: "Deletion request is missing a valid requestedAt timestamp."
+    };
+  }
+
+  const graceMs = Number(env.SUPER_TENANT_DELETION_GRACE_HOURS || 24) * HOUR_MS;
+  const readyAtMs = requestedAtMs + graceMs;
+  if (Date.now() < readyAtMs) {
+    return {
+      allowed: false,
+      code: "DELETION_GRACE_WINDOW_ACTIVE",
+      message: `Deletion request waiting period not met. Hard delete unlocks at ${new Date(
+        readyAtMs
+      ).toISOString()}.`
+    };
+  }
+
+  return { allowed: true };
 }
 
 async function loadTenantUsersForCleanup(tenantId) {
@@ -1076,9 +1121,42 @@ router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
 });
 
 router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req, res) => {
+  if (!env.SUPER_TENANT_HARD_DELETE_ENABLED) {
+    return res.status(423).json({
+      error: {
+        code: "HARD_DELETE_DISABLED",
+        message:
+          "Tenant hard delete is disabled. Set SUPER_TENANT_HARD_DELETE_ENABLED=true to allow it."
+      }
+    });
+  }
+
   const tenant = await TenantModel.findById(req.params.tenantId);
   if (!tenant) {
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
+  }
+
+  const isDemoTenant = isTestOrSandboxTenant(tenant);
+  if (!isDemoTenant) {
+    if (!env.SUPER_TENANT_PRODUCTION_WIPE_ENABLED) {
+      return res.status(423).json({
+        error: {
+          code: "PRODUCTION_WIPE_DISABLED",
+          message:
+            "Hard delete for non-demo tenants is disabled. Set SUPER_TENANT_PRODUCTION_WIPE_ENABLED=true only for controlled incidents."
+        }
+      });
+    }
+
+    const deletionWindow = evaluateDeletionRequestWindow(tenant);
+    if (!deletionWindow.allowed) {
+      return res.status(409).json({
+        error: {
+          code: deletionWindow.code,
+          message: deletionWindow.message
+        }
+      });
+    }
   }
 
   const confirmationMode = String(req.body?.mode || "").trim().toLowerCase();
@@ -1184,6 +1262,16 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
 // on tenants matching the HIDDEN_TENANT_PATTERN so production camps are
 // never accidentally wiped.
 router.post("/tenants/:tenantId/reset-demo", requireSuperMutation, async (req, res) => {
+  if (!env.SUPER_TENANT_DEMO_RESET_ENABLED) {
+    return res.status(423).json({
+      error: {
+        code: "DEMO_RESET_DISABLED",
+        message:
+          "Demo reset is disabled. Set SUPER_TENANT_DEMO_RESET_ENABLED=true to allow demo tenant wipes."
+      }
+    });
+  }
+
   const tenant = await TenantModel.findById(req.params.tenantId);
   if (!tenant) {
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
