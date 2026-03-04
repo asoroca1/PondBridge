@@ -897,7 +897,7 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
           Cancel
         </button>
 
-        <button type="submit" disabled={busy}>
+        <button type="submit" className="cc-submit-btn" disabled={busy}>
           {busy ? (
             <>
               <span className="cc-spinner" aria-hidden="true" />

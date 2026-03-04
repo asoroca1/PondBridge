@@ -284,16 +284,46 @@ function encodeR2Pointer({ key = "", objectUrl = "" } = {}) {
   return Buffer.from(JSON.stringify(payload), "utf8");
 }
 
+function toPointerBuffer(rawValue = null) {
+  if (Buffer.isBuffer(rawValue)) return rawValue;
+  if (rawValue instanceof Uint8Array) return Buffer.from(rawValue);
+  if (rawValue instanceof ArrayBuffer) return Buffer.from(rawValue);
+
+  // Supabase/PostgREST commonly returns bytea as "\\x<hex>" strings.
+  if (typeof rawValue === "string") {
+    const trimmed = String(rawValue).trim();
+    if (!trimmed) return null;
+    const hexMatch = trimmed.match(/^\\?x([0-9a-fA-F]+)$/);
+    if (hexMatch?.[1]) {
+      return Buffer.from(hexMatch[1], "hex");
+    }
+    return Buffer.from(trimmed, "utf8");
+  }
+
+  if (
+    rawValue &&
+    typeof rawValue === "object" &&
+    rawValue.type === "Buffer" &&
+    Array.isArray(rawValue.data)
+  ) {
+    return Buffer.from(rawValue.data);
+  }
+
+  return null;
+}
+
 function decodeR2Pointer(rawValue = null, expectedMimeType = "", actualMimeType = "") {
-  if (String(actualMimeType || "") !== String(expectedMimeType || "")) return null;
-  const raw = rawValue;
-  if (!raw) return null;
+  const asBuffer = toPointerBuffer(rawValue);
+  if (!asBuffer?.length) return null;
   try {
-    const asBuffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
     const parsed = JSON.parse(asBuffer.toString("utf8"));
     const key = String(parsed?.key || "").trim();
     const objectUrl = String(parsed?.objectUrl || "").trim();
     if (!key || !objectUrl) return null;
+    // If MIME is present and unexpected, still accept valid pointer JSON for
+    // backward compatibility with legacy rows that stored an incorrect MIME.
+    void expectedMimeType;
+    void actualMimeType;
     return { key, objectUrl };
   } catch {
     return null;
@@ -310,13 +340,17 @@ function decodeNewsletterCoverPointer(row = {}) {
 
 function resolveNewsletterPdfUrl(req, row = {}) {
   const pointer = decodeNewsletterPointer(row);
-  if (pointer?.objectUrl) return pointer.objectUrl;
+  if (pointer?.key) {
+    return `${buildTenantObjectProxyBaseUrl(req)}?key=${encodeURIComponent(pointer.key)}`;
+  }
   return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${row._id}/file`;
 }
 
-function resolveNewsletterCoverUrl(row = {}) {
+function resolveNewsletterCoverUrl(req, row = {}) {
   const pointer = decodeNewsletterCoverPointer(row);
-  if (pointer?.objectUrl) return pointer.objectUrl;
+  if (pointer?.key) {
+    return `${buildTenantObjectProxyBaseUrl(req)}?key=${encodeURIComponent(pointer.key)}`;
+  }
   return "";
 }
 
@@ -572,11 +606,12 @@ function resolveLegacyNameFallback(identity = {}, fallbackEmail = "") {
   return deriveNameFromEmail(identity?.email || fallbackEmail || "");
 }
 
-function normalizeYearStints(value = null) {
+function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   const validYear = (raw = "") => {
     const year = String(raw || "").trim();
     return /^\d{4}$/.test(year) ? year : "";
   };
+  const normalizeAgeGroup = (raw = "") => String(raw || "").trim();
   const stints = [];
 
   const pushStint = (entry = {}) => {
@@ -586,10 +621,15 @@ function normalizeYearStints(value = null) {
     const startNum = Number(startYear);
     const endNum = Number(endYear);
     if (!Number.isFinite(startNum) || !Number.isFinite(endNum)) return;
-    stints.push({
+    const normalized = {
       startYear: String(Math.min(startNum, endNum)),
       endYear: String(Math.max(startNum, endNum))
-    });
+    };
+    if (includeAgeGroup) {
+      const ageGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
+      if (ageGroup) normalized.ageGroup = ageGroup;
+    }
+    stints.push(normalized);
   };
 
   if (Array.isArray(value)) {
@@ -607,19 +647,30 @@ function normalizeYearStints(value = null) {
   stints
     .sort((a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear))
     .forEach((entry) => {
-      const key = `${entry.startYear}-${entry.endYear}`;
+      const ageGroupKey = includeAgeGroup ? String(entry.ageGroup || "").trim().toLowerCase() : "";
+      const key = `${entry.startYear}-${entry.endYear}-${ageGroupKey}`;
       if (seen.has(key)) return;
       seen.add(key);
       deduped.push(entry);
     });
+
+  if (includeAgeGroup && value && typeof value === "object" && deduped.length) {
+    const firstGroup = normalizeAgeGroup(value.firstGroup || "");
+    const lastGroup = normalizeAgeGroup(value.lastGroup || "");
+    if (firstGroup && !deduped[0].ageGroup) {
+      deduped[0].ageGroup = firstGroup;
+    }
+    if (lastGroup && !deduped[deduped.length - 1].ageGroup) {
+      deduped[deduped.length - 1].ageGroup = lastGroup;
+    }
+  }
+
   return deduped;
 }
 
 function normalizeCamperYears(value = {}) {
   const input = value && typeof value === "object" ? value : {};
-  const firstGroup = String(input.firstGroup || "").trim();
-  const lastGroup = String(input.lastGroup || "").trim();
-  let stints = normalizeYearStints(value);
+  let stints = normalizeYearStints(value, { includeAgeGroup: true });
   const validYear = (year = "") => (/^\d{4}$/.test(String(year || "").trim()) ? String(year || "").trim() : "");
 
   let firstYear = validYear(input.firstYear || "");
@@ -631,7 +682,15 @@ function normalizeCamperYears(value = {}) {
     if (firstYear && lastYear) {
       const startNum = Math.min(Number(firstYear), Number(lastYear));
       const endNum = Math.max(Number(firstYear), Number(lastYear));
-      stints = [{ startYear: String(startNum), endYear: String(endNum) }];
+      stints = [
+        {
+          startYear: String(startNum),
+          endYear: String(endNum),
+          ...(String(input.firstGroup || input.lastGroup || "").trim()
+            ? { ageGroup: String(input.firstGroup || input.lastGroup || "").trim() }
+            : {})
+        }
+      ];
     }
   }
 
@@ -639,6 +698,9 @@ function normalizeCamperYears(value = {}) {
     firstYear = stints[0].startYear;
     lastYear = stints[stints.length - 1].endYear;
   }
+
+  const firstGroup = String(stints[0]?.ageGroup || input.firstGroup || "").trim();
+  const lastGroup = String(stints[stints.length - 1]?.ageGroup || input.lastGroup || "").trim();
 
   return {
     firstYear,
@@ -2489,7 +2551,7 @@ router.get("/newsletters", async (req, res) => {
       season: row.season || "",
       year: row.year || null,
       pdfUrl: resolveNewsletterPdfUrl(req, row),
-      coverImageUrl: resolveNewsletterCoverUrl(row),
+      coverImageUrl: resolveNewsletterCoverUrl(req, row),
       createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null
     }))
   });
@@ -2507,8 +2569,8 @@ router.get("/newsletters/:id/file", async (req, res) => {
   }
 
   const pointer = decodeNewsletterPointer(row);
-  if (pointer?.objectUrl) {
-    return res.redirect(302, pointer.objectUrl);
+  if (pointer?.key) {
+    return res.redirect(302, `${buildTenantObjectProxyBaseUrl(req)}?key=${encodeURIComponent(pointer.key)}`);
   }
 
   res.setHeader("Content-Type", row.pdfMimeType || "application/pdf");

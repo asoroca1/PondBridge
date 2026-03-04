@@ -640,6 +640,18 @@ body,
   cursor: pointer;
 }
 
+.cc-actions .cc-submit-btn {
+  min-width: 132px;
+  border-color: color-mix(in srgb, var(--cc-navy) 55%, #183862);
+  background: color-mix(in srgb, var(--cc-navy) 55%, #183862);
+  color: #fff;
+}
+
+.cc-actions .cc-submit-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--cc-navy) 40%, #122a4d);
+  background: color-mix(in srgb, var(--cc-navy) 40%, #122a4d);
+}
+
 .cc-actions .cc-btn-ghost {
   background: #fff;
   color: #334155;

@@ -49,11 +49,12 @@ function normalizeRoleChips(src = {}) {
   return ordered;
 }
 
-function normalizeYearStints(value = null) {
+function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   const normalizeYear = (raw = "") => {
     const year = String(raw || "").trim();
     return /^\d{4}$/.test(year) ? year : "";
   };
+  const normalizeAgeGroup = (raw = "") => String(raw || "").trim();
 
   const stints = [];
   const pushStint = (entry = {}) => {
@@ -65,10 +66,15 @@ function normalizeYearStints(value = null) {
     if (!start || !end) return;
     const startNum = Number(start);
     const endNum = Number(end);
-    stints.push({
+    const normalized = {
       startYear: String(Math.min(startNum, endNum)),
       endYear: String(Math.max(startNum, endNum))
-    });
+    };
+    if (includeAgeGroup) {
+      const ageGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
+      if (ageGroup) normalized.ageGroup = ageGroup;
+    }
+    stints.push(normalized);
   };
 
   if (Array.isArray(value)) {
@@ -81,7 +87,22 @@ function normalizeYearStints(value = null) {
     }
   }
 
-  return stints.sort((a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear));
+  const normalizedStints = stints.sort(
+    (a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear)
+  );
+
+  if (includeAgeGroup && value && typeof value === "object" && normalizedStints.length) {
+    const firstGroup = normalizeAgeGroup(value.firstGroup || "");
+    const lastGroup = normalizeAgeGroup(value.lastGroup || "");
+    if (firstGroup && !normalizedStints[0].ageGroup) {
+      normalizedStints[0].ageGroup = firstGroup;
+    }
+    if (lastGroup && !normalizedStints[normalizedStints.length - 1].ageGroup) {
+      normalizedStints[normalizedStints.length - 1].ageGroup = lastGroup;
+    }
+  }
+
+  return normalizedStints;
 }
 
 function formatYearStint(stint = {}) {
@@ -179,7 +200,7 @@ function normalizeProfile(src = {}) {
     roleAtCamp: String(src.roleAtCamp || normalizedRoles[0] || "").trim(),
     roles: normalizedRoles,
     uploads: src.uploads || { photoUrl: src.photoUrl || src.avatarUrl || "" },
-    camperYearStints: normalizeYearStints(camperYearsSource),
+    camperYearStints: normalizeYearStints(camperYearsSource, { includeAgeGroup: true }),
     staffYearStints: normalizeYearStints(staffYearsSource),
     highSchool: src.highSchool || "",
     education: normalizedEducation,
@@ -550,9 +571,9 @@ export default function PublicProfile() {
                   ) : (
                     <div className="p1-edu-grid">
                       {camperStints.map((stint, idx) => (
-                        <div key={`camper-stint-${idx}`} className="p1-edu-item">
-                          <div className="p1-edu-college">Stint {idx + 1}</div>
-                          <div className="p1-edu-sub">{formatYearStint(stint)}</div>
+                        <div key={`camper-stint-${idx}`} className="p1-edu-item p1-year-item">
+                          <div className="p1-year-main">{formatYearStint(stint)}</div>
+                          {stint?.ageGroup ? <div className="p1-year-meta">{stint.ageGroup}</div> : null}
                         </div>
                       ))}
                     </div>
@@ -564,9 +585,8 @@ export default function PublicProfile() {
                     <h2 className="p1-h2">Staff Years</h2>
                     <div className="p1-edu-grid">
                       {staffStints.map((stint, idx) => (
-                        <div key={`staff-stint-${idx}`} className="p1-edu-item">
-                          <div className="p1-edu-college">Stint {idx + 1}</div>
-                          <div className="p1-edu-sub">{formatYearStint(stint)}</div>
+                        <div key={`staff-stint-${idx}`} className="p1-edu-item p1-year-item">
+                          <div className="p1-year-main">{formatYearStint(stint)}</div>
                         </div>
                       ))}
                     </div>

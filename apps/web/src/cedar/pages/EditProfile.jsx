@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import {
+  resolveAgeGroupOptions,
   resolveStaffRoleOptions
 } from "../../lib/campLabels.js";
 import AvatarCropper from "../components/AvatarCropper";
@@ -334,20 +335,31 @@ function sortJobsByRecency(list = []) {
 }
 
 function emptyYearStint() {
-  return { startYear: "", endYear: "" };
+  return { startYear: "", endYear: "", ageGroup: "" };
 }
 
-function normalizeYearStints(value = null) {
+function normalizeYearStints(value = null, { includeAgeGroup = false } = {}) {
   const normalizeYear = (raw = "") => {
     const year = String(raw || "").trim();
     return /^\d{4}$/.test(year) ? year : "";
   };
+  const normalizeAgeGroup = (raw = "") => String(raw || "").trim();
 
   const pushStint = (target, entry = {}) => {
     const startYear = normalizeYear(entry.startYear || entry.firstYear || entry.yearStart || "");
     const endYear = normalizeYear(entry.endYear || entry.lastYear || entry.yearEnd || "");
     if (!startYear || !endYear) return;
-    target.push({ startYear, endYear });
+    const startNum = Number(startYear);
+    const endNum = Number(endYear);
+    const normalized = {
+      startYear: String(Math.min(startNum, endNum)),
+      endYear: String(Math.max(startNum, endNum))
+    };
+    if (includeAgeGroup) {
+      const ageGroup = normalizeAgeGroup(entry.ageGroup || entry.group || "");
+      if (ageGroup) normalized.ageGroup = ageGroup;
+    }
+    target.push(normalized);
   };
 
   const normalized = [];
@@ -361,7 +373,30 @@ function normalizeYearStints(value = null) {
     }
   }
 
-  return normalized;
+  const deduped = [];
+  const seen = new Set();
+  normalized
+    .sort((a, b) => Number(a.startYear) - Number(b.startYear) || Number(a.endYear) - Number(b.endYear))
+    .forEach((entry) => {
+      const ageGroupKey = includeAgeGroup ? String(entry.ageGroup || "").trim().toLowerCase() : "";
+      const key = `${entry.startYear}-${entry.endYear}-${ageGroupKey}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      deduped.push(entry);
+    });
+
+  if (includeAgeGroup && value && typeof value === "object" && deduped.length) {
+    const firstGroup = normalizeAgeGroup(value.firstGroup || "");
+    const lastGroup = normalizeAgeGroup(value.lastGroup || "");
+    if (firstGroup && !deduped[0].ageGroup) {
+      deduped[0].ageGroup = firstGroup;
+    }
+    if (lastGroup && !deduped[deduped.length - 1].ageGroup) {
+      deduped[deduped.length - 1].ageGroup = lastGroup;
+    }
+  }
+
+  return deduped;
 }
 
 /* Small multi-select dropdown */
@@ -492,6 +527,7 @@ export default function EditProfile() {
   const { tenant } = useTenant();
   const { getAuthToken } = useAuth();
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
+  const ageGroupOptions = useMemo(() => resolveAgeGroupOptions(tenant), [tenant]);
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -637,7 +673,8 @@ export default function EditProfile() {
             ? fresh.socials
             : {};
         const camperYearStints = normalizeYearStints(
-          fresh.camperYears && typeof fresh.camperYears === "object" ? fresh.camperYears : socialSource.camperYears
+          fresh.camperYears && typeof fresh.camperYears === "object" ? fresh.camperYears : socialSource.camperYears,
+          { includeAgeGroup: true }
         );
         const staffYearStints = normalizeYearStints(
           fresh.staffYears && typeof fresh.staffYears === "object" ? fresh.staffYears : socialSource.staffYears
@@ -761,8 +798,8 @@ export default function EditProfile() {
       });
     };
 
-    validateYearStints(form.camperYearStints, "camper_stint", "Camper stint");
-    validateYearStints(form.staffYearStints, "staff_stint", "Staff stint");
+    validateYearStints(form.camperYearStints, "camper_stint", "Camper year entry");
+    validateYearStints(form.staffYearStints, "staff_stint", "Staff year entry");
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -933,7 +970,7 @@ export default function EditProfile() {
 
   function buildUpdatePayload(form) {
     const pastJobsSorted = sortJobsByRecency(form.pastJobs || []);
-    const camperYearStints = normalizeYearStints(form.camperYearStints);
+    const camperYearStints = normalizeYearStints(form.camperYearStints, { includeAgeGroup: true });
     const staffYearStints = normalizeYearStints(form.staffYearStints);
     const cityState = composeCityStateLabel(form.cityState);
     const splitLocation = splitCityState(cityState || form.cityState);
@@ -973,9 +1010,9 @@ export default function EditProfile() {
 
       camperYears: {
         firstYear: legacyCamperFirstYear,
-        firstGroup: "",
+        firstGroup: camperYearStints[0]?.ageGroup || "",
         lastYear: legacyCamperLastYear,
-        lastGroup: "",
+        lastGroup: camperYearStints.length ? camperYearStints[camperYearStints.length - 1]?.ageGroup || "" : "",
         stints: camperYearStints
       },
       staffYears: { stints: staffYearStints },
@@ -1143,7 +1180,7 @@ export default function EditProfile() {
 
             <div className="wizard1-span-12" style={{ marginTop: 4 }}>
               <div className="wizard1-subtitle">Years at Camp (Camper)</div>
-              <div className="wizard1-grid wizard1-gap">
+              <div className="wizard1-year-list">
                 {(Array.isArray(form.camperYearStints) ? form.camperYearStints : []).map((stint, idx) => {
                   const rowError =
                     errors[`camper_stint_${idx}_start`] ||
@@ -1151,58 +1188,67 @@ export default function EditProfile() {
                     errors[`camper_stint_${idx}_pair`] ||
                     errors[`camper_stint_${idx}_order`];
                   return (
-                    <div key={`camper-stint-${idx}`} className="wizard1-span-12 wizard1-camp-section">
-                      <div className="wizard1-grid wizard1-gap" style={{ alignItems: "end" }}>
-                        <div className="wizard1-span-5">
-                          <div className="wizard1-field">
-                            <label className="wizard1-label">Start Year</label>
-                            <input
-                              className={`wizard1-input ${errors[`camper_stint_${idx}_start`] ? "has-error" : ""}`}
-                              value={stint?.startYear || ""}
-                              onChange={(e) =>
-                                updateYearStint("camperYearStints", idx, { startYear: e.target.value })
-                              }
-                              placeholder="e.g., 2014"
-                              inputMode="numeric"
-                            />
-                          </div>
+                    <div key={`camper-stint-${idx}`} className="wizard1-camp-section wizard1-year-row">
+                      <div className="wizard1-year-fields wizard1-year-fields-camper">
+                        <div className="wizard1-field wizard1-year-field">
+                          <label className="wizard1-label">Start Year</label>
+                          <input
+                            className={`wizard1-input ${errors[`camper_stint_${idx}_start`] ? "has-error" : ""}`}
+                            value={stint?.startYear || ""}
+                            onChange={(e) =>
+                              updateYearStint("camperYearStints", idx, { startYear: e.target.value })
+                            }
+                            placeholder="e.g., 2014"
+                            inputMode="numeric"
+                          />
                         </div>
-                        <div className="wizard1-span-5">
-                          <div className="wizard1-field">
-                            <label className="wizard1-label">End Year</label>
-                            <input
-                              className={`wizard1-input ${errors[`camper_stint_${idx}_end`] ? "has-error" : ""}`}
-                              value={stint?.endYear || ""}
-                              onChange={(e) =>
-                                updateYearStint("camperYearStints", idx, { endYear: e.target.value })
-                              }
-                              placeholder="e.g., 2020"
-                              inputMode="numeric"
-                            />
-                          </div>
+                        <div className="wizard1-field wizard1-year-field">
+                          <label className="wizard1-label">End Year</label>
+                          <input
+                            className={`wizard1-input ${errors[`camper_stint_${idx}_end`] ? "has-error" : ""}`}
+                            value={stint?.endYear || ""}
+                            onChange={(e) =>
+                              updateYearStint("camperYearStints", idx, { endYear: e.target.value })
+                            }
+                            placeholder="e.g., 2020"
+                            inputMode="numeric"
+                          />
                         </div>
-                        <div className="wizard1-span-2">
-                          <button
-                            type="button"
-                            className="wizard1-btn-secondary"
-                            onClick={() => removeYearStint("camperYearStints", idx)}
-                            disabled={(form.camperYearStints || []).length <= 1}
+                        <div className="wizard1-field wizard1-year-field">
+                          <label className="wizard1-label">Age Group</label>
+                          <select
+                            className="wizard1-input wizard1-select"
+                            value={stint?.ageGroup || ""}
+                            onChange={(e) =>
+                              updateYearStint("camperYearStints", idx, { ageGroup: e.target.value })
+                            }
                           >
-                            Remove
-                          </button>
+                            <option value="">Select age group</option>
+                            {ageGroupOptions.map((group) => (
+                              <option key={group} value={group}>
+                                {group}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                        {rowError && (
-                          <div className="wizard1-span-12">
-                            <p className="wizard1-error">{rowError}</p>
-                          </div>
-                        )}
                       </div>
+                      <div className="wizard1-year-actions">
+                        <button
+                          type="button"
+                          className="wizard1-btn-secondary"
+                          onClick={() => removeYearStint("camperYearStints", idx)}
+                          disabled={(form.camperYearStints || []).length <= 1}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      {rowError ? <p className="wizard1-error">{rowError}</p> : null}
                     </div>
                   );
                 })}
-                <div className="wizard1-span-12">
+                <div>
                   <button type="button" className="wizard1-btn-secondary" onClick={() => addYearStint("camperYearStints")}>
-                    Add Camper Stint
+                    Add Camper Year
                   </button>
                 </div>
               </div>
@@ -1225,7 +1271,7 @@ export default function EditProfile() {
               ) : (
                 <>
                   <div className="wizard1-subtitle">Years at Camp (Staff)</div>
-                  <div className="wizard1-grid wizard1-gap">
+                  <div className="wizard1-year-list">
                     {(Array.isArray(form.staffYearStints) ? form.staffYearStints : []).map((stint, idx) => {
                       const rowError =
                         errors[`staff_stint_${idx}_start`] ||
@@ -1233,58 +1279,50 @@ export default function EditProfile() {
                         errors[`staff_stint_${idx}_pair`] ||
                         errors[`staff_stint_${idx}_order`];
                       return (
-                        <div key={`staff-stint-${idx}`} className="wizard1-span-12 wizard1-camp-section">
-                          <div className="wizard1-grid wizard1-gap" style={{ alignItems: "end" }}>
-                            <div className="wizard1-span-5">
-                              <div className="wizard1-field">
-                                <label className="wizard1-label">Start Year</label>
-                                <input
-                                  className={`wizard1-input ${errors[`staff_stint_${idx}_start`] ? "has-error" : ""}`}
-                                  value={stint?.startYear || ""}
-                                  onChange={(e) =>
-                                    updateYearStint("staffYearStints", idx, { startYear: e.target.value })
-                                  }
-                                  placeholder="e.g., 2021"
-                                  inputMode="numeric"
-                                />
-                              </div>
+                        <div key={`staff-stint-${idx}`} className="wizard1-camp-section wizard1-year-row">
+                          <div className="wizard1-year-fields wizard1-year-fields-staff">
+                            <div className="wizard1-field wizard1-year-field">
+                              <label className="wizard1-label">Start Year</label>
+                              <input
+                                className={`wizard1-input ${errors[`staff_stint_${idx}_start`] ? "has-error" : ""}`}
+                                value={stint?.startYear || ""}
+                                onChange={(e) =>
+                                  updateYearStint("staffYearStints", idx, { startYear: e.target.value })
+                                }
+                                placeholder="e.g., 2021"
+                                inputMode="numeric"
+                              />
                             </div>
-                            <div className="wizard1-span-5">
-                              <div className="wizard1-field">
-                                <label className="wizard1-label">End Year</label>
-                                <input
-                                  className={`wizard1-input ${errors[`staff_stint_${idx}_end`] ? "has-error" : ""}`}
-                                  value={stint?.endYear || ""}
-                                  onChange={(e) =>
-                                    updateYearStint("staffYearStints", idx, { endYear: e.target.value })
-                                  }
-                                  placeholder="e.g., 2024"
-                                  inputMode="numeric"
-                                />
-                              </div>
+                            <div className="wizard1-field wizard1-year-field">
+                              <label className="wizard1-label">End Year</label>
+                              <input
+                                className={`wizard1-input ${errors[`staff_stint_${idx}_end`] ? "has-error" : ""}`}
+                                value={stint?.endYear || ""}
+                                onChange={(e) =>
+                                  updateYearStint("staffYearStints", idx, { endYear: e.target.value })
+                                }
+                                placeholder="e.g., 2024"
+                                inputMode="numeric"
+                              />
                             </div>
-                            <div className="wizard1-span-2">
-                              <button
-                                type="button"
-                                className="wizard1-btn-secondary"
-                                onClick={() => removeYearStint("staffYearStints", idx)}
-                                disabled={(form.staffYearStints || []).length <= 1}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                            {rowError && (
-                              <div className="wizard1-span-12">
-                                <p className="wizard1-error">{rowError}</p>
-                              </div>
-                            )}
                           </div>
+                          <div className="wizard1-year-actions">
+                            <button
+                              type="button"
+                              className="wizard1-btn-secondary"
+                              onClick={() => removeYearStint("staffYearStints", idx)}
+                              disabled={(form.staffYearStints || []).length <= 1}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          {rowError ? <p className="wizard1-error">{rowError}</p> : null}
                         </div>
                       );
                     })}
-                    <div className="wizard1-span-12" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button type="button" className="wizard1-btn-secondary" onClick={() => addYearStint("staffYearStints")}>
-                        Add Staff Stint
+                        Add Staff Year
                       </button>
                       <button
                         type="button"

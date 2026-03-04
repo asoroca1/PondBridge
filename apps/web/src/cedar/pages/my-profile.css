@@ -190,6 +190,19 @@
 .p1-edu-item { padding: 10px; border: 1px solid #eee; border-radius: 10px; }
 .p1-edu-college { font-weight: 600; }
 .p1-edu-sub { color: #4a5568; }
+.p1-year-item{
+  padding: 11px 12px;
+  border-color: #dce5f2;
+  background: #fcfdff;
+}
+.p1-year-main{
+  font-weight: 700;
+  color: var(--cedar-navy);
+}
+.p1-year-meta{
+  margin-top: 3px;
+  color: #4a5568;
+}
 
 /* ===== Cover (profile card) ===== */
 .p1-left.with-cover { position: relative; isolation: isolate; }

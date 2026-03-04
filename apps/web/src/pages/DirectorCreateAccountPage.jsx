@@ -17,6 +17,7 @@ import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
 import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/storage.js";
 import HeroImageEditor from "../components/HeroImageEditor.jsx";
+import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
 
 const STEP_ACCOUNT = "account";
@@ -2430,6 +2431,11 @@ function DirectorCreateAccountWizardPage() {
                         placeholder={initialBrandColor.toUpperCase()}
                       />
                     </div>
+                    <BrandImageColorPicker
+                      value={themeDraft.brandPrimary}
+                      sourceImageUrl={themeDraft.logoUrl || themeDraft.heroImageUrl || ""}
+                      onPickColor={(nextHex) => updateThemeField("brandPrimary", nextHex)}
+                    />
                     {themeErrors.brandPrimary ? (
                       <p className="wizard1-error">{themeErrors.brandPrimary}</p>
                     ) : null}

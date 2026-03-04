@@ -13,6 +13,7 @@ import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
+import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
   DataTable,
   FilterBar,
@@ -392,19 +393,24 @@ function normalizeEmailFooterPresetName(value = "") {
   return String(value || "").trim().slice(0, 72);
 }
 
-function normalizeEmailFooterField(value = "", max = 140) {
-  return String(value || "").trim().slice(0, max);
+function normalizeEmailFooterField(value = "", max = 140, options = {}) {
+  const { trimMode = "both" } = options || {};
+  const clipped = String(value || "").slice(0, max);
+  if (trimMode === "none") return clipped;
+  if (trimMode === "start") return clipped.trimStart();
+  if (trimMode === "end") return clipped.trimEnd();
+  return clipped.trim();
 }
 
 function normalizeEmailFooter(value = {}, fallback = {}) {
   const source = value && typeof value === "object" ? value : {};
   const base = fallback && typeof fallback === "object" ? fallback : {};
-  const senderEmailRaw = normalizeEmailFooterField(source.senderEmail ?? base.senderEmail ?? "", 160).toLowerCase();
+  const senderEmailRaw = normalizeEmailFooterField(source.senderEmail ?? base.senderEmail ?? "", 160).trim().toLowerCase();
   const senderEmail = INVITE_EMAIL_REGEX.test(senderEmailRaw) ? senderEmailRaw : "";
   return {
     headerTagline: normalizeEmailFooterField(source.headerTagline ?? base.headerTagline ?? "Community update", 72) || "Community update",
     signOff: normalizeEmailFooterField(source.signOff ?? base.signOff ?? "Warmly,", 80) || "Warmly,",
-    senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120),
+    senderName: normalizeEmailFooterField(source.senderName ?? base.senderName ?? "", 120, { trimMode: "start" }),
     senderRole: normalizeEmailFooterField(source.senderRole ?? base.senderRole ?? "Director", 120),
     senderEmail,
     senderPhone: normalizeEmailFooterField(source.senderPhone ?? base.senderPhone ?? "", 48),
@@ -2779,15 +2785,21 @@ export function DirectorAdminInvitesPage() {
       ) : null}
 
       <Card>
-        <div className="director-admin-page-actions">
-          <h2 className="pb-section-title">Invite Status</h2>
-          <div className="inline-actions">
-            <Select value={inviteStatusFilter} onChange={(event) => setInviteStatusFilter(event.target.value)}>
+        <div className="director-admin-invite-toolbar">
+          <div className="director-admin-invite-toolbar-left">
+            <h2 className="pb-section-title">Invite Status</h2>
+            <Select
+              className="director-admin-invite-filter-select"
+              value={inviteStatusFilter}
+              onChange={(event) => setInviteStatusFilter(event.target.value)}
+            >
               <option value="pending">Pending</option>
               <option value="used">Used</option>
               <option value="expired">Expired</option>
               <option value="all">All</option>
             </Select>
+          </div>
+          <div className="director-admin-invite-toolbar-right">
             <Button
               type="button"
               variant="secondary"
@@ -3889,14 +3901,6 @@ export function DirectorAdminFeaturesPage() {
     }
   }
 
-  if (!payload) {
-    return (
-      <Card>
-        <LoadingSkeleton lines={3} />
-      </Card>
-    );
-  }
-
   const orderedModules = useMemo(() => {
     const source = Array.isArray(payload?.modules) ? payload.modules : [];
     if (!source.length) return [];
@@ -3912,6 +3916,14 @@ export function DirectorAdminFeaturesPage() {
     });
     return [...topModules, ...bottomModules];
   }, [payload?.modules]);
+
+  if (!payload) {
+    return (
+      <Card>
+        <LoadingSkeleton lines={3} />
+      </Card>
+    );
+  }
 
   function renderModuleCard(module) {
     const hint = MODULE_LAYOUT_HINTS[String(module?.key || "").trim()] || null;
@@ -4358,11 +4370,14 @@ export function DirectorAdminSettingsNetworkPage() {
   if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
 
   return (
-    <Card>
-      <h2 className="pb-section-title">Network Identity</h2>
+    <Card className="director-admin-network-identity-card">
+      <div className="director-admin-network-identity-head">
+        <h2 className="pb-section-title">Network Identity</h2>
+        <p>Control how your camp appears across login, homepage, and emails.</p>
+      </div>
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
-      <form className="director-admin-form-grid" onSubmit={saveIdentity}>
+      <form className="director-admin-form-grid director-admin-network-identity-form" onSubmit={saveIdentity}>
         <label>
           Camp Name
           <Input value={form.campName} readOnly />
@@ -4386,18 +4401,18 @@ export function DirectorAdminSettingsNetworkPage() {
             <option value="all_boys">All-boys camp</option>
           </Select>
         </label>
-        <label>
+        <label className="full-width">
           Network Name
           <Input value={form.networkName} onChange={(event) => setForm((prev) => ({ ...prev, networkName: event.target.value }))} />
         </label>
-        <label className="full-width">
+        <label className="full-width director-admin-network-quote-field">
           Homepage quote (before login)
           <Textarea
             value={form.homepageQuote}
             maxLength={220}
             onChange={(event) => setForm((prev) => ({ ...prev, homepageQuote: event.target.value }))}
           />
-          <span className="muted">Displayed on the public homepage hero before login.</span>
+          <span className="muted director-admin-network-quote-help">Displayed on the public homepage hero before login.</span>
         </label>
         <label>
           Contact Email
@@ -4407,7 +4422,7 @@ export function DirectorAdminSettingsNetworkPage() {
           Website URL
           <Input type="url" value={form.websiteUrl} onChange={(event) => setForm((prev) => ({ ...prev, websiteUrl: event.target.value }))} />
         </label>
-        <div className="director-admin-form-actions full-width">
+        <div className="director-admin-form-actions full-width director-admin-network-form-actions">
           <Button type="submit" disabled={saving}>
             {saving ? "Saving..." : "Save Changes"}
           </Button>
@@ -4652,6 +4667,13 @@ export function DirectorAdminSettingsBrandingPage() {
               }
             />
           </div>
+          <BrandImageColorPicker
+            value={form.brandPrimary}
+            sourceImageUrl={form.logoUrl || form.heroImageUrl || currentLogoUrl || currentHeroUrl || ""}
+            onPickColor={(nextHex) =>
+              setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(nextHex, DEFAULT_BRAND_PRIMARY) }))
+            }
+          />
           <div className="director-palette-preview" aria-label="Brand palette preview">
             {paletteSwatches.map((swatch) => (
               <div className="director-palette-swatch" key={swatch.label}>
