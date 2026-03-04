@@ -4454,6 +4454,7 @@ export function DirectorAdminSettingsBrandingPage() {
   const [uploadingField, setUploadingField] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
+  const [lastPreviewMediaField, setLastPreviewMediaField] = useState("");
   const [form, setForm] = useState({
     brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
@@ -4471,6 +4472,7 @@ export function DirectorAdminSettingsBrandingPage() {
       heroImagePosition: normalizeHeroImagePosition(payload.branding.heroImagePosition || "center center"),
       heroImageSize: normalizeHeroImageSize(payload.branding.heroImageSize || "cover")
     });
+    setLastPreviewMediaField("");
   }, [payload?.branding]);
 
   async function uploadBrandingBlob({ blob, fileType, scope }) {
@@ -4582,6 +4584,7 @@ export function DirectorAdminSettingsBrandingPage() {
     try {
       const previewDataUrl = await fileToDataUrl(file);
       setForm((prev) => ({ ...prev, [field]: previewDataUrl }));
+      setLastPreviewMediaField(field);
       setStatus("Image preview updated. Click Save Branding to publish this change.");
     } catch (uploadErrorState) {
       setUploadError(uploadErrorState.message || "Unable to process image.");
@@ -4613,6 +4616,14 @@ export function DirectorAdminSettingsBrandingPage() {
   const liveHeroPreviewUrl = draftHeroUrl || currentHeroUrl;
   const hasPendingLogoUpdate = Boolean(draftLogoUrl) && draftLogoUrl !== currentLogoUrl;
   const hasPendingHeroUpdate = Boolean(draftHeroUrl) && draftHeroUrl !== currentHeroUrl;
+  const brandPickerSourceUrl =
+    (lastPreviewMediaField === "heroImageUrl" ? liveHeroPreviewUrl : "") ||
+    (lastPreviewMediaField === "logoUrl" ? liveLogoPreviewUrl : "") ||
+    (hasPendingHeroUpdate ? liveHeroPreviewUrl : "") ||
+    (hasPendingLogoUpdate ? liveLogoPreviewUrl : "") ||
+    liveLogoPreviewUrl ||
+    liveHeroPreviewUrl ||
+    "";
 
   return (
     <Card>
@@ -4634,6 +4645,9 @@ export function DirectorAdminSettingsBrandingPage() {
             type="file"
             accept="image/*"
             className="director-upload-input"
+            onClick={(event) => {
+              event.currentTarget.value = "";
+            }}
             onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)}
           />
           <div className="director-admin-branding-current-media">
@@ -4659,6 +4673,9 @@ export function DirectorAdminSettingsBrandingPage() {
             type="file"
             accept="image/*"
             className="director-upload-input"
+            onClick={(event) => {
+              event.currentTarget.value = "";
+            }}
             onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)}
           />
           <div className="director-admin-branding-current-media">
@@ -4695,7 +4712,7 @@ export function DirectorAdminSettingsBrandingPage() {
           </div>
           <BrandImageColorPicker
             value={form.brandPrimary}
-            sourceImageUrl={form.logoUrl || form.heroImageUrl || currentLogoUrl || currentHeroUrl || ""}
+            sourceImageUrl={brandPickerSourceUrl}
             onPickColor={(nextHex) =>
               setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(nextHex, DEFAULT_BRAND_PRIMARY) }))
             }
