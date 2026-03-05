@@ -18,13 +18,15 @@ function initialsFromLabel(label = "") {
 export default function ProductHeader() {
   const { tenant } = useTenant();
   const branding = tenant?.config?.branding || tenant?.theme || {};
+  const isLaunched = String(tenant?.onboardingStatus || "").trim().toLowerCase() === "live";
   const networkName = useMemo(() => {
+    if (!isLaunched) return "PondBridge";
     const resolved = String(resolveNetworkDisplayName(tenant) || "").trim();
     if (resolved) return resolved;
     const campName = String(tenant?.name || "").trim();
     return campName ? `${campName} Network` : "Camp Network";
-  }, [tenant]);
-  const logoUrl = String(branding.logoUrl || "").trim();
+  }, [isLaunched, tenant]);
+  const logoUrl = isLaunched ? String(branding.logoUrl || "").trim() : "";
   const logoInitials = useMemo(() => initialsFromLabel(networkName), [networkName]);
 
   return (
