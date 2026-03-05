@@ -149,11 +149,13 @@ export default function ClerkCreateAccountFlow() {
                   },
                   emailLink: {
                     title: "Check your email",
-                    subtitle: `Open the secure sign-up link to continue to ${networkName}.`
+                    subtitle: `Open the secure sign-up link to continue to ${networkName}.`,
+                    formSubtitle: `Use the secure link we sent to continue to ${networkName}.`
                   },
                   emailCode: {
                     title: "Check your email",
-                    subtitle: `Enter the verification code to continue to ${networkName}.`
+                    subtitle: `Enter the verification code to continue to ${networkName}.`,
+                    formSubtitle: `Enter the code from your email to continue to ${networkName}.`
                   }
                 }
               }}

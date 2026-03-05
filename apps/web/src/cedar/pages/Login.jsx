@@ -307,8 +307,19 @@ function ClerkLogin() {
                     },
                     emailLink: {
                       title: "Check your email",
-                      subtitle: `Open the secure sign-in link to continue to ${networkName}.`
-                    }
+                      subtitle: `Open the secure sign-in link to continue to ${networkName}.`,
+                      formSubtitle: `Use the secure link in your inbox to continue to ${networkName}.`
+                    },
+                    emailCodeMfa: {
+                      title: "Verify your login",
+                      subtitle: `Enter the verification code to continue to ${networkName}.`
+                    },
+                    emailLinkMfa: {
+                      title: "Verify your login",
+                      subtitle: `Open the secure verification link to continue to ${networkName}.`,
+                      formSubtitle: `Use the secure link in your inbox to continue to ${networkName}.`
+                    },
+                    newDeviceVerificationNotice: `For security, verify this device before continuing to ${networkName}.`
                   }
                 }}
                 appearance={{

@@ -4,6 +4,7 @@ import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { resolveNetworkDisplayName } from "../lib/campLabels.js";
 
 function routeWithSlug(slug, path, useSlugPrefix = true) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -22,8 +23,9 @@ export default function DirectorCreateAccountClerkPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
-  const { slug: contextSlug } = useTenant();
+  const { slug: contextSlug, tenant } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
+  const networkName = resolveNetworkDisplayName(tenant);
   const usingSlugRoute =
     Boolean(slug) &&
     (location.pathname === `/t/${slug}` || location.pathname.startsWith(`/t/${slug}/`));
@@ -145,11 +147,13 @@ export default function DirectorCreateAccountClerkPage() {
                   },
                   emailLink: {
                     title: "Check your email",
-                    subtitle: "Open the secure link to continue director onboarding."
+                    subtitle: `Open the secure sign-up link to continue to ${networkName}.`,
+                    formSubtitle: `Use the secure link we sent to continue to ${networkName}.`
                   },
                   emailCode: {
                     title: "Check your email",
-                    subtitle: "Enter the verification code to continue director onboarding."
+                    subtitle: `Enter the verification code to continue to ${networkName}.`,
+                    formSubtitle: `Enter the code from your email to continue to ${networkName}.`
                   }
                 }
               }}
