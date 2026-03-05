@@ -2,12 +2,8 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import AppShell from "./components/AppShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import TenantAuthCallbackPage from "./pages/TenantAuthCallbackPage.jsx";
-import SuperLoginPage from "./pages/SuperLoginPage.jsx";
-import NotFoundPage from "./pages/NotFoundPage.jsx";
 import { defaultTenantDomain, inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
 import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
 
@@ -41,41 +37,33 @@ const CedarLegalPage = lazyPage(() => import("./cedar/pages/Legal.jsx"));
 const CedarFamilyTreesPage = lazyPage(() => import("./cedar/pages/FamilyTrees.jsx"));
 const CedarFamilyTreeCreatePage = lazyPage(() => import("./cedar/pages/FamilyTreeCreate.jsx"));
 const CedarFamilyTreeViewPage = lazyPage(() => import("./cedar/pages/FamilyTreeView.jsx"));
+const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
+const TenantAuthCallbackPage = lazyPage(() => import("./pages/TenantAuthCallbackPage.jsx"));
+const SuperLoginPage = lazyPage(() => import("./pages/SuperLoginPage.jsx"));
+const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage.jsx"));
 
 const DirectorOnboardingCommandCenterPage = lazyPage(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
 const DirectorClaimPage = lazyPage(() => import("./pages/DirectorClaimPage.jsx"));
 const DirectorCreateAccountPage = lazyPage(() => import("./pages/DirectorCreateAccountPage.jsx"));
 const DirectorAdminLayout = lazyPage(() => import("./pages/admin/DirectorAdminLayout.jsx"));
-const DirectorAdminBillingPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminBillingPage }))
-);
+const DirectorAdminBillingPage = lazyPage(() => import("./pages/admin/DirectorAdminBillingPage.jsx"));
 const DirectorAdminDashboardPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminDashboardPage }))
 );
-const DirectorAdminEmailComposePage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailComposePage }))
-);
+const DirectorAdminEmailComposePage = lazyPage(() => import("./pages/admin/DirectorAdminEmailComposePage.jsx"));
 const DirectorAdminEmailHistoryPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailHistoryPage }))
 );
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
 );
-const DirectorAdminInvitesPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminInvitesPage }))
-);
+const DirectorAdminInvitesPage = lazyPage(() => import("./pages/admin/DirectorAdminInvitesPage.jsx"));
 const DirectorAdminMembersPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
 );
-const DirectorAdminMemberEditPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
-    default: module.DirectorAdminMemberEditPage
-  }))
-);
+const DirectorAdminMemberEditPage = lazyPage(() => import("./pages/admin/DirectorAdminMemberEditPage.jsx"));
 const DirectorAdminSettingsAdminsPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
-    default: module.DirectorAdminSettingsAdminsPage
-  }))
+  import("./pages/admin/DirectorAdminSettingsAdminsPage.jsx")
 );
 const DirectorAdminSettingsBrandingPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
@@ -117,6 +105,35 @@ const SuperTenantCreatePage = lazyPage(() =>
 const SuperTenantsPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperTenantsPage }))
 );
+
+const warmedRouteChunks = new Set();
+
+function warmRouteChunk(key, loader) {
+  if (warmedRouteChunks.has(key)) return;
+  warmedRouteChunks.add(key);
+  Promise.resolve()
+    .then(() => loader())
+    .catch(() => {});
+}
+
+function warmAuthenticatedRouteChunks({ includeAdmin = false } = {}) {
+  const baseWarmers = [
+    ["cedar-main-home", () => import("./cedar/pages/MainHome.jsx")],
+    ["cedar-my-profile", () => import("./cedar/pages/MyProfile.jsx")],
+    ["cedar-search", () => import("./cedar/pages/AdvancedSearch.jsx")],
+    ["cedar-photo-stream", () => import("./cedar/pages/PhotoStream.jsx")]
+  ];
+  for (const [key, loader] of baseWarmers) {
+    warmRouteChunk(key, loader);
+  }
+  if (includeAdmin) {
+    warmRouteChunk("director-admin-invites", () => import("./pages/admin/DirectorAdminInvitesPage.jsx"));
+    warmRouteChunk("director-admin-billing", () => import("./pages/admin/DirectorAdminBillingPage.jsx"));
+    warmRouteChunk("director-admin-settings-admins", () =>
+      import("./pages/admin/DirectorAdminSettingsAdminsPage.jsx")
+    );
+  }
+}
 
 function TenantScopeLayout() {
   const { slug } = useParams();
@@ -171,6 +188,7 @@ function TenantScopeRoutes() {
   const membershipSyncKeyRef = useRef("");
   const membershipSyncInFlightRef = useRef(false);
   const [wrongNetwork, setWrongNetwork] = useState(null);
+  const isCampDirectorSession = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
 
   useEffect(() => {
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -264,6 +282,42 @@ function TenantScopeRoutes() {
     };
   }, [authProvider, isAuthenticated, isReady, location.pathname, logout, navigate, slug, tenant, user, wrongNetwork]);
 
+  useEffect(() => {
+    if (!isReady || loading || !tenant || !isAuthenticated) return;
+    const path = String(location.pathname || "");
+    const onAuthBootstrapRoute =
+      path.includes("/auth/callback") ||
+      path.includes("/director-claim") ||
+      path.includes("/director-create-account") ||
+      path.includes("/login") ||
+      path.includes("/create-account");
+    if (onAuthBootstrapRoute) return;
+
+    let cancelled = false;
+    let idleHandle = null;
+    let timeoutHandle = null;
+    const scheduleWarmup = () => {
+      if (cancelled) return;
+      warmAuthenticatedRouteChunks({ includeAdmin: isCampDirectorSession });
+    };
+
+    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+      idleHandle = window.requestIdleCallback(scheduleWarmup, { timeout: 1400 });
+    } else {
+      timeoutHandle = window.setTimeout(scheduleWarmup, 500);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleHandle != null && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle != null) {
+        window.clearTimeout(timeoutHandle);
+      }
+    };
+  }, [isAuthenticated, isCampDirectorSession, isReady, loading, location.pathname, tenant]);
+
   function expectedNetworkHref(expectedSlug = "") {
     const normalizedSlug = String(expectedSlug || "").trim().toLowerCase();
     if (!normalizedSlug || typeof window === "undefined") return "";
@@ -354,7 +408,7 @@ function TenantScopeRoutes() {
     );
   }
 
-  const isCampDirector = isAuthenticated && user?.roles?.includes("tenant_admin");
+  const isCampDirector = isCampDirectorSession;
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
   const onboardingIncomplete = tenant?.onboardingStatus !== "live";
   const currentPath = location.pathname || "";

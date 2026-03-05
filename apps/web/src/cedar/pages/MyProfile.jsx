@@ -1,7 +1,7 @@
 // src/pages/MyProfile.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import coverPhoto from "../assets/profile-cover.jpg";
+import coverPhoto from "../assets/cedar-bg.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
 import { getMe, API_BASE } from "../lib/api";

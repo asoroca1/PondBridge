@@ -11,7 +11,7 @@ import {
   withCampAlumniTerms
 } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
-import cedarField from "../assets/cedar-field.jpeg";
+import cedarBg from "../assets/cedar-bg.jpg";
 import { API_BASE, getMe } from "../lib/api";
 import { authHeaders, initialsOf, displayName, avatarUrl, getToken } from "../lib/helpers.js";
 import {
@@ -292,6 +292,8 @@ function RelatedProfilesCard({ targetUserId }) {
                       className="p1-suggest-img"
                       src={url}
                       alt={name}
+                      loading="lazy"
+                      decoding="async"
                       onError={() =>
                         setAvatarErrorIds((prev) => {
                           if (prev.has(id)) return prev;
@@ -356,7 +358,12 @@ function PhotosPreviewCard() {
               className="photos-mini-item"
               title={p.caption || "Camp photo"}
             >
-              <img src={p.thumbUrl || p.imageUrl} alt={p.caption || "Camp photo"} />
+              <img
+                src={p.thumbUrl || p.imageUrl}
+                alt={p.caption || "Camp photo"}
+                loading="lazy"
+                decoding="async"
+              />
             </Link>
           ))}
         </div>
@@ -593,7 +600,7 @@ export default function MainHome() {
   const modules = tenant?.config?.modules || tenant?.modules || {};
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
-  const heroImage = heroBranding.heroImageUrl || cedarField;
+  const heroImage = heroBranding.heroImageUrl || cedarBg;
   const heroImagePosition = normalizeHeroImagePosition(
     heroBranding.heroImagePositionMember || heroBranding.heroImagePosition || ""
   );
@@ -872,7 +879,7 @@ export default function MainHome() {
           <div className="welcome-left">
             <div className="welcome-avatar">
               {avatarUrl(me) ? (
-                <img src={avatarUrl(me)} alt={displayName(me)} />
+                <img src={avatarUrl(me)} alt={displayName(me)} decoding="async" />
               ) : (
                 <span>{initialsOf(me?.firstName, me?.lastName, me?.nickname) || "?"}</span>
               )}

@@ -74,7 +74,14 @@ function AvatarLink({ userId, name, url, size = 34 }) {
   const style = { width: size, height: size, fontSize: size * 0.4 };
   const classBase = "ps-avatar";
   const avatarNode = url ? (
-    <img className={`${classBase} ps-avatar-img`} src={url} alt={name || "avatar"} style={style} />
+    <img
+      className={`${classBase} ps-avatar-img`}
+      src={url}
+      alt={name || "avatar"}
+      style={style}
+      loading="lazy"
+      decoding="async"
+    />
   ) : (
     <div className={classBase} style={style}>{initials || "?"}</div>
   );
@@ -367,6 +374,7 @@ function UploadModal({ open, onClose, onPosted }) {
                 src={previewUrl}
                 alt="Photo preview"
                 className="ps-upload-preview-image"
+                decoding="async"
                 style={
                   previewLayout
                     ? {
@@ -653,7 +661,12 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
       <div className="ps-lightbox-card" onClick={(e) => e.stopPropagation()}>
         {/* MEDIA */}
         <div className="ps-lightbox-media">
-          <img className="ps-lightbox-img" src={post.imageUrl} alt={post.caption || "Camp photo"} />
+          <img
+            className="ps-lightbox-img"
+            src={post.imageUrl}
+            alt={post.caption || "Camp photo"}
+            decoding="async"
+          />
         </div>
 
         {/* SIDE PANEL */}
@@ -864,7 +877,13 @@ export default function PhotoStream() {
             return (
               <div key={p._id || p.id} className="ps-card">
                 <button className="ps-media-wrap" onClick={() => setViewerPost(p)} aria-label="Open photo">
-                  <img className="ps-media" src={p.thumbUrl || p.imageUrl} alt={p.caption || "Camp photo"} loading="lazy" />
+                  <img
+                    className="ps-media"
+                    src={p.thumbUrl || p.imageUrl}
+                    alt={p.caption || "Camp photo"}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </button>
 
                 <div className="ps-card-body">

@@ -3,6 +3,7 @@ import { inferCampSlugFromHost } from "./domain.js";
 const rawBase = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 export const API_BASE = rawBase.replace(/\/+$/, "");
 const CLERK_FORCED_REFRESH_COOLDOWN_MS = 1500;
+const inFlightGetRequests = new Map();
 
 let forcedRefreshPromise = null;
 let lastForcedRefreshAt = 0;
@@ -77,7 +78,38 @@ function inferTenantSlugForRequest(path = "") {
   return inferCampSlugFromHost(window.location.hostname || "");
 }
 
+function normalizeHeaderKey(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildInFlightGetRequestKey({
+  method = "GET",
+  path = "",
+  token = "",
+  headers = {},
+  body = null,
+  signal = null
+} = {}) {
+  if (String(method || "GET").toUpperCase() !== "GET") return "";
+  if (body != null) return "";
+  if (signal) return "";
+
+  const headerFingerprint = Object.entries(headers || {})
+    .map(([key, value]) => `${normalizeHeaderKey(key)}:${String(value ?? "").trim()}`)
+    .sort()
+    .join("|");
+
+  return [
+    "GET",
+    String(path || ""),
+    token ? `auth:${token}` : "anon",
+    headerFingerprint
+  ].join("::");
+}
+
 export async function requestJson(path, { method = "GET", body, token, getToken, headers = {}, signal } = {}) {
+  const normalizedPath = String(path || "");
+  const isPublicApiPath = normalizedPath.startsWith("/api/public/");
   let resolvedToken = token || "";
   if (typeof getToken === "function") {
     try {
@@ -85,7 +117,7 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     } catch {
       resolvedToken = token || "";
     }
-  } else if (!resolvedToken) {
+  } else if (!resolvedToken && !isPublicApiPath) {
     const browserToken = await readBrowserClerkToken();
     if (browserToken) resolvedToken = browserToken;
   }
@@ -104,12 +136,27 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     baseHeaders["Content-Type"] = "application/json";
   }
 
+  const inFlightGetKey = buildInFlightGetRequestKey({
+    method,
+    path: normalizedPath,
+    token: resolvedToken,
+    headers: baseHeaders,
+    body,
+    signal
+  });
+  if (inFlightGetKey) {
+    const existingRequest = inFlightGetRequests.get(inFlightGetKey);
+    if (existingRequest) {
+      return existingRequest;
+    }
+  }
+
   async function callWithToken(currentToken) {
     const requestHeaders = {
       ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
       ...baseHeaders
     };
-    return performJsonRequest(`${API_BASE}${path}`, {
+    return performJsonRequest(`${API_BASE}${normalizedPath}`, {
       method,
       headers: requestHeaders,
       signal,
@@ -117,44 +164,56 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     });
   }
 
-  let response;
-  try {
-    response = await callWithToken(resolvedToken);
-  } catch (error) {
-    throw normalizeTransportError(error, path);
-  }
-
-  if (response.status === 401) {
-    let refreshedToken =
-      typeof getToken === "function" ? await getToken({ forceRefresh: true }).catch(() => "") : "";
-    if (!refreshedToken || refreshedToken === resolvedToken) {
-      const browserRefreshedToken = await readBrowserClerkTokenWithSharedForceRefresh();
-      if (browserRefreshedToken) refreshedToken = browserRefreshedToken;
+  const executeRequest = async () => {
+    let response;
+    try {
+      response = await callWithToken(resolvedToken);
+    } catch (error) {
+      throw normalizeTransportError(error, normalizedPath);
     }
-    if (refreshedToken && refreshedToken !== resolvedToken) {
-      resolvedToken = refreshedToken;
-      try {
-        response = await callWithToken(resolvedToken);
-      } catch (error) {
-        throw normalizeTransportError(error, path);
+
+    if (response.status === 401 && !isPublicApiPath) {
+      let refreshedToken =
+        typeof getToken === "function" ? await getToken({ forceRefresh: true }).catch(() => "") : "";
+      if (!refreshedToken || refreshedToken === resolvedToken) {
+        const browserRefreshedToken = await readBrowserClerkTokenWithSharedForceRefresh();
+        if (browserRefreshedToken) refreshedToken = browserRefreshedToken;
+      }
+      if (refreshedToken && refreshedToken !== resolvedToken) {
+        resolvedToken = refreshedToken;
+        try {
+          response = await callWithToken(resolvedToken);
+        } catch (error) {
+          throw normalizeTransportError(error, normalizedPath);
+        }
       }
     }
+
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => "");
+
+    if (!response.ok) {
+      const message = payload?.error?.message || payload?.message || "Request failed";
+      const error = new Error(message);
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
+    }
+
+    return payload;
+  };
+
+  if (!inFlightGetKey) {
+    return executeRequest();
   }
 
-  const isJson = response.headers.get("content-type")?.includes("application/json");
-  const payload = isJson
-    ? await response.json().catch(() => ({}))
-    : await response.text().catch(() => "");
-
-  if (!response.ok) {
-    const message = payload?.error?.message || payload?.message || "Request failed";
-    const error = new Error(message);
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
-  }
-
-  return payload;
+  const sharedRequest = executeRequest().finally(() => {
+    inFlightGetRequests.delete(inFlightGetKey);
+  });
+  inFlightGetRequests.set(inFlightGetKey, sharedRequest);
+  return sharedRequest;
 }
 
 export async function requestBlob(path, { token } = {}) {

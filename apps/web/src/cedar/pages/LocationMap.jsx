@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { useParams } from "react-router-dom";
 
 import CedarBackground from "../components/CedarBackground";
@@ -55,6 +53,7 @@ export default function LocationMap() {
   const alumniWord = resolveAlumniWord(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
 
+  const maplibreRuntimeRef = useRef(null);
   const mapRef = useRef(null);
   const mapEl = useRef(null);
   const resultsRef = useRef(null);
@@ -77,6 +76,8 @@ export default function LocationMap() {
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingCities, setLoadingCities] = useState(true);
   const [pendingCityGeocodes, setPendingCityGeocodes] = useState(0);
+  const [mapRuntimeReady, setMapRuntimeReady] = useState(false);
+  const [mapRuntimeError, setMapRuntimeError] = useState("");
 
   const tenantCacheSuffix = useMemo(
     () => String(slug || "").trim().toLowerCase() || "default",
@@ -115,6 +116,34 @@ export default function LocationMap() {
         ? `${totalAlumni} ${alumniWord} across ${cities.length} cities • mapping ${pendingCityGeocodes} more`
         : `${totalAlumni} ${alumniWord} across ${cities.length} cities`
       : `Explore where your ${alumniWord} network lives around the world.`;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (maplibreRuntimeRef.current) {
+      setMapRuntimeReady(true);
+      return () => {};
+    }
+
+    (async () => {
+      try {
+        await import("maplibre-gl/dist/maplibre-gl.css");
+        const module = await import("maplibre-gl");
+        if (cancelled) return;
+        maplibreRuntimeRef.current = module?.default || module;
+        setMapRuntimeReady(true);
+        setMapRuntimeError("");
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Failed to load map runtime", error);
+        setMapRuntimeReady(false);
+        setMapRuntimeError("Map could not load right now. Refresh and try again.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function resolveToken() {
     if (typeof getAuthToken === "function") {
@@ -235,7 +264,8 @@ export default function LocationMap() {
 
   function renderMarkers(list) {
     const map = mapRef.current;
-    if (!map) return;
+    const maplibregl = maplibreRuntimeRef.current;
+    if (!map || !maplibregl) return;
 
     clearMarkers();
 
@@ -337,8 +367,11 @@ export default function LocationMap() {
   }
 
   useEffect(() => {
+    if (!mapRuntimeReady) return;
     if (!mapEl.current) return;
     if (mapRef.current) return;
+    const maplibregl = maplibreRuntimeRef.current;
+    if (!maplibregl) return;
 
     const el = mapEl.current;
 
@@ -412,7 +445,7 @@ export default function LocationMap() {
       }
       loadedRef.current = false;
     };
-  }, [brandPrimary]);
+  }, [brandPrimary, mapRuntimeReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -610,6 +643,17 @@ export default function LocationMap() {
 
         <section className="lm-map-card">
           <div className="lm-map" ref={mapEl} />
+          {!mapRuntimeReady && !mapRuntimeError ? (
+            <div className="lm-map-runtime-state" role="status" aria-live="polite">
+              <span className="lm-prompt-spinner" aria-hidden="true" />
+              <p>Loading map...</p>
+            </div>
+          ) : null}
+          {mapRuntimeError ? (
+            <div className="lm-map-runtime-state is-error" role="alert">
+              <p>{mapRuntimeError}</p>
+            </div>
+          ) : null}
         </section>
 
         <section className="lm-results" ref={resultsRef}>

@@ -37,11 +37,10 @@ const WOMEN_FIRST_NAMES = [
 ];
 
 const LAST_NAMES = [
-  "Cohen", "Levy", "Rosenberg", "Stein", "Goldberg", "Friedman", "Kaplan", "Shapiro", "Klein",
-  "Weinstein", "Horowitz", "Berkowitz", "Miller", "Adler", "Silverman", "Stern", "Rubin", "Schwartz",
-  "Epstein", "Goldstein", "Bloom", "Greenberg", "Wexler", "Grossman", "Marcus", "Katz", "Pinsky",
-  "Rosenthal", "Goodman", "Jacobs", "Mandel", "Feldman", "Freedman", "Heller", "Novak", "Snyder",
-  "Perlman", "Berlin", "Ginsberg", "Abrams"
+  "Rivera", "Chen", "Blake", "Davis", "Kim", "Thompson", "Martinez", "Johnson", "Patel", "Nguyen",
+  "Foster", "Wright", "Adams", "Lee", "Campbell", "Scott", "Baker", "Clark", "Turner", "Harris",
+  "Mitchell", "Brooks", "Ward", "Cooper", "Morris", "Perry", "Price", "Reed", "Bailey", "Cook",
+  "Morgan", "Bell", "Murphy", "Rogers", "Diaz", "Reyes", "Sanders", "Hayes", "Powell", "Long"
 ];
 
 const CITIES = [

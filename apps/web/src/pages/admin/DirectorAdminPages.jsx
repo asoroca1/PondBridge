@@ -194,6 +194,15 @@ function normalizeMemberRowId(member = null) {
   return String(member?.id || "").trim();
 }
 
+function useDebouncedValue(value, delayMs = 220) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), Math.max(0, Number(delayMs) || 0));
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+  return debounced;
+}
+
 const INVITE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MEMBER_EXPORT_STORAGE_PREFIX = "pb_admin_members_export_fields";
 const MEMBER_EXPORT_PRESET_STORAGE_PREFIX = "pb_admin_members_export_presets";
@@ -1219,6 +1228,7 @@ export function DirectorAdminMembersPage() {
   const { slug, request, download } = useAdminApi();
   const requestRef = useRef(request);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 280);
   const [filters, setFilters] = useState({
     role: "all",
     year: "all",
@@ -1330,7 +1340,7 @@ export function DirectorAdminMembersPage() {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: "25",
-        q: query,
+        q: debouncedQuery,
         role: filters.role,
         year: filters.year,
         status: filters.status,
@@ -1344,7 +1354,7 @@ export function DirectorAdminMembersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters.completion, filters.role, filters.sort, filters.status, filters.year, page, query, slug]);
+  }, [debouncedQuery, filters.completion, filters.role, filters.sort, filters.status, filters.year, page]);
 
   useEffect(() => {
     loadMembers();
@@ -5683,6 +5693,7 @@ export function DirectorAdminSettingsAdminsPage() {
   const { request } = useAdminApi();
   const [payload, setPayload] = useState({ admins: [], pendingInvites: [] });
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 220);
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -5710,33 +5721,32 @@ export function DirectorAdminSettingsAdminsPage() {
   }, [loadAdmins]);
 
   useEffect(() => {
-    const term = String(query || "").trim();
+    const term = String(debouncedQuery || "").trim();
     if (!term) {
       setResults([]);
       setSearching(false);
       return undefined;
     }
     let active = true;
-    const timerId = window.setTimeout(async () => {
-      setSearching(true);
-      try {
-        const response = await request(`/settings/admins/search?q=${encodeURIComponent(term)}&limit=8`);
+    setSearching(true);
+    request(`/settings/admins/search?q=${encodeURIComponent(term)}&limit=8`)
+      .then((response) => {
         if (!active) return;
         setResults(Array.isArray(response?.items) ? response.items : []);
-      } catch (requestError) {
+      })
+      .catch((requestError) => {
         if (!active) return;
         setResults([]);
         setError(requestError.message || "Failed to search members.");
-      } finally {
+      })
+      .finally(() => {
         if (active) setSearching(false);
-      }
-    }, 180);
+      });
 
     return () => {
       active = false;
-      window.clearTimeout(timerId);
     };
-  }, [query, request]);
+  }, [debouncedQuery, request]);
 
   async function grantAdmin(member) {
     if (!member?.userId && !member?.email) return;

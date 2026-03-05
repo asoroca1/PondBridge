@@ -130,7 +130,16 @@ function SmartAvatar({ src = "", initials = "?", alt = "", className = "", fallb
   }, [normalizedSrc]);
 
   if (showImage) {
-    return <img src={normalizedSrc} alt={alt} className={className} onError={() => setErrored(true)} />;
+    return (
+      <img
+        src={normalizedSrc}
+        alt={alt}
+        className={className}
+        loading="lazy"
+        decoding="async"
+        onError={() => setErrored(true)}
+      />
+    );
   }
 
   return (
@@ -533,7 +542,13 @@ export default function NavBar() {
           aria-label="Go to Home"
         >
           {logoUrl ? (
-            <img src={logoUrl} alt={`${tenant?.name || "Camp"} logo`} className="navbar2-logo" />
+            <img
+              src={logoUrl}
+              alt={`${tenant?.name || "Camp"} logo`}
+              className="navbar2-logo"
+              fetchPriority="high"
+              decoding="async"
+            />
           ) : (
             <div
               className="nav2-ac-avatar nav2-avatar-fallback nav2-ac-initials navbar2-logo-fallback"

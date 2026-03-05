@@ -7,6 +7,7 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { clerkUiEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
 import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
+import { API_BASE } from "./lib/http.js";
 import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";
@@ -25,6 +26,42 @@ const inferredBuildMarker = (() => {
 })();
 window.__PONDBRIDGE_BUILD__ = inferredBuildMarker;
 installChunkRecoveryListeners();
+
+function warmApiConnection() {
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+  let apiOrigin = "";
+  try {
+    apiOrigin = new URL(API_BASE, window.location.href).origin;
+  } catch {
+    apiOrigin = "";
+  }
+  if (!apiOrigin || apiOrigin === window.location.origin) return;
+
+  const existing = new Set(
+    [...document.querySelectorAll("link[rel='preconnect'],link[rel='dns-prefetch']")]
+      .map((link) => String(link.getAttribute("href") || "").trim())
+      .filter(Boolean)
+  );
+
+  const hasOriginHints = existing.has(apiOrigin);
+
+  if (!hasOriginHints) {
+    const preconnect = document.createElement("link");
+    preconnect.rel = "preconnect";
+    preconnect.href = apiOrigin;
+    preconnect.crossOrigin = "";
+    document.head.appendChild(preconnect);
+  }
+
+  if (!hasOriginHints) {
+    const dnsPrefetch = document.createElement("link");
+    dnsPrefetch.rel = "dns-prefetch";
+    dnsPrefetch.href = apiOrigin;
+    document.head.appendChild(dnsPrefetch);
+  }
+}
+
+warmApiConnection();
 
 const clerkNoSocialAppearance = {
   elements: {

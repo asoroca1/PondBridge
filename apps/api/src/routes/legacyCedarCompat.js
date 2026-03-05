@@ -93,6 +93,8 @@ const MAP_CITY_PROFILE_SELECT = [
   "industry",
   "currentJobs"
 ];
+const MAP_CITIES_RESPONSE_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
+const MAP_CITY_PEOPLE_RESPONSE_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=30";
 const citiesCacheByTenant = new Map(); // tenantId -> { data, expiresAt, inflight }
 const cityPeopleCacheByTenant = new Map(); // tenantId -> Map(cityKey -> { data, expiresAt, inflight })
 const geocodeQueue = new Map();
@@ -2861,6 +2863,8 @@ router.delete("/newsletters/:id", async (req, res) => {
 });
 
 router.get("/map/cities", async (req, res) => {
+  res.set("Cache-Control", MAP_CITIES_RESPONSE_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
   const tenantId = String(req.tenant._id);
   const now = Date.now();
   const cached = citiesCacheByTenant.get(tenantId);
@@ -2961,6 +2965,8 @@ router.get("/map/cities", async (req, res) => {
 });
 
 router.get("/map/city/:key", async (req, res) => {
+  res.set("Cache-Control", MAP_CITY_PEOPLE_RESPONSE_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
   const tenantId = String(req.tenant._id);
   const key = String(req.params.key || "").trim().toLowerCase();
   if (!key) return res.json([]);

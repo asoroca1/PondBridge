@@ -132,7 +132,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background-image: var(--hero-image-url, url("../assets/cedar-field.jpeg"));
+  background-image: var(--hero-image-url, url("../assets/cedar-bg.jpg"));
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;

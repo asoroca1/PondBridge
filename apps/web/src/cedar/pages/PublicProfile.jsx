@@ -1,7 +1,7 @@
 // src/pages/PublicProfile.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
-import coverPhoto from "../assets/profile-cover.jpg";
+import coverPhoto from "../assets/cedar-bg.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
 import { API_BASE } from "../lib/api";

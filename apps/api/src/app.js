@@ -1,4 +1,5 @@
 import cors from "cors";
+import compression from "compression";
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -50,6 +51,11 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Tenant-Slug"]
+  })
+);
+app.use(
+  compression({
+    threshold: 1024
   })
 );
 

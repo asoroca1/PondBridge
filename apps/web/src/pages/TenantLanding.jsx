@@ -3,7 +3,7 @@ import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/
 import { Button, Card, PageShell } from "@pondbridge/ui";
 import { useTenant } from "../context/TenantContext.jsx";
 import { resolveNetworkDisplayName } from "../lib/campLabels.js";
-import cedarField from "../assets/cedar-field.jpeg";
+import cedarBg from "../assets/cedar-bg.jpg";
 
 export default function TenantLanding() {
   const { slug } = useParams();
@@ -11,7 +11,7 @@ export default function TenantLanding() {
   const networkDisplayName = resolveNetworkDisplayName(tenant);
   const isDemo = tenant?.onboardingStatus !== "live";
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
-  const heroImage = heroBranding.heroImageUrl || cedarField;
+  const heroImage = heroBranding.heroImageUrl || cedarBg;
   const heroImagePosition = normalizeHeroImagePosition(
     heroBranding.heroImagePositionLanding || heroBranding.heroImagePosition || ""
   );

@@ -446,7 +446,7 @@ body{
   overflow: hidden;
   isolation: isolate;
 
-  background-image: var(--hero-image-url, url("./assets/cedar-field.jpeg"));
+  background-image: var(--hero-image-url, url("./assets/cedar-bg.jpg"));
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
@@ -713,7 +713,7 @@ body{
   content: "";
   position: absolute;
   inset: 0;
-  background-image: var(--hero-image-url, url("./cedar/assets/cedar-field.jpeg"));
+  background-image: var(--hero-image-url, url("./cedar/assets/cedar-bg.jpg"));
   background-repeat: no-repeat;
   background-size: var(--hero-image-size, cover);
   background-position: var(--hero-image-position, center center);

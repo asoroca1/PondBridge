@@ -21,6 +21,45 @@ import { env } from "../config/env.js";
 
 const router = Router();
 const AUTO_BOOTSTRAP_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,39}$/;
+const PUBLIC_TENANT_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=600";
+const PUBLIC_RESPONSE_CACHE_TTL_MS = 60 * 1000;
+const PUBLIC_RESPONSE_CACHE_MAX_ENTRIES = 300;
+const publicResponseCache = new Map();
+
+function applyPublicTenantCacheHeaders(res) {
+  res.set("Cache-Control", PUBLIC_TENANT_CACHE_CONTROL);
+}
+
+function publicResponseCacheKey(endpoint = "", lookup = "", value = "") {
+  const normalizedEndpoint = String(endpoint || "").trim().toLowerCase();
+  const normalizedLookup = String(lookup || "").trim().toLowerCase();
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (!normalizedEndpoint || !normalizedLookup || !normalizedValue) return "";
+  return `${normalizedEndpoint}:${normalizedLookup}:${normalizedValue}`;
+}
+
+function readPublicResponseCache(cacheKey = "") {
+  if (!cacheKey) return null;
+  const entry = publicResponseCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() >= Number(entry.expiresAt || 0)) {
+    publicResponseCache.delete(cacheKey);
+    return null;
+  }
+  return entry.payload || null;
+}
+
+function writePublicResponseCache(cacheKey = "", payload = null) {
+  if (!cacheKey || !payload || typeof payload !== "object") return;
+  if (publicResponseCache.size >= PUBLIC_RESPONSE_CACHE_MAX_ENTRIES) {
+    const firstKey = publicResponseCache.keys().next().value;
+    if (firstKey) publicResponseCache.delete(firstKey);
+  }
+  publicResponseCache.set(cacheKey, {
+    expiresAt: Date.now() + PUBLIC_RESPONSE_CACHE_TTL_MS,
+    payload
+  });
+}
 
 function canAutoBootstrapSlug(slug = "") {
   const normalized = String(slug || "").trim().toLowerCase();
@@ -167,6 +206,17 @@ async function resolveTenantForPublicRequest(req) {
 
 router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
   try {
+    applyPublicTenantCacheHeaders(res);
+    const requestedSlug = String(req.query.slug || "").trim().toLowerCase();
+    const requestedHost = String(req.query.host || "").trim().toLowerCase();
+    const cacheLookup = requestedSlug ? "slug" : requestedHost ? "host" : "";
+    const cacheLookupValue = requestedSlug || requestedHost;
+    const cacheKey = publicResponseCacheKey("tenant-config", cacheLookup, cacheLookupValue);
+    const cached = readPublicResponseCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     let { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
     if (!lookupValue) {
       return res.status(400).json({
@@ -197,7 +247,7 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
     const network = buildTenantUrls(tenant);
     const billing = buildBillingPublicSnapshot(tenant);
 
-    return res.json({
+    const payload = {
       id: String(tenant._id),
       name: tenant.name,
       slug: tenant.slug,
@@ -220,7 +270,12 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
       },
       modules: config.modules,
       features: listFeaturesForPlan(tenant.planTier, tenant.addOns || [])
-    });
+    };
+
+    if (cacheKey) {
+      writePublicResponseCache(cacheKey, payload);
+    }
+    return res.json(payload);
   } catch (error) {
     return next(error);
   }
@@ -228,6 +283,17 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
 
 router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
   try {
+    applyPublicTenantCacheHeaders(res);
+    const requestedSlug = String(req.query.slug || "").trim().toLowerCase();
+    const requestedHost = String(req.query.host || "").trim().toLowerCase();
+    const cacheLookup = requestedSlug ? "slug" : requestedHost ? "host" : "";
+    const cacheLookupValue = requestedSlug || requestedHost;
+    const cacheKey = publicResponseCacheKey("tenant-status", cacheLookup, cacheLookupValue);
+    const cached = readPublicResponseCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     const { tenant, lookup, lookupValue } = await resolveTenantForPublicRequest(req);
     if (!lookupValue) {
       return res.status(400).json({
@@ -252,7 +318,7 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
 
     const billingAccess = isTenantBillingAccessAllowed(tenant);
 
-    return res.json({
+    const payload = {
       slug: tenant.slug,
       status: tenant.status,
       onboardingStatus: tenant.onboardingStatus,
@@ -263,7 +329,12 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
         inGrace: billingAccess.inGrace
       },
       signupMode: "open"
-    });
+    };
+
+    if (cacheKey) {
+      writePublicResponseCache(cacheKey, payload);
+    }
+    return res.json(payload);
   } catch (error) {
     return next(error);
   }

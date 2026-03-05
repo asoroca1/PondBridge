@@ -4,6 +4,8 @@ import { requestJson } from "../lib/http.js";
 
 const TenantContext = createContext(null);
 const TENANT_THEME_CACHE_PREFIX = "pondbridgeTenantTheme:";
+const TENANT_CONFIG_CACHE_PREFIX = "pondbridgeTenantConfig:";
+const TENANT_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const FONT_TOKEN_MAP = {
   cedar_default: {
@@ -174,6 +176,64 @@ function writeCachedThemeConfig({ slug = "", host = "", config = null } = {}) {
   }
 }
 
+function tenantConfigCacheKey({ slug = "", host = "" } = {}) {
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  const normalizedHost = String(host || "").trim().toLowerCase();
+  const key = normalizedSlug || normalizedHost;
+  return key ? `${TENANT_CONFIG_CACHE_PREFIX}${key}` : "";
+}
+
+function normalizeTenantPayload(tenant = null, fallbackSlug = "") {
+  if (!tenant || typeof tenant !== "object") return null;
+  const config = tenant?.config || {};
+  const resolvedSlug = String(tenant?.slug || fallbackSlug || "").trim().toLowerCase();
+  return {
+    ...tenant,
+    slug: resolvedSlug,
+    config,
+    theme: tenant.theme || config.branding || {},
+    content: tenant.content || config.content || {},
+    accessSettings: tenant.accessSettings || config.accessRules || {},
+    modules: tenant.modules || config.modules || {}
+  };
+}
+
+function readCachedTenantPayload({ slug = "", host = "" } = {}) {
+  const key = tenantConfigCacheKey({ slug, host });
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const cachedAt = Number(parsed?.cachedAt || 0);
+    const payload = parsed?.payload;
+    if (!payload || typeof payload !== "object") return null;
+    if (!cachedAt || Date.now() - cachedAt > TENANT_CONFIG_CACHE_TTL_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedTenantPayload({ slug = "", host = "", payload = null } = {}) {
+  const key = tenantConfigCacheKey({ slug, host });
+  if (!key || !payload || typeof payload !== "object") return;
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        payload
+      })
+    );
+  } catch {
+    // Ignore storage quota/private mode errors.
+  }
+}
+
 export function TenantProvider({ slug = "", children }) {
   const [state, setState] = useState({ loading: true, error: "", tenant: null });
 
@@ -184,41 +244,43 @@ export function TenantProvider({ slug = "", children }) {
       ? `slug=${encodeURIComponent(normalizedSlug)}`
       : `host=${encodeURIComponent(host)}`;
 
-    const cachedConfig = readCachedThemeConfig({ slug: normalizedSlug, host });
-    if (cachedConfig) {
+    const cachedPayload = readCachedTenantPayload({ slug: normalizedSlug, host });
+    if (cachedPayload) {
+      const cachedTenant = normalizeTenantPayload(cachedPayload, normalizedSlug);
+      const cachedConfig = cachedTenant?.config || {};
       applyTheme(cachedConfig);
+      setState({ loading: false, error: "", tenant: cachedTenant });
+    } else {
+      const cachedConfig = readCachedThemeConfig({ slug: normalizedSlug, host });
+      if (cachedConfig) {
+        applyTheme(cachedConfig);
+      }
+      setState((prev) => ({ ...prev, loading: true, error: "" }));
     }
 
-    setState((prev) => ({ ...prev, loading: true, error: "" }));
     try {
       const tenant = await requestJson(`/api/public/tenant-config?${query}`);
-      const config = tenant?.config || {};
-      const resolvedSlug = String(tenant?.slug || normalizedSlug).trim().toLowerCase();
+      const normalizedTenant = normalizeTenantPayload(tenant, normalizedSlug);
+      const config = normalizedTenant?.config || {};
+      const resolvedSlug = String(normalizedTenant?.slug || normalizedSlug).trim().toLowerCase();
       applyTheme(config);
       writeCachedThemeConfig({ slug: resolvedSlug, config });
       writeCachedThemeConfig({ host, config });
+      writeCachedTenantPayload({ slug: resolvedSlug, payload: tenant });
+      writeCachedTenantPayload({ host, payload: tenant });
       if (resolvedSlug) localStorage.setItem("pondbridgeTenantSlug", resolvedSlug);
-      setState({
-        loading: false,
-        error: "",
-        tenant: {
-          ...tenant,
-          slug: resolvedSlug,
-          config,
-          theme: tenant.theme || config.branding || {},
-          content: tenant.content || config.content || {},
-          accessSettings: tenant.accessSettings || config.accessRules || {},
-          modules: tenant.modules || config.modules || {}
-        }
-      });
+      setState({ loading: false, error: "", tenant: normalizedTenant });
     } catch (error) {
-      setState({ loading: false, error: error.message, tenant: null });
+      if (cachedPayload) {
+        setState((prev) => ({ ...prev, loading: false, error: "" }));
+      } else {
+        setState({ loading: false, error: error.message, tenant: null });
+      }
     }
   }
 
   useEffect(() => {
     let cancelled = false;
-    setState({ loading: true, error: "", tenant: null });
     if (slug) localStorage.setItem("pondbridgeTenantSlug", String(slug || ""));
 
     fetchTenant(slug).then(() => {
