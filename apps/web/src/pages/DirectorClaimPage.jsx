@@ -1,11 +1,14 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
+import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { clerkUiEnabled } from "../lib/authMode.js";
 import { resolveAlumniWord } from "../lib/campLabels.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 
-export default function DirectorClaimPage() {
+function DirectorClaimPageContent() {
   const { slug: paramSlug } = useParams();
   const { slug: tenantSlug, tenant } = useTenant();
   const navigate = useNavigate();
@@ -34,4 +37,52 @@ export default function DirectorClaimPage() {
       </div>
     </section>
   );
+}
+
+function LegacyDirectorClaimPage() {
+  return <DirectorClaimPageContent />;
+}
+
+function ClerkDirectorClaimPage() {
+  const { slug: paramSlug } = useParams();
+  const { slug: tenantSlug } = useTenant();
+  const navigate = useNavigate();
+  const { isLoaded, isSignedIn } = useClerkAuth();
+  const { isAuthenticated, user } = useAuth();
+
+  const slug = String(paramSlug || tenantSlug || "").trim().toLowerCase();
+  const directorCreatePath = useMemo(() => tenantRoute(slug, "/director-create-account"), [slug]);
+  const directorSetupPath = useMemo(() => tenantRoute(slug, "/director-create-account?setup=1"), [slug]);
+  const callbackPath = useMemo(() => tenantRoute(slug, "/auth/callback?directorBootstrap=1"), [slug]);
+  const hasDirectorMembership = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    if (hasDirectorMembership) {
+      navigate(directorSetupPath, { replace: true });
+      return;
+    }
+    if (isAuthenticated && user) {
+      navigate(directorCreatePath, { replace: true });
+      return;
+    }
+    navigate(callbackPath, { replace: true });
+  }, [
+    callbackPath,
+    directorCreatePath,
+    directorSetupPath,
+    hasDirectorMembership,
+    isAuthenticated,
+    isLoaded,
+    isSignedIn,
+    navigate,
+    user
+  ]);
+
+  return <DirectorClaimPageContent />;
+}
+
+export default function DirectorClaimPage() {
+  if (clerkUiEnabled()) return <ClerkDirectorClaimPage />;
+  return <LegacyDirectorClaimPage />;
 }
