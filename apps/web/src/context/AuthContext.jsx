@@ -21,7 +21,7 @@ const AUTO_LOGOUT_TIMEOUT_MS =
   Number.isFinite(AUTO_LOGOUT_MINUTES) && AUTO_LOGOUT_MINUTES > 0
     ? AUTO_LOGOUT_MINUTES * 60 * 1000
     : 0;
-const CLERK_TOKEN_SYNC_INTERVAL_MS = 45 * 1000;
+const CLERK_TOKEN_SYNC_INTERVAL_MS = 4 * 60 * 1000;
 const SESSION_TOKEN_STORAGE_KEY = "pondbridgeSessionToken";
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 12_000;
 const SESSION_WARNING_TIMEOUT_MS =
@@ -420,7 +420,7 @@ function ClerkBackedAuthProvider({ children }) {
     async ({ forceRefresh = false } = {}) => {
       if (!isLoaded || !isSignedIn) return "";
       const nextToken = (await getToken(forceRefresh ? { skipCache: true } : undefined)) || "";
-      if (nextToken) {
+      if (nextToken && nextToken !== tokenRef.current) {
         setToken(nextToken);
         writeSessionToken(nextToken);
         writeAuthToStorage(nextToken, normalizeUserShape(userRef.current));
@@ -573,12 +573,12 @@ function ClerkBackedAuthProvider({ children }) {
 
     const onFocus = () => {
       if (!active) return;
-      syncToken(true);
+      syncToken(false);
     };
     const onVisibility = () => {
       if (!active) return;
       if (document.visibilityState === "visible") {
-        syncToken(true);
+        syncToken(false);
       }
     };
 
