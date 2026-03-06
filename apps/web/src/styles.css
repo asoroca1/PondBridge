@@ -4741,6 +4741,35 @@ img[draggable="false"] { -webkit-user-drag: none; }
   margin: 0;
 }
 
+.pb-cedar-page .director-admin-support-card{
+  display: grid;
+  gap: 12px;
+}
+
+.pb-cedar-page .director-admin-support-card .pb-section-title,
+.pb-cedar-page .director-admin-support-card .muted,
+.pb-cedar-page .director-admin-support-card .error-text,
+.pb-cedar-page .director-admin-support-card .success-text{
+  margin: 0;
+}
+
+.pb-cedar-page .director-admin-support-form{
+  margin-top: 2px;
+  gap: 14px 12px;
+}
+
+.pb-cedar-page .director-admin-support-form label{
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-support-form .pb-textarea{
+  min-height: 210px;
+}
+
+.pb-cedar-page .director-admin-support-form .director-admin-form-actions{
+  margin-top: 0;
+}
+
 .pb-cedar-page .director-admin-empty{
   text-align: center;
   padding: 20px 16px;

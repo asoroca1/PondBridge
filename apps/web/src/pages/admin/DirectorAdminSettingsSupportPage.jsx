@@ -76,7 +76,7 @@ export default function DirectorAdminSettingsSupportPage() {
   }
 
   return (
-    <Card>
+    <Card className="director-admin-support-card">
       <h2 className="pb-section-title">Technical Support</h2>
       <p className="muted">
         Send a message to PondBridge support for help with setup, billing, data, or product issues.
@@ -88,7 +88,7 @@ export default function DirectorAdminSettingsSupportPage() {
       </div>
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
-      <form className="director-admin-form-grid" onSubmit={submitSupportRequest}>
+      <form className="director-admin-form-grid director-admin-support-form" onSubmit={submitSupportRequest}>
         <label>
           Topic
           <Select
@@ -138,7 +138,7 @@ export default function DirectorAdminSettingsSupportPage() {
           Message
           <Textarea
             value={form.message}
-            rows={7}
+            rows={6}
             maxLength={6000}
             placeholder="Describe what happened, where you saw it, and what you expected."
             onChange={(event) => setForm((prev) => ({ ...prev, message: event.target.value }))}
