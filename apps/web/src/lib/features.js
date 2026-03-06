@@ -5,6 +5,15 @@ const FEATURE_TO_MODULE = {
   familyTrees: "familyTrees"
 };
 
+function resolveTenantPlanTier(tenant) {
+  const billingPlan = String(tenant?.billingPlan || tenant?.billing?.billingPlan || "")
+    .trim()
+    .toLowerCase();
+  if (billingPlan === "founders" || billingPlan === "institutional") return "premium";
+  if (billingPlan === "legacy") return "base";
+  return String(tenant?.planTier || "").trim().toLowerCase() === "premium" ? "premium" : "base";
+}
+
 export function tenantHasFeature(tenant, feature) {
   if (!tenant) return false;
 
@@ -21,5 +30,5 @@ export function tenantHasFeature(tenant, feature) {
     return false;
   }
 
-  return hasFeature(tenant.planTier || "base", normalizedFeature, tenant.addOns || []);
+  return hasFeature(resolveTenantPlanTier(tenant), normalizedFeature, tenant.addOns || []);
 }

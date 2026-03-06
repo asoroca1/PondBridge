@@ -4317,16 +4317,18 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-modal-backdrop{
   position: fixed;
   inset: 0;
-  z-index: 4200;
-  display: grid;
-  place-items: center;
-  padding: 16px;
+  z-index: 5200;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: auto;
+  padding: calc(var(--nav-h, 68px) + env(safe-area-inset-top, 0px) + 12px) 16px 16px;
   background: rgba(2, 16, 34, .42);
 }
 
 .pb-cedar-page .director-admin-modal{
   width: min(820px, 100%);
-  max-height: 88vh;
+  max-height: calc(100dvh - var(--nav-h, 68px) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px);
   overflow: auto;
   border: 1px solid #dbe4ef;
   border-radius: 14px;
@@ -5448,6 +5450,118 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-upload-field{
   display: grid;
   gap: 8px;
+}
+
+.pb-cedar-page .director-admin-scope .director-upload-input{
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.pb-cedar-page .director-admin-scope .director-upload-control{
+  min-height: 48px;
+  border: 1px solid var(--director-admin-surface-border, #cfd9e7);
+  border-radius: 11px;
+  background: #fff;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.pb-cedar-page .director-admin-scope .director-upload-control:hover{
+  border-color: var(--director-admin-surface-border-strong, #9fb5cf);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--brand-primary) 20%, rgba(18, 56, 96, 0.08));
+}
+
+.pb-cedar-page .director-admin-scope .director-upload-button{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--director-admin-surface-border, #ced7e4);
+  background: var(--director-admin-surface-bg, #f7f9fc);
+  color: var(--brand-primary);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.pb-cedar-page .director-admin-scope .director-upload-name{
+  color: var(--director-admin-ink-soft);
+  font-size: 0.93rem;
+  line-height: 1.35;
+}
+
+.pb-cedar-page .director-admin-scope .director-color-row{
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.pb-cedar-page .director-admin-scope .director-color-swatch{
+  width: 48px;
+  height: 42px;
+  border: 1px solid var(--director-admin-surface-border, #c9d6e6);
+  border-radius: 10px;
+  padding: 2px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pb-cedar-page .director-admin-scope .director-color-swatch::-webkit-color-swatch{
+  border: 0;
+  border-radius: 7px;
+}
+
+.pb-cedar-page .director-admin-scope .director-color-swatch::-webkit-color-swatch-wrapper{
+  padding: 0;
+}
+
+.pb-cedar-page .director-admin-scope .director-color-swatch::-moz-color-swatch{
+  border: 0;
+  border-radius: 7px;
+}
+
+.pb-cedar-page .director-admin-scope .director-palette-preview{
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.pb-cedar-page .director-admin-scope .director-palette-swatch{
+  border: 1px solid var(--director-admin-surface-border, #d7e1ee);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+  background: var(--director-admin-surface-bg, #f8fbff);
+}
+
+.pb-cedar-page .director-admin-scope .director-palette-chip{
+  width: 100%;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 24%, rgba(8, 21, 46, 0.16));
+  display: block;
+}
+
+.pb-cedar-page .director-admin-scope .director-palette-swatch span{
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--director-admin-ink);
+}
+
+.pb-cedar-page .director-admin-scope .director-palette-swatch code{
+  font-size: 0.79rem;
+  color: var(--director-admin-ink-soft);
 }
 
 .pb-cedar-page .director-admin-branding-current-media{

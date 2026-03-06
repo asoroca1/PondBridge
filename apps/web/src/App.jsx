@@ -45,6 +45,7 @@ const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage.jsx"));
 const DirectorOnboardingCommandCenterPage = lazyPage(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
 const DirectorClaimPage = lazyPage(() => import("./pages/DirectorClaimPage.jsx"));
 const DirectorCreateAccountPage = lazyPage(() => import("./pages/DirectorCreateAccountPage.jsx"));
+const DirectorLegalAgreementPage = lazyPage(() => import("./pages/DirectorLegalAgreementPage.jsx"));
 const DirectorAdminLayout = lazyPage(() => import("./pages/admin/DirectorAdminLayout.jsx"));
 const DirectorAdminBillingPage = lazyPage(() => import("./pages/admin/DirectorAdminBillingPage.jsx"));
 const DirectorAdminDashboardPage = lazyPage(() =>
@@ -421,8 +422,41 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-create-account") ||
     currentPath.includes("/login") ||
     currentPath.includes("/create-account");
+  const waitingForTenantScopedUser = clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute;
+  const [allowAuthCallbackRedirect, setAllowAuthCallbackRedirect] = useState(false);
 
-  if (clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute) {
+  useEffect(() => {
+    if (!waitingForTenantScopedUser) {
+      setAllowAuthCallbackRedirect(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAllowAuthCallbackRedirect(false);
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) setAllowAuthCallbackRedirect(true);
+    }, 1800);
+
+    refreshSession({ tenantSlug: slug || "" }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [refreshSession, slug, waitingForTenantScopedUser]);
+
+  if (waitingForTenantScopedUser && !allowAuthCallbackRedirect) {
+    return (
+      <section className="app-status-shell">
+        <div className="app-status-card">
+          <h1>Checking your account...</h1>
+          <p>Please wait while we sync your network session.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (waitingForTenantScopedUser) {
     const callbackPath = slug ? `/t/${slug}/auth/callback` : "/auth/callback";
     return <Navigate to={callbackPath} replace />;
   }
@@ -447,6 +481,7 @@ function TenantScopeRoutes() {
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
         <Route path="director-create-account/*" element={<DirectorCreateAccountPage />} />
+        <Route path="director-legal" element={<DirectorLegalAgreementPage />} />
         <Route path="legal" element={<CedarLegalPage />} />
 
         <Route

@@ -15,7 +15,7 @@ import {
   toLegacyBillingStatusFromLifecycle
 } from "./billingState.js";
 
-const FOUNDERS_MAX_CAMPS = 10;
+const FOUNDERS_MAX_CAMPS = 5;
 const ONBOARDING_FEE_UNPAID = "unpaid";
 const ONBOARDING_FEE_PAID = "paid";
 const ONBOARDING_FEE_WAIVED = "waived";
@@ -43,8 +43,8 @@ const BILLING_PLAN_CATALOG = {
   founders: {
     code: "founders",
     label: "Founders",
-    description: "Founders annual plan (first 10 camps)",
-    planTier: "base",
+    description: "Founders annual plan (first 5 camps)",
+    planTier: "premium",
     annualAmount: 2800,
     onboardingFeeAmount: 0,
     annualPriceId: String(env.STRIPE_PRICE_FOUNDERS_ANNUAL || "").trim(),

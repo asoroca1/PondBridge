@@ -11,6 +11,9 @@ import { API_BASE, getMe } from "../lib/api";
 import { getToken } from "../lib/helpers";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
+import CedarPageHeader from "../components/CedarPageHeader.jsx";
+import { UserRoundPen } from "lucide-react";
+import "./edit-profile.css";
 
 /* Data */
 const US_STATES = [
@@ -1663,11 +1666,18 @@ export default function EditProfile() {
 
   if (loading) {
     return (
-      <div style={{ position: "relative", minHeight: "100vh" }}>
+      <div className="edit-profile-page" style={{ position: "relative", minHeight: "100vh" }}>
         <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
-        <main className="wizard1-main nav2-page-shell" style={{ position: "relative", zIndex: 1 }}>
+        <main className="wizard1-main nav2-page-shell edit-profile-shell" style={{ position: "relative", zIndex: 1 }}>
           <div className="wizard1-container">
-            <h1 className="wizard1-title">Edit Profile</h1>
+            <div className="edit-profile-header-wrap">
+              <CedarPageHeader
+                icon={<UserRoundPen size={18} />}
+                title="Edit Profile"
+                subtitle="Update your details, camp history, and social links."
+                className="edit-profile-header"
+              />
+            </div>
             <div className="wizard1-card">Loading…</div>
           </div>
         </main>
@@ -1676,11 +1686,18 @@ export default function EditProfile() {
   }
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh" }}>
+    <div className="edit-profile-page" style={{ position: "relative", minHeight: "100vh" }}>
       <CedarBackground behavior="scroll" opacity={0.9} fixed zIndex={-1} />
-      <main className="wizard1-main nav2-page-shell" style={{ position: "relative", zIndex: 1 }}>
+      <main className="wizard1-main nav2-page-shell edit-profile-shell" style={{ position: "relative", zIndex: 1 }}>
         <div className="wizard1-container">
-          <h1 className="wizard1-title">Edit Profile</h1>
+          <div className="edit-profile-header-wrap">
+            <CedarPageHeader
+              icon={<UserRoundPen size={18} />}
+              title="Edit Profile"
+              subtitle="Update your details, camp history, and social links."
+              className="edit-profile-header"
+            />
+          </div>
           <Stepper activeStep={step} />
 
           {step === 0 ? Step1 : step === 1 ? Step2 : step === 2 ? Step3 : Step4}

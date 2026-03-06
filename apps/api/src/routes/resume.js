@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { hasFeature } from "@pondbridge/shared";
 import { parseResumeTextToProfile } from "../utils/resume.js";
+import { resolveTenantFeatureTier } from "../services/billingState.js";
 
 const router = Router({ mergeParams: true });
 const resumeParseLimiter = rateLimit({
@@ -37,7 +38,7 @@ router.post(
   ...requireTenantAuthScope,
   upload.single("resume"),
   async (req, res) => {
-  if (!hasFeature(req.tenant.planTier, "resumeParsing", req.tenant.addOns || [])) {
+  if (!hasFeature(resolveTenantFeatureTier(req.tenant), "resumeParsing", req.tenant.addOns || [])) {
     return res.status(403).json({
       error: {
         code: "FEATURE_BLOCKED_BY_PLAN",

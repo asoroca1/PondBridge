@@ -62,7 +62,11 @@ import {
   getBillingMode,
   getFoundersAvailability
 } from "../services/billing.js";
-import { normalizeBillingPlan } from "../services/billingState.js";
+import {
+  normalizeBillingPlan,
+  resolveTenantBilling,
+  resolveTenantFeatureTier
+} from "../services/billingState.js";
 import { hashPassword } from "../utils/auth.js";
 import { sanitizeText, sanitizeHtmlContent } from "../utils/sanitize.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
@@ -227,10 +231,10 @@ function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+const SUPPORT_CONTACT_EMAIL = "support@pondbridgealumni.com";
+
 function resolveSupportContactEmail() {
-  const configured = normalizeEmail(env?.SUPPORT_EMAIL || env?.SUPPORT_CONTACT_EMAIL || "");
-  if (isEmail(configured)) return configured;
-  return "support@pondbridgealumni.com";
+  return SUPPORT_CONTACT_EMAIL;
 }
 
 function normalizeIdentityLabelList(value = [], fallback = []) {
@@ -993,12 +997,7 @@ const MEMBER_EXPORT_FIELDS = [
 const MEMBER_EXPORT_DEFAULT_FIELDS = [
   "firstName",
   "lastName",
-  "nickname",
-  "primaryEmail",
-  "primaryPhone",
-  "cityState",
-  "roleAtCamp",
-  "industry"
+  "primaryEmail"
 ];
 const MEMBER_EXPORT_FIELD_MAP = new Map(MEMBER_EXPORT_FIELDS.map((field) => [field.key, field]));
 
@@ -2308,7 +2307,7 @@ router.get("/dashboard", async (req, res, next) => {
         status: statusLabel,
         onboardingStatus: req.tenant.onboardingStatus,
         launchedAt: toIso(req.tenant?.launch?.launchedAt),
-        planTier: req.tenant.planTier,
+        planTier: resolveTenantFeatureTier(req.tenant),
         accessPolicy: settings.signupMode
       },
       stats: {
@@ -3721,14 +3720,15 @@ router.get("/analytics/network", async (req, res, next) => {
 });
 
 router.get("/features", async (req, res) => {
+  const planTier = resolveTenantFeatureTier(req.tenant);
   const theme = resolveTheme(req.tenant);
   const content = resolveContent(req.tenant);
   const modules = resolveModules(req.tenant, { applyPlanGating: false });
-  const features = listFeaturesForPlan(req.tenant.planTier, req.tenant.addOns || []);
+  const features = listFeaturesForPlan(planTier, req.tenant.addOns || []);
   const campType = content.campType || "coed";
   const items = MODULE_CATALOG.map((module) => {
     const locked = module.requiredFeature
-      ? !hasFeature(req.tenant.planTier, module.requiredFeature, req.tenant.addOns || [])
+      ? !hasFeature(planTier, module.requiredFeature, req.tenant.addOns || [])
       : false;
     return {
       ...module,
@@ -3744,7 +3744,7 @@ router.get("/features", async (req, res) => {
       id: toObjectIdString(req.tenant._id),
       slug: req.tenant.slug,
       name: req.tenant.name,
-      planTier: req.tenant.planTier,
+      planTier,
       features
     },
     theme: {
@@ -3759,6 +3759,7 @@ router.get("/features", async (req, res) => {
 });
 
 router.patch("/features", async (req, res) => {
+  const planTier = resolveTenantFeatureTier(req.tenant);
   const incomingModules = req.body?.modules && typeof req.body.modules === "object"
     ? req.body.modules
     : {};
@@ -3772,7 +3773,7 @@ router.patch("/features", async (req, res) => {
   for (const module of MODULE_CATALOG) {
     if (!Object.prototype.hasOwnProperty.call(incomingModules, module.key)) continue;
     const locked = module.requiredFeature
-      ? !hasFeature(req.tenant.planTier, module.requiredFeature, req.tenant.addOns || [])
+      ? !hasFeature(planTier, module.requiredFeature, req.tenant.addOns || [])
       : false;
     if (locked) continue;
     nextModules[module.key] = Boolean(incomingModules[module.key]);
@@ -3802,6 +3803,7 @@ router.patch("/features", async (req, res) => {
 });
 
 router.get("/billing", async (req, res) => {
+  const planTier = resolveTenantFeatureTier(req.tenant);
   const mode = getBillingMode();
   const portal = await createBillingPortalUrl({
     tenant: req.tenant,
@@ -3811,7 +3813,7 @@ router.get("/billing", async (req, res) => {
   const foundersAvailability = await getFoundersAvailability();
 
   const memberCount = await ProfileModel.count(req.tenant._id, { status: { $ne: "removed" } });
-  const planLimit = req.tenant.planTier === "premium" ? null : 5000;
+  const planLimit = planTier === "premium" ? null : 5000;
   const usagePct = planLimit ? Math.round((memberCount / Math.max(planLimit, 1)) * 100) : null;
 
   return res.json({
@@ -3819,7 +3821,7 @@ router.get("/billing", async (req, res) => {
       id: toObjectIdString(req.tenant._id),
       slug: req.tenant.slug,
       name: req.tenant.name,
-      planTier: req.tenant.planTier,
+      planTier,
       billingPlan: billing.billingPlan,
       billingStatus: billing.billingStatus,
       billingLifecycleStatus: billing.lifecycleStatus,
@@ -3860,7 +3862,9 @@ router.post("/billing/checkout", async (req, res, next) => {
       });
     }
 
-    const planCode = normalizeBillingPlan(requested, req.tenant.planTier);
+    const planCode = requested
+      ? normalizeBillingPlan(requested, resolveTenantFeatureTier(req.tenant))
+      : resolveTenantBilling(req.tenant).billingPlan;
 
     const checkout = await createTenantCheckoutSession({
       tenant: req.tenant,
@@ -3919,7 +3923,7 @@ router.get("/settings", async (req, res) => {
       appUrl: tenantUrls.appUrl,
       status: req.tenant.status,
       onboardingStatus: req.tenant.onboardingStatus,
-      planTier: req.tenant.planTier
+      planTier: resolveTenantFeatureTier(req.tenant)
     },
     identity: {
       campName: String(req.tenant.name || ""),

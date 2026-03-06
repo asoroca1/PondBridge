@@ -15,6 +15,7 @@ const BRAND = {
   fontStack:
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'"
 };
+const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 // ---------------------------------------------------------------------------
 // Shared layout helpers
@@ -44,17 +45,47 @@ function formatDate(value) {
   });
 }
 
+function normalizeHttpUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeBrandColor(value = "", fallback = BRAND.primary) {
+  const candidate = String(value || "").trim();
+  if (HEX_COLOR_REGEX.test(candidate)) return candidate;
+  return fallback;
+}
+
+function initialsFromName(value = "", fallback = "PB") {
+  const parts = String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return fallback;
+  const letters = parts.slice(0, 2).map((part) => String(part[0] || "").toUpperCase()).join("");
+  return letters || fallback;
+}
+
 function wordmark(value = "PondBridge") {
   return `<span style="font-size:22px;font-weight:700;color:${BRAND.primary};letter-spacing:-0.5px;font-family:${BRAND.fontStack};">${escapeHtml(value)}</span>`;
 }
 
-function ctaButton(href, label) {
+function ctaButton(href, label, { backgroundColor = BRAND.accent } = {}) {
   const safeHref = escapeHtml(href);
   const safeLabel = escapeHtml(label);
+  const safeColor = escapeHtml(normalizeBrandColor(backgroundColor, BRAND.accent));
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
       <tr>
-        <td align="center" style="border-radius:9999px;background-color:${BRAND.accent};">
+        <td align="center" style="border-radius:9999px;background-color:${safeColor};">
           <a href="${safeHref}" target="_blank" style="display:inline-block;padding:14px 36px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:9999px;font-family:${BRAND.fontStack};">${safeLabel}</a>
         </td>
       </tr>
@@ -123,6 +154,66 @@ function wrapLayout(bodyInner, options = {}) {
 </html>`;
 }
 
+function wrapInviteLayout(bodyInner, options = {}) {
+  const opts = typeof options === "string" ? { contextName: options } : options || {};
+  const contextName = String(opts.contextName || "").trim();
+  const displayName = contextName || "PondBridge";
+  const titleLabel = displayName;
+  const brandPrimary = normalizeBrandColor(opts.brandPrimary || BRAND.primary, BRAND.primary);
+  const logoUrl = normalizeHttpUrl(opts.logoUrl || "");
+  const tagline = escapeHtml(opts.tagline || "Member invitation");
+  const initials = escapeHtml(initialsFromName(displayName, "PB"));
+  const headerLogoMarkup = logoUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:42px;height:42px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.32);background:rgba(255,255,255,0.14);"><tr><td align="center" valign="middle" style="width:42px;height:42px;line-height:0;"><img src="${escapeHtml(logoUrl)}" alt="" style="display:block;max-width:38px;max-height:38px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
+    : `<div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,0.18);color:#ffffff;font-size:13px;font-weight:700;line-height:42px;text-align:center;font-family:${BRAND.fontStack};">${initials}</div>`;
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <title>${escapeHtml(titleLabel)}</title>
+  <!--[if mso]>
+  <style>table,td{font-family:Arial,Helvetica,sans-serif !important;}</style>
+  <![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#eef3fa;font-family:${BRAND.fontStack};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#eef3fa;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;width:100%;background-color:${BRAND.white};border-radius:18px;border:1px solid #d6e2f0;overflow:hidden;">
+          <tr>
+            <td style="padding:18px 20px;background-color:${escapeHtml(brandPrimary)};color:#ffffff;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="width:52px;vertical-align:middle;">${headerLogoMarkup}</td>
+                  <td style="vertical-align:middle;font-family:${BRAND.fontStack};">
+                    <div style="font-size:17px;font-weight:700;line-height:1.3;">${escapeHtml(displayName)}</div>
+                    <div style="font-size:13px;line-height:1.4;opacity:0.95;">${tagline}</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 24px 24px;font-family:${BRAND.fontStack};font-size:15px;line-height:1.65;color:#1f2937;">
+              ${bodyInner}
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;width:100%;">
+          <tr>
+            <td>${footerHtml({ unsubscribeUrl: opts.unsubscribeUrl || "", contextName: displayName })}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 // ---------------------------------------------------------------------------
 // 1. Invite template
 // ---------------------------------------------------------------------------
@@ -133,7 +224,9 @@ export function inviteTemplate({
   roleToAssign = "user",
   expiresAt,
   firstName = "",
-  lastName = ""
+  lastName = "",
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
 }) {
   const safeTenant = escapeHtml(tenantName);
   const safeRole = escapeHtml(roleToAssign);
@@ -150,20 +243,30 @@ export function inviteTemplate({
     "",
     `You were invited to join ${tenantName}.`,
     `Assigned role: ${roleToAssign}.`,
-    expiresAt ? `This invite expires on ${new Date(expiresAt).toISOString()}.` : "",
+    expiresStr ? `This invite expires on ${expiresStr}.` : "",
     `Create your account: ${link}`
   ].filter(Boolean).join("\n");
 
-  const html = wrapLayout(`
-    <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">You're Invited!</h1>
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:#13263f;letter-spacing:-0.02em;">You're Invited</h1>
     <p style="margin:0 0 12px;">Hi <strong>${safeRecipientName}</strong>,</p>
     <p style="margin:0 0 12px;">You've been invited to join <strong>${safeTenant}</strong>.</p>
-    <p style="margin:0 0 12px;">Your assigned role: <strong>${safeRole}</strong></p>
-    ${expiresStr ? `<p style="margin:0 0 12px;font-size:13px;color:${BRAND.muted};">This invite expires on ${escapeHtml(expiresStr)}.</p>` : ""}
-    ${ctaButton(link, "Create Your Account")}
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 6px;border:1px solid #dbe6f3;border-radius:10px;background:#f6f9ff;">
+      <tr>
+        <td style="padding:12px 14px;font-size:13px;color:#44566f;">Assigned role</td>
+        <td align="right" style="padding:12px 14px;font-size:13px;font-weight:700;color:#17365d;">${safeRole}</td>
+      </tr>
+      ${expiresStr ? `<tr><td style="padding:0 14px 12px;font-size:13px;color:#44566f;">Invite expires</td><td align="right" style="padding:0 14px 12px;font-size:13px;color:#17365d;">${escapeHtml(expiresStr)}</td></tr>` : ""}
+    </table>
+    ${ctaButton(link, "Create Your Account", { backgroundColor: brandPrimary })}
     <p style="margin:0;font-size:13px;color:${BRAND.muted};">If the button above doesn't work, copy and paste this link into your browser:</p>
-    <p style="margin:4px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>
-  `, { contextName: tenantName });
+    <p style="margin:6px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>
+  `, {
+    contextName: tenantName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Account invitation"
+  });
 
   return { subject, text, html };
 }
@@ -172,7 +275,13 @@ export function inviteTemplate({
 // 2. Magic link template
 // ---------------------------------------------------------------------------
 
-export function magicLinkTemplate({ tenantName, link, expiresAt }) {
+export function magicLinkTemplate({
+  tenantName,
+  link,
+  expiresAt,
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
   const safeTenant = escapeHtml(tenantName);
   const expiresStr = formatDate(expiresAt);
 
@@ -180,18 +289,23 @@ export function magicLinkTemplate({ tenantName, link, expiresAt }) {
 
   const text = [
     `Use this one-time sign-in link for ${tenantName}.`,
-    expiresAt ? `This link expires on ${new Date(expiresAt).toISOString()}.` : "",
+    expiresStr ? `This link expires on ${expiresStr}.` : "",
     `Sign in: ${link}`
   ].filter(Boolean).join("\n");
 
-  const html = wrapLayout(`
-    <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">Sign In to ${safeTenant}</h1>
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:#13263f;letter-spacing:-0.02em;">Sign In to ${safeTenant}</h1>
     <p style="margin:0 0 12px;">Click the button below to sign in to your <strong>${safeTenant}</strong> account. This is a one-time link&mdash;no password needed.</p>
     ${expiresStr ? `<p style="margin:0 0 12px;font-size:13px;color:${BRAND.muted};">This link expires on ${escapeHtml(expiresStr)}.</p>` : ""}
-    ${ctaButton(link, "Sign In")}
+    ${ctaButton(link, "Sign In", { backgroundColor: brandPrimary })}
     <p style="margin:0;font-size:13px;color:${BRAND.muted};">If you didn't request this link, you can safely ignore this email.</p>
-    <p style="margin:4px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>
-  `, { contextName: tenantName });
+    <p style="margin:6px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>
+  `, {
+    contextName: tenantName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Secure sign-in"
+  });
 
   return { subject, text, html };
 }
@@ -200,7 +314,12 @@ export function magicLinkTemplate({ tenantName, link, expiresAt }) {
 // 3. Welcome template
 // ---------------------------------------------------------------------------
 
-export function welcomeTemplate({ tenantName, firstName }) {
+export function welcomeTemplate({
+  tenantName,
+  firstName,
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
   const safeTenant = escapeHtml(tenantName);
   const safeName = escapeHtml(firstName || "there");
 
@@ -219,8 +338,8 @@ export function welcomeTemplate({ tenantName, firstName }) {
     "We're glad you're here!"
   ].join("\n");
 
-  const html = wrapLayout(`
-    <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">Welcome, ${safeName}!</h1>
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:#13263f;letter-spacing:-0.02em;">Welcome, ${safeName}</h1>
     <p style="margin:0 0 12px;">Your <strong>${safeTenant}</strong> account has been created successfully. We're glad you're here!</p>
     <p style="margin:0 0 8px;font-weight:600;">Here's what you can do next:</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
@@ -241,7 +360,12 @@ export function welcomeTemplate({ tenantName, firstName }) {
       </tr>
     </table>
     <p style="margin:0;color:${BRAND.muted};font-size:14px;">If you have any questions, reach out to your camp director.</p>
-  `, { contextName: tenantName });
+  `, {
+    contextName: tenantName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Welcome to your network"
+  });
 
   return { subject, text, html };
 }

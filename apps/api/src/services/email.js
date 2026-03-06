@@ -16,6 +16,7 @@ const RESEND_TRANSIENT_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504
 const RESEND_TRANSIENT_ERROR_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND"]);
 const RESEND_TAG_TOKEN_REGEX = /^[A-Za-z0-9_-]+$/;
 const RESEND_HEADER_NAME_REGEX = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 function toBoundedInt(value, fallback, min, max) {
   const parsed = Number(value);
@@ -130,6 +131,24 @@ function resolveTenantNetworkName(tenant = {}) {
   return defaultNetworkDisplayNameForCamp("Your Camp", campType);
 }
 
+function normalizeHttpUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeBrandColor(value = "", fallback = "#002b5c") {
+  const candidate = String(value || "").trim();
+  if (HEX_COLOR_REGEX.test(candidate)) return candidate;
+  return fallback;
+}
+
 function tenantFromAddress(baseAddress = "", tenant = {}) {
   const normalizedBase = extractEmailAddress(baseAddress);
   if (!normalizedBase) return "";
@@ -174,15 +193,25 @@ export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) 
   const networkName = resolveTenantNetworkName(tenant);
   const safeSenderName = sanitizeSenderName(senderName || networkName, "PondBridge");
   const baseFromAddress = tenantFromAddress(env.EMAIL_FROM || "", tenant);
+  const themeSource = {
+    ...(tenant?.theme && typeof tenant.theme === "object" ? tenant.theme : {}),
+    ...(tenant?.onboardingDraft?.theme && typeof tenant.onboardingDraft.theme === "object"
+      ? tenant.onboardingDraft.theme
+      : {})
+  };
   const from = baseFromAddress
     ? `${safeSenderName} <${baseFromAddress}>`
     : normalizeFromAddress(env.EMAIL_FROM || "");
   const contactEmail = normalizeEmailAddress(tenant?.content?.contactEmail || "");
   const replyTo = isValidEmailAddress(contactEmail) ? contactEmail : "";
+  const brandPrimary = normalizeBrandColor(themeSource?.brandPrimary || "", "#002b5c");
+  const logoUrl = normalizeHttpUrl(themeSource?.logoUrl || "");
   return {
     networkName,
     from: normalizeFromAddress(from),
-    replyTo
+    replyTo,
+    brandPrimary,
+    logoUrl
   };
 }
 
@@ -1084,7 +1113,9 @@ export async function sendInviteEmail({
     roleToAssign,
     expiresAt,
     firstName,
-    lastName
+    lastName,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
   });
 
   return sendTransactionalEmail({
@@ -1108,7 +1139,9 @@ export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
   const { subject, text, html } = magicLinkTemplate({
     tenantName: branding.networkName,
     link,
-    expiresAt
+    expiresAt,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
   });
 
   return sendTransactionalEmail({
@@ -1130,7 +1163,9 @@ export async function sendWelcomeEmail({ tenant, firstName, email }) {
   const branding = buildTenantEmailBranding(tenant);
   const { subject, text, html } = welcomeTemplate({
     tenantName: branding.networkName,
-    firstName
+    firstName,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
   });
 
   return sendTransactionalEmail({

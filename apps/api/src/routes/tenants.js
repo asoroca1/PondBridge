@@ -39,7 +39,7 @@ import {
   validateThemePayload
 } from "../services/onboarding.js";
 import { buildTenantUrls, resolveTenantDomain } from "../utils/domainProvisioning.js";
-import { resolveTenantBilling } from "../services/billingState.js";
+import { resolveTenantBilling, resolveTenantFeatureTier } from "../services/billingState.js";
 
 const router = Router();
 
@@ -81,8 +81,9 @@ function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
   return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
-const DEFAULT_TERMS_VERSION = "2026-03-04";
-const DEFAULT_PRIVACY_VERSION = "2026-03-04";
+const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
+const DIRECTOR_CLIENT_PRIVACY_VERSION = "2026-03-06";
+const DIRECTOR_SERVICE_AGREEMENT_VERSION = "2026-03-06";
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 
 function hasOwn(source, key) {
@@ -344,9 +345,10 @@ function resolveRequestedBillingPlan(body = {}, tenant = null) {
 }
 
 function onboardingPayload(tenant, counts, extra = {}) {
+  const planTier = resolveTenantFeatureTier(tenant);
   return {
     ...buildOnboardingResponse(tenant, { counts, includeDraft: true }),
-    features: listFeaturesForPlan(tenant.planTier, tenant.addOns || []),
+    features: listFeaturesForPlan(planTier, tenant.addOns || []),
     ...extra
   };
 }
@@ -912,9 +914,13 @@ router.post("/me/launch", async (req, res) => {
   const requestedLegalAgreementAccepted = hasOwn(req.body, "legalAgreementAccepted")
     ? Boolean(req.body.legalAgreementAccepted)
     : undefined;
-  const termsVersion = String(req.body?.termsVersion || DEFAULT_TERMS_VERSION).trim() || DEFAULT_TERMS_VERSION;
+  const termsVersion =
+    String(req.body?.termsVersion || DIRECTOR_CLIENT_TERMS_VERSION).trim() || DIRECTOR_CLIENT_TERMS_VERSION;
   const privacyVersion =
-    String(req.body?.privacyVersion || DEFAULT_PRIVACY_VERSION).trim() || DEFAULT_PRIVACY_VERSION;
+    String(req.body?.privacyVersion || DIRECTOR_CLIENT_PRIVACY_VERSION).trim() || DIRECTOR_CLIENT_PRIVACY_VERSION;
+  const directorAgreementVersion =
+    String(req.body?.directorAgreementVersion || DIRECTOR_SERVICE_AGREEMENT_VERSION).trim() ||
+    DIRECTOR_SERVICE_AGREEMENT_VERSION;
 
   if (tenant.status !== "active") {
     return res.status(403).json({
@@ -994,7 +1000,8 @@ router.post("/me/launch", async (req, res) => {
     acceptedAt: launchDate,
     acceptedByUserId: req.user.id,
     termsVersion,
-    privacyVersion
+    privacyVersion,
+    directorAgreementVersion
   };
   const updated = await saveTenantOnboarding(tenant._id, {
     theme: resolveTheme({ theme: draft.theme }),
@@ -1170,7 +1177,7 @@ router.patch("/me/billing", async (req, res) => {
       id: String(updated._id),
       slug: updated.slug,
       name: updated.name,
-      planTier: updated.planTier,
+      planTier: resolveTenantFeatureTier(updated),
       billingStatus: updated.billingStatus,
       onboardingFeeAmount: updated.onboardingFeeAmount,
       onboardingFeePaid: Boolean(updated.onboardingFeePaid),
@@ -1219,13 +1226,13 @@ router.patch("/me/plan", async (req, res) => {
       id: String(updated._id),
       slug: updated.slug,
       name: updated.name,
-      planTier: updated.planTier,
+      planTier: resolveTenantFeatureTier(updated),
       billingStatus: updated.billingStatus,
       onboardingFeeAmount: updated.onboardingFeeAmount,
       onboardingFeePaid: Boolean(updated.onboardingFeePaid),
       onboardingFeeInvoiceId: updated.onboardingFeeInvoiceId || ""
     },
-    features: listFeaturesForPlan(updated.planTier, updated.addOns || [])
+    features: listFeaturesForPlan(resolveTenantFeatureTier(updated), updated.addOns || [])
   });
 });
 
@@ -1280,7 +1287,7 @@ router.post("/me/billing/checkout", async (req, res, next) => {
         id: String(updatedTenant._id),
         slug: updatedTenant.slug,
         name: updatedTenant.name,
-        planTier: updatedTenant.planTier,
+        planTier: resolveTenantFeatureTier(updatedTenant),
         billingStatus: updatedTenant.billingStatus,
         onboardingFeeAmount: updatedTenant.onboardingFeeAmount,
         onboardingFeePaid: Boolean(updatedTenant.onboardingFeePaid),
@@ -1314,6 +1321,7 @@ router.get("/me/billing", async (req, res) => {
     getFoundersAvailability()
   ]);
   const billing = buildBillingPublicSnapshot(tenant);
+  const planTier = resolveTenantFeatureTier(tenant);
 
   return res.json({
     mode: getBillingMode(),
@@ -1322,7 +1330,7 @@ router.get("/me/billing", async (req, res) => {
       id: String(tenant._id),
       slug: tenant.slug,
       name: tenant.name,
-      planTier: tenant.planTier,
+      planTier,
       billingPlan: billing.billingPlan,
       billingStatus: billing.billingStatus,
       billingLifecycleStatus: billing.lifecycleStatus,
@@ -1341,7 +1349,7 @@ router.get("/me/billing", async (req, res) => {
       foundersSlot: billing.foundersSlot,
       foundersEligible: billing.foundersEligible
     },
-    features: listFeaturesForPlan(tenant.planTier, tenant.addOns || []),
+    features: listFeaturesForPlan(planTier, tenant.addOns || []),
     catalog: getBillingCatalog(),
     foundersAvailability,
     billing,

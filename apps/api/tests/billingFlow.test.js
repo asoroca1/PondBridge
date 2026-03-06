@@ -181,12 +181,12 @@ describe("Stripe billing system", () => {
     expect(stored.settings?.billing?.lifecycleStatus).toBe("checkout_started");
   });
 
-  test("founders plan is capped at first 10 camps", async () => {
+  test("founders plan is capped at first 5 camps and maps to premium tier", async () => {
     await createSuperAdmin();
     const superToken = await loginSuper();
 
     const tenants = [];
-    for (let i = 1; i <= 11; i += 1) {
+    for (let i = 1; i <= 6; i += 1) {
       const tenant = await createTenant({
         slug: `founders-cap-${i}`,
         onboardingStatus: "in_progress"
@@ -194,7 +194,7 @@ describe("Stripe billing system", () => {
       tenants.push(tenant);
     }
 
-    for (let i = 0; i < 10; i += 1) {
+    for (let i = 0; i < 5; i += 1) {
       const response = await request(app)
         .post("/api/tenants/me/billing/checkout")
         .set("Authorization", `Bearer ${superToken}`)
@@ -206,18 +206,19 @@ describe("Stripe billing system", () => {
       expect(response.status).toBe(201);
       expect(response.body.billing.billingPlan).toBe("founders");
       expect(response.body.billing.onboardingFeeStatus).toBe("waived");
+      expect(response.body.tenant.planTier).toBe("premium");
     }
 
-    const eleventh = await request(app)
+    const sixth = await request(app)
       .post("/api/tenants/me/billing/checkout")
       .set("Authorization", `Bearer ${superToken}`)
       .send({
-        tenantId: String(tenants[10]._id),
+        tenantId: String(tenants[5]._id),
         planCode: "founders"
       });
 
-    expect(eleventh.status).toBe(409);
-    expect(eleventh.body.error?.code).toBe("FOUNDERS_CAP_REACHED");
+    expect(sixth.status).toBe(409);
+    expect(sixth.body.error?.code).toBe("FOUNDERS_CAP_REACHED");
   });
 
   test("billing checkout rejects invalid plan codes", async () => {

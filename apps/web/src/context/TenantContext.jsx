@@ -198,7 +198,7 @@ function normalizeTenantPayload(tenant = null, fallbackSlug = "") {
   };
 }
 
-function readCachedTenantPayload({ slug = "", host = "" } = {}) {
+function readCachedTenantPayloadEntry({ slug = "", host = "" } = {}) {
   const key = tenantConfigCacheKey({ slug, host });
   if (!key) return null;
   try {
@@ -208,11 +208,8 @@ function readCachedTenantPayload({ slug = "", host = "" } = {}) {
     const cachedAt = Number(parsed?.cachedAt || 0);
     const payload = parsed?.payload;
     if (!payload || typeof payload !== "object") return null;
-    if (!cachedAt || Date.now() - cachedAt > TENANT_CONFIG_CACHE_TTL_MS) {
-      localStorage.removeItem(key);
-      return null;
-    }
-    return payload;
+    const expired = !cachedAt || Date.now() - cachedAt > TENANT_CONFIG_CACHE_TTL_MS;
+    return { payload, cachedAt, expired };
   } catch {
     return null;
   }
@@ -244,7 +241,9 @@ export function TenantProvider({ slug = "", children }) {
       ? `slug=${encodeURIComponent(normalizedSlug)}`
       : `host=${encodeURIComponent(host)}`;
 
-    const cachedPayload = readCachedTenantPayload({ slug: normalizedSlug, host });
+    const cachedEntry = readCachedTenantPayloadEntry({ slug: normalizedSlug, host });
+    const cachedPayload = cachedEntry?.payload || null;
+    const freshCachedPayload = Boolean(cachedEntry && !cachedEntry.expired);
     if (cachedPayload) {
       const cachedTenant = normalizeTenantPayload(cachedPayload, normalizedSlug);
       const cachedConfig = cachedTenant?.config || {};
@@ -255,7 +254,14 @@ export function TenantProvider({ slug = "", children }) {
       if (cachedConfig) {
         applyTheme(cachedConfig);
       }
-      setState((prev) => ({ ...prev, loading: true, error: "" }));
+      setState((prev) => {
+        const previousTenantSlug = String(prev?.tenant?.slug || "").trim().toLowerCase();
+        const canKeepPreviousTenant = Boolean(prev?.tenant) && (!normalizedSlug || previousTenantSlug === normalizedSlug);
+        if (canKeepPreviousTenant) {
+          return { ...prev, loading: false, error: "" };
+        }
+        return { loading: true, error: "", tenant: null };
+      });
     }
 
     try {
@@ -271,10 +277,17 @@ export function TenantProvider({ slug = "", children }) {
       if (resolvedSlug) localStorage.setItem("pondbridgeTenantSlug", resolvedSlug);
       setState({ loading: false, error: "", tenant: normalizedTenant });
     } catch (error) {
-      if (cachedPayload) {
+      if (cachedPayload || freshCachedPayload) {
         setState((prev) => ({ ...prev, loading: false, error: "" }));
       } else {
-        setState({ loading: false, error: error.message, tenant: null });
+        setState((prev) => {
+          const previousTenantSlug = String(prev?.tenant?.slug || "").trim().toLowerCase();
+          const canKeepPreviousTenant = Boolean(prev?.tenant) && (!normalizedSlug || previousTenantSlug === normalizedSlug);
+          if (canKeepPreviousTenant) {
+            return { ...prev, loading: false, error: "" };
+          }
+          return { loading: false, error: error.message, tenant: null };
+        });
       }
     }
   }

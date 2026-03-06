@@ -13,7 +13,7 @@ import {
 } from "@pondbridge/shared";
 import { hashPassword } from "../utils/auth.js";
 import { TenantAdminAuditLogModel } from "../db/models/index.js";
-import { isBillingReadyForLaunch } from "./billingState.js";
+import { isBillingReadyForLaunch, resolveTenantFeatureTier } from "./billingState.js";
 
 const CHECKLIST_ORDER = [
   {
@@ -49,6 +49,9 @@ const FONT_TOKEN_TO_FAMILY = {
   classic_serif: '"Lora", "Roboto Slab", serif'
 };
 const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
+const DIRECTOR_CLIENT_PRIVACY_VERSION = "2026-03-06";
+const DIRECTOR_SERVICE_AGREEMENT_VERSION = "2026-03-06";
 
 function deepClone(value = {}) {
   return JSON.parse(JSON.stringify(value));
@@ -394,7 +397,7 @@ export function resolveModules(tenant, { applyPlanGating = true } = {}) {
   };
 
   if (applyPlanGating) {
-    const plan = tenant?.planTier || "base";
+    const plan = resolveTenantFeatureTier(tenant);
     const addOns = tenant?.addOns || [];
     if (!hasFeature(plan, "familyTrees", addOns)) {
       modules.familyTrees = false;
@@ -425,8 +428,9 @@ export function resolveDirectorLegalAgreement(tenant) {
     accepted: Boolean(live.accepted),
     acceptedAt: live.acceptedAt || null,
     acceptedByUserId: live.acceptedByUserId || null,
-    termsVersion: String(live.termsVersion || "2026-03-04"),
-    privacyVersion: String(live.privacyVersion || "2026-03-04")
+    termsVersion: String(live.termsVersion || DIRECTOR_CLIENT_TERMS_VERSION),
+    privacyVersion: String(live.privacyVersion || DIRECTOR_CLIENT_PRIVACY_VERSION),
+    directorAgreementVersion: String(live.directorAgreementVersion || DIRECTOR_SERVICE_AGREEMENT_VERSION)
   };
 }
 
@@ -560,8 +564,17 @@ export function resolveDraft(tenant) {
         draftLegal.accepted !== undefined ? Boolean(draftLegal.accepted) : Boolean(baseLegal.accepted),
       acceptedAt: draftLegal.acceptedAt || baseLegal.acceptedAt || null,
       acceptedByUserId: draftLegal.acceptedByUserId || baseLegal.acceptedByUserId || null,
-      termsVersion: String(draftLegal.termsVersion || baseLegal.termsVersion || "2026-03-04"),
-      privacyVersion: String(draftLegal.privacyVersion || baseLegal.privacyVersion || "2026-03-04")
+      termsVersion: String(
+        draftLegal.termsVersion || baseLegal.termsVersion || DIRECTOR_CLIENT_TERMS_VERSION
+      ),
+      privacyVersion: String(
+        draftLegal.privacyVersion || baseLegal.privacyVersion || DIRECTOR_CLIENT_PRIVACY_VERSION
+      ),
+      directorAgreementVersion: String(
+        draftLegal.directorAgreementVersion ||
+          baseLegal.directorAgreementVersion ||
+          DIRECTOR_SERVICE_AGREEMENT_VERSION
+      )
     },
     wizard: {
       step: String(draftWizard.step || "").trim().toLowerCase(),
@@ -594,13 +607,14 @@ export function getOnboardingProgress(tenant) {
 export function buildOnboardingResponse(tenant, { counts = null, includeDraft = true } = {}) {
   const content = resolveContent(tenant);
   const checklist = mergeChecklist(tenant?.onboardingChecklist || [], [], content.campType);
+  const planTier = resolveTenantFeatureTier(tenant);
   const base = {
     tenant: {
       id: String(tenant._id),
       slug: tenant.slug,
       name: tenant.name,
       status: tenant.status,
-      planTier: tenant.planTier,
+      planTier,
       onboardingStatus: tenant.onboardingStatus,
       onboardingStep: tenant.onboardingStep || getCurrentStepFromChecklist(checklist),
       customDomain: tenant.customDomain || "",

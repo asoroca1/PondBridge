@@ -80,12 +80,7 @@ const FALLBACK_MEMBER_EXPORT_FIELDS = [
 const FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS = [
   "firstName",
   "lastName",
-  "nickname",
-  "primaryEmail",
-  "primaryPhone",
-  "cityState",
-  "roleAtCamp",
-  "industry"
+  "primaryEmail"
 ];
 
 function createInviteRow() {
@@ -215,6 +210,10 @@ function normalizeProfileIdList(value = []) {
 
 function normalizeEmailRecipientGroupName(value = "") {
   return String(value || "").trim().slice(0, 72);
+}
+
+function emailRecipientGroupNameKey(value = "") {
+  return normalizeEmailRecipientGroupName(value).toLowerCase();
 }
 
 function readSavedEmailRecipientGroups(slug = "") {
@@ -640,29 +639,28 @@ export default function DirectorAdminEmailComposePage() {
       return;
     }
     const now = new Date().toISOString();
-    const existingById = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId) || null;
-    const existingByName =
-      savedRecipientGroups.find((item) => item.name.toLowerCase() === name.toLowerCase()) || null;
-    const existing = existingById || existingByName;
+    const nameKey = emailRecipientGroupNameKey(name);
+    const selectedGroup = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId) || null;
+    const selectedMatchesName = selectedGroup
+      ? emailRecipientGroupNameKey(selectedGroup.name) === nameKey
+      : false;
+    const existingByName = savedRecipientGroups.find(
+      (item) => emailRecipientGroupNameKey(item.name) === nameKey
+    ) || null;
+    const existing = selectedMatchesName ? selectedGroup : existingByName;
+    const createdId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const targetId = existing?.id || createdId;
     const nextGroups = existing
       ? savedRecipientGroups.map((item) =>
-          item.id === existing.id
+          item.id === targetId
             ? { ...item, name, profileIds, updatedAt: now }
             : item
         )
-      : [
-          {
-            id: `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            name,
-            profileIds,
-            updatedAt: now
-          },
-          ...savedRecipientGroups
-        ].slice(0, 60);
+      : [{ id: targetId, name, profileIds, updatedAt: now }, ...savedRecipientGroups].slice(0, 60);
     writeSavedEmailRecipientGroups(slug, nextGroups);
     setSavedRecipientGroups(nextGroups);
-    setSelectedRecipientGroupId(existing?.id || nextGroups[0]?.id || "");
-    setStatus(`Saved group "${name}".`);
+    setSelectedRecipientGroupId(targetId);
+    setStatus(`${existing ? "Updated" : "Saved"} group "${name}".`);
     setError("");
   }
 

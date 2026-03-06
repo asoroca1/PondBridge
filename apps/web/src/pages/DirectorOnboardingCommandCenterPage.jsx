@@ -45,6 +45,11 @@ function billingPlanLabel(code = "") {
   return "Legacy";
 }
 
+function billingPlanIsPremium(code = "") {
+  const normalized = String(code || "").trim().toLowerCase();
+  return normalized === "founders" || normalized === "institutional";
+}
+
 function billingReadinessHint({
   lifecycleStatus = "",
   onboardingFeeStatus = "",
@@ -350,8 +355,7 @@ export default function DirectorOnboardingCommandCenterPage() {
   }, [checklist]);
 
   const isPremium =
-    String(billing?.tenant?.billingPlan || "").trim().toLowerCase() === "institutional" ||
-    payload?.tenant?.planTier === "premium";
+    billingPlanIsPremium(billing?.tenant?.billingPlan || "") || payload?.tenant?.planTier === "premium";
   const inactive = payload?.tenant?.status === "inactive";
   const billingReady = Boolean(payload?.readiness?.checks?.find((check) => check.id === "billing")?.ok);
   const launchReady = Boolean(payload?.readiness?.isReady);

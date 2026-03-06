@@ -58,10 +58,11 @@ export default function DirectorAdminSettingsSupportPage() {
         }
       });
       const requestId = String(response?.requestId || "").trim();
+      const sentTo = String(response?.sentTo || SUPPORT_EMAIL).trim().toLowerCase();
       setStatus(
         requestId
-          ? `Support request sent. Reference: ${requestId}`
-          : "Support request sent."
+          ? `Support request sent to ${sentTo}. Reference: ${requestId}`
+          : `Support request sent to ${sentTo}.`
       );
       setForm((prev) => ({
         ...prev,

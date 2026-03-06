@@ -7,7 +7,7 @@ import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 
 const STANDARD_OFFSET_MATCHERS = ["/admin", "/onboarding", "/settings", "/super"];
-const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account"];
+const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account", "/director-legal"];
 let productOnboardingStylesPromise = null;
 
 function ensureProductOnboardingStyles() {

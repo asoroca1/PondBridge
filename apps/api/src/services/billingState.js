@@ -236,7 +236,12 @@ export function isTenantBillingAccessAllowed(tenant = {}) {
 }
 
 export function resolveFeatureTierFromBillingPlan(planCode = "") {
-  return normalizeBillingPlanCode(planCode) === "institutional" ? "premium" : "base";
+  const normalized = normalizeBillingPlanCode(planCode);
+  return normalized === "institutional" || normalized === "founders" ? "premium" : "base";
+}
+
+export function resolveTenantFeatureTier(tenant = {}) {
+  return resolveFeatureTierFromBillingPlan(resolveTenantBilling(tenant).billingPlan);
 }
 
 export function normalizeBillingPlan(planCode = "", fallbackFromTier = "base") {

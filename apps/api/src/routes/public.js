@@ -15,7 +15,7 @@ import {
 } from "../services/onboarding.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { buildBillingPublicSnapshot } from "../services/billing.js";
-import { isTenantBillingAccessAllowed } from "../services/billingState.js";
+import { isTenantBillingAccessAllowed, resolveTenantFeatureTier } from "../services/billingState.js";
 import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
 import { env } from "../config/env.js";
 
@@ -247,12 +247,13 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
     const network = buildTenantUrls(tenant);
     const billing = buildBillingPublicSnapshot(tenant);
 
+    const planTier = resolveTenantFeatureTier(tenant);
     const payload = {
       id: String(tenant._id),
       name: tenant.name,
       slug: tenant.slug,
       status: tenant.status,
-      planTier: tenant.planTier,
+      planTier,
       billingStatus: billing.billingStatus,
       onboardingFeeAmount: billing.onboardingFeeAmount,
       onboardingFeePaid: billing.onboardingFeePaid,
@@ -269,7 +270,7 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
         signupEnabled: isSignupEnabled(tenant)
       },
       modules: config.modules,
-      features: listFeaturesForPlan(tenant.planTier, tenant.addOns || [])
+      features: listFeaturesForPlan(planTier, tenant.addOns || [])
     };
 
     if (cacheKey) {

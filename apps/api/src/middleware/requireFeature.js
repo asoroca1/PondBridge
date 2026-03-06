@@ -1,4 +1,5 @@
 import { hasFeature } from "@pondbridge/shared";
+import { resolveTenantFeatureTier } from "../services/billingState.js";
 
 const FEATURE_TO_MODULE = {
   familyTrees: "familyTrees",
@@ -9,7 +10,7 @@ export function requireFeature(feature) {
   return function requireFeatureMiddleware(req, res, next) {
     if (req.user?.roles?.includes("super_admin")) return next();
 
-    const plan = req.tenant?.planTier || "base";
+    const plan = resolveTenantFeatureTier(req.tenant);
     const addOns = req.tenant?.addOns || [];
     const moduleKey = FEATURE_TO_MODULE[feature];
 

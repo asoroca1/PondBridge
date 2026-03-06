@@ -102,28 +102,34 @@ const DEFAULT_AGE_GROUPS = [
 ];
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
 const MEMBER_COMPLETION_FILTER_OPTIONS = [
-  { value: "all", label: "All Completion" },
-  { value: "0-24", label: "0-24%" },
-  { value: "25-49", label: "25-49%" },
-  { value: "50-74", label: "50-74%" },
-  { value: "75-99", label: "75-99%" },
-  { value: "100-100", label: "100%" }
+  { value: "all", label: "Profile Completion (All)" },
+  { value: "100-100", label: "100% Complete" },
+  { value: "90-99", label: "90-99%" },
+  { value: "80-89", label: "80-89%" },
+  { value: "70-79", label: "70-79%" },
+  { value: "60-69", label: "60-69%" },
+  { value: "50-59", label: "50-59%" },
+  { value: "40-49", label: "40-49%" },
+  { value: "30-39", label: "30-39%" },
+  { value: "20-29", label: "20-29%" },
+  { value: "10-19", label: "10-19%" },
+  { value: "0-9", label: "0-9%" }
 ];
 const BILLING_TIER_DEFINITIONS = [
   {
     code: "founders",
     title: "Founders",
-    subtitle: "Early-partner pricing with limited slots."
+    subtitle: "Premium features for the first 5 camps."
   },
   {
     code: "legacy",
     title: "Legacy",
-    subtitle: "Standard annual plan for most networks."
+    subtitle: "Base tier with core network tools."
   },
   {
     code: "institutional",
     title: "Institutional",
-    subtitle: "Expanded support and enterprise-scale rollout."
+    subtitle: "Premium tier with institutional support."
   }
 ];
 
@@ -291,12 +297,7 @@ const FALLBACK_MEMBER_EXPORT_FIELDS = [
 const FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS = [
   "firstName",
   "lastName",
-  "nickname",
-  "primaryEmail",
-  "primaryPhone",
-  "cityState",
-  "roleAtCamp",
-  "industry"
+  "primaryEmail"
 ];
 
 function createInviteRow() {

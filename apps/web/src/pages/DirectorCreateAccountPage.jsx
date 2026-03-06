@@ -99,8 +99,11 @@ const DEFAULT_AGE_GROUPS = [
   "Senior II"
 ];
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
-const DEFAULT_TERMS_VERSION = "2026-03-04";
-const DEFAULT_PRIVACY_VERSION = "2026-03-04";
+const MEMBER_TERMS_VERSION = "2026-03-04";
+const MEMBER_PRIVACY_VERSION = "2026-03-04";
+const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
+const DIRECTOR_CLIENT_PRIVACY_VERSION = "2026-03-06";
+const DIRECTOR_SERVICE_AGREEMENT_VERSION = "2026-03-06";
 const DEFAULT_HERO_IMAGE_POSITION = "center center";
 const DEFAULT_HERO_IMAGE_SIZE = "cover";
 const CAMP_TYPE_OPTIONS = [
@@ -129,7 +132,7 @@ const BILLING_PLAN_OPTIONS = [
     title: "Founders Plan",
     annualAmount: 2800,
     onboardingFeeAmount: 0,
-    summary: "Discounted annual pricing for the first 10 camps."
+    summary: "Discounted annual pricing for the first 5 camps."
   },
   {
     code: "institutional",
@@ -170,6 +173,11 @@ const HERO_SIZE_OPTIONS = heroImageSizePresets.map((value) => ({
 function normalizeBillingPlanCode(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized) ? normalized : "legacy";
+}
+
+function billingPlanIsPremium(code = "") {
+  const normalized = normalizeBillingPlanCode(code);
+  return normalized === "founders" || normalized === "institutional";
 }
 
 function billingPlanLabel(code = "") {
@@ -796,7 +804,7 @@ function DirectorCreateAccountWizardPage() {
       })),
     [alumniWordTitle, selectedCampType]
   );
-  const isPremiumCamp = selectedBillingPlanCode === "institutional";
+  const isPremiumCamp = billingPlanIsPremium(selectedBillingPlanCode);
   const planScopedModulesDraft = useMemo(() => {
     const next = { ...modulesDraft };
     if (!isPremiumCamp) {
@@ -963,7 +971,7 @@ function DirectorCreateAccountWizardPage() {
 
   useEffect(() => {
     const previousPlanCode = normalizeBillingPlanCode(previousBillingPlanRef.current);
-    const switchedToPremium = previousPlanCode !== "institutional" && isPremiumCamp;
+    const switchedToPremium = !billingPlanIsPremium(previousPlanCode) && isPremiumCamp;
 
     setModulesDraft((prev) => {
       if (switchedToPremium) {
@@ -2018,7 +2026,7 @@ function DirectorCreateAccountWizardPage() {
     }
 
     if (!legalAgreementAccepted) {
-      setLegalAgreementError("You must accept Terms, Agreements, and Privacy before launch.");
+      setLegalAgreementError("You must accept PondBridge client legal agreements before launch.");
       setStep(STEP_REVIEW_LAUNCH);
       setSubmitError("Accept legal agreements before launching your network.");
       return;
@@ -2041,13 +2049,13 @@ function DirectorCreateAccountWizardPage() {
             campName: String(form.campName || "").trim(),
             directorSignup: true,
             legalAgreementAccepted: true,
-            termsVersion: DEFAULT_TERMS_VERSION,
-            privacyVersion: DEFAULT_PRIVACY_VERSION,
+            termsVersion: MEMBER_TERMS_VERSION,
+            privacyVersion: MEMBER_PRIVACY_VERSION,
             legalAgreement: {
               accepted: true,
               acceptedAt: new Date().toISOString(),
-              termsVersion: DEFAULT_TERMS_VERSION,
-              privacyVersion: DEFAULT_PRIVACY_VERSION
+              termsVersion: MEMBER_TERMS_VERSION,
+              privacyVersion: MEMBER_PRIVACY_VERSION
             }
           }
         });
@@ -2230,8 +2238,9 @@ function DirectorCreateAccountWizardPage() {
         body: {
           mode: "director_wizard",
           legalAgreementAccepted: true,
-          termsVersion: DEFAULT_TERMS_VERSION,
-          privacyVersion: DEFAULT_PRIVACY_VERSION
+          termsVersion: DIRECTOR_CLIENT_TERMS_VERSION,
+          privacyVersion: DIRECTOR_CLIENT_PRIVACY_VERSION,
+          directorAgreementVersion: DIRECTOR_SERVICE_AGREEMENT_VERSION
         }
       });
 
@@ -3526,7 +3535,9 @@ function DirectorCreateAccountWizardPage() {
                     </label>
                     <p className="director-field-hint">
                       Required before launch. Review{" "}
-                      <Link to={`/t/${slug}/legal`}>Terms &amp; Privacy</Link>.
+                      <Link to={`/t/${slug}/director-legal`} target="_blank" rel="noopener noreferrer">
+                        PondBridge Client Terms &amp; Privacy
+                      </Link>.
                     </p>
                     {legalAgreementError ? <p className="wizard1-error">{legalAgreementError}</p> : null}
                   </article>
