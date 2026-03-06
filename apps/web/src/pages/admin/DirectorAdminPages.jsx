@@ -101,6 +101,31 @@ const DEFAULT_AGE_GROUPS = [
   "Senior II"
 ];
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
+const MEMBER_COMPLETION_FILTER_OPTIONS = [
+  { value: "all", label: "All Completion" },
+  { value: "0-24", label: "0-24%" },
+  { value: "25-49", label: "25-49%" },
+  { value: "50-74", label: "50-74%" },
+  { value: "75-99", label: "75-99%" },
+  { value: "100-100", label: "100%" }
+];
+const BILLING_TIER_DEFINITIONS = [
+  {
+    code: "founders",
+    title: "Founders",
+    subtitle: "Early-partner pricing with limited slots."
+  },
+  {
+    code: "legacy",
+    title: "Legacy",
+    subtitle: "Standard annual plan for most networks."
+  },
+  {
+    code: "institutional",
+    title: "Institutional",
+    subtitle: "Expanded support and enterprise-scale rollout."
+  }
+];
 
 function normalizeAdminLabelList(value = [], fallback = []) {
   const source = Array.isArray(value)
@@ -192,6 +217,17 @@ function parseIdsParam(value = "") {
 
 function normalizeMemberRowId(member = null) {
   return String(member?.id || "").trim();
+}
+
+function parseCompletionRangeFilterValue(value = "all") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || normalized === "all") return null;
+  const match = normalized.match(/^(\d{1,3})-(\d{1,3})$/);
+  if (!match) return null;
+  let min = Math.max(0, Math.min(100, Number(match[1] || 0)));
+  let max = Math.max(0, Math.min(100, Number(match[2] || 0)));
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
 }
 
 function useDebouncedValue(value, delayMs = 220) {
@@ -1337,16 +1373,21 @@ export function DirectorAdminMembersPage() {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        pageSize: "25",
-        q: debouncedQuery,
-        role: filters.role,
-        year: filters.year,
-        status: filters.status,
-        completion: filters.completion,
-        sort: filters.sort
-      });
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("pageSize", "25");
+      params.set("q", debouncedQuery);
+      params.set("role", filters.role);
+      params.set("year", filters.year);
+      params.set("status", filters.status);
+      params.set("sort", filters.sort);
+      const completionRange = parseCompletionRangeFilterValue(filters.completion);
+      if (completionRange) {
+        params.set("completionMin", String(completionRange.min));
+        params.set("completionMax", String(completionRange.max));
+      } else {
+        params.set("completion", filters.completion);
+      }
       const response = await requestRef.current(`/members?${params.toString()}`);
       setPayload(response);
     } catch (requestError) {
@@ -1779,10 +1820,11 @@ export function DirectorAdminMembersPage() {
               setFilters((prev) => ({ ...prev, completion: event.target.value }));
             }}
           >
-            <option value="all">All Completion</option>
-            <option value="low">Low (&lt;40%)</option>
-            <option value="medium">Medium (40-79%)</option>
-            <option value="high">High (80%+)</option>
+            {MEMBER_COMPLETION_FILTER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </Select>
           <Select
             value={filters.sort}
@@ -4664,6 +4706,18 @@ export function DirectorAdminBillingPage() {
   const showTrialBanner = billingStatus === "trialing";
   const showPastDueBanner = billingStatus === "past_due";
   const showCheckoutBanner = lifecycleStatus === "checkout_started";
+  const catalogPlans = Array.isArray(payload?.catalog?.plans) ? payload.catalog.plans : [];
+  const catalogPlansByCode = new Map(
+    catalogPlans
+      .map((plan) => [String(plan?.code || "").trim().toLowerCase(), plan])
+      .filter(([code]) => Boolean(code))
+  );
+  const selectedPlan = catalogPlansByCode.get(String(selectedPlanCode || "").trim().toLowerCase()) || null;
+  const selectedPlanIsAvailable = Boolean(selectedPlan);
+  const memberUsagePercent = Math.min(100, Math.max(0, Number(usage.memberUsagePercent || 0)));
+  const memberUsageLabel = usage.memberLimit
+    ? `${usage.members || 0} / ${usage.memberLimit}`
+    : `${usage.members || 0} (unlimited)`;
 
   return (
     <div className="director-admin-stack">
@@ -4695,90 +4749,143 @@ export function DirectorAdminBillingPage() {
         </Card>
       ) : null}
 
-      <div className="director-admin-two-col">
-        <Card>
-          <AdminPageHeader
-            title="Billing"
-            subtitle="Plan and billing summary for your network."
-            actions={<Button variant="secondary" onClick={loadBilling}>Refresh</Button>}
-          />
-          {error ? <p className="error-text">{error}</p> : null}
-          {status ? <p className="success-text">{status}</p> : null}
-          <p>
-            <strong>Plan:</strong> {billingPlanLabel(currentPlanCode)}
-          </p>
-          <p>
-            <strong>Status:</strong>{" "}
-            <span className={`director-admin-status-badge tone-${statusTone(tenant.billingStatus)}`.trim()}>
-              {String(tenant.billingStatus || "trialing").replace(/_/g, " ")}
-            </span>
-          </p>
-          <p>
-            <strong>Lifecycle:</strong> {tenant.billingLifecycleStatus || "uninitialized"}
-          </p>
-          <p>
-            <strong>Onboarding fee:</strong> {formatMoney(tenant.onboardingFeeAmount)}
-          </p>
-          <p>
-            <strong>Onboarding status:</strong> {tenant.onboardingFeeStatus || (tenant.onboardingFeePaid ? "paid" : "unpaid")}
-          </p>
-          <p>
-            <strong>Launch ready:</strong> {payload?.billing?.launchReady ? "Yes" : "No"}
-          </p>
-          <p>
-            <strong>Members:</strong>{" "}
-            {usage.memberLimit ? `${usage.members} / ${usage.memberLimit}` : `${usage.members} (unlimited)`}
-          </p>
-          {usage.memberLimit ? (
-            <div className="director-admin-progress">
-              <span style={{ width: `${Math.min(100, usage.memberUsagePercent || 0)}%` }} />
-            </div>
-          ) : null}
-          <div className="inline-actions">
-            {payload?.manageBillingUrl ? (
-              <a className="link-button" href={payload.manageBillingUrl} target="_blank" rel="noreferrer">
-                Manage Billing
-              </a>
-            ) : (
-              <Button variant="secondary" disabled>
-                Billing Portal Unavailable
-              </Button>
-            )}
-          </div>
-        </Card>
+      <Card className="director-admin-billing-overview">
+        <AdminPageHeader
+          title="Billing"
+          subtitle="Manage your plan, payment status, and launch readiness."
+          actions={<Button variant="secondary" onClick={loadBilling}>Refresh</Button>}
+        />
+        {error ? <p className="error-text">{error}</p> : null}
+        {status ? <p className="success-text">{status}</p> : null}
 
-        <Card>
-          <h2 className="pb-section-title">Plan & Checkout</h2>
-          <p className="muted">
-            Choose Legacy, Founders, or Institutional and continue in Stripe Checkout.
-          </p>
-          {Array.isArray(payload?.catalog?.plans) && payload.catalog.plans.length ? (
-            <label>
-              Select billing plan
-              <Select
-                value={selectedPlanCode}
-                onChange={(event) => setSelectedPlanCode(event.target.value)}
+        <div className="director-admin-billing-metrics">
+          <div className="director-admin-billing-metric">
+            <span>Current Plan</span>
+            <strong>{billingPlanLabel(currentPlanCode)}</strong>
+            <small>{catalogPlansByCode.get(currentPlanCode)?.label || "Selected tenant billing tier"}</small>
+          </div>
+          <div className="director-admin-billing-metric">
+            <span>Billing Status</span>
+            <strong>
+              <span className={`director-admin-status-badge tone-${statusTone(tenant.billingStatus)}`.trim()}>
+                {String(tenant.billingStatus || "trialing").replace(/_/g, " ")}
+              </span>
+            </strong>
+            <small>Lifecycle: {tenant.billingLifecycleStatus || "uninitialized"}</small>
+          </div>
+          <div className="director-admin-billing-metric">
+            <span>Onboarding Fee</span>
+            <strong>{formatMoney(tenant.onboardingFeeAmount)}</strong>
+            <small>
+              {tenant.onboardingFeeStatus || (tenant.onboardingFeePaid ? "paid" : "unpaid")}
+            </small>
+          </div>
+          <div className="director-admin-billing-metric">
+            <span>Member Usage</span>
+            <strong>{memberUsageLabel}</strong>
+            <small>{payload?.billing?.launchReady ? "Launch ready" : "Not launch ready"}</small>
+          </div>
+        </div>
+
+        {usage.memberLimit ? (
+          <div className="director-admin-billing-usage">
+            <div className="director-admin-progress">
+              <span style={{ width: `${memberUsagePercent}%` }} />
+            </div>
+            <small>{memberUsagePercent}% of member limit used</small>
+          </div>
+        ) : null}
+
+        <div className="inline-actions">
+          {payload?.manageBillingUrl ? (
+            <a className="link-button" href={payload.manageBillingUrl} target="_blank" rel="noreferrer">
+              Manage Billing Portal
+            </a>
+          ) : (
+            <Button variant="secondary" disabled>
+              Billing Portal Unavailable
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      <Card className="director-admin-billing-plans">
+        <div className="director-admin-billing-plan-head">
+          <h2 className="pb-section-title">Choose Your Plan</h2>
+          <p className="muted">Founders, Legacy, and Institutional tiers are available in Stripe checkout.</p>
+        </div>
+
+        <div className="director-admin-billing-tier-grid">
+          {BILLING_TIER_DEFINITIONS.map((tier) => {
+            const plan = catalogPlansByCode.get(tier.code) || null;
+            const isCurrent = currentPlanCode === tier.code;
+            const isSelected = selectedPlanCode === tier.code;
+            const isUnavailable = !plan;
+            const foundersAvailability = tier.code === "founders" ? payload?.foundersAvailability : null;
+
+            return (
+              <article
+                key={tier.code}
+                className={[
+                  "director-admin-billing-tier-card",
+                  isCurrent ? "is-current" : "",
+                  isSelected ? "is-selected" : "",
+                  isUnavailable ? "is-disabled" : ""
+                ].filter(Boolean).join(" ")}
               >
-                {payload.catalog.plans.map((plan) => (
-                  <option key={plan.code} value={plan.code}>
-                    {plan.label} · {formatMoney(plan.annualAmount)}/yr
-                    {plan.onboardingFeeAmount > 0
-                      ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding`
-                      : " · no onboarding fee"}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          ) : null}
-          {payload?.foundersAvailability ? (
-            <p className="muted">
-              Founders slots: {payload.foundersAvailability.reserved}/{payload.foundersAvailability.max} reserved
-              {" · "}
-              {payload.foundersAvailability.remaining} remaining
+                <div className="director-admin-billing-tier-top">
+                  <h3>{tier.title}</h3>
+                  <div className="director-admin-billing-tier-badges">
+                    {isCurrent ? <span className="director-admin-billing-tier-badge">Current</span> : null}
+                    {isSelected && !isCurrent ? (
+                      <span className="director-admin-billing-tier-badge is-selected">Selected</span>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="muted">{tier.subtitle}</p>
+                <p className="director-admin-billing-tier-price">
+                  {plan ? `${formatMoney(plan.annualAmount)}/year` : "Not currently available"}
+                </p>
+                <p className="director-admin-billing-tier-detail">
+                  {plan
+                    ? plan.onboardingFeeAmount > 0
+                      ? `${formatMoney(plan.onboardingFeeAmount)} onboarding fee`
+                      : "No onboarding fee"
+                    : "Contact support to enable this tier for your tenant."}
+                </p>
+                {foundersAvailability ? (
+                  <p className="director-admin-billing-tier-detail">
+                    {foundersAvailability.remaining} founders slots remaining
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  variant={isSelected ? "primary" : "secondary"}
+                  onClick={() => setSelectedPlanCode(tier.code)}
+                  disabled={isUnavailable}
+                >
+                  {isSelected ? "Selected Plan" : "Select Plan"}
+                </Button>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="director-admin-billing-checkout-row">
+          <div>
+            <p className="director-admin-billing-checkout-title">
+              {selectedPlan ? `Ready to checkout: ${selectedPlan.label}` : "Select a plan to continue"}
             </p>
-          ) : null}
+            {selectedPlan ? (
+              <p className="muted">
+                {selectedPlanCode === currentPlanCode
+                  ? "You are checking out on your current tier."
+                  : "This will switch your tenant billing tier at checkout."}
+              </p>
+            ) : null}
+          </div>
           <div className="inline-actions">
-            <Button onClick={startCheckout} disabled={startingCheckout}>
+            <Button onClick={startCheckout} disabled={startingCheckout || !selectedPlanIsAvailable}>
               {startingCheckout
                 ? "Redirecting..."
                 : selectedPlanCode === currentPlanCode
@@ -4789,8 +4896,8 @@ export function DirectorAdminBillingPage() {
               Refresh Billing
             </Button>
           </div>
-        </Card>
-      </div>
+        </div>
+      </Card>
 
       <Card>
         <h2 className="pb-section-title">Recent Invoices</h2>

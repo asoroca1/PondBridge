@@ -176,6 +176,9 @@ CREATE INDEX IF NOT EXISTS idx_profiles_tenant_status ON public.profiles (tenant
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_role ON public.profiles (tenant_id, role_at_camp);
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_industry ON public.profiles (tenant_id, industry);
 CREATE INDEX IF NOT EXISTS idx_profiles_tenant_city ON public.profiles (tenant_id, city_state);
+CREATE INDEX IF NOT EXISTS idx_profiles_tenant_created ON public.profiles (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_profiles_college_years_gin ON public.profiles
+  USING gin (college_years);
 CREATE INDEX IF NOT EXISTS idx_profiles_name_trgm ON public.profiles
   USING gin ((public.lower_immutable(trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')))) gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_profiles_role_trgm ON public.profiles

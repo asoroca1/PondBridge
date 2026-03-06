@@ -15,6 +15,10 @@ const PHOTO_PREVIEW_WIDTH = 420;
 const PHOTO_PREVIEW_HEIGHT = 315;
 const PHOTO_EXPORT_WIDTH = 1600;
 const PHOTO_EXPORT_HEIGHT = 1200;
+const SEARCH_USER_CACHE_TTL_MS = 20_000;
+const SEARCH_USER_CACHE_MAX_ENTRIES = 600;
+const searchUserCache = new Map();
+const searchUserInFlight = new Map();
 
 /* ========= helpers ========= */
 
@@ -58,14 +62,63 @@ function canvasToBlob(canvas, type = "image/jpeg", quality = 0.9) {
   });
 }
 
+function readCachedSearchUser(id = "") {
+  const key = String(id || "").trim();
+  if (!key) return null;
+  const cached = searchUserCache.get(key);
+  if (!cached) return null;
+  if (Date.now() >= Number(cached.expiresAt || 0)) {
+    searchUserCache.delete(key);
+    return null;
+  }
+  return cached.user || null;
+}
+
+function writeCachedSearchUser(id = "", user = null) {
+  const key = String(id || "").trim();
+  if (!key || !user) return;
+  if (searchUserCache.size >= SEARCH_USER_CACHE_MAX_ENTRIES) {
+    const firstKey = searchUserCache.keys().next().value;
+    if (firstKey) searchUserCache.delete(firstKey);
+  }
+  searchUserCache.set(key, {
+    expiresAt: Date.now() + SEARCH_USER_CACHE_TTL_MS,
+    user
+  });
+}
+
 /** Fetch a user by id (re-uses your search endpoint) */
 async function fetchUser(id) {
-  const r = await fetch(`${API}/search/user/${id}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
+  const safeId = String(id || "").trim();
+  if (!safeId) throw new Error("user not found");
+
+  const cached = readCachedSearchUser(safeId);
+  if (cached) return cached;
+
+  const inFlight = searchUserInFlight.get(safeId);
+  if (inFlight) return inFlight;
+
+  const pending = (async () => {
+    const r = await fetch(`${API}/search/user/${safeId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!r.ok) throw new Error("user not found");
+    const data = await r.json();
+    const user = data?.user || null;
+    if (user) {
+      writeCachedSearchUser(safeId, user);
+      const profileId = String(user?._id || user?.id || "").trim();
+      const userId = String(user?.userId || "").trim();
+      if (profileId && profileId !== safeId) writeCachedSearchUser(profileId, user);
+      if (userId && userId !== safeId && userId !== profileId) writeCachedSearchUser(userId, user);
+    }
+    return user;
+  })().finally(() => {
+    searchUserInFlight.delete(safeId);
   });
-  if (!r.ok) throw new Error("user not found");
-  const data = await r.json();
-  return data.user;
+
+  searchUserInFlight.set(safeId, pending);
+  return pending;
 }
 
 /** Tiny component to render a clickable avatar that links to /profile/:id */
@@ -748,17 +801,20 @@ export default function PhotoStream() {
         .map((p) => String(p.ownerId ?? p.userId ?? p.createdBy ?? ""))
         .filter(Boolean)
     )].filter((id) => !authorInfo[id]);
+    if (!ids.length) return;
 
-    for (const id of ids) {
-      try {
-        const u = await fetchUser(id);
-        setAuthorInfo((prev) => ({
-          ...prev,
-          [id]: { name: displayName(u), avatar: avatarUrl(u) },
-        }));
-      } catch {
-        // ignore
-      }
+    const resolved = await Promise.allSettled(
+      ids.map(async (id) => [id, await fetchUser(id)])
+    );
+    const updates = {};
+    for (const item of resolved) {
+      if (item.status !== "fulfilled") continue;
+      const [id, user] = item.value || [];
+      if (!id || !user) continue;
+      updates[id] = { name: displayName(user), avatar: avatarUrl(user) };
+    }
+    if (Object.keys(updates).length > 0) {
+      setAuthorInfo((prev) => ({ ...prev, ...updates }));
     }
   }, [authorInfo]);
 

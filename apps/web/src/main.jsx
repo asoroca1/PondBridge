@@ -10,7 +10,6 @@ import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
 import { API_BASE } from "./lib/http.js";
 import "@pondbridge/ui/theme.css";
 import "./styles.css";
-import "./styles/productOnboarding.css";
 
 // Build marker used to scope chunk-recovery attempts to the current deployed bundle.
 const inferredBuildMarker = (() => {

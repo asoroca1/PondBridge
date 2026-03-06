@@ -131,17 +131,25 @@ export function avatarUrl(u = {}) {
   const profile = u?.profile || {};
   const profileUploads = profile?.uploads || {};
   const resolved =
+    up.thumbUrl ||
+    up.thumbnailUrl ||
     up.photoUrl ||
     up.photo ||
     up.profilePhoto?.url ||
     up.avatarUrl ||
+    u?.thumbUrl ||
+    u?.thumbnailUrl ||
     u?.photoUrl ||
     u?.profilePhotoUrl ||
     u?.avatarUrl ||
     u?.imageUrl ||
     u?.profilePhoto ||
+    profileUploads.thumbUrl ||
+    profileUploads.thumbnailUrl ||
     profileUploads.photoUrl ||
     profileUploads.photo ||
+    profile?.thumbUrl ||
+    profile?.thumbnailUrl ||
     profile?.photoUrl ||
     profile?.profilePhotoUrl ||
     profile?.avatarUrl ||

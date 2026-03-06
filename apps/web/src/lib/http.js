@@ -3,10 +3,53 @@ import { inferCampSlugFromHost } from "./domain.js";
 const rawBase = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 export const API_BASE = rawBase.replace(/\/+$/, "");
 const CLERK_FORCED_REFRESH_COOLDOWN_MS = 1500;
+const GET_RESPONSE_CACHE_TTL_MS = 12_000;
+const GET_RESPONSE_CACHE_MAX_ENTRIES = 350;
 const inFlightGetRequests = new Map();
+const successfulGetResponses = new Map();
 
 let forcedRefreshPromise = null;
 let lastForcedRefreshAt = 0;
+
+function clonePayload(payload) {
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(payload);
+    } catch {
+      return payload;
+    }
+  }
+  return payload;
+}
+
+function readGetResponseCache(cacheKey = "") {
+  const key = String(cacheKey || "");
+  if (!key) return null;
+  const entry = successfulGetResponses.get(key);
+  if (!entry) return null;
+  if (Date.now() >= Number(entry.expiresAt || 0)) {
+    successfulGetResponses.delete(key);
+    return null;
+  }
+  return clonePayload(entry.payload);
+}
+
+function writeGetResponseCache(cacheKey = "", payload = null, ttlMs = GET_RESPONSE_CACHE_TTL_MS) {
+  const key = String(cacheKey || "");
+  if (!key || payload == null) return;
+  if (successfulGetResponses.size >= GET_RESPONSE_CACHE_MAX_ENTRIES) {
+    const firstKey = successfulGetResponses.keys().next().value;
+    if (firstKey) successfulGetResponses.delete(firstKey);
+  }
+  successfulGetResponses.set(key, {
+    expiresAt: Date.now() + Math.max(1000, Number(ttlMs) || GET_RESPONSE_CACHE_TTL_MS),
+    payload: clonePayload(payload)
+  });
+}
+
+function clearGetResponseCache() {
+  successfulGetResponses.clear();
+}
 
 function isNetworkFailure(error) {
   const msg = String(error?.message || "").toLowerCase();
@@ -109,6 +152,7 @@ function buildInFlightGetRequestKey({
 
 export async function requestJson(path, { method = "GET", body, token, getToken, headers = {}, signal } = {}) {
   const normalizedPath = String(path || "");
+  const normalizedMethod = String(method || "GET").toUpperCase();
   const isPublicApiPath = normalizedPath.startsWith("/api/public/");
   let resolvedToken = token || "";
   if (typeof getToken === "function") {
@@ -136,14 +180,31 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     baseHeaders["Content-Type"] = "application/json";
   }
 
+  const cacheKey = buildInFlightGetRequestKey({
+    method: normalizedMethod,
+    path: normalizedPath,
+    token: resolvedToken,
+    headers: baseHeaders,
+    body,
+    signal: null
+  });
   const inFlightGetKey = buildInFlightGetRequestKey({
-    method,
+    method: normalizedMethod,
     path: normalizedPath,
     token: resolvedToken,
     headers: baseHeaders,
     body,
     signal
   });
+  if (normalizedMethod !== "GET") {
+    clearGetResponseCache();
+  } else if (cacheKey) {
+    const cached = readGetResponseCache(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+  }
+
   if (inFlightGetKey) {
     const existingRequest = inFlightGetRequests.get(inFlightGetKey);
     if (existingRequest) {
@@ -157,7 +218,7 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
       ...baseHeaders
     };
     return performJsonRequest(`${API_BASE}${normalizedPath}`, {
-      method,
+      method: normalizedMethod,
       headers: requestHeaders,
       signal,
       body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined
@@ -200,6 +261,10 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
       error.status = response.status;
       error.payload = payload;
       throw error;
+    }
+
+    if (normalizedMethod === "GET" && cacheKey) {
+      writeGetResponseCache(cacheKey, payload);
     }
 
     return payload;

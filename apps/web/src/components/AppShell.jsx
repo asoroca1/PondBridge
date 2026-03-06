@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import NavBar from "./NavBar.jsx";
 import ProductHeader from "./ProductHeader.jsx";
@@ -8,6 +8,14 @@ import { useTenant } from "../context/TenantContext.jsx";
 
 const STANDARD_OFFSET_MATCHERS = ["/admin", "/onboarding", "/settings", "/super"];
 const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account"];
+let productOnboardingStylesPromise = null;
+
+function ensureProductOnboardingStyles() {
+  if (!productOnboardingStylesPromise) {
+    productOnboardingStylesPromise = import("../styles/productOnboarding.css").catch(() => null);
+  }
+  return productOnboardingStylesPromise;
+}
 
 export default function AppShell({ children }) {
   const location = useLocation();
@@ -34,6 +42,11 @@ export default function AppShell({ children }) {
     },
     [location.pathname, location.search, isTenantRoot, onboardingIncomplete]
   );
+
+  useEffect(() => {
+    if (!useProductLayout) return;
+    ensureProductOnboardingStyles();
+  }, [useProductLayout]);
 
   if (useProductLayout) {
     return (

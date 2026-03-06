@@ -228,20 +228,72 @@ function hasId(arr, id) {
   return arr.some((x) => String(x?._id) === s);
 }
 
+const SEARCH_USER_CACHE_TTL_MS = 20_000;
+const SEARCH_USER_CACHE_MAX_ENTRIES = 800;
+const searchUserCache = new Map();
+const searchUserInFlight = new Map();
+
+function readCachedSearchUser(id = "") {
+  const key = normalizeEntityId(id);
+  if (!key) return null;
+  const cached = searchUserCache.get(key);
+  if (!cached) return null;
+  if (Date.now() >= Number(cached.expiresAt || 0)) {
+    searchUserCache.delete(key);
+    return null;
+  }
+  return cached.user || null;
+}
+
+function writeCachedSearchUser(id = "", user = null) {
+  const key = normalizeEntityId(id);
+  if (!key || !user) return;
+  if (searchUserCache.size >= SEARCH_USER_CACHE_MAX_ENTRIES) {
+    const firstKey = searchUserCache.keys().next().value;
+    if (firstKey) searchUserCache.delete(firstKey);
+  }
+  searchUserCache.set(key, {
+    expiresAt: Date.now() + SEARCH_USER_CACHE_TTL_MS,
+    user
+  });
+}
+
 async function fetchUser(id) {
   const safeId = normalizeEntityId(id);
   if (!isObjectIdLike(safeId)) {
     throw new Error("Invalid user id");
   }
-  const res = await fetch(`${API_BASE}/search/user/${safeId}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
+
+  const cached = readCachedSearchUser(safeId);
+  if (cached) return cached;
+
+  const inFlight = searchUserInFlight.get(safeId);
+  if (inFlight) return inFlight;
+
+  const pending = (async () => {
+    const res = await fetch(`${API_BASE}/search/user/${safeId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) {
+      const payload = await readJsonSafe(res);
+      throw new Error(apiErrorMessage(payload, "Unable to load user."));
+    }
+    const data = await readJsonSafe(res);
+    const user = data?.user || null;
+    if (user) {
+      writeCachedSearchUser(safeId, user);
+      const profileId = normalizeEntityId(user?._id || user?.id);
+      const userId = normalizeEntityId(user?.userId);
+      if (profileId && profileId !== safeId) writeCachedSearchUser(profileId, user);
+      if (userId && userId !== safeId && userId !== profileId) writeCachedSearchUser(userId, user);
+    }
+    return user;
+  })().finally(() => {
+    searchUserInFlight.delete(safeId);
   });
-  if (!res.ok) {
-    const payload = await readJsonSafe(res);
-    throw new Error(apiErrorMessage(payload, "Unable to load user."));
-  }
-  const data = await readJsonSafe(res);
-  return data.user;
+
+  searchUserInFlight.set(safeId, pending);
+  return pending;
 }
 
 /* ==== auth/ownership helpers (flexible + admin support) ==== */
@@ -607,20 +659,40 @@ function PersonalTab({ socket }) {
   async function computeDMTitles(convos) {
     const map = {};
     const cacheUpdates = {};
-    for (const c of convos) {
-      const otherId = (c.participantIds || []).map(String).find((id) => id !== String(meId));
-      if (!otherId) {
-        map[c._id] = "Direct Message";
-        continue;
+    const resolved = await Promise.allSettled(
+      (Array.isArray(convos) ? convos : []).map(async (conversation) => {
+        const convoId = normalizeEntityId(conversation?._id || conversation?.id);
+        const otherId = (conversation?.participantIds || [])
+          .map(String)
+          .find((id) => id !== String(meId));
+        if (!convoId || !otherId) {
+          return { convoId, otherId: "", name: "Direct Message", avatar: "" };
+        }
+        const user = await fetchUser(otherId);
+        return {
+          convoId,
+          otherId,
+          name: displayName(user) || "Direct Message",
+          avatar: avatarUrl(user)
+        };
+      })
+    );
+    for (const item of resolved) {
+      if (item.status !== "fulfilled") continue;
+      const value = item.value || {};
+      if (!value.convoId) continue;
+      map[value.convoId] = value.name || "Direct Message";
+      if (value.otherId) {
+        cacheUpdates[value.otherId] = {
+          name: value.name || "Direct Message",
+          avatar: value.avatar || ""
+        };
       }
-      try {
-        const u = await fetchUser(otherId);
-        const nm = displayName(u);
-        map[c._id] = nm;
-        cacheUpdates[otherId] = { name: nm, avatar: avatarUrl(u) };
-      } catch {
-        map[c._id] = "Direct Message";
-      }
+    }
+    for (const conversation of convos || []) {
+      const convoId = normalizeEntityId(conversation?._id || conversation?.id);
+      if (!convoId || map[convoId]) continue;
+      map[convoId] = "Direct Message";
     }
     if (Object.keys(cacheUpdates).length) {
       setUserCache((prev) => ({ ...prev, ...cacheUpdates }));
@@ -694,11 +766,19 @@ function PersonalTab({ socket }) {
       ...new Set((items || []).map((m) => normalizeEntityId(m?.senderId)).filter(isObjectIdLike))
     ];
     const unknowns = ids.filter((id) => !userCache[id]);
-    for (const id of unknowns) {
-      try {
-        const u = await fetchUser(id);
-        setUserCache((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: avatarUrl(u) } }));
-      } catch {}
+    if (!unknowns.length) return;
+    const resolved = await Promise.allSettled(
+      unknowns.map(async (id) => [id, await fetchUser(id)])
+    );
+    const updates = {};
+    for (const item of resolved) {
+      if (item.status !== "fulfilled") continue;
+      const [id, user] = item.value || [];
+      if (!id || !user) continue;
+      updates[id] = { name: displayName(user), avatar: avatarUrl(user) };
+    }
+    if (Object.keys(updates).length) {
+      setUserCache((prev) => ({ ...prev, ...updates }));
     }
   }
 
@@ -1218,11 +1298,20 @@ function GroupsTab({ socket }) {
     const unknowns = [
       ...new Set(items.map((m) => normalizeEntityId(m?.senderId)).filter(isObjectIdLike))
     ].filter((uid) => !nameCache[uid]);
-    for (const uid of unknowns) {
-      try {
-        const u = await fetchUser(uid);
-        setNameCache((prev) => ({ ...prev, [uid]: displayName(u) }));
-      } catch {}
+    if (unknowns.length > 0) {
+      const resolved = await Promise.allSettled(
+        unknowns.map(async (uid) => [uid, await fetchUser(uid)])
+      );
+      const updates = {};
+      for (const item of resolved) {
+        if (item.status !== "fulfilled") continue;
+        const [uid, user] = item.value || [];
+        if (!uid || !user) continue;
+        updates[uid] = displayName(user);
+      }
+      if (Object.keys(updates).length) {
+        setNameCache((prev) => ({ ...prev, ...updates }));
+      }
     }
 
     return items;
@@ -1916,11 +2005,19 @@ function ForumsTab({ socket }) {
     }
 
     const unknowns = ids.filter((id) => !authorInfo[id]);
-    for (const id of unknowns) {
-      try {
-        const u = await fetchUser(id);
-        setAuthorInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: avatarUrl(u) } }));
-      } catch {}
+    if (unknowns.length === 0) return;
+    const resolved = await Promise.allSettled(
+      unknowns.map(async (id) => [id, await fetchUser(id)])
+    );
+    const updates = {};
+    for (const item of resolved) {
+      if (item.status !== "fulfilled") continue;
+      const [id, user] = item.value || [];
+      if (!id || !user) continue;
+      updates[id] = { name: displayName(user), avatar: avatarUrl(user) };
+    }
+    if (Object.keys(updates).length) {
+      setAuthorInfo((prev) => ({ ...prev, ...updates }));
     }
   }
 

@@ -4317,7 +4317,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-modal-backdrop{
   position: fixed;
   inset: 0;
-  z-index: 260;
+  z-index: 4200;
   display: grid;
   place-items: center;
   padding: 16px;
@@ -4951,7 +4951,9 @@ img[draggable="false"] { -webkit-user-drag: none; }
   width: 34px;
   height: 34px;
   border-radius: 6px;
-  object-fit: cover;
+  object-fit: contain;
+  padding: 2px;
+  box-sizing: border-box;
   background: #fff;
 }
 
@@ -5029,7 +5031,9 @@ img[draggable="false"] { -webkit-user-drag: none; }
   height: 46px;
   flex-shrink: 0;
   border-radius: 10px;
-  object-fit: cover;
+  object-fit: contain;
+  padding: 2px;
+  box-sizing: border-box;
   border: 1px solid var(--director-admin-surface-border, var(--director-admin-soft-border));
   background: #fff;
 }
@@ -5554,6 +5558,169 @@ img[draggable="false"] { -webkit-user-drag: none; }
   background: #fff2f2;
 }
 
+.pb-cedar-page .director-admin-billing-overview{
+  display: grid;
+  gap: 12px;
+}
+
+.pb-cedar-page .director-admin-billing-metrics{
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pb-cedar-page .director-admin-billing-metric{
+  border: 1px solid var(--director-admin-surface-border, #dbe4ef);
+  border-radius: 12px;
+  background: var(--director-admin-surface-bg, #ffffff);
+  padding: 11px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.pb-cedar-page .director-admin-billing-metric > span{
+  font-size: .73rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 700;
+  color: var(--director-admin-ink-soft);
+}
+
+.pb-cedar-page .director-admin-billing-metric > strong{
+  font-size: 1.03rem;
+  line-height: 1.2;
+  color: var(--director-admin-ink);
+}
+
+.pb-cedar-page .director-admin-billing-metric > small{
+  color: var(--director-admin-ink-soft);
+  font-size: .83rem;
+}
+
+.pb-cedar-page .director-admin-billing-usage{
+  display: grid;
+  gap: 6px;
+}
+
+.pb-cedar-page .director-admin-billing-usage > small{
+  color: var(--director-admin-ink-soft);
+  font-size: .82rem;
+}
+
+.pb-cedar-page .director-admin-billing-plans{
+  display: grid;
+  gap: 12px;
+}
+
+.pb-cedar-page .director-admin-billing-plan-head .pb-section-title{
+  margin-bottom: 4px;
+}
+
+.pb-cedar-page .director-admin-billing-plan-head p{
+  margin: 0;
+}
+
+.pb-cedar-page .director-admin-billing-tier-grid{
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pb-cedar-page .director-admin-billing-tier-card{
+  border: 1px solid var(--director-admin-surface-border, #dbe4ef);
+  border-radius: 14px;
+  background: var(--director-admin-surface-bg, #ffffff);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.pb-cedar-page .director-admin-billing-tier-card.is-current{
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, #d2dfef);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--brand-primary) 16%, rgba(15,23,42,.06));
+}
+
+.pb-cedar-page .director-admin-billing-tier-card.is-selected{
+  background: color-mix(in srgb, var(--brand-primary) 4%, #ffffff);
+}
+
+.pb-cedar-page .director-admin-billing-tier-card.is-disabled{
+  opacity: .68;
+}
+
+.pb-cedar-page .director-admin-billing-tier-top{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-admin-billing-tier-top h3{
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.pb-cedar-page .director-admin-billing-tier-badges{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.pb-cedar-page .director-admin-billing-tier-badge{
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 26%, #d2dfef);
+  background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  color: var(--brand-primary);
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.pb-cedar-page .director-admin-billing-tier-badge.is-selected{
+  border-color: color-mix(in srgb, var(--brand-primary) 40%, #cddbed);
+  background: color-mix(in srgb, var(--brand-primary) 14%, #ffffff);
+}
+
+.pb-cedar-page .director-admin-billing-tier-price{
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--director-admin-ink);
+}
+
+.pb-cedar-page .director-admin-billing-tier-detail{
+  margin: 0;
+  font-size: .86rem;
+  color: var(--director-admin-ink-soft);
+}
+
+.pb-cedar-page .director-admin-billing-checkout-row{
+  border: 1px solid var(--director-admin-surface-border, #dbe4ef);
+  border-radius: 12px;
+  background: var(--director-admin-surface-bg, #ffffff);
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pb-cedar-page .director-admin-billing-checkout-title{
+  margin: 0;
+  font-weight: 700;
+  color: var(--director-admin-ink);
+}
+
+.pb-cedar-page .director-admin-billing-checkout-row .muted{
+  margin: 3px 0 0;
+}
+
 .pb-cedar-page .director-admin-danger-card{
   border-color: #f0d2cf;
 }
@@ -5797,6 +5964,14 @@ img[draggable="false"] { -webkit-user-drag: none; }
     grid-template-columns: 1fr;
   }
 
+  .pb-cedar-page .director-admin-billing-metrics{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pb-cedar-page .director-admin-billing-tier-grid{
+    grid-template-columns: 1fr;
+  }
+
   .pb-cedar-page .director-admin-stat-grid{
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -5855,6 +6030,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .pb-cedar-page .director-admin-filter-row{
+    grid-template-columns: 1fr;
+  }
+
+  .pb-cedar-page .director-admin-billing-metrics{
     grid-template-columns: 1fr;
   }
 

@@ -36,6 +36,7 @@ import {
   parseCityStateDetailed
 } from "../utils/location.js";
 import { ensureProfileForUser } from "../services/profileCompletion.js";
+import { createTtlCache } from "../utils/ttlCache.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
@@ -111,11 +112,60 @@ const IMAGE_MIME_TYPES = new Set([
 const PUBLIC_UPLOAD_SCOPES = new Set(["avatar"]);
 const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero"]);
 const PRELAUNCH_PUBLIC_BRANDING_SCOPES = new Set(["branding-logo", "branding-hero"]);
+const IMMUTABLE_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const PRIVATE_UPLOAD_PROXY_CACHE_CONTROL = "private, max-age=120, stale-while-revalidate=240";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NEWSLETTER_R2_POINTER_MIME = "application/x.pondbridge.newsletter-r2-pointer+json";
 const NEWSLETTER_COVER_R2_POINTER_MIME =
   "application/x.pondbridge.newsletter-cover-r2-pointer+json";
 const NEWSLETTER_COVER_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const HOME_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
+const LOCATIONS_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
+const ACTIVITY_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
+const PHOTO_FEED_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
+const CHAT_CONVERSATIONS_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
+const CHAT_MESSAGES_CACHE_CONTROL = "private, max-age=6, stale-while-revalidate=18";
+const FORUMS_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
+const FORUM_POSTS_CACHE_CONTROL = "private, max-age=6, stale-while-revalidate=18";
+const homeStatsResponseCache = createTtlCache({ ttlMs: 20_000, maxEntries: 250 });
+const locationsStatsResponseCache = createTtlCache({ ttlMs: 20_000, maxEntries: 250 });
+const activityResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 500 });
+const photoFeedResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 900 });
+const conversationListResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1200 });
+const conversationDetailResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1800 });
+const conversationMessagesResponseCache = createTtlCache({ ttlMs: 6_000, maxEntries: 2200 });
+const forumsListResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1000 });
+const forumDetailResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1200 });
+const forumPostsResponseCache = createTtlCache({ ttlMs: 6_000, maxEntries: 1800 });
+
+function tenantReadCacheKey(scope = "", tenantId = "", suffix = "") {
+  return [String(scope || "").trim(), String(tenantId || "").trim(), String(suffix || "").trim()].join(":");
+}
+
+function clearHomeStatsCaches() {
+  homeStatsResponseCache.clear();
+  locationsStatsResponseCache.clear();
+}
+
+function clearHomeActivityCache() {
+  activityResponseCache.clear();
+}
+
+function clearPhotoFeedCache() {
+  photoFeedResponseCache.clear();
+}
+
+function clearConversationCaches() {
+  conversationListResponseCache.clear();
+  conversationDetailResponseCache.clear();
+  conversationMessagesResponseCache.clear();
+}
+
+function clearForumCaches() {
+  forumsListResponseCache.clear();
+  forumDetailResponseCache.clear();
+  forumPostsResponseCache.clear();
+}
 
 function normalizeFileName(fileName = "file") {
   return String(fileName || "file")
@@ -230,6 +280,7 @@ async function buildPresignedImageUpload(req, { allowPublicScopesOnly = true } =
     fileType,
     objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
     fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
+    cacheControl: IMMUTABLE_IMAGE_CACHE_CONTROL,
     allowedContentTypes: [...IMAGE_MIME_TYPES]
   });
 }
@@ -1294,6 +1345,7 @@ router.get("/uploads/object", async (req, res, next) => {
       key,
       expiresInSeconds: 600
     });
+    res.set("Cache-Control", PRIVATE_UPLOAD_PROXY_CACHE_CONTROL);
     return res.redirect(302, signed.downloadUrl);
   } catch (error) {
     return next(error);
@@ -1479,6 +1531,7 @@ router.put("/me", async (req, res) => {
 
   const updatedProfile = await ProfileModel.update(profile._id, update);
   invalidateMapCaches(req.tenant?._id);
+  clearHomeStatsCaches();
 
   const updatedUser = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   if (updatedUser) {
@@ -1644,8 +1697,12 @@ router.get("/suggestions", async (req, res) => {
   return res.json({ items: fallback, forUserId: String(targetProfile._id) });
 });
 
-router.get("/stats/home", async (req, res) => {
-  const profiles = await ProfileModel.find(req.tenant._id, {}, { select: ["roleAtCamp", "collegeYears"] });
+async function readHomeStatsPayload(tenantId = "") {
+  const cacheKey = tenantReadCacheKey("stats-home", tenantId);
+  const cached = homeStatsResponseCache.get(cacheKey);
+  if (cached) return cached;
+
+  const profiles = await ProfileModel.find(tenantId, {}, { select: ["roleAtCamp", "collegeYears"] });
 
   const totalAlumni = profiles.length;
   const totalStaff = profiles.filter((profile) =>
@@ -1665,35 +1722,94 @@ router.get("/stats/home", async (req, res) => {
     }
   }
 
-  return res.json({
+  const payload = {
     totalAlumni,
     totalStaff,
     latestYear,
     activeConversations: 0
-  });
-});
+  };
+  homeStatsResponseCache.set(cacheKey, payload);
+  return payload;
+}
 
-router.get("/stats/locations", async (req, res) => {
-  const rows = await aggregateCityCounts(req.tenant._id);
+async function readLocationStatsPayload(tenantId = "") {
+  const cacheKey = tenantReadCacheKey("stats-locations", tenantId);
+  const cached = locationsStatsResponseCache.get(cacheKey);
+  if (cached) return cached;
+
+  const rows = await aggregateCityCounts(tenantId);
   const sorted = rows.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
   const top = sorted.slice(0, 10).map((row) => ({
     name: [row.city, row.state].filter(Boolean).join(", "),
     count: row.count
   }));
-  return res.json({
+  const payload = {
     totalLocations: rows.length,
     items: top
+  };
+  locationsStatsResponseCache.set(cacheKey, payload);
+  return payload;
+}
+
+function clampActivityLimit(raw = 50) {
+  return Math.min(Math.max(Number(raw || 50), 1), 200);
+}
+
+async function readActivityPayload(tenantId = "", { limit = 50 } = {}) {
+  const resolvedLimit = clampActivityLimit(limit);
+  const cacheKey = tenantReadCacheKey("activity", tenantId, String(resolvedLimit));
+  const cached = activityResponseCache.get(cacheKey);
+  if (cached) return cached;
+
+  const rows = await ActivityItemModel.find(tenantId, {}, {
+    sort: { pinned: -1, pinnedAt: -1, ts: -1 },
+    limit: resolvedLimit
+  });
+  const payload = rows.map((row) => activityToClient(row));
+  activityResponseCache.set(cacheKey, payload);
+  return payload;
+}
+
+router.get("/home/bootstrap", async (req, res) => {
+  const activityLimit = clampActivityLimit(req.query.activityLimit || req.query.limit || 50);
+  const [stats, locations, activity] = await Promise.all([
+    readHomeStatsPayload(req.tenant._id),
+    readLocationStatsPayload(req.tenant._id),
+    readActivityPayload(req.tenant._id, { limit: activityLimit })
+  ]);
+
+  res.set("Cache-Control", ACTIVITY_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json({
+    stats,
+    locations,
+    activity,
+    limits: {
+      activity: activityLimit
+    }
   });
 });
 
-router.get("/activity", async (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 200);
-  const rows = await ActivityItemModel.find(req.tenant._id, {}, {
-    sort: { pinned: -1, pinnedAt: -1, ts: -1 },
-    limit
-  });
+router.get("/stats/home", async (req, res) => {
+  const payload = await readHomeStatsPayload(req.tenant._id);
+  res.set("Cache-Control", HOME_STATS_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
+});
 
-  return res.json(rows.map((row) => activityToClient(row)));
+router.get("/stats/locations", async (req, res) => {
+  const payload = await readLocationStatsPayload(req.tenant._id);
+  res.set("Cache-Control", LOCATIONS_STATS_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
+});
+
+router.get("/activity", async (req, res) => {
+  const limit = clampActivityLimit(req.query.limit || 50);
+  const payload = await readActivityPayload(req.tenant._id, { limit });
+  res.set("Cache-Control", ACTIVITY_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
 });
 
 router.post("/activity", async (req, res) => {
@@ -1714,6 +1830,7 @@ router.post("/activity", async (req, res) => {
     ts: new Date()
   });
 
+  clearHomeActivityCache();
   return res.status(201).json(activityToClient(created));
 });
 
@@ -1735,6 +1852,7 @@ router.delete("/activity/:id", async (req, res) => {
   }
 
   await ActivityItemModel.delete(existing._id);
+  clearHomeActivityCache();
   return res.json({ ok: true });
 });
 
@@ -1768,6 +1886,7 @@ router.patch("/activity/:id/pin", async (req, res) => {
     pinnedAt: pinned ? new Date() : null
   });
 
+  clearHomeActivityCache();
   return res.json({ id: String(updated._id), pinned: Boolean(updated.pinned) });
 });
 
@@ -1783,6 +1902,7 @@ router.post("/photos/presign", async (req, res, next) => {
       fileType,
       objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
       fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
+      cacheControl: IMMUTABLE_IMAGE_CACHE_CONTROL,
       allowedContentTypes: [...IMAGE_MIME_TYPES]
     });
 
@@ -1796,6 +1916,17 @@ router.get("/photos", async (req, res) => {
   const sort = String(req.query.sort || "new").toLowerCase();
   const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 50);
   const ownerId = String(req.query.ownerId || "").trim();
+  const cacheKey = tenantReadCacheKey(
+    "photos",
+    req.tenant?._id,
+    [String(req.user?.id || ""), sort, String(limit), ownerId].join(":")
+  );
+  const cached = photoFeedResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", PHOTO_FEED_CACHE_CONTROL);
+    res.set("Vary", "Authorization");
+    return res.json(cached);
+  }
 
   const filter = {};
   if (ownerId) {
@@ -1817,11 +1948,15 @@ router.get("/photos", async (req, res) => {
   }
 
   const sliced = ordered.slice(0, limit).map((row) => photoToClient(row, req.user.id));
-  return res.json({
+  const payload = {
     items: sliced,
     nextCursor: null,
     nextPage: null
-  });
+  };
+  photoFeedResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", PHOTO_FEED_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
 });
 
 router.post("/photos", async (req, res) => {
@@ -1854,6 +1989,8 @@ router.post("/photos", async (req, res) => {
     },
     ts: new Date()
   }).catch(() => {});
+  clearHomeActivityCache();
+  clearPhotoFeedCache();
 
   return res.status(201).json(photoToClient(created, req.user.id));
 });
@@ -1913,6 +2050,7 @@ router.post("/photos/:id/comments", async (req, res) => {
     text,
     commentMentions: Array.isArray(req.body?.commentMentions) ? req.body.commentMentions : []
   });
+  clearPhotoFeedCache();
 
   return res.status(201).json(
     commentToClient({
@@ -1947,6 +2085,7 @@ router.delete("/photos/:id/comments/:commentId", async (req, res) => {
   }
 
   await PhotoModel.removeComment(id, commentId);
+  clearPhotoFeedCache();
 
   return res.json({ ok: true });
 });
@@ -1969,6 +2108,7 @@ router.post("/photos/:id/like", async (req, res) => {
     updated = await PhotoModel.addLike(id, req.user.id);
   }
 
+  clearPhotoFeedCache();
   return res.json(photoToClient(updated, req.user.id));
 });
 
@@ -1988,6 +2128,7 @@ router.delete("/photos/:id", async (req, res) => {
   }
 
   await PhotoModel.delete(photo._id);
+  clearPhotoFeedCache();
   return res.json({ ok: true });
 });
 
@@ -2032,6 +2173,7 @@ router.post("/conversations/dm", async (req, res) => {
         { userId: otherId, lastReadAt: new Date(0) }
       ]
     });
+    clearConversationCaches();
     const payload = conversationToClient(convo, req.user.id);
     if (!payload) {
       return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create DM" } });
@@ -2080,6 +2222,7 @@ router.post("/conversations/group", async (req, res) => {
     readBy: unique.map((id) => ({ userId: id, lastReadAt: String(id) === String(meId) ? now : new Date(0) }))
   });
 
+  clearConversationCaches();
   const payload = conversationToClient(convo, req.user.id);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create group" } });
@@ -2090,16 +2233,41 @@ router.post("/conversations/group", async (req, res) => {
 router.get("/conversations", async (req, res) => {
   const meId = asObjectId(req.user.id);
   if (!meId) return res.json({ items: [] });
+  const cacheKey = tenantReadCacheKey(
+    "conversations-list",
+    req.tenant?._id,
+    [String(req.user?.id || ""), String(req.originalUrl || req.url || "")].join(":")
+  );
+  const cached = conversationListResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", CHAT_CONVERSATIONS_CACHE_CONTROL);
+    res.set("Vary", "Authorization");
+    return res.json(cached);
+  }
 
   const items = await ConversationModel.findByParticipant(req.tenant._id, meId, { limit: 200 });
-
-  return res.json({ items: items.map((item) => conversationToClient(item, req.user.id)).filter(Boolean) });
+  const payload = { items: items.map((item) => conversationToClient(item, req.user.id)).filter(Boolean) };
+  conversationListResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", CHAT_CONVERSATIONS_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
 });
 
 router.get("/conversations/:id", async (req, res) => {
   const id = String(req.params.id || "");
   if (!isValidObjectId(id)) {
     return res.status(400).json({ error: { code: "INVALID_ID", message: "Invalid conversation id" } });
+  }
+  const cacheKey = tenantReadCacheKey(
+    "conversations-detail",
+    req.tenant?._id,
+    [String(req.user?.id || ""), id].join(":")
+  );
+  const cached = conversationDetailResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", CHAT_CONVERSATIONS_CACHE_CONTROL);
+    res.set("Vary", "Authorization");
+    return res.json(cached);
   }
 
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
@@ -2111,6 +2279,9 @@ router.get("/conversations/:id", async (req, res) => {
   if (!payload) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found" } });
   }
+  conversationDetailResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", CHAT_CONVERSATIONS_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
   return res.json(payload);
 });
 
@@ -2136,6 +2307,7 @@ router.patch("/conversations/:id", async (req, res) => {
   const name = sanitizeText(String(req.body?.name || "").trim());
   const updated = await ConversationModel.update(convo._id, { name: name || convo.name });
 
+  clearConversationCaches();
   const payload = conversationToClient(updated, req.user.id);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to rename group" } });
@@ -2175,6 +2347,7 @@ router.post("/conversations/:id/members", async (req, res) => {
     if (!payload) {
       return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to add member" } });
     }
+    clearConversationCaches();
     return res.json(payload);
   }
   const payload = conversationToClient(convo, req.user.id);
@@ -2211,6 +2384,7 @@ router.delete("/conversations/:id/members", async (req, res) => {
   const readBy = (convo.readBy || []).filter((entry) => String(entry.userId || "") !== String(targetId));
   const updated = await ConversationModel.update(convo._id, { participantIds, members, readBy });
 
+  clearConversationCaches();
   const payload = conversationToClient(updated, req.user.id);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to remove member" } });
@@ -2228,6 +2402,17 @@ router.get("/conversations/:id/messages", async (req, res) => {
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
 
   const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 100);
+  const cacheKey = tenantReadCacheKey(
+    "conversations-messages",
+    req.tenant?._id,
+    [String(req.user?.id || ""), id, String(limit), String(req.query.cursor || "")].join(":")
+  );
+  const cached = conversationMessagesResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", CHAT_MESSAGES_CACHE_CONTROL);
+    res.set("Vary", "Authorization");
+    return res.json(cached);
+  }
   const where = { conversationId: id, deletedAt: null };
   const cursor = req.query.cursor ? new Date(req.query.cursor) : null;
   if (cursor && Number.isFinite(cursor.getTime())) where.createdAt = { $lt: cursor };
@@ -2236,7 +2421,11 @@ router.get("/conversations/:id/messages", async (req, res) => {
   const items = docs.slice().reverse().map((doc) => messageToClient(doc)).filter(Boolean);
   const nextCursor = docs.length ? new Date(docs[docs.length - 1].createdAt).toISOString() : null;
 
-  return res.json({ items, nextCursor });
+  const payload = { items, nextCursor };
+  conversationMessagesResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", CHAT_MESSAGES_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
 });
 
 router.post("/conversations/:id/messages", async (req, res) => {
@@ -2297,6 +2486,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
     }
   });
 
+  clearConversationCaches();
   const payload = messageToClient(created);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create message" } });
@@ -2327,6 +2517,7 @@ router.post("/conversations/:id/read", async (req, res) => {
   }
   await ConversationModel.update(convo._id, { readBy });
 
+  clearConversationCaches();
   return res.json({ ok: true, id, iso: nextReadAt.toISOString() });
 });
 
@@ -2379,6 +2570,7 @@ router.delete("/conversations/:id", async (req, res) => {
 
   await MessageModel.deleteMany(req.tenant._id, { conversationId: convo._id });
   await ConversationModel.delete(convo._id);
+  clearConversationCaches();
   return res.json({ ok: true, id: String(id) });
 });
 
@@ -2399,6 +2591,7 @@ router.post("/forums", async (req, res) => {
       postsCount: 0,
       lastActivityAt: new Date()
     });
+    clearForumCaches();
     const payload = forumToClient(created);
     if (!payload) {
       return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create forum" } });
@@ -2415,6 +2608,17 @@ router.post("/forums", async (req, res) => {
 router.get("/forums", async (req, res) => {
   const mine = String(req.query.mine || "").toLowerCase() === "true";
   const search = String(req.query.search || "").trim();
+  const cacheKey = tenantReadCacheKey(
+    "forums-list",
+    req.tenant?._id,
+    [String(req.user?.id || ""), String(req.originalUrl || req.url || "")].join(":")
+  );
+  const cached = forumsListResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", FORUMS_CACHE_CONTROL);
+    res.set("Vary", "Authorization");
+    return res.json(cached);
+  }
 
   let items;
   if (mine) {
@@ -2429,7 +2633,11 @@ router.get("/forums", async (req, res) => {
     items = await ForumModel.find(req.tenant._id, filter, { sort: { name: 1 }, limit: 200 });
   }
 
-  return res.json({ items: items.map((item) => forumToClient(item)).filter(Boolean) });
+  const payload = { items: items.map((item) => forumToClient(item)).filter(Boolean) };
+  forumsListResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", FORUMS_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
 });
 
 router.get("/forums/:id", async (req, res) => {
@@ -2437,11 +2645,25 @@ router.get("/forums/:id", async (req, res) => {
   if (!isValidObjectId(id)) {
     return res.status(400).json({ error: { code: "INVALID_ID", message: "Invalid forum id" } });
   }
+  const cacheKey = tenantReadCacheKey(
+    "forums-detail",
+    req.tenant?._id,
+    [String(req.user?.id || ""), id].join(":")
+  );
+  const cached = forumDetailResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", FORUMS_CACHE_CONTROL);
+    res.set("Vary", "Authorization");
+    return res.json(cached);
+  }
 
   const forum = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!forum) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
   const payload = forumToClient(forum);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+  forumDetailResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", FORUMS_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
   return res.json(payload);
 });
 
@@ -2456,6 +2678,7 @@ router.post("/forums/:id/join", async (req, res) => {
 
   await ForumModel.addMember(existing._id, req.user.id);
   const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
+  clearForumCaches();
   const payload = forumToClient(forum);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
   return res.json(payload);
@@ -2472,6 +2695,7 @@ router.post("/forums/:id/leave", async (req, res) => {
 
   await ForumModel.removeMember(existing._id, req.user.id);
   const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
+  clearForumCaches();
   const payload = forumToClient(forum);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
   return res.json(payload);
@@ -2487,6 +2711,17 @@ router.get("/forums/:id/posts", async (req, res) => {
   if (!forum) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
   const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 100);
+  const cacheKey = tenantReadCacheKey(
+    "forums-posts",
+    req.tenant?._id,
+    [String(req.user?.id || ""), id, String(limit), String(req.query.cursor || "")].join(":")
+  );
+  const cached = forumPostsResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", FORUM_POSTS_CACHE_CONTROL);
+    res.set("Vary", "Authorization");
+    return res.json(cached);
+  }
   const where = { forumId: id, deletedAt: null };
   const cursor = req.query.cursor ? new Date(req.query.cursor) : null;
   if (cursor && Number.isFinite(cursor.getTime())) where.createdAt = { $lt: cursor };
@@ -2494,7 +2729,11 @@ router.get("/forums/:id/posts", async (req, res) => {
   const docs = await ForumPostModel.find(req.tenant._id, where, { sort: { createdAt: -1 }, limit });
   const items = docs.slice().reverse().map((post) => forumPostToClient(post)).filter(Boolean);
   const nextCursor = docs.length ? new Date(docs[docs.length - 1].createdAt).toISOString() : null;
-  return res.json({ items, nextCursor });
+  const payload = { items, nextCursor };
+  forumPostsResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", FORUM_POSTS_CACHE_CONTROL);
+  res.set("Vary", "Authorization");
+  return res.json(payload);
 });
 
 router.post("/forums/:id/posts", async (req, res) => {
@@ -2536,6 +2775,7 @@ router.post("/forums/:id/posts", async (req, res) => {
     lastActivityAt: new Date()
   });
 
+  clearForumCaches();
   const payload = forumPostToClient(created);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create post" } });
@@ -2590,6 +2830,7 @@ router.delete("/forums/:id", async (req, res) => {
 
   await ForumPostModel.deleteMany(req.tenant._id, { forumId: forum._id });
   await ForumModel.delete(forum._id);
+  clearForumCaches();
   return res.json({ ok: true, id: String(id) });
 });
 
@@ -2695,6 +2936,7 @@ router.post(
     fileType: String(coverImage.mimetype || "").toLowerCase(),
     body: coverImage.buffer,
     objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
+    cacheControl: IMMUTABLE_IMAGE_CACHE_CONTROL,
     allowedContentTypes: [...NEWSLETTER_COVER_MIME_TYPES]
   });
   const created = await NewsletterModel.create({

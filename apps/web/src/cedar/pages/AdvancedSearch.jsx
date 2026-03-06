@@ -1019,6 +1019,8 @@ export default function AdvancedSearch() {
                                       className="as2-avatar"
                                       src={photo}
                                       alt={`${first} ${last}`}
+                                      loading="lazy"
+                                      decoding="async"
                                     />
                                   ) : (
                                     <div className="as2-avatar-fallback">

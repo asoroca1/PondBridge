@@ -75,6 +75,9 @@ const DirectorAdminSettingsDangerPage = lazyPage(() =>
     default: module.DirectorAdminSettingsDangerPage
   }))
 );
+const DirectorAdminSettingsSupportPage = lazyPage(() =>
+  import("./pages/admin/DirectorAdminSettingsSupportPage.jsx")
+);
 const DirectorAdminSettingsLayout = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminSettingsLayout }))
 );
@@ -116,22 +119,13 @@ function warmRouteChunk(key, loader) {
     .catch(() => {});
 }
 
-function warmAuthenticatedRouteChunks({ includeAdmin = false } = {}) {
+function warmAuthenticatedRouteChunks() {
   const baseWarmers = [
     ["cedar-main-home", () => import("./cedar/pages/MainHome.jsx")],
-    ["cedar-my-profile", () => import("./cedar/pages/MyProfile.jsx")],
-    ["cedar-search", () => import("./cedar/pages/AdvancedSearch.jsx")],
-    ["cedar-photo-stream", () => import("./cedar/pages/PhotoStream.jsx")]
+    ["cedar-my-profile", () => import("./cedar/pages/MyProfile.jsx")]
   ];
   for (const [key, loader] of baseWarmers) {
     warmRouteChunk(key, loader);
-  }
-  if (includeAdmin) {
-    warmRouteChunk("director-admin-invites", () => import("./pages/admin/DirectorAdminInvitesPage.jsx"));
-    warmRouteChunk("director-admin-billing", () => import("./pages/admin/DirectorAdminBillingPage.jsx"));
-    warmRouteChunk("director-admin-settings-admins", () =>
-      import("./pages/admin/DirectorAdminSettingsAdminsPage.jsx")
-    );
   }
 }
 
@@ -298,13 +292,13 @@ function TenantScopeRoutes() {
     let timeoutHandle = null;
     const scheduleWarmup = () => {
       if (cancelled) return;
-      warmAuthenticatedRouteChunks({ includeAdmin: isCampDirectorSession });
+      warmAuthenticatedRouteChunks();
     };
 
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
-      idleHandle = window.requestIdleCallback(scheduleWarmup, { timeout: 1400 });
+      idleHandle = window.requestIdleCallback(scheduleWarmup, { timeout: 2500 });
     } else {
-      timeoutHandle = window.setTimeout(scheduleWarmup, 500);
+      timeoutHandle = window.setTimeout(scheduleWarmup, 1500);
     }
 
     return () => {
@@ -316,7 +310,7 @@ function TenantScopeRoutes() {
         window.clearTimeout(timeoutHandle);
       }
     };
-  }, [isAuthenticated, isCampDirectorSession, isReady, loading, location.pathname, tenant]);
+  }, [isAuthenticated, isReady, loading, location.pathname, tenant]);
 
   function expectedNetworkHref(expectedSlug = "") {
     const normalizedSlug = String(expectedSlug || "").trim().toLowerCase();
@@ -599,6 +593,7 @@ function TenantScopeRoutes() {
             <Route path="branding" element={<DirectorAdminSettingsBrandingPage />} />
             <Route path="access" element={<Navigate to="../network" replace />} />
             <Route path="admins" element={<DirectorAdminSettingsAdminsPage />} />
+            <Route path="support" element={<DirectorAdminSettingsSupportPage />} />
             <Route path="notifications" element={<Navigate to="../network" replace />} />
             <Route path="danger" element={<DirectorAdminSettingsDangerPage />} />
           </Route>
@@ -630,6 +625,10 @@ function TenantScopeRoutes() {
         <Route
           path="settings/admins"
           element={<Navigate to={slug ? `/t/${slug}/admin/settings/admins` : "/admin/settings/admins"} replace />}
+        />
+        <Route
+          path="settings/support"
+          element={<Navigate to={slug ? `/t/${slug}/admin/settings/support` : "/admin/settings/support"} replace />}
         />
         <Route
           path="settings/imports"

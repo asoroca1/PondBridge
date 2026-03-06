@@ -15,6 +15,7 @@ const SETTINGS_NAV = [
   { key: "network", to: "settings/network", label: "Network Identity", className: "director-admin-sidebar-sublink" },
   { key: "branding", to: "settings/branding", label: "Branding", className: "director-admin-sidebar-sublink" },
   { key: "admins", to: "settings/admins", label: "Admins", className: "director-admin-sidebar-sublink" },
+  { key: "support", to: "settings/support", label: "Technical Support", className: "director-admin-sidebar-sublink" },
   { key: "danger", to: "settings/danger", label: "Danger Zone", className: "director-admin-sidebar-sublink" }
 ];
 

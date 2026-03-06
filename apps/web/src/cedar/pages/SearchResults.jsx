@@ -67,7 +67,16 @@ function ResultAvatar({ photo = "", first = "", last = "", name = "" }) {
   }, [src]);
 
   if (src && !errored) {
-    return <img className="sr-avatar" src={src} alt={name} onError={() => setErrored(true)} />;
+    return (
+      <img
+        className="sr-avatar"
+        src={src}
+        alt={name}
+        loading="lazy"
+        decoding="async"
+        onError={() => setErrored(true)}
+      />
+    );
   }
 
   return (

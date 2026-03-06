@@ -1,13 +1,14 @@
 // src/pages/PublicProfile.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
-import coverPhoto from "../assets/cedar-bg.jpg";
+import fallbackCoverPhoto from "../assets/profile-cover.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
 import { API_BASE } from "../lib/api";
 import { authHeaders, displayName, initialsOf, avatarUrl, getToken } from "../lib/helpers.js";
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
+import { useTenant } from "../../context/TenantContext.jsx";
 
 function safeUrl(u) { if (!u) return ""; return /^https?:\/\//i.test(u) ? u : `https://${u}`; }
 function telHref(s = "") { return `tel:${String(s).replace(/[^\d+]/g, "")}`; }
@@ -389,12 +390,14 @@ export default function PublicProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { tenant } = useTenant();
   const preload = location.state?.preload || null;
 
   const [profile, setProfile] = useState(preload ? normalizeProfile(preload) : null);
   const [loading, setLoading] = useState(!preload);
   const [error, setError] = useState("");
   const [avatarErrored, setAvatarErrored] = useState(false);
+  const [coverErrored, setCoverErrored] = useState(false);
   const profileId = String(id || "").trim();
   const hasValidProfileId = Boolean(
     profileId && profileId !== "undefined" && profileId !== "null"
@@ -441,6 +444,11 @@ export default function PublicProfile() {
     [profile?.education]
   );
   const profilePhotoUrl = useMemo(() => avatarUrl(profile || {}), [profile]);
+  const tenantHeroCoverUrl = useMemo(
+    () => String(tenant?.theme?.heroImageUrl || "").trim(),
+    [tenant?.theme?.heroImageUrl]
+  );
+  const coverPhotoUrl = tenantHeroCoverUrl || fallbackCoverPhoto;
   const profileInitials = useMemo(
     () => initialsOf(profile?.firstName, profile?.lastName, profile?.nickname) || "?",
     [profile?.firstName, profile?.lastName, profile?.nickname]
@@ -449,6 +457,9 @@ export default function PublicProfile() {
   useEffect(() => {
     setAvatarErrored(false);
   }, [profilePhotoUrl]);
+  useEffect(() => {
+    setCoverErrored(false);
+  }, [coverPhotoUrl]);
 
   if (loading && !profile) {
     return (
@@ -510,7 +521,12 @@ export default function PublicProfile() {
               <div className="p1-leftcol">
                 <aside className="p1-card p1-card-profile p1-left with-cover">
                   <div className="p1-cover">
-                    <img className="p1-cover-img" src={coverPhoto} alt="" />
+                    <img
+                      className="p1-cover-img"
+                      src={coverErrored ? fallbackCoverPhoto : coverPhotoUrl}
+                      alt=""
+                      onError={() => setCoverErrored(true)}
+                    />
                     <div className="p1-cover-overlay" />
                   </div>
 

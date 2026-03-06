@@ -5,6 +5,7 @@ import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { UserModel, ProfileModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { sanitizeText } from "../utils/sanitize.js";
+import { createTtlCache } from "../utils/ttlCache.js";
 import {
   canonicalizeCityName,
   canonicalizeCountryName,
@@ -13,6 +14,8 @@ import {
 } from "../utils/location.js";
 
 const router = Router({ mergeParams: true });
+const PROFILE_LIST_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
+const profileListResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 400 });
 
 const profileUpdateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -34,6 +37,26 @@ function withNickname(profile = {}) {
   return {
     ...profile,
     nickname: String(profile.nickname || socials.nickname || socials.campNickname || "").trim()
+  };
+}
+
+function mapProfileSummary(profile = {}) {
+  const withNick = withNickname(profile);
+  return {
+    id: String(withNick._id || withNick.id || ""),
+    _id: String(withNick._id || withNick.id || ""),
+    userId: String(withNick.userId || ""),
+    firstName: String(withNick.firstName || "").trim(),
+    lastName: String(withNick.lastName || "").trim(),
+    nickname: String(withNick.nickname || "").trim(),
+    roleAtCamp: String(withNick.roleAtCamp || "").trim(),
+    cityState: String(withNick.cityState || "").trim(),
+    industry: String(withNick.industry || "").trim(),
+    avatarUrl: String(withNick.avatarUrl || "").trim(),
+    uploads: { photoUrl: String(withNick.avatarUrl || "").trim() },
+    currentJobs: Array.isArray(withNick.currentJobs) ? withNick.currentJobs.slice(0, 3) : [],
+    createdAt: withNick.createdAt || null,
+    updatedAt: withNick.updatedAt || null
   };
 }
 
@@ -192,6 +215,7 @@ router.put("/me", profileUpdateLimiter, async (req, res) => {
   );
 
   const profile = await ProfileModel.update(existing._id, cleanUpdate);
+  profileListResponseCache.clear();
 
   await logTenantEvent({
     tenantId: req.tenant._id,
@@ -208,7 +232,27 @@ router.get("/", async (req, res) => {
   const roleAtCamp = String(req.query.roleAtCamp || "").trim();
   const industry = String(req.query.industry || "").trim();
   const cityState = String(req.query.cityState || "").trim();
-  const limit = Math.min(Number(req.query.limit || 30), 100);
+  const view = String(req.query.view || "summary").trim().toLowerCase();
+  const includeFull = view === "full";
+  const limit = Math.min(Math.max(Number(req.query.limit || 30) || 30, 1), 100);
+  const cacheKey = [
+    String(req.tenant?._id || ""),
+    String(req.user?.id || ""),
+    q,
+    roleAtCamp,
+    industry,
+    cityState,
+    limit,
+    includeFull ? "full" : "summary"
+  ].join(":");
+
+  if (!includeFull) {
+    const cached = profileListResponseCache.get(cacheKey);
+    if (cached) {
+      res.set("Cache-Control", PROFILE_LIST_CACHE_CONTROL);
+      return res.json(cached);
+    }
+  }
 
   const items = await ProfileModel.search(req.tenant._id, q, {
     roleAtCamp: roleAtCamp || null,
@@ -217,7 +261,19 @@ router.get("/", async (req, res) => {
     limit
   });
 
-  return res.json({ total: items.length, items: items.map((profile) => withNickname(profile)) });
+  const payload = {
+    total: items.length,
+    items: includeFull
+      ? items.map((profile) => withNickname(profile))
+      : items.map((profile) => mapProfileSummary(profile))
+  };
+
+  if (!includeFull) {
+    profileListResponseCache.set(cacheKey, payload);
+    res.set("Cache-Control", PROFILE_LIST_CACHE_CONTROL);
+  }
+
+  return res.json(payload);
 });
 
 router.get("/:profileId", async (req, res) => {

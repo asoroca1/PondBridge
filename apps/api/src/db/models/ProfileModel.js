@@ -27,6 +27,26 @@ const COLUMNS = {
 };
 
 const base = createModel("profiles", COLUMNS);
+const SEARCH_CANDIDATE_SELECT_SQL = [
+  "id",
+  "tenant_id",
+  "user_id",
+  "first_name",
+  "last_name",
+  "emails",
+  "city_state",
+  "role_at_camp",
+  "high_school",
+  "colleges",
+  "current_jobs",
+  "past_jobs",
+  "industry",
+  "socials",
+  "avatar_url",
+  "created_at",
+  "updated_at",
+  "status"
+].join(",");
 
 function clampLimit(value, fallback = 30, max = 100) {
   const parsed = Number(value);
@@ -268,7 +288,7 @@ function fuzzyRankProfiles(items = [], query = "", limit = 30) {
 async function fetchCandidateProfiles(tenantId, opts = {}, limit = 200) {
   let query = getSupabaseAdmin()
     .from("profiles")
-    .select("*")
+    .select(SEARCH_CANDIDATE_SELECT_SQL)
     .eq("tenant_id", tenantId)
     .neq("status", "removed")
     .order("last_name", { ascending: true })
@@ -323,6 +343,11 @@ export const ProfileModel = {
     const limit = clampLimit(opts.limit || 30, 30, maxLimit);
     const normalizedQuery = normalizeText(query || "");
     const strictLimit = normalizedQuery ? Math.max(limit, 60) : limit;
+
+    if (!normalizedQuery) {
+      const noQueryRows = await fetchCandidateProfiles(tenantId, opts, limit);
+      return noQueryRows.slice(0, limit);
+    }
 
     let strictMatches = [];
     let usedRpcFallback = false;

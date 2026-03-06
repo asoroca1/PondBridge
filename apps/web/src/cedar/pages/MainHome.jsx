@@ -633,31 +633,21 @@ export default function MainHome() {
   }, [navigate]);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/activity?limit=50`, { headers: authHeaders(false) });
-        if (r.ok) setActivity(normalizeActivityList(await r.json()));
+        const r = await fetch(`${API_BASE}/home/bootstrap?activityLimit=50`, { headers: authHeaders(false) });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (cancelled) return;
+        setActivity(normalizeActivityList(data?.activity || []));
+        setStats(data?.stats || null);
+        setLocationsSummary(data?.locations || null);
       } catch {}
     })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch(`${API_BASE}/stats/home`, { headers: authHeaders(false) });
-        if (r.ok) setStats(await r.json());
-      } catch {}
-    })();
-  }, []);
-
-  // dedicated unique locations summary
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch(`${API_BASE}/stats/locations`, { headers: authHeaders(false) });
-        if (r.ok) setLocationsSummary(await r.json());
-      } catch {}
-    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function onAnnouncementPosted(created) {

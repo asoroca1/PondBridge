@@ -66,6 +66,7 @@ import { normalizeBillingPlan } from "../services/billingState.js";
 import { hashPassword } from "../utils/auth.js";
 import { sanitizeText, sanitizeHtmlContent } from "../utils/sanitize.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
+import { createTtlCache } from "../utils/ttlCache.js";
 import {
   canonicalizeCityName,
   canonicalizeCountryName,
@@ -137,6 +138,25 @@ const inviteSendLimiter = rateLimit({
     }
   }
 });
+const supportRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) =>
+    [
+      "admin-support",
+      String(req.params?.slug || req.tenant?.slug || ""),
+      String(req.user?.id || ""),
+      String(req.ip || "")
+    ].join(":"),
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many support requests. Please wait before sending another."
+    }
+  }
+});
 const exportLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -161,6 +181,16 @@ const DEFAULT_AGE_GROUPS = [
   "Senior II"
 ];
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
+const SUPPORT_REQUEST_TOPICS = new Set([
+  "general",
+  "billing",
+  "branding",
+  "members",
+  "email",
+  "integrations",
+  "bug"
+]);
+const SUPPORT_REQUEST_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
 
 function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
   const parsed = Number(value);
@@ -195,6 +225,12 @@ function normalizeEmail(value = "") {
 
 function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function resolveSupportContactEmail() {
+  const configured = normalizeEmail(env?.SUPPORT_EMAIL || env?.SUPPORT_CONTACT_EMAIL || "");
+  if (isEmail(configured)) return configured;
+  return "support@pondbridgealumni.com";
 }
 
 function normalizeIdentityLabelList(value = [], fallback = []) {
@@ -425,10 +461,10 @@ function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "
     ? normalizeHttpUrl(theme.logoUrl || normalizedFooter.logoUrl || "")
     : "";
   const headerLogoMarkup = headerLogoUrl
-    ? `<img src="${escapeEmailHtml(headerLogoUrl)}" alt="" width="42" height="42" style="display:block;width:42px;height:42px;border-radius:10px;object-fit:cover;border:0;outline:none;text-decoration:none;" />`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:42px;height:42px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.14);"><tr><td align="center" valign="middle" style="width:42px;height:42px;line-height:0;"><img src="${escapeEmailHtml(headerLogoUrl)}" alt="" style="display:block;max-width:38px;max-height:38px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
     : `<div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,0.18);color:#ffffff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;line-height:42px;text-align:center;">PB</div>`;
   const footerLogoMarkup = footerLogoUrl
-    ? `<img src="${escapeEmailHtml(footerLogoUrl)}" alt="" width="52" height="52" style="display:block;width:52px;height:52px;border-radius:10px;object-fit:cover;border:1px solid #dbe6f3;outline:none;text-decoration:none;" />`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:52px;height:52px;border-radius:10px;overflow:hidden;border:1px solid #dbe6f3;background:#ffffff;"><tr><td align="center" valign="middle" style="width:52px;height:52px;line-height:0;"><img src="${escapeEmailHtml(footerLogoUrl)}" alt="" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
     : "";
   const safeBodyForEmail = safeBodyHtml || "<p style=\"margin:0;\">&nbsp;</p>";
 
@@ -615,6 +651,43 @@ const DASHBOARD_SIGNIN_EVENT_TYPES = [
 ];
 const DEFAULT_MEMBER_PAGE_SIZE = 25;
 const MAX_MEMBER_PAGE_SIZE = 100;
+const ADMIN_MEMBERS_CACHE_CONTROL = "private, max-age=10, stale-while-revalidate=30";
+const adminMembersResponseCache = createTtlCache({ ttlMs: 10_000, maxEntries: 500 });
+const ADMIN_DASHBOARD_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=60";
+const adminDashboardResponseCache = createTtlCache({ ttlMs: 20_000, maxEntries: 250 });
+const ADMIN_MEMBER_PROFILE_SELECT = [
+  "id",
+  "userId",
+  "firstName",
+  "lastName",
+  "emails",
+  "phones",
+  "cityState",
+  "roleAtCamp",
+  "highSchool",
+  "colleges",
+  "collegeYears",
+  "currentJobs",
+  "industry",
+  "avatarUrl",
+  "bio",
+  "status",
+  "flaggedReason",
+  "createdAt"
+];
+
+function clearAdminMembersCache() {
+  adminMembersResponseCache.clear();
+}
+
+function clearAdminDashboardCache() {
+  adminDashboardResponseCache.clear();
+}
+
+function clearAdminReadCaches() {
+  clearAdminMembersCache();
+  clearAdminDashboardCache();
+}
 const MODULE_CATALOG = [
   {
     key: "directory",
@@ -1905,6 +1978,50 @@ function parseMemberPagination(query = {}) {
   };
 }
 
+function clampCompletionPercent(value, fallback = null) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(numeric)));
+}
+
+function parseCompletionRange(query = {}) {
+  const completion = String(query.completion || "").trim().toLowerCase();
+  const hasMin = query.completionMin !== undefined && String(query.completionMin || "").trim() !== "";
+  const hasMax = query.completionMax !== undefined && String(query.completionMax || "").trim() !== "";
+
+  let min = hasMin ? clampCompletionPercent(query.completionMin, 0) : null;
+  let max = hasMax ? clampCompletionPercent(query.completionMax, 100) : null;
+
+  if ((min === null || max === null) && completion && completion !== "all") {
+    if (completion === "low") {
+      min = 0;
+      max = 39;
+    } else if (completion === "medium") {
+      min = 40;
+      max = 79;
+    } else if (completion === "high") {
+      min = 80;
+      max = 100;
+    } else if (completion === "complete") {
+      min = 100;
+      max = 100;
+    }
+  }
+
+  if (min === null && max === null) return null;
+  if (min === null) min = 0;
+  if (max === null) max = 100;
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
+}
+
+function matchesCompletionRange(score = 0, range = null) {
+  if (!range) return true;
+  const value = Number(score || 0);
+  return value >= range.min && value <= range.max;
+}
+
 function sortForMembers(sort = "join_desc") {
   const key = String(sort || "join_desc").trim().toLowerCase();
   if (key === "name_asc") return { lastName: 1, firstName: 1 };
@@ -2046,6 +2163,16 @@ router.use(...requireTenantRoleScope("tenant_admin"));
 router.get("/dashboard", async (req, res, next) => {
   try {
     const tenantId = req.tenant._id;
+    const cacheKey = [
+      "admin-dashboard",
+      String(tenantId || ""),
+      String(req.user?.id || "")
+    ].join(":");
+    const cachedPayload = adminDashboardResponseCache.get(cacheKey);
+    if (cachedPayload) {
+      res.set("Cache-Control", ADMIN_DASHBOARD_CACHE_CONTROL);
+      return res.json(cachedPayload);
+    }
     const sevenDaysAgo = new Date(Date.now() - 7 * DAY_MS);
     const thirtyDaysAgo = new Date(Date.now() - 30 * DAY_MS);
     const chartEndDay = utcDayStart(new Date());
@@ -2173,8 +2300,7 @@ router.get("/dashboard", async (req, res, next) => {
       })
       .slice(0, 5);
 
-    res.set("Cache-Control", "no-store");
-    return res.json({
+    const payload = {
       tenant: {
         id: toObjectIdString(req.tenant._id),
         slug: req.tenant.slug,
@@ -2215,7 +2341,10 @@ router.get("/dashboard", async (req, res, next) => {
           }
         : null,
       recentActivity: activity
-    });
+    };
+    adminDashboardResponseCache.set(cacheKey, payload);
+    res.set("Cache-Control", ADMIN_DASHBOARD_CACHE_CONTROL);
+    return res.json(payload);
   } catch (error) {
     return next(error);
   }
@@ -2229,9 +2358,20 @@ router.get("/members", async (req, res, next) => {
     const role = String(req.query.role || "").trim();
     const year = String(req.query.year || "").trim();
     const status = String(req.query.status || "").trim().toLowerCase();
-    const completion = String(req.query.completion || "").trim().toLowerCase();
     const sort = String(req.query.sort || "join_desc").trim().toLowerCase();
+    const completionRange = parseCompletionRange(req.query);
     const { page, pageSize, skip } = parseMemberPagination(req.query);
+    const cacheKey = [
+      "admin-members",
+      String(tenantId || ""),
+      String(req.user?.id || ""),
+      String(req.originalUrl || req.url || "")
+    ].join(":");
+    const cachedPayload = adminMembersResponseCache.get(cacheKey);
+    if (cachedPayload) {
+      res.set("Cache-Control", ADMIN_MEMBERS_CACHE_CONTROL);
+      return res.json(cachedPayload);
+    }
 
     const filter = {};
 
@@ -2248,7 +2388,7 @@ router.get("/members", async (req, res, next) => {
     }
 
     let mongoSort = sortForMembers(sort);
-    if (completion && completion !== "all") {
+    if (completionRange) {
       mongoSort = null;
     }
     let profiles = [];
@@ -2256,8 +2396,8 @@ router.get("/members", async (req, res, next) => {
 
     // Fetch profiles — apply text search JS-side since Supabase doesn't support $or regex
     const fetchOpts = mongoSort
-      ? { sort: mongoSort, offset: skip, limit: pageSize }
-      : {};
+      ? { sort: mongoSort, offset: skip, limit: pageSize, select: ADMIN_MEMBER_PROFILE_SELECT }
+      : { select: ADMIN_MEMBER_PROFILE_SELECT };
 
     let allProfiles = await ProfileModel.find(tenantId, filter, fetchOpts);
 
@@ -2278,7 +2418,9 @@ router.get("/members", async (req, res, next) => {
       // When text search is applied, we need to re-count (allProfiles was already paginated)
       if (q) {
         // Refetch without pagination to get proper count
-        let countProfiles = await ProfileModel.find(tenantId, filter);
+        let countProfiles = await ProfileModel.find(tenantId, filter, {
+          select: ADMIN_MEMBER_PROFILE_SELECT
+        });
         countProfiles = countProfiles.filter((p) => {
           const rx = new RegExp(escapeRegex(q), "i");
           return rx.test(p.firstName || "") ||
@@ -2320,20 +2462,12 @@ router.get("/members", async (req, res, next) => {
         return new Date(b.joinDate || 0).getTime() - new Date(a.joinDate || 0).getTime();
       });
 
-      const filteredByCompletion =
-        completion && completion !== "all"
-          ? mapped.filter((item) => {
-              if (completion === "low") return item.completionScore < 40;
-              if (completion === "medium")
-                return item.completionScore >= 40 && item.completionScore < 80;
-              if (completion === "high") return item.completionScore >= 80;
-              if (completion === "complete") return item.completionScore >= 100;
-              return true;
-            })
-          : mapped;
+      const filteredByCompletion = mapped.filter((item) =>
+        matchesCompletionRange(item.completionScore, completionRange)
+      );
       total = filteredByCompletion.length;
       const paged = filteredByCompletion.slice(skip, skip + pageSize);
-      return res.json({
+      const payload = {
         total,
         page,
         pageSize,
@@ -2347,7 +2481,10 @@ router.get("/members", async (req, res, next) => {
           ].filter(Boolean).sort(),
           statusOptions: ["active", "pending", "flagged", "removed"]
         }
-      });
+      };
+      adminMembersResponseCache.set(cacheKey, payload);
+      res.set("Cache-Control", ADMIN_MEMBERS_CACHE_CONTROL);
+      return res.json(payload);
     }
 
     const userIds = profiles.map((item) => toObjectIdString(item.userId)).filter(Boolean);
@@ -2361,17 +2498,9 @@ router.get("/members", async (req, res, next) => {
       mapMemberRow(profile, usersById.get(toObjectIdString(profile.userId)) || null, { directorUserId })
     );
 
-    if (completion && completion !== "all") {
-      rows = rows.filter((item) => {
-        if (completion === "low") return item.completionScore < 40;
-        if (completion === "medium") return item.completionScore >= 40 && item.completionScore < 80;
-        if (completion === "high") return item.completionScore >= 80;
-        if (completion === "complete") return item.completionScore >= 100;
-        return true;
-      });
-    }
+    rows = rows.filter((item) => matchesCompletionRange(item.completionScore, completionRange));
 
-    return res.json({
+    const payload = {
       total,
       page,
       pageSize,
@@ -2385,7 +2514,10 @@ router.get("/members", async (req, res, next) => {
         ].filter(Boolean).sort(),
         statusOptions: ["active", "pending", "flagged", "removed"]
       }
-    });
+    };
+    adminMembersResponseCache.set(cacheKey, payload);
+    res.set("Cache-Control", ADMIN_MEMBERS_CACHE_CONTROL);
+    return res.json(payload);
   } catch (error) {
     return next(error);
   }
@@ -2403,10 +2535,16 @@ router.get("/members/lookup", async (req, res, next) => {
       return res.json({ items: [] });
     }
 
-    const profiles = await ProfileModel.find(req.tenant._id, {
-      _id: { $in: ids },
-      status: { $ne: "removed" }
-    });
+    const profiles = await ProfileModel.find(
+      req.tenant._id,
+      {
+        _id: { $in: ids },
+        status: { $ne: "removed" }
+      },
+      {
+        select: ADMIN_MEMBER_PROFILE_SELECT
+      }
+    );
     if (!profiles.length) {
       return res.json({ items: [] });
     }
@@ -2685,6 +2823,7 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
     userId,
     changedFields: Object.keys(cleanPatch)
   });
+  clearAdminReadCaches();
 
   const refreshedUser = userId ? await UserModel.findOne(req.tenant._id, { _id: userId }) : null;
   return res.json({
@@ -2773,6 +2912,7 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
     userId: toObjectIdString(updated.userId),
     changedFields: Object.keys(patch)
   });
+  clearAdminReadCaches();
   return res.json({
     ok: true,
     member: mapMemberRow(updated, user)
@@ -2810,6 +2950,7 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
         userId,
         summary: { profileDeleted: 1, userDeleted: 0 }
       });
+      clearAdminReadCaches();
       return res.json({
         ok: true,
         deletedProfileId: profileId,
@@ -2846,6 +2987,7 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
       userId,
       summary
     });
+    clearAdminReadCaches();
 
     return res.json({
       ok: true,
@@ -2896,6 +3038,7 @@ router.post("/members/bulk-action", async (req, res) => {
       action,
       affected: profiles.length
     });
+    clearAdminReadCaches();
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -2917,6 +3060,7 @@ router.post("/members/bulk-action", async (req, res) => {
       action,
       affected: profiles.length
     });
+    clearAdminReadCaches();
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -2931,6 +3075,7 @@ router.post("/members/bulk-action", async (req, res) => {
       action,
       affected: profiles.length
     });
+    clearAdminReadCaches();
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -3031,6 +3176,7 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
       approvedUserId: toObjectIdString(existingUser._id),
       existingUser: true
     });
+    clearAdminReadCaches();
     return res.json({ ok: true, requestId: toObjectIdString(request._id), existingUser: true });
   }
 
@@ -3077,6 +3223,7 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     approvedUserId: toObjectIdString(user._id),
     existingUser: false
   });
+  clearAdminReadCaches();
 
   const approvedFirstName = String(
     request.firstName || request.profilePayload?.firstName || ""
@@ -3129,6 +3276,7 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
     requestId: toObjectIdString(request._id),
     reasonLength: reason.length
   });
+  clearAdminReadCaches();
 
   if (isEmail(request.email)) {
     const deniedFirstName = String(
@@ -4315,6 +4463,125 @@ router.post("/settings/delete-request", async (req, res) => {
   });
 });
 
+router.post("/settings/support-request", supportRequestLimiter, async (req, res) => {
+  const topicRaw = String(req.body?.topic || "general").trim().toLowerCase();
+  const priorityRaw = String(req.body?.priority || "normal").trim().toLowerCase();
+  const topic = SUPPORT_REQUEST_TOPICS.has(topicRaw) ? topicRaw : "general";
+  const priority = SUPPORT_REQUEST_PRIORITIES.has(priorityRaw) ? priorityRaw : "normal";
+  const subject = sanitizeText(String(req.body?.subject || "").trim()).slice(0, 160);
+  const message = sanitizeText(String(req.body?.message || "").trim()).slice(0, 6000);
+  const replyEmailRaw = normalizeEmail(req.body?.replyEmail || req.user?.email || "");
+  const replyEmail = isEmail(replyEmailRaw) ? replyEmailRaw : "";
+
+  if (subject.length < 3) {
+    return res.status(400).json({
+      error: {
+        code: "SUPPORT_SUBJECT_REQUIRED",
+        message: "Please add a subject (at least 3 characters)."
+      }
+    });
+  }
+
+  if (message.length < 10) {
+    return res.status(400).json({
+      error: {
+        code: "SUPPORT_MESSAGE_REQUIRED",
+        message: "Please add more detail so support can help."
+      }
+    });
+  }
+
+  if (String(req.body?.replyEmail || "").trim() && !replyEmail) {
+    return res.status(400).json({
+      error: {
+        code: "SUPPORT_REPLY_EMAIL_INVALID",
+        message: "Reply email must be valid."
+      }
+    });
+  }
+
+  const supportEmail = resolveSupportContactEmail();
+  const tenantSlug = String(req.tenant?.slug || "").trim().toLowerCase();
+  const tenantName = sanitizeText(String(req.tenant?.name || "").trim()) || "Unknown tenant";
+  const actorEmail = normalizeEmail(req.user?.email || "");
+  const actorId = toObjectIdString(req.user?.id || req.user?._id || "");
+  const ticketId = `PB-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto
+    .randomBytes(3)
+    .toString("hex")
+    .toUpperCase()}`;
+  const tenantUrls = buildTenantUrls(req.tenant);
+  const requestedAt = new Date().toISOString();
+  const emailBranding = buildTenantEmailBranding(req.tenant, { senderName: "PondBridge Support" });
+  const resolvedReplyTo = replyEmail || (isEmail(actorEmail) ? actorEmail : emailBranding.replyTo || "");
+
+  const lines = [
+    `Support Request ID: ${ticketId}`,
+    `Tenant: ${tenantName}`,
+    `Tenant Slug: ${tenantSlug || "-"}`,
+    `Tenant URL: ${tenantUrls.appUrl || "-"}`,
+    `Submitted At: ${requestedAt}`,
+    `Submitted By User ID: ${actorId || "-"}`,
+    `Submitted By Email: ${actorEmail || "-"}`,
+    `Reply Email: ${resolvedReplyTo || "-"}`,
+    `Topic: ${topic}`,
+    `Priority: ${priority}`,
+    `Subject: ${subject}`,
+    "",
+    "Message:",
+    message
+  ];
+  const text = lines.join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.55;color:#0f172a;">
+      <p style="margin:0 0 10px;"><strong>Support Request ID:</strong> ${escapeEmailHtml(ticketId)}</p>
+      <p style="margin:0 0 6px;"><strong>Tenant:</strong> ${escapeEmailHtml(tenantName)}</p>
+      <p style="margin:0 0 6px;"><strong>Tenant Slug:</strong> ${escapeEmailHtml(tenantSlug || "-")}</p>
+      <p style="margin:0 0 6px;"><strong>Tenant URL:</strong> ${escapeEmailHtml(tenantUrls.appUrl || "-")}</p>
+      <p style="margin:0 0 6px;"><strong>Submitted At:</strong> ${escapeEmailHtml(requestedAt)}</p>
+      <p style="margin:0 0 6px;"><strong>Submitted By User ID:</strong> ${escapeEmailHtml(actorId || "-")}</p>
+      <p style="margin:0 0 6px;"><strong>Submitted By Email:</strong> ${escapeEmailHtml(actorEmail || "-")}</p>
+      <p style="margin:0 0 6px;"><strong>Reply Email:</strong> ${escapeEmailHtml(resolvedReplyTo || "-")}</p>
+      <p style="margin:0 0 6px;"><strong>Topic:</strong> ${escapeEmailHtml(topic)}</p>
+      <p style="margin:0 0 6px;"><strong>Priority:</strong> ${escapeEmailHtml(priority)}</p>
+      <p style="margin:0 0 12px;"><strong>Subject:</strong> ${escapeEmailHtml(subject)}</p>
+      <p style="margin:0 0 6px;"><strong>Message</strong></p>
+      <pre style="margin:0;padding:10px 12px;border:1px solid #dbe6f3;border-radius:8px;background:#f8fbff;white-space:pre-wrap;">${escapeEmailHtml(message)}</pre>
+    </div>
+  `;
+
+  try {
+    await sendTransactionalEmail({
+      from: emailBranding.from,
+      to: supportEmail,
+      subject: `[Support] ${tenantName} · ${subject}`.slice(0, 190),
+      text,
+      html,
+      ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {})
+    });
+  } catch (error) {
+    return res.status(error?.statusCode || 502).json({
+      error: {
+        code: error?.code || "SUPPORT_SEND_FAILED",
+        message: String(error?.message || "Unable to send support request email.")
+      }
+    });
+  }
+
+  await writeAdminAudit(req, "admin_support_request_submitted", {
+    ticketId,
+    topic,
+    priority,
+    subjectLength: subject.length,
+    messageLength: message.length
+  });
+
+  return res.status(201).json({
+    ok: true,
+    requestId: ticketId,
+    sentTo: supportEmail
+  });
+});
+
 router.get("/overview", async (req, res) => {
   const tenantId = req.tenant._id;
   const [userCount, profileCount] = await Promise.all([
@@ -4562,6 +4829,7 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
         userId: "",
         summary: { profileDeleted: 1, userDeleted: 0 }
       });
+      clearAdminReadCaches();
       return res.json({ ok: true, deletedProfileId: profileId, deletedUserId: "" });
     }
 
@@ -4582,6 +4850,7 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
         userId,
         summary: { profileDeleted: 1, userDeleted: 0 }
       });
+      clearAdminReadCaches();
       return res.json({
         ok: true,
         deletedProfileId: profileId,
@@ -4617,6 +4886,7 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
       userId,
       summary
     });
+    clearAdminReadCaches();
 
     return res.json({
       ok: true,
