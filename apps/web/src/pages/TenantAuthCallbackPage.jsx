@@ -83,6 +83,13 @@ function isLegalAgreementRequiredError(err) {
   return code === "LEGAL_AGREEMENT_REQUIRED";
 }
 
+function isAuthTokenPendingError(err) {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  return code === "AUTH_TOKEN_PENDING";
+}
+
 function resolveAuthCallbackError(err, slug, inviteToken = "") {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
@@ -139,6 +146,13 @@ function resolveAuthCallbackError(err, slug, inviteToken = "") {
       retryPath: loginPath
     };
   }
+  if (code === "AUTH_MEMBERSHIP_REQUIRED") {
+    return {
+      message: "Your account was authenticated, but network membership could not be confirmed.",
+      guidance: "Retry sign-in once so we can refresh your camp access.",
+      retryPath: loginPath
+    };
+  }
 
   return {
     message: fallbackMessage,
@@ -187,9 +201,14 @@ function ClerkAuthCallbackPage() {
     const safeSlug = String(targetSlug || "").trim().toLowerCase();
     for (const delayMs of [0, 180, 420, 900]) {
       if (delayMs > 0) await wait(delayMs);
-      const payload = await refreshSession({ tenantSlug: safeSlug });
-      const userId = String(payload?.user?.id || payload?.user?._id || "").trim();
-      if (userId) return payload;
+      try {
+        const payload = await refreshSession({ tenantSlug: safeSlug, strictTenantSync: true });
+        const userId = String(payload?.user?.id || payload?.user?._id || "").trim();
+        if (userId) return payload;
+      } catch (error) {
+        if (isAuthTokenPendingError(error)) continue;
+        throw error;
+      }
     }
     const error = new Error("Session sync did not resolve a tenant user.");
     error.code = "SESSION_SYNC_FAILED";

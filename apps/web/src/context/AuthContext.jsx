@@ -442,7 +442,7 @@ function ClerkBackedAuthProvider({ children }) {
   }, [getAuthToken]);
 
   const refreshSession = useCallback(
-    async ({ tenantSlug = "" } = {}) => {
+    async ({ tenantSlug = "", strictTenantSync = false } = {}) => {
       if (!isLoaded || !isSignedIn) {
         clearLocalAuth();
         if (!bootstrapDoneRef.current) {
@@ -455,10 +455,12 @@ function ClerkBackedAuthProvider({ children }) {
       const hasExistingUser = Boolean(
         String(userRef.current?.id || userRef.current?._id || "").trim()
       );
+      const resolvedTenantSlug = String(tenantSlug || "").trim().toLowerCase();
+      const isTenantScopedRefresh = Boolean(resolvedTenantSlug);
       const isInitialBootstrap = !bootstrapDoneRef.current;
       const clerkToken = await resolveBootstrapToken();
       if (!clerkToken) {
-        if (hasExistingUser) {
+        if (hasExistingUser && !strictTenantSync) {
           markTabSessionAuthenticated();
           if (isInitialBootstrap) {
             bootstrapDoneRef.current = true;
@@ -481,7 +483,7 @@ function ClerkBackedAuthProvider({ children }) {
         const payload = await requestJson("/api/auth/session", {
           token: clerkToken,
           getToken: ({ forceRefresh = false } = {}) => getAuthToken({ forceRefresh }),
-          headers: tenantSlug ? { "X-Tenant-Slug": tenantSlug } : {}
+          headers: resolvedTenantSlug ? { "X-Tenant-Slug": resolvedTenantSlug } : {}
         });
         const normalizedUser = normalizeUserShape({
           ...(payload?.user || {}),
@@ -495,7 +497,9 @@ function ClerkBackedAuthProvider({ children }) {
         return payload;
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
-          if (hasExistingUser && isSignedIn) {
+          const preserveCachedSession =
+            hasExistingUser && isSignedIn && !isTenantScopedRefresh && !strictTenantSync;
+          if (preserveCachedSession) {
             writeAuthToStorage(clerkToken, userRef.current);
             markTabSessionAuthenticated();
             return null;
@@ -513,6 +517,9 @@ function ClerkBackedAuthProvider({ children }) {
           clearLocalAuth();
           clearTabSessionAuthenticated();
           clearTabLoginIntent();
+          if (strictTenantSync) {
+            throw error;
+          }
           return null;
         }
         // Network / CORS / API-unreachable error.  If we already have a
