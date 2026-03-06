@@ -97,6 +97,18 @@ function isAuthMembershipRequiredError(err) {
   return code === "AUTH_MEMBERSHIP_REQUIRED";
 }
 
+function shouldForceSessionReset(err) {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  return (
+    code === "SESSION_SYNC_FAILED" ||
+    code === "AUTH_MEMBERSHIP_REQUIRED" ||
+    code === "AUTH_REQUIRED" ||
+    code === "AUTH_INVALID"
+  );
+}
+
 function resolveAuthCallbackError(err, slug, inviteToken = "") {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
@@ -390,6 +402,20 @@ function ClerkAuthCallbackPage() {
             if (cancelled) return;
             redirected = true;
             navigate(buildLoginPath(slug, { inviteToken, authIssue: "wrong_network" }), {
+              replace: true
+            });
+          }
+          return;
+        }
+        if (shouldForceSessionReset(err)) {
+          clearDirectorBootstrapIntent(slug);
+          setPhaseMessage("Resetting sign-in...");
+          try {
+            await Promise.resolve(logout?.());
+          } finally {
+            if (cancelled) return;
+            redirected = true;
+            navigate(buildLoginPath(slug, { inviteToken, authIssue: "session_reset" }), {
               replace: true
             });
           }

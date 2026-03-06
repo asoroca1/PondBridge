@@ -27,6 +27,9 @@ function resolveAuthIssueMessage(searchParams) {
   if (authIssue === "wrong_network") {
     return "This account cannot access this network. Sign in with an account that belongs to this camp.";
   }
+  if (authIssue === "session_reset") {
+    return "Your previous sign-in session was reset. Please sign in again.";
+  }
 
   return "";
 }
