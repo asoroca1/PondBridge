@@ -90,6 +90,13 @@ function isAuthTokenPendingError(err) {
   return code === "AUTH_TOKEN_PENDING";
 }
 
+function isAuthMembershipRequiredError(err) {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  return code === "AUTH_MEMBERSHIP_REQUIRED";
+}
+
 function resolveAuthCallbackError(err, slug, inviteToken = "") {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
@@ -197,9 +204,48 @@ function ClerkAuthCallbackPage() {
   );
   const [working, setWorking] = useState(true);
 
-  async function ensureTenantSessionSync(targetSlug = "") {
+  async function recoverMembership({
+    tenantSlug = "",
+    token = "",
+    inviteTokenValue = "",
+    legalAgreement = null
+  } = {}) {
+    const safeSlug = String(tenantSlug || "").trim().toLowerCase();
+    if (!safeSlug || !token) return;
+
+    const query = inviteTokenValue ? `?inviteToken=${encodeURIComponent(inviteTokenValue)}` : "";
+    const payload = await requestJson(`/api/t/${safeSlug}/access/decision${query}`, { token });
+    const decision = payload?.decision || {};
+
+    if (decision.action === "accept_invite" && inviteTokenValue) {
+      await requestJson(`/api/t/${safeSlug}/access/invite/accept`, {
+        method: "POST",
+        token,
+        body: {
+          inviteToken: inviteTokenValue,
+          legalAgreement
+        }
+      });
+      return;
+    }
+
+    if (decision.action === "join_network") {
+      await requestJson(`/api/t/${safeSlug}/access/join`, {
+        method: "POST",
+        token,
+        body: {
+          legalAgreement
+        }
+      });
+    }
+  }
+
+  async function ensureTenantSessionSync(
+    targetSlug = "",
+    { token = "", legalAgreement = null, inviteTokenValue = "" } = {}
+  ) {
     const safeSlug = String(targetSlug || "").trim().toLowerCase();
-    for (const delayMs of [0, 180, 420, 900]) {
+    for (const delayMs of [0, 180, 420, 900, 1500, 2400]) {
       if (delayMs > 0) await wait(delayMs);
       try {
         const payload = await refreshSession({ tenantSlug: safeSlug, strictTenantSync: true });
@@ -207,6 +253,15 @@ function ClerkAuthCallbackPage() {
         if (userId) return payload;
       } catch (error) {
         if (isAuthTokenPendingError(error)) continue;
+        if (isAuthMembershipRequiredError(error)) {
+          await recoverMembership({
+            tenantSlug: safeSlug,
+            token,
+            inviteTokenValue,
+            legalAgreement
+          }).catch(() => {});
+          continue;
+        }
         throw error;
       }
     }
@@ -301,7 +356,11 @@ function ClerkAuthCallbackPage() {
         setPhaseMessage("Finalizing sign-in...");
         payload = await requestJson(`/api/t/${slug}/access/decision`, { token });
         decision = payload?.decision || {};
-        await ensureTenantSessionSync(slug);
+        await ensureTenantSessionSync(slug, {
+          token,
+          legalAgreement: pendingLegalAgreement,
+          inviteTokenValue: inviteToken
+        });
 
         const next = normalizeTenantRouteForHost(
           slug,
