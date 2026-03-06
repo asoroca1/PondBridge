@@ -1,0 +1,35 @@
+camp:
+  name: "Camp Weequahic"
+  tenant_id: ""
+  tenant_slug_candidates:
+    - "weequahic"
+    - "camp-weequahic"
+  tenant_name_matchers:
+    - "Camp Weequahic"
+    - "Weequahic"
+
+environment:
+  production:
+    enabled: true
+  demo:
+    enabled: true
+    preserve: true
+    wipe_allowed: false
+    notes: "Demo environment currently exists. Keep it intact until explicit wipe approval."
+    slug_candidates:
+      - "demo"
+      - "weequahic-demo"
+      - "camp-weequahic-demo"
+
+controls:
+  require_tenant_scoping: true
+  require_control_camp_validation: true
+  control_camp_slug_candidates:
+    - "cedar"
+    - "camp-cedar"
+    - "camp-north"
+
+references:
+  tenant_context_contract: "docs/TENANT_CONTEXT_CONTRACT.md"
+  api_tenant_context_middleware: "apps/api/src/middleware/tenantContext.js"
+  api_tenant_scope_middleware: "apps/api/src/middleware/enforceTenantScope.js"
