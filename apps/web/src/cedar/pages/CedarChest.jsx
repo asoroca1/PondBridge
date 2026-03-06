@@ -113,7 +113,7 @@ function canvasToBlob(canvas, mimeType = "image/jpeg", quality = 0.92) {
 // ===== main page =====
 export default function CedarChest() {
   const { tenant } = useTenant();
-  const { user: authUser } = useAuth();
+  const { user: authUser, token: authToken, isReady: authReady } = useAuth();
   const [newsletters, setNewsletters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -129,11 +129,19 @@ export default function CedarChest() {
   useEffect(() => {
     let ignore = false;
     async function run() {
+      if (!authReady) return;
       setLoading(true);
       setErr("");
       try {
+        const resolvedToken = String(authToken || getToken() || "").trim();
+        if (!resolvedToken) {
+          throw new Error("Session not ready. Please refresh and try again.");
+        }
         const res = await fetch(`${API}/newsletters`, {
-          headers: authHeaders(),
+          headers: {
+            ...authHeaders(),
+            Authorization: `Bearer ${resolvedToken}`
+          },
         });
         if (!res.ok) throw new Error(await parseApiError(res, "Failed to load newsletters"));
         const j = await res.json();
@@ -151,7 +159,7 @@ export default function CedarChest() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [authReady, authToken]);
 
   const roleBasedAdmin = useMemo(
     () =>

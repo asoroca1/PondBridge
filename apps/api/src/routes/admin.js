@@ -784,6 +784,17 @@ const MEMBER_EXPORT_FIELDS = [
     getValue: (profile) => String(profile?.status || "")
   },
   {
+    key: "completionPercent",
+    label: "Profile Completion %",
+    description: "Calculated completion percentage across core profile fields.",
+    getValue: (profile, context = {}) => {
+      if (Number.isFinite(Number(context?.completionScore))) {
+        return String(Math.max(0, Math.min(100, Math.round(Number(context.completionScore)))));
+      }
+      return String(completionScore(profile));
+    }
+  },
+  {
     key: "primaryEmail",
     label: "Primary Email",
     description: "First email on the profile.",
@@ -1324,6 +1335,30 @@ function completionScore(profile = {}, user = null) {
 
   const filled = checks.filter(Boolean).length;
   return Math.round((filled / checks.length) * 100);
+}
+
+async function buildCompletionScoreMapForProfiles(tenantId, profiles = []) {
+  const source = Array.isArray(profiles) ? profiles : [];
+  if (!source.length) return new Map();
+
+  const userIds = source
+    .map((item) => toObjectIdString(item?.userId))
+    .filter(Boolean);
+  const users = userIds.length > 0
+    ? await UserModel.find(tenantId, { _id: { $in: userIds } }, {
+        select: ["id", "email"]
+      })
+    : [];
+  const usersById = new Map(users.map((item) => [toObjectIdString(item._id), item]));
+
+  const completionByProfileId = new Map();
+  for (const profile of source) {
+    const profileId = toObjectIdString(profile?._id || profile?.id);
+    if (!profileId) continue;
+    const user = usersById.get(toObjectIdString(profile?.userId)) || null;
+    completionByProfileId.set(profileId, completionScore(profile, user));
+  }
+  return completionByProfileId;
 }
 
 function completionBucket(score = 0) {
@@ -4923,15 +4958,40 @@ router.get("/export/csv/preview", async (req, res) => {
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(requestedLimit, 1), 20)
     : 6;
-  const profiles = await ProfileModel.find(req.tenant._id, {}, {
-    sort: { lastName: 1, firstName: 1 },
-    limit
-  });
+  const completionRange = parseCompletionRange(req.query);
+  const needsCompletionScores =
+    Boolean(completionRange) || columns.some((column) => column.key === "completionPercent");
+
+  const profileQueryOptions = completionRange
+    ? { sort: { lastName: 1, firstName: 1 } }
+    : { sort: { lastName: 1, firstName: 1 }, limit };
+  let profiles = await ProfileModel.find(req.tenant._id, {}, profileQueryOptions);
+  let completionByProfileId = new Map();
+
+  if (needsCompletionScores && profiles.length) {
+    completionByProfileId = await buildCompletionScoreMapForProfiles(req.tenant._id, profiles);
+  }
+
+  if (completionRange) {
+    profiles = profiles
+      .filter((profile) => {
+        const profileId = toObjectIdString(profile?._id || profile?.id);
+        const score = profileId && completionByProfileId.has(profileId)
+          ? Number(completionByProfileId.get(profileId) || 0)
+          : completionScore(profile);
+        return matchesCompletionRange(score, completionRange);
+      })
+      .slice(0, limit);
+  }
 
   const rows = profiles.map((profile) => {
+    const profileId = toObjectIdString(profile?._id || profile?.id);
+    const completionForRow = profileId ? completionByProfileId.get(profileId) : undefined;
     const row = {};
     for (const column of columns) {
-      row[column.key] = sanitizeCsvCell(column.getValue(profile));
+      row[column.key] = sanitizeCsvCell(
+        column.getValue(profile, { completionScore: completionForRow })
+      );
     }
     return row;
   });
@@ -4947,18 +5007,40 @@ router.get("/export/csv/preview", async (req, res) => {
 });
 
 router.get("/export/csv", exportLimiter, async (req, res) => {
-  const profiles = await ProfileModel.find(req.tenant._id, {}, {
-    sort: { lastName: 1, firstName: 1 }
-  });
   const fieldOrder = normalizeMemberExportFieldOrder(req.query?.fields || "");
   const columns = fieldOrder
     .map((key) => MEMBER_EXPORT_FIELD_MAP.get(key))
     .filter(Boolean);
+  const completionRange = parseCompletionRange(req.query);
+  const needsCompletionScores =
+    Boolean(completionRange) || columns.some((column) => column.key === "completionPercent");
+  let profiles = await ProfileModel.find(req.tenant._id, {}, {
+    sort: { lastName: 1, firstName: 1 }
+  });
+  let completionByProfileId = new Map();
+
+  if (needsCompletionScores && profiles.length) {
+    completionByProfileId = await buildCompletionScoreMapForProfiles(req.tenant._id, profiles);
+  }
+
+  if (completionRange) {
+    profiles = profiles.filter((profile) => {
+      const profileId = toObjectIdString(profile?._id || profile?.id);
+      const score = profileId && completionByProfileId.has(profileId)
+        ? Number(completionByProfileId.get(profileId) || 0)
+        : completionScore(profile);
+      return matchesCompletionRange(score, completionRange);
+    });
+  }
 
   const records = profiles.map((profile) => {
+    const profileId = toObjectIdString(profile?._id || profile?.id);
+    const completionForRow = profileId ? completionByProfileId.get(profileId) : undefined;
     const row = {};
     for (const column of columns) {
-      row[column.key] = sanitizeCsvCell(column.getValue(profile));
+      row[column.key] = sanitizeCsvCell(
+        column.getValue(profile, { completionScore: completionForRow })
+      );
     }
     return row;
   });

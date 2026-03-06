@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { defaultNetworkDisplayNameForCamp, normalizeCampType } from "@pondbridge/shared";
 import { env } from "../config/env.js";
 import { EmailSuppressionModel } from "../db/models/index.js";
+import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import {
   inviteTemplate,
   magicLinkTemplate,
@@ -749,14 +750,31 @@ async function sendSmtpEmail({
   return { ok: true, mode: "smtp", messageId: String(result?.messageId || "") };
 }
 
-export function inviteLink({ tenantSlug, token, email }) {
-  return `${env.FRONTEND_ORIGIN}/t/${tenantSlug}/create-account?inviteToken=${encodeURIComponent(
-    token
-  )}&email=${encodeURIComponent(email)}`;
+function trimTrailingSlashes(value = "") {
+  return String(value || "").trim().replace(/\/+$/, "");
 }
 
-export function magicLink({ tenantSlug, token }) {
-  return `${env.FRONTEND_ORIGIN}/t/${tenantSlug}/login?magicToken=${encodeURIComponent(token)}`;
+function resolveTenantAppBaseUrl({ tenant = null, tenantSlug = "" } = {}) {
+  const normalizedSlug = String(tenantSlug || tenant?.slug || "").trim().toLowerCase();
+  const tenantForUrl = tenant && typeof tenant === "object" ? { ...tenant, slug: normalizedSlug || tenant?.slug } : { slug: normalizedSlug };
+  const tenantUrls = buildTenantUrls(tenantForUrl);
+  const tenantAppUrl = trimTrailingSlashes(tenantUrls?.appUrl || "");
+  if (tenantAppUrl) return tenantAppUrl;
+
+  const frontendOrigin = trimTrailingSlashes(env.FRONTEND_ORIGIN || "");
+  if (!frontendOrigin) return "";
+  if (!normalizedSlug) return frontendOrigin;
+  return `${frontendOrigin}/t/${normalizedSlug}`;
+}
+
+export function inviteLink({ tenant = null, tenantSlug = "", token, email }) {
+  const base = resolveTenantAppBaseUrl({ tenant, tenantSlug });
+  return `${base}/create-account?inviteToken=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+}
+
+export function magicLink({ tenant = null, tenantSlug = "", token }) {
+  const base = resolveTenantAppBaseUrl({ tenant, tenantSlug });
+  return `${base}/login?magicToken=${encodeURIComponent(token)}`;
 }
 
 export async function sendTransactionalEmail({
@@ -1106,7 +1124,7 @@ export async function sendInviteEmail({
   const resolvedReplyTo = isValidEmailAddress(replyTo)
     ? normalizeEmailAddress(replyTo)
     : branding.replyTo;
-  const link = inviteLink({ tenantSlug: tenant.slug, token, email });
+  const link = inviteLink({ tenant, token, email });
   const { subject, text, html } = inviteTemplate({
     tenantName: branding.networkName,
     link,
@@ -1135,7 +1153,7 @@ export async function sendInviteEmail({
 
 export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
   const branding = buildTenantEmailBranding(tenant);
-  const link = magicLink({ tenantSlug: tenant.slug, token });
+  const link = magicLink({ tenant, token });
   const { subject, text, html } = magicLinkTemplate({
     tenantName: branding.networkName,
     link,
@@ -1186,7 +1204,7 @@ export async function sendWelcomeEmail({ tenant, firstName, email }) {
 export async function sendAccessDecisionEmail({ tenant, email, firstName, approved, reason, loginUrl }) {
   const branding = buildTenantEmailBranding(tenant);
   if (approved) {
-    const resolvedLoginUrl = loginUrl || `${env.FRONTEND_ORIGIN}/t/${tenant.slug}/login`;
+    const resolvedLoginUrl = loginUrl || `${resolveTenantAppBaseUrl({ tenant })}/login`;
     const { subject, text, html } = accessApprovedTemplate({
       tenantName: branding.networkName,
       firstName,

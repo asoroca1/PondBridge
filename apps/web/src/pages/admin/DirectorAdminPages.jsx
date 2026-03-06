@@ -258,6 +258,7 @@ const FALLBACK_MEMBER_EXPORT_FIELDS = [
   { key: "lastName", label: "Last Name", description: "Profile last name." },
   { key: "fullName", label: "Full Name", description: "Combined first and last name." },
   { key: "status", label: "Status", description: "Member access status." },
+  { key: "completionPercent", label: "Profile Completion %", description: "Calculated completion percentage." },
   { key: "primaryEmail", label: "Primary Email", description: "First email on the profile." },
   { key: "allEmails", label: "All Emails", description: "All profile emails." },
   { key: "primaryPhone", label: "Primary Phone", description: "First phone on the profile." },
@@ -1292,6 +1293,7 @@ export function DirectorAdminMembersPage() {
   const [previewColumns, setPreviewColumns] = useState([]);
   const [previewRows, setPreviewRows] = useState([]);
   const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportCompletion, setExportCompletion] = useState("all");
   const [hasSavedExportPreset, setHasSavedExportPreset] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -1499,6 +1501,13 @@ export function DirectorAdminMembersPage() {
       const params = new URLSearchParams();
       params.set("fields", normalizedFields.join(","));
       params.set("limit", "6");
+      const completionRange = parseCompletionRangeFilterValue(exportCompletion);
+      if (completionRange) {
+        params.set("completionMin", String(completionRange.min));
+        params.set("completionMax", String(completionRange.max));
+      } else {
+        params.set("completion", exportCompletion);
+      }
       params.set("ts", String(Date.now()));
       const response = await request(`/export/csv/preview?${params.toString()}`);
       setPreviewColumns(Array.isArray(response?.columns) ? response.columns : []);
@@ -1510,7 +1519,7 @@ export function DirectorAdminMembersPage() {
     } finally {
       setPreviewLoading(false);
     }
-  }, [exportDefaultFields, exportFieldsCatalog, exportSelectedFields, request]);
+  }, [exportCompletion, exportDefaultFields, exportFieldsCatalog, exportSelectedFields, request]);
 
   useEffect(() => {
     if (!exportModalOpen) return;
@@ -1530,6 +1539,13 @@ export function DirectorAdminMembersPage() {
     try {
       const params = new URLSearchParams();
       params.set("fields", normalizedFields.join(","));
+      const completionRange = parseCompletionRangeFilterValue(exportCompletion);
+      if (completionRange) {
+        params.set("completionMin", String(completionRange.min));
+        params.set("completionMax", String(completionRange.max));
+      } else {
+        params.set("completion", exportCompletion);
+      }
       const blob = await download(`/export/csv?${params.toString()}`);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -1609,6 +1625,9 @@ export function DirectorAdminMembersPage() {
   }
 
   const roleOptions = payload?.filters?.roleOptions || [];
+  const exportCompletionLabel =
+    MEMBER_COMPLETION_FILTER_OPTIONS.find((option) => option.value === exportCompletion)?.label ||
+    "Profile Completion (All)";
   const exportFieldLabelMap = useMemo(
     () => new Map(exportFieldsCatalog.map((field) => [field.key, field.label || field.key])),
     [exportFieldsCatalog]
@@ -1769,6 +1788,7 @@ export function DirectorAdminMembersPage() {
                 onClick={() => {
                   setStatus("");
                   setError("");
+                  setExportCompletion(filters.completion || "all");
                   setExportModalOpen(true);
                 }}
               >
@@ -2076,6 +2096,20 @@ export function DirectorAdminMembersPage() {
                   Select all fields
                 </Button>
               </div>
+              <div className="director-admin-export-filter-row">
+                <label htmlFor="export-completion-filter">Member completion filter</label>
+                <Select
+                  id="export-completion-filter"
+                  value={exportCompletion}
+                  onChange={(event) => setExportCompletion(event.target.value)}
+                >
+                  {MEMBER_COMPLETION_FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <div className="director-admin-export-preset-bar">
                 <Input
                   value={exportPresetName}
@@ -2199,7 +2233,9 @@ export function DirectorAdminMembersPage() {
                 </section>
                 <section className="director-admin-export-panel director-admin-export-preview-panel full-width">
                   <h3>Spreadsheet Preview</h3>
-                  <small>Live sample of the first members using the selected column order.</small>
+                  <small>
+                    Live sample of the first members in {exportCompletionLabel} using the selected column order.
+                  </small>
                   <div className="director-admin-export-preview-wrap">
                     {previewLoading ? (
                       <p className="muted">Loading preview...</p>

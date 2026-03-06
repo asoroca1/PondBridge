@@ -4,6 +4,7 @@ import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { resolveCampName } from "./lib/campLabels.js";
 import { defaultTenantDomain, inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
 import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
 
@@ -111,6 +112,48 @@ const SuperTenantsPage = lazyPage(() =>
 );
 
 const warmedRouteChunks = new Set();
+const DEFAULT_TAB_TITLE = "PondBridge";
+const DEFAULT_FAVICON_PATH = "/favicon.svg";
+
+function resolveTenantTabTitle(tenant) {
+  const campName = String(resolveCampName(tenant) || "").trim();
+  if (!campName) return DEFAULT_TAB_TITLE;
+  const labeledCampName = /^camp\s+/i.test(campName) ? campName : `Camp ${campName}`;
+  return `${labeledCampName} Alumni Network`;
+}
+
+function iconMimeTypeFromUrl(url = "") {
+  const normalized = String(url || "").split("#")[0].split("?")[0].trim().toLowerCase();
+  if (normalized.endsWith(".svg")) return "image/svg+xml";
+  if (normalized.endsWith(".png")) return "image/png";
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) return "image/jpeg";
+  if (normalized.endsWith(".ico")) return "image/x-icon";
+  if (normalized.endsWith(".webp")) return "image/webp";
+  return "";
+}
+
+function ensureHeadLink(relValue) {
+  if (typeof document === "undefined") return null;
+  let link = document.querySelector(`link[rel="${relValue}"]`);
+  if (!link) {
+    link = document.createElement("link");
+    link.setAttribute("rel", relValue);
+    document.head.appendChild(link);
+  }
+  return link;
+}
+
+function setIconHref(link, href = "") {
+  if (!link) return;
+  const resolvedHref = String(href || "").trim() || DEFAULT_FAVICON_PATH;
+  link.setAttribute("href", resolvedHref);
+  const mimeType = iconMimeTypeFromUrl(resolvedHref);
+  if (mimeType) {
+    link.setAttribute("type", mimeType);
+  } else {
+    link.removeAttribute("type");
+  }
+}
 
 function warmRouteChunk(key, loader) {
   if (warmedRouteChunks.has(key)) return;
@@ -183,7 +226,69 @@ function TenantScopeRoutes() {
   const membershipSyncKeyRef = useRef("");
   const membershipSyncInFlightRef = useRef(false);
   const [wrongNetwork, setWrongNetwork] = useState(null);
+  const [allowAuthCallbackRedirect, setAllowAuthCallbackRedirect] = useState(false);
   const isCampDirectorSession = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
+  const tenantBranding = tenant?.config?.branding || tenant?.theme || {};
+  const tenantLogoUrl = String(tenantBranding.logoUrl || "").trim();
+  const tenantTabTitle = resolveTenantTabTitle(tenant);
+  const isCampDirector = isCampDirectorSession;
+  const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
+  const onboardingIncomplete = tenant?.onboardingStatus !== "live";
+  const currentPath = location.pathname || "";
+  const directorSetupPath = slug ? `/t/${slug}/director-create-account?setup=1` : "/director-create-account?setup=1";
+  const onOnboardingRoute =
+    currentPath.includes("/onboarding") ||
+    currentPath.includes("/director-claim") ||
+    currentPath.includes("/director-create-account");
+  const inviteToken = new URLSearchParams(location.search || "").get("inviteToken");
+  const onMemberCreateAccountRoute =
+    (currentPath === "/create-account" || currentPath.endsWith("/create-account")) &&
+    !currentPath.includes("/director-create-account");
+  const onAuthBootstrapRoute =
+    currentPath.includes("/auth/callback") ||
+    currentPath.includes("/director-claim") ||
+    currentPath.includes("/director-create-account") ||
+    currentPath.includes("/login") ||
+    currentPath.includes("/create-account");
+  const waitingForTenantScopedUser = clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const previousTitle = String(document.title || DEFAULT_TAB_TITLE);
+    const iconLink = ensureHeadLink("icon");
+    const shortcutIconLink = ensureHeadLink("shortcut icon");
+    const appleTouchIconLink = ensureHeadLink("apple-touch-icon");
+    const previousIconHref = String(iconLink?.getAttribute("href") || "");
+    const previousIconType = String(iconLink?.getAttribute("type") || "");
+    const previousShortcutHref = String(shortcutIconLink?.getAttribute("href") || "");
+    const previousShortcutType = String(shortcutIconLink?.getAttribute("type") || "");
+    const previousAppleHref = String(appleTouchIconLink?.getAttribute("href") || "");
+
+    document.title = tenantTabTitle;
+    setIconHref(iconLink, tenantLogoUrl);
+    setIconHref(shortcutIconLink, tenantLogoUrl);
+    if (appleTouchIconLink) {
+      appleTouchIconLink.setAttribute("href", tenantLogoUrl || DEFAULT_FAVICON_PATH);
+    }
+
+    return () => {
+      document.title = previousTitle;
+      setIconHref(iconLink, previousIconHref || DEFAULT_FAVICON_PATH);
+      if (iconLink) {
+        if (previousIconType) iconLink.setAttribute("type", previousIconType);
+        else iconLink.removeAttribute("type");
+      }
+      setIconHref(shortcutIconLink, previousShortcutHref || DEFAULT_FAVICON_PATH);
+      if (shortcutIconLink) {
+        if (previousShortcutType) shortcutIconLink.setAttribute("type", previousShortcutType);
+        else shortcutIconLink.removeAttribute("type");
+      }
+      if (appleTouchIconLink) {
+        appleTouchIconLink.setAttribute("href", previousAppleHref || DEFAULT_FAVICON_PATH);
+      }
+    };
+  }, [tenantLogoUrl, tenantTabTitle]);
 
   useEffect(() => {
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -313,6 +418,26 @@ function TenantScopeRoutes() {
     };
   }, [isAuthenticated, isReady, loading, location.pathname, tenant]);
 
+  useEffect(() => {
+    if (!waitingForTenantScopedUser) {
+      setAllowAuthCallbackRedirect(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAllowAuthCallbackRedirect(false);
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) setAllowAuthCallbackRedirect(true);
+    }, 1800);
+
+    refreshSession({ tenantSlug: slug || "" }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [refreshSession, slug, waitingForTenantScopedUser]);
+
   function expectedNetworkHref(expectedSlug = "") {
     const normalizedSlug = String(expectedSlug || "").trim().toLowerCase();
     if (!normalizedSlug || typeof window === "undefined") return "";
@@ -402,48 +527,6 @@ function TenantScopeRoutes() {
       </section>
     );
   }
-
-  const isCampDirector = isCampDirectorSession;
-  const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
-  const onboardingIncomplete = tenant?.onboardingStatus !== "live";
-  const currentPath = location.pathname || "";
-  const directorSetupPath = slug ? `/t/${slug}/director-create-account?setup=1` : "/director-create-account?setup=1";
-  const onOnboardingRoute =
-    currentPath.includes("/onboarding") ||
-    currentPath.includes("/director-claim") ||
-    currentPath.includes("/director-create-account");
-  const inviteToken = new URLSearchParams(location.search || "").get("inviteToken");
-  const onMemberCreateAccountRoute =
-    (currentPath === "/create-account" || currentPath.endsWith("/create-account")) &&
-    !currentPath.includes("/director-create-account");
-  const onAuthBootstrapRoute =
-    currentPath.includes("/auth/callback") ||
-    currentPath.includes("/director-claim") ||
-    currentPath.includes("/director-create-account") ||
-    currentPath.includes("/login") ||
-    currentPath.includes("/create-account");
-  const waitingForTenantScopedUser = clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute;
-  const [allowAuthCallbackRedirect, setAllowAuthCallbackRedirect] = useState(false);
-
-  useEffect(() => {
-    if (!waitingForTenantScopedUser) {
-      setAllowAuthCallbackRedirect(false);
-      return;
-    }
-
-    let cancelled = false;
-    setAllowAuthCallbackRedirect(false);
-    const timeoutId = window.setTimeout(() => {
-      if (!cancelled) setAllowAuthCallbackRedirect(true);
-    }, 1800);
-
-    refreshSession({ tenantSlug: slug || "" }).catch(() => {});
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [refreshSession, slug, waitingForTenantScopedUser]);
 
   if (waitingForTenantScopedUser && !allowAuthCallbackRedirect) {
     return (
