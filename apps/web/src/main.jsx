@@ -5,7 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import { clerkUiEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
+import { clerkSdkEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
 import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
 import { API_BASE } from "./lib/http.js";
 import "@pondbridge/ui/theme.css";
@@ -96,7 +96,7 @@ const baseTree = (
   </BrowserRouter>
 );
 
-const appTree = clerkUiEnabled() ? (
+const appTree = clerkSdkEnabled() ? (
   <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} appearance={clerkNoSocialAppearance}>
     {baseTree}
   </ClerkProvider>

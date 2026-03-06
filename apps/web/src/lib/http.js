@@ -1,7 +1,60 @@
 import { inferCampSlugFromHost } from "./domain.js";
 
-const rawBase = import.meta.env.VITE_API_BASE || "http://localhost:4000";
-export const API_BASE = rawBase.replace(/\/+$/, "");
+const LOCAL_API_FALLBACK = "http://localhost:4000";
+const APP_BASE_DOMAIN = String(import.meta.env.VITE_APP_BASE_DOMAIN || "pondbridgealumni.com")
+  .trim()
+  .toLowerCase();
+
+function normalizeBase(value = "") {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isLocalHost(hostname = "") {
+  const host = String(hostname || "").trim().toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host.endsWith(".localhost")
+  );
+}
+
+function hostFromBaseUrl(base = "") {
+  try {
+    return new URL(String(base || "")).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function fallbackProductionApiBase() {
+  const safeDomain = APP_BASE_DOMAIN || "pondbridgealumni.com";
+  return `https://api.${safeDomain}`;
+}
+
+function resolveApiBase() {
+  const configuredBase = normalizeBase(import.meta.env.VITE_API_BASE || "");
+  if (typeof window === "undefined") {
+    return configuredBase || LOCAL_API_FALLBACK;
+  }
+
+  const browserHost = String(window.location.hostname || "").trim().toLowerCase();
+  const onLocalHost = isLocalHost(browserHost);
+  const configuredHost = hostFromBaseUrl(configuredBase);
+  const configuredIsLocal = isLocalHost(configuredHost);
+
+  if (configuredBase && (!configuredIsLocal || onLocalHost)) {
+    return configuredBase;
+  }
+
+  if (!onLocalHost) {
+    return fallbackProductionApiBase();
+  }
+
+  return configuredBase || LOCAL_API_FALLBACK;
+}
+
+export const API_BASE = resolveApiBase();
 const CLERK_FORCED_REFRESH_COOLDOWN_MS = 1500;
 const GET_RESPONSE_CACHE_TTL_MS = 12_000;
 const GET_RESPONSE_CACHE_MAX_ENTRIES = 350;

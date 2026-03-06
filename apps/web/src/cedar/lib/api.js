@@ -1,7 +1,10 @@
+import { API_BASE as ROOT_API_BASE } from "../../lib/http.js";
+
 function normalizeBase(raw) {
-  let b = raw || (location.hostname === "localhost" ? "http://localhost:4000" : "");
-  b = String(b).replace(/\/+$/, "");
-  if (b === "/api") b = "";
+  let b = String(raw || "").replace(/\/+$/, "");
+  if (b.endsWith("/api")) {
+    b = b.slice(0, -4).replace(/\/+$/, "");
+  }
   return b;
 }
 
@@ -13,9 +16,10 @@ function tenantSlugFromPath() {
 
 function resolveApiBase() {
   const slug = tenantSlugFromPath();
+  const base = normalizeBase(ROOT_API_BASE);
   return slug
-    ? `${normalizeBase(import.meta.env.VITE_API_BASE)}/api/t/${slug}`
-    : `${normalizeBase(import.meta.env.VITE_API_BASE)}/api/t`;
+    ? `${base}/api/t/${slug}`
+    : `${base}/api/t`;
 }
 
 // Keep API_BASE call-sites unchanged while resolving tenant slug dynamically.

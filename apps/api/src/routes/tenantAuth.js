@@ -71,19 +71,6 @@ const magicLinkConsumeLimiter = rateLimit({
   keyGenerator: (req) => authLimiterKey(req)
 });
 
-function isLegacyTenantAuthDisabled() {
-  return ["clerk", "hybrid"].includes(String(env.AUTH_PROVIDER || "").toLowerCase());
-}
-
-function rejectLegacyTenantAuth(res) {
-  return res.status(410).json({
-    error: {
-      code: "LEGACY_AUTH_DISABLED",
-      message: "Password and magic-link routes are disabled. Continue with Clerk authentication."
-    }
-  });
-}
-
 function generateToken(length = 24) {
   return crypto.randomBytes(length).toString("base64url");
 }
@@ -268,10 +255,6 @@ function profileFromBody(body) {
 }
 
 router.post("/register", registerLimiter, requireTenant, async (req, res) => {
-  if (isLegacyTenantAuthDisabled()) {
-    return rejectLegacyTenantAuth(res);
-  }
-
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const firstName = String(req.body.firstName || "").trim();
@@ -558,10 +541,6 @@ router.post("/invite/verify", inviteVerifyLimiter, requireTenant, async (req, re
 });
 
 router.post("/login", loginLimiter, requireTenant, async (req, res) => {
-  if (isLegacyTenantAuthDisabled()) {
-    return rejectLegacyTenantAuth(res);
-  }
-
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
 
@@ -633,10 +612,6 @@ router.post("/login", loginLimiter, requireTenant, async (req, res) => {
 });
 
 router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async (req, res) => {
-  if (isLegacyTenantAuthDisabled()) {
-    return rejectLegacyTenantAuth(res);
-  }
-
   const email = String(req.body.email || "").trim().toLowerCase();
   if (!email) {
     return res.status(400).json({
@@ -702,10 +677,6 @@ router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async
 });
 
 router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async (req, res) => {
-  if (isLegacyTenantAuthDisabled()) {
-    return rejectLegacyTenantAuth(res);
-  }
-
   const token = String(req.body.token || "").trim();
   if (!token) {
     return res.status(400).json({

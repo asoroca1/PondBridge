@@ -20,9 +20,21 @@ function authUsesClerk() {
   return ["clerk", "hybrid"].includes(env.AUTH_PROVIDER);
 }
 
-function legacyTokenAllowed() {
+function tenantScopedLegacyPath(req) {
+  const path = String(req?.originalUrl || req?.url || "")
+    .split("?")[0]
+    .trim();
+  if (path.startsWith("/api/t/")) return true;
+  if (path === "/api/auth/session") {
+    return Boolean(String(req?.headers?.["x-tenant-slug"] || "").trim());
+  }
+  return false;
+}
+
+function legacyTokenAllowed(req) {
   if (env.AUTH_PROVIDER === "legacy") return true;
   if (env.AUTH_PROVIDER === "hybrid") return Boolean(env.HYBRID_ALLOW_LEGACY_TOKENS);
+  if (env.AUTH_PROVIDER === "clerk") return tenantScopedLegacyPath(req);
   return false;
 }
 
@@ -85,6 +97,7 @@ export async function requireIdentity(req, res, next) {
   const bearerToken = header.startsWith("Bearer ") ? header.slice(7) : "";
   const cookieToken = readAuthTokenFromCookie(req);
   const token = bearerToken || cookieToken;
+  const allowLegacy = legacyTokenAllowed(req);
 
   if (authUsesClerk()) {
     try {
@@ -109,7 +122,7 @@ export async function requireIdentity(req, res, next) {
     }
   }
 
-  if (token && authUsesLegacy() && legacyTokenAllowed()) {
+  if (token && allowLegacy) {
     try {
       const payload = jwt.verify(token, env.JWT_SECRET);
       applyLegacyUser(req, payload, token, bearerToken ? "bearer" : "cookie");
@@ -119,7 +132,7 @@ export async function requireIdentity(req, res, next) {
     }
   }
 
-  if (token && authUsesLegacy() && !legacyTokenAllowed()) {
+  if (token && authUsesLegacy() && !allowLegacy) {
     return res.status(401).json({
       error: {
         code: "AUTH_LEGACY_TOKEN_DISABLED",
