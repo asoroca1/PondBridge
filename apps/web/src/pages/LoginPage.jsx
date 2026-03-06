@@ -11,9 +11,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
-  const [sendingMagicLink, setSendingMagicLink] = useState(false);
 
   useEffect(() => {
     const magicToken = String(searchParams.get("magicToken") || "").trim();
@@ -57,24 +55,6 @@ export default function LoginPage() {
     }
   }
 
-  async function sendMagicLink() {
-    setError("");
-    setStatus("");
-    setSendingMagicLink(true);
-
-    try {
-      await requestJson(`/api/t/${slug}/auth/magic-link/request`, {
-        method: "POST",
-        body: { email: form.email }
-      });
-      setStatus("If your account exists, a magic link has been sent.");
-    } catch (magicError) {
-      setError(magicError.message);
-    } finally {
-      setSendingMagicLink(false);
-    }
-  }
-
   return (
     <PageShell className="auth-shell">
       <Card className="form-card auth-card">
@@ -97,17 +77,8 @@ export default function LoginPage() {
             />
           </label>
           {error ? <p className="error-text">{error}</p> : null}
-          {status ? <p className="success-text">{status}</p> : null}
           <div className="inline-actions">
             <Button disabled={saving}>{saving ? "Signing in..." : "Sign in"}</Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={sendMagicLink}
-              disabled={sendingMagicLink || !form.email}
-            >
-              {sendingMagicLink ? "Sending link..." : "Email magic link"}
-            </Button>
           </div>
         </form>
       </Card>

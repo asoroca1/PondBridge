@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { SignIn } from "@clerk/clerk-react";
 import Navbar1 from "../components/Navbar1";
 import { API_BASE } from "../lib/api";
-import { requestJson } from "../../lib/http.js";
 import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/authMode.js";
@@ -40,10 +39,7 @@ function LoginScaffold({
   submitting,
   error,
   notice,
-  status,
   onSubmit,
-  onMagicLink,
-  sendingMagicLink,
   showLegacyActions
 }) {
   return (
@@ -80,7 +76,6 @@ function LoginScaffold({
 
               {notice ? <p className="login1-error">{notice}</p> : null}
               {error ? <p className="login1-error">{error}</p> : null}
-              {status ? <p className="success-text">{status}</p> : null}
 
               <button className="login1-btn" type="submit" disabled={submitting}>
                 {submitting ? "Logging in..." : "Login"}
@@ -88,14 +83,6 @@ function LoginScaffold({
 
               {showLegacyActions ? (
                 <>
-                  <button
-                    type="button"
-                    className="login1-forgot"
-                    onClick={onMagicLink}
-                    disabled={sendingMagicLink || !email}
-                  >
-                    {sendingMagicLink ? "Sending magic link..." : "Email magic link"}
-                  </button>
                   <Link to="../forgot-password" className="login1-forgot" style={{ fontSize: "0.88rem" }}>
                     Forgot password?
                   </Link>
@@ -122,8 +109,6 @@ function LegacyLogin() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
-  const [sendingMagicLink, setSendingMagicLink] = useState(false);
   const notice = resolveAuthIssueMessage(searchParams);
 
   const validate = () => {
@@ -137,7 +122,6 @@ function LegacyLogin() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    setStatus("");
 
     const v = validate();
     if (v) return setError(v);
@@ -175,23 +159,6 @@ function LegacyLogin() {
     }
   };
 
-  const sendMagicLink = async () => {
-    setError("");
-    setStatus("");
-    setSendingMagicLink(true);
-    try {
-      await requestJson(`/api/t/${slug}/auth/magic-link/request`, {
-        method: "POST",
-        body: { email }
-      });
-      setStatus("If your account exists, a magic link has been sent.");
-    } catch (magicError) {
-      setError(magicError.message);
-    } finally {
-      setSendingMagicLink(false);
-    }
-  };
-
   return (
     <LoginScaffold
       email={email}
@@ -201,10 +168,7 @@ function LegacyLogin() {
       submitting={submitting}
       error={error}
       notice={notice}
-      status={status}
       onSubmit={handleSubmit}
-      onMagicLink={sendMagicLink}
-      sendingMagicLink={sendingMagicLink}
       showLegacyActions
     />
   );
