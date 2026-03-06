@@ -1158,12 +1158,11 @@ export async function createBillingPortalUrl({ tenant, returnUrl, returnPath }) 
 
   if (mode === "mock") {
     if (!allowMockBilling()) {
-      const error = new Error(
-        "Mock billing portal is disabled in production. Configure Stripe keys."
-      );
-      error.statusCode = 503;
-      error.code = "MOCK_BILLING_DISABLED";
-      throw error;
+      return {
+        mode,
+        url: "",
+        message: "Billing portal unavailable until Stripe is configured for this environment."
+      };
     }
 
     return {
