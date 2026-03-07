@@ -3,6 +3,24 @@ import { generateOpaqueToken, hashOpaqueToken } from "../utils/tokens.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function isUniqueViolation(error) {
+  const code = String(error?.code || "").trim();
+  if (code === "23505") return true;
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("duplicate key") || message.includes("unique constraint");
+}
+
+async function findLatestInviteByEmail(tenantId, email = "") {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!tenantId || !normalizedEmail) return null;
+  const matches = await InviteModel.find(
+    tenantId,
+    { email: normalizedEmail },
+    { sort: { createdAt: -1 }, limit: 1 }
+  );
+  return matches[0] || null;
+}
+
 export function inviteExpired(invite) {
   return !invite?.expiresAt || new Date(invite.expiresAt) <= new Date();
 }
@@ -14,18 +32,31 @@ export async function createInviteRecord({
   createdByUserId = null,
   expiresInDays = 7
 }) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
   const token = generateOpaqueToken(24);
   const expiresAt = new Date(Date.now() + Math.max(1, Number(expiresInDays || 7)) * DAY_MS);
-
-  const invite = await InviteModel.create({
-    tenantId,
-    email: String(email || "").trim().toLowerCase(),
+  const nextInvitePayload = {
+    email: normalizedEmail,
     token: hashOpaqueToken(token),
     expiresAt,
     usedAt: null,
+    usedByUserId: null,
     roleToAssign: String(roleToAssign || "user").trim() || "user",
     createdByUserId
-  });
+  };
+
+  let invite = null;
+  try {
+    invite = await InviteModel.create({
+      tenantId,
+      ...nextInvitePayload
+    });
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const existingInvite = await findLatestInviteByEmail(tenantId, normalizedEmail);
+    if (!existingInvite?._id) throw error;
+    invite = await InviteModel.update(existingInvite._id, nextInvitePayload);
+  }
 
   return { invite, token };
 }
