@@ -25,7 +25,7 @@ export default function Footer() {
   const aboutText =
     content.aboutText ||
     `A private network for the ${campName} community, built with the PondBridge product shell.`;
-  const contactEmail = content.contactEmail || "support@pondbridge.co";
+  const contactEmail = content.contactEmail || "support@pondbridgealumni.com";
 
   const footerLinks = useMemo(
     () => normalizeLinks(content.footerLinks || []),

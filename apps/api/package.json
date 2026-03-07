@@ -13,6 +13,7 @@
     "seed": "node scripts/seed.js",
     "seed:demo": "node scripts/seedDemoCamp.js",
     "seed:demo:reset": "node scripts/seedDemoCamp.js --reset",
+    "demo:create": "node scripts/createDemoCamp.js",
     "seed:camp-profiles": "node scripts/seedCampProfiles.js",
     "dev:provision-test-camp": "node scripts/devProvisionTestCampFlow.js",
     "supabase:apply-schema": "node scripts/applySupabaseSchema.js",

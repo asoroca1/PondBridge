@@ -251,6 +251,7 @@ function TenantScopeRoutes() {
     currentPath.includes("/login") ||
     currentPath.includes("/create-account");
   const waitingForTenantScopedUser = clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute;
+  const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -552,6 +553,10 @@ function TenantScopeRoutes() {
     return <Navigate to={slug ? `/t/${slug}/login` : "/login"} replace />;
   }
 
+  if (demoAccessEnabled && onMemberCreateAccountRoute) {
+    return <Navigate to={slug ? `/t/${slug}/login` : "/login"} replace />;
+  }
+
   return (
     <AppShell>
       <ErrorBoundary level="page">
@@ -560,7 +565,10 @@ function TenantScopeRoutes() {
         <Route index element={onboardingIncomplete ? <DirectorClaimPage /> : <CedarHomePage />} />
         <Route path="login/*" element={<CedarLoginPage />} />
         <Route path="forgot-password" element={<CedarForgotPasswordPage />} />
-        <Route path="create-account/*" element={<CedarCreateProfileWizardPage />} />
+        <Route
+          path="create-account/*"
+          element={demoAccessEnabled ? <Navigate to={slug ? `/t/${slug}/login` : "/login"} replace /> : <CedarCreateProfileWizardPage />}
+        />
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
         <Route path="director-create-account/*" element={<DirectorCreateAccountPage />} />

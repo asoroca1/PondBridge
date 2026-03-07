@@ -172,6 +172,12 @@ function isSignupEnabled(tenant) {
   return isTenantBillingAccessAllowed(tenant).allowed;
 }
 
+function hasDemoAccessEnabled(tenant = null) {
+  const settings = tenant?.settings && typeof tenant.settings === "object" ? tenant.settings : {};
+  const demoAccess = settings.demoAccess && typeof settings.demoAccess === "object" ? settings.demoAccess : {};
+  return Boolean(demoAccess.enabled && String(demoAccess.codeHash || "").trim());
+}
+
 async function resolveTenantForPublicRequest(req) {
   const slug = String(req.query.slug || "").trim().toLowerCase();
   if (slug) {
@@ -267,7 +273,8 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
       content: resolveContent(tenant),
       accessSettings: {
         signupMode: "open",
-        signupEnabled: isSignupEnabled(tenant)
+        signupEnabled: isSignupEnabled(tenant),
+        demoAccessEnabled: hasDemoAccessEnabled(tenant)
       },
       modules: config.modules,
       features: listFeaturesForPlan(planTier, tenant.addOns || [])
@@ -329,7 +336,8 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
         reason: billingAccess.reason,
         inGrace: billingAccess.inGrace
       },
-      signupMode: "open"
+      signupMode: "open",
+      demoAccessEnabled: hasDemoAccessEnabled(tenant)
     };
 
     if (cacheKey) {

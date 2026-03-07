@@ -426,7 +426,100 @@ function ClerkConfigErrorLogin() {
   );
 }
 
+function DemoCodeLogin() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  const { slug: paramSlug = "" } = useParams();
+  const { slug: contextSlug = "" } = useTenant();
+  const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
+  const [searchParams] = useSearchParams();
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const notice = resolveAuthIssueMessage(searchParams);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+    const normalizedCode = String(code || "").trim();
+    if (!normalizedCode) {
+      setError("Please enter your demo access code.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/demo-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: normalizedCode })
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        let msg = `Demo access failed (${res.status}).`;
+        try {
+          msg = normalizeErrorMessage(JSON.parse(text), msg);
+        } catch {
+          // keep default
+        }
+        throw new Error(msg);
+      }
+      const payload = JSON.parse(text || "{}");
+      if (!payload?.token || !payload?.user) {
+        throw new Error("Invalid demo access response from server.");
+      }
+
+      login(payload.token, payload.user);
+      navigate(tenantRoute(slug, "/home"), { replace: true });
+    } catch (submitError) {
+      setError(String(submitError?.message || "Unable to verify access code right now."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="login1 login1-modern">
+      <Navbar1 />
+      <section className="login1-main login1-main-modern login1-main-create-bg">
+        <div className="login1-wrap">
+          <article className="login1-card login1-card-modern">
+            <div className="login1-intro">
+              <p className="login1-kicker">Camp Access</p>
+              <h1 className="login1-title auth-entry-title">Demo Access</h1>
+              <p className="login1-clerk-panel-subtitle">
+                Enter your demo code to open the director account.
+              </p>
+            </div>
+
+            <form className="login1-form" onSubmit={handleSubmit}>
+              <input
+                className="login1-input"
+                type="text"
+                placeholder="Demo Access Code"
+                value={code}
+                onChange={(event) => setCode(String(event.target.value || "").toUpperCase())}
+                autoComplete="one-time-code"
+                required
+              />
+              {notice ? <p className="login1-error">{notice}</p> : null}
+              {error ? <p className="login1-error">{error}</p> : null}
+              <button className="login1-btn" type="submit" disabled={submitting}>
+                {submitting ? "Verifying..." : "Enter Demo"}
+              </button>
+            </form>
+          </article>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function Login() {
+  const { tenant } = useTenant();
+  const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
+
+  if (demoAccessEnabled) return <DemoCodeLogin />;
   if (clerkUiEnabled()) return <ClerkLogin />;
   if (clerkModeRequested()) return <ClerkConfigErrorLogin />;
   return <LegacyLogin />;

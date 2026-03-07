@@ -17,6 +17,7 @@ function Home() {
   const heroImageSize = normalizeHeroImageSize(
     heroBranding.heroImageSizeLanding || heroBranding.heroImageSize || ""
   );
+  const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   return (
     <section
@@ -40,11 +41,13 @@ function Home() {
             "Reconnect with bunkmates. Search for people in your industry and reconnect with your camp community."}
         </p>
         <div className="landing-cta">
-          <button className="landing-btn landing-btn-primary" onClick={() => navigate("/create-account")}>
-            Create Account
-          </button>
+          {!demoAccessEnabled ? (
+            <button className="landing-btn landing-btn-primary" onClick={() => navigate("/create-account")}>
+              Create Account
+            </button>
+          ) : null}
           <button className="landing-btn landing-btn-secondary" onClick={() => navigate("/login")}>
-            Login
+            {demoAccessEnabled ? "Demo Access" : "Login"}
           </button>
         </div>
       </div>

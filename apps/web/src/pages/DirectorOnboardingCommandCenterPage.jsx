@@ -716,12 +716,12 @@ export default function DirectorOnboardingCommandCenterPage() {
               Email Support
             </a>
           ) : (
-            <a className="link-button secondary" href="mailto:support@pondbridge.co">
+            <a className="link-button secondary" href="mailto:support@pondbridgealumni.com">
               Email PondBridge
             </a>
           )}
           {isPremium ? (
-            <a className="link-button" href="mailto:support@pondbridge.co?subject=Onboarding%20Call">
+            <a className="link-button" href="mailto:support@pondbridgealumni.com?subject=Onboarding%20Call">
               Schedule Onboarding Call
             </a>
           ) : (

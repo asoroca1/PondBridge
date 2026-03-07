@@ -70,6 +70,13 @@ const magicLinkConsumeLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => authLimiterKey(req)
 });
+const demoAccessLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req)
+});
 
 function generateToken(length = 24) {
   return crypto.randomBytes(length).toString("base64url");
@@ -210,6 +217,31 @@ function normalizeLegalAgreementFromBody(body = {}) {
   };
 }
 
+function resolveDemoAccessSettings(tenant = null) {
+  const settings = tenant?.settings && typeof tenant.settings === "object" ? tenant.settings : {};
+  const demoAccess = settings.demoAccess && typeof settings.demoAccess === "object" ? settings.demoAccess : {};
+  const codeHash = String(demoAccess.codeHash || "").trim();
+  return {
+    enabled: Boolean(demoAccess.enabled && codeHash),
+    codeHash,
+    directorUserId: String(demoAccess.directorUserId || "").trim(),
+    directorEmail: String(demoAccess.directorEmail || "").trim().toLowerCase()
+  };
+}
+
+function isDemoAccessOnlyTenant(tenant = null) {
+  return resolveDemoAccessSettings(tenant).enabled;
+}
+
+function demoAccessOnlyErrorPayload() {
+  return {
+    error: {
+      code: "DEMO_ACCESS_ONLY",
+      message: "This demo network only supports access-code sign in."
+    }
+  };
+}
+
 function profileFromBody(body) {
   const education = Array.isArray(body.education) ? body.education : [];
   const roles = normalizeRoleList(Array.isArray(body.roles) ? body.roles : [body.roleAtCamp]);
@@ -255,6 +287,10 @@ function profileFromBody(body) {
 }
 
 router.post("/register", registerLimiter, requireTenant, async (req, res) => {
+  if (isDemoAccessOnlyTenant(req.tenant)) {
+    return res.status(403).json(demoAccessOnlyErrorPayload());
+  }
+
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const firstName = String(req.body.firstName || "").trim();
@@ -541,6 +577,10 @@ router.post("/invite/verify", inviteVerifyLimiter, requireTenant, async (req, re
 });
 
 router.post("/login", loginLimiter, requireTenant, async (req, res) => {
+  if (isDemoAccessOnlyTenant(req.tenant)) {
+    return res.status(403).json(demoAccessOnlyErrorPayload());
+  }
+
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
 
@@ -611,7 +651,98 @@ router.post("/login", loginLimiter, requireTenant, async (req, res) => {
   return res.json({ token, user: sanitizeUser(user), profile });
 });
 
+router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) => {
+  const code = String(req.body.code || req.body.accessCode || "").trim().toUpperCase();
+  if (!code) {
+    return res.status(400).json({
+      error: {
+        code: "DEMO_ACCESS_CODE_REQUIRED",
+        message: "Access code is required."
+      }
+    });
+  }
+
+  if (req.tenant.status !== "active") {
+    return res.status(403).json({
+      error: {
+        code: "TENANT_INACTIVE",
+        message: "This network is inactive."
+      }
+    });
+  }
+
+  const demoAccess = resolveDemoAccessSettings(req.tenant);
+  if (!demoAccess.enabled || !demoAccess.codeHash) {
+    return res.status(403).json({
+      error: {
+        code: "DEMO_ACCESS_DISABLED",
+        message: "Demo access is not configured for this network."
+      }
+    });
+  }
+
+  const matched = await comparePassword(code, demoAccess.codeHash).catch(() => false);
+  if (!matched) {
+    return res.status(401).json({
+      error: {
+        code: "AUTH_FAILED",
+        message: "Invalid access code."
+      }
+    });
+  }
+
+  let user = null;
+  if (demoAccess.directorUserId) {
+    user = await UserModel.findOne(req.tenant._id, { _id: demoAccess.directorUserId });
+  }
+  if (!user && demoAccess.directorEmail) {
+    user = await UserModel.findOne(req.tenant._id, { email: demoAccess.directorEmail });
+  }
+  if (!user) {
+    user = await UserModel.findOne(req.tenant._id, { roles: { $contains: ["tenant_admin"] } });
+  }
+  if (!user) {
+    return res.status(404).json({
+      error: {
+        code: "DEMO_DIRECTOR_NOT_FOUND",
+        message: "Demo director account is not configured."
+      }
+    });
+  }
+  if (user.status !== "active") {
+    return res.status(403).json({
+      error: {
+        code: "USER_INACTIVE",
+        message: "This account is inactive."
+      }
+    });
+  }
+
+  const nextLastLoginAt = new Date();
+  await UserModel.update(user._id, { lastLoginAt: nextLastLoginAt });
+  user.lastLoginAt = nextLastLoginAt;
+
+  const token = signToken(user);
+  setAuthCookie(res, token);
+  const profile = user.profileId
+    ? await ProfileModel.findOne(req.tenant._id, { _id: user.profileId })
+    : null;
+
+  await logTenantEvent({
+    tenantId: req.tenant._id,
+    userId: user._id,
+    eventType: "auth_login_demo_code",
+    metadata: { method: "demo_code" }
+  }).catch(() => {});
+
+  return res.json({ token, user: sanitizeUser(user), profile });
+});
+
 router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async (req, res) => {
+  if (isDemoAccessOnlyTenant(req.tenant)) {
+    return res.status(403).json(demoAccessOnlyErrorPayload());
+  }
+
   const email = String(req.body.email || "").trim().toLowerCase();
   if (!email) {
     return res.status(400).json({
@@ -677,6 +808,10 @@ router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async
 });
 
 router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async (req, res) => {
+  if (isDemoAccessOnlyTenant(req.tenant)) {
+    return res.status(403).json(demoAccessOnlyErrorPayload());
+  }
+
   const token = String(req.body.token || "").trim();
   if (!token) {
     return res.status(400).json({

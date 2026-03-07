@@ -204,6 +204,7 @@ export default function NavBar() {
   );
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
   const canFamilyTrees = Boolean(modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees"));
+  const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
   const loginPath = pathWithCamp(slug, "/login");
   const createAccountPath = pathWithCamp(slug, "/create-account");
 
@@ -625,15 +626,17 @@ export default function NavBar() {
 
         {showAuthActions ? (
           <div className="navbar2-auth-actions">
-            <button
-              className={`navbar2-auth-btn ${onCreateAccountRoute ? "is-current" : ""}`.trim()}
-              onClick={() => {
-                if (!onCreateAccountRoute) navigate(createAccountPath);
-              }}
-              aria-current={onCreateAccountRoute ? "page" : undefined}
-            >
-              Create Account
-            </button>
+            {!demoAccessEnabled ? (
+              <button
+                className={`navbar2-auth-btn ${onCreateAccountRoute ? "is-current" : ""}`.trim()}
+                onClick={() => {
+                  if (!onCreateAccountRoute) navigate(createAccountPath);
+                }}
+                aria-current={onCreateAccountRoute ? "page" : undefined}
+              >
+                Create Account
+              </button>
+            ) : null}
             <button
               className={`navbar2-auth-btn secondary ${onLoginRoute ? "is-current" : ""}`.trim()}
               onClick={() => {
@@ -641,7 +644,7 @@ export default function NavBar() {
               }}
               aria-current={onLoginRoute ? "page" : undefined}
             >
-              Login
+              {demoAccessEnabled ? "Demo Access" : "Login"}
             </button>
           </div>
         ) : null}

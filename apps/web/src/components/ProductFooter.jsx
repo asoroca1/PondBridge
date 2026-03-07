@@ -11,20 +11,20 @@ export default function ProductFooter() {
 
         <section className="product-footer-col">
           <h4>Product</h4>
-          <a href="https://pondbridge.co/security" target="_blank" rel="noreferrer">
+          <a href="https://pondbridgealumni.com/security" target="_blank" rel="noreferrer">
             Security
           </a>
-          <a href="mailto:support@pondbridge.co?subject=PondBridge%20Support">
+          <a href="mailto:support@pondbridgealumni.com?subject=PondBridge%20Support">
             Support
           </a>
-          <a href="https://status.pondbridge.co" target="_blank" rel="noreferrer">
+          <a href="https://status.pondbridgealumni.com" target="_blank" rel="noreferrer">
             Status
           </a>
         </section>
 
         <section className="product-footer-col">
           <h4>Contact</h4>
-          <a href="mailto:support@pondbridge.co">support@pondbridge.co</a>
+          <a href="mailto:support@pondbridgealumni.com">support@pondbridgealumni.com</a>
         </section>
       </div>
 
