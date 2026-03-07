@@ -35,6 +35,8 @@ const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
     .trim()
     .toLowerCase()
 );
+const DEMO_TENANT_FLAG_CACHE_TTL_MS = 5 * 60 * 1000;
+const demoTenantFlagCache = new Map();
 
 function inferTenantSlugForSessionRequest() {
   if (typeof window === "undefined") return "";
@@ -64,6 +66,32 @@ function isAuthEntryRoute(pathname = "") {
     path.includes("/director-claim") ||
     path.includes("/director-create-account")
   );
+}
+
+async function isDemoTenantSlug(slug = "") {
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  if (!normalizedSlug) return false;
+
+  const cached = demoTenantFlagCache.get(normalizedSlug);
+  if (cached && Date.now() < Number(cached.expiresAt || 0)) {
+    return Boolean(cached.value);
+  }
+
+  try {
+    const payload = await requestJson(`/api/public/tenant-config?slug=${encodeURIComponent(normalizedSlug)}`);
+    const value = Boolean(payload?.accessSettings?.demoAccessEnabled);
+    demoTenantFlagCache.set(normalizedSlug, {
+      value,
+      expiresAt: Date.now() + DEMO_TENANT_FLAG_CACHE_TTL_MS
+    });
+    return value;
+  } catch {
+    demoTenantFlagCache.set(normalizedSlug, {
+      value: false,
+      expiresAt: Date.now() + 30 * 1000
+    });
+    return false;
+  }
 }
 
 function wait(ms = 0) {
@@ -416,6 +444,41 @@ function ClerkBackedAuthProvider({ children }) {
     // page needs to see the error to prevent redirect loops.
   }, []);
 
+  const tryRestoreDemoLegacySession = useCallback(async ({ tenantSlug = "" } = {}) => {
+    const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
+      .trim()
+      .toLowerCase();
+    if (!resolvedTenantSlug) return false;
+
+    const demoTenant = await isDemoTenantSlug(resolvedTenantSlug);
+    if (!demoTenant) return false;
+
+    const candidateToken = String(tokenRef.current || readSessionToken() || "").trim();
+    try {
+      const payload = await requestJson("/api/auth/session", {
+        token: candidateToken,
+        headers: { "X-Tenant-Slug": resolvedTenantSlug }
+      });
+      const normalizedUser = normalizeUserShape({
+        ...(payload?.user || {}),
+        tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
+      });
+      if (!normalizedUser) return false;
+
+      const persistedSessionToken = String(payload?.sessionToken || candidateToken || "").trim();
+      setUser(normalizedUser);
+      setToken(persistedSessionToken);
+      writeSessionToken(persistedSessionToken);
+      writeAuthToStorage(persistedSessionToken, normalizedUser);
+      markTabSessionAuthenticated();
+      clearTabLoginIntent();
+      setBootstrapError("");
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const getAuthToken = useCallback(
     async ({ forceRefresh = false } = {}) => {
       if (!isLoaded || !isSignedIn) return "";
@@ -628,11 +691,34 @@ function ClerkBackedAuthProvider({ children }) {
     }
 
     if (!isSignedIn) {
-      clearLocalAuth();
-      bootstrappedSessionIdRef.current = "";
-      bootstrapDoneRef.current = true;
-      setSessionRefreshing(false);
-      return;
+      let active = true;
+      const tenantSlug = inferTenantSlugForSessionRequest();
+      setSessionRefreshing(true);
+
+      Promise.resolve(tryRestoreDemoLegacySession({ tenantSlug }))
+        .then((restored) => {
+          if (!active) return;
+          if (restored) {
+            bootstrapDoneRef.current = true;
+            setSessionRefreshing(false);
+            return;
+          }
+          clearLocalAuth();
+          bootstrappedSessionIdRef.current = "";
+          bootstrapDoneRef.current = true;
+          setSessionRefreshing(false);
+        })
+        .catch(() => {
+          if (!active) return;
+          clearLocalAuth();
+          bootstrappedSessionIdRef.current = "";
+          bootstrapDoneRef.current = true;
+          setSessionRefreshing(false);
+        });
+
+      return () => {
+        active = false;
+      };
     }
 
     const hasResolvedUser = Boolean(String(userRef.current?.id || userRef.current?._id || "").trim());
@@ -703,7 +789,7 @@ function ClerkBackedAuthProvider({ children }) {
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [clearLocalAuth, isLoaded, isSignedIn, sessionId]);
+  }, [clearLocalAuth, isLoaded, isSignedIn, sessionId, tryRestoreDemoLegacySession]);
 
   const login = useCallback(
     (nextToken, nextUser) => {

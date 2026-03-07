@@ -10,16 +10,17 @@ export async function comparePassword(plainText, passwordHash) {
   return bcrypt.compare(plainText, passwordHash);
 }
 
-export function signToken(user) {
+export function signToken(user, { expiresIn = env.JWT_EXPIRES_IN, extraClaims = {} } = {}) {
   return jwt.sign(
     {
       sub: String(user._id),
       tenantId: user.tenantId ? String(user.tenantId) : null,
       roles: user.roles || [],
-      email: user.email
+      email: user.email,
+      ...extraClaims
     },
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN }
+    { expiresIn }
   );
 }
 

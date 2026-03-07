@@ -70,8 +70,10 @@ router.post("/super/logout", async (_req, res) => {
 
 router.get("/session", requireAuth, async (req, res) => {
   const tenant = req.user?.tenantId ? await TenantModel.findOne({ _id: req.user.tenantId }) : null;
+  const sessionToken = req.identity?.provider === "legacy" ? String(req.token || "") : "";
   return res.json({
     ok: true,
+    sessionToken,
     authProvider: req.identity?.provider || env.AUTH_PROVIDER,
     user: {
       id: req.user.id,
