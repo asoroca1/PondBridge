@@ -4478,11 +4478,13 @@ const MODULE_LAYOUT_HINTS = {
 
 export function DirectorAdminFeaturesPage() {
   const { slug, request } = useAdminApi();
+  const { tenant } = useTenant();
   const [payload, setPayload] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [moduleDisplayNames, setModuleDisplayNames] = useState({ newsletter: "Newsletter" });
+  const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   const loadFeatures = useCallback(async () => {
     setError("");
@@ -4636,7 +4638,7 @@ export function DirectorAdminFeaturesPage() {
         actions={
           <>
             <Badge tone="neutral">{payload?.tenant?.planTier || "base"} plan</Badge>
-            {payload?.tenant?.planTier === "base" ? (
+            {payload?.tenant?.planTier === "base" && !demoAccessEnabled ? (
               <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>
                 Upgrade Plan
               </Link>

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { Button, Card } from "@pondbridge/ui";
 import { PageHeader } from "../../components/admin/AdminUi.jsx";
+import { useTenant } from "../../context/TenantContext.jsx";
 import useAdminApi from "./useAdminApi.js";
 
 function formatDate(value) {
@@ -84,6 +85,7 @@ function formatLifecycleLabel(value = "", fallback = "Uninitialized") {
 
 export default function DirectorAdminBillingPage() {
   const { slug, request } = useAdminApi();
+  const { tenant: tenantConfig } = useTenant();
   const [searchParams] = useSearchParams();
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,11 @@ export default function DirectorAdminBillingPage() {
   const [startingCheckout, setStartingCheckout] = useState(false);
 
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
+  const demoAccessEnabled = Boolean(tenantConfig?.accessSettings?.demoAccessEnabled);
+
+  if (demoAccessEnabled) {
+    return <Navigate to={slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard"} replace />;
+  }
 
   const loadBilling = useCallback(async () => {
     setLoading(true);

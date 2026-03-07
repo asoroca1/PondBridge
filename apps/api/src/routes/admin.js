@@ -223,6 +223,24 @@ function safeTenant(tenant) {
   return next;
 }
 
+function hasDemoAccessEnabled(tenant = null) {
+  const settings = tenant?.settings && typeof tenant.settings === "object" ? tenant.settings : {};
+  const demoAccess = settings.demoAccess && typeof settings.demoAccess === "object" ? settings.demoAccess : {};
+  return Boolean(demoAccess.enabled && String(demoAccess.codeHash || "").trim());
+}
+
+function ensureBillingVisibleForTenant(req, res, next) {
+  if (hasDemoAccessEnabled(req.tenant)) {
+    return res.status(404).json({
+      error: {
+        code: "DEMO_BILLING_HIDDEN",
+        message: "Billing is hidden for demo networks."
+      }
+    });
+  }
+  return next();
+}
+
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
 }
@@ -3837,7 +3855,7 @@ router.patch("/features", async (req, res) => {
   });
 });
 
-router.get("/billing", async (req, res) => {
+router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
   const planTier = resolveTenantFeatureTier(req.tenant);
   const mode = getBillingMode();
   const portal = await createBillingPortalUrl({
@@ -3885,7 +3903,7 @@ router.get("/billing", async (req, res) => {
   });
 });
 
-router.post("/billing/checkout", async (req, res, next) => {
+router.post("/billing/checkout", ensureBillingVisibleForTenant, async (req, res, next) => {
   try {
     const requested = String(req.body?.planCode || req.body?.billingPlan || "").trim().toLowerCase();
     if (requested && !VALID_BILLING_PLAN_CODES.has(requested)) {

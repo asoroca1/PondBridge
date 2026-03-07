@@ -712,7 +712,10 @@ function TenantScopeRoutes() {
           <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
           <Route path="analytics" element={<Navigate to="../dashboard" replace />} />
           <Route path="features" element={<DirectorAdminFeaturesPage />} />
-          <Route path="billing" element={<DirectorAdminBillingPage />} />
+          <Route
+            path="billing"
+            element={demoAccessEnabled ? <Navigate to={slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard"} replace /> : <DirectorAdminBillingPage />}
+          />
           <Route path="settings" element={<DirectorAdminSettingsLayout />}>
             <Route index element={<Navigate to="network" replace />} />
             <Route path="network" element={<DirectorAdminSettingsNetworkPage />} />

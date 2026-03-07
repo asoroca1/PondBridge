@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
+import { useTenant } from "../../context/TenantContext.jsx";
 
 const ADMIN_NAV = [
   { key: "overview", to: "dashboard", label: "Overview" },
@@ -21,15 +22,19 @@ const SETTINGS_NAV = [
 
 export default function DirectorAdminLayout() {
   const location = useLocation();
+  const { tenant } = useTenant();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const onSettingsRoute = location.pathname.includes("/admin/settings/");
+  const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   useEffect(() => {
     if (onSettingsRoute) setSettingsOpen(true);
   }, [onSettingsRoute]);
 
   const sections = useMemo(() => {
-    const base = ADMIN_NAV.map((item) => ({ ...item, className: "director-admin-sidebar-link" }));
+    const base = ADMIN_NAV
+      .filter((item) => !(demoAccessEnabled && item.key === "billing"))
+      .map((item) => ({ ...item, className: "director-admin-sidebar-link" }));
 
     base.push({
       key: "settings",
@@ -42,7 +47,7 @@ export default function DirectorAdminLayout() {
     });
 
     return base;
-  }, [onSettingsRoute, settingsOpen]);
+  }, [demoAccessEnabled, onSettingsRoute, settingsOpen]);
 
   return (
     <section className="pb-cedar-page">
