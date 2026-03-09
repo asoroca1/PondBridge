@@ -23,9 +23,23 @@ function parseJwtExpiry(token = "") {
   }
 }
 
+function readStorageValue(storage, key) {
+  try {
+    return String(storage?.getItem?.(key) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 /** Retrieve the best stored auth token and avoid stale/expired values. */
 export function getToken() {
-  const candidates = [getVolatileAuthToken() || ""]
+  const candidates = [
+    getVolatileAuthToken() || "",
+    readStorageValue(sessionStorage, "pondbridgeSessionToken"),
+    readStorageValue(localStorage, "pondbridgeToken"),
+    readStorageValue(localStorage, "token"),
+    readStorageValue(localStorage, "cedarToken")
+  ]
     .map((value) => String(value || "").trim())
     .filter(Boolean);
 

@@ -583,6 +583,55 @@
   gap: 12px;
 }
 
+.director-billing-stage-callout {
+  border-color: color-mix(in srgb, var(--po-brand) 30%, #d3dce9);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--po-brand) 8%, #ffffff) 0%,
+    #ffffff 54%,
+    #f8fbff 100%
+  );
+}
+
+.director-billing-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.director-billing-highlight {
+  height: 100%;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.director-billing-kv {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.director-billing-kv div {
+  display: grid;
+  gap: 2px;
+}
+
+.director-billing-kv dt {
+  color: #5a7391;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.director-billing-kv dd {
+  margin: 0;
+  color: #1b3859;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
 .director-review-fields {
   gap: 12px;
 }
@@ -1865,6 +1914,10 @@
   }
 
   .director-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .director-billing-overview-grid {
     grid-template-columns: 1fr;
   }
 

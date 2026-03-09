@@ -343,14 +343,11 @@ function normalizeAddress(value = {}) {
   };
 }
 
-function formatAddress(address = {}) {
+function addressHasRequiredFields(address = {}) {
   const normalized = normalizeAddress(address);
-  const secondLine = [normalized.city, normalized.state, normalized.postalCode]
-    .filter(Boolean)
-    .join(", ");
-  return [normalized.line1, normalized.line2, secondLine, normalized.country]
-    .filter(Boolean)
-    .join(" • ");
+  return ["line1", "city", "state", "postalCode", "country"].every((field) =>
+    Boolean(String(normalized[field] || "").trim())
+  );
 }
 
 function loadImageFromFile(file) {
@@ -570,7 +567,7 @@ function DirectorCreateAccountWizardPage() {
     mailingAddress: { ...EMPTY_ADDRESS },
     billingAddress: { ...EMPTY_ADDRESS }
   });
-  const [billingErrors, setBillingErrors] = useState({});
+  const [, setBillingErrors] = useState({});
   const [legalAgreementAccepted, setLegalAgreementAccepted] = useState(false);
   const [legalAgreementError, setLegalAgreementError] = useState("");
   const [specificsErrors, setSpecificsErrors] = useState({});
@@ -848,11 +845,6 @@ function DirectorCreateAccountWizardPage() {
     : undefined;
   const reviewAgeGroups = parseLineList(campSpecifics.ageGroupsText);
   const reviewStaffRoles = parseLineList(campSpecifics.staffRolesText);
-  const normalizedMailingAddress = normalizeAddress(billingDetails.mailingAddress);
-  const normalizedBillingAddress = billingDetails.sameAsMailing
-    ? normalizedMailingAddress
-    : normalizeAddress(billingDetails.billingAddress);
-
   useEffect(() => {
     const root = document.documentElement;
     if (!initialThemeVarsRef.current) {
@@ -1581,27 +1573,9 @@ function DirectorCreateAccountWizardPage() {
     const billingAddress = billingDetails.sameAsMailing
       ? { ...mailingAddress }
       : normalizeAddress(billingDetails.billingAddress);
-    const next = {};
-    if (BILLING_REQUIRED_DURING_ONBOARDING) {
-      const requiredFields = ["line1", "city", "state", "postalCode", "country"];
-
-      requiredFields.forEach((field) => {
-        if (!String(mailingAddress[field] || "").trim()) {
-          next[`mailingAddress.${field}`] = "This field is required.";
-        }
-      });
-
-      if (!billingDetails.sameAsMailing) {
-        requiredFields.forEach((field) => {
-          if (!String(billingAddress[field] || "").trim()) {
-            next[`billingAddress.${field}`] = "This field is required.";
-          }
-        });
-      }
-    }
 
     return {
-      errors: next,
+      errors: {},
       billingDetails: {
         sameAsMailing: Boolean(billingDetails.sameAsMailing),
         mailingAddress,
@@ -1751,7 +1725,7 @@ function DirectorCreateAccountWizardPage() {
       setBillingErrors(billingCheck.errors);
       if (Object.keys(billingCheck.errors).length > 0) {
         setStep(STEP_BILLING_PLAN);
-        setSubmitError("Please complete billing details before moving forward.");
+        setSubmitError("Please review billing and plan before moving forward.");
         return;
       }
     } else {
@@ -1887,34 +1861,6 @@ function DirectorCreateAccountWizardPage() {
     setSubmitError("");
   }
 
-  function updateBillingAddressField(section, field, value) {
-    setBillingDetails((prev) => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [field]: value
-      }
-    }));
-    setBillingErrors((prev) => ({ ...prev, [`${section}.${field}`]: "" }));
-    setSubmitError("");
-  }
-
-  function updateSameAsMailing(enabled) {
-    setBillingDetails((prev) => ({
-      ...prev,
-      sameAsMailing: Boolean(enabled)
-    }));
-    setBillingErrors((prev) => {
-      if (!enabled) return prev;
-      const next = { ...prev };
-      Object.keys(next).forEach((key) => {
-        if (key.startsWith("billingAddress.")) delete next[key];
-      });
-      return next;
-    });
-    setSubmitError("");
-  }
-
   function goToStep(targetStep) {
     const currentIndex = STEP_ORDER.indexOf(step);
     const targetIndex = STEP_ORDER.indexOf(targetStep);
@@ -1968,7 +1914,7 @@ function DirectorCreateAccountWizardPage() {
       setBillingErrors(billingCheck.errors);
       if (Object.keys(billingCheck.errors).length > 0) {
         setStep(STEP_BILLING_PLAN);
-        setSubmitError("Complete billing details before continuing.");
+        setSubmitError("Review billing and plan before continuing.");
         return;
       }
     }
@@ -2017,7 +1963,7 @@ function DirectorCreateAccountWizardPage() {
       setBillingErrors(billingCheck.errors);
       if (Object.keys(billingCheck.errors).length > 0) {
         setStep(STEP_BILLING_PLAN);
-        setSubmitError("Please complete billing details before finishing setup.");
+        setSubmitError("Please review billing and plan before finishing setup.");
         return;
       }
     } else {
@@ -2187,13 +2133,19 @@ function DirectorCreateAccountWizardPage() {
       });
 
       if (BILLING_REQUIRED_DURING_ONBOARDING) {
-        await requestJson("/api/tenants/me/billing", {
-          method: "PATCH",
-          token,
-          body: {
-            billingDetails: billingCheck.billingDetails
-          }
-        });
+        const shouldPersistBillingDetails =
+          addressHasRequiredFields(billingCheck.billingDetails.mailingAddress) &&
+          (billingCheck.billingDetails.sameAsMailing ||
+            addressHasRequiredFields(billingCheck.billingDetails.billingAddress));
+        if (shouldPersistBillingDetails) {
+          await requestJson("/api/tenants/me/billing", {
+            method: "PATCH",
+            token,
+            body: {
+              billingDetails: billingCheck.billingDetails
+            }
+          });
+        }
 
         const billingSnapshot = await requestJson("/api/tenants/me/billing", { token });
         const billingState = billingSnapshot?.billing || {};
@@ -3077,7 +3029,8 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Billing and plan</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    Confirm your plan details. Billing fields are optional for onboarding and can be completed later.
+                    Review pricing and launch billing. Stripe collects payment and billing address securely during
+                    checkout on the final launch action.
                   </p>
                 </div>
               </div>
@@ -3085,259 +3038,61 @@ function DirectorCreateAccountWizardPage() {
               <form className="director-create-form" onSubmit={onContinueToReviewLaunch} noValidate>
                 <div className="wizard1-grid wizard1-gap director-create-fields director-billing-fields">
                   <div className="wizard1-span-12">
-                    <article className="director-summary-card">
-                      <h3>{`Selected ${alumniWord} network plan`}</h3>
-                      <p className="director-summary-main">
-                        {billingPlanLabel(selectedBillingPlanCode)}
-                      </p>
+                    <article className="director-summary-card director-billing-stage-callout">
+                      <h3>What happens in billing</h3>
+                      <p className="director-summary-main">No charge is made on this step.</p>
                       <p className="director-field-hint">
-                        {formatMoney(selectedPlanAnnualAmount)} yearly
-                        {" · "}
-                        {selectedPlanOnboardingFeeAmount > 0
-                          ? `${formatMoney(selectedPlanOnboardingFeeAmount)} onboarding fee (first checkout only)`
-                          : "No onboarding fee"}
+                        You will be redirected to Stripe only after clicking <strong>Create account &amp; open launch
+                        center</strong> on the final review step.
                       </p>
                     </article>
                   </div>
 
                   <div className="wizard1-span-12">
-                    <article className="director-summary-card">
-                      <h3>Onboarding fee status</h3>
-                      <p className="director-summary-main">{onboardingFeeStatusText}</p>
-                      <p className="director-field-hint">
-                        Amount: {formatMoney(onboardingFeeAmount)}. Status source: Stripe billing.
-                      </p>
-                    </article>
-                  </div>
-
-                  <div className="wizard1-span-12">
-                    <article className="director-summary-card director-address-card">
-                      <h3>Mailing address</h3>
-                      <div className="wizard1-grid wizard1-gap">
-                        <div className="wizard1-field wizard1-span-12">
-                          <label className="wizard1-label" htmlFor="director-mailing-line1">
-                            Address line 1
-                          </label>
-                          <input
-                            id="director-mailing-line1"
-                            className={`wizard1-input ${billingErrors["mailingAddress.line1"] ? "has-error" : ""}`}
-                            value={billingDetails.mailingAddress.line1}
-                            onChange={(event) =>
-                              updateBillingAddressField("mailingAddress", "line1", event.target.value)
-                            }
-                          />
-                          {billingErrors["mailingAddress.line1"] ? (
-                            <p className="wizard1-error">{billingErrors["mailingAddress.line1"]}</p>
-                          ) : null}
-                        </div>
-
-                        <div className="wizard1-field wizard1-span-12">
-                          <label className="wizard1-label" htmlFor="director-mailing-line2">
-                            Address line 2
-                          </label>
-                          <input
-                            id="director-mailing-line2"
-                            className="wizard1-input"
-                            value={billingDetails.mailingAddress.line2}
-                            onChange={(event) =>
-                              updateBillingAddressField("mailingAddress", "line2", event.target.value)
-                            }
-                          />
-                        </div>
-
-                        <div className="wizard1-field wizard1-span-4">
-                          <label className="wizard1-label" htmlFor="director-mailing-city">
-                            City
-                          </label>
-                          <input
-                            id="director-mailing-city"
-                            className={`wizard1-input ${billingErrors["mailingAddress.city"] ? "has-error" : ""}`}
-                            value={billingDetails.mailingAddress.city}
-                            onChange={(event) =>
-                              updateBillingAddressField("mailingAddress", "city", event.target.value)
-                            }
-                          />
-                          {billingErrors["mailingAddress.city"] ? (
-                            <p className="wizard1-error">{billingErrors["mailingAddress.city"]}</p>
-                          ) : null}
-                        </div>
-
-                        <div className="wizard1-field wizard1-span-4">
-                          <label className="wizard1-label" htmlFor="director-mailing-state">
-                            State / Province
-                          </label>
-                          <input
-                            id="director-mailing-state"
-                            className={`wizard1-input ${billingErrors["mailingAddress.state"] ? "has-error" : ""}`}
-                            value={billingDetails.mailingAddress.state}
-                            onChange={(event) =>
-                              updateBillingAddressField("mailingAddress", "state", event.target.value)
-                            }
-                          />
-                          {billingErrors["mailingAddress.state"] ? (
-                            <p className="wizard1-error">{billingErrors["mailingAddress.state"]}</p>
-                          ) : null}
-                        </div>
-
-                        <div className="wizard1-field wizard1-span-4">
-                          <label className="wizard1-label" htmlFor="director-mailing-postal">
-                            Postal code
-                          </label>
-                          <input
-                            id="director-mailing-postal"
-                            className={`wizard1-input ${billingErrors["mailingAddress.postalCode"] ? "has-error" : ""}`}
-                            value={billingDetails.mailingAddress.postalCode}
-                            onChange={(event) =>
-                              updateBillingAddressField("mailingAddress", "postalCode", event.target.value)
-                            }
-                          />
-                          {billingErrors["mailingAddress.postalCode"] ? (
-                            <p className="wizard1-error">{billingErrors["mailingAddress.postalCode"]}</p>
-                          ) : null}
-                        </div>
-
-                        <div className="wizard1-field wizard1-span-6">
-                          <label className="wizard1-label" htmlFor="director-mailing-country">
-                            Country
-                          </label>
-                          <input
-                            id="director-mailing-country"
-                            className={`wizard1-input ${billingErrors["mailingAddress.country"] ? "has-error" : ""}`}
-                            value={billingDetails.mailingAddress.country}
-                            onChange={(event) =>
-                              updateBillingAddressField("mailingAddress", "country", event.target.value)
-                            }
-                          />
-                          {billingErrors["mailingAddress.country"] ? (
-                            <p className="wizard1-error">{billingErrors["mailingAddress.country"]}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    </article>
-                  </div>
-
-                  <div className="wizard1-span-12">
-                    <article className="director-summary-card director-address-card">
-                      <div className="director-address-head">
-                        <h3>Billing address</h3>
-                        <label className="director-inline-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={billingDetails.sameAsMailing}
-                            onChange={(event) => updateSameAsMailing(event.target.checked)}
-                          />
-                          <span>Use mailing address</span>
-                        </label>
-                      </div>
-
-                      {!billingDetails.sameAsMailing ? (
-                        <div className="wizard1-grid wizard1-gap">
-                          <div className="wizard1-field wizard1-span-12">
-                            <label className="wizard1-label" htmlFor="director-billing-line1">
-                              Address line 1
-                            </label>
-                            <input
-                              id="director-billing-line1"
-                              className={`wizard1-input ${billingErrors["billingAddress.line1"] ? "has-error" : ""}`}
-                              value={billingDetails.billingAddress.line1}
-                              onChange={(event) =>
-                                updateBillingAddressField("billingAddress", "line1", event.target.value)
-                              }
-                            />
-                            {billingErrors["billingAddress.line1"] ? (
-                              <p className="wizard1-error">{billingErrors["billingAddress.line1"]}</p>
-                            ) : null}
+                    <div className="director-billing-overview-grid">
+                      <article className="director-summary-card director-billing-highlight">
+                        <h3>{`Selected ${alumniWord} network plan`}</h3>
+                        <p className="director-summary-main">{billingPlanLabel(selectedBillingPlanCode)}</p>
+                        <dl className="director-billing-kv">
+                          <div>
+                            <dt>Annual subscription</dt>
+                            <dd>{formatMoney(selectedPlanAnnualAmount)} / year</dd>
                           </div>
-
-                          <div className="wizard1-field wizard1-span-12">
-                            <label className="wizard1-label" htmlFor="director-billing-line2">
-                              Address line 2
-                            </label>
-                            <input
-                              id="director-billing-line2"
-                              className="wizard1-input"
-                              value={billingDetails.billingAddress.line2}
-                              onChange={(event) =>
-                                updateBillingAddressField("billingAddress", "line2", event.target.value)
-                              }
-                            />
+                          <div>
+                            <dt>Onboarding fee</dt>
+                            <dd>
+                              {selectedPlanOnboardingFeeAmount > 0
+                                ? `${formatMoney(selectedPlanOnboardingFeeAmount)} (first checkout only)`
+                                : "No onboarding fee"}
+                            </dd>
                           </div>
+                        </dl>
+                      </article>
 
-                          <div className="wizard1-field wizard1-span-4">
-                            <label className="wizard1-label" htmlFor="director-billing-city">
-                              City
-                            </label>
-                            <input
-                              id="director-billing-city"
-                              className={`wizard1-input ${billingErrors["billingAddress.city"] ? "has-error" : ""}`}
-                              value={billingDetails.billingAddress.city}
-                              onChange={(event) =>
-                                updateBillingAddressField("billingAddress", "city", event.target.value)
-                              }
-                            />
-                            {billingErrors["billingAddress.city"] ? (
-                              <p className="wizard1-error">{billingErrors["billingAddress.city"]}</p>
-                            ) : null}
-                          </div>
-
-                          <div className="wizard1-field wizard1-span-4">
-                            <label className="wizard1-label" htmlFor="director-billing-state">
-                              State / Province
-                            </label>
-                            <input
-                              id="director-billing-state"
-                              className={`wizard1-input ${billingErrors["billingAddress.state"] ? "has-error" : ""}`}
-                              value={billingDetails.billingAddress.state}
-                              onChange={(event) =>
-                                updateBillingAddressField("billingAddress", "state", event.target.value)
-                              }
-                            />
-                            {billingErrors["billingAddress.state"] ? (
-                              <p className="wizard1-error">{billingErrors["billingAddress.state"]}</p>
-                            ) : null}
-                          </div>
-
-                          <div className="wizard1-field wizard1-span-4">
-                            <label className="wizard1-label" htmlFor="director-billing-postal">
-                              Postal code
-                            </label>
-                            <input
-                              id="director-billing-postal"
-                              className={`wizard1-input ${billingErrors["billingAddress.postalCode"] ? "has-error" : ""}`}
-                              value={billingDetails.billingAddress.postalCode}
-                              onChange={(event) =>
-                                updateBillingAddressField("billingAddress", "postalCode", event.target.value)
-                              }
-                            />
-                            {billingErrors["billingAddress.postalCode"] ? (
-                              <p className="wizard1-error">{billingErrors["billingAddress.postalCode"]}</p>
-                            ) : null}
-                          </div>
-
-                          <div className="wizard1-field wizard1-span-6">
-                            <label className="wizard1-label" htmlFor="director-billing-country">
-                              Country
-                            </label>
-                            <input
-                              id="director-billing-country"
-                              className={`wizard1-input ${billingErrors["billingAddress.country"] ? "has-error" : ""}`}
-                              value={billingDetails.billingAddress.country}
-                              onChange={(event) =>
-                                updateBillingAddressField("billingAddress", "country", event.target.value)
-                              }
-                            />
-                            {billingErrors["billingAddress.country"] ? (
-                              <p className="wizard1-error">{billingErrors["billingAddress.country"]}</p>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : (
+                      <article className="director-summary-card director-billing-highlight">
+                        <h3>Stripe checkout status</h3>
+                        <p className="director-summary-main">{onboardingFeeStatusText}</p>
                         <p className="director-field-hint">
-                          Billing address will use the same values as your mailing address.
+                          Stripe is the source of truth for payment, billing address, and invoice state.
                         </p>
-                      )}
+                      </article>
+                    </div>
+                  </div>
+
+                  <div className="wizard1-span-12">
+                    <article className="director-summary-card">
+                      <h3>Stripe checkout will collect</h3>
+                      <ul className="director-review-list">
+                        <li>Billing address and payment method securely in Stripe.</li>
+                        <li>Any onboarding fee (if applicable) with first-year subscription.</li>
+                        <li>Tax and invoice details needed for billing records.</li>
+                      </ul>
+                      <p className="director-field-hint">
+                        After successful checkout, you return automatically to finish launch.
+                      </p>
                     </article>
                   </div>
+
                 </div>
 
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
@@ -3526,16 +3281,8 @@ function DirectorCreateAccountWizardPage() {
                           <dd>{onboardingFeeStatusText}</dd>
                         </div>
                         <div>
-                          <dt>Mailing address</dt>
-                          <dd>{formatAddress(normalizedMailingAddress) || "Not set"}</dd>
-                        </div>
-                        <div>
-                          <dt>Billing address</dt>
-                          <dd>
-                            {billingDetails.sameAsMailing
-                              ? "Same as mailing address"
-                              : formatAddress(normalizedBillingAddress) || "Not set"}
-                          </dd>
+                          <dt>Billing details</dt>
+                          <dd>Collected in Stripe Checkout at launch</dd>
                         </div>
                       </dl>
                     </article>

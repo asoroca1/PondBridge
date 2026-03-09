@@ -329,7 +329,7 @@ function LegacyAuthProvider({ children }) {
     () => ({
       token,
       user,
-      isAuthenticated: Boolean(token || user?.id),
+      isAuthenticated: Boolean(token),
       isReady: true,
       authProvider: "legacy",
       authConfigError: "",
@@ -796,6 +796,7 @@ function ClerkBackedAuthProvider({ children }) {
       if (nextToken) {
         const normalized = normalizeUserShape(nextUser);
         setToken(nextToken);
+        writeSessionToken(nextToken);
         setUser(normalized);
         writeAuthToStorage(nextToken, normalized);
         markTabSessionAuthenticated();
@@ -858,7 +859,7 @@ function ClerkBackedAuthProvider({ children }) {
     () => ({
       token,
       user,
-      isAuthenticated: Boolean(token || user?.id),
+      isAuthenticated: Boolean(token || (isSignedIn && user?.id)),
       isReady: Boolean(isLoaded) && !sessionRefreshing,
       authProvider: AUTH_PROVIDER,
       authConfigError: "",
