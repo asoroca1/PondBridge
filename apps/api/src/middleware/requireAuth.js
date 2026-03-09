@@ -4,7 +4,6 @@ import { readAuthTokenFromCookie } from "../utils/authCookie.js";
 import { UserModel } from "../db/models/index.js";
 import { resolveClerkIdentityFromRequest } from "../services/clerkIdentity.js";
 import { trackClerkSessionSignIn } from "../services/analytics.js";
-import { normalizeIpAddress } from "../utils/ip.js";
 import {
   applySuperConsoleRolePolicy,
   ensureGlobalSuperAdmin,
@@ -126,16 +125,6 @@ export async function requireIdentity(req, res, next) {
   if (token && allowLegacy) {
     try {
       const payload = jwt.verify(token, env.JWT_SECRET);
-      const tokenBoundDemoIp = normalizeIpAddress(payload?.demoAccessIp || "");
-      const requestIp = normalizeIpAddress(req.ip);
-      if (tokenBoundDemoIp && requestIp && tokenBoundDemoIp !== requestIp) {
-        return res.status(401).json({
-          error: {
-            code: "DEMO_IP_CHANGED",
-            message: "Demo access code must be re-entered from this network."
-          }
-        });
-      }
       applyLegacyUser(req, payload, token, bearerToken ? "bearer" : "cookie");
       return next();
     } catch {

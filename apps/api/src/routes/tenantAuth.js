@@ -18,7 +18,6 @@ import { clearAuthCookie, setAuthCookie } from "../utils/authCookie.js";
 import { findInviteByOpaqueToken, markInviteUsed } from "../services/invites.js";
 import { hashOpaqueToken } from "../utils/tokens.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
-import { normalizeIpAddress } from "../utils/ip.js";
 import {
   canonicalizeCityName,
   canonicalizeCountryName,
@@ -723,10 +722,7 @@ router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) =
   await UserModel.update(user._id, { lastLoginAt: nextLastLoginAt });
   user.lastLoginAt = nextLastLoginAt;
 
-  const normalizedRequestIp = normalizeIpAddress(req.ip);
-  const token = signToken(user, {
-    extraClaims: normalizedRequestIp ? { demoAccessIp: normalizedRequestIp } : {}
-  });
+  const token = signToken(user);
   setAuthCookie(res, token);
   const profile = user.profileId
     ? await ProfileModel.findOne(req.tenant._id, { _id: user.profileId })

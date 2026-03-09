@@ -123,6 +123,36 @@ describe("Demo access auth", () => {
     expect(response.body.user?.roles || []).toEqual(expect.arrayContaining(["tenant_admin", "user"]));
   });
 
+  test("demo access token can load tenant-scoped auth session", async () => {
+    const { tenant, user, code } = await createDemoFixture({ slug: "demo-code-session" });
+
+    const patchTenant = await Tenant.findById(tenant._id);
+    patchTenant.settings = {
+      ...(patchTenant.settings || {}),
+      demoAccess: {
+        ...(patchTenant.settings?.demoAccess || {}),
+        directorUserId: user._id
+      }
+    };
+    await patchTenant.save();
+
+    const loginResponse = await request(app)
+      .post(`/api/t/${tenant.slug}/auth/demo-access`)
+      .send({ code });
+
+    expect(loginResponse.status).toBe(200);
+    expect(loginResponse.body.token).toBeTruthy();
+
+    const sessionResponse = await request(app)
+      .get("/api/auth/session")
+      .set("Authorization", `Bearer ${loginResponse.body.token}`)
+      .set("X-Tenant-Slug", tenant.slug);
+
+    expect(sessionResponse.status).toBe(200);
+    expect(sessionResponse.body.user?.id).toBeTruthy();
+    expect(sessionResponse.body.user?.tenantSlug).toBe(tenant.slug);
+  });
+
   test("rejects invalid demo access code", async () => {
     const { tenant } = await createDemoFixture({ slug: "demo-code-invalid", code: "ABCD-1234" });
 
