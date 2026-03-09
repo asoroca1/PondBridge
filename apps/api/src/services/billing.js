@@ -14,6 +14,7 @@ import {
   resolveTenantBilling,
   toLegacyBillingStatusFromLifecycle
 } from "./billingState.js";
+import { logLine } from "./logger.js";
 
 const FOUNDERS_MAX_CAMPS = 5;
 const ONBOARDING_FEE_UNPAID = "unpaid";
@@ -30,10 +31,10 @@ const BILLING_PLAN_CATALOG = {
   legacy: {
     code: "legacy",
     label: "Legacy",
-    description: "Legacy annual plan",
+    description: "Legacy annual plan ($3,500/year)",
     planTier: "base",
     annualAmount: 3500,
-    onboardingFeeAmount: 350,
+    onboardingFeeAmount: 0,
     annualPriceId: String(env.STRIPE_PRICE_LEGACY_ANNUAL || env.STRIPE_PRICE_BASE || "").trim(),
     onboardingPriceId: String(
       env.STRIPE_PRICE_LEGACY_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_BASE || ""
@@ -43,7 +44,7 @@ const BILLING_PLAN_CATALOG = {
   founders: {
     code: "founders",
     label: "Founders",
-    description: "Founders annual plan (first 5 camps)",
+    description: "Founders annual plan ($2,800/year, first 5 camps)",
     planTier: "premium",
     annualAmount: 2800,
     onboardingFeeAmount: 0,
@@ -54,10 +55,10 @@ const BILLING_PLAN_CATALOG = {
   institutional: {
     code: "institutional",
     label: "Institutional",
-    description: "Institutional annual plan",
+    description: "Institutional annual plan ($5,000/year + $450 one-time onboarding on initial checkout)",
     planTier: "premium",
-    annualAmount: 5500,
-    onboardingFeeAmount: 750,
+    annualAmount: 5000,
+    onboardingFeeAmount: 450,
     annualPriceId: String(env.STRIPE_PRICE_INSTITUTIONAL_ANNUAL || env.STRIPE_PRICE_PREMIUM || "").trim(),
     onboardingPriceId: String(
       env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_PREMIUM || ""
@@ -159,6 +160,82 @@ function coerceOnboardingFeeStatus(tenant, requestedStatus = "", { allowPaidRegr
   return nextStatus;
 }
 
+function normalizeOnboardingFeeStatus(value = "", fallback = ONBOARDING_FEE_UNPAID) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (
+    normalized === ONBOARDING_FEE_UNPAID ||
+    normalized === ONBOARDING_FEE_PAID ||
+    normalized === ONBOARDING_FEE_WAIVED
+  ) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function normalizeStripeSubscriptionStatus(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function tenantHasCompletedInitialCheckout(tenant, billing = resolveTenantBilling(tenant)) {
+  if (billing.initialCheckoutCompletedAt) return true;
+  if (billing.activatedAt) return true;
+  if (billing.lastInvoiceId) return true;
+  if (billing.currentPeriodEnd) return true;
+  if (String(tenant?.stripeSubscriptionId || "").trim()) return true;
+
+  const lifecycle = String(billing.lifecycleStatus || "").trim().toLowerCase();
+  if (
+    ["active", "trialing", "past_due", "canceled", "paused", "incomplete"].includes(lifecycle) &&
+    String(tenant?.stripeCustomerId || "").trim()
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function resolveOnboardingFeeStatusForCheckout({
+  tenant,
+  billing,
+  catalogEntry
+}) {
+  if (catalogEntry.onboardingFeeAmount <= 0) return ONBOARDING_FEE_WAIVED;
+
+  const currentStatus = normalizeOnboardingFeeStatus(
+    billing.onboardingFeeStatus,
+    tenant?.onboardingFeePaid ? ONBOARDING_FEE_PAID : ONBOARDING_FEE_UNPAID
+  );
+  if (currentStatus === ONBOARDING_FEE_PAID) return ONBOARDING_FEE_PAID;
+  if (tenantHasCompletedInitialCheckout(tenant, billing)) return ONBOARDING_FEE_WAIVED;
+  return ONBOARDING_FEE_UNPAID;
+}
+
+function resolveOnboardingFeeWaiveReason({ planCode = "", onboardingFeeStatus = "" } = {}) {
+  if (onboardingFeeStatus !== ONBOARDING_FEE_WAIVED) return "";
+  const normalizedPlanCode = String(planCode || "").trim().toLowerCase();
+  if (normalizedPlanCode === "founders") return "founders";
+  if (normalizedPlanCode === "legacy") return "plan_has_no_onboarding_fee";
+  return "initial_checkout_only";
+}
+
+function activationAndCancellationPatch(tenant, lifecycleStatus = "", subscription = null) {
+  const billing = resolveTenantBilling(tenant);
+  const lifecycle = String(lifecycleStatus || "").trim().toLowerCase();
+  const patch = {};
+
+  if ((lifecycle === "active" || lifecycle === "trialing") && !billing.activatedAt) {
+    patch.activatedAt = nowIso();
+  }
+
+  if (lifecycle === "canceled") {
+    const canceledAt = Number(subscription?.canceled_at || 0);
+    patch.canceledAt = canceledAt > 0 ? new Date(canceledAt * 1000).toISOString() : nowIso();
+  } else if (lifecycle === "active" || lifecycle === "trialing") {
+    patch.canceledAt = null;
+  }
+
+  return patch;
+}
+
 function isStripeWebhookLedgerUnavailableError(error) {
   const code = String(error?.code || "").trim().toUpperCase();
   const message = String(error?.message || "").toLowerCase();
@@ -249,19 +326,29 @@ async function ensureStripeCustomer(tenant, billingOperator = null) {
     return tenant.stripeCustomerId;
   }
 
+  const freshTenant = await TenantModel.findById(tenantId);
+  if (freshTenant?.stripeCustomerId) {
+    return String(freshTenant.stripeCustomerId).trim();
+  }
+
   const contactEmail =
     String(tenant?.billingDetails?.mailingAddress?.email || "").trim().toLowerCase() ||
     String(tenant?.content?.contactEmail || "").trim().toLowerCase() ||
     String(billingOperator?.email || "").trim().toLowerCase();
 
-  const customer = await stripe.customers.create({
-    name: tenant.name,
-    ...(contactEmail ? { email: contactEmail } : {}),
-    metadata: {
-      tenantId,
-      tenantSlug: tenant.slug
+  const customer = await stripe.customers.create(
+    {
+      name: tenant.name,
+      ...(contactEmail ? { email: contactEmail } : {}),
+      metadata: {
+        tenantId,
+        tenantSlug: tenant.slug
+      }
+    },
+    {
+      idempotencyKey: `tenant_customer_${tenantId}`
     }
-  });
+  );
 
   await TenantModel.update(tenantId, { stripeCustomerId: customer.id });
   return customer.id;
@@ -283,6 +370,42 @@ function getPlanCodeFromStripePriceId(priceId = "", tenant = null) {
   }
 
   return tenant ? getPlanCodeFromTenant(tenant) : "legacy";
+}
+
+async function getStripeSubscriptionForTenant(tenant = null) {
+  if (!stripe) return null;
+  const subscriptionId = String(tenant?.stripeSubscriptionId || "").trim();
+  if (subscriptionId) {
+    try {
+      return await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["items.data.price"]
+      });
+    } catch (error) {
+      const code = String(error?.code || "").trim().toLowerCase();
+      const statusCode = Number(error?.statusCode || 0);
+      if (statusCode === 404 || code === "resource_missing" || code === "invalid_request_error") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  const customerId = String(tenant?.stripeCustomerId || "").trim();
+  if (!customerId) return null;
+
+  const list = await stripe.subscriptions.list({
+    customer: customerId,
+    status: "all",
+    limit: 10
+  });
+
+  const sorted = [...(list?.data || [])].sort((a, b) => Number(b.created || 0) - Number(a.created || 0));
+  const activeLike = sorted.find((entry) => {
+    const status = normalizeStripeSubscriptionStatus(entry?.status || "");
+    return status && status !== "canceled" && status !== "incomplete_expired";
+  });
+  if (activeLike) return activeLike;
+  return sorted[0] || null;
 }
 
 function hasOnboardingFeeLine(invoice, tenant = null) {
@@ -548,11 +671,19 @@ export async function createTenantCheckoutSession({
     tenantForUpdate = reserved.tenant;
   }
 
+  const tenantBilling = resolveTenantBilling(tenantForUpdate);
   const planTierForFeatures = resolveFeatureTierFromBillingPlan(catalogEntry.code);
   const onboardingFeeAmount = catalogEntry.onboardingFeeAmount;
-  const onboardingFeeStatus =
-    onboardingFeeAmount <= 0 ? ONBOARDING_FEE_WAIVED : ONBOARDING_FEE_UNPAID;
+  const onboardingFeeStatus = resolveOnboardingFeeStatusForCheckout({
+    tenant: tenantForUpdate,
+    billing: tenantBilling,
+    catalogEntry
+  });
   const onboardingFeeWaived = onboardingFeeStatus === ONBOARDING_FEE_WAIVED;
+  const onboardingFeeWaiveReason = resolveOnboardingFeeWaiveReason({
+    planCode: catalogEntry.code,
+    onboardingFeeStatus
+  });
 
   if (mode === "mock") {
     if (!allowMockBilling()) {
@@ -575,14 +706,16 @@ export async function createTenantCheckoutSession({
         onboardingFeeAmount,
         stripePriceId: catalogEntry.annualPriceId || `mock_price_${catalogEntry.code}`,
         billingStatus: "trialing",
-        onboardingFeePaid: onboardingFeeWaived
+        onboardingFeePaid:
+          onboardingFeeStatus === ONBOARDING_FEE_PAID ||
+          onboardingFeeStatus === ONBOARDING_FEE_WAIVED
       },
       billingPatch: {
         planCode: catalogEntry.code,
         lifecycleStatus: "checkout_started",
         onboardingFeeStatus,
         onboardingFeeWaived,
-        onboardingFeeWaiveReason: onboardingFeeWaived ? "founders" : "",
+        onboardingFeeWaiveReason,
         checkoutStartedAt: nowIso(),
         lastCheckoutSessionId: mockSessionId,
         lastCheckoutSessionStatus: "open",
@@ -599,6 +732,7 @@ export async function createTenantCheckoutSession({
     return {
       mode,
       sessionId: mockSessionId,
+      action: "checkout_started",
       checkoutUrl: mockCheckoutUrl,
       planCode: catalogEntry.code,
       onboardingFeeAmount,
@@ -616,7 +750,7 @@ export async function createTenantCheckoutSession({
     error.code = "STRIPE_PRICE_MISSING";
     throw error;
   }
-  if (catalogEntry.onboardingFeeAmount > 0 && !catalogEntry.onboardingPriceId) {
+  if (onboardingFeeStatus === ONBOARDING_FEE_UNPAID && catalogEntry.onboardingFeeAmount > 0 && !catalogEntry.onboardingPriceId) {
     const error = new Error(
       `Missing Stripe onboarding price ID for plan '${catalogEntry.code}'. Configure the corresponding STRIPE_PRICE_*_ONBOARDING variable.`
     );
@@ -626,8 +760,176 @@ export async function createTenantCheckoutSession({
   }
 
   const customerId = await ensureStripeCustomer(tenantForUpdate, billingOperator);
+  const checkoutTenantContext = {
+    ...tenantForUpdate,
+    stripeCustomerId: customerId
+  };
+
+  const existingSubscription = await getStripeSubscriptionForTenant(checkoutTenantContext);
+  const existingSubscriptionStatus = normalizeStripeSubscriptionStatus(existingSubscription?.status || "");
+  const existingSubscriptionReusable =
+    Boolean(existingSubscription?.id) &&
+    existingSubscriptionStatus !== "canceled" &&
+    existingSubscriptionStatus !== "incomplete_expired";
+
+  if (existingSubscriptionReusable) {
+    const existingSubscriptionPriceId = String(
+      existingSubscription?.items?.data?.[0]?.price?.id || ""
+    ).trim();
+    const existingSubscriptionItemId = String(
+      existingSubscription?.items?.data?.[0]?.id || ""
+    ).trim();
+    const nextLifecycleStatus = coerceLifecycleTransition(
+      tenantForUpdate,
+      mapStripeLifecycleStatus(existingSubscriptionStatus),
+      "customer.subscription.updated"
+    );
+    const currentPeriodEndUnix = Number(existingSubscription?.current_period_end || 0);
+    const currentPeriodEnd =
+      currentPeriodEndUnix > 0 ? new Date(currentPeriodEndUnix * 1000).toISOString() : tenantBilling.currentPeriodEnd;
+
+    if (existingSubscriptionPriceId && existingSubscriptionPriceId !== catalogEntry.annualPriceId) {
+      if (!existingSubscriptionItemId) {
+        const error = new Error("Unable to switch billing plan: Stripe subscription line item is missing.");
+        error.statusCode = 409;
+        error.code = "STRIPE_SUBSCRIPTION_ITEM_MISSING";
+        throw error;
+      }
+
+      const updatedSubscription = await stripe.subscriptions.update(existingSubscription.id, {
+        items: [{ id: existingSubscriptionItemId, price: catalogEntry.annualPriceId }],
+        proration_behavior: "none",
+        metadata: {
+          tenantId: String(tenantForUpdate._id),
+          tenantSlug: tenantForUpdate.slug,
+          planCode: catalogEntry.code,
+          planTier: planTierForFeatures
+        }
+      });
+
+      const switchedLifecycle = coerceLifecycleTransition(
+        tenantForUpdate,
+        mapStripeLifecycleStatus(updatedSubscription.status),
+        "customer.subscription.updated"
+      );
+      const switchedPeriodEndUnix = Number(updatedSubscription?.current_period_end || 0);
+      const switchedPeriodEnd =
+        switchedPeriodEndUnix > 0
+          ? new Date(switchedPeriodEndUnix * 1000).toISOString()
+          : currentPeriodEnd;
+      const lifecycleDatesPatch = activationAndCancellationPatch(
+        tenantForUpdate,
+        switchedLifecycle,
+        updatedSubscription
+      );
+      const completedInitialCheckout =
+        tenantBilling.initialCheckoutCompletedAt ||
+        (tenantHasCompletedInitialCheckout(tenantForUpdate, tenantBilling) ? nowIso() : null);
+
+      const updated = await updateTenantWithBillingPatch(tenantForUpdate, {
+        tenantPatch: {
+          planTier: planTierForFeatures,
+          onboardingFeeAmount,
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: String(updatedSubscription.id || tenantForUpdate.stripeSubscriptionId || "").trim(),
+          stripePriceId: catalogEntry.annualPriceId,
+          billingStatus: toLegacyBillingStatusFromLifecycle(switchedLifecycle),
+          onboardingFeePaid:
+            onboardingFeeStatus === ONBOARDING_FEE_PAID ||
+            onboardingFeeStatus === ONBOARDING_FEE_WAIVED
+        },
+        billingPatch: {
+          planCode: catalogEntry.code,
+          lifecycleStatus: switchedLifecycle,
+          onboardingFeeStatus,
+          onboardingFeeWaived,
+          onboardingFeeWaiveReason,
+          currentPeriodEnd: switchedPeriodEnd,
+          initialCheckoutCompletedAt: completedInitialCheckout,
+          ...lifecycleDatesPatch
+        }
+      });
+
+      await writeBillingAudit(updated._id, "billing_subscription_plan_switched", {
+        mode,
+        planCode: catalogEntry.code,
+        stripeSubscriptionId: updatedSubscription.id
+      }).catch(() => {});
+
+      logLine("info", "billing.subscription.updated", {
+        tenantId: String(updated._id),
+        tenantSlug: updated.slug,
+        planCode: catalogEntry.code,
+        stripeSubscriptionId: String(updatedSubscription.id || "")
+      });
+
+      return {
+        mode,
+        action: "subscription_updated",
+        sessionId: "",
+        checkoutUrl: "",
+        planCode: catalogEntry.code,
+        onboardingFeeAmount,
+        tenant: updated,
+        message:
+          "Plan updated on your existing subscription. Renewal amount has been updated without creating a duplicate subscription."
+      };
+    }
+
+    const portal = await createBillingPortalUrl({
+      tenant: checkoutTenantContext,
+      returnPath: `/t/${tenantForUpdate.slug}/admin/billing`
+    });
+    const lifecycleDatesPatch = activationAndCancellationPatch(
+      tenantForUpdate,
+      nextLifecycleStatus,
+      existingSubscription
+    );
+    const completedInitialCheckout =
+      tenantBilling.initialCheckoutCompletedAt ||
+      (tenantHasCompletedInitialCheckout(tenantForUpdate, tenantBilling) ? nowIso() : null);
+
+    const refreshed = await updateTenantWithBillingPatch(tenantForUpdate, {
+      tenantPatch: {
+        planTier: planTierForFeatures,
+        onboardingFeeAmount,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: String(existingSubscription.id || tenantForUpdate.stripeSubscriptionId || "").trim(),
+        stripePriceId: existingSubscriptionPriceId || catalogEntry.annualPriceId || tenantForUpdate.stripePriceId,
+        billingStatus: toLegacyBillingStatusFromLifecycle(nextLifecycleStatus),
+        onboardingFeePaid:
+          onboardingFeeStatus === ONBOARDING_FEE_PAID ||
+          onboardingFeeStatus === ONBOARDING_FEE_WAIVED
+      },
+      billingPatch: {
+        planCode: catalogEntry.code,
+        lifecycleStatus: nextLifecycleStatus,
+        onboardingFeeStatus,
+        onboardingFeeWaived,
+        onboardingFeeWaiveReason,
+        currentPeriodEnd,
+        initialCheckoutCompletedAt: completedInitialCheckout,
+        ...lifecycleDatesPatch
+      }
+    });
+
+    return {
+      mode,
+      action: "subscription_exists",
+      sessionId: "",
+      checkoutUrl: portal.url || "",
+      planCode: catalogEntry.code,
+      onboardingFeeAmount,
+      tenant: refreshed,
+      message:
+        "An active subscription already exists for this camp. Use the billing portal to update payment details."
+    };
+  }
+
+  const shouldIncludeOnboardingFee =
+    onboardingFeeStatus === ONBOARDING_FEE_UNPAID && catalogEntry.onboardingFeeAmount > 0;
   const lineItems = [{ price: catalogEntry.annualPriceId, quantity: 1 }];
-  if (catalogEntry.onboardingFeeAmount > 0) {
+  if (shouldIncludeOnboardingFee) {
     lineItems.push({
       price: catalogEntry.onboardingPriceId,
       quantity: 1
@@ -649,7 +951,8 @@ export async function createTenantCheckoutSession({
       planCode: catalogEntry.code,
       planTier: planTierForFeatures,
       onboardingFeeAmount: String(onboardingFeeAmount),
-      onboardingFeeStatus
+      onboardingFeeStatus,
+      onboardingFeeIncluded: shouldIncludeOnboardingFee ? "true" : "false"
     },
     subscription_data: {
       metadata: {
@@ -668,14 +971,16 @@ export async function createTenantCheckoutSession({
       stripeCustomerId: customerId,
       stripePriceId: catalogEntry.annualPriceId,
       billingStatus: "trialing",
-      onboardingFeePaid: onboardingFeeWaived
+      onboardingFeePaid:
+        onboardingFeeStatus === ONBOARDING_FEE_PAID ||
+        onboardingFeeStatus === ONBOARDING_FEE_WAIVED
     },
     billingPatch: {
       planCode: catalogEntry.code,
       lifecycleStatus: "checkout_started",
       onboardingFeeStatus,
       onboardingFeeWaived,
-      onboardingFeeWaiveReason: onboardingFeeWaived ? "founders" : "",
+      onboardingFeeWaiveReason,
       checkoutStartedAt: nowIso(),
       lastCheckoutSessionId: session.id,
       lastCheckoutSessionStatus: String(session.status || "open").toLowerCase(),
@@ -689,11 +994,21 @@ export async function createTenantCheckoutSession({
     mode,
     planCode: catalogEntry.code,
     checkoutSessionId: session.id,
-    requestedByUserId: String(billingOperator?._id || "").trim() || null
+    requestedByUserId: String(billingOperator?._id || "").trim() || null,
+    onboardingFeeIncluded: shouldIncludeOnboardingFee
   }).catch(() => {});
+
+  logLine("info", "billing.checkout.started", {
+    tenantId: String(updated._id),
+    tenantSlug: updated.slug,
+    planCode: catalogEntry.code,
+    checkoutSessionId: String(session.id || ""),
+    onboardingFeeIncluded: shouldIncludeOnboardingFee
+  });
 
   return {
     mode,
+    action: "checkout_started",
     sessionId: session.id,
     checkoutUrl: session.url,
     planCode: catalogEntry.code,
@@ -766,11 +1081,17 @@ async function handleCheckoutSessionCompleted(event, session, { useTenantEventDe
 
   lifecycleStatus = coerceLifecycleTransition(tenant, lifecycleStatus, event.type);
   const catalog = getCatalogEntry(resolvedPlanCode);
-  const computedOnboardingStatus =
+  const metadataOnboardingStatus = normalizeOnboardingFeeStatus(
+    String(session?.metadata?.onboardingFeeStatus || "").trim().toLowerCase(),
+    ""
+  );
+  const fallbackOnboardingStatus =
     catalog.onboardingFeeAmount <= 0 ? ONBOARDING_FEE_WAIVED : ONBOARDING_FEE_UNPAID;
+  const computedOnboardingStatus = metadataOnboardingStatus || fallbackOnboardingStatus;
   const onboardingFeeStatus = coerceOnboardingFeeStatus(tenant, computedOnboardingStatus, {
     allowPaidRegression: resolvedPlanCode !== tenantBilling.billingPlan
   });
+  const lifecycleDatesPatch = activationAndCancellationPatch(tenant, lifecycleStatus);
 
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
@@ -787,10 +1108,15 @@ async function handleCheckoutSessionCompleted(event, session, { useTenantEventDe
       lifecycleStatus,
       onboardingFeeStatus,
       onboardingFeeWaived: onboardingFeeStatus === ONBOARDING_FEE_WAIVED,
-      onboardingFeeWaiveReason: onboardingFeeStatus === ONBOARDING_FEE_WAIVED ? "founders" : "",
+      onboardingFeeWaiveReason: resolveOnboardingFeeWaiveReason({
+        planCode: resolvedPlanCode,
+        onboardingFeeStatus
+      }),
       lastCheckoutSessionId: String(session.id || "").trim(),
       lastCheckoutSessionStatus: String(session.status || "").trim().toLowerCase(),
-      currentPeriodEnd
+      currentPeriodEnd,
+      initialCheckoutCompletedAt: tenantBilling.initialCheckoutCompletedAt || nowIso(),
+      ...lifecycleDatesPatch
     }
   });
 
@@ -832,6 +1158,8 @@ async function handleSubscriptionUpdate(event, subscription, { useTenantEventDed
   );
   const billing = resolveTenantBilling(tenant);
   const periodEnd = Number(subscription?.current_period_end || 0);
+  const lifecycleDatesPatch = activationAndCancellationPatch(tenant, lifecycleStatus, subscription);
+  const catalog = getCatalogEntry(resolvedPlanCode);
 
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
@@ -839,13 +1167,22 @@ async function handleSubscriptionUpdate(event, subscription, { useTenantEventDed
       stripeCustomerId: String(subscription.customer || tenant.stripeCustomerId || "").trim(),
       stripeSubscriptionId: String(subscription.id || tenant.stripeSubscriptionId || "").trim(),
       stripePriceId: stripePriceId || tenant.stripePriceId,
+      onboardingFeeAmount: catalog.onboardingFeeAmount,
       billingStatus: toLegacyBillingStatusFromLifecycle(lifecycleStatus)
     },
     billingPatch: {
       planCode: resolvedPlanCode,
       lifecycleStatus,
       onboardingFeeStatus: billing.onboardingFeeStatus,
-      currentPeriodEnd: periodEnd > 0 ? new Date(periodEnd * 1000).toISOString() : billing.currentPeriodEnd
+      onboardingFeeWaiveReason: resolveOnboardingFeeWaiveReason({
+        planCode: resolvedPlanCode,
+        onboardingFeeStatus: billing.onboardingFeeStatus
+      }),
+      currentPeriodEnd: periodEnd > 0 ? new Date(periodEnd * 1000).toISOString() : billing.currentPeriodEnd,
+      initialCheckoutCompletedAt:
+        billing.initialCheckoutCompletedAt ||
+        (tenantHasCompletedInitialCheckout(tenant, billing) ? nowIso() : null),
+      ...lifecycleDatesPatch
     }
   });
 
@@ -885,6 +1222,13 @@ async function handleInvoicePaid(event, invoice, { useTenantEventDedupe = false 
     billing.lifecycleStatus === "canceled" ? "canceled" : "active",
     event.type
   );
+  const periodEndCandidates = Array.isArray(invoice?.lines?.data)
+    ? invoice.lines.data
+        .map((line) => Number(line?.period?.end || 0))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  const nextPeriodEndUnix = periodEndCandidates.length ? Math.max(...periodEndCandidates) : 0;
+  const lifecycleDatesPatch = activationAndCancellationPatch(tenant, lifecycleStatus);
 
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
@@ -900,8 +1244,18 @@ async function handleInvoicePaid(event, invoice, { useTenantEventDedupe = false 
       lifecycleStatus,
       onboardingFeeStatus,
       onboardingFeeWaived: onboardingFeeStatus === ONBOARDING_FEE_WAIVED,
+      onboardingFeeWaiveReason: resolveOnboardingFeeWaiveReason({
+        planCode: billing.billingPlan,
+        onboardingFeeStatus
+      }),
       lastInvoiceId: String(invoice.id || "").trim(),
-      lastInvoiceStatus: String(invoice.status || "").trim().toLowerCase()
+      lastInvoiceStatus: String(invoice.status || "").trim().toLowerCase(),
+      currentPeriodEnd:
+        nextPeriodEndUnix > 0 ? new Date(nextPeriodEndUnix * 1000).toISOString() : billing.currentPeriodEnd,
+      initialCheckoutCompletedAt:
+        billing.initialCheckoutCompletedAt ||
+        (tenantHasCompletedInitialCheckout(tenant, billing) ? nowIso() : null),
+      ...lifecycleDatesPatch
     }
   });
 
@@ -930,6 +1284,7 @@ async function handleInvoicePaymentFailed(event, invoice, { useTenantEventDedupe
   }
 
   const lifecycleStatus = coerceLifecycleTransition(tenant, "past_due", event.type);
+  const lifecycleDatesPatch = activationAndCancellationPatch(tenant, lifecycleStatus);
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
       billingStatus: toLegacyBillingStatusFromLifecycle(lifecycleStatus)
@@ -937,7 +1292,8 @@ async function handleInvoicePaymentFailed(event, invoice, { useTenantEventDedupe
     billingPatch: {
       lifecycleStatus,
       lastInvoiceId: String(invoice.id || "").trim(),
-      lastInvoiceStatus: String(invoice.status || "payment_failed").trim().toLowerCase()
+      lastInvoiceStatus: String(invoice.status || "payment_failed").trim().toLowerCase(),
+      ...lifecycleDatesPatch
     }
   });
 
@@ -987,6 +1343,7 @@ async function handlePaymentIntent(event, paymentIntent, { useTenantEventDedupe 
     succeeded ? (billing.lifecycleStatus === "canceled" ? "canceled" : "active") : "past_due",
     event.type
   );
+  const lifecycleDatesPatch = activationAndCancellationPatch(tenant, lifecycleStatus);
 
   const updated = await updateTenantWithBillingPatch(tenant, {
     tenantPatch: {
@@ -999,7 +1356,8 @@ async function handlePaymentIntent(event, paymentIntent, { useTenantEventDedupe 
       lifecycleStatus,
       onboardingFeeStatus,
       lastPaymentIntentId: String(paymentIntent.id || "").trim(),
-      lastPaymentIntentStatus: status
+      lastPaymentIntentStatus: status,
+      ...lifecycleDatesPatch
     }
   });
 
@@ -1028,6 +1386,11 @@ export async function processStripeEvent(event) {
 
   const receipt = await registerStripeWebhookEventReceipt(event);
   if (receipt.duplicateProcessed) {
+    logLine("info", "billing.webhook.duplicate", {
+      eventId: String(event?.id || "").trim(),
+      eventType,
+      ledger: receipt.available
+    });
     return {
       processed: false,
       duplicate: true,
@@ -1079,6 +1442,11 @@ export async function processStripeEvent(event) {
     }
 
     if (handlerResult?.skipped) {
+      logLine("info", "billing.webhook.skipped_duplicate", {
+        eventId: String(event?.id || "").trim(),
+        eventType,
+        tenantId: String(webhookContext?.tenantId || "")
+      });
       return {
         processed: false,
         duplicate: true,
@@ -1089,6 +1457,15 @@ export async function processStripeEvent(event) {
     }
 
     await markStripeWebhookEventProcessed(event, webhookContext);
+    logLine("info", "billing.webhook.processed", {
+      eventId: String(event?.id || "").trim(),
+      eventType,
+      tenantId: String(webhookContext?.tenantId || ""),
+      tenantSlug: String(webhookContext?.tenantSlug || ""),
+      stripeCustomerId: String(webhookContext?.stripeCustomerId || ""),
+      stripeSubscriptionId: String(webhookContext?.stripeSubscriptionId || ""),
+      ledger: receipt.available
+    });
     return {
       processed: true,
       duplicate: false,
@@ -1102,6 +1479,14 @@ export async function processStripeEvent(event) {
       ...(error?.webhookContext || {})
     };
     await markStripeWebhookEventFailed(event, error, fallbackContext);
+    logLine("error", "billing.webhook.failed", {
+      eventId: String(event?.id || "").trim(),
+      eventType,
+      tenantId: String(fallbackContext?.tenantId || ""),
+      tenantSlug: String(fallbackContext?.tenantSlug || ""),
+      errorCode: String(error?.code || ""),
+      errorMessage: String(error?.message || "")
+    });
     throw error;
   }
 }
@@ -1152,6 +1537,41 @@ export async function constructStripeEventFromRequest(req) {
   return stripe.webhooks.constructEvent(req.body, signature, env.STRIPE_WEBHOOK_SECRET);
 }
 
+export async function listRecentTenantInvoices(tenant, { limit = 12 } = {}) {
+  const mode = getBillingMode();
+  const normalizedLimit = Math.min(50, Math.max(1, Number(limit || 12)));
+  if (mode === "mock") return [];
+  if (!stripe) return [];
+
+  const customerId = String(tenant?.stripeCustomerId || "").trim();
+  if (!customerId) return [];
+
+  try {
+    const result = await stripe.invoices.list({
+      customer: customerId,
+      limit: normalizedLimit
+    });
+    return (result?.data || []).map((invoice) => ({
+      id: String(invoice?.id || "").trim(),
+      date: Number(invoice?.created || 0) > 0 ? new Date(Number(invoice.created) * 1000).toISOString() : null,
+      amount: Number(invoice?.amount_paid ?? invoice?.amount_due ?? 0) / 100,
+      status: String(invoice?.status || "").trim().toLowerCase() || "unknown",
+      pdfUrl: String(invoice?.invoice_pdf || "").trim(),
+      hostedInvoiceUrl: String(invoice?.hosted_invoice_url || "").trim(),
+      currency: String(invoice?.currency || "").trim().toLowerCase() || "usd"
+    }));
+  } catch (error) {
+    logLine("warn", "billing.invoices.fetch_failed", {
+      tenantId: String(tenant?._id || tenant?.id || ""),
+      tenantSlug: String(tenant?.slug || ""),
+      stripeCustomerId: customerId,
+      errorCode: String(error?.code || ""),
+      errorMessage: String(error?.message || "")
+    });
+    return [];
+  }
+}
+
 export async function createBillingPortalUrl({ tenant, returnUrl, returnPath }) {
   const mode = getBillingMode();
   const fallbackUrl = `${env.MOCK_BILLING_BASE_URL}/portal?tenant=${encodeURIComponent(tenant.slug)}`;
@@ -1191,6 +1611,12 @@ export async function createBillingPortalUrl({ tenant, returnUrl, returnPath }) 
     return_url: finalReturnUrl
   });
 
+  logLine("info", "billing.portal.created", {
+    tenantId: String(tenant?._id || tenant?.id || ""),
+    tenantSlug: String(tenant?.slug || ""),
+    stripeCustomerId: String(tenant?.stripeCustomerId || "")
+  });
+
   return {
     mode,
     url: session.url
@@ -1210,6 +1636,9 @@ export function buildBillingPublicSnapshot(tenant = {}) {
     onboardingFeePaid: readiness.onboardingFeePaid,
     onboardingFeeWaived: readiness.onboardingFeeWaived,
     currentPeriodEnd: readiness.currentPeriodEnd,
+    initialCheckoutCompletedAt: readiness.initialCheckoutCompletedAt,
+    activatedAt: readiness.activatedAt,
+    canceledAt: readiness.canceledAt,
     foundersReserved: readiness.foundersReserved,
     foundersSlot: readiness.foundersSlot,
     foundersEligible: readiness.foundersEligible,

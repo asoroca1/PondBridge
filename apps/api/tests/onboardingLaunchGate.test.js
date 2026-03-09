@@ -200,7 +200,7 @@ describe("Onboarding launch billing gate", () => {
     expect(response.body.error?.details?.blockers?.some((blocker) => blocker.id === "billing")).toBe(true);
   });
 
-  test("director wizard launch bypasses billing gate when billing requirement is disabled", async () => {
+  test("director wizard launch is blocked when billing is not ready", async () => {
     const tenant = await createReadyTenant({
       slug: "launch-wizard-bypass",
       billingStatus: "past_due",
@@ -220,10 +220,9 @@ describe("Onboarding launch billing gate", () => {
         legalAgreementAccepted: true
       });
 
-    expect(response.status).toBe(200);
-    expect(response.body.ok).toBe(true);
-    expect(response.body.onboarding.tenant.onboardingStatus).toBe("live");
-    expect(response.body.onboarding.launchMeta?.fromDirectorWizard).toBe(true);
+    expect(response.status).toBe(400);
+    expect(response.body.error?.code).toBe("LAUNCH_BLOCKED");
+    expect(response.body.error?.details?.blockers?.some((blocker) => blocker.id === "billing")).toBe(true);
   });
 
   test("super admin can override billing gate on launch", async () => {

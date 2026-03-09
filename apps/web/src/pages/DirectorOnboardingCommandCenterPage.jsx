@@ -133,7 +133,7 @@ function readableTextColorOnBrand(brandHex = "#002b5c") {
 
 export default function DirectorOnboardingCommandCenterPage() {
   const { slug } = useParams();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const { tenant } = useTenant();
   const alumniWord = resolveAlumniWord(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
@@ -146,7 +146,6 @@ export default function DirectorOnboardingCommandCenterPage() {
   const [status, setStatus] = useState("");
   const [payload, setPayload] = useState(null);
   const [billing, setBilling] = useState(null);
-  const [updatingBilling, setUpdatingBilling] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [syncingBilling, setSyncingBilling] = useState(false);
@@ -176,7 +175,6 @@ export default function DirectorOnboardingCommandCenterPage() {
       .join("")
       .toUpperCase() || "CN";
 
-  const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
   const launchedQueryState = String(searchParams.get("launched") || "").trim().toLowerCase();
 
@@ -255,30 +253,6 @@ export default function DirectorOnboardingCommandCenterPage() {
     setShowLaunchGuide(false);
   }
 
-  async function markBillingReady() {
-    setUpdatingBilling(true);
-    setError("");
-    setStatus("");
-
-    try {
-      await requestJson("/api/tenants/me/billing", {
-        method: "PATCH",
-        token,
-        body: {
-          billingStatus: "active",
-          onboardingFeePaid: true,
-          onboardingFeeInvoiceId: `manual-${Date.now()}`
-        }
-      });
-      setStatus("Billing marked ready.");
-      await loadCommandCenter();
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setUpdatingBilling(false);
-    }
-  }
-
   async function startStripeCheckout() {
     setStartingCheckout(true);
     setError("");
@@ -296,11 +270,22 @@ export default function DirectorOnboardingCommandCenterPage() {
           cancelUrl
         }
       });
+      const action = String(response?.action || "").trim().toLowerCase();
       const checkoutUrl = String(response?.checkoutUrl || "").trim();
-      if (!checkoutUrl) {
-        throw new Error("Stripe checkout URL was not returned.");
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
       }
-      window.location.assign(checkoutUrl);
+      if (action === "subscription_updated") {
+        setStatus(response?.notes || "Subscription updated. Refreshing billing state.");
+        await loadCommandCenter();
+        setStartingCheckout(false);
+        return;
+      }
+      throw new Error(
+        response?.notes ||
+          "Unable to start Stripe checkout. Open the billing portal to manage your subscription."
+      );
     } catch (requestError) {
       setError(requestError.message || "Unable to start Stripe checkout.");
       setStartingCheckout(false);
@@ -604,8 +589,8 @@ export default function DirectorOnboardingCommandCenterPage() {
                 {billing.catalog.plans.map((plan) => (
                   <option key={plan.code} value={plan.code}>
                     {plan.label} · {formatMoney(plan.annualAmount)}/yr
-                    {plan.onboardingFeeAmount > 0
-                      ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding`
+                    {plan.code === "institutional"
+                      ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding (first checkout only)`
                       : " · no onboarding fee"}
                   </option>
                 ))}
@@ -639,11 +624,6 @@ export default function DirectorOnboardingCommandCenterPage() {
             <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>
               Billing Details
             </Link>
-            {billing?.mode === "mock" || isSuperAdmin ? (
-              <Button variant="secondary" onClick={markBillingReady} disabled={updatingBilling}>
-                {updatingBilling ? "Updating..." : "Mark Billing Ready"}
-              </Button>
-            ) : null}
           </div>
         </Card>
       </div>

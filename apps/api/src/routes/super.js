@@ -62,9 +62,32 @@ const HOUR_MS = 60 * 60 * 1000;
 const BILLING_PLAN_MRR = {
   legacy: 3500 / 12,
   founders: 2800 / 12,
-  institutional: 5500 / 12
+  institutional: 5000 / 12
 };
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
+const BILLING_PLAN_DEFAULTS = {
+  legacy: {
+    planTier: "base",
+    onboardingFeeAmount: 0,
+    onboardingFeePaid: true,
+    onboardingFeeStatus: "waived",
+    onboardingFeeWaiveReason: "plan_has_no_onboarding_fee"
+  },
+  founders: {
+    planTier: "premium",
+    onboardingFeeAmount: 0,
+    onboardingFeePaid: true,
+    onboardingFeeStatus: "waived",
+    onboardingFeeWaiveReason: "founders"
+  },
+  institutional: {
+    planTier: "premium",
+    onboardingFeeAmount: 450,
+    onboardingFeePaid: false,
+    onboardingFeeStatus: "unpaid",
+    onboardingFeeWaiveReason: ""
+  }
+};
 const APP_BASE_DOMAIN = String(env.APP_BASE_DOMAIN || "pondbridgealumni.com").trim().toLowerCase();
 const PRIVILEGED_GLOBAL_ROLES = new Set(["super_admin", "support_admin", "finance_admin"]);
 const HIDDEN_TENANT_PATTERN =
@@ -909,6 +932,25 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   const slugInput = String(req.body.slug || name).trim();
   const slug = normalizeSlug(slugInput);
   const directorEmail = normalizeEmail(req.body.directorEmail || "");
+  const requestedBillingPlan = String(
+    req.body.planCode || req.body.billingPlan || ""
+  )
+    .trim()
+    .toLowerCase();
+  if (requestedBillingPlan && !VALID_BILLING_PLAN_CODES.has(requestedBillingPlan)) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_BILLING_PLAN",
+        message: "Billing plan must be legacy, founders, or institutional."
+      }
+    });
+  }
+  const billingPlan = requestedBillingPlan
+    ? normalizeBillingPlan(requestedBillingPlan, req.body.planTier === "premium" ? "premium" : "base")
+    : req.body.planTier === "premium"
+    ? "institutional"
+    : "legacy";
+  const billingDefaults = BILLING_PLAN_DEFAULTS[billingPlan] || BILLING_PLAN_DEFAULTS.legacy;
   const campType = normalizeCampType(req.body.campType || "coed");
   const alumniWord = alumniPluralForCampType(campType, { capitalized: false });
   const networkName = defaultNetworkDisplayNameForCamp(name, campType);
@@ -941,11 +983,12 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   const tenant = await TenantModel.create({
     name,
     slug,
-    planTier: req.body.planTier === "premium" ? "premium" : "base",
+    planTier: billingDefaults.planTier,
     onboardingStatus: "not_started",
     onboardingStep: "name_branding",
     onboardingChecklist: createDefaultChecklist(campType),
-    onboardingFeeAmount: Number(req.body.onboardingFeeAmount || 0),
+    onboardingFeeAmount: billingDefaults.onboardingFeeAmount,
+    onboardingFeePaid: billingDefaults.onboardingFeePaid,
     customDomain: defaultTenantDomain(slug),
     theme: {},
     content: {
@@ -972,6 +1015,14 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
       footerLinks: []
     },
     settings: {
+      billing: {
+        planCode: billingPlan,
+        lifecycleStatus: "uninitialized",
+        onboardingFeeStatus: billingDefaults.onboardingFeeStatus,
+        onboardingFeeWaived: billingDefaults.onboardingFeeStatus === "waived",
+        onboardingFeeWaiveReason: billingDefaults.onboardingFeeWaiveReason,
+        foundersEligible: true
+      },
       signupMode: "open",
       accessCodeHash: "",
       accessCodeHint: "",
@@ -1026,11 +1077,14 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   await writeAudit(tenant._id, req.user.id, "super_tenant_created", {
     slug: tenant.slug,
     planTier: tenant.planTier,
+    billingPlan,
+    onboardingFeeAmount: billingDefaults.onboardingFeeAmount,
     directorEmail: directorEmail || null
   });
 
   res.status(201).json({
     tenant,
+    billingPlan,
     network,
     domainProvisioning,
     inviteLink,
@@ -1372,6 +1426,7 @@ router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, re
 
     return res.status(201).json({
       mode: getBillingMode(),
+      action: checkout.action || "checkout_started",
       checkoutUrl: checkout.checkoutUrl,
       sessionId: checkout.sessionId,
       notes: checkout.message || "",

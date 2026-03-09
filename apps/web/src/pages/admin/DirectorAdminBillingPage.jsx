@@ -39,34 +39,34 @@ const BILLING_TIER_DEFINITIONS = [
   {
     code: "founders",
     title: "Founders",
-    subtitle: "Premium access for the first five partner camps.",
+    subtitle: "$2,800/year for the first five partner camps.",
     tone: "premium",
     perks: [
       "All premium modules enabled",
       "Launch coaching + priority support",
-      "Early-partner founders pricing"
+      "No onboarding fee"
     ]
   },
   {
     code: "legacy",
     title: "Legacy",
-    subtitle: "Base plan with core alumni network features.",
+    subtitle: "$3,500/year with core alumni network features.",
     tone: "base",
     perks: [
       "Core member directory + search",
       "Invites, onboarding, and admin tools",
-      "Stripe billing + invoice history"
+      "No onboarding fee"
     ]
   },
   {
     code: "institutional",
     title: "Institutional",
-    subtitle: "Premium tier built for large or multi-program organizations.",
+    subtitle: "$5,000/year with a one-time $450 onboarding fee on initial checkout.",
     tone: "premium",
     perks: [
       "All premium modules enabled",
       "Institutional support and scale",
-      "Expanded implementation support"
+      "One-time onboarding fee is not charged on renewals"
     ]
   }
 ];
@@ -152,11 +152,27 @@ export default function DirectorAdminBillingPage() {
           cancelUrl
         }
       });
+      const action = String(response?.action || "").trim().toLowerCase();
       const checkoutUrl = String(response?.checkoutUrl || "").trim();
-      if (!checkoutUrl) {
-        throw new Error("Stripe checkout URL was not returned.");
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
       }
-      window.location.assign(checkoutUrl);
+
+      if (action === "subscription_updated") {
+        setStatus(
+          response?.notes ||
+            "Your subscription was updated. Refreshing billing details now."
+        );
+        await loadBilling();
+        setStartingCheckout(false);
+        return;
+      }
+
+      throw new Error(
+        response?.notes ||
+          "Unable to start checkout. Use the billing portal to manage your subscription."
+      );
     } catch (requestError) {
       setError(requestError.message || "Unable to start Stripe checkout.");
       setStartingCheckout(false);
@@ -203,17 +219,30 @@ export default function DirectorAdminBillingPage() {
     ? `${usage.members || 0} / ${usage.memberLimit}`
     : `${usage.members || 0} (unlimited)`;
   const selectedPlanPriceLabel = selectedPlan ? `${formatMoney(selectedPlan.annualAmount)}/year` : "Not available";
-  const selectedPlanOnboardingLabel = selectedPlan
-    ? selectedPlan.onboardingFeeAmount > 0
-      ? `${formatMoney(selectedPlan.onboardingFeeAmount)} onboarding fee`
-      : "No onboarding fee"
-    : "Contact support to enable this tier.";
   const checkoutButtonLabel = startingCheckout
     ? "Redirecting..."
     : selectedPlanCode === currentPlanCode
     ? "Start Stripe Checkout"
     : "Switch Plan & Checkout";
   const showInvoiceTable = Array.isArray(payload?.invoices) && payload.invoices.length > 0;
+  const initialCheckoutCompletedAt = tenant.initialCheckoutCompletedAt || payload?.billing?.initialCheckoutCompletedAt;
+  const renewalDate = tenant.currentPeriodEnd || payload?.billing?.currentPeriodEnd || null;
+  const activationDate = tenant.activatedAt || payload?.billing?.activatedAt || null;
+  const cancellationDate = tenant.canceledAt || payload?.billing?.canceledAt || null;
+  const institutionalOnboardingAppliesNow =
+    selectedPlanCode === "institutional" && !initialCheckoutCompletedAt;
+  const selectedPlanPayNowAmount = selectedPlan
+    ? Number(selectedPlan.annualAmount || 0) +
+      (institutionalOnboardingAppliesNow ? Number(selectedPlan.onboardingFeeAmount || 0) : 0)
+    : 0;
+  const selectedPlanRenewsAmount = selectedPlan ? Number(selectedPlan.annualAmount || 0) : 0;
+  const selectedPlanOnboardingLabel = selectedPlan
+    ? selectedPlanCode === "institutional"
+      ? institutionalOnboardingAppliesNow
+        ? `${formatMoney(selectedPlan.onboardingFeeAmount)} onboarding charged now (first checkout only)`
+        : "Institutional onboarding already handled; renewals are annual only"
+      : "No onboarding fee"
+    : "Contact support to enable this tier.";
   const foundersAvailabilityText = useMemo(() => {
     const remaining = Number(payload?.foundersAvailability?.remaining);
     if (!Number.isFinite(remaining)) return "";
@@ -291,9 +320,19 @@ export default function DirectorAdminBillingPage() {
               <small>{onboardingFeeStatusLabel}</small>
             </div>
             <div className="director-admin-billing-key-item">
+              <span>Renews On</span>
+              <strong>{formatDate(renewalDate)}</strong>
+              <small>{renewalDate ? "Annual renewal date" : "No renewal date yet"}</small>
+            </div>
+            <div className="director-admin-billing-key-item">
               <span>Member Usage</span>
               <strong>{memberUsageLabel}</strong>
               <small>{payload?.billing?.launchReady ? "Launch ready" : "Not launch ready"}</small>
+            </div>
+            <div className="director-admin-billing-key-item">
+              <span>Lifecycle Dates</span>
+              <strong>{activationDate ? `Active ${formatDate(activationDate)}` : "Pending activation"}</strong>
+              <small>{cancellationDate ? `Canceled ${formatDate(cancellationDate)}` : "No cancellation recorded"}</small>
             </div>
           </div>
 
@@ -337,6 +376,11 @@ export default function DirectorAdminBillingPage() {
           <div className="director-admin-billing-checkout-price">
             <p className="director-admin-billing-tier-price">{selectedPlanPriceLabel}</p>
             <p className="director-admin-billing-tier-detail">{selectedPlanOnboardingLabel}</p>
+            {selectedPlan ? (
+              <p className="director-admin-billing-tier-detail">
+                Pay now: {formatMoney(selectedPlanPayNowAmount)}. Renews later: {formatMoney(selectedPlanRenewsAmount)}/year.
+              </p>
+            ) : null}
             {selectedPlanCode === "founders" && foundersAvailabilityText ? (
               <p className="director-admin-billing-tier-detail">{foundersAvailabilityText}</p>
             ) : null}
@@ -401,8 +445,8 @@ export default function DirectorAdminBillingPage() {
                 </p>
                 <p className="director-admin-billing-tier-detail">
                   {plan
-                    ? plan.onboardingFeeAmount > 0
-                      ? `${formatMoney(plan.onboardingFeeAmount)} onboarding fee`
+                    ? tier.code === "institutional"
+                      ? `${formatMoney(plan.onboardingFeeAmount)} onboarding fee on first checkout only`
                       : "No onboarding fee"
                     : "Contact support to enable this tier for your tenant."}
                 </p>
@@ -460,6 +504,10 @@ export default function DirectorAdminBillingPage() {
                       {invoice.pdfUrl ? (
                         <a href={invoice.pdfUrl} target="_blank" rel="noreferrer">
                           PDF
+                        </a>
+                      ) : invoice.hostedInvoiceUrl ? (
+                        <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer">
+                          View
                         </a>
                       ) : (
                         "-"

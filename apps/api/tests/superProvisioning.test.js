@@ -63,12 +63,13 @@ describe("Super provisioning", () => {
       .send({
         name: "Camp Cedar",
         slug: "camp-cedar",
-        planTier: "base"
+        billingPlan: "legacy"
       });
 
     expect(createTenant.status).toBe(201);
     expect(createTenant.body.tenant.slug).toBe("cedar");
     expect(createTenant.body.tenant.customDomain).toBe("cedar.pondbridge.test");
+    expect(createTenant.body.billingPlan).toBe("legacy");
   });
 
   test("super admin can create tenant and first director can bootstrap before launch", async () => {
@@ -81,13 +82,14 @@ describe("Super provisioning", () => {
       .send({
         name: "Pine Ridge Camp",
         slug: "pine-ridge",
-        planTier: "premium",
-        onboardingFeeAmount: 2500,
+        billingPlan: "institutional",
         directorEmail: "director@pineridge.org"
       });
 
     expect(createTenant.status).toBe(201);
     expect(createTenant.body.tenant.slug).toBe("pine-ridge");
+    expect(createTenant.body.billingPlan).toBe("institutional");
+    expect(createTenant.body.tenant.onboardingFeeAmount).toBe(450);
     expect(createTenant.body.tenant.onboardingStatus).toBe("not_started");
     expect(createTenant.body.directorInvite?.email).toBe("director@pineridge.org");
     expect(createTenant.body.directorInvite?.roleToAssign).toBe("tenant_admin");
@@ -116,5 +118,25 @@ describe("Super provisioning", () => {
 
     expect(loginDirector.status).toBe(200);
     expect(loginDirector.body.user.roles).toEqual(expect.arrayContaining(["tenant_admin", "user"]));
+  });
+
+  test("founders billing plan defaults to premium tier with waived onboarding fee", async () => {
+    await createSuperAdmin();
+    const superToken = await loginSuper();
+
+    const createTenant = await request(app)
+      .post("/api/super/tenants")
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        name: "Founders Camp",
+        slug: "founders-camp",
+        billingPlan: "founders"
+      });
+
+    expect(createTenant.status).toBe(201);
+    expect(createTenant.body.billingPlan).toBe("founders");
+    expect(createTenant.body.tenant.planTier).toBe("premium");
+    expect(createTenant.body.tenant.onboardingFeeAmount).toBe(0);
+    expect(createTenant.body.tenant.onboardingFeePaid).toBe(true);
   });
 });

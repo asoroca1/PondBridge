@@ -24,6 +24,38 @@ function formatMoney(value = 0) {
   }).format(Number(value || 0));
 }
 
+const BILLING_PLAN_OPTIONS = [
+  {
+    code: "legacy",
+    label: "Legacy",
+    annualAmount: 3500,
+    onboardingFeeAmount: 0
+  },
+  {
+    code: "founders",
+    label: "Founders",
+    annualAmount: 2800,
+    onboardingFeeAmount: 0
+  },
+  {
+    code: "institutional",
+    label: "Institutional",
+    annualAmount: 5000,
+    onboardingFeeAmount: 450
+  }
+];
+
+function billingPlanLabel(code = "") {
+  const normalized = String(code || "").trim().toLowerCase();
+  const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalized);
+  return option?.label || "Legacy";
+}
+
+function billingPlanOptionByCode(code = "") {
+  const normalized = String(code || "").trim().toLowerCase();
+  return BILLING_PLAN_OPTIONS.find((item) => item.code === normalized) || BILLING_PLAN_OPTIONS[0];
+}
+
 function formatPct(value = 0, decimals = 1) {
   return `${Number(value || 0).toFixed(decimals)}%`;
 }
@@ -572,8 +604,7 @@ export function SuperTenantCreatePage() {
   const [form, setForm] = useState({
     name: "",
     slug: "",
-    planTier: "base",
-    onboardingFeeAmount: 0,
+    billingPlan: "legacy",
     directorEmail: ""
   });
 
@@ -603,12 +634,19 @@ export function SuperTenantCreatePage() {
         ? `${window.location.origin}${rawNetworkClaimLink}`
         : rawNetworkClaimLink;
       const domain = payload?.tenant?.customDomain || payload?.network?.domain || "";
+      const selectedBillingPlan = String(
+        payload?.billingPlan || payload?.tenant?.settings?.billing?.planCode || form.billingPlan || "legacy"
+      )
+        .trim()
+        .toLowerCase();
+      const planOption = billingPlanOptionByCode(selectedBillingPlan);
 
       setCreateResult({
         campName: payload?.tenant?.name || form.name,
         slug: payload?.tenant?.slug || form.slug,
-        planTier: payload?.tenant?.planTier || form.planTier,
-        onboardingFeeAmount: Number(payload?.tenant?.onboardingFeeAmount ?? form.onboardingFeeAmount ?? 0),
+        billingPlan: selectedBillingPlan,
+        annualAmount: Number(planOption.annualAmount || 0),
+        onboardingFeeAmount: Number(payload?.tenant?.onboardingFeeAmount ?? planOption.onboardingFeeAmount ?? 0),
         networkDisplayName: String(payload?.tenant?.content?.networkDisplayName || "").trim(),
         welcomeHeadline: String(payload?.tenant?.content?.welcomeHeadline || "").trim(),
         welcomeBody: String(payload?.tenant?.content?.welcomeBody || "").trim(),
@@ -620,7 +658,7 @@ export function SuperTenantCreatePage() {
         directorEmail: directorInvite?.email || form.directorEmail || "",
         nextSteps: Array.isArray(payload?.nextSteps) ? payload.nextSteps : []
       });
-      setForm({ name: "", slug: "", planTier: "base", onboardingFeeAmount: 0, directorEmail: "" });
+      setForm({ name: "", slug: "", billingPlan: "legacy", directorEmail: "" });
       setStatus("Camp created successfully.");
     } catch (createError) {
       setCreateResult(null);
@@ -644,7 +682,7 @@ export function SuperTenantCreatePage() {
       <Card className="super-tenants-create-card super-camp-create-form-card">
         <PanelHeader
           title="Create Camp"
-          subtitle="Provision a new tenant and generate a director onboarding link in one flow."
+          subtitle="Provision a camp, set billing plan, and hand directors a ready onboarding flow."
         />
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
@@ -663,20 +701,20 @@ export function SuperTenantCreatePage() {
             />
           </label>
           <label>
-            Plan tier
-            <Select value={form.planTier} onChange={(event) => setForm((prev) => ({ ...prev, planTier: event.target.value }))}>
-              <option value="base">Base</option>
-              <option value="premium">Premium</option>
+            Billing plan
+            <Select
+              value={form.billingPlan}
+              onChange={(event) => setForm((prev) => ({ ...prev, billingPlan: event.target.value }))}
+            >
+              {BILLING_PLAN_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label} · {formatMoney(option.annualAmount)}/year
+                  {option.onboardingFeeAmount > 0
+                    ? ` + ${formatMoney(option.onboardingFeeAmount)} onboarding (first checkout only)`
+                    : " · no onboarding fee"}
+                </option>
+              ))}
             </Select>
-          </label>
-          <label>
-            Onboarding fee
-            <Input
-              type="number"
-              min={0}
-              value={form.onboardingFeeAmount}
-              onChange={(event) => setForm((prev) => ({ ...prev, onboardingFeeAmount: Number(event.target.value || 0) }))}
-            />
           </label>
           <label className="full-width">
             Director contact email (optional)
@@ -690,6 +728,9 @@ export function SuperTenantCreatePage() {
             <Button disabled={!canMutate(role)}>Create camp</Button>
             {!canMutate(role) ? <small className="muted">View only role</small> : null}
           </div>
+          <p className="muted full-width">
+            This billing plan is saved to the camp now, so directors land on onboarding with billing already pre-selected.
+          </p>
         </form>
       </Card>
 
@@ -710,7 +751,11 @@ export function SuperTenantCreatePage() {
             </article>
             <article>
               <span>Plan</span>
-              <strong>{createResult.planTier === "premium" ? "Premium" : "Base"}</strong>
+              <strong>{billingPlanLabel(createResult.billingPlan)}</strong>
+            </article>
+            <article>
+              <span>Annual Billing</span>
+              <strong>{formatMoney(createResult.annualAmount)}</strong>
             </article>
             <article>
               <span>Onboarding Fee</span>

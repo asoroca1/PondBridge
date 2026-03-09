@@ -27,8 +27,7 @@ const STEP_CAMP_SPECIFICS = "camp_specifics";
 const STEP_BILLING_PLAN = "billing_plan";
 const STEP_REVIEW_LAUNCH = "review_launch";
 const DEFAULT_SETUP_BRAND = "#0f2747";
-const BILLING_REQUIRED_DURING_ONBOARDING =
-  String(import.meta.env.VITE_REQUIRE_BILLING_ONBOARDING || "").trim().toLowerCase() === "true";
+const BILLING_REQUIRED_DURING_ONBOARDING = true;
 
 const STEP_ORDER = [
   STEP_ACCOUNT,
@@ -124,22 +123,22 @@ const BILLING_PLAN_OPTIONS = [
     code: "legacy",
     title: "Legacy Plan",
     annualAmount: 3500,
-    onboardingFeeAmount: 350,
-    summary: "Core network features with annual billing."
+    onboardingFeeAmount: 0,
+    summary: "Core network features with annual billing and no onboarding fee."
   },
   {
     code: "founders",
     title: "Founders Plan",
     annualAmount: 2800,
     onboardingFeeAmount: 0,
-    summary: "Discounted annual pricing for the first 5 camps."
+    summary: "Discounted annual pricing for the first 5 camps with no onboarding fee."
   },
   {
     code: "institutional",
     title: "Institutional Plan",
-    annualAmount: 5500,
-    onboardingFeeAmount: 750,
-    summary: "Advanced feature tier with institutional-level support."
+    annualAmount: 5000,
+    onboardingFeeAmount: 450,
+    summary: "Advanced feature tier with a one-time onboarding fee on initial checkout."
   }
 ];
 const HERO_POSITION_LABELS = {
@@ -2223,12 +2222,32 @@ function DirectorCreateAccountWizardPage() {
               cancelUrl
             }
           });
+          const checkoutAction = String(checkoutPayload?.action || "").trim().toLowerCase();
           const checkoutUrl = String(checkoutPayload?.checkoutUrl || "").trim();
-          if (!checkoutUrl) {
-            throw new Error("Unable to start Stripe checkout right now. Please try again.");
+          if (checkoutUrl) {
+            window.location.assign(checkoutUrl);
+            return;
           }
-          window.location.assign(checkoutUrl);
-          return;
+
+          if (checkoutAction === "subscription_updated") {
+            const refreshedBillingSnapshot = await requestJson("/api/tenants/me/billing", { token });
+            const refreshedBillingState = refreshedBillingSnapshot?.billing || {};
+            const refreshedLaunchReady = Boolean(
+              refreshedBillingState.launchReady ||
+                (refreshedBillingState.launchReadiness?.lifecycleReady &&
+                  refreshedBillingState.launchReadiness?.feeReady)
+            );
+            if (!refreshedLaunchReady) {
+              throw new Error(
+                checkoutPayload?.notes ||
+                  "Subscription updated, but billing is still pending. Open the billing portal to finish setup."
+              );
+            }
+          } else {
+            throw new Error(
+              checkoutPayload?.notes || "Unable to start Stripe checkout right now. Please try again."
+            );
+          }
         }
       }
 
@@ -2515,7 +2534,7 @@ function DirectorCreateAccountWizardPage() {
                               {formatMoney(annualAmountForPlanOption(option.code))}/year
                               {" · "}
                               {onboardingFeeAmountForPlanOption(option.code) > 0
-                                ? `${formatMoney(onboardingFeeAmountForPlanOption(option.code))} onboarding fee`
+                                ? `${formatMoney(onboardingFeeAmountForPlanOption(option.code))} onboarding fee (first checkout only)`
                                 : "No onboarding fee"}
                             </span>
                           </div>
@@ -3075,7 +3094,7 @@ function DirectorCreateAccountWizardPage() {
                         {formatMoney(selectedPlanAnnualAmount)} yearly
                         {" · "}
                         {selectedPlanOnboardingFeeAmount > 0
-                          ? `${formatMoney(selectedPlanOnboardingFeeAmount)} onboarding fee`
+                          ? `${formatMoney(selectedPlanOnboardingFeeAmount)} onboarding fee (first checkout only)`
                           : "No onboarding fee"}
                       </p>
                     </article>
@@ -3495,7 +3514,12 @@ function DirectorCreateAccountWizardPage() {
                         </div>
                         <div>
                           <dt>Onboarding fee</dt>
-                          <dd>{formatMoney(onboardingFeeAmount)}</dd>
+                          <dd>
+                            {formatMoney(onboardingFeeAmount)}
+                            {selectedBillingPlanCode === "institutional" && onboardingFeeAmount > 0
+                              ? " (first checkout only)"
+                              : ""}
+                          </dd>
                         </div>
                         <div>
                           <dt>Status</dt>

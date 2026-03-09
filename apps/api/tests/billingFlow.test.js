@@ -145,13 +145,14 @@ describe("Stripe billing system", () => {
     expect(response.body.ok).toBe(true);
     expect(response.body.checkoutUrl).toContain("mock-billing");
     expect(response.body.billing.billingPlan).toBe("legacy");
-    expect(response.body.billing.onboardingFeeAmount).toBe(350);
+    expect(response.body.billing.onboardingFeeAmount).toBe(0);
+    expect(response.body.billing.onboardingFeeStatus).toBe("waived");
     expect(response.body.billing.lifecycleStatus).toBe("checkout_started");
 
     const stored = await Tenant.findById(tenant._id);
     expect(stored.planTier).toBe("base");
-    expect(Number(stored.onboardingFeeAmount)).toBe(350);
-    expect(stored.onboardingFeePaid).toBe(false);
+    expect(Number(stored.onboardingFeeAmount)).toBe(0);
+    expect(stored.onboardingFeePaid).toBe(true);
     expect(stored.settings?.billing?.planCode).toBe("legacy");
     expect(stored.settings?.billing?.lifecycleStatus).toBe("checkout_started");
   });
@@ -172,13 +173,49 @@ describe("Stripe billing system", () => {
     expect(response.status).toBe(201);
     expect(response.body.ok).toBe(true);
     expect(response.body.billing.billingPlan).toBe("institutional");
-    expect(response.body.billing.onboardingFeeAmount).toBe(750);
+    expect(response.body.billing.onboardingFeeAmount).toBe(450);
+    expect(response.body.billing.onboardingFeeStatus).toBe("unpaid");
 
     const stored = await Tenant.findById(tenant._id);
     expect(stored.planTier).toBe("premium");
-    expect(Number(stored.onboardingFeeAmount)).toBe(750);
+    expect(Number(stored.onboardingFeeAmount)).toBe(450);
     expect(stored.settings?.billing?.planCode).toBe("institutional");
     expect(stored.settings?.billing?.lifecycleStatus).toBe("checkout_started");
+  });
+
+  test("institutional onboarding fee is waived after the initial completed checkout", async () => {
+    const tenant = await createTenant({
+      slug: "billing-institutional-repeat-checkout",
+      onboardingStatus: "live",
+      billingStatus: "active",
+      stripeCustomerId: "cus_existing_001",
+      onboardingFeeAmount: 450,
+      onboardingFeePaid: true,
+      settings: {
+        billing: {
+          planCode: "institutional",
+          lifecycleStatus: "active",
+          initialCheckoutCompletedAt: "2026-01-05T12:00:00.000Z",
+          activatedAt: "2026-01-05T12:00:00.000Z"
+        }
+      }
+    });
+    await Tenant.update(tenant._id, {
+      stripeSubscriptionId: "sub_existing_001",
+      stripePriceId: "price_institutional_annual"
+    });
+    await createTenantAdmin(tenant._id, "director@institutional-repeat.test");
+    const token = await loginTenant(tenant.slug, "director@institutional-repeat.test");
+
+    const response = await request(app)
+      .post("/api/tenants/me/billing/checkout")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ planCode: "institutional" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.billing.billingPlan).toBe("institutional");
+    expect(response.body.billing.onboardingFeeAmount).toBe(450);
+    expect(response.body.billing.onboardingFeeStatus).toBe("waived");
   });
 
   test("founders plan is capped at first 5 camps and maps to premium tier", async () => {
@@ -244,11 +281,11 @@ describe("Stripe billing system", () => {
       onboardingStatus: "live",
       billingStatus: "trialing",
       stripeCustomerId: "cus_test_123",
-      onboardingFeeAmount: 350,
+      onboardingFeeAmount: 450,
       onboardingFeePaid: false,
       settings: {
         billing: {
-          planCode: "legacy",
+          planCode: "institutional",
           lifecycleStatus: "checkout_started",
           processedEventIds: []
         }
@@ -266,8 +303,8 @@ describe("Stripe billing system", () => {
           lines: {
             data: [
               {
-                price: { id: "price_legacy_onboarding" },
-                description: "Legacy onboarding fee"
+                price: { id: "price_institutional_onboarding" },
+                description: "Institutional onboarding fee"
               }
             ]
           }

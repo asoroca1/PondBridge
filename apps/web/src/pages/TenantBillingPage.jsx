@@ -60,11 +60,18 @@ export default function TenantBillingPage() {
           cancelUrl
         }
       });
+      const action = String(payload?.action || "").trim().toLowerCase();
       const checkoutUrl = String(payload?.checkoutUrl || "").trim();
-      if (!checkoutUrl) {
-        throw new Error("Stripe checkout URL was not returned.");
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
       }
-      window.location.assign(checkoutUrl);
+      if (action === "subscription_updated") {
+        await loadBilling();
+        setStartingCheckout(false);
+        return;
+      }
+      throw new Error(payload?.notes || "Stripe checkout URL was not returned.");
     } catch (checkoutError) {
       setError(checkoutError.message || "Unable to start Stripe checkout.");
       setStartingCheckout(false);
@@ -120,8 +127,8 @@ export default function TenantBillingPage() {
               {billing.catalog.plans.map((plan) => (
                 <option key={plan.code} value={plan.code}>
                   {plan.label} · {formatMoney(plan.annualAmount)}/yr
-                  {plan.onboardingFeeAmount > 0
-                    ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding`
+                  {plan.code === "institutional"
+                    ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding (first checkout only)`
                     : " · no onboarding fee"}
                 </option>
               ))}

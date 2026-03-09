@@ -61,7 +61,8 @@ import {
   createTenantCheckoutSession,
   getBillingCatalog,
   getBillingMode,
-  getFoundersAvailability
+  getFoundersAvailability,
+  listRecentTenantInvoices
 } from "../services/billing.js";
 import {
   normalizeBillingPlan,
@@ -4054,14 +4055,16 @@ router.patch("/features", async (req, res) => {
 router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
   const planTier = resolveTenantFeatureTier(req.tenant);
   const mode = getBillingMode();
-  const portal = await createBillingPortalUrl({
-    tenant: req.tenant,
-    returnPath: `/t/${req.tenant.slug}/admin/billing`
-  });
-  const billing = buildBillingPublicSnapshot(req.tenant);
-  const foundersAvailability = await getFoundersAvailability();
-
-  const memberCount = await ProfileModel.count(req.tenant._id, { status: { $ne: "removed" } });
+  const [portal, billing, foundersAvailability, invoices, memberCount] = await Promise.all([
+    createBillingPortalUrl({
+      tenant: req.tenant,
+      returnPath: `/t/${req.tenant.slug}/admin/billing`
+    }),
+    Promise.resolve(buildBillingPublicSnapshot(req.tenant)),
+    getFoundersAvailability(),
+    listRecentTenantInvoices(req.tenant, { limit: 12 }),
+    ProfileModel.count(req.tenant._id, { status: { $ne: "removed" } })
+  ]);
   const planLimit = planTier === "premium" ? null : 5000;
   const usagePct = planLimit ? Math.round((memberCount / Math.max(planLimit, 1)) * 100) : null;
 
@@ -4081,6 +4084,9 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
       onboardingFeeInvoiceId: req.tenant.onboardingFeeInvoiceId || "",
       billingDetails: req.tenant.billingDetails || {},
       currentPeriodEnd: billing.currentPeriodEnd,
+      initialCheckoutCompletedAt: billing.initialCheckoutCompletedAt,
+      activatedAt: billing.activatedAt,
+      canceledAt: billing.canceledAt,
       foundersReserved: billing.foundersReserved,
       foundersSlot: billing.foundersSlot,
       foundersEligible: billing.foundersEligible
@@ -4095,7 +4101,7 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
     },
     mode,
     manageBillingUrl: portal.url || "",
-    invoices: []
+    invoices
   });
 });
 
@@ -4128,6 +4134,7 @@ router.post("/billing/checkout", ensureBillingVisibleForTenant, async (req, res,
     return res.status(201).json({
       ok: true,
       mode: checkout.mode,
+      action: checkout.action || "checkout_started",
       checkoutUrl: checkout.checkoutUrl,
       sessionId: checkout.sessionId || "",
       notes: checkout.message || "",

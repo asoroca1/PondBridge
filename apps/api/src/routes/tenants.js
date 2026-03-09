@@ -16,7 +16,8 @@ import {
   getBillingCatalog,
   getBillingMode,
   getFoundersAvailability,
-  isStripeEnabled
+  isStripeEnabled,
+  listRecentTenantInvoices
 } from "../services/billing.js";
 import { runTenantCsvImport } from "../services/csvImport.js";
 import {
@@ -956,10 +957,9 @@ router.post("/me/launch", async (req, res) => {
         }
       ];
   const blockingChecklist = fromDirectorWizard ? [] : checklistBlockers;
-  const billingBlockers =
-    superAdminOverride || (fromDirectorWizard && !env.DIRECTOR_WIZARD_REQUIRE_BILLING)
-      ? []
-      : readiness.checks.filter((item) => !item.ok && item.id === "billing");
+  const billingBlockers = superAdminOverride
+    ? []
+    : readiness.checks.filter((item) => !item.ok && item.id === "billing");
   const launchBlockers = [
     ...blockingChecklist,
     ...legalBlockers,
@@ -1276,6 +1276,7 @@ router.post("/me/billing/checkout", async (req, res, next) => {
     return res.status(201).json({
       ok: true,
       mode: checkout.mode,
+      action: checkout.action || "checkout_started",
       stripeEnabled: isStripeEnabled(),
       checkoutUrl: checkout.checkoutUrl,
       sessionId: checkout.sessionId || "",
@@ -1316,9 +1317,10 @@ router.get("/me/billing", async (req, res) => {
     });
   }
 
-  const [portal, foundersAvailability] = await Promise.all([
+  const [portal, foundersAvailability, invoices] = await Promise.all([
     createBillingPortalUrl({ tenant: { ...tenant } }),
-    getFoundersAvailability()
+    getFoundersAvailability(),
+    listRecentTenantInvoices(tenant, { limit: 12 })
   ]);
   const billing = buildBillingPublicSnapshot(tenant);
   const planTier = resolveTenantFeatureTier(tenant);
@@ -1345,6 +1347,9 @@ router.get("/me/billing", async (req, res) => {
       billingDetails: tenant.billingDetails || {},
       directorLegalAgreement: tenant.directorLegalAgreement || {},
       currentPeriodEnd: billing.currentPeriodEnd,
+      initialCheckoutCompletedAt: billing.initialCheckoutCompletedAt,
+      activatedAt: billing.activatedAt,
+      canceledAt: billing.canceledAt,
       foundersReserved: billing.foundersReserved,
       foundersSlot: billing.foundersSlot,
       foundersEligible: billing.foundersEligible
@@ -1354,7 +1359,8 @@ router.get("/me/billing", async (req, res) => {
     foundersAvailability,
     billing,
     manageSubscriptionUrl: portal.url || "",
-    notes: portal.message || ""
+    notes: portal.message || "",
+    invoices
   });
 });
 
