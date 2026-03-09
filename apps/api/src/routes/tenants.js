@@ -1,7 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
 import { listFeaturesForPlan } from "@pondbridge/shared";
-import { env } from "../config/env.js";
 import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import {
   TenantModel,
