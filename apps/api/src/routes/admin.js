@@ -22,6 +22,7 @@ import {
   AccessRequestModel,
   AnalyticsEventModel,
   EmailBroadcastModel,
+  EmailSuppressionModel,
   ImportReportModel,
   MagicLinkTokenModel,
   ConversationModel,
@@ -3354,12 +3355,18 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
 
 router.get("/email/history", async (req, res) => {
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 30) || 30));
-  const items = await EmailBroadcastModel.find(req.tenant._id, {}, {
+  const offset = Math.max(0, Number(req.query.offset || 0) || 0);
+  const statusFilter = String(req.query.status || "").trim().toLowerCase();
+  const filter = statusFilter && ["sent", "scheduled", "failed", "canceled"].includes(statusFilter)
+    ? { status: statusFilter }
+    : { status: { $ne: "draft" } };
+  const items = await EmailBroadcastModel.find(req.tenant._id, filter, {
     sort: { createdAt: -1 },
-    limit
+    limit,
+    offset
   });
   return res.json({
-    total: items.length,
+    total: items._count || items.length,
     items: items.map((item) => serializeEmailBroadcast(item))
   });
 });
@@ -3379,6 +3386,151 @@ router.get("/email/history/:broadcastId", async (req, res) => {
   }
 
   return res.json({ item: serializeEmailBroadcast(item) });
+});
+
+// ---------------------------------------------------------------------------
+// Draft CRUD
+// ---------------------------------------------------------------------------
+
+router.get("/email/drafts", async (req, res) => {
+  const limit = Math.min(30, Math.max(1, Number(req.query.limit || 30) || 30));
+  const items = await EmailBroadcastModel.find(req.tenant._id, { status: "draft" }, {
+    sort: { updatedAt: -1 },
+    limit
+  });
+  return res.json({
+    total: items._count || items.length,
+    items: items.map((item) => serializeEmailBroadcast(item))
+  });
+});
+
+router.post("/email/draft", async (req, res) => {
+  const subject = sanitizeText(String(req.body?.subject || "").trim()).slice(0, 160);
+  const body = sanitizeHtmlContent(String(req.body?.body || "").trim());
+  const targeting = normalizeTargeting(req.body?.targeting || {});
+
+  const draft = await EmailBroadcastModel.create({
+    tenantId: req.tenant._id,
+    subject,
+    body,
+    targeting,
+    status: "draft",
+    recipientCount: 0,
+    excludedCount: 0,
+    recipientsPreview: [],
+    createdByUserId: req.user.id
+  });
+
+  return res.status(201).json({ ok: true, item: serializeEmailBroadcast(draft) });
+});
+
+router.patch("/email/draft/:id", async (req, res) => {
+  const draftId = String(req.params.id || "").trim();
+  const item = await EmailBroadcastModel.findOne(req.tenant._id, { _id: draftId, status: "draft" });
+  if (!item) {
+    return res.status(404).json({ error: { code: "DRAFT_NOT_FOUND", message: "Draft not found." } });
+  }
+
+  const updates = { updatedAt: new Date() };
+  if (req.body?.subject !== undefined) updates.subject = sanitizeText(String(req.body.subject || "").trim()).slice(0, 160);
+  if (req.body?.body !== undefined) updates.body = sanitizeHtmlContent(String(req.body.body || "").trim());
+  if (req.body?.targeting !== undefined) updates.targeting = normalizeTargeting(req.body.targeting);
+
+  await EmailBroadcastModel.update(item._id, updates);
+  const fresh = await EmailBroadcastModel.findOne(req.tenant._id, { _id: item._id });
+  return res.json({ ok: true, item: serializeEmailBroadcast(fresh) });
+});
+
+router.delete("/email/draft/:id", async (req, res) => {
+  const draftId = String(req.params.id || "").trim();
+  const item = await EmailBroadcastModel.findOne(req.tenant._id, { _id: draftId, status: "draft" });
+  if (!item) {
+    return res.status(404).json({ error: { code: "DRAFT_NOT_FOUND", message: "Draft not found." } });
+  }
+  await EmailBroadcastModel.delete(item._id);
+  return res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Scheduled email management
+// ---------------------------------------------------------------------------
+
+router.delete("/email/scheduled/:broadcastId", async (req, res) => {
+  const broadcastId = String(req.params.broadcastId || "").trim();
+  const item = await EmailBroadcastModel.findOne(req.tenant._id, { _id: broadcastId, status: "scheduled" });
+  if (!item) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scheduled email not found." } });
+  }
+  await EmailBroadcastModel.update(item._id, { status: "canceled", updatedAt: new Date() });
+  return res.json({ ok: true });
+});
+
+router.patch("/email/scheduled/:broadcastId", async (req, res) => {
+  const broadcastId = String(req.params.broadcastId || "").trim();
+  const item = await EmailBroadcastModel.findOne(req.tenant._id, { _id: broadcastId, status: "scheduled" });
+  if (!item) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scheduled email not found." } });
+  }
+
+  const updates = { updatedAt: new Date() };
+  if (req.body?.subject) updates.subject = sanitizeText(String(req.body.subject).trim()).slice(0, 160);
+  if (req.body?.body) updates.body = sanitizeHtmlContent(String(req.body.body).trim());
+  if (req.body?.scheduledFor) {
+    const next = new Date(req.body.scheduledFor);
+    if (!Number.isNaN(next.getTime()) && next > new Date()) updates.scheduledFor = next;
+  }
+
+  await EmailBroadcastModel.update(item._id, updates);
+  const fresh = await EmailBroadcastModel.findOne(req.tenant._id, { _id: item._id });
+  return res.json({ ok: true, item: serializeEmailBroadcast(fresh) });
+});
+
+// ---------------------------------------------------------------------------
+// Suppression management
+// ---------------------------------------------------------------------------
+
+router.get("/email/suppressions", async (req, res) => {
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100) || 100));
+  const items = await EmailSuppressionModel.find(req.tenant._id, { status: "active" }, {
+    sort: { lastSeenAt: -1 },
+    limit
+  });
+  return res.json({
+    total: items._count || items.length,
+    items: (items || []).map((item) => ({
+      id: String(item?._id || ""),
+      email: String(item?.email || ""),
+      reason: String(item?.reason || ""),
+      sourceEventType: String(item?.sourceEventType || ""),
+      firstSeenAt: item?.firstSeenAt ? new Date(item.firstSeenAt).toISOString() : null,
+      lastSeenAt: item?.lastSeenAt ? new Date(item.lastSeenAt).toISOString() : null
+    }))
+  });
+});
+
+router.patch("/email/suppressions/:id/lift", async (req, res) => {
+  const suppressionId = String(req.params.id || "").trim();
+  if (!suppressionId) {
+    return res.status(400).json({ error: { code: "INVALID_ID", message: "Suppression ID is required." } });
+  }
+  const item = await EmailSuppressionModel.findOne(req.tenant._id, { _id: suppressionId, status: "active" });
+  if (!item) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Active suppression not found." } });
+  }
+  await EmailSuppressionModel.update(item._id, { status: "lifted", updatedAt: new Date() });
+  return res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Available roles for targeting
+// ---------------------------------------------------------------------------
+
+router.get("/email/available-roles", async (req, res) => {
+  const content = resolveContent(req.tenant);
+  const roles = Array.isArray(content.staffRoles) && content.staffRoles.length > 0
+    ? content.staffRoles.map((r) => String(r || "").trim()).filter(Boolean)
+    : DEFAULT_STAFF_ROLES;
+  return res.json({ roles });
 });
 
 router.get("/email/footer-presets", async (req, res) => {
@@ -3538,7 +3690,7 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
     footer: normalizeEmailFooterData(req.body?.footer || {}, footerSettings.activeFooter)
   });
 
-  const { recipients } = await resolveRecipientsForTargeting(req.tenant._id, targeting);
+  const { profiles, recipients } = await resolveRecipientsForTargeting(req.tenant._id, targeting);
   if (recipients.length === 0) {
     return res.status(400).json({
       error: {
@@ -3555,6 +3707,49 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
         message: `Recipient list exceeds max size of ${env.EMAIL_BROADCAST_MAX_RECIPIENTS}. Narrow your targeting and try again.`
       }
     });
+  }
+
+  // Duplicate broadcast warning
+  if (!req.body?.confirmDuplicate) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recentDuplicates = await EmailBroadcastModel.find(req.tenant._id, {
+      subject,
+      status: { $in: ["sent", "scheduled"] },
+      createdAt: { $gte: oneHourAgo }
+    }, { limit: 1 });
+    if (recentDuplicates.length > 0) {
+      return res.status(409).json({
+        error: {
+          code: "DUPLICATE_BROADCAST_WARNING",
+          message: "A broadcast with the same subject was sent within the last hour.",
+          duplicate: serializeEmailBroadcast(recentDuplicates[0])
+        }
+      });
+    }
+  }
+
+  // Merge tag personalization
+  const MERGE_TAG_REGEX = /\{\{(firstName|lastName)\}\}/g;
+  const hasMergeTags = MERGE_TAG_REGEX.test(body);
+  let personalizer = null;
+  if (hasMergeTags) {
+    const emailToProfile = new Map();
+    for (const profile of profiles) {
+      const profileEmail = String(profile?.emails?.[0] || "").trim().toLowerCase();
+      if (profileEmail) emailToProfile.set(profileEmail, profile);
+    }
+    personalizer = (recipientEmail) => {
+      const profile = emailToProfile.get(recipientEmail) || {};
+      const firstName = String(profile?.firstName || "").trim() || "there";
+      const lastName = String(profile?.lastName || "").trim();
+      const personalizedHtml = composed.html
+        .replace(/\{\{firstName\}\}/g, escapeEmailHtml(firstName))
+        .replace(/\{\{lastName\}\}/g, escapeEmailHtml(lastName));
+      const personalizedText = composed.text
+        .replace(/\{\{firstName\}\}/g, firstName)
+        .replace(/\{\{lastName\}\}/g, lastName);
+      return { html: personalizedHtml, text: personalizedText };
+    };
   }
 
   const now = new Date();
@@ -3588,7 +3783,8 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       ],
       idempotencyKey: `director-broadcast/${req.tenant.slug || "tenant"}/${broadcast._id}`,
       batchSize: env.EMAIL_BROADCAST_BATCH_SIZE,
-      maxRecipients: env.EMAIL_BROADCAST_MAX_RECIPIENTS
+      maxRecipients: env.EMAIL_BROADCAST_MAX_RECIPIENTS,
+      ...(personalizer ? { personalizer } : {})
     });
     const deliveryStats = {
       attemptedCount: delivery.attemptedCount,

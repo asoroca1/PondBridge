@@ -4341,18 +4341,35 @@ export function DirectorAdminEmailComposePage() {
 }
 
 export function DirectorAdminEmailHistoryPage() {
+  const navigate = useNavigate();
   const { slug, request } = useAdminApi();
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const pageSize = 30;
 
-  const loadHistory = useCallback(async () => {
+  // Suppression state
+  const [suppressions, setSuppressions] = useState([]);
+  const [suppressionsOpen, setSuppressionsOpen] = useState(false);
+  const [suppressionsLoading, setSuppressionsLoading] = useState(false);
+  const [liftingId, setLiftingId] = useState("");
+
+  // Scheduled cancel state
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [canceling, setCanceling] = useState(false);
+
+  const loadHistory = useCallback(async (pageNum = 0) => {
     setLoading(true);
     setError("");
     try {
-      const response = await request("/email/history");
+      const params = new URLSearchParams({ limit: String(pageSize), offset: String(pageNum * pageSize) });
+      const response = await request(`/email/history?${params.toString()}`);
       setItems(response.items || []);
+      setTotal(response.total || 0);
     } catch (requestError) {
       setError(requestError.message || "Failed to load sent emails.");
     } finally {
@@ -4361,8 +4378,60 @@ export function DirectorAdminEmailHistoryPage() {
   }, [request]);
 
   useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+    loadHistory(page);
+  }, [loadHistory, page]);
+
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => (item.subject || "").toLowerCase().includes(q));
+  }, [items, searchQuery]);
+
+  async function loadSuppressions() {
+    setSuppressionsLoading(true);
+    try {
+      const response = await request("/email/suppressions");
+      setSuppressions(response.items || []);
+    } catch {
+      setSuppressions([]);
+    } finally {
+      setSuppressionsLoading(false);
+    }
+  }
+
+  function toggleSuppressions() {
+    const next = !suppressionsOpen;
+    setSuppressionsOpen(next);
+    if (next && suppressions.length === 0) loadSuppressions();
+  }
+
+  async function liftSuppression(id) {
+    setLiftingId(id);
+    try {
+      await request(`/email/suppressions/${id}/lift`, { method: "PATCH" });
+      setSuppressions((prev) => prev.filter((s) => s.id !== id));
+    } catch { /* Ignore */ }
+    finally { setLiftingId(""); }
+  }
+
+  async function cancelScheduled() {
+    if (!cancelTarget) return;
+    setCanceling(true);
+    try {
+      await request(`/email/scheduled/${cancelTarget.id}`, { method: "DELETE" });
+      setCancelTarget(null);
+      loadHistory(page);
+    } catch (requestError) {
+      setError(requestError.message || "Failed to cancel scheduled email.");
+    } finally {
+      setCanceling(false);
+    }
+  }
+
+  function formatPercent(value) {
+    if (value == null || value === "") return "-";
+    return `${(Number(value) * 100).toFixed(1)}%`;
+  }
 
   return (
     <Card>
@@ -4376,6 +4445,12 @@ export function DirectorAdminEmailHistoryPage() {
         }
       />
       {error ? <p className="error-text">{error}</p> : null}
+
+      {/* Search */}
+      <div className="director-admin-email-history-controls">
+        <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search by subject..." />
+      </div>
+
       <div className="director-admin-table-wrap">
         <table className="director-admin-table">
           <thead>
@@ -4390,25 +4465,23 @@ export function DirectorAdminEmailHistoryPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="muted">
-                  Loading sent emails...
-                </td>
+                <td colSpan={5} className="muted">Loading sent emails...</td>
               </tr>
-            ) : !items.length ? (
+            ) : !filteredItems.length ? (
               <tr>
                 <td colSpan={5}>
                   <div className="director-admin-empty">
-                    <h3>No emails sent yet.</h3>
-                    <p>Compose your first email to the network.</p>
+                    <h3>No emails found.</h3>
+                    <p>{searchQuery ? "Try a different search." : "Compose your first email to the network."}</p>
                   </div>
                 </td>
               </tr>
             ) : (
-              items.map((item) => (
+              filteredItems.map((item) => (
                 <tr key={item.id}>
                   <td>{item.subject}</td>
                   <td>{item.recipientCount || 0}</td>
-                  <td>{formatDateTime(item.sentAt || item.createdAt)}</td>
+                  <td>{formatDateTime(item.sentAt || item.scheduledFor || item.createdAt)}</td>
                   <td>
                     <span className={`director-admin-status-badge tone-${statusTone(item.status)}`.trim()}>
                       {item.status}
@@ -4416,8 +4489,24 @@ export function DirectorAdminEmailHistoryPage() {
                   </td>
                   <td>
                     <button type="button" className="director-admin-inline-link" onClick={() => setSelected(item)}>
-                      View Details
+                      Details
                     </button>
+                    {item.status === "scheduled" ? (
+                      <>
+                        {" "}
+                        <button type="button" className="director-admin-inline-link" onClick={() => setCancelTarget(item)}>
+                          Cancel
+                        </button>
+                        {" "}
+                        <button
+                          type="button"
+                          className="director-admin-inline-link"
+                          onClick={() => navigate(`/t/${slug}/admin/email/compose?subject=${encodeURIComponent(item.subject)}&body=${encodeURIComponent(item.body || "")}`)}
+                        >
+                          Edit
+                        </button>
+                      </>
+                    ) : null}
                   </td>
                 </tr>
               ))
@@ -4425,17 +4514,131 @@ export function DirectorAdminEmailHistoryPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      <div className="director-admin-pagination">
+        <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+        <span className="muted">Page {page + 1}{total > 0 ? ` of ${Math.ceil(total / pageSize)}` : ""}</span>
+        <Button variant="secondary" size="sm" disabled={items.length < pageSize} onClick={() => setPage((p) => p + 1)}>Next</Button>
+      </div>
+
+      {/* Suppressions section */}
+      <div className="director-admin-email-suppression-section">
+        <button type="button" className="director-admin-inline-link" onClick={toggleSuppressions}>
+          {suppressionsOpen ? "Hide Suppressions" : "View Email Suppressions"}
+        </button>
+        {suppressionsOpen ? (
+          <div className="director-admin-email-suppression-content">
+            {suppressionsLoading ? (
+              <p className="muted">Loading suppressions...</p>
+            ) : !suppressions.length ? (
+              <p className="muted">No active suppressions.</p>
+            ) : (
+              <table className="director-admin-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Reason</th>
+                    <th>Source</th>
+                    <th>First Seen</th>
+                    <th>Last Seen</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppressions.map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.email}</td>
+                      <td>{s.reason || "-"}</td>
+                      <td>{s.sourceEventType || "-"}</td>
+                      <td>{s.firstSeenAt ? formatDateTime(s.firstSeenAt) : "-"}</td>
+                      <td>{s.lastSeenAt ? formatDateTime(s.lastSeenAt) : "-"}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="director-admin-inline-link"
+                          disabled={liftingId === s.id}
+                          onClick={() => liftSuppression(s.id)}
+                        >
+                          {liftingId === s.id ? "Lifting..." : "Lift"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Detail modal */}
       {selected ? (
         <div className="director-admin-modal-backdrop">
-          <div className="director-admin-modal">
+          <div className="director-admin-modal director-admin-modal-wide">
             <h2>{selected.subject}</h2>
             <p className="muted">
-              {selected.status} · {formatDateTime(selected.sentAt || selected.createdAt)}
+              {selected.status} &middot; {formatDateTime(selected.sentAt || selected.scheduledFor || selected.createdAt)}
             </p>
-            <p>
-              <strong>Recipients:</strong> {selected.recipientCount}
-            </p>
-            <Textarea value={selected.body || ""} readOnly />
+            <p><strong>Recipients:</strong> {selected.recipientCount}</p>
+
+            {/* Delivery stats */}
+            {selected.stats?.delivery || selected.stats?.webhook ? (
+              <div className="director-admin-email-stats-grid">
+                {selected.stats.delivery ? (
+                  <>
+                    <div className="director-admin-email-stat">
+                      <span className="director-admin-email-stat-value">{selected.stats.delivery.sentCount ?? "-"}</span>
+                      <span className="director-admin-email-stat-label">Sent</span>
+                    </div>
+                    <div className="director-admin-email-stat">
+                      <span className="director-admin-email-stat-value">{selected.stats.delivery.failedCount ?? "-"}</span>
+                      <span className="director-admin-email-stat-label">Failed</span>
+                    </div>
+                  </>
+                ) : null}
+                {selected.stats.webhook ? (
+                  <>
+                    {selected.stats.webhook.delivered != null ? (
+                      <div className="director-admin-email-stat">
+                        <span className="director-admin-email-stat-value">{selected.stats.webhook.delivered}</span>
+                        <span className="director-admin-email-stat-label">Delivered</span>
+                      </div>
+                    ) : null}
+                    {selected.stats.webhook.bounced != null ? (
+                      <div className="director-admin-email-stat">
+                        <span className="director-admin-email-stat-value">{selected.stats.webhook.bounced}</span>
+                        <span className="director-admin-email-stat-label">Bounced</span>
+                      </div>
+                    ) : null}
+                    {selected.stats.webhook.clicked != null ? (
+                      <div className="director-admin-email-stat">
+                        <span className="director-admin-email-stat-value">{selected.stats.webhook.clicked}</span>
+                        <span className="director-admin-email-stat-label">Clicked</span>
+                      </div>
+                    ) : null}
+                    {selected.stats.webhook.openRate != null ? (
+                      <div className="director-admin-email-stat">
+                        <span className="director-admin-email-stat-value">{formatPercent(selected.stats.webhook.openRate)}</span>
+                        <span className="director-admin-email-stat-label">Open Rate</span>
+                      </div>
+                    ) : null}
+                    {selected.stats.webhook.clickRate != null ? (
+                      <div className="director-admin-email-stat">
+                        <span className="director-admin-email-stat-value">{formatPercent(selected.stats.webhook.clickRate)}</span>
+                        <span className="director-admin-email-stat-label">Click Rate</span>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Rendered HTML body preview */}
+            <div
+              className="director-admin-email-body-preview"
+              dangerouslySetInnerHTML={{ __html: selected.body || "" }}
+            />
             <div className="director-admin-modal-actions">
               <Link
                 className="link-button secondary"
@@ -4450,6 +4653,19 @@ export function DirectorAdminEmailHistoryPage() {
           </div>
         </div>
       ) : null}
+
+      {/* Cancel scheduled confirmation */}
+      <ModalConfirm
+        open={Boolean(cancelTarget)}
+        title="Cancel Scheduled Email?"
+        description={cancelTarget ? `Cancel the scheduled email "${cancelTarget.subject}"? This cannot be undone.` : ""}
+        confirmLabel="Cancel Email"
+        cancelLabel="Keep Scheduled"
+        tone="danger"
+        busy={canceling}
+        onConfirm={cancelScheduled}
+        onCancel={() => setCancelTarget(null)}
+      />
     </Card>
   );
 }

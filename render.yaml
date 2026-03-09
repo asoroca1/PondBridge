@@ -48,3 +48,21 @@ services:
         value: auto
       - key: R2_PUBLIC_BASE_URL
         sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_ZONE_ID
+        sync: false
+      - key: CLOUDFLARE_PAGES_PROJECT_NAME
+        sync: false
+      - key: CLOUDFLARE_WEB_CNAME_TARGET
+        sync: false
+      - key: CLOUDFLARE_WEB_PROXIED
+        value: "true"
+      - key: CLOUDFLARE_TTL
+        value: "1"
+      - key: CLOUDFLARE_DOMAIN_READY_TIMEOUT_MS
+        value: "25000"
+      - key: CLOUDFLARE_DOMAIN_READY_POLL_MS
+        value: "1200"

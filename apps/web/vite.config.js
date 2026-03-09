@@ -11,8 +11,11 @@ const webEnvPath = path.resolve(__dirname, ".env");
 
 // Make root .env (Cloudflare/Clerk shared config) available to web builds,
 // then allow apps/web/.env to fill in anything not present there.
+// .env.local (git-ignored) can override any value for local development.
+const webEnvLocalPath = path.resolve(__dirname, ".env.local");
 dotenv.config({ path: repoEnvPath, override: false });
 dotenv.config({ path: webEnvPath, override: false });
+dotenv.config({ path: webEnvLocalPath, override: true });
 
 const envFallbackMap = {
   VITE_AUTH_PROVIDER: "AUTH_PROVIDER",

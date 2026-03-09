@@ -1,6 +1,49 @@
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
 import { env } from "../config/env.js";
 
+const TEST_DB_LOCAL_MARKERS = ["localhost", "127.0.0.1", "host.docker.internal"];
+const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+
+function isTruthy(value) {
+  return TRUE_VALUES.has(String(value || "").trim().toLowerCase());
+}
+
+function looksLikeLocalTestDatabase() {
+  const haystack = [
+    String(env.SUPABASE_URL || "").toLowerCase(),
+    String(env.SUPABASE_DB_URL || "").toLowerCase()
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!haystack) return false;
+  return TEST_DB_LOCAL_MARKERS.some((marker) => haystack.includes(marker));
+}
+
+function assertSafeTestDatabaseRuntime() {
+  if (env.NODE_ENV !== "test") return;
+
+  const allowDbReset = isTruthy(process.env.PONDBRIDGE_ALLOW_DB_RESET);
+  const resetAck = isTruthy(process.env.PONDBRIDGE_TEST_RESET_ACK);
+  const allowRemoteDb = isTruthy(process.env.PONDBRIDGE_TEST_ALLOW_REMOTE_DB);
+
+  if (!allowDbReset || !resetAck) {
+    throw new Error(
+      "Refusing NODE_ENV=test startup without destructive-reset safeguards. " +
+        "Set PONDBRIDGE_ALLOW_DB_RESET=1 and PONDBRIDGE_TEST_RESET_ACK=1 " +
+        "(or use `npm --workspace @pondbridge/api run test:with-reset`)."
+    );
+  }
+
+  if (!allowRemoteDb && !looksLikeLocalTestDatabase()) {
+    throw new Error(
+      "Refusing NODE_ENV=test startup against a non-local Supabase target. " +
+        "Point tests at localhost/127.0.0.1/host.docker.internal, or set " +
+        "PONDBRIDGE_TEST_ALLOW_REMOTE_DB=1 only for disposable CI databases."
+    );
+  }
+}
+
 function buildRecoveryHint() {
   return [
     "Recovery:",
@@ -13,6 +56,8 @@ function buildRecoveryHint() {
 
 export async function connectToDatabase() {
   try {
+    assertSafeTestDatabaseRuntime();
+
     const sb = getSupabaseAdmin();
     const { data: tenantRows, count, error } = await sb
       .from("tenants")

@@ -894,7 +894,8 @@ export async function sendBulkTransactionalEmail({
   modeOverride = "",
   strategy = "per-recipient",
   batchSize = env.EMAIL_BROADCAST_BATCH_SIZE,
-  maxRecipients = env.EMAIL_BROADCAST_MAX_RECIPIENTS
+  maxRecipients = env.EMAIL_BROADCAST_MAX_RECIPIENTS,
+  personalizer = null
 }) {
   const recipientList = dedupeList(
     (Array.isArray(recipients) ? recipients : []).map((item) => normalizeEmailAddress(item)).filter(Boolean)
@@ -942,7 +943,8 @@ export async function sendBulkTransactionalEmail({
     resendBatchEnabled &&
     normalizedStrategy === "per-recipient" &&
     normalizedAttachments.length === 0 &&
-    !normalizedScheduledAt;
+    !normalizedScheduledAt &&
+    !personalizer;
 
   const effectiveBatchSize = canUseResendBatchApi
     ? Math.min(normalizedBatchSize, 100)
@@ -1055,6 +1057,7 @@ export async function sendBulkTransactionalEmail({
     } else {
       for (const recipient of batch) {
         attemptedCursor += 1;
+        const personalized = typeof personalizer === "function" ? personalizer(recipient) : null;
         try {
           const result = await sendTransactionalEmail({
             from: normalizedFrom,
@@ -1063,8 +1066,8 @@ export async function sendBulkTransactionalEmail({
             bcc,
             replyTo,
             subject: cleanSubject,
-            text,
-            html,
+            text: personalized?.text || text,
+            html: personalized?.html || html,
             attachments: normalizedAttachments,
             headers: normalizedHeaders,
             tags: normalizedTags,

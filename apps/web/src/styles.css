@@ -5168,6 +5168,292 @@ img[draggable="false"] { -webkit-user-drag: none; }
   padding: 4px 2px 0;
 }
 
+/* ---- Rich Text Editor ---- */
+
+.pb-cedar-page .director-admin-email-richtext-wrap{
+  border: 1px solid #d0dbe8;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.pb-cedar-page .director-admin-email-richtext-toolbar{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #e3ebf6;
+  background: #f6f9fd;
+}
+
+.pb-cedar-page .director-admin-email-richtext-toolbar button{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  color: #35506f;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.pb-cedar-page .director-admin-email-richtext-toolbar button:hover{
+  background: #e3ecf6;
+  border-color: #c7d6e8;
+}
+
+.pb-cedar-page .director-admin-email-richtext-toolbar button.is-active{
+  background: var(--brand-primary, #002b5c);
+  color: #fff;
+}
+
+.pb-cedar-page .director-admin-email-merge-tag-btn{
+  font-size: 11px !important;
+  color: #6b7d94 !important;
+  font-family: monospace !important;
+}
+
+.pb-cedar-page .director-admin-email-richtext-sep{
+  width: 1px;
+  height: 18px;
+  background: #d0dbe8;
+  margin: 0 4px;
+}
+
+.pb-cedar-page .director-admin-email-richtext-body{
+  min-height: 180px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 1.65;
+  outline: none;
+  color: #1d3552;
+}
+
+.pb-cedar-page .director-admin-email-richtext-body:empty:before,
+.pb-cedar-page .director-admin-email-richtext-body[data-empty="true"]:before{
+  content: attr(data-placeholder);
+  color: #9aacbf;
+  pointer-events: none;
+}
+
+.pb-cedar-page .director-admin-email-richtext-body ul{
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.pb-cedar-page .director-admin-email-richtext-body a{
+  color: var(--brand-primary, #1e5cb3);
+  text-decoration: underline;
+}
+
+/* ---- Role & Year pickers ---- */
+
+.pb-cedar-page .director-admin-email-role-picker,
+.pb-cedar-page .director-admin-email-year-picker{
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+
+.pb-cedar-page .director-admin-email-checkbox-grid{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.pb-cedar-page .director-admin-email-checkbox-grid .inline-check{
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pb-cedar-page .director-admin-email-year-grid{
+  max-height: 160px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* ---- Template bar ---- */
+
+.pb-cedar-page .director-admin-email-template-bar{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e8eef6;
+  margin-bottom: 4px;
+}
+
+.pb-cedar-page .director-admin-email-template-bar .pb-input{
+  max-width: 200px;
+}
+
+.pb-cedar-page .director-admin-email-template-bar .pb-select{
+  max-width: 200px;
+}
+
+/* ---- Recipient preview sample ---- */
+
+.pb-cedar-page .director-admin-email-recipient-preview{
+  padding: 2px 0 6px;
+}
+
+.pb-cedar-page .director-admin-email-recipient-sample{
+  margin-top: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 13px;
+  color: #60738a;
+  padding: 6px 8px;
+  border: 1px solid #e8eef6;
+  border-radius: 8px;
+  background: #fafcff;
+}
+
+.pb-cedar-page .director-admin-email-recipient-sample ul{
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pb-cedar-page .director-admin-email-recipient-sample li{
+  font-size: 13px;
+  color: #35506f;
+}
+
+/* ---- Email body preview in rich text ---- */
+
+.pb-cedar-page .director-admin-email-frame-body-html{
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1d3552;
+}
+
+.pb-cedar-page .director-admin-email-frame-body-html ul{
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.pb-cedar-page .director-admin-email-frame-body-html a{
+  color: var(--brand-primary, #1e5cb3);
+}
+
+/* ---- History page controls ---- */
+
+.pb-cedar-page .director-admin-email-history-controls{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 12px;
+}
+
+.pb-cedar-page .director-admin-email-history-controls .pb-input{
+  max-width: 320px;
+}
+
+/* ---- Pagination ---- */
+
+.pb-cedar-page .director-admin-pagination{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+
+/* ---- Stats grid (history detail modal) ---- */
+
+.pb-cedar-page .director-admin-email-stats-grid{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0 12px;
+}
+
+.pb-cedar-page .director-admin-email-stat{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 72px;
+  padding: 8px 12px;
+  border: 1px solid #e3ebf6;
+  border-radius: 8px;
+  background: #f6f9ff;
+}
+
+.pb-cedar-page .director-admin-email-stat-value{
+  font-size: 20px;
+  font-weight: 700;
+  color: #13263f;
+  line-height: 1.2;
+}
+
+.pb-cedar-page .director-admin-email-stat-label{
+  font-size: 11px;
+  color: #60738a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+/* ---- Body preview in detail modal ---- */
+
+.pb-cedar-page .director-admin-email-body-preview{
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border: 1px solid #e3ebf6;
+  border-radius: 8px;
+  background: #fafcff;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1d3552;
+  margin: 8px 0;
+}
+
+.pb-cedar-page .director-admin-email-body-preview ul{
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.pb-cedar-page .director-admin-email-body-preview a{
+  color: var(--brand-primary, #1e5cb3);
+  text-decoration: underline;
+}
+
+/* ---- Modal wide variant ---- */
+
+.pb-cedar-page .director-admin-modal-wide{
+  max-width: 640px;
+  width: 90vw;
+}
+
+/* ---- Suppression section ---- */
+
+.pb-cedar-page .director-admin-email-suppression-section{
+  padding: 12px 0 4px;
+  border-top: 1px solid #e8eef6;
+  margin-top: 8px;
+}
+
+.pb-cedar-page .director-admin-email-suppression-content{
+  margin-top: 8px;
+}
+
 .pb-cedar-page .director-admin-preview-recipient-list{
   list-style: none;
   margin: 8px 0 0;
@@ -6348,6 +6634,24 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
   .pb-cedar-page .director-admin-selected-recipient-head{
     flex-wrap: wrap;
+  }
+
+  .pb-cedar-page .director-admin-email-template-bar{
+    grid-template-columns: 1fr;
+  }
+
+  .pb-cedar-page .director-admin-email-template-bar .pb-input,
+  .pb-cedar-page .director-admin-email-template-bar .pb-select{
+    max-width: none;
+  }
+
+  .pb-cedar-page .director-admin-email-stats-grid{
+    gap: 6px;
+  }
+
+  .pb-cedar-page .director-admin-email-stat{
+    min-width: 60px;
+    padding: 6px 8px;
   }
 }
 
