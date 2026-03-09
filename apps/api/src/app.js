@@ -69,6 +69,7 @@ app.use(attachRequestContext);
 app.use(augmentErrorResponses);
 app.use(attachRequestLogging);
 
+app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookRoutes);
 app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRoutes);
 app.use("/api/webhooks/resend", express.raw({ type: "application/json" }), resendWebhookRoutes);
 app.use(express.json({ limit: env.API_JSON_LIMIT }));

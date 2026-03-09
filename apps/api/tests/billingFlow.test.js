@@ -354,6 +354,45 @@ describe("Stripe billing system", () => {
     }
   });
 
+  test("new /api/stripe/webhook route accepts billing events", async () => {
+    const tenant = await createTenant({
+      slug: "billing-webhook-new-route",
+      onboardingStatus: "live",
+      billingStatus: "active",
+      stripeCustomerId: "cus_test_new_route",
+      settings: {
+        billing: {
+          planCode: "legacy",
+          lifecycleStatus: "active",
+          processedEventIds: []
+        }
+      }
+    });
+
+    const payload = {
+      id: "evt_invoice_failed_new_route",
+      type: "invoice.payment_failed",
+      data: {
+        object: {
+          id: "in_failed_new_route",
+          customer: "cus_test_new_route",
+          status: "open"
+        }
+      }
+    };
+
+    const response = await request(app)
+      .post("/api/stripe/webhook")
+      .send(payload);
+    expect(response.status).toBe(200);
+    expect(response.body.received).toBe(true);
+    expect(response.body.type).toBe("invoice.payment_failed");
+
+    const stored = await Tenant.findById(tenant._id);
+    expect(stored.billingStatus).toBe("past_due");
+    expect(stored.settings?.billing?.lifecycleStatus).toBe("past_due");
+  });
+
   test("webhook failures are recorded when Stripe payload cannot map to a tenant", async () => {
     const payload = {
       id: "evt_invoice_unknown_tenant",

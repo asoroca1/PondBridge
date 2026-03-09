@@ -42,7 +42,8 @@ Tenant now stores:
 - `POST /api/super/tenants/:id/create-checkout`
   - Creates Stripe Checkout session in stripe mode.
   - Returns mock URL in mock mode.
-- `POST /api/webhooks/stripe`
+- `POST /api/stripe/webhook` (primary Stripe dashboard endpoint)
+  - Backward-compatible alias: `POST /api/webhooks/stripe`
   - Consumes Stripe events (`checkout.session.completed`, subscription updates, invoice events).
   - In mock mode, accepts a JSON payload with `{ type, data }`.
 - `GET /api/tenants/me/billing`
@@ -56,7 +57,7 @@ npm run dev:api
 2. In another terminal, login to Stripe CLI and forward webhooks:
 ```bash
 stripe login
-stripe listen --forward-to http://localhost:4000/api/webhooks/stripe
+stripe listen --forward-to http://localhost:4000/api/stripe/webhook
 ```
 3. Copy webhook signing secret from CLI output and set `STRIPE_WEBHOOK_SECRET`.
 4. Create checkout session (super admin endpoint), open returned `checkoutUrl`, complete payment.
@@ -68,7 +69,7 @@ stripe listen --forward-to http://localhost:4000/api/webhooks/stripe
 3. Call `POST /api/super/tenants/:id/create-checkout` and verify mock checkout URL is returned.
 4. Simulate webhook update:
 ```bash
-curl -X POST http://localhost:4000/api/webhooks/stripe \
+curl -X POST http://localhost:4000/api/stripe/webhook \
   -H "Content-Type: application/json" \
   -d '{
     "type":"customer.subscription.updated",
