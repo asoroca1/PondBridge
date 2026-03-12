@@ -231,23 +231,84 @@ function normalizeUserShape(user) {
   };
 }
 
+function normalizeTenantSlug(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeScopedUserShape(user, { tenantSlug = "" } = {}) {
+  const normalizedUser = normalizeUserShape(user);
+  if (!normalizedUser) return null;
+
+  const resolvedTenantSlug = normalizeTenantSlug(
+    normalizedUser.tenantSlug || tenantSlug
+  );
+  if (!resolvedTenantSlug) return normalizedUser;
+
+  return {
+    ...normalizedUser,
+    tenantSlug: resolvedTenantSlug
+  };
+}
+
+function cachedSessionMatchesTenant(user, tenantSlug = "") {
+  const normalizedUser = normalizeUserShape(user);
+  const resolvedTenantSlug = normalizeTenantSlug(tenantSlug);
+  if (!normalizedUser || !resolvedTenantSlug) return true;
+  if ((normalizedUser.roles || []).includes("super_admin")) return true;
+
+  const cachedTenantSlug = normalizeTenantSlug(normalizedUser.tenantSlug);
+  if (!cachedTenantSlug) return true;
+  return cachedTenantSlug === resolvedTenantSlug;
+}
+
 function LegacyAuthProvider({ children }) {
   const initial = readAuthFromStorage();
+  const initialTenantSlug = inferTenantSlugForSessionRequest();
   const hydrateLegacySession = !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
-  const [token, setToken] = useState(hydrateLegacySession ? initial.token : "");
-  const [user, setUser] = useState(hydrateLegacySession ? normalizeUserShape(initial.user) : null);
+  const mismatchedCachedSession =
+    hydrateLegacySession &&
+    Boolean(initial.token) &&
+    !cachedSessionMatchesTenant(initial.user, initialTenantSlug);
+  const [token, setToken] = useState(hydrateLegacySession && !mismatchedCachedSession ? initial.token : "");
+  const [user, setUser] = useState(
+    hydrateLegacySession && !mismatchedCachedSession
+      ? normalizeScopedUserShape(initial.user, { tenantSlug: initialTenantSlug })
+      : null
+  );
+  const [sessionReady, setSessionReady] = useState(
+    () => !(hydrateLegacySession && !mismatchedCachedSession && Boolean(initial.token))
+  );
   const bootstrapCompleteRef = useRef(false);
+
+  useEffect(() => {
+    if (!mismatchedCachedSession) return;
+    clearAuthStorage();
+    clearTabSessionAuthenticated();
+    clearTabLoginIntent();
+  }, [mismatchedCachedSession]);
 
   useEffect(() => {
     function syncFromStorage() {
       if (FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) {
         setToken("");
         setUser(null);
+        setSessionReady(true);
         return;
       }
       const next = readAuthFromStorage();
+      const nextTenantSlug = inferTenantSlugForSessionRequest();
+      if (!cachedSessionMatchesTenant(next.user, nextTenantSlug)) {
+        setToken("");
+        setUser(null);
+        setSessionReady(true);
+        clearAuthStorage();
+        clearTabSessionAuthenticated();
+        clearTabLoginIntent();
+        return;
+      }
       setToken(next.token || "");
-      setUser(normalizeUserShape(next.user));
+      setUser(normalizeScopedUserShape(next.user, { tenantSlug: nextTenantSlug }));
+      setSessionReady(true);
     }
 
     window.addEventListener("storage", syncFromStorage);
@@ -260,12 +321,15 @@ function LegacyAuthProvider({ children }) {
   }, []);
 
   const login = useCallback((nextToken, nextUser) => {
-    const normalized = normalizeUserShape(nextUser);
+    const normalized = normalizeScopedUserShape(nextUser, {
+      tenantSlug: inferTenantSlugForSessionRequest()
+    });
     setToken(nextToken || "");
     setUser(normalized);
     writeAuthToStorage(nextToken || "", normalized);
     markTabSessionAuthenticated();
     clearTabLoginIntent();
+    setSessionReady(true);
   }, []);
 
   const logout = useCallback(() => {
@@ -274,6 +338,7 @@ function LegacyAuthProvider({ children }) {
     clearAuthStorage();
     clearTabSessionAuthenticated();
     clearTabLoginIntent();
+    setSessionReady(true);
   }, []);
 
   useIdleLogout({
@@ -293,7 +358,13 @@ function LegacyAuthProvider({ children }) {
           token: token || "",
           headers: resolvedTenantSlug ? { "X-Tenant-Slug": resolvedTenantSlug } : {}
         });
-        const normalizedUser = normalizeUserShape(payload?.user);
+        const normalizedUser = normalizeScopedUserShape(
+          {
+            ...(payload?.user || {}),
+            tenantSlug: payload?.tenant?.slug || payload?.user?.tenantSlug || resolvedTenantSlug
+          },
+          { tenantSlug: resolvedTenantSlug }
+        );
         setUser(normalizedUser);
         writeAuthToStorage(token || "", normalizedUser);
         markTabSessionAuthenticated();
@@ -309,6 +380,7 @@ function LegacyAuthProvider({ children }) {
           clearAuthStorage();
           clearTabSessionAuthenticated();
           clearTabLoginIntent();
+          setSessionReady(true);
           return { ok: false, authProvider: "legacy", user: null };
         }
         throw error;
@@ -320,9 +392,16 @@ function LegacyAuthProvider({ children }) {
   useEffect(() => {
     if (bootstrapCompleteRef.current) return;
     bootstrapCompleteRef.current = true;
-    if (FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) return;
+    if (FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) {
+      setSessionReady(true);
+      return;
+    }
 
-    refreshSession({ tenantSlug: inferTenantSlugForSessionRequest() }).catch(() => {});
+    refreshSession({ tenantSlug: inferTenantSlugForSessionRequest() })
+      .catch(() => {})
+      .finally(() => {
+        setSessionReady(true);
+      });
   }, [refreshSession]);
 
   const value = useMemo(
@@ -330,7 +409,7 @@ function LegacyAuthProvider({ children }) {
       token,
       user,
       isAuthenticated: Boolean(token),
-      isReady: true,
+      isReady: sessionReady,
       authProvider: "legacy",
       authConfigError: "",
       bootstrapError: "",
@@ -342,12 +421,14 @@ function LegacyAuthProvider({ children }) {
       refreshSession,
       retryBootstrap: () => {},
       setUser: (nextUser) => {
-        const normalized = normalizeUserShape(nextUser);
+        const normalized = normalizeScopedUserShape(nextUser, {
+          tenantSlug: inferTenantSlugForSessionRequest()
+        });
         setUser(normalized);
         writeAuthToStorage(token || "", normalized);
       }
     }),
-    [login, logout, refreshSession, token, user]
+    [login, logout, refreshSession, sessionReady, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -400,9 +481,20 @@ function ClerkBackedAuthProvider({ children }) {
   // Hydrate cached user from localStorage on mount so returning users
   // see content immediately instead of a blank flash while Clerk loads.
   const cachedAuth = readAuthFromStorage();
+  const initialTenantSlug = inferTenantSlugForSessionRequest();
   const shouldHydrate = !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
-  const [token, setToken] = useState(() => (shouldHydrate ? readSessionToken() : ""));
-  const [user, setUser] = useState(shouldHydrate ? normalizeUserShape(cachedAuth.user) : null);
+  const mismatchedCachedSession =
+    shouldHydrate &&
+    Boolean(cachedAuth.token) &&
+    !cachedSessionMatchesTenant(cachedAuth.user, initialTenantSlug);
+  const [token, setToken] = useState(() =>
+    shouldHydrate && !mismatchedCachedSession ? readSessionToken() : ""
+  );
+  const [user, setUser] = useState(
+    shouldHydrate && !mismatchedCachedSession
+      ? normalizeScopedUserShape(cachedAuth.user, { tenantSlug: initialTenantSlug })
+      : null
+  );
   const [sessionRefreshing, setSessionRefreshing] = useState(true);
   const [sessionWarningMinutes, setSessionWarningMinutes] = useState(0);
   // Tracks bootstrap-level auth errors (e.g. 401 from /api/auth/session)
@@ -444,6 +536,12 @@ function ClerkBackedAuthProvider({ children }) {
     // page needs to see the error to prevent redirect loops.
   }, []);
 
+  useEffect(() => {
+    if (!mismatchedCachedSession) return;
+    clearLocalAuth();
+    clearTabLoginIntent();
+  }, [clearLocalAuth, mismatchedCachedSession]);
+
   const tryRestoreDemoLegacySession = useCallback(async ({ tenantSlug = "" } = {}) => {
     const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
       .trim()
@@ -459,7 +557,7 @@ function ClerkBackedAuthProvider({ children }) {
         token: candidateToken,
         headers: { "X-Tenant-Slug": resolvedTenantSlug }
       });
-      const normalizedUser = normalizeUserShape({
+      const normalizedUser = normalizeScopedUserShape({
         ...(payload?.user || {}),
         tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
       });
@@ -548,7 +646,7 @@ function ClerkBackedAuthProvider({ children }) {
           getToken: ({ forceRefresh = false } = {}) => getAuthToken({ forceRefresh }),
           headers: resolvedTenantSlug ? { "X-Tenant-Slug": resolvedTenantSlug } : {}
         });
-        const normalizedUser = normalizeUserShape({
+        const normalizedUser = normalizeScopedUserShape({
           ...(payload?.user || {}),
           tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
         });
@@ -794,7 +892,9 @@ function ClerkBackedAuthProvider({ children }) {
   const login = useCallback(
     (nextToken, nextUser) => {
       if (nextToken) {
-        const normalized = normalizeUserShape(nextUser);
+        const normalized = normalizeScopedUserShape(nextUser, {
+          tenantSlug: inferTenantSlugForSessionRequest()
+        });
         setToken(nextToken);
         writeSessionToken(nextToken);
         setUser(normalized);
@@ -872,7 +972,9 @@ function ClerkBackedAuthProvider({ children }) {
       refreshSession,
       retryBootstrap,
       setUser: (nextUser) => {
-        const normalized = normalizeUserShape(nextUser);
+        const normalized = normalizeScopedUserShape(nextUser, {
+          tenantSlug: inferTenantSlugForSessionRequest()
+        });
         setUser(normalized);
         writeAuthToStorage(token || "", normalized);
       }
