@@ -10,7 +10,7 @@ import {
   TenantModel
 } from "../db/models/index.js";
 import { requireTenant } from "../middleware/tenantContext.js";
-import { comparePassword, hashPassword, sanitizeUser, signToken } from "../utils/auth.js";
+import { buildAuthenticatedUserPayload, comparePassword, hashPassword, signToken } from "../utils/auth.js";
 import { env } from "../config/env.js";
 import { sendMagicLinkEmail, sendWelcomeEmail } from "../services/email.js";
 import { logTenantEvent } from "../services/analytics.js";
@@ -532,7 +532,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
 
   return res.status(201).json({
     token,
-    user: sanitizeUser(user),
+    user: buildAuthenticatedUserPayload(user, profile),
     profile,
     tenant: tenant
       ? {
@@ -648,7 +648,7 @@ router.post("/login", loginLimiter, requireTenant, async (req, res) => {
     metadata: { method: "password" }
   }).catch(() => {});
 
-  return res.json({ token, user: sanitizeUser(user), profile });
+  return res.json({ token, user: buildAuthenticatedUserPayload(user, profile), profile });
 });
 
 router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) => {
@@ -735,7 +735,7 @@ router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) =
     metadata: { method: "demo_code" }
   }).catch(() => {});
 
-  return res.json({ token, user: sanitizeUser(user), profile });
+  return res.json({ token, user: buildAuthenticatedUserPayload(user, profile), profile });
 });
 
 router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async (req, res) => {
@@ -928,7 +928,7 @@ router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async
 
   return res.json({
     token: authToken,
-    user: sanitizeUser(user),
+    user: buildAuthenticatedUserPayload(user, profile),
     profile
   });
 });

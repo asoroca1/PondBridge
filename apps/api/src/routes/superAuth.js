@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { TenantModel, UserModel } from "../db/models/index.js";
+import { ProfileModel, TenantModel, UserModel } from "../db/models/index.js";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/requireAuth.js";
-import { comparePassword, sanitizeUser, signToken } from "../utils/auth.js";
+import { buildAuthenticatedUserPayload, comparePassword, sanitizeUser, signToken } from "../utils/auth.js";
 import { clearAuthCookie, setAuthCookie } from "../utils/authCookie.js";
 import { isSuperIdentityAllowed, superAllowlistConfigured } from "../services/identityUsers.js";
 
@@ -70,18 +70,25 @@ router.post("/super/logout", async (_req, res) => {
 
 router.get("/session", requireAuth, async (req, res) => {
   const tenant = req.user?.tenantId ? await TenantModel.findOne({ _id: req.user.tenantId }) : null;
+  const profile =
+    tenant && req.user?.id ? await ProfileModel.findByUserId(String(tenant._id), String(req.user.id)) : null;
   const sessionToken = req.identity?.provider === "legacy" ? String(req.token || "") : "";
   return res.json({
     ok: true,
     sessionToken,
     authProvider: req.identity?.provider || env.AUTH_PROVIDER,
     user: {
-      id: req.user.id,
-      _id: req.user.id,
-      tenantId: req.user.tenantId || null,
-      tenantSlug: tenant?.slug || "",
-      roles: req.user.roles || [],
-      email: req.user.email || ""
+      ...buildAuthenticatedUserPayload(
+        {
+          id: req.user.id,
+          _id: req.user.id,
+          tenantId: req.user.tenantId || null,
+          roles: req.user.roles || [],
+          email: req.user.email || ""
+        },
+        profile
+      ),
+      tenantSlug: tenant?.slug || ""
     },
     identity: {
       provider: req.identity?.provider || env.AUTH_PROVIDER,

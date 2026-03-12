@@ -78,8 +78,8 @@ async function createDemoFixture({ slug = "demo-code-camp", code = "DEMO-1234" }
     currentJobs: [],
     pastJobs: [],
     industry: "",
-    socials: {},
-    avatarUrl: "",
+    socials: { nickname: "DD" },
+    avatarUrl: "https://cdn.pondbridge.test/demo-director.png",
     bio: ""
   });
 
@@ -121,6 +121,10 @@ describe("Demo access auth", () => {
     expect(response.status).toBe(200);
     expect(response.body.token).toBeTruthy();
     expect(response.body.user?.roles || []).toEqual(expect.arrayContaining(["tenant_admin", "user"]));
+    expect(response.body.user?.firstName).toBe("Demo");
+    expect(response.body.user?.lastName).toBe("Director");
+    expect(response.body.user?.nickname).toBe("DD");
+    expect(response.body.user?.avatarUrl).toBe("https://cdn.pondbridge.test/demo-director.png");
   });
 
   test("demo access token can load tenant-scoped auth session", async () => {
@@ -151,6 +155,9 @@ describe("Demo access auth", () => {
     expect(sessionResponse.status).toBe(200);
     expect(sessionResponse.body.user?.id).toBeTruthy();
     expect(sessionResponse.body.user?.tenantSlug).toBe(tenant.slug);
+    expect(sessionResponse.body.user?.firstName).toBe("Demo");
+    expect(sessionResponse.body.user?.lastName).toBe("Director");
+    expect(sessionResponse.body.user?.avatarUrl).toBe("https://cdn.pondbridge.test/demo-director.png");
   });
 
   test("rejects invalid demo access code", async () => {

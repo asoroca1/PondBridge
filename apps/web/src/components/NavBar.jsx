@@ -21,6 +21,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
 import { readAuthFromStorage } from "../lib/storage.js";
+import { avatarUrl, initialsOf } from "../cedar/lib/helpers.js";
 import {
   resolveAlumniWord,
   resolveNetworkDisplayName,
@@ -33,18 +34,7 @@ import cedarLogo from "../assets/cedar-logo.png";
 const MIN_SEARCH_CHARS = 1;
 
 function getPhotoUrl(user = {}) {
-  return (
-    user?.uploads?.photoUrl ||
-    user?.uploads?.photo ||
-    user?.photoUrl ||
-    user?.avatarUrl ||
-    user?.profilePhotoUrl ||
-    user?.profile?.uploads?.photoUrl ||
-    user?.profile?.uploads?.photo ||
-    user?.profile?.photoUrl ||
-    user?.profile?.avatarUrl ||
-    ""
-  );
+  return avatarUrl(user);
 }
 
 function initialsFrom(fullName = "") {
@@ -199,9 +189,9 @@ export default function NavBar() {
   const logoUrl = branding.logoUrl || (slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "");
   const fallbackLogoInitial = initialsFrom(tenant?.name || "Camp");
   const avatarSrc = getPhotoUrl(user);
-  const profileInitials = initialsFrom(
-    fullNameFrom(user) || String(user?.email || "").split("@")[0] || "Member"
-  );
+  const profileInitials =
+    initialsOf(firstNameFrom(user), lastNameFrom(user), user?.nickname || user?.profile?.nickname || "") ||
+    initialsFrom(fullNameFrom(user) || String(user?.email || "").split("@")[0] || "Member");
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
   const canFamilyTrees = Boolean(modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees"));
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
