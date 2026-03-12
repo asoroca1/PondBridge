@@ -197,6 +197,7 @@ export default function NavBar() {
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
   const loginPath = pathWithCamp(slug, "/login");
   const createAccountPath = pathWithCamp(slug, "/create-account");
+  const loggedOutLandingPath = pathWithCamp(slug, demoAccessEnabled ? "/" : "/login");
 
   const currentPath = location.pathname || "";
   const onLoginRoute = /\/login\/?$/.test(currentPath);
@@ -520,7 +521,7 @@ export default function NavBar() {
     } finally {
       closeMenus();
       logout();
-      navigate(pathWithCamp(slug, "/login"));
+      navigate(loggedOutLandingPath, { replace: true });
     }
   }
 
@@ -634,7 +635,7 @@ export default function NavBar() {
               }}
               aria-current={onLoginRoute ? "page" : undefined}
             >
-              {demoAccessEnabled ? "Demo Access" : "Login"}
+              Login
             </button>
           </div>
         ) : null}

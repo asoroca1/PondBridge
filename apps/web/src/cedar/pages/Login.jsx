@@ -486,9 +486,9 @@ function DemoCodeLogin() {
           <article className="login1-card login1-card-modern">
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
-              <h1 className="login1-title auth-entry-title">Demo Access</h1>
+              <h1 className="login1-title auth-entry-title">Login</h1>
               <p className="login1-clerk-panel-subtitle">
-                Enter your demo code to open the director account.
+                Enter your demo code to sign in to the director account.
               </p>
             </div>
 
@@ -505,7 +505,7 @@ function DemoCodeLogin() {
               {notice ? <p className="login1-error">{notice}</p> : null}
               {error ? <p className="login1-error">{error}</p> : null}
               <button className="login1-btn" type="submit" disabled={submitting}>
-                {submitting ? "Verifying..." : "Enter Demo"}
+                {submitting ? "Logging in..." : "Login"}
               </button>
             </form>
           </article>
