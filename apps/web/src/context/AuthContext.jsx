@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth as useClerkAuth, useClerk } from "@clerk/clerk-react";
 import { clearAuthStorage, readAuthFromStorage, writeAuthToStorage } from "../lib/storage.js";
+import { getVolatileAuthToken } from "../lib/authMemory.js";
 import { requestJson } from "../lib/http.js";
 import { inferCampSlugFromHost } from "../lib/domain.js";
 import {
@@ -261,6 +262,26 @@ function cachedSessionMatchesTenant(user, tenantSlug = "") {
   return cachedTenantSlug === resolvedTenantSlug;
 }
 
+function readStoredSessionCandidate(tenantSlug = "") {
+  const resolvedTenantSlug = normalizeTenantSlug(tenantSlug);
+  const cachedAuth = readAuthFromStorage();
+  const candidateToken = String(
+    getVolatileAuthToken() || readSessionToken() || cachedAuth.token || ""
+  ).trim();
+  const candidateUser = normalizeScopedUserShape(cachedAuth.user, {
+    tenantSlug: resolvedTenantSlug
+  });
+
+  if (!candidateToken || !candidateUser) {
+    return { candidateToken: "", candidateUser: null, resolvedTenantSlug };
+  }
+  if (!cachedSessionMatchesTenant(candidateUser, resolvedTenantSlug)) {
+    return { candidateToken: "", candidateUser: null, resolvedTenantSlug };
+  }
+
+  return { candidateToken, candidateUser, resolvedTenantSlug };
+}
+
 function LegacyAuthProvider({ children }) {
   const initial = readAuthFromStorage();
   const initialTenantSlug = inferTenantSlugForSessionRequest();
@@ -504,6 +525,7 @@ function ClerkBackedAuthProvider({ children }) {
   const { signOut } = useClerk();
   const userRef = useRef(null);
   const tokenRef = useRef("");
+  const legacySessionOverrideRef = useRef(false);
   const bootstrappedSessionIdRef = useRef("");
   const pendingBootstrapRetriesRef = useRef(0);
   // Tracks whether the first bootstrap cycle has finished (success or fail).
@@ -523,7 +545,14 @@ function ClerkBackedAuthProvider({ children }) {
     tokenRef.current = token;
   }, [token]);
 
+  useEffect(() => {
+    const initialTenantSlug = inferTenantSlugForSessionRequest();
+    const { candidateToken } = readStoredSessionCandidate(initialTenantSlug);
+    legacySessionOverrideRef.current = Boolean(candidateToken && !isSignedIn);
+  }, [isSignedIn]);
+
   const clearLocalAuth = useCallback(() => {
+    legacySessionOverrideRef.current = false;
     setToken("");
     setUser(null);
     clearAuthStorage();
@@ -542,46 +571,88 @@ function ClerkBackedAuthProvider({ children }) {
     clearTabLoginIntent();
   }, [clearLocalAuth, mismatchedCachedSession]);
 
+  const shouldPreferStoredLegacySession = useCallback(
+    async ({ tenantSlug = "", allowDemoTenantFallback = false } = {}) => {
+      const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
+        .trim()
+        .toLowerCase();
+      const { candidateToken, candidateUser } = readStoredSessionCandidate(resolvedTenantSlug);
+      if (!candidateToken || !candidateUser) return false;
+      if (legacySessionOverrideRef.current) return true;
+      if (!allowDemoTenantFallback || !resolvedTenantSlug) return false;
+      return isDemoTenantSlug(resolvedTenantSlug);
+    },
+    []
+  );
+
+  const restoreStoredLegacySession = useCallback(
+    async ({ tenantSlug = "", allowDemoTenantFallback = false } = {}) => {
+      const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
+        .trim()
+        .toLowerCase();
+      const { candidateToken } = readStoredSessionCandidate(resolvedTenantSlug);
+      if (!candidateToken) return null;
+
+      const shouldRestore = await shouldPreferStoredLegacySession({
+        tenantSlug: resolvedTenantSlug,
+        allowDemoTenantFallback
+      });
+      if (!shouldRestore) return null;
+
+      try {
+        const payload = await requestJson("/api/auth/session", {
+          token: candidateToken,
+          headers: resolvedTenantSlug ? { "X-Tenant-Slug": resolvedTenantSlug } : {}
+        });
+        const normalizedUser = normalizeScopedUserShape({
+          ...(payload?.user || {}),
+          tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
+        });
+        if (!normalizedUser) return null;
+
+        const persistedSessionToken = String(payload?.sessionToken || candidateToken || "").trim();
+        legacySessionOverrideRef.current = true;
+        setUser(normalizedUser);
+        setToken(persistedSessionToken);
+        writeSessionToken(persistedSessionToken);
+        writeAuthToStorage(persistedSessionToken, normalizedUser);
+        markTabSessionAuthenticated();
+        clearTabLoginIntent();
+        setBootstrapError("");
+        return payload;
+      } catch {
+        if (legacySessionOverrideRef.current) {
+          legacySessionOverrideRef.current = false;
+        }
+        return null;
+      }
+    },
+    [shouldPreferStoredLegacySession]
+  );
+
   const tryRestoreDemoLegacySession = useCallback(async ({ tenantSlug = "" } = {}) => {
-    const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
-      .trim()
-      .toLowerCase();
-    if (!resolvedTenantSlug) return false;
-
-    const demoTenant = await isDemoTenantSlug(resolvedTenantSlug);
-    if (!demoTenant) return false;
-
-    const candidateToken = String(tokenRef.current || readSessionToken() || "").trim();
-    try {
-      const payload = await requestJson("/api/auth/session", {
-        token: candidateToken,
-        headers: { "X-Tenant-Slug": resolvedTenantSlug }
-      });
-      const normalizedUser = normalizeScopedUserShape({
-        ...(payload?.user || {}),
-        tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
-      });
-      if (!normalizedUser) return false;
-
-      const persistedSessionToken = String(payload?.sessionToken || candidateToken || "").trim();
-      setUser(normalizedUser);
-      setToken(persistedSessionToken);
-      writeSessionToken(persistedSessionToken);
-      writeAuthToStorage(persistedSessionToken, normalizedUser);
-      markTabSessionAuthenticated();
-      clearTabLoginIntent();
-      setBootstrapError("");
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
+    const payload = await restoreStoredLegacySession({
+      tenantSlug,
+      allowDemoTenantFallback: true
+    });
+    return Boolean(payload);
+  }, [restoreStoredLegacySession]);
 
   const getAuthToken = useCallback(
     async ({ forceRefresh = false } = {}) => {
+      const tenantSlug = inferTenantSlugForSessionRequest();
+      const preferLegacySession = await shouldPreferStoredLegacySession({
+        tenantSlug,
+        allowDemoTenantFallback: true
+      });
+      if (preferLegacySession) {
+        const { candidateToken } = readStoredSessionCandidate(tenantSlug);
+        if (candidateToken) return candidateToken;
+      }
       if (!isLoaded || !isSignedIn) return "";
       const nextToken = (await getToken(forceRefresh ? { skipCache: true } : undefined)) || "";
       if (nextToken && nextToken !== tokenRef.current) {
+        legacySessionOverrideRef.current = false;
         setToken(nextToken);
         writeSessionToken(nextToken);
         writeAuthToStorage(nextToken, normalizeUserShape(userRef.current));
@@ -604,6 +675,21 @@ function ClerkBackedAuthProvider({ children }) {
 
   const refreshSession = useCallback(
     async ({ tenantSlug = "", strictTenantSync = false } = {}) => {
+      const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
+        .trim()
+        .toLowerCase();
+      const restoredLegacyPayload = await restoreStoredLegacySession({
+        tenantSlug: resolvedTenantSlug,
+        allowDemoTenantFallback: true
+      });
+      if (restoredLegacyPayload) {
+        if (!bootstrapDoneRef.current) {
+          bootstrapDoneRef.current = true;
+          setSessionRefreshing(false);
+        }
+        return restoredLegacyPayload;
+      }
+
       if (!isLoaded || !isSignedIn) {
         clearLocalAuth();
         if (!bootstrapDoneRef.current) {
@@ -616,7 +702,6 @@ function ClerkBackedAuthProvider({ children }) {
       const hasExistingUser = Boolean(
         String(userRef.current?.id || userRef.current?._id || "").trim()
       );
-      const resolvedTenantSlug = String(tenantSlug || "").trim().toLowerCase();
       const isTenantScopedRefresh = Boolean(resolvedTenantSlug);
       const isInitialBootstrap = !bootstrapDoneRef.current;
       const clerkToken = await resolveBootstrapToken();
@@ -650,6 +735,7 @@ function ClerkBackedAuthProvider({ children }) {
           ...(payload?.user || {}),
           tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
         });
+        legacySessionOverrideRef.current = false;
         setUser(normalizedUser);
         writeAuthToStorage(clerkToken, normalizedUser);
         markTabSessionAuthenticated();
@@ -703,7 +789,7 @@ function ClerkBackedAuthProvider({ children }) {
         }
       }
     },
-    [clearLocalAuth, isLoaded, isSignedIn, resolveBootstrapToken]
+    [clearLocalAuth, isLoaded, isSignedIn, resolveBootstrapToken, restoreStoredLegacySession]
   );
 
   // Keep volatile token storage in sync for Cedar pages that still issue
@@ -716,6 +802,11 @@ function ClerkBackedAuthProvider({ children }) {
 
     const syncToken = async (forceRefresh = false) => {
       try {
+        const preferLegacySession = await shouldPreferStoredLegacySession({
+          tenantSlug: inferTenantSlugForSessionRequest(),
+          allowDemoTenantFallback: true
+        });
+        if (preferLegacySession) return;
         // Pre-emptive refresh: if the current token expires within 30s,
         // force a refresh now instead of waiting for the next interval.
         if (!forceRefresh) {
@@ -758,7 +849,7 @@ function ClerkBackedAuthProvider({ children }) {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [getAuthToken, isLoaded, isSignedIn]);
+  }, [getAuthToken, isLoaded, isSignedIn, shouldPreferStoredLegacySession]);
 
   // Keep the ref in sync so the bootstrap effect can call the latest version.
   useEffect(() => {
@@ -895,6 +986,7 @@ function ClerkBackedAuthProvider({ children }) {
         const normalized = normalizeScopedUserShape(nextUser, {
           tenantSlug: inferTenantSlugForSessionRequest()
         });
+        legacySessionOverrideRef.current = true;
         setToken(nextToken);
         writeSessionToken(nextToken);
         setUser(normalized);
