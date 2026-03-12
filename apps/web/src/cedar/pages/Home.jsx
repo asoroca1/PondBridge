@@ -2,10 +2,11 @@ import { useNavigate } from "react-router-dom";
 import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord, resolveCampName, resolveTenantContent } from "../../lib/campLabels.js";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 
 function Home() {
   const navigate = useNavigate();
-  const { tenant } = useTenant();
+  const { tenant, slug = "" } = useTenant();
   const content = resolveTenantContent(tenant);
   const campName = resolveCampName(tenant);
   const alumniWord = resolveAlumniWord(tenant, { capitalized: true });
@@ -42,12 +43,15 @@ function Home() {
         </p>
         <div className="landing-cta">
           {!demoAccessEnabled ? (
-            <button className="landing-btn landing-btn-primary" onClick={() => navigate("/create-account")}>
+            <button
+              className="landing-btn landing-btn-primary"
+              onClick={() => navigate(tenantRoute(slug, "/create-account"))}
+            >
               Create Account
             </button>
           ) : null}
-          <button className="landing-btn landing-btn-secondary" onClick={() => navigate("/login")}>
-            {demoAccessEnabled ? "Demo Access" : "Login"}
+          <button className="landing-btn landing-btn-secondary" onClick={() => navigate(tenantRoute(slug, "/login"))}>
+            Login
           </button>
         </div>
       </div>
