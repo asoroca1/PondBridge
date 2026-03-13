@@ -5226,7 +5226,8 @@ export function DirectorAdminSettingsLayout() {
 }
 
 export function DirectorAdminSettingsNetworkPage() {
-  const { request } = useAdminApi();
+  const { request, slug } = useAdminApi();
+  const { refreshTenant } = useTenant();
   const { payload, loading, error, load } = useSettingsLoader();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
@@ -5322,6 +5323,11 @@ export function DirectorAdminSettingsNetworkPage() {
         staffRoles: nextStaffRoles
       };
       await request("/settings/identity", { method: "PATCH", body: identityPayload });
+      try {
+        await refreshTenant(slug);
+      } catch {
+        // Identity save already succeeded; skip blocking UI on tenant-config refresh.
+      }
       setStatus("Network identity saved.");
       await load();
     } finally {
