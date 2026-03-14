@@ -1,0 +1,291 @@
+{
+  "validatedAt": "2026-03-14T00:34:47.171Z",
+  "tenant": {
+    "id": "5f87cef25f677d340dca6426",
+    "slug": "cedar",
+    "name": "Camp Cedar",
+    "status": "active"
+  },
+  "archivedSeededCounts": {
+    "users": 3,
+    "profiles": 3,
+    "invites": 0,
+    "access_requests": 0,
+    "magic_link_tokens": 0,
+    "conversations": 0,
+    "messages": 0,
+    "forums": 0,
+    "forum_posts": 0,
+    "photos": 0,
+    "newsletters": 0,
+    "email_broadcasts": 0,
+    "family_trees": 0,
+    "analytics_events": 2,
+    "import_reports": 0,
+    "tenant_admin_audit_logs": 0,
+    "resume_parse_results": 0,
+    "activity_items": 0,
+    "resend_webhook_events": 0,
+    "stripe_webhook_events": 0,
+    "email_suppressions": 0
+  },
+  "counts": {
+    "users": 282,
+    "profiles": 282,
+    "conversations": 12,
+    "messages": 15,
+    "forums": 27,
+    "forum_posts": 1,
+    "photos": 18,
+    "newsletters": 12,
+    "family_trees": 1,
+    "activity_items": 338
+  },
+  "countComparisons": {
+    "users": {
+      "legacy": 282,
+      "imported": 282
+    },
+    "profiles": {
+      "legacy": 282,
+      "imported": 282
+    },
+    "activities": {
+      "legacy": 338,
+      "imported": 338
+    },
+    "forums": {
+      "legacy": 26,
+      "imported": 27
+    },
+    "forumPosts": {
+      "legacy": 1,
+      "imported": 1
+    },
+    "conversations": {
+      "legacy": 15,
+      "imported": 12
+    },
+    "messages": {
+      "legacy": 21,
+      "imported": 15
+    },
+    "photos": {
+      "legacy": 18,
+      "imported": 18
+    },
+    "newsletters": {
+      "legacy": 12,
+      "imported": 12
+    },
+    "familyTrees": {
+      "legacy": 1,
+      "imported": 1
+    }
+  },
+  "archivedSeededTenant": "cedar-archived-20260313-205245",
+  "importedTenantManifest": {
+    "tenantId": "5f87cef25f677d340dca6426",
+    "slug": "cedar",
+    "updatedAt": "2026-03-13T21:08:45.393Z"
+  },
+  "backupSummary": {
+    "tenant": {
+      "id": "c674696ffa32fbc19bb1f311",
+      "slug": "cedar",
+      "name": "Camp Cedar",
+      "status": "active"
+    },
+    "exportedAt": "2026-03-13T20:52:36.690Z",
+    "tables": {
+      "users": {
+        "count": 3,
+        "file": "users.json"
+      },
+      "profiles": {
+        "count": 3,
+        "file": "profiles.json"
+      },
+      "invites": {
+        "count": 0,
+        "file": "invites.json"
+      },
+      "access_requests": {
+        "count": 0,
+        "file": "access_requests.json"
+      },
+      "magic_link_tokens": {
+        "count": 0,
+        "file": "magic_link_tokens.json"
+      },
+      "conversations": {
+        "count": 0,
+        "file": "conversations.json"
+      },
+      "messages": {
+        "count": 0,
+        "file": "messages.json"
+      },
+      "forums": {
+        "count": 0,
+        "file": "forums.json"
+      },
+      "forum_posts": {
+        "count": 0,
+        "file": "forum_posts.json"
+      },
+      "photos": {
+        "count": 0,
+        "file": "photos.json"
+      },
+      "newsletters": {
+        "count": 0,
+        "file": "newsletters.json"
+      },
+      "email_broadcasts": {
+        "count": 0,
+        "file": "email_broadcasts.json"
+      },
+      "family_trees": {
+        "count": 0,
+        "file": "family_trees.json"
+      },
+      "analytics_events": {
+        "count": 2,
+        "file": "analytics_events.json"
+      },
+      "import_reports": {
+        "count": 0,
+        "file": "import_reports.json"
+      },
+      "tenant_admin_audit_logs": {
+        "count": 0,
+        "file": "tenant_admin_audit_logs.json"
+      },
+      "resume_parse_results": {
+        "count": 0,
+        "file": "resume_parse_results.json"
+      },
+      "activity_items": {
+        "count": 0,
+        "file": "activity_items.json"
+      },
+      "resend_webhook_events": {
+        "count": 0,
+        "file": "resend_webhook_events.json"
+      },
+      "stripe_webhook_events": {
+        "count": 0,
+        "file": "stripe_webhook_events.json"
+      },
+      "email_suppressions": {
+        "count": 0,
+        "file": "email_suppressions.json"
+      }
+    },
+    "nonCedarTenantCount": 5
+  },
+  "importSummary": {
+    "apply": true,
+    "importedAt": "2026-03-13T21:09:10.631Z",
+    "tenant": {
+      "id": "5f87cef25f677d340dca6426",
+      "slug": "cedar",
+      "status": "updated_existing"
+    },
+    "authDecision": {
+      "strategy": "clerk_bcrypt_digest_import",
+      "passwordsPreserved": true,
+      "rationale": "Legacy Camp Cedar passwords are bcrypt `$2b$12` digests, and the installed Clerk Backend SDK accepts `passwordDigest` with `passwordHasher: bcrypt` during `users.createUser`."
+    },
+    "clerk": {
+      "configured": true,
+      "reused": 282,
+      "created": 0,
+      "missing": 0,
+      "errors": []
+    },
+    "users": {
+      "users": {
+        "upserted": 282,
+        "clerkLinked": 282,
+        "pendingClaim": 0
+      },
+      "profiles": {
+        "upserted": 282
+      },
+      "avatarUploads": {
+        "uploaded": 0,
+        "keptLegacyUrl": 0,
+        "errors": []
+      }
+    },
+    "activities": {
+      "upserted": 338
+    },
+    "forums": {
+      "forums": 27,
+      "forumPosts": 1
+    },
+    "conversations": {
+      "conversations": 12,
+      "messages": 15
+    },
+    "photos": {
+      "photos": 18,
+      "mediaSummary": {
+        "uploaded": 0,
+        "keptLegacyUrl": 0,
+        "errors": []
+      }
+    },
+    "newsletters": {
+      "newsletters": 12,
+      "mediaSummary": {
+        "uploaded": 0,
+        "keptLegacyUrl": 0,
+        "errors": [
+          {
+            "newsletterId": "68ab90a2478e6ac348241ab3",
+            "message": "File is too large. Maximum allowed size is 104857600 bytes."
+          }
+        ]
+      }
+    },
+    "familyTrees": {
+      "familyTrees": 1
+    },
+    "legacyStats": {
+      "users": 282,
+      "photos": 18,
+      "newsletters": 12,
+      "forums": 26,
+      "forumPosts": 1,
+      "conversations": 15,
+      "messages": 21,
+      "familyTrees": 1,
+      "activities": 338,
+      "photoComments": 1,
+      "prelaunchSignups": 372,
+      "duplicatePrelaunchEmailGroups": 12
+    },
+    "manualCarryForward": {
+      "prelaunchSignupsPreservedOnly": 372,
+      "customCitiesPreservedOnly": true,
+      "cityGeoPreservedOnly": true
+    }
+  },
+  "validations": {
+    "cedarTenantExists": true,
+    "nonCedarTenantsPreserved": true,
+    "orphanedProfiles": 0,
+    "duplicateEmails": 0,
+    "adenIsTenantAdmin": true
+  },
+  "migrationExceptions": [
+    "Conversations imported 12 of 15; unresolved legacy participant references were skipped instead of creating orphaned tenant data.",
+    "Forums imported 27 of 26; one placeholder forum was created to retain a legacy forum post whose source forum row was missing.",
+    "Messages imported 15 of 21; messages whose senders were missing from legacy users were skipped.",
+    "Newsletter 68ab90a2478e6ac348241ab3 kept its legacy PDF payload because the remote file exceeded the 100 MB import safety limit."
+  ]
+}

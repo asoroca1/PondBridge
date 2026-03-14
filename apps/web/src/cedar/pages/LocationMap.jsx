@@ -288,20 +288,11 @@ export default function LocationMap() {
       el.style.height = `${size}px`;
       el.style.background = brandPrimary;
 
-      if (count >= 2) {
-        const countLabel = document.createElement("span");
-        countLabel.className = "lm-marker-count";
-        countLabel.textContent = count > 99 ? "99+" : String(count);
-        countLabel.style.fontSize = size <= 26 ? "10px" : "12px";
-        el.appendChild(countLabel);
-      } else {
-        const dot = document.createElement("span");
-        dot.className = "lm-marker-dot";
-        const dotSize = Math.max(6, Math.round(size * 0.28));
-        dot.style.width = `${dotSize}px`;
-        dot.style.height = `${dotSize}px`;
-        el.appendChild(dot);
-      }
+      const countLabel = document.createElement("span");
+      countLabel.className = "lm-marker-count";
+      countLabel.textContent = count > 99 ? "99+" : String(count);
+      countLabel.style.fontSize = size <= 22 ? "10px" : size <= 26 ? "11px" : "12px";
+      el.appendChild(countLabel);
 
       const marker = new maplibregl.Marker({ element: el, anchor: "center" })
         .setLngLat([lng, lat])

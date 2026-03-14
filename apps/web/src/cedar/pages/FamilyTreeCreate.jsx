@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
+import InitialsMark from "../../components/InitialsMark.jsx";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
@@ -79,7 +80,7 @@ function ResultAvatar({ person = {} }) {
 
   return (
     <div className="ft-result-avatar ft-result-avatar-fallback" aria-hidden="true">
-      {initialsOf(person.firstName, person.lastName, person.nickname) || "?"}
+      <InitialsMark value={initialsOf(person.firstName, person.lastName, person.nickname) || "?"} />
     </div>
   );
 }

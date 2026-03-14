@@ -11,9 +11,12 @@ import {
   withCampAlumniTerms
 } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
+import NotificationBadge from "../../components/NotificationBadge.jsx";
+import InitialsMark from "../../components/InitialsMark.jsx";
 import cedarBg from "../assets/cedar-bg.jpg";
 import { API_BASE, getMe } from "../lib/api";
 import { authHeaders, initialsOf, displayName, avatarUrl, getToken } from "../lib/helpers.js";
+import { useUnreadChatsCount } from "../lib/unreadChats.js";
 import {
   Users,
   MapPin,
@@ -53,8 +56,6 @@ function normalizeActorName(name) {
   return `${first} "${nick}" ${last}`.trim();
 }
 
-/* ---------- unread chats (localStorage) ---------- */
-const CHAT_READ_KEY = "cedarChatLastRead_v1"; // { [conversationId]: isoString }
 const PROFILE_PROMPT_SEEN_KEY_PREFIX = "cedarProfilePromptSeen:v1";
 
 function nonEmpty(value) {
@@ -99,82 +100,6 @@ function completionPercentForProfile(profile = {}, authUser = null) {
 
   const filled = checks.filter(Boolean).length;
   return Math.round((filled / checks.length) * 100);
-}
-
-function safeParse(json, fallback) {
-  try {
-    const v = JSON.parse(json);
-    return v && typeof v === "object" ? v : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function getChatReadMap() {
-  return safeParse(localStorage.getItem(CHAT_READ_KEY) || "{}", {});
-}
-
-function computeUnreadThreads(conversations = []) {
-  const map = getChatReadMap();
-  let count = 0;
-
-  for (const c of conversations) {
-    if (!c || !(c.type === "dm" || c.type === "group")) continue;
-
-    const last = c.lastMessageAt ? new Date(c.lastMessageAt).getTime() : 0;
-    if (!last) continue;
-
-    const readIso = map[String(c._id)];
-    const read = readIso ? new Date(readIso).getTime() : 0;
-
-    if (last > read) count += 1;
-  }
-
-  return count;
-}
-
-function useUnreadChatsCount({ pollMs = 25000 } = {}) {
-  const [count, setCount] = useState(0);
-
-  async function refresh() {
-    const token = getToken();
-    if (!token) {
-      setCount(0);
-      return;
-    }
-    try {
-      const r = await fetch(`${API_BASE}/conversations`, { headers: authHeaders(false) });
-      if (!r.ok) return;
-      const data = await r.json();
-      const items = Array.isArray(data.items) ? data.items : [];
-      setCount(computeUnreadThreads(items));
-    } catch {
-      // silent
-    }
-  }
-
-  useEffect(() => {
-    refresh();
-
-    const onRead = () => refresh();
-    const onVis = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-
-    window.addEventListener("cedar:chat-read", onRead);
-    document.addEventListener("visibilitychange", onVis);
-
-    let timer = null;
-    if (pollMs > 0) timer = window.setInterval(refresh, pollMs);
-
-    return () => {
-      window.removeEventListener("cedar:chat-read", onRead);
-      document.removeEventListener("visibilitychange", onVis);
-      if (timer) window.clearInterval(timer);
-    };
-  }, []);
-
-  return count;
 }
 
 /* measure an element's content height reactively */
@@ -304,7 +229,7 @@ function RelatedProfilesCard({ targetUserId }) {
                       }
                     />
                   ) : (
-                    <div className="p1-suggest-fallback">{initials || "?"}</div>
+                    <div className="p1-suggest-fallback"><InitialsMark value={initials || "?"} /></div>
                   )}
                 </Link>
                 <div className="p1-suggest-main">
@@ -871,7 +796,7 @@ export default function MainHome() {
               {avatarUrl(me) ? (
                 <img src={avatarUrl(me)} alt={displayName(me)} decoding="async" />
               ) : (
-                <span>{initialsOf(me?.firstName, me?.lastName, me?.nickname) || "?"}</span>
+                <InitialsMark value={initialsOf(me?.firstName, me?.lastName, me?.nickname) || "?"} />
               )}
             </div>
 
@@ -918,35 +843,17 @@ export default function MainHome() {
             <Link
               key={action.key}
               to={action.to}
-              className="qa-btn"
-              style={isChat ? { position: "relative" } : undefined}
+              className={`qa-btn ${isChat ? "has-badge" : ""}`.trim()}
             >
               <Icon /> {action.label}
-              {isChat && unreadChats > 0 ? (
-                <span
-                  aria-label={`${unreadChats} unread chats`}
-                  style={{
-                    position: "absolute",
-                    top: -8,
-                    right: -8,
-                    minWidth: 18,
-                    height: 18,
-                    padding: "0 6px",
-                    borderRadius: 999,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    lineHeight: "18px",
-                    background: "#e11d48",
-                    color: "#fff",
-                    border: "2px solid rgba(255,255,255,0.95)",
-                    boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
-                  }}
-                >
-                  {unreadChats > 99 ? "99+" : unreadChats}
-                </span>
+              {isChat ? (
+                <NotificationBadge
+                  count={unreadChats}
+                  size="md"
+                  tone="accent"
+                  floating
+                  ariaLabel={`${unreadChats} unread chats`}
+                />
               ) : null}
             </Link>
           );

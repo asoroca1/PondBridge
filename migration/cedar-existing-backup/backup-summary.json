@@ -1,0 +1,96 @@
+{
+  "tenant": {
+    "id": "c674696ffa32fbc19bb1f311",
+    "slug": "cedar",
+    "name": "Camp Cedar",
+    "status": "active"
+  },
+  "exportedAt": "2026-03-13T20:52:36.690Z",
+  "tables": {
+    "users": {
+      "count": 3,
+      "file": "users.json"
+    },
+    "profiles": {
+      "count": 3,
+      "file": "profiles.json"
+    },
+    "invites": {
+      "count": 0,
+      "file": "invites.json"
+    },
+    "access_requests": {
+      "count": 0,
+      "file": "access_requests.json"
+    },
+    "magic_link_tokens": {
+      "count": 0,
+      "file": "magic_link_tokens.json"
+    },
+    "conversations": {
+      "count": 0,
+      "file": "conversations.json"
+    },
+    "messages": {
+      "count": 0,
+      "file": "messages.json"
+    },
+    "forums": {
+      "count": 0,
+      "file": "forums.json"
+    },
+    "forum_posts": {
+      "count": 0,
+      "file": "forum_posts.json"
+    },
+    "photos": {
+      "count": 0,
+      "file": "photos.json"
+    },
+    "newsletters": {
+      "count": 0,
+      "file": "newsletters.json"
+    },
+    "email_broadcasts": {
+      "count": 0,
+      "file": "email_broadcasts.json"
+    },
+    "family_trees": {
+      "count": 0,
+      "file": "family_trees.json"
+    },
+    "analytics_events": {
+      "count": 2,
+      "file": "analytics_events.json"
+    },
+    "import_reports": {
+      "count": 0,
+      "file": "import_reports.json"
+    },
+    "tenant_admin_audit_logs": {
+      "count": 0,
+      "file": "tenant_admin_audit_logs.json"
+    },
+    "resume_parse_results": {
+      "count": 0,
+      "file": "resume_parse_results.json"
+    },
+    "activity_items": {
+      "count": 0,
+      "file": "activity_items.json"
+    },
+    "resend_webhook_events": {
+      "count": 0,
+      "file": "resend_webhook_events.json"
+    },
+    "stripe_webhook_events": {
+      "count": 0,
+      "file": "stripe_webhook_events.json"
+    },
+    "email_suppressions": {
+      "count": 0,
+      "file": "email_suppressions.json"
+    }
+  },
+  "nonCedarTenantCount": 5
+}

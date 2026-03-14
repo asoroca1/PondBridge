@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
 import { getToken, initialsOf, avatarUrl } from "../../lib/helpers.js";
+import InitialsMark from "../../../components/InitialsMark.jsx";
 import { Search } from "lucide-react";
 
 function normalizeEntityId(value = "") {
@@ -52,7 +53,7 @@ function PickerAvatar({ photo = "", firstName = "", lastName = "", name = "" }) 
 
   return (
     <div className="pp-avatar pp-avatar-fallback" aria-hidden="true">
-      {initialsOf(firstName, lastName) || "?"}
+      <InitialsMark value={initialsOf(firstName, lastName) || "?"} />
     </div>
   );
 }

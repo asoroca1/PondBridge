@@ -8,6 +8,8 @@ import "./chats.css";
 import { MessageSquare, Users, Megaphone, Plus, Paperclip, Shield, ChevronLeft, Search } from "lucide-react";
 import PeoplePicker from "../components/chat/PeoplePicker";
 import MessageComposer from "../components/chat/MessageComposer";
+import NotificationBadge from "../../components/NotificationBadge.jsx";
+import InitialsMark from "../../components/InitialsMark.jsx";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import {
   getToken,
@@ -19,28 +21,10 @@ import {
   relativeTime,
   isPlaceholderAvatarUrl
 } from "../lib/helpers.js";
+import { setChatLastRead } from "../lib/unreadChats.js";
 import { readAuthFromStorage } from "../../lib/storage.js";
 
 /* ======================= Helpers ======================= */
-
-/* ---------- unread chats (localStorage) ---------- */
-/**
- * MUST match MainHome.jsx
- * MainHome reads cedarChatLastRead_v1 and compares lastMessageAt > lastRead
- */
-const CHAT_READ_KEY = "cedarChatLastRead_v1"; // { [conversationId]: isoString }
-
-function safeParse(json, fallback) {
-  try {
-    const v = JSON.parse(json);
-    return v && typeof v === "object" ? v : fallback;
-  } catch {
-    return fallback;
-  }
-}
-function getChatReadMap() {
-  return safeParse(localStorage.getItem(CHAT_READ_KEY) || "{}", {});
-}
 function toMs(iso) {
   if (!iso) return 0;
   const t = new Date(iso).getTime();
@@ -51,35 +35,6 @@ function maxIso(...isos) {
   for (const s of isos) m = Math.max(m, toMs(s));
   return m ? new Date(m).toISOString() : null;
 }
-/**
- * Update localStorage + notify Home page to refresh the badge immediately.
- * IMPORTANT: monotonic (never moves backward).
- */
-function persistLocalRead(conversationId, iso) {
-  if (!conversationId || !iso) return;
-  try {
-    const id = String(conversationId);
-    const map = getChatReadMap();
-
-    const prevMs = toMs(map[id]);
-    const nextMs = toMs(iso);
-    if (!nextMs) return;
-
-    // Only move forward in time (prevents "still unread" due to older timestamps)
-    if (nextMs <= prevMs) return;
-
-    map[id] = new Date(nextMs).toISOString();
-    localStorage.setItem(CHAT_READ_KEY, JSON.stringify(map));
-
-    // Notify other pages/hooks (MainHome) to refresh immediately
-    window.dispatchEvent(
-      new CustomEvent("cedar:chat-read", { detail: { conversationId: id, iso: map[id] } })
-    );
-  } catch {
-    // silent
-  }
-}
-
 /** Person profile route */
 function normalizeEntityId(value = "") {
   const id = String(value || "").trim();
@@ -364,7 +319,7 @@ function Avatar({ name, url, size = "md", userId, linkTo }) {
 
   const base = showInitials ? (
     <div className={cls} style={{ cursor: clickable ? "pointer" : undefined }}>
-      {initials || "?"}
+      <InitialsMark value={initials || "?"} />
     </div>
   ) : (
     <img
@@ -636,7 +591,7 @@ function PersonalTab({ socket }) {
     if (!iso) return;
 
     // 0) update localStorage so MainHome badge clears
-    persistLocalRead(convoId, iso);
+    setChatLastRead(convoId, iso);
 
     // 1) socket read receipt (if backend uses sockets)
     try {
@@ -1070,7 +1025,13 @@ function PersonalTab({ socket }) {
                         </div>
                         <div className="cf-li-sub">{conversationSnippet(c)}</div>
                       </div>
-                      {!!unread && <span className="cf-unread-badge">{unread > 99 ? "99+" : unread}</span>}
+                      <NotificationBadge
+                        count={unread}
+                        size="sm"
+                        tone="brand"
+                        className="cf-unread-badge"
+                        ariaLabel={`${unread} unread messages`}
+                      />
                     </div>
                   </button>
                 </li>
@@ -1333,7 +1294,7 @@ function GroupsTab({ socket }) {
       const items = await loadMessages(convoId);
       const lastMsgIso = items?.[items.length - 1]?.createdAt || null;
       const readIso = maxIso(lastMsgIso, normalizedGroup?.lastMessageAt);
-      if (readIso) persistLocalRead(convoId, readIso);
+      if (readIso) setChatLastRead(convoId, readIso);
     } catch (error) {
       setActionError(String(error?.message || "Unable to load group messages."));
     }
@@ -1398,7 +1359,7 @@ function GroupsTab({ socket }) {
         );
       });
 
-      persistLocalRead(activeId, maxIso(saved?.createdAt, active?.lastMessageAt) || new Date().toISOString());
+      setChatLastRead(activeId, maxIso(saved?.createdAt, active?.lastMessageAt) || new Date().toISOString());
       queueMicrotask(() => forceScrollToBottom(scrollRef));
     } catch {
       setActionError("Unable to send message.");
@@ -1546,7 +1507,7 @@ function GroupsTab({ socket }) {
         queueMicrotask(() => forceScrollToBottom(scrollRef));
 
         // mark read locally for Home badge (monotonic + >= lastMessageAt)
-        persistLocalRead(active._id, maxIso(msg?.createdAt, active?.lastMessageAt) || new Date().toISOString());
+        setChatLastRead(active._id, maxIso(msg?.createdAt, active?.lastMessageAt) || new Date().toISOString());
       }
     };
 

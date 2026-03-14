@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
+import InitialsMark from "../../components/InitialsMark.jsx";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
@@ -81,7 +82,7 @@ function MemberAvatar({ member = {}, className = "", fallbackClassName = "" }) {
 
   return (
     <div className={`${className} ${fallbackClassName}`.trim()} aria-hidden="true">
-      {initialsOf(member.firstName, member.lastName, member.nickname) || "?"}
+      <InitialsMark value={initialsOf(member.firstName, member.lastName, member.nickname) || "?"} />
     </div>
   );
 }

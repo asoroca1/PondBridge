@@ -9206,3 +9206,89 @@ button.super-stat-card {
     grid-template-columns: 1fr;
   }
 }
+
+.pb-notification-badge{
+  --pb-badge-bg: var(--brand-primary);
+  --pb-badge-text: var(--brand-on-primary, #ffffff);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:20px;
+  height:20px;
+  padding:0 6px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,0.96);
+  background:var(--pb-badge-bg);
+  color:var(--pb-badge-text);
+  box-shadow:0 4px 14px rgba(15,23,42,0.18);
+  font-weight:800;
+  letter-spacing:-0.01em;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.pb-notification-badge.is-sm{
+  min-width:20px;
+  height:20px;
+  padding:0 6px;
+  font-size:11px;
+}
+
+.pb-notification-badge.is-md{
+  min-width:22px;
+  height:22px;
+  padding:0 7px;
+  font-size:12px;
+}
+
+.pb-notification-badge.is-lg{
+  min-width:24px;
+  height:24px;
+  padding:0 8px;
+  font-size:12px;
+}
+
+.pb-notification-badge.is-floating{
+  position:absolute;
+  top:-9px;
+  right:-9px;
+}
+
+.pb-notification-badge.tone-brand{
+  --pb-badge-bg: color-mix(in srgb, var(--brand-primary) 90%, #10233f);
+}
+
+.pb-notification-badge.tone-accent{
+  --pb-badge-bg: color-mix(in srgb, var(--brand-primary-hover, var(--brand-primary)) 84%, #10233f);
+}
+
+.pb-notification-badge.tone-danger{
+  --pb-badge-bg: #be123c;
+}
+
+.pb-initials-mark{
+  display:inline-grid;
+  grid-auto-flow:column;
+  grid-auto-columns:max-content;
+  align-items:center;
+  justify-content:center;
+  gap:0.08em;
+  font:inherit;
+  line-height:1;
+  letter-spacing:0;
+  text-transform:uppercase;
+  font-kerning:none;
+  font-variant-ligatures:none;
+}
+
+.pb-initials-mark[data-count="1"]{
+  gap:0;
+}
+
+.pb-initials-mark__char{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:0.58em;
+  text-align:center;
+}

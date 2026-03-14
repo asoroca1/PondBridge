@@ -22,6 +22,7 @@ import { useTenant } from "../context/TenantContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
 import { readAuthFromStorage } from "../lib/storage.js";
 import { avatarUrl, initialsOf } from "../cedar/lib/helpers.js";
+import InitialsMark from "./InitialsMark.jsx";
 import {
   resolveAlumniWord,
   resolveNetworkDisplayName,
@@ -134,7 +135,7 @@ function SmartAvatar({ src = "", initials = "?", alt = "", className = "", fallb
 
   return (
     <div className={`${className} nav2-avatar-fallback ${fallbackClassName}`.trim()} aria-hidden="true">
-      {initials || "?"}
+      <InitialsMark value={initials || "?"} />
     </div>
   );
 }

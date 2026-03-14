@@ -1,0 +1,23 @@
+{
+  "apply": true,
+  "archivedAt": "2026-03-13T20:52:45.987Z",
+  "sourceTenant": {
+    "id": "c674696ffa32fbc19bb1f311",
+    "slug": "cedar",
+    "name": "Camp Cedar",
+    "status": "active"
+  },
+  "archiveTenantPatch": {
+    "slug": "cedar-archived-20260313-205245",
+    "name": "Camp Cedar (Archived 20260313-205245)",
+    "status": "inactive",
+    "customDomain": ""
+  },
+  "userRowsToSetInactive": 3,
+  "archivedTenant": {
+    "id": "c674696ffa32fbc19bb1f311",
+    "slug": "cedar-archived-20260313-205245",
+    "name": "Camp Cedar (Archived 20260313-205245)",
+    "status": "inactive"
+  }
+}

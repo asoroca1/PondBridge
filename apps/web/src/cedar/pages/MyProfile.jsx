@@ -4,6 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import fallbackCoverPhoto from "../assets/profile-cover.jpg";
 import CedarBackground from "../components/CedarBackground";
 import AutoFitText from "../components/AutoFitText";
+import InitialsMark from "../../components/InitialsMark.jsx";
 import { getMe, API_BASE } from "../lib/api";
 import { authHeaders, displayName, initialsOf, avatarUrl, getToken } from "../lib/helpers.js";
 import CedarSkeleton from "../components/CedarSkeleton.jsx";
@@ -309,7 +310,7 @@ function RelatedProfilesCard({ targetUserId }) {
                       }
                     />
                   ) : (
-                    <div className="p1-suggest-fallback">{initials || "?"}</div>
+                    <div className="p1-suggest-fallback"><InitialsMark value={initials || "?"} /></div>
                   )}
                 </Link>
                 <div className="p1-suggest-main">

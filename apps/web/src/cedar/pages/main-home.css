@@ -267,8 +267,8 @@
   /* ---------- suggested profiles ---------- */
   .home-wrap .p1-empty{ color:#5b6270; padding:12px; }
   .home-wrap .p1-suggest-list{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
-  .home-wrap .p1-suggest-item{ display:flex; gap:10px; align-items:center; }
-  .home-wrap .p1-suggest-avatar{ width:36px; height:36px; border-radius:50%; overflow:hidden; background:#eef2f7; display:grid; place-items:center; text-decoration:none; border:1px solid var(--border); }
+  .home-wrap .p1-suggest-item{ display:flex; gap:10px; align-items:flex-start; }
+  .home-wrap .p1-suggest-avatar{ width:36px; height:36px; border-radius:50%; overflow:hidden; background:#eef2f7; display:grid; place-items:center; text-decoration:none; border:1px solid var(--border); flex:0 0 36px; }
   .home-wrap .p1-suggest-img{ width:100%; height:100%; object-fit:cover; display:block; }
   .home-wrap .p1-suggest-fallback{
     width:100%;
@@ -280,7 +280,7 @@
     font-weight:700;
     letter-spacing:.3px;
   }
-  .home-wrap .p1-suggest-main{ min-width:0; display:grid; row-gap:2px; }
+  .home-wrap .p1-suggest-main{ min-width:0; display:grid; row-gap:2px; align-content:start; padding-top:1px; }
   .home-wrap .p1-suggest-name{
     font-weight:700;
     color:#111827;
@@ -465,34 +465,10 @@
     }
   }
   
-  /* badge container helper */
+/* badge container helper */
 .has-badge {
   position: relative;
-}
-
-/* the little red number circle */
-.unread-badge {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 999px;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
-
-  background: var(--brand-primary);
-  color: var(--brand-on-primary);
-
-  border: 2px solid rgba(255,255,255,0.95);
-  box-shadow: var(--shadow-md);
+  isolation: isolate;
 }
 
 .profile-prompt-overlay {

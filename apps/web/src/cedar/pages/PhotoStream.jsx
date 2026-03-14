@@ -8,6 +8,7 @@ import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./photo-stream.css";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
+import InitialsMark from "../../components/InitialsMark.jsx";
 import { Images, Heart, MessageCircle, Trash2, X, Upload } from "lucide-react";
 
 const API = API_BASE;
@@ -136,7 +137,7 @@ function AvatarLink({ userId, name, url, size = 34 }) {
       decoding="async"
     />
   ) : (
-    <div className={classBase} style={style}>{initials || "?"}</div>
+    <div className={classBase} style={style}><InitialsMark value={initials || "?"} /></div>
   );
 
   if (!userId) {
