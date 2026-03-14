@@ -744,10 +744,20 @@ function ClerkBackedAuthProvider({ children }) {
         return payload;
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
+          const currentScopedUser = normalizeScopedUserShape(userRef.current, {
+            tenantSlug: resolvedTenantSlug
+          });
+          const currentUserStillMatchesTenant = cachedSessionMatchesTenant(
+            currentScopedUser,
+            resolvedTenantSlug
+          );
           const preserveCachedSession =
-            hasExistingUser && isSignedIn && !isTenantScopedRefresh && !strictTenantSync;
+            hasExistingUser &&
+            isSignedIn &&
+            !strictTenantSync &&
+            (!isTenantScopedRefresh || currentUserStillMatchesTenant);
           if (preserveCachedSession) {
-            writeAuthToStorage(clerkToken, userRef.current);
+            writeAuthToStorage(clerkToken, currentScopedUser || userRef.current);
             markTabSessionAuthenticated();
             return null;
           }

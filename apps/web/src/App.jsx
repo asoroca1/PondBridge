@@ -115,6 +115,10 @@ const warmedRouteChunks = new Set();
 const DEFAULT_TAB_TITLE = "PondBridge";
 const DEFAULT_FAVICON_PATH = "/favicon.svg";
 
+function normalizeTenantKey(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
 function resolveTenantTabTitle(tenant) {
   const campName = String(resolveCampName(tenant) || "").trim();
   if (!campName) return DEFAULT_TAB_TITLE;
@@ -312,12 +316,15 @@ function TenantScopeRoutes() {
 
     const tenantId = String(tenant?.id || tenant?._id || "").trim();
     const userTenantId = String(user?.tenantId || "").trim();
+    const resolvedTenantSlug = normalizeTenantKey(slug || tenant?.slug || "");
+    const userTenantSlug = normalizeTenantKey(user?.tenantSlug || "");
     const isSuperAdmin = Boolean(user?.roles?.includes("super_admin"));
     const onDirectorBootstrapRoute =
       path.includes("/director-claim") || path.includes("/director-create-account");
     const alreadyScopedToTenant = Boolean(
       user &&
         ((tenantId && userTenantId && userTenantId === tenantId) ||
+          (resolvedTenantSlug && userTenantSlug && userTenantSlug === resolvedTenantSlug) ||
           (isSuperAdmin && !onDirectorBootstrapRoute))
     );
     if (alreadyScopedToTenant) {
