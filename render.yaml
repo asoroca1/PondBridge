@@ -36,6 +36,10 @@ services:
         value: "true"
       - key: AUTH_COOKIE_SAMESITE
         value: lax
+      - key: CLERK_SUPER_ADMIN_EMAILS
+        value: adensoroca@gmail.com
+      - key: CLERK_SUPER_ADMIN_USER_IDS
+        value: ""
       - key: R2_BUCKET_NAME
         sync: false
       - key: R2_ACCESS_KEY_ID

@@ -21,7 +21,7 @@ import {
   relativeTime,
   isPlaceholderAvatarUrl
 } from "../lib/helpers.js";
-import { setChatLastRead } from "../lib/unreadChats.js";
+import { markConversationRead } from "../lib/unreadChats.js";
 import { readAuthFromStorage } from "../../lib/storage.js";
 
 /* ======================= Helpers ======================= */
@@ -585,29 +585,15 @@ function PersonalTab({ socket }) {
 
   async function markRead(convoId, isoMaybe, convoLastMessageAt) {
     if (!convoId) return;
-
-    // IMPORTANT: store a read timestamp that is >= lastMessageAt
-    const iso = maxIso(isoMaybe, convoLastMessageAt);
+    const iso = await markConversationRead(convoId, isoMaybe, convoLastMessageAt);
     if (!iso) return;
-
-    // 0) update localStorage so MainHome badge clears
-    setChatLastRead(convoId, iso);
 
     // 1) socket read receipt (if backend uses sockets)
     try {
       socket.emit("read:upto", { room: `conversation:${convoId}`, iso });
     } catch {}
 
-    // 2) optional REST fallback (safe if endpoint doesn't exist)
-    try {
-      await fetch(`${API_BASE}/conversations/${convoId}/read`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ iso }),
-      });
-    } catch {}
-
-    // 3) update UI immediately
+    // 2) update UI immediately
     clearUnreadLocally(convoId);
   }
 
@@ -1219,6 +1205,36 @@ function GroupsTab({ socket }) {
       setActionError(String(error?.message || "Unable to load groups."));
     }
   }
+
+  function clearUnreadLocally(convoId) {
+    setList((prev) =>
+      prev.map((conversation) => {
+        if (String(conversation?._id) !== String(convoId)) return conversation;
+        return {
+          ...conversation,
+          unreadCount: 0,
+          unread: 0,
+          unreadMessages: 0,
+          unreadMessagesCount: 0,
+          unseenCount: 0,
+          newCount: 0
+        };
+      })
+    );
+  }
+
+  async function markRead(convoId, isoMaybe, convoLastMessageAt) {
+    if (!convoId) return;
+    const iso = await markConversationRead(convoId, isoMaybe, convoLastMessageAt);
+    if (!iso) return;
+
+    try {
+      socket.emit("read:upto", { room: `conversation:${convoId}`, iso });
+    } catch {}
+
+    clearUnreadLocally(convoId);
+  }
+
   useEffect(() => {
     loadList();
   }, []);
@@ -1294,7 +1310,8 @@ function GroupsTab({ socket }) {
       const items = await loadMessages(convoId);
       const lastMsgIso = items?.[items.length - 1]?.createdAt || null;
       const readIso = maxIso(lastMsgIso, normalizedGroup?.lastMessageAt);
-      if (readIso) setChatLastRead(convoId, readIso);
+      if (readIso) await markRead(convoId, readIso, normalizedGroup?.lastMessageAt);
+      else clearUnreadLocally(convoId);
     } catch (error) {
       setActionError(String(error?.message || "Unable to load group messages."));
     }
@@ -1359,7 +1376,7 @@ function GroupsTab({ socket }) {
         );
       });
 
-      setChatLastRead(activeId, maxIso(saved?.createdAt, active?.lastMessageAt) || new Date().toISOString());
+      await markRead(activeId, saved?.createdAt || new Date().toISOString(), active?.lastMessageAt);
       queueMicrotask(() => forceScrollToBottom(scrollRef));
     } catch {
       setActionError("Unable to send message.");
@@ -1506,8 +1523,7 @@ function GroupsTab({ socket }) {
         setMessages((m) => (hasId(m, msg._id) ? m : [...m, msg]));
         queueMicrotask(() => forceScrollToBottom(scrollRef));
 
-        // mark read locally for Home badge (monotonic + >= lastMessageAt)
-        setChatLastRead(active._id, maxIso(msg?.createdAt, active?.lastMessageAt) || new Date().toISOString());
+        void markRead(active._id, msg?.createdAt || new Date().toISOString(), active?.lastMessageAt);
       }
     };
 
