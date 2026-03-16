@@ -2225,14 +2225,25 @@ img[draggable="false"] { -webkit-user-drag: none; }
   background: var(--brand-primary);
   border: 2px solid color-mix(in srgb, var(--brand-primary) 22%, #ffffff);
 }
+.nav2-avatar-fallback > .pb-initials-mark{
+  width:100%;
+  height:100%;
+  place-items:center;
+}
 .nav2-ac-initials{
   font-size:.9rem;
 }
 .navbar2-profile-initials{
-  font-size:1.05rem;
+  font-size:.92rem;
   border-width:2px;
   border-color: rgba(255,255,255,.86);
   box-shadow: 0 0 0 1px rgba(2,33,71,.18);
+  line-height:1;
+}
+.navbar2-profile-initials .pb-initials-mark{
+  gap:0.02em;
+  font-size:inherit;
+  font-weight:800;
 }
 .nav2-ac-name{ font-weight:600; font-size:1rem; color: var(--brand-primary); }
 .nav2-ac-job{ font-size:.85rem; color:#555; }
@@ -2325,7 +2336,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
     min-width: 0;
     margin-left: 0;
     max-width: none;
-    gap: 6px;
+    gap: 4px;
   }
 
   .navbar2-search{
@@ -2340,8 +2351,11 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .navbar2-search-input{
-    height: 32px;
+    height: 34px;
+    min-width: 0;
+    padding-left: 12px;
     padding-right: calc(var(--s-btn-size) + var(--s-btn-gap) + 6px);
+    font-size: 16px;
   }
 
   .navbar2-auth-actions{
@@ -2357,20 +2371,28 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .navbar2-profile-btn{
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
   }
 
   .navbar2-profile{
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .navbar2-profile-initials{
+    font-size: .76rem;
+  }
+
+  .navbar2-profile-initials .pb-initials-mark{
+    gap: 0.01em;
   }
 
   .navbar2-burger{
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
     padding: 0;
   }
 
@@ -2420,11 +2442,12 @@ img[draggable="false"] { -webkit-user-drag: none; }
 /* Tight iPhones */
 @media (max-width:430px){
   :root{ --s-input-w: clamp(132px, 40vw, 172px); --left-guard: 64px; --s-btn-size: 28px; }
-  .navbar2-right{ gap:6px; }
+  .navbar2-right{ gap:4px; }
   .navbar2-logo{ max-height:28px; margin-right:8px; }
   .navbar2-logo-fallback{ width:28px; height:28px; flex-basis:28px; font-size:0.65rem; }
   .navbar2-profile-btn{ width:40px; height:40px; border-radius:11px; }
   .navbar2-profile{ width:30px; height:30px; }
+  .navbar2-profile-initials{ font-size: .72rem; }
   .navbar2.is-auth-route .navbar2-title{
     font-size: clamp(.88rem, 3.7vw, 1.05rem);
     max-width: min(32vw, 120px);
@@ -2457,6 +2480,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
     border-radius: 10px;
   }
   .navbar2-profile{ width:28px; height:28px; }
+  .navbar2-profile-initials{ font-size: .68rem; }
   .navbar2-burger{
     width: 36px;
     height: 36px;
