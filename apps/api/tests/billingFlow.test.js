@@ -173,7 +173,7 @@ describe("Stripe billing system", () => {
     expect(response.status).toBe(201);
     expect(response.body.ok).toBe(true);
     expect(response.body.billing.billingPlan).toBe("institutional");
-    expect(response.body.billing.onboardingFeeAmount).toBe(450);
+    expect(response.body.billing.onboardingFeeAmount).toBe(200);
     expect(response.body.billing.onboardingFeeStatus).toBe("unpaid");
 
     const stored = await Tenant.findById(tenant._id);
@@ -189,7 +189,7 @@ describe("Stripe billing system", () => {
       onboardingStatus: "live",
       billingStatus: "active",
       stripeCustomerId: "cus_existing_001",
-      onboardingFeeAmount: 450,
+      onboardingFeeAmount: 200,
       onboardingFeePaid: true,
       settings: {
         billing: {
@@ -214,7 +214,7 @@ describe("Stripe billing system", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.billing.billingPlan).toBe("institutional");
-    expect(response.body.billing.onboardingFeeAmount).toBe(450);
+    expect(response.body.billing.onboardingFeeAmount).toBe(200);
     expect(response.body.billing.onboardingFeeStatus).toBe("waived");
   });
 
@@ -281,7 +281,7 @@ describe("Stripe billing system", () => {
       onboardingStatus: "live",
       billingStatus: "trialing",
       stripeCustomerId: "cus_test_123",
-      onboardingFeeAmount: 450,
+      onboardingFeeAmount: 200,
       onboardingFeePaid: false,
       settings: {
         billing: {

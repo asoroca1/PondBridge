@@ -89,7 +89,7 @@ describe("Super provisioning", () => {
     expect(createTenant.status).toBe(201);
     expect(createTenant.body.tenant.slug).toBe("pine-ridge");
     expect(createTenant.body.billingPlan).toBe("institutional");
-    expect(createTenant.body.tenant.onboardingFeeAmount).toBe(450);
+    expect(createTenant.body.tenant.onboardingFeeAmount).toBe(200);
     expect(createTenant.body.tenant.onboardingStatus).toBe("not_started");
     expect(createTenant.body.directorInvite?.email).toBe("director@pineridge.org");
     expect(createTenant.body.directorInvite?.roleToAssign).toBe("tenant_admin");

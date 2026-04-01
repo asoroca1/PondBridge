@@ -36,11 +36,23 @@ const WOMEN_FIRST_NAMES = [
   "Sofia", "Sophia", "Stella", "Sydney", "Taylor", "Valentina", "Victoria", "Violet", "Willow", "Zoey"
 ];
 
+const BOYS_FIRST_NAMES = [
+  "Ari", "Asher", "Avi", "Benjamin", "Caleb", "Daniel", "David", "Eitan", "Eli", "Elijah",
+  "Ezra", "Gabriel", "Gideon", "Isaac", "Jacob", "Jonah", "Joseph", "Judah", "Levi", "Micah",
+  "Mordechai", "Nathan", "Noam", "Noah", "Oren", "Rafael", "Samuel", "Saul", "Simon", "Yonah"
+];
+
 const LAST_NAMES = [
   "Rivera", "Chen", "Blake", "Davis", "Kim", "Thompson", "Martinez", "Johnson", "Patel", "Nguyen",
   "Foster", "Wright", "Adams", "Lee", "Campbell", "Scott", "Baker", "Clark", "Turner", "Harris",
   "Mitchell", "Brooks", "Ward", "Cooper", "Morris", "Perry", "Price", "Reed", "Bailey", "Cook",
   "Morgan", "Bell", "Murphy", "Rogers", "Diaz", "Reyes", "Sanders", "Hayes", "Powell", "Long"
+];
+
+const JEWISH_LAST_NAMES = [
+  "Abramson", "Adler", "Bernstein", "Cohen", "Feinberg", "Feldman", "Friedman", "Gold", "Goldberg", "Goldstein",
+  "Greenberg", "Grossman", "Horowitz", "Kagan", "Kaplan", "Katz", "Klein", "Levine", "Levy", "Mandel",
+  "Meyer", "Rosen", "Rosenberg", "Rubin", "Sacks", "Schwartz", "Shapiro", "Silver", "Stein", "Stern"
 ];
 
 const CITIES = [
@@ -70,6 +82,167 @@ const CITIES = [
   "Tarrytown, NY",
   "Sleepy Hollow, NY",
   "Yonkers, NY"
+];
+
+const EXPANDED_CITIES = [
+  ...CITIES,
+  "Chicago, IL",
+  "Evanston, IL",
+  "Glencoe, IL",
+  "Northbrook, IL",
+  "Highland Park, IL",
+  "Winnetka, IL",
+  "Deerfield, IL",
+  "Lake Forest, IL",
+  "Naperville, IL",
+  "Oak Park, IL",
+  "Detroit, MI",
+  "Ann Arbor, MI",
+  "Birmingham, MI",
+  "Bloomfield Hills, MI",
+  "Grand Rapids, MI",
+  "Minneapolis, MN",
+  "St. Paul, MN",
+  "Edina, MN",
+  "Wayzata, MN",
+  "St. Louis Park, MN",
+  "Madison, WI",
+  "Milwaukee, WI",
+  "Fox Point, WI",
+  "Shorewood, WI",
+  "Green Bay, WI",
+  "Cleveland, OH",
+  "Columbus, OH",
+  "Cincinnati, OH",
+  "Shaker Heights, OH",
+  "Dublin, OH",
+  "Bexley, OH",
+  "Indianapolis, IN",
+  "Carmel, IN",
+  "Bloomington, IN",
+  "Fort Wayne, IN",
+  "Louisville, KY",
+  "Lexington, KY",
+  "Nashville, TN",
+  "Memphis, TN",
+  "Knoxville, TN",
+  "Chattanooga, TN",
+  "Atlanta, GA",
+  "Sandy Springs, GA",
+  "Decatur, GA",
+  "Savannah, GA",
+  "Miami, FL",
+  "Miami Beach, FL",
+  "Fort Lauderdale, FL",
+  "Boca Raton, FL",
+  "West Palm Beach, FL",
+  "Orlando, FL",
+  "Tampa, FL",
+  "St. Petersburg, FL",
+  "Jacksonville, FL",
+  "Charlotte, NC",
+  "Raleigh, NC",
+  "Durham, NC",
+  "Chapel Hill, NC",
+  "Asheville, NC",
+  "Greensboro, NC",
+  "Charleston, SC",
+  "Columbia, SC",
+  "Greenville, SC",
+  "Richmond, VA",
+  "Arlington, VA",
+  "Alexandria, VA",
+  "Norfolk, VA",
+  "Virginia Beach, VA",
+  "Washington, DC",
+  "Bethesda, MD",
+  "Chevy Chase, MD",
+  "Silver Spring, MD",
+  "Baltimore, MD",
+  "Annapolis, MD",
+  "Philadelphia, PA",
+  "Lower Merion, PA",
+  "Pittsburgh, PA",
+  "Harrisburg, PA",
+  "Allentown, PA",
+  "Princeton, NJ",
+  "Jersey City, NJ",
+  "Hoboken, NJ",
+  "Montclair, NJ",
+  "Short Hills, NJ",
+  "Westfield, NJ",
+  "Morristown, NJ",
+  "Wilmington, DE",
+  "Newark, DE",
+  "Providence, RI",
+  "Newport, RI",
+  "Portland, ME",
+  "Burlington, VT",
+  "Manchester, NH",
+  "Albany, NY",
+  "Buffalo, NY",
+  "Rochester, NY",
+  "Syracuse, NY",
+  "Boulder, CO",
+  "Denver, CO",
+  "Aspen, CO",
+  "Colorado Springs, CO",
+  "Fort Collins, CO",
+  "Salt Lake City, UT",
+  "Park City, UT",
+  "Phoenix, AZ",
+  "Scottsdale, AZ",
+  "Tucson, AZ",
+  "Santa Fe, NM",
+  "Albuquerque, NM",
+  "Austin, TX",
+  "Dallas, TX",
+  "Houston, TX",
+  "San Antonio, TX",
+  "Fort Worth, TX",
+  "Plano, TX",
+  "Frisco, TX",
+  "El Paso, TX",
+  "New Orleans, LA",
+  "Baton Rouge, LA",
+  "Little Rock, AR",
+  "Kansas City, MO",
+  "St. Louis, MO",
+  "Omaha, NE",
+  "Lincoln, NE",
+  "Des Moines, IA",
+  "Cedar Rapids, IA",
+  "Tulsa, OK",
+  "Oklahoma City, OK",
+  "Wichita, KS",
+  "Overland Park, KS",
+  "Fargo, ND",
+  "Sioux Falls, SD",
+  "Boise, ID",
+  "Sun Valley, ID",
+  "Jackson, WY",
+  "Missoula, MT",
+  "Billings, MT",
+  "Seattle, WA",
+  "Bellevue, WA",
+  "Spokane, WA",
+  "Tacoma, WA",
+  "Portland, OR",
+  "Eugene, OR",
+  "Bend, OR",
+  "San Francisco, CA",
+  "Oakland, CA",
+  "San Jose, CA",
+  "Palo Alto, CA",
+  "Berkeley, CA",
+  "Sacramento, CA",
+  "La Jolla, CA",
+  "Irvine, CA",
+  "Newport Beach, CA",
+  "Pasadena, CA",
+  "San Diego, CA",
+  "Honolulu, HI",
+  "Anchorage, AK"
 ];
 
 const INDUSTRIES = [
@@ -103,7 +276,7 @@ const SEASONS = ["Spring", "Summer", "Fall", "Winter"];
 const PHOTO_CAPTIONS = [
   "Weekend reunion picnic at camp.",
   "Counselor appreciation circle.",
-  "Lake day with the alumnae crew.",
+  "Lake day with the camp crew.",
   "Campfire songs and stories.",
   "Cabin photo throwback.",
   "Alumni service day at campus.",
@@ -116,7 +289,7 @@ const PHOTO_CAPTIONS = [
 const FORUM_NAMES = [
   "Reunion Planning",
   "Staff Mentorship",
-  "Alumnae Career Network",
+  "Alumni Career Network",
   "Cabin Throwbacks",
   "Westchester Meetups",
   "Summer Volunteer Squad"
@@ -124,7 +297,7 @@ const FORUM_NAMES = [
 
 const FORUM_POSTS = [
   "Who is available for a planning call this week?",
-  "Sharing updates from this month's alumnae meetup.",
+  "Sharing updates from this month's alumni meetup.",
   "Would love introductions for members in healthcare.",
   "Posting old photos from my counselor years.",
   "Can we coordinate carpools from Westchester?",
@@ -135,7 +308,7 @@ const FEED_MESSAGES = [
   "Community update: registration for reunion weekend is open.",
   "Photo challenge: post your favorite summer memory.",
   "Mentorship spotlight: new pairings launched this month.",
-  "Newsletter drop: highlights from alumnae around the country.",
+  "Newsletter drop: highlights from alumni around the country.",
   "Family trees updated with new cross-generational links.",
   "Forum roundtable this Friday for counselors and staff."
 ];
@@ -168,12 +341,21 @@ function seedPrefixForTenant(slug = "") {
   return `SEED:${String(slug || "").toUpperCase()}:`;
 }
 
+function resolveLocationPool(locationCount = 0) {
+  if (locationCount > 0) return EXPANDED_CITIES.slice(0, locationCount);
+  return CITIES;
+}
+
 function parseArgs(argv = []) {
   const options = {
     slug: "",
     count: 50,
+    locationCount: 0,
     dryRun: false,
     allowLive: false,
+    boysOnly: false,
+    camperOnly: false,
+    jewishNames: false,
     womenOnly: false,
     withContent: false,
     help: false
@@ -191,6 +373,18 @@ function parseArgs(argv = []) {
     }
     if (token === "--allow-live") {
       options.allowLive = true;
+      continue;
+    }
+    if (token === "--boys-only" || token === "--men-only") {
+      options.boysOnly = true;
+      continue;
+    }
+    if (token === "--camper-only") {
+      options.camperOnly = true;
+      continue;
+    }
+    if (token === "--jewish-names") {
+      options.jewishNames = true;
       continue;
     }
     if (token === "--women-only") {
@@ -219,6 +413,15 @@ function parseArgs(argv = []) {
       options.count = Number(token.split("=").slice(1).join("="));
       continue;
     }
+    if (token === "--locations" || token === "--location-count") {
+      options.locationCount = Number(argv[i + 1] || 0);
+      i += 1;
+      continue;
+    }
+    if (token.startsWith("--locations=") || token.startsWith("--location-count=")) {
+      options.locationCount = Number(token.split("=").slice(1).join("="));
+      continue;
+    }
 
     throw new Error(`Unknown argument: ${token}`);
   }
@@ -226,7 +429,20 @@ function parseArgs(argv = []) {
   if (!Number.isFinite(options.count) || options.count < 1) {
     throw new Error("--count must be a positive integer.");
   }
+  if (!Number.isFinite(options.locationCount) || options.locationCount < 0) {
+    throw new Error("--locations must be a non-negative integer.");
+  }
+  if (options.womenOnly && options.boysOnly) {
+    throw new Error("--women-only and --boys-only cannot be used together.");
+  }
   options.count = Math.min(Math.trunc(options.count), 1000);
+  options.locationCount = Math.trunc(options.locationCount);
+  if (options.locationCount > options.count) {
+    throw new Error("--locations cannot exceed --count because each location needs at least one profile.");
+  }
+  if (options.locationCount > EXPANDED_CITIES.length) {
+    throw new Error(`--locations exceeds supported location pool (${EXPANDED_CITIES.length}).`);
+  }
 
   return options;
 }
@@ -234,7 +450,7 @@ function parseArgs(argv = []) {
 function printUsage() {
   console.log("Usage:");
   console.log(
-    "  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug <tenant-slug> [--count 50] [--allow-live] [--women-only] [--with-content] [--dry-run]"
+    "  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug <tenant-slug> [--count 50] [--locations 0] [--allow-live] [--women-only|--boys-only] [--camper-only] [--jewish-names] [--with-content] [--dry-run]"
   );
   console.log("");
   console.log("Examples:");
@@ -242,6 +458,9 @@ function printUsage() {
     "  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug tripplake --count 300 --allow-live --women-only --with-content"
   );
   console.log("  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug demo --count 50");
+  console.log(
+    "  npm --workspace @pondbridge/api run seed:camp-profiles -- --slug demoa --count 500 --locations 150 --boys-only --camper-only --jewish-names --with-content"
+  );
 }
 
 function isHiddenTenant(tenant = {}) {
@@ -317,14 +536,27 @@ function buildStaffYears(index, roleAtCamp = "") {
   return { stints };
 }
 
-function buildProfile(index, tenantSlug, taxonomy = {}, { womenOnly = false } = {}) {
+function buildProfile(
+  index,
+  tenantSlug,
+  taxonomy = {},
+  { boysOnly = false, camperOnly = false, jewishNames = false, locationPool = [], womenOnly = false } = {}
+) {
   const rolePool = Array.isArray(taxonomy.rolePool) ? taxonomy.rolePool : [];
   const ageGroupPool = Array.isArray(taxonomy.ageGroupPool) ? taxonomy.ageGroupPool : [];
-  const namePool = womenOnly ? WOMEN_FIRST_NAMES : FIRST_NAMES;
+  const namePool = womenOnly ? WOMEN_FIRST_NAMES : boysOnly ? BOYS_FIRST_NAMES : FIRST_NAMES;
+  const lastNamePool = jewishNames ? JEWISH_LAST_NAMES : LAST_NAMES;
   const firstName = pick(namePool, index, 1);
-  const lastName = pick(LAST_NAMES, index, 2);
-  const cityState = pick(CITIES, index, 3);
-  const roleAtCamp = rolePool.length ? pick(rolePool, index, 4) : "Camper";
+  const lastName = pick(lastNamePool, index, 2);
+  const locations = Array.isArray(locationPool) && locationPool.length ? locationPool : CITIES;
+  const cityState = locations[(Math.max(index, 1) - 1) % locations.length];
+  const canonicalCamperRole =
+    rolePool.find((role) => isCamperRole(role)) || (rolePool.includes("Camper") ? "Camper" : "Camper");
+  const roleAtCamp = camperOnly
+    ? canonicalCamperRole
+    : rolePool.length
+      ? pick(rolePool, index, 4)
+      : canonicalCamperRole;
   const industry = pick(INDUSTRIES, index, 5);
   const college = pick(COLLEGES, index, 6);
   const collegeYear = String(2008 + (index % 15));
@@ -332,10 +564,12 @@ function buildProfile(index, tenantSlug, taxonomy = {}, { womenOnly = false } = 
   const nickname = `${firstName}-${String(index).padStart(3, "0")}`;
   const handle = `${firstName}.${lastName}.${index}`.toLowerCase();
   const camperYears = buildCamperYears(index, ageGroupPool);
-  const staffYears = buildStaffYears(index, roleAtCamp);
-  const canonicalCamperRole =
-    rolePool.find((role) => isCamperRole(role)) || (rolePool.includes("Camper") ? "Camper" : "");
-  const roles = uniqueIdList([canonicalCamperRole, roleAtCamp, staffYears.stints.length ? "Staff" : ""]);
+  const staffYears = camperOnly ? { stints: [] } : buildStaffYears(index, roleAtCamp);
+  const roles = uniqueIdList([
+    canonicalCamperRole,
+    roleAtCamp,
+    camperOnly ? "" : staffYears.stints.length ? "Staff" : ""
+  ]);
 
   return {
     firstName,
@@ -456,6 +690,20 @@ async function purgeByPrefix({ model, tenantId, textField, prefix }) {
   return rows.length;
 }
 
+async function purgeSeedActivityItems({ tenantId, prefix }) {
+  const rows = await ActivityItemModel.find(tenantId, {}, { limit: 5000 });
+  let deleted = 0;
+  for (const row of rows) {
+    const message = String(row?.message || "");
+    const seedKey = String(row?.target?.seedKey || "");
+    if (message.startsWith(prefix) || seedKey === prefix) {
+      await ActivityItemModel.delete(row._id);
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
+
 function asMemberRecord(profile = {}, user = {}) {
   const userId = String(user?._id || "").trim();
   const profileId = String(profile?._id || "").trim();
@@ -557,10 +805,8 @@ async function seedSupplementalContent({ tenant, members, prefix }) {
     textField: "name",
     prefix
   });
-  purged.activityItems = await purgeByPrefix({
-    model: ActivityItemModel,
+  purged.activityItems = await purgeSeedActivityItems({
     tenantId: tenant._id,
-    textField: "message",
     prefix
   });
 
@@ -716,10 +962,11 @@ async function seedSupplementalContent({ tenant, members, prefix }) {
         name: actor.fullName
       },
       type: "announcement.post",
-      message: `${prefix}${pick(FEED_MESSAGES, idx, 1)}`,
+      message: pick(FEED_MESSAGES, idx, 1),
       target: {
         href: idx % 2 === 0 ? "/photo-stream" : "/forums",
-        label: idx % 2 === 0 ? "Photo Stream" : "Forums"
+        label: idx % 2 === 0 ? "Photo Stream" : "Forums",
+        seedKey: prefix
       },
       pinned,
       pinnedAt: pinned ? new Date() : null,
@@ -779,6 +1026,7 @@ async function run() {
   }
 
   const taxonomy = await deriveCampTaxonomy(tenant);
+  const locationPool = resolveLocationPool(args.locationCount);
 
   if (args.dryRun) {
     console.log("[seed:camp-profiles] Dry run complete.");
@@ -786,10 +1034,15 @@ async function run() {
       `[seed:camp-profiles] Would upsert ${args.count} profiles into tenant "${tenant.slug}" (${tenant._id}).`
     );
     console.log(
-      `[seed:camp-profiles] womenOnly=${args.womenOnly ? "true" : "false"}, withContent=${
+      `[seed:camp-profiles] boysOnly=${args.boysOnly ? "true" : "false"}, camperOnly=${
+        args.camperOnly ? "true" : "false"
+      }, jewishNames=${
+        args.jewishNames ? "true" : "false"
+      }, womenOnly=${args.womenOnly ? "true" : "false"}, withContent=${
         args.withContent ? "true" : "false"
       }`
     );
+    console.log(`[seed:camp-profiles] locations=${locationPool.length}`);
     console.log(
       `[seed:camp-profiles] taxonomy roles=${taxonomy.rolePool.length} ageGroups=${taxonomy.ageGroupPool.length}`
     );
@@ -806,6 +1059,10 @@ async function run() {
 
   for (let index = 1; index <= args.count; index += 1) {
     const fake = buildProfile(index, tenant.slug, taxonomy, {
+      boysOnly: args.boysOnly,
+      camperOnly: args.camperOnly,
+      jewishNames: args.jewishNames,
+      locationPool,
       womenOnly: args.womenOnly
     });
 
@@ -880,6 +1137,10 @@ async function run() {
   console.log("[seed:camp-profiles] Complete.");
   console.log(`[seed:camp-profiles] Tenant: ${tenant.slug} (${tenant._id})`);
   console.log(`[seed:camp-profiles] Requested count: ${args.count}`);
+  console.log(`[seed:camp-profiles] boysOnly: ${args.boysOnly ? "true" : "false"}`);
+  console.log(`[seed:camp-profiles] camperOnly: ${args.camperOnly ? "true" : "false"}`);
+  console.log(`[seed:camp-profiles] jewishNames: ${args.jewishNames ? "true" : "false"}`);
+  console.log(`[seed:camp-profiles] locations: ${locationPool.length}`);
   console.log(`[seed:camp-profiles] womenOnly: ${args.womenOnly ? "true" : "false"}`);
   console.log(
     `[seed:camp-profiles] Taxonomy pools: roles=${taxonomy.rolePool.length} ageGroups=${taxonomy.ageGroupPool.length} (configured roles=${taxonomy.configuredRoleCount}, configured ageGroups=${taxonomy.configuredAgeGroupCount})`

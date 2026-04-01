@@ -39,7 +39,7 @@ const BILLING_TIER_DEFINITIONS = [
   {
     code: "founders",
     title: "Founders",
-    subtitle: "$2,800/year for the first five partner camps.",
+    subtitle: "$2,500/year for the first five partner camps.",
     tone: "premium",
     perks: [
       "All premium modules enabled",
@@ -50,7 +50,7 @@ const BILLING_TIER_DEFINITIONS = [
   {
     code: "legacy",
     title: "Legacy",
-    subtitle: "$3,500/year with core alumni network features.",
+    subtitle: "$3,000/year with core alumni network features.",
     tone: "base",
     perks: [
       "Core member directory + search",
@@ -61,7 +61,7 @@ const BILLING_TIER_DEFINITIONS = [
   {
     code: "institutional",
     title: "Institutional",
-    subtitle: "$5,000/year with a one-time $450 onboarding fee on initial checkout.",
+    subtitle: "$3,800/year with a one-time $200 onboarding fee on initial checkout.",
     tone: "premium",
     perks: [
       "All premium modules enabled",

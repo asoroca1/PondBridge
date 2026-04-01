@@ -122,22 +122,22 @@ const BILLING_PLAN_OPTIONS = [
   {
     code: "legacy",
     title: "Legacy Plan",
-    annualAmount: 3500,
+    annualAmount: 3000,
     onboardingFeeAmount: 0,
     summary: "Core network features with annual billing and no onboarding fee."
   },
   {
     code: "founders",
     title: "Founders Plan",
-    annualAmount: 2800,
+    annualAmount: 2500,
     onboardingFeeAmount: 0,
     summary: "Discounted annual pricing for the first 5 camps with no onboarding fee."
   },
   {
     code: "institutional",
     title: "Institutional Plan",
-    annualAmount: 5000,
-    onboardingFeeAmount: 450,
+    annualAmount: 3800,
+    onboardingFeeAmount: 200,
     summary: "Advanced feature tier with a one-time onboarding fee on initial checkout."
   }
 ];

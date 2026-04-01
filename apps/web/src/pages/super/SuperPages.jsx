@@ -28,20 +28,20 @@ const BILLING_PLAN_OPTIONS = [
   {
     code: "legacy",
     label: "Legacy",
-    annualAmount: 3500,
+    annualAmount: 3000,
     onboardingFeeAmount: 0
   },
   {
     code: "founders",
     label: "Founders",
-    annualAmount: 2800,
+    annualAmount: 2500,
     onboardingFeeAmount: 0
   },
   {
     code: "institutional",
     label: "Institutional",
-    annualAmount: 5000,
-    onboardingFeeAmount: 450
+    annualAmount: 3800,
+    onboardingFeeAmount: 200
   }
 ];
 

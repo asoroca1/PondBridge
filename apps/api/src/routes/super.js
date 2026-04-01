@@ -60,9 +60,9 @@ const SUPER_CONSOLE_ROLES = ["super_admin", "support_admin", "finance_admin"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const BILLING_PLAN_MRR = {
-  legacy: 3500 / 12,
-  founders: 2800 / 12,
-  institutional: 5000 / 12
+  legacy: 3000 / 12,
+  founders: 2500 / 12,
+  institutional: 3800 / 12
 };
 const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
 const BILLING_PLAN_DEFAULTS = {
@@ -82,7 +82,7 @@ const BILLING_PLAN_DEFAULTS = {
   },
   institutional: {
     planTier: "premium",
-    onboardingFeeAmount: 450,
+    onboardingFeeAmount: 200,
     onboardingFeePaid: false,
     onboardingFeeStatus: "unpaid",
     onboardingFeeWaiveReason: ""

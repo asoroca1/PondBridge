@@ -31,9 +31,9 @@ const BILLING_PLAN_CATALOG = {
   legacy: {
     code: "legacy",
     label: "Legacy",
-    description: "Legacy annual plan ($3,500/year)",
+    description: "Legacy annual plan ($3,000/year)",
     planTier: "base",
-    annualAmount: 3500,
+    annualAmount: 3000,
     onboardingFeeAmount: 0,
     annualPriceId: String(env.STRIPE_PRICE_LEGACY_ANNUAL || env.STRIPE_PRICE_BASE || "").trim(),
     onboardingPriceId: String(
@@ -44,9 +44,9 @@ const BILLING_PLAN_CATALOG = {
   founders: {
     code: "founders",
     label: "Founders",
-    description: "Founders annual plan ($2,800/year, first 5 camps)",
+    description: "Founders annual plan ($2,500/year, first 5 camps)",
     planTier: "premium",
-    annualAmount: 2800,
+    annualAmount: 2500,
     onboardingFeeAmount: 0,
     annualPriceId: String(env.STRIPE_PRICE_FOUNDERS_ANNUAL || "").trim(),
     onboardingPriceId: "",
@@ -55,10 +55,10 @@ const BILLING_PLAN_CATALOG = {
   institutional: {
     code: "institutional",
     label: "Institutional",
-    description: "Institutional annual plan ($5,000/year + $450 one-time onboarding on initial checkout)",
+    description: "Institutional annual plan ($3,800/year + $200 one-time onboarding on initial checkout)",
     planTier: "premium",
-    annualAmount: 5000,
-    onboardingFeeAmount: 450,
+    annualAmount: 3800,
+    onboardingFeeAmount: 200,
     annualPriceId: String(env.STRIPE_PRICE_INSTITUTIONAL_ANNUAL || env.STRIPE_PRICE_PREMIUM || "").trim(),
     onboardingPriceId: String(
       env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_PREMIUM || ""
