@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, TreePine } from "lucide-react";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -131,7 +131,7 @@ export default function FamilyTrees() {
         if (ignore) return;
         const rows = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
         setState({ loading: false, items: rows.map(toTree), error: "" });
-      } catch (err) {
+      } catch (_err) {
         if (ignore) return;
         setState({ loading: false, items: [], error: "Unable to load family trees." });
       }

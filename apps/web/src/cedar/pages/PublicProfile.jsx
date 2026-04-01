@@ -1,5 +1,5 @@
 // src/pages/PublicProfile.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import fallbackCoverPhoto from "../assets/profile-cover.jpg";
 import CedarBackground from "../components/CedarBackground";

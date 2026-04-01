@@ -1,5 +1,5 @@
 // src/pages/ChatsAndForums.jsx
-import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
+import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
@@ -385,7 +385,6 @@ export default function ChatAndForums() {
     const next = searchParams.get("tab");
     const normalized = next === "groups" || next === "forums" ? next : "personal";
     if (normalized !== tab) setTab(normalized);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   function selectTab(nextTab) {
@@ -466,7 +465,6 @@ function MessageBubble({ me, msg, nameLookup, userLookup }) {
             {isImage && (
               <div className="cf-bubble-media">
                 <a href={msg.media?.url} target="_blank" rel="noreferrer">
-                  {/* eslint-disable-next-line */}
                   <img src={msg.media?.url} alt={msg.media?.name || "image"} />
                 </a>
               </div>
@@ -563,7 +561,6 @@ function PersonalTab({ socket }) {
         }
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   function clearUnreadLocally(convoId) {
@@ -892,7 +889,7 @@ function PersonalTab({ socket }) {
       socket.off("read:upto", onReadUpto);
       socket.off("conversation:deleted", onConvoDeleted);
     };
-  }, [socket, active, meId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, active, meId]);
 
   useEffect(() => {
     loadList();
@@ -916,7 +913,6 @@ function PersonalTab({ socket }) {
     const last = messages[messages.length - 1];
     const lastIso = last?.createdAt;
     if (lastIso) markRead(active._id, lastIso, active?.lastMessageAt);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?._id, messages.length]);
 
   useEffect(() => {
@@ -2368,7 +2364,6 @@ function ForumsTab({ socket }) {
 
                     {p.kind === "image" && (
                       <div className="cf-post-media">
-                        {/* eslint-disable-next-line */}
                         <img src={p.media?.url} alt={p.media?.name || "image"} />
                       </div>
                     )}

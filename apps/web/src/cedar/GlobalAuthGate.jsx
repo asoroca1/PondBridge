@@ -1,4 +1,3 @@
-import React from "react";
 import { Navigate, Outlet, useLocation, matchPath } from "react-router-dom";
 import { isAuthed } from "./lib/auth";
 

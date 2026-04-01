@@ -1,4 +1,3 @@
-import React from "react";
 import { Link } from "react-router-dom";
 import Navbar1 from "../components/Navbar1";
 import ClerkCreateAccountFlow from "../components/ClerkCreateAccountFlow";

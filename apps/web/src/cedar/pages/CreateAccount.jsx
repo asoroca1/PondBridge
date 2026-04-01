@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import Navbar1 from "../components/Navbar1";

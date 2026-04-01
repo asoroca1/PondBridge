@@ -1,5 +1,5 @@
 // src/components/AutoFitText.jsx
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 /**
  * AutoFitText

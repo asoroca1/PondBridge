@@ -1,5 +1,5 @@
 // src/components/chat/MessageComposer.jsx
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Paperclip, Send, X } from "lucide-react";
 
 export default function MessageComposer({
@@ -92,7 +92,6 @@ export default function MessageComposer({
     const putRes = await fetch(uploadUrl, init);
     if (!putRes.ok) {
       const errText = await putRes.text().catch(() => "");
-      // eslint-disable-next-line no-console
       console.error("S3 PUT failed:", putRes.status, errText);
       throw new Error(`S3 upload failed (${putRes.status})`);
     }
@@ -130,7 +129,6 @@ export default function MessageComposer({
         setText("");
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error(e);
       // Optionally: alert("Upload failed. Please try again.");
     } finally {
@@ -168,7 +166,6 @@ export default function MessageComposer({
         <div className="mc-attach" aria-label="Pending attachment">
           {attach.kind === "image" && attach.previewUrl ? (
             <div className="mc-attach-thumb">
-              {/* eslint-disable-next-line jsx-a11y/img-redundant-alt */}
               <img src={attach.previewUrl} alt="Image preview" />
             </div>
           ) : (

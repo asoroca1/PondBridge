@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -830,7 +830,6 @@ export default function PhotoStream() {
     didInitialForSort.current.add(sort);
 
     fetchPage({ initial: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sort]);
 
   async function fetchPage({ initial = false } = {}) {
@@ -877,7 +876,6 @@ export default function PhotoStream() {
     }, { rootMargin: "600px" });
     if (loaderRef.current) io.observe(loaderRef.current);
     return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, sort, nextCursor, nextPage]);
 
   async function toggleLike(id) {

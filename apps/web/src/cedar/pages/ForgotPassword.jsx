@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Navbar1 from "../components/Navbar1";
 import { requestJson } from "../../lib/http.js";

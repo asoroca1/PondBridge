@@ -1,5 +1,5 @@
 // src/components/chat/PeoplePicker.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
 import { getToken, initialsOf, avatarUrl } from "../../lib/helpers.js";
 import InitialsMark from "../../../components/InitialsMark.jsx";

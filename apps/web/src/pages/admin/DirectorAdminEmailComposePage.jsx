@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
+import { Button, Card, Input, Select } from "@pondbridge/ui";
 import { ModalConfirm, PageHeader } from "../../components/admin/AdminUi.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -19,9 +19,6 @@ function parseIdsParam(value = "") {
   )];
 }
 
-function normalizeMemberRowId(member = null) {
-  return String(member?.id || "").trim();
-}
 
 function useDebouncedValue(value, delayMs = 220) {
   const [debounced, setDebounced] = useState(value);

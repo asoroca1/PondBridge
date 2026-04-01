@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
@@ -283,7 +283,6 @@ export default function FamilyTreeView() {
 
   useEffect(() => {
     loadTree();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => () => window.clearTimeout(debounceRef.current), []);

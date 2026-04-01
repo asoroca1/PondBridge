@@ -1,5 +1,5 @@
 // src/components/AvatarCropper.jsx
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function AvatarCropper({
   imageFile,
