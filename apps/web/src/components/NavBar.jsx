@@ -161,6 +161,7 @@ export default function NavBar() {
   const { token, user, isAuthenticated, logout, getAuthToken } = useAuth();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const [q, setQ] = useState("");
   const [acOpen, setAcOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -176,6 +177,7 @@ export default function NavBar() {
 
   const config = tenant?.config || {};
   const branding = config.branding || tenant?.theme || {};
+  useEffect(() => setLogoError(false), [slug, branding.logoUrl]);
   const modules = config.modules || tenant?.modules || {};
   const roleSet = normalizedRoleSet(user);
 
@@ -187,8 +189,10 @@ export default function NavBar() {
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const content = resolveTenantContent(tenant);
   const merchShopUrl = String(content.merchShopUrl || "").trim() || "https://thecampspot.com/camphome.aspx";
-  const logoUrl = branding.logoUrl || (slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "");
-  const fallbackLogoInitial = initialsFrom(tenant?.name || "Camp");
+  const cedarFallback = slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "";
+  const resolvedLogoUrl = branding.logoUrl || cedarFallback;
+  const logoUrl = logoError ? cedarFallback : resolvedLogoUrl;
+  const fallbackLogoInitial = initialsFrom(title || tenant?.name || "Camp");
   const avatarSrc = getPhotoUrl(user);
   const profileInitials =
     initialsOf(firstNameFrom(user), lastNameFrom(user), user?.nickname || user?.profile?.nickname || "") ||
@@ -541,6 +545,7 @@ export default function NavBar() {
               className="navbar2-logo"
               fetchPriority="high"
               decoding="async"
+              onError={() => setLogoError(true)}
             />
           ) : (
             <div
