@@ -395,7 +395,15 @@ export default function NavBar() {
     setMenuOpen(false);
     setAcOpen(false);
     setActive(-1);
-  }, [currentPath]);
+    setQ("");
+    setItems([]);
+    setLoading(false);
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+      searchAbortRef.current = null;
+    }
+    window.clearTimeout(debounceRef.current);
+  }, [currentPath, location.search]);
 
   async function fetchNames(term) {
     const normalized = String(term || "").trim();
