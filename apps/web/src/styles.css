@@ -2716,6 +2716,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   .navbar2-search{
     flex: 1 1 auto;
     min-width: 0;
+    max-width: calc(100% - 96px);
   }
 
   .navbar2-search-inputWrap{
@@ -2745,14 +2746,14 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .navbar2-profile-btn{
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 11px;
   }
 
   .navbar2-profile{
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
   }
 
   .navbar2-profile-initials{
@@ -2764,14 +2765,14 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .navbar2-burger{
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 11px;
     padding: 0;
   }
 
   .navbar2-burger-line{
-    width: 20px;
+    width: 22px;
   }
 
   .navbar2.is-auth-route .navbar2-right{
@@ -2815,13 +2816,16 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 /* Tight iPhones */
 @media (max-width:430px){
-  :root{ --nav-h: 58px; --s-input-w: clamp(132px, 40vw, 172px); --left-guard: 64px; --s-btn-size: 28px; }
+  :root{ --nav-h: 58px; --s-input-w: clamp(116px, 35vw, 154px); --left-guard: 64px; --s-btn-size: 28px; }
   .navbar2-right{ gap:4px; }
-  .navbar2-logo{ max-height:28px; margin-right:8px; }
-  .navbar2-logo-fallback{ width:28px; height:28px; flex-basis:28px; font-size:0.65rem; }
-  .navbar2-profile-btn{ width:40px; height:40px; border-radius:11px; }
-  .navbar2-profile{ width:30px; height:30px; }
+  .navbar2-logo{ max-height:34px; margin-right:8px; }
+  .navbar2-logo-fallback{ width:34px; height:34px; flex-basis:34px; font-size:0.72rem; }
+  .navbar2-search{ max-width: calc(100% - 104px); }
+  .navbar2-profile-btn{ width:44px; height:44px; border-radius:12px; }
+  .navbar2-profile{ width:32px; height:32px; }
   .navbar2-profile-initials{ font-size: .72rem; }
+  .navbar2-burger{ width:44px; height:44px; border-radius:12px; }
+  .navbar2-burger-line{ width:22px; }
   .navbar2.is-auth-route .navbar2-title{
     font-size: clamp(.88rem, 3.7vw, 1.05rem);
     max-width: min(32vw, 120px);
@@ -2845,23 +2849,24 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 }
 @media (max-width:375px){
-  :root{ --nav-h: 56px; --s-input-w: clamp(118px, 38vw, 152px); --left-guard: 58px; --s-btn-size:26px; }
-  .navbar2-logo{ max-height:26px; margin-right:6px; }
-  .navbar2-logo-fallback{ width:26px; height:26px; flex-basis:26px; font-size:0.6rem; }
+  :root{ --nav-h: 56px; --s-input-w: clamp(108px, 33vw, 136px); --left-guard: 58px; --s-btn-size:26px; }
+  .navbar2-logo{ max-height:32px; margin-right:6px; }
+  .navbar2-logo-fallback{ width:32px; height:32px; flex-basis:32px; font-size:0.68rem; }
+  .navbar2-search{ max-width: calc(100% - 98px); }
   .navbar2-profile-btn{
-    width: 36px;
-    height: 36px;
+    width: 42px;
+    height: 42px;
     border-radius: 10px;
   }
-  .navbar2-profile{ width:28px; height:28px; }
+  .navbar2-profile{ width:31px; height:31px; }
   .navbar2-profile-initials{ font-size: .68rem; }
   .navbar2-burger{
-    width: 36px;
-    height: 36px;
+    width: 42px;
+    height: 42px;
     border-radius: 10px;
     padding: 0;
   }
-  .navbar2-burger-line{ width:18px; }
+  .navbar2-burger-line{ width:21px; }
 
   .navbar2.is-auth-route .navbar2-title{
     max-width: min(30vw, 104px);
