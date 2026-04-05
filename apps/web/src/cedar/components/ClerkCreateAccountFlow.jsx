@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../../lib/http.js";
 import { noteTabLoginIntent } from "../../context/AuthContext.jsx";
@@ -274,6 +274,14 @@ export default function ClerkCreateAccountFlow() {
                 unsafe_disableDevelopmentModeWarnings
               />
             </div>
+            {nativeApp ? (
+              <div className="auth-create-account-row auth-create-account-row-clerk">
+                <span>Already have an account?</span>
+                <Link to={signInUrl} className="auth-create-account-link">
+                  Back to login
+                </Link>
+              </div>
+            ) : null}
           </article>
         </div>
       </section>
