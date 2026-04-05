@@ -34,6 +34,13 @@ import { isNativeApp } from "../lib/nativeApp.js";
 import cedarLogo from "../assets/cedar-logo.png";
 
 const MIN_SEARCH_CHARS = 1;
+const DIRECTOR_ADMIN_DESKTOP_MEDIA = "(max-width: 1020px)";
+
+function shouldHideDirectorAdminToolsOnCurrentDevice() {
+  if (isNativeApp()) return true;
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia(DIRECTOR_ADMIN_DESKTOP_MEDIA).matches;
+}
 
 function getPhotoUrl(user = {}) {
   return avatarUrl(user);
@@ -168,6 +175,7 @@ export default function NavBar() {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [active, setActive] = useState(-1);
+  const [hideDirectorAdminTools, setHideDirectorAdminTools] = useState(() => shouldHideDirectorAdminToolsOnCurrentDevice());
 
   const menuRef = useRef(null);
   const toggleRef = useRef(null);
@@ -224,6 +232,25 @@ export default function NavBar() {
   const showSearch = canSearch && !usePublicNav && !onAdminModeRoute;
   const showAuthActions = !isAuthenticated || usePublicNav;
   const showPrivateTools = isAuthenticated && !usePublicNav;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      setHideDirectorAdminTools(isNativeApp());
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia(DIRECTOR_ADMIN_DESKTOP_MEDIA);
+    const syncHiddenState = () => setHideDirectorAdminTools(shouldHideDirectorAdminToolsOnCurrentDevice());
+
+    syncHiddenState();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncHiddenState);
+      return () => mediaQuery.removeEventListener("change", syncHiddenState);
+    }
+
+    mediaQuery.addListener(syncHiddenState);
+    return () => mediaQuery.removeListener(syncHiddenState);
+  }, []);
 
   const menuSections = useMemo(() => {
     if (!isAuthenticated) return [];
@@ -288,7 +315,7 @@ export default function NavBar() {
     }
 
     const adminItems = [];
-    if (isCampDirector) {
+    if (isCampDirector && !hideDirectorAdminTools) {
       if (needsOnboarding) {
         adminItems.push({
           id: "setup",
@@ -330,7 +357,8 @@ export default function NavBar() {
     newsletterLabel,
     merchShopUrl,
     isCampDirector,
-    needsOnboarding
+    needsOnboarding,
+    hideDirectorAdminTools
   ]);
 
   function closeMenus() {
