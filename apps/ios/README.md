@@ -1,12 +1,13 @@
 # PondBridge iOS Shell
 
-This workspace packages the existing `@pondbridge/web` app as a separate native iOS app.
+This workspace provides a separate native iOS shell for the existing `@pondbridge/web` app.
 
 Architecture rules:
 
 - `apps/web` remains the source of truth for UI, routes, and feature behavior.
 - `apps/ios` is only the native shell and Xcode project.
-- New features should be implemented in shared web code first so they appear in both web and iOS builds.
+- The iPhone app loads the live PondBridge web app from `https://app.pondbridgealumni.com` so auth, branding, and feature changes mirror production immediately.
+- New features should be implemented in shared web code first so they appear in both web and iOS experiences.
 
 Useful commands:
 
@@ -18,5 +19,5 @@ Useful commands:
 Native API notes:
 
 - The iPhone app should not use `localhost` for API traffic on a physical device.
-- Set `VITE_NATIVE_API_BASE` when you need the native shell to talk to a specific API origin.
-- If `VITE_API_BASE` is a local dev URL, the native app falls back to the production API unless `VITE_NATIVE_API_BASE` is set.
+- Because the shell loads the live app domain, Clerk and tenant auth run against the same production origin as the web app.
+- If you ever switch the native shell back to bundled web assets for local testing, keep `VITE_NATIVE_API_BASE` pointed at a reachable API origin.

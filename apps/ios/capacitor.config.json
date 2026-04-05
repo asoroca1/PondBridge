@@ -4,6 +4,7 @@
   "webDir": "../web/dist",
   "bundledWebRuntime": false,
   "server": {
+    "url": "https://app.pondbridgealumni.com",
     "iosScheme": "https"
   }
 }
