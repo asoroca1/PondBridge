@@ -77,22 +77,19 @@ export default function MobileCampCodeEntryPage() {
     <section className="app-status-shell mobile-camp-code-shell">
       <div className="app-status-card mobile-camp-code-card">
         <div className="mobile-camp-code-head">
-          <p className="mobile-camp-code-kicker">PondBridge for iPhone</p>
-          <h1>Enter your camp code</h1>
-          <p>
-            Type the code your camp gave you, and we&apos;ll take you to that camp&apos;s login page.
-            Super admin access is not available in the mobile app.
-          </p>
+          <p className="mobile-camp-code-kicker">PondBridge</p>
+          <h1>Enter camp code</h1>
+          <p>Use the code your camp gave you to continue.</p>
         </div>
 
         <form className="mobile-camp-code-form" onSubmit={handleSubmit}>
           <label className="mobile-camp-code-field">
-            <span>Camp app code</span>
+            <span>Camp code</span>
             <input
               type="text"
               value={code}
               onChange={(event) => setCode(normalizeCode(event.target.value))}
-              placeholder="Enter code"
+              placeholder="Camp code"
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck="false"

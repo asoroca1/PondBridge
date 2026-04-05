@@ -2220,6 +2220,7 @@ router.use(...requireTenantRoleScope("tenant_admin"));
 
 router.get("/dashboard", async (req, res, next) => {
   try {
+    req.tenant = await ensureTenantMobileAppCode(req.tenant);
     const tenantId = req.tenant._id;
     const cacheKey = [
       "admin-dashboard",
@@ -2380,6 +2381,11 @@ router.get("/dashboard", async (req, res, next) => {
         newThisWeek,
         pendingApprovals,
         profileCompletion: completionAverage
+      },
+      mobileApp: {
+        code: settings.mobileAppCodeLookup || "",
+        hint: settings.mobileAppCodeHint || "",
+        hasCode: Boolean(settings.hasMobileAppCode)
       },
       charts: {
         rangeDays: DASHBOARD_CHART_DAYS,

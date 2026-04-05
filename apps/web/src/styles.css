@@ -97,54 +97,145 @@ body{
 
 .mobile-camp-code-shell{
   padding: max(18px, env(safe-area-inset-top, 0px) + 18px) 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(circle at top, rgba(255,255,255,0.95), rgba(255,255,255,0) 34%),
+    linear-gradient(180deg, #eef4fb 0%, #e6eef8 100%);
 }
 
 .mobile-camp-code-card{
-  width: min(560px, 100%);
-  gap: 18px;
+  width: min(440px, 100%);
+  gap: 22px;
+  padding: 28px 22px 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(188, 203, 224, 0.9);
+  box-shadow: 0 22px 44px rgba(18, 44, 86, 0.08);
 }
 
 .mobile-camp-code-head{
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .mobile-camp-code-kicker{
   margin: 0;
-  color: var(--brand-primary);
-  font-size: 0.78rem;
+  color: #4c6484;
+  font-size: 0.76rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+.mobile-camp-code-head h1{
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  line-height: 1.05;
+}
+
+.mobile-camp-code-head p:last-child{
+  max-width: 24rem;
+  color: #5a6f8c;
+  font-size: 1rem;
 }
 
 .mobile-camp-code-form{
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .mobile-camp-code-field{
   display: grid;
   gap: 8px;
-  color: #243a56;
+  color: #314a69;
   font-weight: 700;
 }
 
 .mobile-camp-code-field input{
   width: 100%;
-  min-height: 50px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
+  min-height: 58px;
+  padding: 0 18px;
+  border-radius: 16px;
+  border: 1px solid #c8d5e6;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   color: var(--text, #0f172a);
   font: inherit;
-  letter-spacing: 0.08em;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
   text-transform: uppercase;
 }
 
 .mobile-camp-code-submit{
   width: 100%;
+  min-height: 54px;
+  border-radius: 16px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.director-admin-mobile-app-card{
+  display: grid;
+  gap: 18px;
+}
+
+.director-admin-mobile-app-card-head{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.director-admin-mobile-app-eyebrow{
+  margin: 0 0 6px;
+  color: #5c7392;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.director-admin-mobile-app-card h3{
+  margin: 0 0 6px;
+  color: #17365d;
+  font-size: 1.35rem;
+}
+
+.director-admin-mobile-app-actions{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.director-admin-mobile-app-code-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8fbff 0%, #edf3fb 100%);
+  border: 1px solid #d7e2f0;
+}
+
+.director-admin-mobile-app-code{
+  color: #12355e;
+  font-size: clamp(1.45rem, 4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.director-admin-mobile-app-hint{
+  color: #5f7594;
+  font-size: 0.92rem;
+}
+
+@media (max-width: 640px){
+  .director-admin-mobile-app-code{
+    letter-spacing: 0.16em;
+  }
 }
 
 .app-status-shell.is-error .app-status-card{
