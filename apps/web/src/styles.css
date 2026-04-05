@@ -2281,9 +2281,11 @@ img[draggable="false"] { -webkit-user-drag: none; }
 :root{
   --cedar-navy: var(--brand-primary);
   --nav-h: 64px;
+  --nav-safe-top: env(safe-area-inset-top, 0px);
+  --nav-total-h: calc(var(--nav-h) + var(--nav-safe-top));
   --nav-pad-x: 24px;
   --page-shell-gap: clamp(8px, 1.8vw, 14px);
-  --page-shell-top: calc(var(--nav-h) + var(--page-shell-gap) + env(safe-area-inset-top, 0px));
+  --page-shell-top: calc(var(--nav-total-h) + var(--page-shell-gap));
 
   /* keep search compact enough to preserve room for logo + actions */
   --s-input-w: clamp(300px, 20vw, 420px);
@@ -2305,6 +2307,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
   display:flex; align-items:center; gap:12px;
   flex-wrap: nowrap !important;     /* never wrap */
   overflow: visible !important;     /* allow dropdowns to overflow the bar */
+}
+
+.navbar2.is-native-app{
+  height: var(--nav-total-h);
+  padding-top: var(--nav-safe-top);
+  padding-left: calc(var(--nav-pad-x) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--nav-pad-x) + env(safe-area-inset-right, 0px));
 }
 
 /* Clusters */
@@ -2668,6 +2677,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 /* Small phones: enforce hard-fit layout so nav never overflows viewport */
 @media (max-width:576px){
   :root{
+    --nav-h: 60px;
     --nav-pad-x: 8px;
     --left-guard: 72px;
     --s-btn-size: 30px;
@@ -2805,7 +2815,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 /* Tight iPhones */
 @media (max-width:430px){
-  :root{ --s-input-w: clamp(132px, 40vw, 172px); --left-guard: 64px; --s-btn-size: 28px; }
+  :root{ --nav-h: 58px; --s-input-w: clamp(132px, 40vw, 172px); --left-guard: 64px; --s-btn-size: 28px; }
   .navbar2-right{ gap:4px; }
   .navbar2-logo{ max-height:28px; margin-right:8px; }
   .navbar2-logo-fallback{ width:28px; height:28px; flex-basis:28px; font-size:0.65rem; }
@@ -2835,7 +2845,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 }
 @media (max-width:375px){
-  :root{ --s-input-w: clamp(118px, 38vw, 152px); --left-guard: 58px; --s-btn-size:26px; }
+  :root{ --nav-h: 56px; --s-input-w: clamp(118px, 38vw, 152px); --left-guard: 58px; --s-btn-size:26px; }
   .navbar2-logo{ max-height:26px; margin-right:6px; }
   .navbar2-logo-fallback{ width:26px; height:26px; flex-basis:26px; font-size:0.6rem; }
   .navbar2-profile-btn{

@@ -533,7 +533,7 @@ export default function NavBar() {
   }
 
   return (
-    <nav className={`navbar2 ${onAuthRoute ? "is-auth-route" : ""}`.trim()}>
+    <nav className={`navbar2 ${nativeApp ? "is-native-app" : ""} ${onAuthRoute ? "is-auth-route" : ""}`.trim()}>
       <div className="navbar2-left">
         <Link
           to={pathWithCamp(slug, isAuthenticated ? "/home" : "/")}
