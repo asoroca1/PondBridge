@@ -14,3 +14,9 @@ Useful commands:
 - `npm run ios:sync`
 - `npm run ios:open`
 - `npm run ios:doctor`
+
+Native API notes:
+
+- The iPhone app should not use `localhost` for API traffic on a physical device.
+- Set `VITE_NATIVE_API_BASE` when you need the native shell to talk to a specific API origin.
+- If `VITE_API_BASE` is a local dev URL, the native app falls back to the production API unless `VITE_NATIVE_API_BASE` is set.

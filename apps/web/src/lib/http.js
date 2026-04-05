@@ -4,6 +4,7 @@ const LOCAL_API_FALLBACK = "http://localhost:4000";
 const APP_BASE_DOMAIN = String(import.meta.env.VITE_APP_BASE_DOMAIN || "pondbridgealumni.com")
   .trim()
   .toLowerCase();
+const NATIVE_API_BASE = normalizeBase(import.meta.env.VITE_NATIVE_API_BASE || "");
 
 function normalizeBase(value = "") {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -32,6 +33,21 @@ function fallbackProductionApiBase() {
   return `https://api.${safeDomain}`;
 }
 
+function isNativeAppRuntime() {
+  if (typeof window === "undefined") return false;
+  const capacitor = window.Capacitor || null;
+  if (!capacitor) return false;
+  try {
+    if (typeof capacitor.isNativePlatform === "function") {
+      return Boolean(capacitor.isNativePlatform());
+    }
+  } catch {
+    // Ignore bridge issues and fall through.
+  }
+  const platform = String(capacitor.getPlatform?.() || "").trim().toLowerCase();
+  return platform === "ios" || platform === "android";
+}
+
 function resolveApiBase() {
   const configuredBase = normalizeBase(import.meta.env.VITE_API_BASE || "");
   if (typeof window === "undefined") {
@@ -42,6 +58,16 @@ function resolveApiBase() {
   const onLocalHost = isLocalHost(browserHost);
   const configuredHost = hostFromBaseUrl(configuredBase);
   const configuredIsLocal = isLocalHost(configuredHost);
+
+  if (isNativeAppRuntime()) {
+    if (NATIVE_API_BASE) {
+      return NATIVE_API_BASE;
+    }
+    if (configuredBase && !configuredIsLocal) {
+      return configuredBase;
+    }
+    return fallbackProductionApiBase();
+  }
 
   if (configuredBase && (!configuredIsLocal || onLocalHost)) {
     return configuredBase;
@@ -119,7 +145,9 @@ function normalizeTransportError(error, path) {
     return error instanceof Error ? error : new Error("Request failed");
   }
 
-  const message = `Could not reach API server at ${API_BASE} while requesting ${path}. Start the API server and refresh.`;
+  const message = isNativeAppRuntime()
+    ? `Could not reach API server at ${API_BASE} while requesting ${path}. Check the native API base and try again.`
+    : `Could not reach API server at ${API_BASE} while requesting ${path}. Start the API server and refresh.`;
   const wrapped = new Error(message);
   wrapped.code = "API_UNREACHABLE";
   wrapped.cause = error;
