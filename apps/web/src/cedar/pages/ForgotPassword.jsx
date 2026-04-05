@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import Navbar1 from "../components/Navbar1";
 import { requestJson } from "../../lib/http.js";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { isNativeApp } from "../../lib/nativeApp.js";
 
 export default function ForgotPassword() {
   const { slug: paramSlug = "" } = useParams();
@@ -13,6 +14,7 @@ export default function ForgotPassword() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const nativeApp = isNativeApp();
 
   const loginPath = slug ? `/t/${slug}/login` : "/login";
 
@@ -46,7 +48,7 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="login1">
+    <div className={`login1 ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
       <Navbar1 />
       <section className="login1-main">
         <div className="login1-card">

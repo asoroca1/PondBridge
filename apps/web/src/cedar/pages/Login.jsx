@@ -35,6 +35,17 @@ function resolveAuthIssueMessage(searchParams) {
   return "";
 }
 
+function authPageClassName({ nativeApp = false, clerk = false } = {}) {
+  return [
+    "login1",
+    "login1-modern",
+    nativeApp ? "login1-native-auth" : "",
+    clerk ? "login1-clerk-page" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function LoginScaffold({
   email,
   setEmail,
@@ -46,8 +57,9 @@ function LoginScaffold({
   onSubmit,
   showLegacyActions
 }) {
+  const nativeApp = isNativeApp();
   return (
-    <div className="login1 login1-modern">
+    <div className={authPageClassName({ nativeApp })}>
       <Navbar1 />
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
@@ -207,7 +219,7 @@ function ClerkLogin() {
   // the camp login flow. This prevents creating unwanted user/profile records.
   if (isSuperAdmin) {
     return (
-      <div className="login1 login1-modern login1-clerk-page">
+      <div className={authPageClassName({ nativeApp, clerk: true })}>
         <Navbar1 />
         <section className="login1-main login1-main-modern login1-main-create-bg">
           <div className="login1-wrap">
@@ -247,7 +259,7 @@ function ClerkLogin() {
   }
 
   return (
-    <div className="login1 login1-modern login1-clerk-page">
+    <div className={authPageClassName({ nativeApp, clerk: true })}>
       <Navbar1 />
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
@@ -255,6 +267,9 @@ function ClerkLogin() {
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title auth-entry-title">Login</h1>
+              <p className="login1-clerk-panel-subtitle">
+                Welcome back. Sign in to continue to {networkName}.
+              </p>
             </div>
             {notice ? <p className="login1-error">{notice}</p> : null}
             <div className="login1-clerk-host">
@@ -411,8 +426,9 @@ function ClerkLogin() {
 }
 
 function ClerkConfigErrorLogin() {
+  const nativeApp = isNativeApp();
   return (
-    <div className="login1 login1-modern">
+    <div className={authPageClassName({ nativeApp })}>
       <Navbar1 />
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
@@ -436,13 +452,15 @@ function DemoCodeLogin() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { slug: paramSlug = "" } = useParams();
-  const { slug: contextSlug = "" } = useTenant();
+  const { slug: contextSlug = "", tenant } = useTenant();
   const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
+  const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const notice = resolveAuthIssueMessage(searchParams);
+  const nativeApp = isNativeApp();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -485,7 +503,7 @@ function DemoCodeLogin() {
   };
 
   return (
-    <div className="login1 login1-modern">
+    <div className={authPageClassName({ nativeApp })}>
       <Navbar1 />
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
@@ -494,7 +512,7 @@ function DemoCodeLogin() {
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title auth-entry-title">Login</h1>
               <p className="login1-clerk-panel-subtitle">
-                Enter your demo code to sign in to the director account.
+                Enter your demo code to continue to {networkName}.
               </p>
             </div>
 

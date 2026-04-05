@@ -5,6 +5,7 @@ import ProductHeader from "./ProductHeader.jsx";
 import SessionWarningBanner from "./SessionWarningBanner.jsx";
 import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { isNativeApp } from "../lib/nativeApp.js";
 
 const STANDARD_OFFSET_MATCHERS = ["/admin", "/onboarding", "/settings", "/super"];
 const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account", "/director-legal"];
@@ -20,14 +21,23 @@ function ensureProductOnboardingStyles() {
 export default function AppShell({ children }) {
   const location = useLocation();
   const { tenant } = useTenant();
+  const nativeApp = isNativeApp();
 
   const onboardingIncomplete = tenant?.onboardingStatus !== "live";
   const currentPath = location.pathname || "/";
   const isTenantRoot = currentPath === "/" || /^\/t\/[^/]+\/?$/.test(currentPath);
+  const useNativeAuthLayout = useMemo(
+    () =>
+      nativeApp &&
+      (/\/login\/?$/.test(currentPath) ||
+        /\/create-account\/?$/.test(currentPath) ||
+        /\/forgot-password\/?$/.test(currentPath)),
+    [currentPath, nativeApp]
+  );
 
   const needsOffset = useMemo(
-    () => STANDARD_OFFSET_MATCHERS.some((part) => location.pathname.includes(part)),
-    [location.pathname]
+    () => !useNativeAuthLayout && STANDARD_OFFSET_MATCHERS.some((part) => location.pathname.includes(part)),
+    [location.pathname, useNativeAuthLayout]
   );
   const useProductLayout = useMemo(
     () => {
@@ -59,12 +69,16 @@ export default function AppShell({ children }) {
   }
 
   return (
-    <div className="app-shell alumni-app-shell">
+    <div className={`app-shell alumni-app-shell ${useNativeAuthLayout ? "app-shell-native-auth" : ""}`.trim()}>
       <SessionWarningBanner />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
-      <div className="app-shell-content">
-        <NavBar />
-        <main className={`app-shell-main ${needsOffset ? "page-container" : ""}`.trim()}>{children}</main>
+      <div className={`app-shell-content ${useNativeAuthLayout ? "app-shell-content-native-auth" : ""}`.trim()}>
+        {useNativeAuthLayout ? null : <NavBar />}
+        <main
+          className={`app-shell-main ${needsOffset ? "page-container" : ""} ${useNativeAuthLayout ? "app-shell-main-native-auth" : ""}`.trim()}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

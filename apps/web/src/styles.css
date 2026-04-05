@@ -61,6 +61,10 @@ body{
   min-height: 0;
 }
 
+.app-shell-native-auth .app-shell-main{
+  min-height: 100dvh;
+}
+
 .app-status-shell{
   width: 100%;
   flex: 1 1 auto;
@@ -837,6 +841,11 @@ body{
   padding-top: var(--auth-shell-top);
 }
 
+.login1-native-auth {
+  --auth-shell-top: env(safe-area-inset-top, 0px);
+  padding-top: 0;
+}
+
 .login1-main {
   min-height: calc(100vh - var(--auth-shell-top));
   min-height: calc(100svh - var(--auth-shell-top));
@@ -858,6 +867,19 @@ body{
     );
 }
 
+.login1-native-auth .login1-main {
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  padding:
+    max(18px, env(safe-area-inset-top, 0px) + 18px)
+    18px
+    calc(18px + env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(circle at top, rgba(255,255,255,0.96), rgba(255,255,255,0) 34%),
+    linear-gradient(180deg, #eef4fb 0%, #e6eef8 100%);
+}
+
 .login1-main::before {
   content: "";
   position: absolute;
@@ -870,6 +892,12 @@ body{
   filter: grayscale(100%) contrast(1.04) brightness(0.95);
   z-index: -2;
   pointer-events: none;
+}
+
+.login1-native-auth .login1-main::before {
+  opacity: 0.12;
+  filter: grayscale(100%) contrast(1.03) brightness(0.98);
+  background-position: center top;
 }
 
 .login1-main::after {
@@ -915,6 +943,10 @@ body{
   margin: 0 auto;
 }
 
+.login1-native-auth .login1-wrap {
+  width: min(440px, 100%);
+}
+
 .login1-card {
   width: min(760px, 100%);
   margin: 0 auto;
@@ -926,12 +958,27 @@ body{
   padding: clamp(24px, 3.6vw, 36px);
 }
 
+.login1-native-auth .login1-card {
+  width: 100%;
+  border-radius: 24px;
+  padding: 28px 22px 22px;
+  border: 1px solid rgba(188, 203, 224, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(251, 253, 255, 0.95));
+  box-shadow: 0 22px 44px rgba(18, 44, 86, 0.08);
+  backdrop-filter: blur(4px);
+}
+
 .login1-intro {
   display: grid;
   gap: 7px;
   justify-items: center;
   text-align: center;
   margin-bottom: 14px;
+}
+
+.login1-native-auth .login1-intro {
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
 .login1-kicker {
@@ -941,6 +988,12 @@ body{
   font-weight: 800;
   letter-spacing: 0.13em;
   text-transform: uppercase;
+}
+
+.login1-native-auth .login1-kicker {
+  color: #4c6484;
+  font-size: 0.76rem;
+  letter-spacing: 0.16em;
 }
 
 .login1-title {
@@ -981,11 +1034,31 @@ body{
   max-width: 54ch;
 }
 
+.login1-native-auth .login1-title,
+.login1-native-auth .auth-entry-title {
+  font-size: clamp(1.7rem, 5vw, 2.1rem);
+  line-height: 1.08;
+}
+
+.login1-native-auth .login1-clerk-panel-subtitle {
+  max-width: 25ch;
+  color: #5a6f8c;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
 .login1-form {
   width: min(620px, 100%);
   margin: 0 auto;
   display: grid;
   gap: 11px;
+}
+
+.login1-native-auth .login1-form,
+.login1-native-auth .login1-clerk-host,
+.login1-native-auth .alumni-create-clerk-host,
+.login1-native-auth .alumni-create-legal-block {
+  width: 100%;
 }
 
 .login1-input {
@@ -997,6 +1070,13 @@ body{
   font-size: 0.96rem;
   outline: none;
   background: #fff;
+}
+
+.login1-native-auth .login1-input {
+  min-height: 56px;
+  padding: 0 16px;
+  border-radius: 16px;
+  font-size: 1rem;
 }
 .login1-input::placeholder { color: #9aa3ad; }
 .login1-input:focus {
@@ -1016,6 +1096,12 @@ body{
   cursor: pointer;
   transition: all .18s ease-in-out;
 }
+
+.login1-native-auth .login1-btn {
+  min-height: 54px;
+  border-radius: 16px;
+  font-size: 1rem;
+}
 .login1-btn:hover {
   background: var(--brand-primary-hover);
   border-color: var(--brand-primary-hover);
@@ -1031,6 +1117,11 @@ body{
   cursor: pointer;
   padding: 6px 8px;
   border-radius: 6px;
+}
+
+.login1-native-auth .login1-forgot {
+  padding-left: 0;
+  padding-right: 0;
 }
 .login1-forgot:hover { text-decoration: underline; }
 
@@ -1113,6 +1204,13 @@ body{
   background: #fff;
 }
 
+.login1-native-auth.login1-clerk-page .cl-formFieldInput {
+  min-height: 56px;
+  border-radius: 16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
 .login1-clerk-page .cl-formFieldInput:focus {
   border-color: var(--brand-primary-hover);
   box-shadow: 0 0 0 3px var(--brand-primary-focus);
@@ -1128,6 +1226,11 @@ body{
   background: var(--brand-primary);
   color: var(--brand-on-primary);
   box-shadow: none;
+}
+
+.login1-native-auth.login1-clerk-page .cl-formButtonPrimary {
+  min-height: 54px;
+  border-radius: 16px;
 }
 
 .login1-clerk-page .cl-formButtonPrimary:hover {

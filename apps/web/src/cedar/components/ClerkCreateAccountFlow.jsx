@@ -6,6 +6,7 @@ import { noteTabLoginIntent } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
+import { isNativeApp } from "../../lib/nativeApp.js";
 import {
   clearPendingLegalAgreement,
   readPendingLegalAgreement,
@@ -29,6 +30,7 @@ export default function ClerkCreateAccountFlow() {
   const [inviteMeta, setInviteMeta] = useState(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [legalError, setLegalError] = useState("");
+  const nativeApp = isNativeApp();
 
   useEffect(() => {
     noteTabLoginIntent();
@@ -94,7 +96,7 @@ export default function ClerkCreateAccountFlow() {
   };
 
   return (
-    <div className="login1 login1-modern login1-clerk-page">
+    <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
