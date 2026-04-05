@@ -3,10 +3,11 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { SignIn } from "@clerk/clerk-react";
 import Navbar1 from "../components/Navbar1";
 import { API_BASE } from "../lib/api";
+import { requestJson } from "../../lib/http.js";
 import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/authMode.js";
-import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
+import { resolveCampName, resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 
@@ -46,7 +47,33 @@ function authPageClassName({ nativeApp = false, clerk = false } = {}) {
     .join(" ");
 }
 
+function AuthBrandHeader({ tenant = null }) {
+  const campName = resolveCampName(tenant);
+  const networkName = resolveNetworkDisplayName(tenant);
+  const branding = tenant?.config?.branding || tenant?.theme || {};
+  const logoUrl = String(branding.logoUrl || "").trim();
+  const fallbackInitials = campName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => (part[0] || "").toUpperCase())
+    .join("") || "PB";
+
+  return (
+    <div className="auth-brand-header">
+      <div className="auth-brand-mark" aria-hidden="true">
+        {logoUrl ? <img src={logoUrl} alt="" /> : <span>{fallbackInitials}</span>}
+      </div>
+      <div className="auth-brand-copy">
+        <p className="auth-brand-camp">{campName}</p>
+        <p className="auth-brand-network">{networkName}</p>
+      </div>
+    </div>
+  );
+}
+
 function LoginScaffold({
+  tenant,
+  signUpPath,
   email,
   setEmail,
   password,
@@ -55,7 +82,10 @@ function LoginScaffold({
   error,
   notice,
   onSubmit,
-  showLegacyActions
+  showLegacyActions,
+  onRequestMagicLink = null,
+  requestingMagicLink = false,
+  magicLinkStatus = ""
 }) {
   const nativeApp = isNativeApp();
   return (
@@ -64,6 +94,7 @@ function LoginScaffold({
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
+            <AuthBrandHeader tenant={tenant} />
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title auth-entry-title">Login</h1>
@@ -92,19 +123,42 @@ function LoginScaffold({
 
               {notice ? <p className="login1-error">{notice}</p> : null}
               {error ? <p className="login1-error">{error}</p> : null}
+              {magicLinkStatus ? <p className="success-text auth-inline-status">{magicLinkStatus}</p> : null}
 
               <button className="login1-btn" type="submit" disabled={submitting}>
                 {submitting ? "Logging in..." : "Login"}
               </button>
+
+              {showLegacyActions && typeof onRequestMagicLink === "function" ? (
+                <button
+                  className="login1-btn login1-btn-secondary"
+                  type="button"
+                  onClick={onRequestMagicLink}
+                  disabled={submitting || requestingMagicLink}
+                >
+                  {requestingMagicLink ? "Sending link..." : "Email Me a Sign-In Link"}
+                </button>
+              ) : null}
 
               {showLegacyActions ? (
                 <>
                   <Link to="../forgot-password" className="login1-forgot" style={{ fontSize: "0.88rem" }}>
                     Forgot password?
                   </Link>
+                  <div className="auth-create-account-row">
+                    <span>Need an account?</span>
+                    <Link to={signUpPath} className="auth-create-account-link">
+                      Create account
+                    </Link>
+                  </div>
                 </>
               ) : (
-                <p className="login1-forgot">Password reset and verification are managed by Clerk.</p>
+                <div className="auth-create-account-row">
+                  <span>Password reset and verification are managed by Clerk.</span>
+                  <Link to={signUpPath} className="auth-create-account-link">
+                    Create account
+                  </Link>
+                </div>
               )}
             </form>
           </article>
@@ -118,14 +172,20 @@ function LegacyLogin() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { slug: paramSlug = "" } = useParams();
-  const { slug: contextSlug = "" } = useTenant();
+  const { slug: contextSlug = "", tenant } = useTenant();
   const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [requestingMagicLink, setRequestingMagicLink] = useState(false);
+  const [magicLinkStatus, setMagicLinkStatus] = useState("");
   const [error, setError] = useState("");
   const notice = resolveAuthIssueMessage(searchParams);
+  const signUpPath = tenantRoute(
+    slug,
+    `/create-account${searchParams.toString() ? `?${searchParams.toString()}` : ""}`
+  );
 
   const validate = () => {
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -138,6 +198,7 @@ function LegacyLogin() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
+    setMagicLinkStatus("");
 
     const v = validate();
     if (v) return setError(v);
@@ -175,8 +236,33 @@ function LegacyLogin() {
     }
   };
 
+  const handleRequestMagicLink = async () => {
+    setError("");
+    setMagicLinkStatus("");
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError("Enter your email address first so we can send a sign-in link.");
+      return;
+    }
+
+    setRequestingMagicLink(true);
+    try {
+      await requestJson(`/api/t/${slug}/auth/magic-link/request`, {
+        method: "POST",
+        body: { email: normalizedEmail }
+      });
+      setMagicLinkStatus(`If an account exists for ${normalizedEmail}, we sent a sign-in link.`);
+    } catch (requestError) {
+      setError(String(requestError?.message || "Unable to send a sign-in link right now."));
+    } finally {
+      setRequestingMagicLink(false);
+    }
+  };
+
   return (
     <LoginScaffold
+      tenant={tenant}
+      signUpPath={signUpPath}
       email={email}
       setEmail={setEmail}
       password={password}
@@ -186,6 +272,9 @@ function LegacyLogin() {
       notice={notice}
       onSubmit={handleSubmit}
       showLegacyActions
+      onRequestMagicLink={handleRequestMagicLink}
+      requestingMagicLink={requestingMagicLink}
+      magicLinkStatus={magicLinkStatus}
     />
   );
 }
@@ -264,6 +353,7 @@ function ClerkLogin() {
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
+            <AuthBrandHeader tenant={tenant} />
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title auth-entry-title">Login</h1>
@@ -418,6 +508,12 @@ function ClerkLogin() {
                 }}
               />
             </div>
+            <div className="auth-create-account-row auth-create-account-row-clerk">
+              <span>Need an account?</span>
+              <Link to={signUpUrl} className="auth-create-account-link">
+                Create account
+              </Link>
+            </div>
           </article>
         </div>
       </section>
@@ -427,12 +523,16 @@ function ClerkLogin() {
 
 function ClerkConfigErrorLogin() {
   const nativeApp = isNativeApp();
+  const { tenant, slug: contextSlug = "" } = useTenant();
+  const { slug: paramSlug = "" } = useParams();
+  const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
   return (
     <div className={authPageClassName({ nativeApp })}>
       <Navbar1 />
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
+            <AuthBrandHeader tenant={tenant} />
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title auth-entry-title">Login</h1>
@@ -441,6 +541,12 @@ function ClerkConfigErrorLogin() {
             <p className="login1-forgot">
               Set <code>VITE_CLERK_PUBLISHABLE_KEY</code> and restart the web app.
             </p>
+            <div className="auth-create-account-row auth-create-account-row-clerk">
+              <span>Need an account?</span>
+              <Link to={tenantRoute(slug, "/create-account")} className="auth-create-account-link">
+                Create account
+              </Link>
+            </div>
           </article>
         </div>
       </section>
@@ -508,6 +614,7 @@ function DemoCodeLogin() {
       <section className="login1-main login1-main-modern login1-main-create-bg">
         <div className="login1-wrap">
           <article className="login1-card login1-card-modern">
+            <AuthBrandHeader tenant={tenant} />
             <div className="login1-intro">
               <p className="login1-kicker">Camp Access</p>
               <h1 className="login1-title auth-entry-title">Login</h1>
@@ -531,6 +638,12 @@ function DemoCodeLogin() {
               <button className="login1-btn" type="submit" disabled={submitting}>
                 {submitting ? "Logging in..." : "Login"}
               </button>
+              <div className="auth-create-account-row">
+                <span>Need an account?</span>
+                <Link to={tenantRoute(slug, "/create-account")} className="auth-create-account-link">
+                  Create account
+                </Link>
+              </div>
             </form>
           </article>
         </div>
