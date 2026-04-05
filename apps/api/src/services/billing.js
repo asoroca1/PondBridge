@@ -1623,6 +1623,191 @@ export async function createBillingPortalUrl({ tenant, returnUrl, returnPath }) 
   };
 }
 
+export async function getTenantSubscriptionStatus(tenant) {
+  if (!stripe) return { cancelAtPeriodEnd: false, currentPeriodEnd: null };
+  const subscription = await getStripeSubscriptionForTenant(tenant);
+  if (!subscription) return { cancelAtPeriodEnd: false, currentPeriodEnd: null };
+  return {
+    cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+    currentPeriodEnd: subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null,
+    stripeStatus: subscription.status
+  };
+}
+
+export async function cancelTenantSubscription({ tenant, billingOperator = null, cancelAtPeriodEnd = true } = {}) {
+  const mode = getBillingMode();
+
+  if (mode === "mock") {
+    if (!allowMockBilling()) {
+      throw Object.assign(new Error("Billing is not configured for this environment."), { status: 400 });
+    }
+    const billing = resolveTenantBilling(tenant);
+    const patch = {
+      lifecycleStatus: cancelAtPeriodEnd ? billing.lifecycleStatus : "canceled",
+      canceledAt: nowIso()
+    };
+    const updatedSettings = buildTenantSettingsWithBillingPatch(tenant, patch);
+    const updatedTenant = await TenantModel.update(tenant._id, {
+      billingStatus: cancelAtPeriodEnd ? billing.legacyStatus : "canceled",
+      settings: updatedSettings,
+      updatedAt: new Date()
+    });
+    await TenantAdminAuditLogModel.create({
+      tenantId: tenant._id,
+      action: "billing_subscription_canceled",
+      actorId: billingOperator?._id || billingOperator?.id || null,
+      detail: { mode: "mock", cancelAtPeriodEnd }
+    });
+    return {
+      mode: "mock",
+      action: "subscription_canceled",
+      cancelAtPeriodEnd,
+      message: "Mock cancellation processed.",
+      billing: buildBillingPublicSnapshot(updatedTenant || tenant)
+    };
+  }
+
+  if (!stripe) {
+    throw Object.assign(new Error("Stripe is not configured."), { status: 500 });
+  }
+
+  const subscription = await getStripeSubscriptionForTenant(tenant);
+  if (!subscription || subscription.status === "canceled") {
+    throw Object.assign(new Error("No active subscription found to cancel."), { status: 400 });
+  }
+
+  let updatedSubscription;
+  if (cancelAtPeriodEnd) {
+    updatedSubscription = await stripe.subscriptions.update(subscription.id, {
+      cancel_at_period_end: true
+    });
+  } else {
+    updatedSubscription = await stripe.subscriptions.cancel(subscription.id);
+  }
+
+  const nextLifecycle = cancelAtPeriodEnd ? mapStripeLifecycleStatus(updatedSubscription.status) : "canceled";
+  const nextLegacyStatus = cancelAtPeriodEnd
+    ? toLegacyBillingStatusFromLifecycle(nextLifecycle)
+    : "canceled";
+  const patch = {
+    lifecycleStatus: nextLifecycle,
+    canceledAt: cancelAtPeriodEnd ? null : nowIso()
+  };
+  const updatedSettings = buildTenantSettingsWithBillingPatch(tenant, patch);
+  const updatedTenant = await TenantModel.update(tenant._id, {
+    billingStatus: nextLegacyStatus,
+    settings: updatedSettings,
+    updatedAt: new Date()
+  });
+
+  logLine("info", "billing.subscription.canceled", {
+    tenantId: String(tenant?._id || ""),
+    tenantSlug: String(tenant?.slug || ""),
+    subscriptionId: subscription.id,
+    cancelAtPeriodEnd,
+    stripeStatus: updatedSubscription.status
+  });
+
+  await TenantAdminAuditLogModel.create({
+    tenantId: tenant._id,
+    action: "billing_subscription_canceled",
+    actorId: billingOperator?._id || billingOperator?.id || null,
+    detail: {
+      mode: "stripe",
+      subscriptionId: subscription.id,
+      cancelAtPeriodEnd,
+      stripeStatus: updatedSubscription.status
+    }
+  });
+
+  return {
+    mode: "stripe",
+    action: "subscription_canceled",
+    cancelAtPeriodEnd,
+    cancelAt: cancelAtPeriodEnd ? updatedSubscription.current_period_end : null,
+    message: cancelAtPeriodEnd
+      ? "Your subscription will cancel at the end of the current billing period."
+      : "Your subscription has been canceled immediately.",
+    billing: buildBillingPublicSnapshot(updatedTenant || tenant)
+  };
+}
+
+export async function resumeTenantSubscription({ tenant, billingOperator = null } = {}) {
+  const mode = getBillingMode();
+
+  if (mode === "mock") {
+    if (!allowMockBilling()) {
+      throw Object.assign(new Error("Billing is not configured for this environment."), { status: 400 });
+    }
+    const patch = { canceledAt: null };
+    const updatedSettings = buildTenantSettingsWithBillingPatch(tenant, patch);
+    const updatedTenant = await TenantModel.update(tenant._id, {
+      settings: updatedSettings,
+      updatedAt: new Date()
+    });
+    await TenantAdminAuditLogModel.create({
+      tenantId: tenant._id,
+      action: "billing_subscription_resumed",
+      actorId: billingOperator?._id || billingOperator?.id || null,
+      detail: { mode: "mock" }
+    });
+    return {
+      mode: "mock",
+      action: "subscription_resumed",
+      message: "Mock subscription resumed.",
+      billing: buildBillingPublicSnapshot(updatedTenant || tenant)
+    };
+  }
+
+  if (!stripe) {
+    throw Object.assign(new Error("Stripe is not configured."), { status: 500 });
+  }
+
+  const subscription = await getStripeSubscriptionForTenant(tenant);
+  if (!subscription) {
+    throw Object.assign(new Error("No subscription found."), { status: 400 });
+  }
+  if (!subscription.cancel_at_period_end) {
+    throw Object.assign(new Error("Subscription is not scheduled for cancellation."), { status: 400 });
+  }
+
+  await stripe.subscriptions.update(subscription.id, {
+    cancel_at_period_end: false
+  });
+
+  const patch = { canceledAt: null };
+  const updatedSettings = buildTenantSettingsWithBillingPatch(tenant, patch);
+  const updatedTenant = await TenantModel.update(tenant._id, {
+    settings: updatedSettings,
+    updatedAt: new Date()
+  });
+
+  logLine("info", "billing.subscription.resumed", {
+    tenantId: String(tenant?._id || ""),
+    tenantSlug: String(tenant?.slug || ""),
+    subscriptionId: subscription.id
+  });
+
+  await TenantAdminAuditLogModel.create({
+    tenantId: tenant._id,
+    action: "billing_subscription_resumed",
+    actorId: billingOperator?._id || billingOperator?.id || null,
+    detail: {
+      mode: "stripe",
+      subscriptionId: subscription.id
+    }
+  });
+
+  return {
+    mode: "stripe",
+    action: "subscription_resumed",
+    message: "Your subscription has been resumed and will continue as normal.",
+    billing: buildBillingPublicSnapshot(updatedTenant || tenant)
+  };
+}
+
 export function buildBillingPublicSnapshot(tenant = {}) {
   const readiness = isBillingReadyForLaunch(tenant);
   const catalogEntry = getCatalogEntry(readiness.billingPlan);

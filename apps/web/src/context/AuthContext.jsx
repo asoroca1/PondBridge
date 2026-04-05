@@ -536,6 +536,11 @@ function ClerkBackedAuthProvider({ children }) {
   // Ref to hold the latest refreshSession so the bootstrap effect doesn't
   // need it in its dependency array (it's an output, not an input).
   const refreshSessionRef = useRef(null);
+  // Ref to hold the latest getAuthToken so the token sync effect doesn't
+  // need it in its dependency array — prevents cascading re-registrations
+  // when Clerk's getToken ref changes, which was triggering unnecessary
+  // syncToken() calls and visual glitching.
+  const getAuthTokenRef = useRef(null);
 
   useEffect(() => {
     userRef.current = user;
@@ -806,6 +811,11 @@ function ClerkBackedAuthProvider({ children }) {
   // direct fetch() calls with getToken() helpers.  Also pre-emptively
   // refresh the token 30 seconds before it expires so API calls never
   // hit a stale JWT.
+  //
+  // Uses getAuthTokenRef instead of getAuthToken directly so that Clerk
+  // getToken ref changes don't re-register listeners and fire syncToken()
+  // on every re-registration — that was a major source of cascading
+  // re-renders and visual glitching.
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return undefined;
     let active = true;
@@ -828,7 +838,8 @@ function ClerkBackedAuthProvider({ children }) {
             }
           }
         }
-        await getAuthToken({ forceRefresh });
+        const doGetAuthToken = getAuthTokenRef.current;
+        if (doGetAuthToken) await doGetAuthToken({ forceRefresh });
       } catch {
         // Ignore token refresh failures; request-level code handles auth errors.
       }
@@ -859,12 +870,16 @@ function ClerkBackedAuthProvider({ children }) {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [getAuthToken, isLoaded, isSignedIn, shouldPreferStoredLegacySession]);
+  }, [isLoaded, isSignedIn, shouldPreferStoredLegacySession]);
 
   // Keep the ref in sync so the bootstrap effect can call the latest version.
   useEffect(() => {
     refreshSessionRef.current = refreshSession;
   }, [refreshSession]);
+
+  useEffect(() => {
+    getAuthTokenRef.current = getAuthToken;
+  }, [getAuthToken]);
 
   // Bootstrap effect: only depends on Clerk SDK state and sessionId.
   // token/user are OUTPUTS of this effect, not inputs - using refs avoids
@@ -890,9 +905,23 @@ function ClerkBackedAuthProvider({ children }) {
     }
 
     if (!isSignedIn) {
+      // After the initial bootstrap, if Clerk briefly flickers isSignedIn
+      // to false during session rotation, don't tear down auth immediately.
+      // If the user explicitly logged out, clearLocalAuth() already ran
+      // before signOut(), so userRef.current will be null.
+      const hasResolvedUser = Boolean(
+        String(userRef.current?.id || userRef.current?._id || "").trim()
+      );
+      if (bootstrapDoneRef.current && hasResolvedUser) {
+        // Clerk session flicker — keep current auth state, don't flash loading.
+        return;
+      }
+
       let active = true;
       const tenantSlug = inferTenantSlugForSessionRequest();
-      setSessionRefreshing(true);
+      // Only block isReady during the initial bootstrap. After that, avoid
+      // toggling sessionRefreshing which causes ProtectedRoute to unmount.
+      if (!bootstrapDoneRef.current) setSessionRefreshing(true);
 
       Promise.resolve(tryRestoreDemoLegacySession({ tenantSlug }))
         .then((restored) => {

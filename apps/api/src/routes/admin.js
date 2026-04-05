@@ -57,12 +57,15 @@ import {
 } from "../services/onboarding.js";
 import {
   buildBillingPublicSnapshot,
+  cancelTenantSubscription,
   createBillingPortalUrl,
   createTenantCheckoutSession,
   getBillingCatalog,
   getBillingMode,
   getFoundersAvailability,
-  listRecentTenantInvoices
+  getTenantSubscriptionStatus,
+  listRecentTenantInvoices,
+  resumeTenantSubscription
 } from "../services/billing.js";
 import {
   normalizeBillingPlan,
@@ -4055,7 +4058,7 @@ router.patch("/features", async (req, res) => {
 router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
   const planTier = resolveTenantFeatureTier(req.tenant);
   const mode = getBillingMode();
-  const [portal, billing, foundersAvailability, invoices, memberCount] = await Promise.all([
+  const [portal, billing, foundersAvailability, invoices, memberCount, subscriptionStatus] = await Promise.all([
     createBillingPortalUrl({
       tenant: req.tenant,
       returnPath: `/t/${req.tenant.slug}/admin/billing`
@@ -4063,7 +4066,8 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
     Promise.resolve(buildBillingPublicSnapshot(req.tenant)),
     getFoundersAvailability(),
     listRecentTenantInvoices(req.tenant, { limit: 12 }),
-    ProfileModel.count(req.tenant._id, { status: { $ne: "removed" } })
+    ProfileModel.count(req.tenant._id, { status: { $ne: "removed" } }),
+    getTenantSubscriptionStatus(req.tenant)
   ]);
   const planLimit = planTier === "premium" ? null : 5000;
   const usagePct = planLimit ? Math.round((memberCount / Math.max(planLimit, 1)) * 100) : null;
@@ -4101,7 +4105,8 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
     },
     mode,
     manageBillingUrl: portal.url || "",
-    invoices
+    invoices,
+    subscription: subscriptionStatus
   });
 });
 
@@ -4141,6 +4146,32 @@ router.post("/billing/checkout", ensureBillingVisibleForTenant, async (req, res,
       billing: buildBillingPublicSnapshot(updatedTenant),
       catalog: getBillingCatalog()
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/billing/cancel", ensureBillingVisibleForTenant, async (req, res, next) => {
+  try {
+    const cancelAtPeriodEnd = req.body?.cancelAtPeriodEnd !== false;
+    const result = await cancelTenantSubscription({
+      tenant: req.tenant,
+      billingOperator: req.user,
+      cancelAtPeriodEnd
+    });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/billing/resume", ensureBillingVisibleForTenant, async (req, res, next) => {
+  try {
+    const result = await resumeTenantSubscription({
+      tenant: req.tenant,
+      billingOperator: req.user
+    });
+    return res.json({ ok: true, ...result });
   } catch (error) {
     return next(error);
   }

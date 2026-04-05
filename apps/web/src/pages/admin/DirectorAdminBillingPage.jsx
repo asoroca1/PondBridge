@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Button, Card } from "@pondbridge/ui";
 import { PageHeader } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -93,13 +93,12 @@ export default function DirectorAdminBillingPage() {
   const [status, setStatus] = useState("");
   const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
   const [startingCheckout, setStartingCheckout] = useState(false);
+  const [cancellingSubscription, setCancellingSubscription] = useState(false);
+  const [resumingSubscription, setResumingSubscription] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
   const demoAccessEnabled = Boolean(tenantConfig?.accessSettings?.demoAccessEnabled);
-
-  if (demoAccessEnabled) {
-    return <Navigate to={slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard"} replace />;
-  }
 
   const loadBilling = useCallback(async () => {
     setLoading(true);
@@ -179,11 +178,213 @@ export default function DirectorAdminBillingPage() {
     }
   }
 
-  if (loading && !payload) {
+  async function cancelSubscription() {
+    setCancellingSubscription(true);
+    setError("");
+    setStatus("");
+    try {
+      const response = await request("/billing/cancel", {
+        method: "POST",
+        body: { cancelAtPeriodEnd: true }
+      });
+      setStatus(response?.message || "Your subscription has been scheduled for cancellation.");
+      setShowCancelConfirm(false);
+      await loadBilling();
+    } catch (requestError) {
+      setError(requestError.message || "Unable to cancel subscription.");
+    } finally {
+      setCancellingSubscription(false);
+    }
+  }
+
+  async function resumeSubscription() {
+    setResumingSubscription(true);
+    setError("");
+    setStatus("");
+    try {
+      const response = await request("/billing/resume", {
+        method: "POST"
+      });
+      setStatus(response?.message || "Your subscription has been resumed.");
+      await loadBilling();
+    } catch (requestError) {
+      setError(requestError.message || "Unable to resume subscription.");
+    } finally {
+      setResumingSubscription(false);
+    }
+  }
+
+  if (loading && !payload && !demoAccessEnabled) {
     return (
       <Card>
         <p className="muted">Loading billing...</p>
       </Card>
+    );
+  }
+
+  if (demoAccessEnabled) {
+    return (
+      <div className="director-admin-stack director-admin-billing-page">
+        <PageHeader
+          title="Billing"
+          subtitle="This is a preview of the billing management page. Billing is not active for demo networks."
+        />
+
+        <Card className="director-admin-banner tone-info">
+          <p>
+            You are viewing a <strong>demo network</strong>. The billing features shown below are a preview
+            of what camp directors see when managing their subscription. No charges or payment methods apply.
+          </p>
+        </Card>
+
+        <div className="director-admin-billing-top-grid">
+          <Card className="director-admin-billing-summary-card">
+            <div className="director-admin-billing-summary-head">
+              <div>
+                <p className="director-admin-billing-kicker">Current Plan</p>
+                <h2>Founders</h2>
+                <p className="muted">$2,500/year for the first five partner camps.</p>
+              </div>
+              <span className="director-admin-billing-tone-pill is-premium">Premium</span>
+            </div>
+
+            <div className="director-admin-billing-key-grid">
+              <div className="director-admin-billing-key-item">
+                <span>Billing Status</span>
+                <strong>
+                  <span className="director-admin-status-badge tone-success">active</span>
+                </strong>
+              </div>
+              <div className="director-admin-billing-key-item">
+                <span>Lifecycle</span>
+                <strong>active</strong>
+              </div>
+              <div className="director-admin-billing-key-item">
+                <span>Onboarding Fee</span>
+                <strong>$0</strong>
+                <small>waived</small>
+              </div>
+              <div className="director-admin-billing-key-item">
+                <span>Renews On</span>
+                <strong>Jan 1, 2027</strong>
+                <small>Next payment: $2,500</small>
+              </div>
+              <div className="director-admin-billing-key-item">
+                <span>Member Usage</span>
+                <strong>142 (unlimited)</strong>
+                <small>Launch ready</small>
+              </div>
+              <div className="director-admin-billing-key-item">
+                <span>Lifecycle Dates</span>
+                <strong>Active 3/15/2026</strong>
+                <small>No cancellation recorded</small>
+              </div>
+            </div>
+
+            <div className="inline-actions">
+              <Button variant="secondary" disabled>Open Billing Portal</Button>
+              <Button variant="secondary" disabled>Refresh Billing</Button>
+              <Button variant="danger" disabled>Cancel Plan</Button>
+            </div>
+          </Card>
+
+          <Card className="director-admin-billing-checkout-card">
+            <div className="director-admin-billing-summary-head">
+              <div>
+                <p className="director-admin-billing-kicker">Plan & Checkout</p>
+                <h2>Founders</h2>
+                <p className="muted">$2,500/year for the first five partner camps.</p>
+              </div>
+              <span className="director-admin-billing-tone-pill is-premium">Premium</span>
+            </div>
+
+            <div className="director-admin-billing-checkout-price">
+              <p className="director-admin-billing-tier-price">$2,500/year</p>
+              <p className="director-admin-billing-tier-detail">No onboarding fee</p>
+              <p className="director-admin-billing-tier-detail">Pay now: $2,500. Renews later: $2,500/year.</p>
+              <p className="director-admin-billing-tier-detail">2 founders slots remaining</p>
+            </div>
+
+            <div className="director-admin-billing-checkout-row">
+              <div>
+                <p className="director-admin-billing-checkout-title">Checkout on current tier</p>
+                <p className="muted">Stripe will confirm the final billing details before you pay.</p>
+              </div>
+              <div className="inline-actions">
+                <Button disabled>Start Stripe Checkout</Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card className="director-admin-billing-plans">
+          <div className="director-admin-billing-plan-head">
+            <h2 className="pb-section-title">Choose your billing tier</h2>
+            <p className="muted">Three tiers are available: Founders, Legacy, and Institutional.</p>
+          </div>
+
+          <div className="director-admin-billing-tier-grid">
+            {BILLING_TIER_DEFINITIONS.map((tier) => (
+              <article
+                key={tier.code}
+                className={[
+                  "director-admin-billing-tier-card",
+                  tier.code === "founders" ? "is-current is-selected" : ""
+                ].filter(Boolean).join(" ")}
+              >
+                <div className="director-admin-billing-tier-top">
+                  <h3>{tier.title}</h3>
+                  <div className="director-admin-billing-tier-badges">
+                    {tier.code === "founders" ? <span className="director-admin-billing-tier-badge">Current</span> : null}
+                  </div>
+                </div>
+                <p className="muted">{tier.subtitle}</p>
+                <p className="director-admin-billing-tier-price">
+                  {tier.code === "founders" ? "$2,500/year" : tier.code === "legacy" ? "$3,000/year" : "$3,800/year"}
+                </p>
+                <p className="director-admin-billing-tier-detail">
+                  {tier.code === "institutional" ? "$200 onboarding fee on first checkout only" : "No onboarding fee"}
+                </p>
+                <ul className="director-admin-billing-tier-list">
+                  {tier.perks.map((perk) => (
+                    <li key={perk}>{perk}</li>
+                  ))}
+                </ul>
+                <Button variant={tier.code === "founders" ? "primary" : "secondary"} disabled>
+                  {tier.code === "founders" ? "Selected Plan" : "Select Plan"}
+                </Button>
+              </article>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="director-admin-billing-invoices-card">
+          <div className="director-admin-billing-invoice-head">
+            <h2 className="pb-section-title">Recent Invoices</h2>
+            <p className="muted">Latest Stripe invoice records for this network.</p>
+          </div>
+          <div className="director-admin-table-wrap">
+            <table className="director-admin-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Download</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>3/15/2026</td>
+                  <td>$2,500</td>
+                  <td>paid</td>
+                  <td><span className="muted">PDF</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
     );
   }
 
@@ -195,6 +396,9 @@ export default function DirectorAdminBillingPage() {
   const showTrialBanner = billingStatus === "trialing";
   const showPastDueBanner = billingStatus === "past_due";
   const showCheckoutBanner = lifecycleStatus === "checkout_started";
+  const subscriptionCancelAtPeriodEnd = Boolean(payload?.subscription?.cancelAtPeriodEnd);
+  const hasActiveSubscription = ["active", "trialing", "past_due"].includes(lifecycleStatus);
+  const showCancelBanner = subscriptionCancelAtPeriodEnd && hasActiveSubscription;
   const catalogPlans = Array.isArray(payload?.catalog?.plans) ? payload.catalog.plans : [];
   const catalogPlansByCode = new Map(
     catalogPlans
@@ -285,6 +489,18 @@ export default function DirectorAdminBillingPage() {
         </Card>
       ) : null}
 
+      {showCancelBanner ? (
+        <Card className="director-admin-banner tone-warning">
+          <p>
+            Your subscription is scheduled to cancel{renewalDate ? ` on ${formatDate(renewalDate)}` : " at the end of the current billing period"}.
+            You will retain access until then.
+          </p>
+          <Button variant="secondary" onClick={resumeSubscription} disabled={resumingSubscription}>
+            {resumingSubscription ? "Resuming..." : "Resume Subscription"}
+          </Button>
+        </Card>
+      ) : null}
+
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
 
@@ -320,9 +536,15 @@ export default function DirectorAdminBillingPage() {
               <small>{onboardingFeeStatusLabel}</small>
             </div>
             <div className="director-admin-billing-key-item">
-              <span>Renews On</span>
+              <span>{subscriptionCancelAtPeriodEnd ? "Access Until" : "Renews On"}</span>
               <strong>{formatDate(renewalDate)}</strong>
-              <small>{renewalDate ? "Annual renewal date" : "No renewal date yet"}</small>
+              <small>
+                {subscriptionCancelAtPeriodEnd
+                  ? "Cancels at end of period"
+                  : renewalDate
+                    ? `Next payment: ${currentPlan ? formatMoney(currentPlan.annualAmount) : formatMoney(payload?.billing?.annualAmount)}`
+                    : "No renewal date yet"}
+              </small>
             </div>
             <div className="director-admin-billing-key-item">
               <span>Member Usage</span>
@@ -356,7 +578,35 @@ export default function DirectorAdminBillingPage() {
               </Button>
             )}
             <Button variant="secondary" onClick={loadBilling}>Refresh Billing</Button>
+            {hasActiveSubscription && !subscriptionCancelAtPeriodEnd ? (
+              <Button variant="danger" onClick={() => setShowCancelConfirm(true)}>
+                Cancel Plan
+              </Button>
+            ) : null}
+            {subscriptionCancelAtPeriodEnd ? (
+              <Button variant="secondary" onClick={resumeSubscription} disabled={resumingSubscription}>
+                {resumingSubscription ? "Resuming..." : "Resume Plan"}
+              </Button>
+            ) : null}
           </div>
+
+          {showCancelConfirm ? (
+            <Card className="director-admin-banner tone-danger" style={{ marginTop: "1rem" }}>
+              <p>
+                <strong>Are you sure you want to cancel?</strong> Your subscription will remain active
+                until the end of the current billing period{renewalDate ? ` (${formatDate(renewalDate)})` : ""}.
+                After that, your network will lose access to paid features.
+              </p>
+              <div className="inline-actions">
+                <Button variant="danger" onClick={cancelSubscription} disabled={cancellingSubscription}>
+                  {cancellingSubscription ? "Cancelling..." : "Yes, Cancel Subscription"}
+                </Button>
+                <Button variant="secondary" onClick={() => setShowCancelConfirm(false)}>
+                  Keep My Plan
+                </Button>
+              </div>
+            </Card>
+          ) : null}
         </Card>
 
         <Card className="director-admin-billing-checkout-card">
