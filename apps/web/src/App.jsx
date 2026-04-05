@@ -7,6 +7,7 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { resolveCampName } from "./lib/campLabels.js";
 import { defaultTenantDomain, inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
+import { readAuthFromStorage } from "./lib/storage.js";
 import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
 
 function lazyPage(loader) {
@@ -179,7 +180,20 @@ function warmAuthenticatedRouteChunks() {
     ["cedar-main-home", () => import("./cedar/pages/MainHome.jsx")],
     ["cedar-my-profile", () => import("./cedar/pages/MyProfile.jsx")]
   ];
-  for (const [key, loader] of baseWarmers) {
+  const nativeWarmers = isNativeApp()
+    ? [
+        ["cedar-edit-profile", () => import("./cedar/pages/EditProfile.jsx")],
+        ["cedar-public-profile", () => import("./cedar/pages/PublicProfile.jsx")],
+        ["cedar-search", () => import("./cedar/pages/AdvancedSearch.jsx")],
+        ["cedar-search-results", () => import("./cedar/pages/SearchResults.jsx")],
+        ["cedar-photo-stream", () => import("./cedar/pages/PhotoStream.jsx")],
+        ["cedar-chat", () => import("./cedar/pages/ChatAndForums.jsx")],
+        ["cedar-map", () => import("./cedar/pages/LocationMap.jsx")],
+        ["cedar-chest", () => import("./cedar/pages/CedarChest.jsx")],
+        ["cedar-family-trees", () => import("./cedar/pages/FamilyTrees.jsx")]
+      ]
+    : [];
+  for (const [key, loader] of [...baseWarmers, ...nativeWarmers]) {
     warmRouteChunk(key, loader);
   }
 }
@@ -252,6 +266,9 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-claim") ||
     currentPath.includes("/director-create-account");
   const inviteToken = new URLSearchParams(location.search || "").get("inviteToken");
+  const nativeApp = isNativeApp();
+  const cachedNativeAuth = nativeApp ? readAuthFromStorage() : { token: "", user: null };
+  const hasNativeCachedSession = nativeApp && Boolean((isAuthenticated || cachedNativeAuth.token) && (user || cachedNativeAuth.user));
   const onMemberCreateAccountRoute =
     (currentPath === "/create-account" || currentPath.endsWith("/create-account")) &&
     !currentPath.includes("/director-create-account");
@@ -481,7 +498,7 @@ function TenantScopeRoutes() {
     );
   }
 
-  if (!isReady) {
+  if (!isReady && !hasNativeCachedSession) {
     return (
       <section className="app-status-shell">
         <div className="app-status-card">
@@ -543,7 +560,7 @@ function TenantScopeRoutes() {
     );
   }
 
-  if (waitingForTenantScopedUser && !allowAuthCallbackRedirect) {
+  if (waitingForTenantScopedUser && !allowAuthCallbackRedirect && !hasNativeCachedSession) {
     return (
       <section className="app-status-shell">
         <div className="app-status-card">
@@ -554,10 +571,12 @@ function TenantScopeRoutes() {
     );
   }
 
-  if (waitingForTenantScopedUser) {
+  if (waitingForTenantScopedUser && !hasNativeCachedSession) {
     const callbackPath = slug ? `/t/${slug}/auth/callback` : "/auth/callback";
     return <Navigate to={callbackPath} replace />;
   }
+
+  const routeFallback = nativeApp ? null : <RouteLoadingFallback />;
 
   if (isCampDirector && onboardingIncomplete && !onOnboardingRoute) {
     return <Navigate to={directorSetupPath} replace />;
@@ -574,7 +593,7 @@ function TenantScopeRoutes() {
   return (
     <AppShell>
       <ErrorBoundary level="page">
-      <Suspense fallback={<RouteLoadingFallback />}>
+      <Suspense fallback={routeFallback}>
       <Routes>
         <Route index element={onboardingIncomplete ? <DirectorClaimPage /> : <CedarHomePage />} />
         <Route path="login/*" element={<CedarLoginPage />} />
@@ -861,6 +880,7 @@ export default function App() {
   const customDomainHost = isPotentialCustomTenantHost();
   const nativeApp = isNativeApp();
   const legacyRedirectEnabled = Boolean(!hostCampSlug && !customDomainHost && rememberedSlug);
+  const routeFallback = nativeApp ? null : <RouteLoadingFallback />;
 
   // Use a key-based CSS animation for route transitions instead of React state.
   // This avoids re-rendering the entire component tree on every navigation,
@@ -871,7 +891,7 @@ export default function App() {
     <div className="app-route-shell">
       <div className="app-route-progress" key={routeKey} aria-hidden="true" />
       <div className="app-route-stage">
-        <Suspense fallback={<RouteLoadingFallback />}>
+        <Suspense fallback={routeFallback}>
         <Routes location={location}>
           {hostCampSlug || customDomainHost ? (
             <Route path="/t/:slug/*" element={<HostScopedTenantRedirect />} />
