@@ -7172,6 +7172,194 @@ img[draggable="false"] { -webkit-user-drag: none; }
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .pb-cedar-page .director-admin-scope{
+    --director-admin-main-top-pad: 8px;
+  }
+
+  .pb-cedar-page .director-admin-scope .pb-admin-ui-main{
+    padding: 10px 10px 22px;
+  }
+
+  .pb-cedar-page .director-admin-sidebar{
+    padding: 8px 10px 10px;
+    background: transparent;
+    border-bottom: 0;
+  }
+
+  .pb-cedar-page .director-admin-sidebar-title{
+    display: none;
+  }
+
+  .pb-cedar-page .director-admin-sidebar-nav{
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pb-cedar-page .director-admin-sidebar-nav::-webkit-scrollbar{
+    display: none;
+  }
+
+  .pb-cedar-page .director-admin-sidebar-item,
+  .pb-cedar-page .director-admin-sidebar-group{
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .pb-cedar-page .director-admin-sidebar-link,
+  .pb-cedar-page .director-admin-sidebar-toggle{
+    min-height: 38px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: #fff;
+    white-space: nowrap;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+  }
+
+  .pb-cedar-page .director-admin-sidebar-subnav{
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 0 0;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pb-cedar-page .director-admin-sidebar-subnav::-webkit-scrollbar{
+    display: none;
+  }
+
+  .pb-cedar-page .director-admin-sidebar-sublink{
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #fff;
+    white-space: nowrap;
+  }
+
+  .pb-cedar-page .director-admin-main{
+    gap: 10px;
+  }
+
+  .pb-cedar-page .director-admin-stack{
+    gap: 10px;
+  }
+
+  .pb-cedar-page .director-admin-main .pb-card{
+    border-radius: 16px;
+    padding: 14px 12px;
+  }
+
+  .pb-cedar-page .director-admin-page-head{
+    display: grid;
+    gap: 10px;
+  }
+
+  .pb-cedar-page .director-admin-page-head h1{
+    font-size: clamp(1.2rem, 5.8vw, 1.5rem);
+  }
+
+  .pb-cedar-page .director-admin-page-actions{
+    width: 100%;
+  }
+
+  .pb-cedar-page .director-admin-page-actions > *{
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .pb-cedar-page .director-admin-stat-card{
+    padding: 12px;
+  }
+
+  .pb-cedar-page .director-admin-chart-card{
+    min-height: 0;
+    gap: 8px;
+  }
+
+  .pb-cedar-page .director-admin-chart-head{
+    align-items: flex-start;
+  }
+
+  .pb-cedar-page .director-admin-chart-week-nav{
+    grid-template-columns: 1fr;
+  }
+
+  .pb-cedar-page .director-admin-chart-week-btn{
+    width: 100%;
+  }
+
+  .pb-cedar-page .director-admin-chart-current{
+    width: 100%;
+  }
+
+  .pb-cedar-page .director-admin-chart-svg{
+    min-width: 480px;
+  }
+
+  .pb-cedar-page .director-admin-breakdown-card{
+    min-height: 0;
+  }
+
+  .pb-cedar-page .director-admin-breakdown-head{
+    padding: 10px 12px 8px;
+  }
+
+  .pb-cedar-page .director-admin-breakdown-table-head,
+  .pb-cedar-page .director-admin-breakdown-row-item{
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .pb-cedar-page .director-admin-table th,
+  .pb-cedar-page .director-admin-table td,
+  .pb-admin-ui-table th,
+  .pb-admin-ui-table td{
+    padding: 9px 10px;
+  }
+
+  .pb-admin-ui-modal,
+  .pb-cedar-page .director-admin-modal{
+    border-radius: 16px;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 560px){
+  .pb-cedar-page .director-admin-scope .pb-admin-ui-main{
+    padding: 8px 8px 18px;
+  }
+
+  .pb-cedar-page .director-admin-sidebar{
+    padding: 6px 8px 8px;
+  }
+
+  .pb-cedar-page .director-admin-main .pb-card{
+    border-radius: 14px;
+    padding: 12px 10px;
+  }
+
+  .pb-cedar-page .director-admin-stat-grid{
+    gap: 8px;
+  }
+
+  .pb-cedar-page .director-admin-chart-svg{
+    min-width: 420px;
+  }
+
+  .pb-cedar-page .director-admin-breakdown-label{
+    font-size: .86rem;
+  }
+
+  .pb-cedar-page .director-admin-breakdown-row-item strong{
+    font-size: .9rem;
+  }
 }
 
 /* Super admin dashboard */
