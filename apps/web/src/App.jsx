@@ -799,6 +799,11 @@ function redirectSlug() {
   return inferCampSlugFromHost() || localStorage.getItem("pondbridgeTenantSlug") || "";
 }
 
+function rememberedNativeTenantSlug() {
+  if (typeof window === "undefined") return "";
+  return String(localStorage.getItem("pondbridgeTenantSlug") || "").trim().toLowerCase();
+}
+
 function LegacyRootRedirect() {
   const location = useLocation();
   const slug = redirectSlug();
@@ -828,10 +833,7 @@ function HostScopedTenantRedirect() {
 
 function NativeAppRoot() {
   const { isAuthenticated, isReady, user } = useAuth();
-  const rememberedSlug =
-    typeof window !== "undefined"
-      ? String(localStorage.getItem("pondbridgeTenantSlug") || "").trim().toLowerCase()
-      : "";
+  const rememberedSlug = rememberedNativeTenantSlug();
 
   if (!isReady) {
     return <RouteLoadingFallback />;
@@ -843,6 +845,10 @@ function NativeAppRoot() {
 
   if (isAuthenticated && rememberedSlug) {
     return <Navigate to={`/t/${rememberedSlug}/home`} replace />;
+  }
+
+  if (rememberedSlug) {
+    return <Navigate to={`/t/${rememberedSlug}/login`} replace />;
   }
 
   return <MobileCampCodeEntryPage />;

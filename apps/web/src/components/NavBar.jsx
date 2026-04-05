@@ -210,9 +210,15 @@ export default function NavBar() {
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
   const canFamilyTrees = Boolean(modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees"));
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
+  const rememberedTenantSlug =
+    typeof window !== "undefined"
+      ? String(localStorage.getItem("pondbridgeTenantSlug") || "").trim().toLowerCase()
+      : "";
   const loginPath = pathWithCamp(slug, "/login");
   const createAccountPath = pathWithCamp(slug, "/create-account");
-  const loggedOutLandingPath = nativeApp ? "/" : pathWithCamp(slug, demoAccessEnabled ? "/" : "/login");
+  const loggedOutLandingPath = nativeApp
+    ? pathWithCamp(rememberedTenantSlug || slug, "/login")
+    : pathWithCamp(slug, demoAccessEnabled ? "/" : "/login");
 
   const currentPath = location.pathname || "";
   const onLoginRoute = /\/login\/?$/.test(currentPath);
