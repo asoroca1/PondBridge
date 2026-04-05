@@ -1918,6 +1918,10 @@ body{
 .wizard1-btn-text{background:transparent;border:0;color:var(--brand-primary);font-weight:700;padding:4px 6px;border-radius:6px;cursor:pointer;}
 .wizard1-btn-text:hover{text-decoration:underline;}
 
+.edit-profile-actions-spacer{
+  display:block;
+}
+
 @media (max-width: 768px){
   .wizard1--create .wizard1-main{
     padding:.9rem 0.7rem 5.5rem;
@@ -1964,6 +1968,37 @@ body{
   .wizard1--create .wizard1-btn-secondary{
     width:100%;
     min-width:0;
+  }
+
+  .edit-profile-actions{
+    position:sticky;
+    bottom:0;
+    z-index:30;
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    align-items:center;
+    gap:10px;
+    background:rgba(247, 249, 252, 0.96);
+    backdrop-filter:blur(6px);
+    border-top:1px solid #dce5f0;
+    margin:16px -4px 0;
+    padding:10px 6px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .edit-profile-actions-right{
+    display:contents;
+  }
+
+  .edit-profile-actions .wizard1-btn-primary,
+  .edit-profile-actions .wizard1-btn-secondary{
+    width:100%;
+    min-width:0;
+    height:46px;
+  }
+
+  .edit-profile-actions .wizard1-btn-secondary{
+    padding:0 10px;
+    font-size:0.88rem;
   }
 }
 

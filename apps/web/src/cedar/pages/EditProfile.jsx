@@ -1702,16 +1702,16 @@ export default function EditProfile() {
 
           {step === 0 ? Step1 : step === 1 ? Step2 : step === 2 ? Step3 : Step4}
 
-          <div className="wizard1-actions">
+          <div className="wizard1-actions edit-profile-actions">
             {step > 0 ? (
               <button className="wizard1-btn-primary" onClick={onBack} disabled={submitting}>
                 Back
               </button>
             ) : (
-              <span />
+              <span className="edit-profile-actions-spacer" aria-hidden="true" />
             )}
 
-            <div className="wizard1-actions-right">
+            <div className="wizard1-actions-right edit-profile-actions-right">
               <button className="wizard1-btn-secondary" onClick={onSaveAndExit} disabled={submitting}>
                 {submitting ? "Saving..." : "Save & Exit"}
               </button>
