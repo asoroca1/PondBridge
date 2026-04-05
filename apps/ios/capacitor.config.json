@@ -1,0 +1,9 @@
+{
+  "appId": "com.pondbridge.ios",
+  "appName": "PondBridge",
+  "webDir": "../web/dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "iosScheme": "https"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@pondbridge/ios",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Separate native iOS shell for PondBridge powered by the shared web build.",
+  "scripts": {
+    "build:web": "npm --workspace @pondbridge/web run build",
+    "copy": "npm run build:web && npx cap copy ios",
+    "sync": "npm run build:web && npx cap sync ios",
+    "open": "npx cap open ios",
+    "doctor": "npx cap doctor"
+  },
+  "dependencies": {
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/ios": "^8.3.0"
+  }
+}

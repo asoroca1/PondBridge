@@ -4,6 +4,7 @@ import { clearAuthStorage, readAuthFromStorage, writeAuthToStorage } from "../li
 import { getVolatileAuthToken } from "../lib/authMemory.js";
 import { requestJson } from "../lib/http.js";
 import { inferCampSlugFromHost } from "../lib/domain.js";
+import { isNativeApp } from "../lib/nativeApp.js";
 import {
   AUTH_PROVIDER,
   clerkConfigError,
@@ -36,6 +37,7 @@ const FORCE_RELOGIN_ON_TAB_CLOSE = !["0", "false", "off", "no"].includes(
     .trim()
     .toLowerCase()
 );
+const NATIVE_APP = isNativeApp();
 const DEMO_TENANT_FLAG_CACHE_TTL_MS = 5 * 60 * 1000;
 const demoTenantFlagCache = new Map();
 
@@ -285,7 +287,7 @@ function readStoredSessionCandidate(tenantSlug = "") {
 function LegacyAuthProvider({ children }) {
   const initial = readAuthFromStorage();
   const initialTenantSlug = inferTenantSlugForSessionRequest();
-  const hydrateLegacySession = !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
+  const hydrateLegacySession = NATIVE_APP || !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
   const mismatchedCachedSession =
     hydrateLegacySession &&
     Boolean(initial.token) &&
@@ -310,7 +312,7 @@ function LegacyAuthProvider({ children }) {
 
   useEffect(() => {
     function syncFromStorage() {
-      if (FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) {
+      if (!NATIVE_APP && FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) {
         setToken("");
         setUser(null);
         setSessionReady(true);
@@ -363,7 +365,7 @@ function LegacyAuthProvider({ children }) {
   }, []);
 
   useIdleLogout({
-    enabled: true,
+    enabled: !NATIVE_APP,
     isAuthenticated: Boolean(token),
     onLogout: logout,
     onSessionWarning: null
@@ -413,7 +415,7 @@ function LegacyAuthProvider({ children }) {
   useEffect(() => {
     if (bootstrapCompleteRef.current) return;
     bootstrapCompleteRef.current = true;
-    if (FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) {
+    if (!NATIVE_APP && FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) {
       setSessionReady(true);
       return;
     }
@@ -503,7 +505,7 @@ function ClerkBackedAuthProvider({ children }) {
   // see content immediately instead of a blank flash while Clerk loads.
   const cachedAuth = readAuthFromStorage();
   const initialTenantSlug = inferTenantSlugForSessionRequest();
-  const shouldHydrate = !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
+  const shouldHydrate = NATIVE_APP || !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
   const mismatchedCachedSession =
     shouldHydrate &&
     Boolean(cachedAuth.token) &&
@@ -896,7 +898,7 @@ function ClerkBackedAuthProvider({ children }) {
     const pathname = typeof window === "undefined" ? "" : window.location.pathname || "";
     const onAuthRoute = isAuthEntryRoute(pathname);
 
-    if (FORCE_RELOGIN_ON_TAB_CLOSE && !isSignedIn && !tabSessionExists && !loginIntentExists && !onAuthRoute) {
+    if (!NATIVE_APP && FORCE_RELOGIN_ON_TAB_CLOSE && !isSignedIn && !tabSessionExists && !loginIntentExists && !onAuthRoute) {
       clearLocalAuth();
       bootstrappedSessionIdRef.current = "";
       bootstrapDoneRef.current = true;
@@ -1054,7 +1056,7 @@ function ClerkBackedAuthProvider({ children }) {
   }, []);
 
   useIdleLogout({
-    enabled: Boolean(isLoaded),
+    enabled: Boolean(isLoaded) && !NATIVE_APP,
     isAuthenticated: Boolean(isSignedIn),
     onLogout: logout,
     onSessionWarning

@@ -18,15 +18,21 @@ body {
 /* ========= GLOBAL MOTION / INTERACTIONS ========= */
 /* Motion tokens now defined in theme.css :root */
 
-html{ scroll-behavior: smooth; }
+html{
+  scroll-behavior: smooth;
+  min-height: 100%;
+  background: var(--bg, #f5f7fa);
+}
 
 body{
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  min-height: 100%;
+  overscroll-behavior-y: none;
 }
 
-#root{ min-height: 100vh; }
+#root{ min-height: 100vh; min-height: 100dvh; }
 
 .app-route-shell{ position: relative; }
 
@@ -87,6 +93,58 @@ body{
   color: #31455f;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.mobile-camp-code-shell{
+  padding: max(18px, env(safe-area-inset-top, 0px) + 18px) 18px calc(18px + env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-camp-code-card{
+  width: min(560px, 100%);
+  gap: 18px;
+}
+
+.mobile-camp-code-head{
+  display: grid;
+  gap: 8px;
+}
+
+.mobile-camp-code-kicker{
+  margin: 0;
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mobile-camp-code-form{
+  display: grid;
+  gap: 14px;
+}
+
+.mobile-camp-code-field{
+  display: grid;
+  gap: 8px;
+  color: #243a56;
+  font-weight: 700;
+}
+
+.mobile-camp-code-field input{
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: var(--text, #0f172a);
+  font: inherit;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobile-camp-code-submit{
+  width: 100%;
 }
 
 .app-status-shell.is-error .app-status-card{

@@ -370,6 +370,8 @@ export function resolveSettings(tenant) {
     signupMode: "open",
     accessCodeHash: "",
     accessCodeHint: "",
+    mobileAppCodeLookup: String(settings.mobileAppCodeLookup || "").trim().toUpperCase(),
+    mobileAppCodeHint: String(settings.mobileAppCodeHint || "").trim(),
     allowedEmailDomains: [],
     allowSearchByDefault: Boolean(
       settings.allowSearchByDefault !== undefined ? settings.allowSearchByDefault : true
@@ -378,7 +380,8 @@ export function resolveSettings(tenant) {
       settings.allowDirectoryBrowse !== undefined ? settings.allowDirectoryBrowse : true
     ),
     requireProfileCompletion: false,
-    hasAccessCode: false
+    hasAccessCode: false,
+    hasMobileAppCode: Boolean(String(settings.mobileAppCodeLookup || "").trim())
   };
 }
 
@@ -518,7 +521,18 @@ export function resolveDraft(tenant) {
           : baseSettings.requireProfileCompletion,
       accessCodeHash: String(draftSettings.accessCodeHash || baseSettings.accessCodeHash || ""),
       hasAccessCode: Boolean(draftSettings.accessCodeHash || baseSettings.hasAccessCode),
-      accessCodeHint: draftSettings.accessCodeHint || baseSettings.accessCodeHint || ""
+      accessCodeHint: draftSettings.accessCodeHint || baseSettings.accessCodeHint || "",
+      mobileAppCodeLookup: String(
+        draftSettings.mobileAppCodeLookup || baseSettings.mobileAppCodeLookup || ""
+      )
+        .trim()
+        .toUpperCase(),
+      mobileAppCodeHint: String(
+        draftSettings.mobileAppCodeHint || baseSettings.mobileAppCodeHint || ""
+      ).trim(),
+      hasMobileAppCode: Boolean(
+        String(draftSettings.mobileAppCodeLookup || baseSettings.mobileAppCodeLookup || "").trim()
+      )
     },
     modules: {
       directory:
@@ -837,6 +851,37 @@ export async function buildSettingsStorePayload(settingsInput = {}, previousTena
   } else {
     next.accessCodeHash = "";
     next.accessCodeHint = "";
+  }
+
+  const rawMobileAppCode = String(settingsInput.mobileAppCode || "").trim();
+  const fallbackMobileAppCodeLookup = String(
+    settingsInput.mobileAppCodeLookup ||
+      previousTenant?.onboardingDraft?.settings?.mobileAppCodeLookup ||
+      previousTenant?.settings?.mobileAppCodeLookup ||
+      ""
+  )
+    .trim()
+    .toUpperCase();
+  const fallbackMobileAppCodeHint = String(
+    settingsInput.mobileAppCodeHint ||
+      previousTenant?.onboardingDraft?.settings?.mobileAppCodeHint ||
+      previousTenant?.settings?.mobileAppCodeHint ||
+      ""
+  ).trim();
+
+  if (rawMobileAppCode) {
+    const normalizedMobileAppCode = rawMobileAppCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (normalizedMobileAppCode.length < 4 || normalizedMobileAppCode.length > 32) {
+      const error = new Error("Mobile app code must be 4-32 letters or numbers.");
+      error.code = "MOBILE_APP_CODE_INVALID";
+      error.statusCode = 400;
+      throw error;
+    }
+    next.mobileAppCodeLookup = normalizedMobileAppCode;
+    next.mobileAppCodeHint = `Set (${new Date().toLocaleDateString("en-US")})`;
+  } else {
+    next.mobileAppCodeLookup = fallbackMobileAppCodeLookup;
+    next.mobileAppCodeHint = fallbackMobileAppCodeHint;
   }
 
   return next;

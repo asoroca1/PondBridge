@@ -75,6 +75,7 @@ import {
 import { hashPassword } from "../utils/auth.js";
 import { sanitizeText, sanitizeHtmlContent } from "../utils/sanitize.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
+import { ensureTenantMobileAppCode } from "../utils/mobileAppCode.js";
 import { createTtlCache } from "../utils/ttlCache.js";
 import {
   canonicalizeCityName,
@@ -4178,6 +4179,7 @@ router.post("/billing/resume", ensureBillingVisibleForTenant, async (req, res, n
 });
 
 router.get("/settings", async (req, res) => {
+  req.tenant = await ensureTenantMobileAppCode(req.tenant);
   const [admins, pendingAdminInvites] = await Promise.all([
     UserModel.find(req.tenant._id, { roles: { $contains: ["tenant_admin"] } }, {
       select: ["id", "email", "roles", "createdAt"],
@@ -4239,6 +4241,9 @@ router.get("/settings", async (req, res) => {
       signupMode: settings.signupMode,
       accessCodeHint: settings.accessCodeHint || "",
       hasAccessCode: Boolean(settings.hasAccessCode),
+      mobileAppCode: settings.mobileAppCodeLookup || "",
+      mobileAppCodeHint: settings.mobileAppCodeHint || "",
+      hasMobileAppCode: Boolean(settings.hasMobileAppCode),
       allowedEmailDomains: settings.allowedEmailDomains || [],
       requireProfileCompletion: Boolean(settings.requireProfileCompletion)
     },
@@ -4408,6 +4413,7 @@ router.patch("/settings/branding", async (req, res) => {
 });
 
 router.patch("/settings/access", async (req, res) => {
+  req.tenant = await ensureTenantMobileAppCode(req.tenant);
   const signupMode = normalizeSignupMode(req.body?.signupMode || "open");
   const draft = resolveDraft(req.tenant);
   let settings;
@@ -4417,6 +4423,10 @@ router.patch("/settings/access", async (req, res) => {
         ...draft.settings,
         signupMode,
         accessCode: req.body?.accessCode,
+        mobileAppCodeLookup:
+          draft.settings?.mobileAppCodeLookup || req.tenant?.settings?.mobileAppCodeLookup || "",
+        mobileAppCodeHint:
+          draft.settings?.mobileAppCodeHint || req.tenant?.settings?.mobileAppCodeHint || "",
         allowedEmailDomains: parseList(req.body?.allowedEmailDomains || req.body?.allowedDomains || [])
       },
       req.tenant
@@ -4446,7 +4456,8 @@ router.patch("/settings/access", async (req, res) => {
         ...settings,
         signupMode,
         requireProfileCompletion: settings.requireProfileCompletion,
-        hasAccessCode: Boolean(settings.accessCodeHash)
+        hasAccessCode: Boolean(settings.accessCodeHash),
+        hasMobileAppCode: Boolean(settings.mobileAppCodeLookup)
       },
       updatedAt: new Date(),
       updatedByUserId: req.user.id
@@ -4456,7 +4467,8 @@ router.patch("/settings/access", async (req, res) => {
   await writeAdminAudit(req, "admin_access_settings_updated", {
     signupMode,
     requireProfileCompletion: Boolean(settings.requireProfileCompletion),
-    hasAccessCode: Boolean(settings.accessCodeHash)
+    hasAccessCode: Boolean(settings.accessCodeHash),
+    hasMobileAppCode: Boolean(settings.mobileAppCodeLookup)
   });
   return res.json({ ok: true, access: resolveDraft(tenant).settings });
 });

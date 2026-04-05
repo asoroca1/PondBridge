@@ -326,6 +326,7 @@ export const tenantContentSchema = z.object({
 export const tenantSettingsSchema = z.object({
   signupMode: z.enum(signupModes).default("open"),
   accessCode: z.string().trim().min(6).max(64).optional(),
+  mobileAppCode: z.string().trim().min(4).max(32).optional(),
   allowedEmailDomains: z.array(z.string().trim().toLowerCase()).max(20).default([]),
   allowSearchByDefault: z.boolean().default(true),
   allowDirectoryBrowse: z.boolean().default(true),

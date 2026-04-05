@@ -5970,6 +5970,7 @@ export function DirectorAdminSettingsAccessPage() {
   const [form, setForm] = useState({
     signupMode: "open",
     accessCode: "",
+    mobileAppCode: "",
     allowedEmailDomains: "",
     requireProfileCompletion: false
   });
@@ -5979,6 +5980,7 @@ export function DirectorAdminSettingsAccessPage() {
     setForm({
       signupMode: payload.access.signupMode || "open",
       accessCode: "",
+      mobileAppCode: payload.access.mobileAppCode || "",
       allowedEmailDomains: (payload.access.allowedEmailDomains || []).join("\n"),
       requireProfileCompletion: Boolean(payload.access.requireProfileCompletion)
     });
@@ -6032,6 +6034,20 @@ export function DirectorAdminSettingsAccessPage() {
             />
           </label>
         ) : null}
+        <label className="full-width">
+          Mobile App Code
+          <Input
+            value={form.mobileAppCode}
+            readOnly
+            spellCheck={false}
+            placeholder="Generating..."
+          />
+          <small className="muted">
+            {payload?.access?.hasMobileAppCode
+              ? `Auto-generated code for the iPhone app. Camp members type this code to reach your camp login. Last updated: ${payload.access.mobileAppCodeHint || "Configured"}`
+              : "This code is generated automatically for your iPhone app and will appear here once ready."}
+          </small>
+        </label>
         <label className="full-width">
           Allowed email domains (optional, one per line)
           <Textarea

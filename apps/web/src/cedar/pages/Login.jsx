@@ -7,6 +7,7 @@ import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/authMode.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
+import { isNativeApp } from "../../lib/nativeApp.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 
 function normalizeErrorMessage(payload, fallback) {
@@ -187,6 +188,7 @@ function ClerkLogin() {
   const notice = resolveAuthIssueMessage(searchParams);
   const { user, isAuthenticated, logout } = useAuth();
   const isSuperAdmin = isAuthenticated && user?.roles?.includes("super_admin");
+  const nativeApp = isNativeApp();
   const path = tenantRoute(slug, "/login");
   const callbackPath = tenantRoute(
     slug,
@@ -222,8 +224,12 @@ function ClerkLogin() {
                 To access a camp as a member, sign out first and use a separate account.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
-                <Link to="/super/tenants" className="login1-btn" style={{ textAlign: "center", textDecoration: "none" }}>
-                  Back to Super Console
+                <Link
+                  to={nativeApp ? "/" : "/super/tenants"}
+                  className="login1-btn"
+                  style={{ textAlign: "center", textDecoration: "none" }}
+                >
+                  {nativeApp ? "Back to camp code" : "Back to Super Console"}
                 </Link>
                 <button
                   type="button"

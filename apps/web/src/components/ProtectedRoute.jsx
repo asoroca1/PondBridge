@@ -1,6 +1,7 @@
 import { Navigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { isNativeApp } from "../lib/nativeApp.js";
 
 export default function ProtectedRoute({ children, role }) {
   const { slug } = useParams();
@@ -19,6 +20,10 @@ export default function ProtectedRoute({ children, role }) {
 
   if (!isAuthenticated) {
     return <Navigate to={loginPath} replace />;
+  }
+
+  if (isNativeApp() && user?.roles?.includes("super_admin")) {
+    return <Navigate to="/" replace />;
   }
 
   if (role && !user) {

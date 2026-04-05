@@ -30,6 +30,7 @@ import {
   resolveTenantContent
 } from "../lib/campLabels.js";
 import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "../lib/domain.js";
+import { isNativeApp } from "../lib/nativeApp.js";
 import cedarLogo from "../assets/cedar-logo.png";
 
 const MIN_SEARCH_CHARS = 1;
@@ -189,6 +190,7 @@ export default function NavBar() {
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const content = resolveTenantContent(tenant);
   const merchShopUrl = String(content.merchShopUrl || "").trim() || "https://thecampspot.com/camphome.aspx";
+  const nativeApp = isNativeApp();
   const cedarFallback = slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "";
   const resolvedLogoUrl = branding.logoUrl || cedarFallback;
   const logoUrl = logoError ? cedarFallback : resolvedLogoUrl;
@@ -202,7 +204,7 @@ export default function NavBar() {
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
   const loginPath = pathWithCamp(slug, "/login");
   const createAccountPath = pathWithCamp(slug, "/create-account");
-  const loggedOutLandingPath = pathWithCamp(slug, demoAccessEnabled ? "/" : "/login");
+  const loggedOutLandingPath = nativeApp ? "/" : pathWithCamp(slug, demoAccessEnabled ? "/" : "/login");
 
   const currentPath = location.pathname || "";
   const onLoginRoute = /\/login\/?$/.test(currentPath);

@@ -38,6 +38,7 @@ import { deprovisionTenantDomain, provisionTenantDomain } from "../services/clou
 import { getEmailServiceStatus } from "../services/email.js";
 import { getR2ServiceStatus, purgeTenantObjectsFromR2 } from "../services/objectStorage.js";
 import { buildTenantUrls, defaultTenantDomain, isReservedSubdomain } from "../utils/domainProvisioning.js";
+import { generateUniqueMobileAppCode } from "../utils/mobileAppCode.js";
 import { hashOpaqueToken } from "../utils/tokens.js";
 import { env } from "../config/env.js";
 import { deleteClerkUserAccount, isClerkManagementConfigured } from "../services/clerkIdentity.js";
@@ -1026,6 +1027,8 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
       signupMode: "open",
       accessCodeHash: "",
       accessCodeHint: "",
+      mobileAppCodeLookup: await generateUniqueMobileAppCode(),
+      mobileAppCodeHint: `Generated (${new Date().toLocaleDateString("en-US")})`,
       allowedEmailDomains: [],
       allowSearchByDefault: true,
       allowDirectoryBrowse: true,

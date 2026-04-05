@@ -1,9 +1,11 @@
 import { clearVolatileAuthToken, getVolatileAuthToken, setVolatileAuthToken } from "./authMemory.js";
+import { isNativeApp } from "./nativeApp.js";
 
 export const STORAGE_KEYS = {
   user: "pondbridgeUser",
   legacyUser: "user",
   sessionToken: "pondbridgeSessionToken",
+  nativeSessionToken: "pondbridgeNativeSessionToken",
   legacyToken: "token",
   legacyPondbridgeToken: "pondbridgeToken",
   legacyCedarToken: "cedarToken"
@@ -29,10 +31,24 @@ function writeSessionToken(value = "") {
   }
 }
 
+function writePersistentToken(value = "") {
+  if (!isNativeApp()) return;
+  try {
+    if (value) {
+      localStorage.setItem(STORAGE_KEYS.nativeSessionToken, value);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.nativeSessionToken);
+    }
+  } catch {
+    // Ignore private mode / quota errors.
+  }
+}
+
 export function readAuthFromStorage() {
   const token =
     getVolatileAuthToken() ||
     readStorageValue(sessionStorage, STORAGE_KEYS.sessionToken) ||
+    (isNativeApp() ? readStorageValue(localStorage, STORAGE_KEYS.nativeSessionToken) : "") ||
     readStorageValue(localStorage, STORAGE_KEYS.legacyPondbridgeToken) ||
     readStorageValue(localStorage, STORAGE_KEYS.legacyToken) ||
     readStorageValue(localStorage, STORAGE_KEYS.legacyCedarToken);
@@ -57,6 +73,7 @@ export function writeAuthToStorage(token, user) {
   const normalizedToken = String(token || "").trim();
   setVolatileAuthToken(normalizedToken);
   writeSessionToken(normalizedToken);
+  writePersistentToken(normalizedToken);
   if (user) {
     const serialized = JSON.stringify(user);
     localStorage.setItem(STORAGE_KEYS.user, serialized);
@@ -71,6 +88,7 @@ export function writeAuthToStorage(token, user) {
 export function clearAuthStorage() {
   clearVolatileAuthToken();
   writeSessionToken("");
+  writePersistentToken("");
   localStorage.removeItem(STORAGE_KEYS.user);
   localStorage.removeItem(STORAGE_KEYS.legacyUser);
   localStorage.removeItem(STORAGE_KEYS.legacyPondbridgeToken);

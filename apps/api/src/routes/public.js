@@ -14,6 +14,7 @@ import {
   resolveTheme
 } from "../services/onboarding.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
+import { generateUniqueMobileAppCode } from "../utils/mobileAppCode.js";
 import { buildBillingPublicSnapshot } from "../services/billing.js";
 import { isTenantBillingAccessAllowed, resolveTenantFeatureTier } from "../services/billingState.js";
 import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
@@ -129,6 +130,8 @@ async function maybeAutoBootstrapFirstTenant(slug = "") {
       signupMode: "open",
       accessCodeHash: "",
       accessCodeHint: "",
+      mobileAppCodeLookup: await generateUniqueMobileAppCode(),
+      mobileAppCodeHint: `Generated (${new Date().toLocaleDateString("en-US")})`,
       allowedEmailDomains: [],
       allowSearchByDefault: true,
       allowDirectoryBrowse: true,
@@ -344,6 +347,63 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
       writePublicResponseCache(cacheKey, payload);
     }
     return res.json(payload);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/mobile-app-code/resolve", publicLookupLimiter, async (req, res, next) => {
+  try {
+    const submittedCode = String(req.body?.code || req.body?.appCode || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+
+    if (submittedCode.length < 4) {
+      return res.status(400).json({
+        error: {
+          code: "MOBILE_APP_CODE_REQUIRED",
+          message: "Enter a valid camp app code."
+        }
+      });
+    }
+
+    const tenants = await TenantModel.find(
+      {
+        status: "active",
+        onboardingStatus: "live"
+      },
+      {
+        select: ["_id", "name", "slug", "content", "settings", "billingStatus"],
+        sort: { name: 1 },
+        limit: 500
+      }
+    );
+
+    const matchedTenant = tenants.find((tenant) => {
+      if (!isTenantBillingAccessAllowed(tenant).allowed) return false;
+      const appCode = String(tenant?.settings?.mobileAppCodeLookup || "").trim().toUpperCase();
+      if (appCode && appCode === submittedCode) return true;
+      return String(tenant?.slug || "").trim().toUpperCase() === submittedCode;
+    });
+
+    if (!matchedTenant) {
+      return res.status(404).json({
+        error: {
+          code: "MOBILE_APP_CODE_NOT_FOUND",
+          message: "That camp code was not recognized."
+        }
+      });
+    }
+
+    return res.json({
+      id: String(matchedTenant._id || matchedTenant.id || ""),
+      slug: String(matchedTenant.slug || "").trim().toLowerCase(),
+      name: String(matchedTenant.name || "").trim(),
+      networkDisplayName:
+        String(matchedTenant?.content?.networkDisplayName || "").trim() ||
+        String(matchedTenant.name || "").trim()
+    });
   } catch (error) {
     return next(error);
   }
