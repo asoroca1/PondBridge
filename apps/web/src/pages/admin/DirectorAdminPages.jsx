@@ -1075,11 +1075,10 @@ function TopProfileBreakdownCard({
 }
 
 export function DirectorAdminDashboardPage() {
-  const { request, slug } = useAdminApi();
+  const { request } = useAdminApi();
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [copyStatus, setCopyStatus] = useState("");
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -1123,7 +1122,6 @@ export function DirectorAdminDashboardPage() {
   }, [loadDashboard]);
 
   const stats = payload?.stats || {};
-  const mobileApp = payload?.mobileApp || {};
   const totalMembers = Number(stats.totalMembers || 0);
   const activeMembers = Number(stats.activeMembers ?? totalMembers);
   const recentSignups = Number(stats.newThisWeek || 0);
@@ -1200,20 +1198,6 @@ export function DirectorAdminDashboardPage() {
     }
   ];
 
-  async function copyMobileAppCode() {
-    const code = String(mobileApp.code || "").trim().toUpperCase();
-    if (!code) return;
-    try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(code);
-      }
-      setCopyStatus("Copied");
-    } catch {
-      setCopyStatus("Copy failed");
-    }
-    window.setTimeout(() => setCopyStatus(""), 1800);
-  }
-
   return (
     <div className="director-admin-stack">
       {error ? <p className="error-text">{error}</p> : null}
@@ -1229,37 +1213,6 @@ export function DirectorAdminDashboardPage() {
           />
         ))}
       </div>
-
-      <Card className="director-admin-mobile-app-card">
-        <div className="director-admin-mobile-app-card-head">
-          <div>
-            <p className="director-admin-mobile-app-eyebrow">iPhone App</p>
-            <h3>Camp code</h3>
-            <p className="muted">
-              Families enter this code in the iPhone app to reach your camp login page.
-            </p>
-          </div>
-          <div className="director-admin-mobile-app-actions">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={copyMobileAppCode}
-              disabled={!mobileApp.code}
-            >
-              {copyStatus || "Copy Code"}
-            </Button>
-            <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
-              Access Settings
-            </Link>
-          </div>
-        </div>
-        <div className="director-admin-mobile-app-code-row">
-          <div className="director-admin-mobile-app-code">{mobileApp.code || "Generating..."}</div>
-          <span className="director-admin-mobile-app-hint">
-            {mobileApp.hint || "Auto-generated for your camp"}
-          </span>
-        </div>
-      </Card>
 
       <div className="director-admin-two-col director-admin-dashboard-charts">
         <div className="director-admin-dashboard-left">
@@ -5278,6 +5231,7 @@ export function DirectorAdminSettingsNetworkPage() {
   const { payload, loading, error, load } = useSettingsLoader();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const [ageGroupDraft, setAgeGroupDraft] = useState("");
   const [staffRoleDraft, setStaffRoleDraft] = useState("");
   const [listErrors, setListErrors] = useState({ ageGroups: "", staffRoles: "" });
@@ -5382,6 +5336,20 @@ export function DirectorAdminSettingsNetworkPage() {
     }
   }
 
+  async function copyMobileAppCode() {
+    const code = String(payload?.access?.mobileAppCode || "").trim().toUpperCase();
+    if (!code) return;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+      }
+      setCopyStatus("Copied");
+    } catch {
+      setCopyStatus("Copy failed");
+    }
+    window.setTimeout(() => setCopyStatus(""), 1800);
+  }
+
   if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
 
   return (
@@ -5420,6 +5388,38 @@ export function DirectorAdminSettingsNetworkPage() {
           Network Name
           <Input value={form.networkName} onChange={(event) => setForm((prev) => ({ ...prev, networkName: event.target.value }))} />
         </label>
+        <div className="full-width director-admin-mobile-app-card">
+          <div className="director-admin-mobile-app-card-head">
+            <div>
+              <p className="director-admin-mobile-app-eyebrow">iPhone App</p>
+              <h3>Camp code</h3>
+              <p className="muted">
+                Families enter this code in the iPhone app to reach your camp login page.
+              </p>
+            </div>
+            <div className="director-admin-mobile-app-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={copyMobileAppCode}
+                disabled={!payload?.access?.mobileAppCode}
+              >
+                {copyStatus || "Copy Code"}
+              </Button>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
+                Access Settings
+              </Link>
+            </div>
+          </div>
+          <div className="director-admin-mobile-app-code-row">
+            <div className="director-admin-mobile-app-code">
+              {payload?.access?.mobileAppCode || "Generating..."}
+            </div>
+            <span className="director-admin-mobile-app-hint">
+              {payload?.access?.mobileAppCodeHint || "Auto-generated for your camp"}
+            </span>
+          </div>
+        </div>
         <label className="full-width director-admin-network-quote-field">
           Homepage quote (before login)
           <Textarea
