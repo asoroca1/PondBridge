@@ -147,6 +147,10 @@ export const env = {
   FRONTEND_ORIGIN: frontendOrigin,
   FRONTEND_ORIGINS: dedupe([
     frontendOrigin,
+    normalizeOrigin("https://localhost"),
+    normalizeOrigin("http://localhost"),
+    normalizeOrigin("capacitor://localhost"),
+    normalizeOrigin("ionic://localhost"),
     normalizeOrigin("http://localhost:5173"),
     normalizeOrigin("http://127.0.0.1:5173"),
     normalizeOrigin("http://localhost:5174"),
