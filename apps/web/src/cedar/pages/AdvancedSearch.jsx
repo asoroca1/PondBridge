@@ -503,6 +503,7 @@ export default function AdvancedSearch() {
 
   const header = useMemo(() => (!form.q ? "Advanced Search" : `Results for "${form.q}"`), [form.q]);
   const skeletonCount = Math.min(Math.max(Number(form.limit || 8), 1), 12);
+  const closeDrawer = () => setUi((curr) => ({ ...curr, drawerOpen: false }));
 
   return (
     <div className="as2-shell">
@@ -529,7 +530,7 @@ export default function AdvancedSearch() {
         <div className="as2-wrap">
           <div
             className={`as2-drawer-backdrop${ui.drawerOpen ? " is-open" : ""}`}
-            onClick={() => setUi((curr) => ({ ...curr, drawerOpen: false }))}
+            onClick={closeDrawer}
             aria-hidden="true"
           />
 
@@ -547,7 +548,7 @@ export default function AdvancedSearch() {
                 <button
                   className="as2-rail-close"
                   type="button"
-                  onClick={() => setUi((curr) => ({ ...curr, drawerOpen: false }))}
+                  onClick={closeDrawer}
                   aria-label="Close filters"
                 >
                   <X size={16} />
@@ -832,6 +833,12 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+
+            <div className="as2-rail-footer">
+              <button type="button" className="as2-rail-done" onClick={closeDrawer}>
+                Done
+              </button>
+            </div>
           </aside>
 
           <section className="as2-results" ref={resultsRef}>
