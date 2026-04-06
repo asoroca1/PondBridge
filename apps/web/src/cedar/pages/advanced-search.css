@@ -804,10 +804,13 @@ select.as2-input {
 @media (max-width: 980px) {
   .as2-wrap {
     grid-template-columns: 1fr;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
   }
 
   .as2-filters-fab {
     display: inline-flex;
+    right: 12px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   }
 
   .as2-drawer-backdrop {
@@ -839,6 +842,7 @@ select.as2-input {
     overflow-y: auto;
     border-radius: 0 14px 14px 0;
     min-height: auto;
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 14px calc(18px + env(safe-area-inset-bottom, 0px));
   }
 
   .as2-rail.is-open {
@@ -854,27 +858,75 @@ select.as2-input {
 
 @media (max-width: 576px) {
   .as2 {
-    padding-top: 98px;
+    padding-top: var(--page-shell-top);
+  }
+
+  .as2-page-header {
+    padding: 0 12px 12px;
+  }
+
+  .as2-wrap {
+    padding: 0 12px calc(92px + env(safe-area-inset-bottom, 0px));
+    gap: 14px;
+  }
+
+  .as2-rail {
+    width: calc(100vw - 12px);
+    border-radius: 0 20px 20px 0;
   }
 
   .as2-title {
-    font-size: 26px;
+    font-size: 24px;
+  }
+
+  .as2-results-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .as2-filter-chips {
+    margin: -2px 0 12px;
   }
 
   .as2-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .as2-card {
-    padding: 14px;
+    grid-template-columns: 48px 1fr;
+    padding: 13px;
+    column-gap: 10px;
+  }
+
+  .as2-avatar,
+  .as2-avatar-fallback {
+    width: 48px;
+    height: 48px;
   }
 
   .as2-name {
-    font-size: 17px;
+    font-size: 16px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .as2-industry {
+    max-width: 100%;
+  }
+
+  .as2-loc,
+  .as2-job {
+    font-size: 14px;
   }
 
   .as2-card .as2-cta {
     flex-direction: column;
+    margin-top: 8px;
+    gap: 8px;
   }
 
   .as2-card .as2-cta .as2-btn {

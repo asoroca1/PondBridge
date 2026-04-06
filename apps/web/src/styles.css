@@ -61,8 +61,13 @@ body{
   min-height: 0;
 }
 
+.app-shell.alumni-app-shell .app-shell-main{
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 .app-shell-native-auth .app-shell-main{
   min-height: 100dvh;
+  padding-bottom: 0;
 }
 
 .app-status-shell{

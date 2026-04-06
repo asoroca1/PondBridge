@@ -331,7 +331,10 @@
 /* ===== Responsive ===== */
 @media (max-width: 860px) {
   .profile1{
+    --p1-card-pad: 16px;
     --p1-cover-height: 130px;
+    --p1-avatar-diam: 128px;
+    --mp-cover-gap: 54px;
     --profile-extra-top: 28px; /* add a bit more air on phones */
   }
 
@@ -339,10 +342,66 @@
     padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   }
 
+  .profile1-container{
+    padding-inline: 12px;
+  }
+
   .profile1-grid {
     display: flex;
     flex-direction: column;
     gap: var(--p1-mobile-gap);
+  }
+
+  .p1-card{
+    border-radius: 20px;
+    padding: 16px 14px;
+  }
+
+  .p1-name{
+    font-size: 1.55rem;
+    margin: 10px 0 8px;
+  }
+
+  .p1-sub{
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 10px;
+    font-size: 0.95rem;
+    text-align: center;
+  }
+
+  .p1-roles{
+    gap: 8px;
+    margin: 12px 0 10px;
+  }
+
+  .p1-role-chip,
+  .p1-industry-chip{
+    font-size: 0.8rem;
+    padding: 6px 10px;
+  }
+
+  .p1-actions{
+    margin-top: 10px;
+  }
+
+  .profile1-btn{
+    width: 100%;
+    min-height: 46px;
+    font-weight: 800;
+  }
+
+  .p1-social,
+  .p1-contact{
+    gap: 8px;
+  }
+
+  .p1-social-link,
+  .p1-contact-link{
+    padding: 10px 12px;
+    border: 1px solid #e1e8f2;
+    border-radius: 12px;
+    background: #fbfdff;
   }
 
   .p1-leftcol,
@@ -363,5 +422,6 @@
   .p1-photos-card { order: 7; }
   .p1-suggest-card { order: 8; }
 
-  .p1-photos-card { max-height: 220px; }
+  .p1-photos-card { max-height: none; }
+  .p1-mosaic { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 }

@@ -343,16 +343,58 @@
   
   /* Phones (large, ~430–390) */
   @media (max-width: 576px){
+    .welcome-hero{ padding: 0 12px; margin-bottom: 12px; }
     .welcome-banner{ flex-direction:column; align-items:stretch; padding:14px; }
+    .welcome-left{ align-items:flex-start; gap:12px; }
+    .welcome-copy{ gap:4px; }
     .welcome-right{ margin-left:0; }
-    .pulse-card{ align-self:flex-start; }
+    .pulse-card{ align-self:stretch; width:100%; }
+    .pulse-rows{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+    .pulse-row{ justify-content:center; padding:8px 10px; }
     .welcome-title{ font-size:22px; }
+    .welcome-sub{ font-size:13.5px; line-height:1.45; }
     .title-accent{ width:56px; }
     .p1-card{ padding:12px; border-radius:var(--radius-lg); }
     .card-head h3{ font-size:14.5px; }
+    .quick-actions{
+      padding: 0 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .qa-btn{
+      min-height: 80px;
+      padding: 14px 10px;
+      flex-direction: column;
+      text-align: center;
+      gap: 8px;
+      line-height: 1.2;
+      font-size: 0.96rem;
+    }
+    .qa-btn svg{ width:20px; height:20px; }
+    .content-grid{
+      padding: 0 12px;
+      gap: 12px;
+      margin-bottom: 34px;
+    }
+    .main-col, .side-col{ gap: 12px; }
+    .card-head{ margin-bottom: 10px; }
     .photos-mini{ gap:8px; }
     .activity-item{ gap:12px; padding:12px 8px; }
     .activity-meta{ min-width:60px; }
+    .profile-prompt-overlay{ padding: 16px 12px; }
+    .profile-prompt-card{
+      border-radius: 20px;
+      padding: 18px 16px;
+    }
+    .profile-prompt-actions{
+      flex-direction: column-reverse;
+      align-items: stretch;
+    }
+    .profile-prompt-secondary,
+    .profile-prompt-primary{
+      width: 100%;
+      justify-content: center;
+    }
 
     .feed-card{
       height: auto !important;
@@ -366,7 +408,7 @@
   /* Small phones (≤430) – space & touch targets */
   @media (max-width: 430px){
     .welcome-avatar{ width:56px; height:56px; flex:0 0 56px; }
-    .qa-btn{ padding:12px 14px; }
+    .qa-btn{ min-height:72px; padding:12px 8px; font-size:0.9rem; }
     .qa-chip{ padding:7px 10px; }
     .announce-input{ font-size:14.5px; }
     .announce-btn{ padding:9px 12px; }
