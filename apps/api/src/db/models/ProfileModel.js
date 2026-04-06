@@ -38,6 +38,7 @@ const SEARCH_CANDIDATE_SELECT_SQL = [
   "role_at_camp",
   "high_school",
   "colleges",
+  "college_years",
   "current_jobs",
   "past_jobs",
   "industry",
