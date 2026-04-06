@@ -332,9 +332,11 @@
 @media (max-width: 860px) {
   .profile1{
     --p1-card-pad: 16px;
-    --p1-cover-height: 130px;
-    --p1-avatar-diam: 128px;
-    --mp-cover-gap: 54px;
+    --p1-cover-height: 114px;
+    --p1-avatar-diam: 104px;
+    --p1-avatar-ring: 5px;
+    --mp-cover-gap: 34px;
+    --p1-avatar-overlap: -10px;
     --profile-extra-top: 28px; /* add a bit more air on phones */
   }
 
@@ -357,37 +359,56 @@
     padding: 16px 14px;
   }
 
+  .p1-card-profile{
+    padding-top: 14px;
+  }
+
+  .p1-cover{
+    border-radius: 16px 16px 0 0;
+  }
+
+  .p1-cover-img{
+    transform: scale(1.04);
+    filter: blur(4px) brightness(0.9);
+  }
+
+  .p1-avatar-shell{
+    filter: drop-shadow(0 8px 16px rgba(15, 23, 42, 0.14));
+  }
+
   .p1-name{
-    font-size: 1.55rem;
-    margin: 10px 0 8px;
+    font-size: 1.45rem;
+    margin: 8px 0 6px;
+    line-height: 1.12;
   }
 
   .p1-sub{
     flex-wrap: wrap;
     justify-content: center;
-    gap: 6px 10px;
-    font-size: 0.95rem;
+    gap: 4px 8px;
+    font-size: 0.92rem;
     text-align: center;
+    margin-top: 4px;
   }
 
   .p1-roles{
-    gap: 8px;
-    margin: 12px 0 10px;
+    gap: 7px;
+    margin: 10px 0 8px;
   }
 
   .p1-role-chip,
   .p1-industry-chip{
-    font-size: 0.8rem;
-    padding: 6px 10px;
+    font-size: 0.78rem;
+    padding: 5px 10px;
   }
 
   .p1-actions{
-    margin-top: 10px;
+    margin-top: 8px;
   }
 
   .profile1-btn{
     width: 100%;
-    min-height: 46px;
+    min-height: 44px;
     font-weight: 800;
   }
 
@@ -424,4 +445,72 @@
 
   .p1-photos-card { max-height: none; }
   .p1-mosaic { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+}
+
+@media (max-width: 480px) {
+  .profile1{
+    --p1-card-pad: 14px;
+    --p1-mobile-gap: 14px;
+    --p1-cover-height: 102px;
+    --p1-avatar-diam: 92px;
+    --p1-avatar-ring: 4px;
+    --mp-cover-gap: 28px;
+    --p1-avatar-overlap: -8px;
+  }
+
+  .profile1-container{
+    padding-inline: 10px;
+  }
+
+  .p1-card{
+    border-radius: 18px;
+    padding: 14px 12px;
+  }
+
+  .p1-card-profile{
+    padding-top: 12px;
+  }
+
+  .p1-cover{
+    margin-bottom: var(--mp-cover-gap);
+  }
+
+  .p1-name{
+    font-size: 1.2rem;
+    margin: 6px 0 4px;
+  }
+
+  .p1-sub{
+    font-size: 0.86rem;
+    gap: 4px 6px;
+  }
+
+  .p1-inline{
+    gap: 4px;
+  }
+
+  .p1-inline svg{
+    width: 14px;
+    height: 14px;
+  }
+
+  .p1-roles{
+    gap: 6px;
+    margin: 8px 0 7px;
+  }
+
+  .p1-role-chip,
+  .p1-industry-chip{
+    font-size: 0.74rem;
+    padding: 5px 9px;
+  }
+
+  .p1-actions{
+    margin-top: 6px;
+  }
+
+  .profile1-btn{
+    min-height: 42px;
+    border-radius: 12px;
+  }
 }
