@@ -332,11 +332,12 @@
 @media (max-width: 860px) {
   .profile1{
     --p1-card-pad: 16px;
-    --p1-cover-height: 114px;
-    --p1-avatar-diam: 104px;
-    --p1-avatar-ring: 5px;
-    --mp-cover-gap: 34px;
-    --p1-avatar-overlap: -10px;
+    --p1-cover-height: 112px;
+    --p1-avatar-diam: 96px;
+    --p1-avatar-ring: 4px;
+    --p1-ring-color: #eef2f7;
+    --mp-cover-gap: 50px;
+    --p1-avatar-overlap: -4px;
     --profile-extra-top: 28px; /* add a bit more air on phones */
   }
 
@@ -376,9 +377,13 @@
     filter: drop-shadow(0 8px 16px rgba(15, 23, 42, 0.14));
   }
 
+  .p1-fixed-inner{
+    padding-top: 6px;
+  }
+
   .p1-name{
     font-size: 1.45rem;
-    margin: 8px 0 6px;
+    margin: 4px 0 6px;
     line-height: 1.12;
   }
 
@@ -451,11 +456,12 @@
   .profile1{
     --p1-card-pad: 14px;
     --p1-mobile-gap: 14px;
-    --p1-cover-height: 102px;
-    --p1-avatar-diam: 92px;
+    --p1-cover-height: 100px;
+    --p1-avatar-diam: 84px;
     --p1-avatar-ring: 4px;
-    --mp-cover-gap: 28px;
-    --p1-avatar-overlap: -8px;
+    --p1-ring-color: #f2f5f9;
+    --mp-cover-gap: 42px;
+    --p1-avatar-overlap: -2px;
   }
 
   .profile1-container{
@@ -475,9 +481,17 @@
     margin-bottom: var(--mp-cover-gap);
   }
 
+  .p1-avatar-shell{
+    filter: drop-shadow(0 7px 14px rgba(15, 23, 42, 0.12));
+  }
+
+  .p1-fixed-inner{
+    padding-top: 4px;
+  }
+
   .p1-name{
     font-size: 1.2rem;
-    margin: 6px 0 4px;
+    margin: 2px 0 4px;
   }
 
   .p1-sub{
