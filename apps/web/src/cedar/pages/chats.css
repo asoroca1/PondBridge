@@ -981,9 +981,26 @@
 /* ===== Mobile ===== */
 @media (max-width: 980px) {
   .cf-main {
-    padding-top: 92px;
+    padding-top: calc(var(--page-shell-top) + 2px);
     padding-left: 10px;
     padding-right: 10px;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .cf-main .cedar-ph {
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 18px;
+  }
+
+  .cf-main .cedar-ph-title {
+    font-size: clamp(22px, 4.8vw, 28px);
+  }
+
+  .cf-main .cedar-ph-sub {
+    max-width: none;
+    line-height: 1.45;
   }
 
   .cf-header {
@@ -1010,9 +1027,9 @@
 
   .cf-panel {
     grid-template-columns: 1fr;
-    height: calc(100dvh - 215px);
-    min-height: 480px;
-    gap: 10px;
+    height: calc(100dvh - var(--page-shell-top) - 104px);
+    min-height: 520px;
+    gap: 12px;
   }
 
   .cf-panel:not(.is-thread-open) .cf-thread {
@@ -1029,10 +1046,13 @@
 
   .cf-mobile-back {
     display: inline-flex;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
   }
 
   .cf-thread-header {
-    padding: 10px;
+    padding: 12px;
   }
 
   .cf-thread-left {
@@ -1048,13 +1068,43 @@
   }
 
   .cf-ghost-btn {
-    padding: 7px 9px;
+    min-height: 36px;
+    padding: 7px 10px;
     font-size: 12px;
   }
 
+  .cf-sidebar,
+  .cf-thread {
+    border-radius: 18px;
+  }
+
+  .cf-sidebar-head {
+    padding: 12px 12px 8px;
+  }
+
+  .cf-sidebar-search {
+    margin: 4px 12px 0;
+    padding: 9px 10px;
+  }
+
+  .cf-list {
+    margin-top: 8px;
+    padding: 0 10px 10px;
+  }
+
+  .cf-li-btn {
+    padding: 11px;
+  }
+
+  .cf-thread-body {
+    padding: 12px;
+    gap: 10px;
+  }
+
   .mc-wrap {
-    padding: 8px;
-    gap: 6px;
+    padding: 10px;
+    gap: 7px;
+    align-items: flex-end;
   }
 
   .mc-send span {
@@ -1081,8 +1131,24 @@
 
 @media (max-width: 576px) {
   .cf-main {
-    padding-top: 88px;
+    padding-top: calc(var(--page-shell-top) + 2px);
     padding-bottom: 14px;
+  }
+
+  .cf-main .cedar-ph {
+    gap: 10px;
+    padding: 11px;
+    margin-bottom: 10px;
+    border-radius: 16px;
+  }
+
+  .cf-main .cedar-ph-title {
+    font-size: 21px;
+    line-height: 1.12;
+  }
+
+  .cf-main .cedar-ph-sub {
+    font-size: 12px;
   }
 
   .cf-title {
@@ -1094,12 +1160,13 @@
   }
 
   .cf-panel {
-    height: calc(100dvh - 205px);
+    height: calc(100dvh - var(--page-shell-top) - 86px);
+    min-height: 460px;
   }
 
   .cf-sidebar,
   .cf-thread {
-    border-radius: 12px;
+    border-radius: 16px;
   }
 
   .cf-sidebar-head {
@@ -1134,14 +1201,30 @@
 
   .cf-bubble {
     padding: 9px 11px;
+    max-width: min(86vw, 100%);
   }
 
   .cf-post {
     padding: 10px;
+    border-radius: 14px;
   }
 
   .cf-post-meta {
     gap: 8px;
+  }
+
+  .mc-wrap {
+    padding: 9px;
+    gap: 6px;
+  }
+
+  .mc-icon {
+    padding: 8px;
+  }
+
+  .mc-input {
+    min-height: 42px;
+    padding: 9px 11px;
   }
 
   .cf-modal-card {
