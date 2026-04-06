@@ -236,6 +236,10 @@
 }
 .p1-avatar-clip{ width: var(--p1-avatar-diam); height: var(--p1-avatar-diam); border-radius: 50%; overflow: hidden; background: #f3f4f6; display:grid; place-items:center; }
 .p1-avatar-img{ width: 100%; height: 100%; display: block; object-fit: cover; object-position: var(--p1-avatar-x) var(--p1-avatar-y); transform: scale(var(--p1-avatar-scale)); border-radius: 50%; image-rendering: -webkit-optimize-contrast; }
+.p1-fixed-inner{
+  position: relative;
+  z-index: 1;
+}
 .p1-avatar-fallback{
   width:100%;
   height:100%;
@@ -345,8 +349,8 @@
     --p1-avatar-diam: 96px;
     --p1-avatar-ring: 4px;
     --p1-ring-color: #eef2f7;
-    --mp-cover-gap: 50px;
-    --p1-avatar-overlap: -4px;
+    --mp-cover-gap: 58px;
+    --p1-avatar-overlap: 2px;
     --profile-extra-top: 28px; /* add a bit more air on phones */
   }
 
@@ -370,7 +374,7 @@
   }
 
   .p1-card-profile{
-    padding-top: 14px;
+    padding-top: 18px;
   }
 
   .p1-cover{
@@ -387,7 +391,7 @@
   }
 
   .p1-fixed-inner{
-    padding-top: 6px;
+    padding-top: 14px;
   }
 
   .p1-name{
@@ -469,8 +473,8 @@
     --p1-avatar-diam: 84px;
     --p1-avatar-ring: 4px;
     --p1-ring-color: #f2f5f9;
-    --mp-cover-gap: 42px;
-    --p1-avatar-overlap: -2px;
+    --mp-cover-gap: 54px;
+    --p1-avatar-overlap: 4px;
   }
 
   .profile1-container{
@@ -483,7 +487,7 @@
   }
 
   .p1-card-profile{
-    padding-top: 12px;
+    padding-top: 16px;
   }
 
   .p1-cover{
@@ -495,7 +499,7 @@
   }
 
   .p1-fixed-inner{
-    padding-top: 4px;
+    padding-top: 12px;
   }
 
   .p1-name{
