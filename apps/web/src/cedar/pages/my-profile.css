@@ -224,7 +224,16 @@
   filter: drop-shadow(0 12px 24px rgba(0,0,0,.16));
   pointer-events: none;
 }
-.p1-avatar-ring{ width: var(--p1-avatar-total); height: var(--p1-avatar-total); padding: var(--p1-avatar-ring); border-radius: 50%; background: var(--p1-ring-color); }
+.p1-avatar-ring{
+  width: var(--p1-avatar-total);
+  height: var(--p1-avatar-total);
+  padding: var(--p1-avatar-ring);
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--p1-ring-color);
+}
 .p1-avatar-clip{ width: var(--p1-avatar-diam); height: var(--p1-avatar-diam); border-radius: 50%; overflow: hidden; background: #f3f4f6; display:grid; place-items:center; }
 .p1-avatar-img{ width: 100%; height: 100%; display: block; object-fit: cover; object-position: var(--p1-avatar-x) var(--p1-avatar-y); transform: scale(var(--p1-avatar-scale)); border-radius: 50%; image-rendering: -webkit-optimize-contrast; }
 .p1-avatar-fallback{
