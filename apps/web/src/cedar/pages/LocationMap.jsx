@@ -29,6 +29,128 @@ function markerSize(count) {
   return 22;
 }
 
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const toRad = (value) => (Number(value) * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function computeRegionFocus(cities = []) {
+  const list = (Array.isArray(cities) ? cities : [])
+    .map((city) => ({
+      ...city,
+      lat: Number(city?.lat),
+      lng: Number(city?.lng),
+      count: Number(city?.count || 0),
+    }))
+    .filter((city) => Number.isFinite(city.lat) && Number.isFinite(city.lng) && city.count > 0);
+
+  if (!list.length) return null;
+
+  if (list.length === 1) {
+    const only = list[0];
+    return {
+      center: [only.lng, only.lat],
+      zoom: 8,
+      maxZoom: 8,
+      bounds: null,
+    };
+  }
+
+  const radiusKm = list.length >= 120 ? 260 : list.length >= 60 ? 320 : 420;
+  let bestCluster = null;
+
+  for (const anchor of list) {
+    const members = [];
+    let totalCount = 0;
+    let weightedDistance = 0;
+
+    for (const candidate of list) {
+      const distanceKm = haversineKm(anchor.lat, anchor.lng, candidate.lat, candidate.lng);
+      if (distanceKm <= radiusKm) {
+        members.push(candidate);
+        totalCount += candidate.count;
+        weightedDistance += distanceKm * candidate.count;
+      }
+    }
+
+    const score = {
+      anchor,
+      members,
+      totalCount,
+      weightedDistance: totalCount > 0 ? weightedDistance / totalCount : Number.POSITIVE_INFINITY,
+    };
+
+    if (
+      !bestCluster ||
+      score.totalCount > bestCluster.totalCount ||
+      (score.totalCount === bestCluster.totalCount && anchor.count > bestCluster.anchor.count) ||
+      (
+        score.totalCount === bestCluster.totalCount &&
+        anchor.count === bestCluster.anchor.count &&
+        score.weightedDistance < bestCluster.weightedDistance
+      )
+    ) {
+      bestCluster = score;
+    }
+  }
+
+  const clusterMembers = bestCluster?.members?.length
+    ? bestCluster.members
+    : [bestCluster?.anchor].filter(Boolean);
+
+  let weightedLat = 0;
+  let weightedLng = 0;
+  let totalWeight = 0;
+
+  for (const city of clusterMembers) {
+    const weight = Math.max(1, Number(city.count || 0));
+    weightedLat += city.lat * weight;
+    weightedLng += city.lng * weight;
+    totalWeight += weight;
+  }
+
+  const centerLat = totalWeight > 0 ? weightedLat / totalWeight : clusterMembers[0].lat;
+  const centerLng = totalWeight > 0 ? weightedLng / totalWeight : clusterMembers[0].lng;
+
+  const lats = clusterMembers.map((city) => city.lat);
+  const lngs = clusterMembers.map((city) => city.lng);
+  const maxDistanceKm = clusterMembers.reduce(
+    (max, city) => Math.max(max, haversineKm(centerLat, centerLng, city.lat, city.lng)),
+    0
+  );
+
+  if (clusterMembers.length === 1 || maxDistanceKm <= 25) {
+    return {
+      center: [centerLng, centerLat],
+      zoom: maxDistanceKm <= 8 ? 9.2 : 8,
+      maxZoom: maxDistanceKm <= 8 ? 9.2 : 8,
+      bounds: null,
+    };
+  }
+
+  const latPad = Math.max(0.35, (Math.max(...lats) - Math.min(...lats)) * 0.22);
+  const lngPad = Math.max(0.45, (Math.max(...lngs) - Math.min(...lngs)) * 0.22);
+  const maxZoom =
+    maxDistanceKm <= 75 ? 7.4 : maxDistanceKm <= 160 ? 6.5 : maxDistanceKm <= 320 ? 5.6 : 4.8;
+
+  return {
+    center: [centerLng, centerLat],
+    zoom: maxZoom,
+    maxZoom,
+    bounds: {
+      minLng: Math.min(...lngs) - lngPad,
+      minLat: Math.min(...lats) - latPad,
+      maxLng: Math.max(...lngs) + lngPad,
+      maxLat: Math.max(...lats) + latPad,
+    },
+  };
+}
+
 function escapeHtml(value = "") {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -69,6 +191,7 @@ export default function LocationMap() {
   const cityRefreshAttemptsRef = useRef(0);
   const cityRefreshTimerRef = useRef(null);
   const hasLoadedCitiesOnceRef = useRef(false);
+  const autoFocusedRef = useRef(false);
 
   const [cities, setCities] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -116,6 +239,8 @@ export default function LocationMap() {
         ? `${totalAlumni} ${alumniWord} across ${cities.length} cities • mapping ${pendingCityGeocodes} more`
         : `${totalAlumni} ${alumniWord} across ${cities.length} cities`
       : `Explore where your ${alumniWord} network lives around the world.`;
+
+  const preferredMapFocus = useMemo(() => computeRegionFocus(cities), [cities]);
 
   useEffect(() => {
     let cancelled = false;
@@ -357,6 +482,31 @@ export default function LocationMap() {
     });
   }
 
+  function focusMapOnPreferredRegion(focus, { animate = true } = {}) {
+    const map = mapRef.current;
+    const maplibregl = maplibreRuntimeRef.current;
+    if (!map || !focus) return;
+
+    if (focus.bounds && maplibregl?.LngLatBounds) {
+      const bounds = new maplibregl.LngLatBounds(
+        [focus.bounds.minLng, focus.bounds.minLat],
+        [focus.bounds.maxLng, focus.bounds.maxLat]
+      );
+      map.fitBounds(bounds, {
+        padding: { top: 56, right: 44, bottom: 44, left: 44 },
+        maxZoom: focus.maxZoom || 7.2,
+        duration: animate ? 900 : 0,
+      });
+      return;
+    }
+
+    map.easeTo({
+      center: focus.center || DEFAULT_VIEW.center,
+      zoom: Number.isFinite(focus.zoom) ? focus.zoom : DEFAULT_VIEW.zoom,
+      duration: animate ? 900 : 0,
+    });
+  }
+
   useEffect(() => {
     if (!mapRuntimeReady) return;
     if (!mapEl.current) return;
@@ -415,6 +565,13 @@ export default function LocationMap() {
     map.on("load", () => {
       loadedRef.current = true;
       renderMarkers(citiesRef.current);
+      if (!selectedRef.current && citiesRef.current.length && !autoFocusedRef.current) {
+        const focus = computeRegionFocus(citiesRef.current);
+        if (focus) {
+          autoFocusedRef.current = true;
+          focusMapOnPreferredRegion(focus, { animate: false });
+        }
+      }
 
       map.resize();
       requestAnimationFrame(() => map.resize());
@@ -478,6 +635,13 @@ export default function LocationMap() {
                 citiesRef.current = cachedList;
                 setPendingCityGeocodes(cachedPending);
                 if (loadedRef.current) renderMarkers(cachedList);
+                if (loadedRef.current && !selectedRef.current && !autoFocusedRef.current) {
+                  const focus = computeRegionFocus(cachedList);
+                  if (focus) {
+                    autoFocusedRef.current = true;
+                    focusMapOnPreferredRegion(focus, { animate: false });
+                  }
+                }
               }
             }
           }
@@ -515,6 +679,13 @@ export default function LocationMap() {
               // ignore cache write failures
             }
             if (loadedRef.current) renderMarkers(list);
+            if (loadedRef.current && !selectedRef.current && !autoFocusedRef.current) {
+              const focus = computeRegionFocus(list);
+              if (focus) {
+                autoFocusedRef.current = true;
+                focusMapOnPreferredRegion(focus, { animate: false });
+              }
+            }
           }
 
           if (unresolvedCityCount > 0) {
@@ -543,6 +714,7 @@ export default function LocationMap() {
     clearRetryTimer();
     cityRefreshAttemptsRef.current = 0;
     hasLoadedCitiesOnceRef.current = false;
+    autoFocusedRef.current = false;
     peopleCacheRef.current = new Map();
     void loadCities({ allowSessionCache: true, bypassHttpCache: false });
 
@@ -611,6 +783,10 @@ export default function LocationMap() {
 
   function resetMapView() {
     clearSelection();
+    if (preferredMapFocus) {
+      focusMapOnPreferredRegion(preferredMapFocus);
+      return;
+    }
     mapRef.current?.easeTo({ center: DEFAULT_VIEW.center, zoom: DEFAULT_VIEW.zoom });
   }
 
