@@ -1027,9 +1027,22 @@
 
   .cf-panel {
     grid-template-columns: 1fr;
-    height: calc(100dvh - var(--page-shell-top) - 104px);
-    min-height: 520px;
+    height: auto;
+    min-height: 0;
     gap: 12px;
+  }
+
+  .cf-panel:not(.is-thread-open) {
+    align-items: start;
+  }
+
+  .cf-panel:not(.is-thread-open) .cf-sidebar {
+    min-height: 0;
+    max-height: none;
+  }
+
+  .cf-panel:not(.is-thread-open) .cf-list {
+    overflow: visible;
   }
 
   .cf-panel:not(.is-thread-open) .cf-thread {
@@ -1042,6 +1055,8 @@
 
   .cf-panel.is-thread-open .cf-thread {
     display: flex;
+    height: calc(100dvh - var(--page-shell-top) - 104px);
+    min-height: 520px;
   }
 
   .cf-mobile-back {
@@ -1160,6 +1175,11 @@
   }
 
   .cf-panel {
+    height: auto;
+    min-height: 0;
+  }
+
+  .cf-panel.is-thread-open .cf-thread {
     height: calc(100dvh - var(--page-shell-top) - 86px);
     min-height: 460px;
   }
