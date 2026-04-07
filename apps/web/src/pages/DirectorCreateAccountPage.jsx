@@ -139,6 +139,13 @@ const BILLING_PLAN_OPTIONS = [
     annualAmount: 3800,
     onboardingFeeAmount: 200,
     summary: "Advanced feature tier with a one-time onboarding fee on initial checkout."
+  },
+  {
+    code: "test",
+    title: "Internal Test",
+    annualAmount: 10,
+    onboardingFeeAmount: 0,
+    summary: "Internal production billing tier for live Stripe checkout testing."
   }
 ];
 const HERO_POSITION_LABELS = {
@@ -174,9 +181,14 @@ function normalizeBillingPlanCode(value = "") {
   return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized) ? normalized : "legacy";
 }
 
+function resolveTenantBillingPlanCode(tenant = null, fallback = "") {
+  const raw = String(tenant?.billingPlan || tenant?.billing?.billingPlan || "").trim().toLowerCase();
+  return BILLING_PLAN_OPTIONS.some((item) => item.code === raw) ? raw : fallback;
+}
+
 function billingPlanIsPremium(code = "") {
   const normalized = normalizeBillingPlanCode(code);
-  return normalized === "founders" || normalized === "institutional";
+  return normalized === "founders" || normalized === "institutional" || normalized === "test";
 }
 
 function billingPlanLabel(code = "") {
@@ -717,9 +729,7 @@ function DirectorCreateAccountWizardPage() {
   const selectedBillingPlan =
     BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) ||
     BILLING_PLAN_OPTIONS[0];
-  const tenantBillingPlanCode = normalizeBillingPlanCode(
-    tenant?.billingPlan || tenant?.billing?.billingPlan || selectedBillingPlanCode
-  );
+  const tenantBillingPlanCode = resolveTenantBillingPlanCode(tenant, selectedBillingPlanCode);
   const tenantBillingPlan =
     BILLING_PLAN_OPTIONS.find((item) => item.code === tenantBillingPlanCode) ||
     selectedBillingPlan;
@@ -991,11 +1001,9 @@ function DirectorCreateAccountWizardPage() {
 
   useEffect(() => {
     if (!tenant || planHydratedRef.current) return;
-    const billingPlanCode = normalizeBillingPlanCode(
-      tenant?.billingPlan ||
-        tenant?.billing?.billingPlan ||
-        (String(tenant?.planTier || "").trim().toLowerCase() === "premium" ? "institutional" : "legacy")
-    );
+    const billingPlanCode =
+      resolveTenantBillingPlanCode(tenant) ||
+      (String(tenant?.planTier || "").trim().toLowerCase() === "premium" ? "institutional" : "legacy");
     setForm((prev) => ({ ...prev, billingPlanCode }));
     planHydratedRef.current = true;
   }, [tenant]);
@@ -1037,6 +1045,7 @@ function DirectorCreateAccountWizardPage() {
 
     const draftForm =
       localDraft.form && typeof localDraft.form === "object" ? localDraft.form : localDraft;
+    const tenantBillingPlanCode = resolveTenantBillingPlanCode(tenant);
     setForm((prev) => ({
       ...prev,
       firstName: String(draftForm.firstName || prev.firstName || ""),
@@ -1046,9 +1055,11 @@ function DirectorCreateAccountWizardPage() {
       campType: normalizeCampType(
         draftForm.campType || localDraft?.content?.campType || prev.campType || "coed"
       ),
-      billingPlanCode: normalizeBillingPlanCode(
-        draftForm.billingPlanCode || draftForm.selectedPlanCode || prev.billingPlanCode
-      )
+      billingPlanCode:
+        tenantBillingPlanCode ||
+        normalizeBillingPlanCode(
+          draftForm.billingPlanCode || draftForm.selectedPlanCode || prev.billingPlanCode
+        )
     }));
 
     if (localDraft.themeDraft && typeof localDraft.themeDraft === "object") {
@@ -1146,7 +1157,7 @@ function DirectorCreateAccountWizardPage() {
     setStep(normalizeWizardStep(localDraft.step, { accountStepRequired }));
     setDraftRestoredNotice("Draft restored from your previous session.");
     serverDraftHydratedRef.current = true;
-  }, [accountStepRequired, slug]);
+  }, [accountStepRequired, slug, tenant]);
 
   useEffect(() => {
     if (serverDraftHydratedRef.current || !serverDraftLoaded) return;
