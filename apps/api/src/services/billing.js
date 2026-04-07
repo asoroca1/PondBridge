@@ -1918,9 +1918,10 @@ export async function cancelTenantSubscription({ tenant, billingOperator = null,
       throw Object.assign(new Error("Billing is not configured for this environment."), { status: 400 });
     }
     const billing = resolveTenantBilling(tenant);
+    const effectiveCancelAt = cancelAtPeriodEnd ? billing.currentPeriodEnd || nowIso() : nowIso();
     const patch = {
       lifecycleStatus: cancelAtPeriodEnd ? billing.lifecycleStatus : "canceled",
-      canceledAt: nowIso()
+      canceledAt: effectiveCancelAt
     };
     const updatedSettings = buildTenantSettingsWithBillingPatch(tenant, patch);
     const updatedTenant = await TenantModel.update(tenant._id, {
@@ -1930,9 +1931,9 @@ export async function cancelTenantSubscription({ tenant, billingOperator = null,
     });
     await TenantAdminAuditLogModel.create({
       tenantId: tenant._id,
-      action: "billing_subscription_canceled",
-      actorId: billingOperator?._id || billingOperator?.id || null,
-      detail: { mode: "mock", cancelAtPeriodEnd }
+      actorUserId: billingOperator?._id || billingOperator?.id || null,
+      event: "billing_subscription_canceled",
+      metadata: { mode: "mock", cancelAtPeriodEnd }
     });
     return {
       mode: "mock",
@@ -1965,9 +1966,16 @@ export async function cancelTenantSubscription({ tenant, billingOperator = null,
   const nextLegacyStatus = cancelAtPeriodEnd
     ? toLegacyBillingStatusFromLifecycle(nextLifecycle)
     : "canceled";
+  const currentPeriodEndUnix = Number(updatedSubscription?.current_period_end || 0);
+  const effectiveCancelAt =
+    cancelAtPeriodEnd && currentPeriodEndUnix > 0
+      ? new Date(currentPeriodEndUnix * 1000).toISOString()
+      : nowIso();
   const patch = {
     lifecycleStatus: nextLifecycle,
-    canceledAt: cancelAtPeriodEnd ? null : nowIso()
+    currentPeriodEnd:
+      currentPeriodEndUnix > 0 ? new Date(currentPeriodEndUnix * 1000).toISOString() : null,
+    canceledAt: effectiveCancelAt
   };
   const updatedSettings = buildTenantSettingsWithBillingPatch(tenant, patch);
   const updatedTenant = await TenantModel.update(tenant._id, {
@@ -1986,9 +1994,9 @@ export async function cancelTenantSubscription({ tenant, billingOperator = null,
 
   await TenantAdminAuditLogModel.create({
     tenantId: tenant._id,
-    action: "billing_subscription_canceled",
-    actorId: billingOperator?._id || billingOperator?.id || null,
-    detail: {
+    actorUserId: billingOperator?._id || billingOperator?.id || null,
+    event: "billing_subscription_canceled",
+    metadata: {
       mode: "stripe",
       subscriptionId: subscription.id,
       cancelAtPeriodEnd,
@@ -2023,9 +2031,9 @@ export async function resumeTenantSubscription({ tenant, billingOperator = null 
     });
     await TenantAdminAuditLogModel.create({
       tenantId: tenant._id,
-      action: "billing_subscription_resumed",
-      actorId: billingOperator?._id || billingOperator?.id || null,
-      detail: { mode: "mock" }
+      actorUserId: billingOperator?._id || billingOperator?.id || null,
+      event: "billing_subscription_resumed",
+      metadata: { mode: "mock" }
     });
     return {
       mode: "mock",
@@ -2066,9 +2074,9 @@ export async function resumeTenantSubscription({ tenant, billingOperator = null 
 
   await TenantAdminAuditLogModel.create({
     tenantId: tenant._id,
-    action: "billing_subscription_resumed",
-    actorId: billingOperator?._id || billingOperator?.id || null,
-    detail: {
+    actorUserId: billingOperator?._id || billingOperator?.id || null,
+    event: "billing_subscription_resumed",
+    metadata: {
       mode: "stripe",
       subscriptionId: subscription.id
     }

@@ -703,7 +703,9 @@ export default function DirectorAdminBillingPage() {
               <span>Lifecycle Dates</span>
               <strong>{activationDate ? `Active ${formatDate(activationDate)}` : hasNoActivePlan ? "Billing inactive" : "Pending activation"}</strong>
               <small>
-                {cancellationDate
+                {subscriptionCancelAtPeriodEnd
+                  ? `Scheduled to end ${formatDate(cancellationDate || renewalDate)}`
+                  : cancellationDate
                   ? `Canceled ${formatDate(cancellationDate)}`
                   : hasNoActivePlan
                     ? "No activation recorded"
