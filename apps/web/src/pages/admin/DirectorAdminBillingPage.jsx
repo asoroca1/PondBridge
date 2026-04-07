@@ -420,6 +420,11 @@ export default function DirectorAdminBillingPage() {
   const showTrialBanner = billingStatus === "trialing" && !hasNoActivePlan;
   const showPastDueBanner = billingStatus === "past_due";
   const showCheckoutBanner = lifecycleStatus === "checkout_started";
+  const lastInvoiceStatus = String(payload?.billing?.lastInvoiceStatus || "").trim().toLowerCase();
+  const lastInvoiceErrorCode = String(payload?.billing?.lastInvoiceErrorCode || "").trim();
+  const lastInvoiceErrorMessage = String(payload?.billing?.lastInvoiceErrorMessage || "").trim();
+  const showInvoiceFinalizationBanner =
+    lastInvoiceStatus === "finalization_failed" && !hasNoActivePlan && !isComplimentary;
   const subscriptionCancelAtPeriodEnd = Boolean(payload?.subscription?.cancelAtPeriodEnd);
   const hasActiveSubscription = ["active", "trialing", "past_due"].includes(lifecycleStatus);
   const showCancelBanner = subscriptionCancelAtPeriodEnd && hasActiveSubscription;
@@ -593,6 +598,22 @@ export default function DirectorAdminBillingPage() {
       {showCheckoutBanner ? (
         <Card className="director-admin-banner tone-info">
           <p>Stripe checkout is in progress. Complete payment to activate launch readiness.</p>
+        </Card>
+      ) : null}
+
+      {showInvoiceFinalizationBanner ? (
+        <Card className="director-admin-banner tone-warning">
+          <p>
+            Stripe could not finalize the latest invoice, so billing may need attention before the next collection
+            attempt.
+            {lastInvoiceErrorCode ? ` Error code: ${lastInvoiceErrorCode}.` : ""}
+            {lastInvoiceErrorMessage ? ` ${lastInvoiceErrorMessage}` : ""}
+          </p>
+          {payload?.manageBillingUrl ? (
+            <a className="link-button" href={payload.manageBillingUrl} target="_blank" rel="noreferrer">
+              Open Billing Portal
+            </a>
+          ) : null}
         </Card>
       ) : null}
 

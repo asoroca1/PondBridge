@@ -1378,6 +1378,9 @@ async function handleInvoicePaid(event, invoice, { useTenantEventDedupe = false 
       }),
       lastInvoiceId: String(invoice.id || "").trim(),
       lastInvoiceStatus: String(invoice.status || "").trim().toLowerCase(),
+      lastInvoiceErrorCode: "",
+      lastInvoiceErrorMessage: "",
+      lastInvoiceFinalizationFailedAt: null,
       currentPeriodEnd:
         nextPeriodEndUnix > 0 ? new Date(nextPeriodEndUnix * 1000).toISOString() : billing.currentPeriodEnd,
       initialCheckoutCompletedAt:
@@ -1421,6 +1424,9 @@ async function handleInvoicePaymentFailed(event, invoice, { useTenantEventDedupe
       lifecycleStatus,
       lastInvoiceId: String(invoice.id || "").trim(),
       lastInvoiceStatus: String(invoice.status || "payment_failed").trim().toLowerCase(),
+      lastInvoiceErrorCode: "",
+      lastInvoiceErrorMessage: "",
+      lastInvoiceFinalizationFailedAt: null,
       ...lifecycleDatesPatch
     }
   });
@@ -1428,6 +1434,49 @@ async function handleInvoicePaymentFailed(event, invoice, { useTenantEventDedupe
   await writeBillingAudit(updated._id, "billing_invoice_failed", {
     eventId: event.id,
     stripeInvoiceId: invoice.id
+  }).catch(() => {});
+
+  return {
+    skipped: false,
+    tenantContext: buildWebhookTenantContext(updated, invoice)
+  };
+}
+
+async function handleInvoiceFinalizationFailed(event, invoice, { useTenantEventDedupe = false } = {}) {
+  let tenant = await findTenantForStripePayload(invoice);
+  if (!tenant) throw buildMissingTenantWebhookError(invoice, event.type);
+
+  tenant = await applyLegacyTenantDedupe(tenant, event.id, useTenantEventDedupe);
+  if (!tenant) {
+    return {
+      skipped: true,
+      tenantContext: buildWebhookTenantContext(null, invoice)
+    };
+  }
+
+  const billing = resolveTenantBilling(tenant);
+  const failureCode = String(invoice?.last_finalization_error?.code || "").trim().toLowerCase();
+  const failureMessage = String(invoice?.last_finalization_error?.message || "").trim();
+
+  const updated = await updateTenantWithBillingPatch(tenant, {
+    tenantPatch: {
+      billingStatus: billing.legacyStatus
+    },
+    billingPatch: {
+      lifecycleStatus: billing.lifecycleStatus,
+      lastInvoiceId: String(invoice.id || "").trim(),
+      lastInvoiceStatus: "finalization_failed",
+      lastInvoiceErrorCode: failureCode,
+      lastInvoiceErrorMessage: failureMessage,
+      lastInvoiceFinalizationFailedAt: nowIso()
+    }
+  });
+
+  await writeBillingAudit(updated._id, "billing_invoice_finalization_failed", {
+    eventId: event.id,
+    stripeInvoiceId: invoice.id,
+    code: failureCode,
+    message: failureMessage
   }).catch(() => {});
 
   return {
@@ -1483,6 +1532,9 @@ async function handlePaymentIntent(event, paymentIntent, { useTenantEventDedupe 
     billingPatch: {
       lifecycleStatus,
       onboardingFeeStatus,
+      lastInvoiceErrorCode: "",
+      lastInvoiceErrorMessage: "",
+      lastInvoiceFinalizationFailedAt: null,
       lastPaymentIntentId: String(paymentIntent.id || "").trim(),
       lastPaymentIntentStatus: status,
       ...lifecycleDatesPatch
@@ -1556,6 +1608,11 @@ export async function processStripeEvent(event) {
       }
       case "invoice.payment_failed": {
         handlerResult = await handleInvoicePaymentFailed(event, payload, handlerOptions);
+        webhookContext = handlerResult?.tenantContext || webhookContext;
+        break;
+      }
+      case "invoice.finalization_failed": {
+        handlerResult = await handleInvoiceFinalizationFailed(event, payload, handlerOptions);
         webhookContext = handlerResult?.tenantContext || webhookContext;
         break;
       }
@@ -1958,6 +2015,13 @@ export function buildBillingPublicSnapshot(tenant = {}) {
     onboardingFeePaid: readiness.onboardingFeePaid,
     onboardingFeeWaived: readiness.onboardingFeeWaived,
     currentPeriodEnd: readiness.currentPeriodEnd,
+    lastInvoiceId: readiness.lastInvoiceId,
+    lastInvoiceStatus: readiness.lastInvoiceStatus,
+    lastInvoiceErrorCode: readiness.lastInvoiceErrorCode,
+    lastInvoiceErrorMessage: readiness.lastInvoiceErrorMessage,
+    lastInvoiceFinalizationFailedAt: readiness.lastInvoiceFinalizationFailedAt,
+    lastPaymentIntentId: readiness.lastPaymentIntentId,
+    lastPaymentIntentStatus: readiness.lastPaymentIntentStatus,
     initialCheckoutCompletedAt: readiness.initialCheckoutCompletedAt,
     activatedAt: readiness.activatedAt,
     canceledAt: readiness.canceledAt,

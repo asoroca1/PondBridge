@@ -135,6 +135,9 @@ export function resolveTenantBilling(tenant = {}) {
       billingSettings.lastInvoiceId || tenant.onboardingFeeInvoiceId || ""
     ).trim(),
     lastInvoiceStatus: String(billingSettings.lastInvoiceStatus || "").trim(),
+    lastInvoiceErrorCode: String(billingSettings.lastInvoiceErrorCode || "").trim(),
+    lastInvoiceErrorMessage: String(billingSettings.lastInvoiceErrorMessage || "").trim(),
+    lastInvoiceFinalizationFailedAt: toIso(billingSettings.lastInvoiceFinalizationFailedAt),
     lastPaymentIntentId: String(billingSettings.lastPaymentIntentId || "").trim(),
     lastPaymentIntentStatus: String(billingSettings.lastPaymentIntentStatus || "").trim(),
     lastCheckoutSessionId: String(billingSettings.lastCheckoutSessionId || "").trim(),

@@ -370,6 +370,10 @@ export default function DirectorOnboardingCommandCenterPage() {
   )
     .trim()
     .toLowerCase();
+  const lastInvoiceStatus = String(billing?.billing?.lastInvoiceStatus || "").trim().toLowerCase();
+  const lastInvoiceErrorCode = String(billing?.billing?.lastInvoiceErrorCode || "").trim();
+  const lastInvoiceErrorMessage = String(billing?.billing?.lastInvoiceErrorMessage || "").trim();
+  const showInvoiceFinalizationWarning = lastInvoiceStatus === "finalization_failed";
 
   useEffect(() => {
     if (checkoutQueryState !== "success" || billingReady) {
@@ -585,6 +589,13 @@ export default function DirectorOnboardingCommandCenterPage() {
             <strong>Readiness:</strong> {billingReady ? "Ready" : "Blocked until billing is ready"}
           </p>
           <p className="muted billing-readiness-hint">{billingHint}</p>
+          {showInvoiceFinalizationWarning ? (
+            <p className="error-text">
+              Stripe could not finalize the latest invoice.
+              {lastInvoiceErrorCode ? ` Code: ${lastInvoiceErrorCode}.` : ""}
+              {lastInvoiceErrorMessage ? ` ${lastInvoiceErrorMessage}` : ""}
+            </p>
+          ) : null}
           {Array.isArray(billing?.catalog?.plans) && billing.catalog.plans.length ? (
             <label className="director-command-center-plan-select">
               Plan selection
