@@ -128,15 +128,10 @@ export default function DirectorAdminBillingPage() {
     try {
       const response = await request("/billing");
       setPayload(response);
-      const liveLifecycleStatus = String(
-        response?.tenant?.billingLifecycleStatus || response?.billing?.lifecycleStatus || ""
-      )
-        .trim()
-        .toLowerCase();
       const livePlanCode = normalizeBillingPlanCode(
         response?.tenant?.billingPlan || response?.billing?.billingPlan
       );
-      setSelectedPlanCode(liveLifecycleStatus === "uninitialized" ? "" : livePlanCode);
+      setSelectedPlanCode(livePlanCode);
     } catch (requestError) {
       setError(requestError.message || "Failed to load billing.");
     } finally {
@@ -431,8 +426,8 @@ export default function DirectorAdminBillingPage() {
   const renewalDate = tenant.currentPeriodEnd || payload?.billing?.currentPeriodEnd || null;
   const activationDate = tenant.activatedAt || payload?.billing?.activatedAt || null;
   const cancellationDate = tenant.canceledAt || payload?.billing?.canceledAt || null;
-  const hasNoActivePlan = lifecycleStatus === "uninitialized" && !initialCheckoutCompletedAt && !renewalDate && !activationDate;
-  const currentPlanCode = hasNoActivePlan ? "" : resolvedCurrentPlanCode;
+  const hasNoActivePlan = !resolvedCurrentPlanCode;
+  const currentPlanCode = resolvedCurrentPlanCode;
   const showTrialBanner = billingStatus === "trialing" && !hasNoActivePlan;
   const showPastDueBanner = billingStatus === "past_due";
   const showCheckoutBanner = lifecycleStatus === "checkout_started";
