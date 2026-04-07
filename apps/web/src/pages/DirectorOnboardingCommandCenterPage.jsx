@@ -51,6 +51,20 @@ function billingPlanIsPremium(code = "") {
   return normalized === "founders" || normalized === "institutional" || normalized === "test";
 }
 
+function resolveLaunchRedirectTarget(payload = {}, slug = "") {
+  const homeUrl = String(payload?.network?.homeUrl || "").trim();
+  if (homeUrl) return homeUrl;
+
+  const appUrl = String(payload?.network?.appUrl || "").trim();
+  if (appUrl) return appUrl;
+
+  const loginUrl = String(payload?.network?.loginUrl || "").trim();
+  if (loginUrl) return loginUrl;
+
+  const safeSlug = String(slug || "").trim().toLowerCase();
+  return safeSlug ? `/t/${safeSlug}/home` : "/home";
+}
+
 function billingReadinessHint({
   lifecycleStatus = "",
   onboardingFeeStatus = "",
@@ -305,21 +319,21 @@ export default function DirectorOnboardingCommandCenterPage() {
     setStatus("");
 
     try {
-      const response = await requestJson("/api/tenants/me/launch", {
-        method: "POST",
-        token,
-        body: {
-          mode: "onboarding_command_center"
-        }
-      });
-      const loginUrl = String(response?.network?.loginUrl || "").trim();
-      if (loginUrl.startsWith("http")) {
-        window.location.assign(loginUrl);
+    const response = await requestJson("/api/tenants/me/launch", {
+      method: "POST",
+      token,
+      body: {
+        mode: "onboarding_command_center"
+      }
+    });
+      const redirectTarget = resolveLaunchRedirectTarget(response, slug);
+      if (redirectTarget.startsWith("http")) {
+        window.location.assign(redirectTarget);
         return;
       }
       await loadCommandCenter();
       setStatus("Network launched successfully.");
-      navigate(`/t/${slug}/home`);
+      navigate(redirectTarget);
     } catch (requestError) {
       const blockers = Array.isArray(requestError?.payload?.error?.details?.blockers)
         ? requestError.payload.error.details.blockers

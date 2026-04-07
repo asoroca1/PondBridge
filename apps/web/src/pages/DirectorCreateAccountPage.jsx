@@ -186,6 +186,27 @@ function resolveTenantBillingPlanCode(tenant = null, fallback = "") {
   return BILLING_PLAN_OPTIONS.some((item) => item.code === raw) ? raw : fallback;
 }
 
+function billingLaunchReady(billingState = {}) {
+  return Boolean(
+    billingState?.launchReady ||
+      (billingState?.launchReadiness?.lifecycleReady && billingState?.launchReadiness?.feeReady)
+  );
+}
+
+function resolveLaunchRedirectTarget(launchPayload = {}, slug = "") {
+  const homeUrl = String(launchPayload?.network?.homeUrl || "").trim();
+  if (homeUrl) return homeUrl;
+
+  const appUrl = String(launchPayload?.network?.appUrl || "").trim();
+  if (appUrl) return appUrl;
+
+  const loginUrl = String(launchPayload?.network?.loginUrl || "").trim();
+  if (loginUrl) return loginUrl;
+
+  const safeSlug = String(slug || "").trim().toLowerCase();
+  return safeSlug ? `/t/${safeSlug}/home` : "/home";
+}
+
 function billingPlanIsPremium(code = "") {
   const normalized = normalizeBillingPlanCode(code);
   return normalized === "founders" || normalized === "institutional" || normalized === "test";
@@ -529,6 +550,7 @@ function DirectorCreateAccountWizardPage() {
   const checkoutQueryState = String(searchParams.get("checkout") || "").trim().toLowerCase();
   const [step, setStep] = useState(() => (accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN));
   const [submitError, setSubmitError] = useState("");
+  const [checkoutReturnStatus, setCheckoutReturnStatus] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [draftRestoredNotice, setDraftRestoredNotice] = useState("");
   const [saveLaterStatus, setSaveLaterStatus] = useState("");
@@ -590,6 +612,7 @@ function DirectorCreateAccountWizardPage() {
   const previousBillingPlanRef = useRef("");
   const initialThemeVarsRef = useRef(null);
   const skipAccountHydratedRef = useRef(false);
+  const postCheckoutLaunchAttemptedRef = useRef(false);
 
   const cardRef = useRef(null);
 
@@ -631,6 +654,66 @@ function DirectorCreateAccountWizardPage() {
     if (!setupRequested || !accountStepRequired || !slug) return;
     navigate(resumeLoginPath, { replace: true });
   }, [accountStepRequired, navigate, resumeLoginPath, setupRequested, slug]);
+
+  useEffect(() => {
+    if (checkoutQueryState !== "cancel") return;
+    postCheckoutLaunchAttemptedRef.current = false;
+    setCheckoutReturnStatus("");
+    setSubmitError("Stripe checkout was canceled. Your camp is not live yet.");
+  }, [checkoutQueryState]);
+
+  useEffect(() => {
+    if (checkoutQueryState !== "success" || !authToken || !slug || showLaunchCelebration) return;
+    if (postCheckoutLaunchAttemptedRef.current) return;
+
+    let cancelled = false;
+    postCheckoutLaunchAttemptedRef.current = true;
+    setCheckoutReturnStatus("Payment received. Finalizing your camp now...");
+    setSubmitError("");
+    setFinishing(true);
+
+    const run = async () => {
+      try {
+        const deadline = Date.now() + 45000;
+
+        while (!cancelled && Date.now() < deadline) {
+          const billingSnapshot = await requestJson("/api/tenants/me/billing", { token: authToken });
+          const billingState = billingSnapshot?.billing || {};
+
+          if (billingLaunchReady(billingState)) {
+            await launchCamp({ token: authToken, redirectImmediately: true });
+            return;
+          }
+
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        }
+
+        if (!cancelled) {
+          setCheckoutReturnStatus("");
+          setSubmitError(
+            "Your payment went through, but launch confirmation is still syncing. Refresh in a few seconds if you are not redirected automatically."
+          );
+          postCheckoutLaunchAttemptedRef.current = false;
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCheckoutReturnStatus("");
+          setSubmitError(error.message || "Unable to finish launch after Stripe checkout.");
+          postCheckoutLaunchAttemptedRef.current = false;
+        }
+      } finally {
+        if (!cancelled) {
+          setFinishing(false);
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, checkoutQueryState, showLaunchCelebration, slug]);
 
   useEffect(() => {
     if (!isDirectorUser) return;
@@ -703,6 +786,46 @@ function DirectorCreateAccountWizardPage() {
     }, 6000);
     return () => clearTimeout(timer);
   }, [showLaunchCelebration, launchRedirectUrl, navigate]);
+
+  function redirectToLaunchTarget(target, { replace = false } = {}) {
+    const destination = String(target || "").trim();
+    if (!destination) return;
+    if (destination.startsWith("http")) {
+      if (replace) {
+        window.location.replace(destination);
+      } else {
+        window.location.assign(destination);
+      }
+      return;
+    }
+    navigate(destination, { replace });
+  }
+
+  async function launchCamp({ token, redirectImmediately = false } = {}) {
+    const launchPayload = await requestJson("/api/tenants/me/launch", {
+      method: "POST",
+      token,
+      body: {
+        mode: "director_wizard",
+        legalAgreementAccepted: true,
+        termsVersion: DIRECTOR_CLIENT_TERMS_VERSION,
+        privacyVersion: DIRECTOR_CLIENT_PRIVACY_VERSION,
+        directorAgreementVersion: DIRECTOR_SERVICE_AGREEMENT_VERSION
+      }
+    });
+
+    clearWizardDraft(slug);
+    const redirectTarget = resolveLaunchRedirectTarget(launchPayload, slug);
+
+    if (redirectImmediately) {
+      redirectToLaunchTarget(redirectTarget, { replace: true });
+      return launchPayload;
+    }
+
+    setLaunchRedirectUrl(redirectTarget);
+    setShowLaunchCelebration(true);
+    return launchPayload;
+  }
 
   const backPath = inviteToken
     ? `/t/${slug}/director-claim?token=${encodeURIComponent(inviteToken)}`
@@ -2160,11 +2283,7 @@ function DirectorCreateAccountWizardPage() {
 
         const billingSnapshot = await requestJson("/api/tenants/me/billing", { token });
         const billingState = billingSnapshot?.billing || {};
-        const launchReady = Boolean(
-          billingState.launchReady ||
-            (billingState.launchReadiness?.lifecycleReady &&
-              billingState.launchReadiness?.feeReady)
-        );
+        const launchReady = billingLaunchReady(billingState);
 
         if (!launchReady) {
           const lifecycleStatus = String(billingState.lifecycleStatus || "").trim().toLowerCase();
@@ -2216,33 +2335,7 @@ function DirectorCreateAccountWizardPage() {
         }
       }
 
-      const launchPayload = await requestJson("/api/tenants/me/launch", {
-        method: "POST",
-        token,
-        body: {
-          mode: "director_wizard",
-          legalAgreementAccepted: true,
-          termsVersion: DIRECTOR_CLIENT_TERMS_VERSION,
-          privacyVersion: DIRECTOR_CLIENT_PRIVACY_VERSION,
-          directorAgreementVersion: DIRECTOR_SERVICE_AGREEMENT_VERSION
-        }
-      });
-
-      clearWizardDraft(slug);
-
-      const launchLoginUrl = String(launchPayload?.network?.loginUrl || "").trim();
-      const isLocalHost =
-        window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        window.location.hostname.endsWith(".localhost");
-
-      const redirectTarget =
-        launchLoginUrl && !isLocalHost
-          ? launchLoginUrl
-          : `/t/${slug}/onboarding?launched=1`;
-
-      setLaunchRedirectUrl(redirectTarget);
-      setShowLaunchCelebration(true);
+      await launchCamp({ token });
     } catch (error) {
       const blockers = Array.isArray(error?.payload?.error?.details?.blockers)
         ? error.payload.error.details.blockers
@@ -2352,6 +2445,9 @@ function DirectorCreateAccountWizardPage() {
           ) : null}
           {saveLaterStatus ? (
             <p className="director-draft-restored director-draft-restored--info">{saveLaterStatus}</p>
+          ) : null}
+          {checkoutReturnStatus ? (
+            <p className="director-draft-restored director-draft-restored--info">{checkoutReturnStatus}</p>
           ) : null}
           {step === STEP_ACCOUNT ? (
             <>
