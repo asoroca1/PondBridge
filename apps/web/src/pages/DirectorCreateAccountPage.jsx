@@ -2181,7 +2181,7 @@ function DirectorCreateAccountWizardPage() {
             return;
           }
 
-          if (checkoutAction === "subscription_updated") {
+          if (checkoutAction === "subscription_updated" || checkoutAction === "complimentary_plan") {
             const refreshedBillingSnapshot = await requestJson("/api/tenants/me/billing", { token });
             const refreshedBillingState = refreshedBillingSnapshot?.billing || {};
             const refreshedLaunchReady = Boolean(
@@ -2192,7 +2192,9 @@ function DirectorCreateAccountWizardPage() {
             if (!refreshedLaunchReady) {
               throw new Error(
                 checkoutPayload?.notes ||
-                  "Subscription updated, but billing is still pending. Open the billing portal to finish setup."
+                  (checkoutAction === "complimentary_plan"
+                    ? "Complimentary billing was applied, but launch readiness is still pending. Refresh and try again."
+                    : "Subscription updated, but billing is still pending. Open the billing portal to finish setup.")
               );
             }
           } else {

@@ -101,11 +101,15 @@ function getCatalogEntry(planCode = "legacy") {
   return BILLING_PLAN_CATALOG[normalizePlanCode(planCode)] || BILLING_PLAN_CATALOG.legacy;
 }
 
-async function findStripePriceIdByProductName(productName = "", { recurring = false } = {}) {
+async function findStripePriceIdByProductName(
+  productName = "",
+  { recurring = false, unitAmount = null } = {}
+) {
   const normalizedName = String(productName || "").trim();
   if (!stripe || !normalizedName) return "";
 
-  const cacheKey = `${normalizedName}:${recurring ? "recurring" : "one_time"}`;
+  const normalizedUnitAmount = Number.isFinite(Number(unitAmount)) ? Number(unitAmount) : null;
+  const cacheKey = `${normalizedName}:${recurring ? "recurring" : "one_time"}:${normalizedUnitAmount ?? "any"}`;
   if (stripePriceLookupCache.has(cacheKey)) {
     return stripePriceLookupCache.get(cacheKey);
   }
@@ -116,13 +120,20 @@ async function findStripePriceIdByProductName(productName = "", { recurring = fa
     expand: ["data.product"]
   });
 
-  const match = (prices.data || []).find((price) => {
+  const matches = (prices.data || []).filter((price) => {
     const productNameValue =
       typeof price.product === "object" ? String(price.product?.name || "").trim() : "";
     if (productNameValue !== normalizedName) return false;
     if (recurring) return price.type === "recurring" && price.recurring?.interval === "year";
     return price.type === "one_time";
   });
+
+  const exactAmountMatch =
+    normalizedUnitAmount === null
+      ? null
+      : matches.find((price) => Number(price?.unit_amount ?? NaN) === normalizedUnitAmount);
+
+  const match = exactAmountMatch || matches[0] || null;
 
   const resolved = String(match?.id || "").trim();
   stripePriceLookupCache.set(cacheKey, resolved);
@@ -139,14 +150,26 @@ async function resolveCatalogEntryForCheckout(entry = {}) {
   if (!annualPriceId) {
     annualPriceId = await findStripePriceIdByProductName(
       STRIPE_PRODUCT_NAME_BY_PLAN_CODE[normalizedCode] || "",
-      { recurring: true }
+      {
+        recurring: true,
+        unitAmount:
+          Number.isFinite(Number(entry?.annualAmount)) && Number(entry.annualAmount) > 0
+            ? Number(entry.annualAmount) * 100
+            : null
+      }
     );
   }
 
   if (!onboardingPriceId && Number(entry?.onboardingFeeAmount || 0) > 0) {
     onboardingPriceId = await findStripePriceIdByProductName(
       STRIPE_ONBOARDING_PRODUCT_NAME_BY_PLAN_CODE[normalizedCode] || "",
-      { recurring: false }
+      {
+        recurring: false,
+        unitAmount:
+          Number.isFinite(Number(entry?.onboardingFeeAmount)) && Number(entry.onboardingFeeAmount) > 0
+            ? Number(entry.onboardingFeeAmount) * 100
+            : null
+      }
     );
   }
 
