@@ -6495,6 +6495,14 @@ img[draggable="false"] { -webkit-user-drag: none; }
   align-content: start;
 }
 
+.pb-cedar-page .director-admin-billing-summary-card.is-readonly,
+.pb-cedar-page .director-admin-billing-checkout-card.is-readonly,
+.pb-cedar-page .director-admin-billing-plans.is-readonly,
+.pb-cedar-page .director-admin-billing-invoices-card.is-readonly{
+  opacity: .72;
+  filter: grayscale(.18);
+}
+
 .pb-cedar-page .director-admin-billing-summary-head{
   display: flex;
   justify-content: space-between;
@@ -6540,6 +6548,12 @@ img[draggable="false"] { -webkit-user-drag: none; }
   border-color: color-mix(in srgb, var(--brand-primary) 18%, #d8e3f0);
   color: color-mix(in srgb, var(--brand-primary) 76%, #334155);
   background: color-mix(in srgb, var(--brand-primary) 6%, #ffffff);
+}
+
+.pb-cedar-page .director-admin-billing-tone-pill.is-inactive{
+  border-color: var(--director-admin-surface-border, #dbe4ef);
+  color: var(--director-admin-ink-soft);
+  background: #f8fafc;
 }
 
 .pb-cedar-page .director-admin-billing-key-grid{

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button, Card } from "@pondbridge/ui";
 import { PageHeader } from "../../components/admin/AdminUi.jsx";
@@ -71,6 +71,13 @@ const BILLING_TIER_DEFINITIONS = [
   }
 ];
 
+const BILLING_TIER_CODES = new Set(BILLING_TIER_DEFINITIONS.map((tier) => tier.code));
+
+function normalizeBillingPlanCode(code = "") {
+  const normalized = String(code || "").trim().toLowerCase();
+  return BILLING_TIER_CODES.has(normalized) ? normalized : "";
+}
+
 function formatStatusLabel(value = "", fallback = "Unknown") {
   const normalized = String(value || "").trim();
   if (!normalized) return fallback;
@@ -91,7 +98,7 @@ export default function DirectorAdminBillingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
+  const [selectedPlanCode, setSelectedPlanCode] = useState("");
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
   const [resumingSubscription, setResumingSubscription] = useState(false);
@@ -106,14 +113,15 @@ export default function DirectorAdminBillingPage() {
     try {
       const response = await request("/billing");
       setPayload(response);
-      const livePlanCode = String(
-        response?.tenant?.billingPlan || response?.billing?.billingPlan || "legacy"
+      const liveLifecycleStatus = String(
+        response?.tenant?.billingLifecycleStatus || response?.billing?.lifecycleStatus || ""
       )
         .trim()
         .toLowerCase();
-      if (livePlanCode) {
-        setSelectedPlanCode(livePlanCode);
-      }
+      const livePlanCode = normalizeBillingPlanCode(
+        response?.tenant?.billingPlan || response?.billing?.billingPlan
+      );
+      setSelectedPlanCode(liveLifecycleStatus === "uninitialized" ? "" : livePlanCode);
     } catch (requestError) {
       setError(requestError.message || "Failed to load billing.");
     } finally {
@@ -392,8 +400,14 @@ export default function DirectorAdminBillingPage() {
   const usage = payload?.usage || {};
   const billingStatus = String(tenant.billingStatus || "").toLowerCase();
   const lifecycleStatus = String(tenant.billingLifecycleStatus || "").toLowerCase();
-  const currentPlanCode = String(tenant.billingPlan || "legacy").trim().toLowerCase();
-  const showTrialBanner = billingStatus === "trialing";
+  const resolvedCurrentPlanCode = normalizeBillingPlanCode(tenant.billingPlan || payload?.billing?.billingPlan);
+  const initialCheckoutCompletedAt = tenant.initialCheckoutCompletedAt || payload?.billing?.initialCheckoutCompletedAt;
+  const renewalDate = tenant.currentPeriodEnd || payload?.billing?.currentPeriodEnd || null;
+  const activationDate = tenant.activatedAt || payload?.billing?.activatedAt || null;
+  const cancellationDate = tenant.canceledAt || payload?.billing?.canceledAt || null;
+  const hasNoActivePlan = lifecycleStatus === "uninitialized" && !initialCheckoutCompletedAt && !renewalDate && !activationDate;
+  const currentPlanCode = hasNoActivePlan ? "" : resolvedCurrentPlanCode;
+  const showTrialBanner = billingStatus === "trialing" && !hasNoActivePlan;
   const showPastDueBanner = billingStatus === "past_due";
   const showCheckoutBanner = lifecycleStatus === "checkout_started";
   const subscriptionCancelAtPeriodEnd = Boolean(payload?.subscription?.cancelAtPeriodEnd);
@@ -405,61 +419,102 @@ export default function DirectorAdminBillingPage() {
       .map((plan) => [String(plan?.code || "").trim().toLowerCase(), plan])
       .filter(([code]) => Boolean(code))
   );
-  const selectedPlan = catalogPlansByCode.get(String(selectedPlanCode || "").trim().toLowerCase()) || null;
+  const normalizedSelectedPlanCode = normalizeBillingPlanCode(selectedPlanCode);
+  const selectedPlan = catalogPlansByCode.get(normalizedSelectedPlanCode) || null;
   const selectedPlanIsAvailable = Boolean(selectedPlan);
   const currentPlan = catalogPlansByCode.get(currentPlanCode) || null;
-  const selectedTierDefinition = BILLING_TIER_DEFINITIONS.find((item) => item.code === selectedPlanCode) || null;
+  const selectedTierDefinition = BILLING_TIER_DEFINITIONS.find((item) => item.code === normalizedSelectedPlanCode) || null;
   const currentTierDefinition = BILLING_TIER_DEFINITIONS.find((item) => item.code === currentPlanCode) || null;
-  const billingStatusLabel = formatStatusLabel(tenant.billingStatus, "trialing");
+  const billingStatusLabel = hasNoActivePlan
+    ? "no active plan"
+    : formatStatusLabel(tenant.billingStatus, "trialing");
+  const billingStatusBadgeTone = hasNoActivePlan ? "neutral" : statusTone(tenant.billingStatus);
   const lifecycleLabel = formatLifecycleLabel(tenant.billingLifecycleStatus, "uninitialized");
-  const onboardingFeeLabel = formatMoney(tenant.onboardingFeeAmount);
-  const onboardingFeeStatusLabel = formatStatusLabel(
-    tenant.onboardingFeeStatus || (tenant.onboardingFeePaid ? "paid" : "unpaid"),
-    tenant.onboardingFeePaid ? "paid" : "unpaid"
-  );
-  const planSummaryLabel = currentPlan?.label || currentTierDefinition?.subtitle || "Selected tenant billing tier";
+  const onboardingFeeLabel = hasNoActivePlan ? "-" : formatMoney(tenant.onboardingFeeAmount);
+  const onboardingFeeStatusLabel = hasNoActivePlan
+    ? "inactive"
+    : formatStatusLabel(
+        tenant.onboardingFeeStatus || (tenant.onboardingFeePaid ? "paid" : "unpaid"),
+        tenant.onboardingFeePaid ? "paid" : "unpaid"
+      );
+  const planSummaryLabel = hasNoActivePlan
+    ? "Billing has not been activated for this network yet."
+    : currentPlan?.label || currentTierDefinition?.subtitle || "Selected tenant billing tier";
   const memberUsagePercent = Math.min(100, Math.max(0, Number(usage.memberUsagePercent || 0)));
   const memberUsageLabel = usage.memberLimit
     ? `${usage.members || 0} / ${usage.memberLimit}`
     : `${usage.members || 0} (unlimited)`;
-  const selectedPlanPriceLabel = selectedPlan ? `${formatMoney(selectedPlan.annualAmount)}/year` : "Not available";
+  const selectedPlanPriceLabel = hasNoActivePlan
+    ? "Billing inactive"
+    : selectedPlan
+      ? `${formatMoney(selectedPlan.annualAmount)}/year`
+      : "Not available";
   const checkoutButtonLabel = startingCheckout
     ? "Redirecting..."
-    : selectedPlanCode === currentPlanCode
-    ? "Start Stripe Checkout"
-    : "Switch Plan & Checkout";
+    : hasNoActivePlan
+      ? "No Active Plan"
+      : normalizedSelectedPlanCode === currentPlanCode
+        ? "Start Stripe Checkout"
+        : "Switch Plan & Checkout";
   const showInvoiceTable = Array.isArray(payload?.invoices) && payload.invoices.length > 0;
-  const initialCheckoutCompletedAt = tenant.initialCheckoutCompletedAt || payload?.billing?.initialCheckoutCompletedAt;
-  const renewalDate = tenant.currentPeriodEnd || payload?.billing?.currentPeriodEnd || null;
-  const activationDate = tenant.activatedAt || payload?.billing?.activatedAt || null;
-  const cancellationDate = tenant.canceledAt || payload?.billing?.canceledAt || null;
   const institutionalOnboardingAppliesNow =
-    selectedPlanCode === "institutional" && !initialCheckoutCompletedAt;
+    normalizedSelectedPlanCode === "institutional" && !initialCheckoutCompletedAt;
   const selectedPlanPayNowAmount = selectedPlan
     ? Number(selectedPlan.annualAmount || 0) +
       (institutionalOnboardingAppliesNow ? Number(selectedPlan.onboardingFeeAmount || 0) : 0)
     : 0;
   const selectedPlanRenewsAmount = selectedPlan ? Number(selectedPlan.annualAmount || 0) : 0;
-  const selectedPlanOnboardingLabel = selectedPlan
-    ? selectedPlanCode === "institutional"
-      ? institutionalOnboardingAppliesNow
-        ? `${formatMoney(selectedPlan.onboardingFeeAmount)} onboarding charged now (first checkout only)`
-        : "Institutional onboarding already handled; renewals are annual only"
-      : "No onboarding fee"
-    : "Contact support to enable this tier.";
-  const foundersAvailabilityText = useMemo(() => {
-    const remaining = Number(payload?.foundersAvailability?.remaining);
-    if (!Number.isFinite(remaining)) return "";
-    return `${remaining} founders slots remaining`;
-  }, [payload?.foundersAvailability?.remaining]);
+  const selectedPlanOnboardingLabel = hasNoActivePlan
+    ? "Billing is inactive for this network. Controls stay disabled until a plan is activated."
+    : selectedPlan
+      ? normalizedSelectedPlanCode === "institutional"
+        ? institutionalOnboardingAppliesNow
+          ? `${formatMoney(selectedPlan.onboardingFeeAmount)} onboarding charged now (first checkout only)`
+          : "Institutional onboarding already handled; renewals are annual only"
+        : "No onboarding fee"
+      : "Contact support to enable this tier.";
+  const foundersAvailabilityRemaining = Number(payload?.foundersAvailability?.remaining);
+  const foundersAvailabilityText = Number.isFinite(foundersAvailabilityRemaining)
+    ? `${foundersAvailabilityRemaining} founders slots remaining`
+    : "";
+  const currentPlanTitle = hasNoActivePlan ? "No Active Plan" : billingPlanLabel(currentPlanCode);
+  const currentPlanToneClass = hasNoActivePlan ? "is-inactive" : `is-${currentTierDefinition?.tone || "base"}`;
+  const currentPlanToneLabel = hasNoActivePlan
+    ? "Inactive"
+    : currentTierDefinition?.tone === "premium"
+      ? "Premium"
+      : "Base";
+  const checkoutPlanTitle = hasNoActivePlan ? "No Active Plan" : selectedTierDefinition?.title || "Select a tier";
+  const checkoutPlanSubtitle = hasNoActivePlan
+    ? "This billing page is available in read-only mode until a plan is activated for your network."
+    : selectedTierDefinition?.subtitle || "Choose Founders, Legacy, or Institutional, then continue to Stripe.";
+  const checkoutStateTitle = hasNoActivePlan
+    ? "Billing activation required"
+    : selectedPlan
+      ? normalizedSelectedPlanCode === currentPlanCode
+        ? "Checkout on current tier"
+        : "Switch tier at checkout"
+      : "Select a plan to continue";
+  const invoiceEmptyMessage = hasNoActivePlan
+    ? "Invoices will appear here after billing is activated for this network."
+    : "Invoice history will appear here once Stripe sync is enabled.";
 
   return (
     <div className="director-admin-stack director-admin-billing-page">
       <PageHeader
         title="Billing"
         subtitle="Manage plan tier, payment status, and Stripe checkout for your network."
-        actions={<Button variant="secondary" onClick={loadBilling}>Refresh</Button>}
+        actions={<Button variant="secondary" onClick={loadBilling} disabled={hasNoActivePlan}>Refresh</Button>}
       />
+
+      {hasNoActivePlan ? (
+        <Card className="director-admin-banner tone-info">
+          <p>
+            No active plan. Billing details are shown in read-only mode until a plan is activated for this
+            network.
+          </p>
+        </Card>
+      ) : null}
 
       {showTrialBanner ? (
         <Card className="director-admin-banner tone-info">
@@ -505,15 +560,15 @@ export default function DirectorAdminBillingPage() {
       {status ? <p className="success-text">{status}</p> : null}
 
       <div className="director-admin-billing-top-grid">
-        <Card className="director-admin-billing-summary-card">
+        <Card className={`director-admin-billing-summary-card${hasNoActivePlan ? " is-readonly" : ""}`}>
           <div className="director-admin-billing-summary-head">
             <div>
               <p className="director-admin-billing-kicker">Current Plan</p>
-              <h2>{billingPlanLabel(currentPlanCode)}</h2>
+              <h2>{currentPlanTitle}</h2>
               <p className="muted">{planSummaryLabel}</p>
             </div>
-            <span className={`director-admin-billing-tone-pill is-${currentTierDefinition?.tone || "base"}`}>
-              {currentTierDefinition?.tone === "premium" ? "Premium" : "Base"}
+            <span className={`director-admin-billing-tone-pill ${currentPlanToneClass}`}>
+              {currentPlanToneLabel}
             </span>
           </div>
 
@@ -521,7 +576,7 @@ export default function DirectorAdminBillingPage() {
             <div className="director-admin-billing-key-item">
               <span>Billing Status</span>
               <strong>
-                <span className={`director-admin-status-badge tone-${statusTone(tenant.billingStatus)}`.trim()}>
+                <span className={`director-admin-status-badge tone-${billingStatusBadgeTone}`.trim()}>
                   {billingStatusLabel}
                 </span>
               </strong>
@@ -539,7 +594,9 @@ export default function DirectorAdminBillingPage() {
               <span>{subscriptionCancelAtPeriodEnd ? "Access Until" : "Renews On"}</span>
               <strong>{formatDate(renewalDate)}</strong>
               <small>
-                {subscriptionCancelAtPeriodEnd
+                {hasNoActivePlan
+                  ? "Activate billing to begin renewals"
+                  : subscriptionCancelAtPeriodEnd
                   ? "Cancels at end of period"
                   : renewalDate
                     ? `Next payment: ${currentPlan ? formatMoney(currentPlan.annualAmount) : formatMoney(payload?.billing?.annualAmount)}`
@@ -553,8 +610,14 @@ export default function DirectorAdminBillingPage() {
             </div>
             <div className="director-admin-billing-key-item">
               <span>Lifecycle Dates</span>
-              <strong>{activationDate ? `Active ${formatDate(activationDate)}` : "Pending activation"}</strong>
-              <small>{cancellationDate ? `Canceled ${formatDate(cancellationDate)}` : "No cancellation recorded"}</small>
+              <strong>{activationDate ? `Active ${formatDate(activationDate)}` : hasNoActivePlan ? "Billing inactive" : "Pending activation"}</strong>
+              <small>
+                {cancellationDate
+                  ? `Canceled ${formatDate(cancellationDate)}`
+                  : hasNoActivePlan
+                    ? "No activation recorded"
+                    : "No cancellation recorded"}
+              </small>
             </div>
           </div>
 
@@ -568,7 +631,7 @@ export default function DirectorAdminBillingPage() {
           ) : null}
 
           <div className="inline-actions">
-            {payload?.manageBillingUrl ? (
+            {payload?.manageBillingUrl && !hasNoActivePlan ? (
               <a className="link-button" href={payload.manageBillingUrl} target="_blank" rel="noreferrer">
                 Open Billing Portal
               </a>
@@ -577,13 +640,13 @@ export default function DirectorAdminBillingPage() {
                 Billing Portal Unavailable
               </Button>
             )}
-            <Button variant="secondary" onClick={loadBilling}>Refresh Billing</Button>
-            {hasActiveSubscription && !subscriptionCancelAtPeriodEnd ? (
-              <Button variant="danger" onClick={() => setShowCancelConfirm(true)}>
+            <Button variant="secondary" onClick={loadBilling} disabled={hasNoActivePlan}>Refresh Billing</Button>
+            {hasActiveSubscription && !subscriptionCancelAtPeriodEnd && !hasNoActivePlan ? (
+              <Button variant="danger" onClick={() => setShowCancelConfirm(true)} disabled={hasNoActivePlan}>
                 Cancel Plan
               </Button>
             ) : null}
-            {subscriptionCancelAtPeriodEnd ? (
+            {subscriptionCancelAtPeriodEnd && !hasNoActivePlan ? (
               <Button variant="secondary" onClick={resumeSubscription} disabled={resumingSubscription}>
                 {resumingSubscription ? "Resuming..." : "Resume Plan"}
               </Button>
@@ -609,17 +672,15 @@ export default function DirectorAdminBillingPage() {
           ) : null}
         </Card>
 
-        <Card className="director-admin-billing-checkout-card">
+        <Card className={`director-admin-billing-checkout-card${hasNoActivePlan ? " is-readonly" : ""}`}>
           <div className="director-admin-billing-summary-head">
             <div>
               <p className="director-admin-billing-kicker">Plan & Checkout</p>
-              <h2>{selectedTierDefinition?.title || "Select a tier"}</h2>
-              <p className="muted">
-                {selectedTierDefinition?.subtitle || "Choose Founders, Legacy, or Institutional, then continue to Stripe."}
-              </p>
+              <h2>{checkoutPlanTitle}</h2>
+              <p className="muted">{checkoutPlanSubtitle}</p>
             </div>
-            <span className={`director-admin-billing-tone-pill is-${selectedTierDefinition?.tone || "base"}`}>
-              {selectedTierDefinition?.tone === "premium" ? "Premium" : "Base"}
+            <span className={`director-admin-billing-tone-pill ${hasNoActivePlan ? "is-inactive" : `is-${selectedTierDefinition?.tone || "base"}`}`}>
+              {hasNoActivePlan ? "Inactive" : selectedTierDefinition?.tone === "premium" ? "Premium" : "Base"}
             </span>
           </div>
 
@@ -631,24 +692,18 @@ export default function DirectorAdminBillingPage() {
                 Pay now: {formatMoney(selectedPlanPayNowAmount)}. Renews later: {formatMoney(selectedPlanRenewsAmount)}/year.
               </p>
             ) : null}
-            {selectedPlanCode === "founders" && foundersAvailabilityText ? (
+            {normalizedSelectedPlanCode === "founders" && foundersAvailabilityText ? (
               <p className="director-admin-billing-tier-detail">{foundersAvailabilityText}</p>
             ) : null}
           </div>
 
           <div className="director-admin-billing-checkout-row">
             <div>
-              <p className="director-admin-billing-checkout-title">
-                {selectedPlan
-                  ? selectedPlanCode === currentPlanCode
-                    ? "Checkout on current tier"
-                    : "Switch tier at checkout"
-                  : "Select a plan to continue"}
-              </p>
+              <p className="director-admin-billing-checkout-title">{checkoutStateTitle}</p>
               <p className="muted">Stripe will confirm the final billing details before you pay.</p>
             </div>
             <div className="inline-actions">
-              <Button onClick={startCheckout} disabled={startingCheckout || !selectedPlanIsAvailable}>
+              <Button onClick={startCheckout} disabled={startingCheckout || !selectedPlanIsAvailable || hasNoActivePlan}>
                 {checkoutButtonLabel}
               </Button>
             </div>
@@ -656,7 +711,7 @@ export default function DirectorAdminBillingPage() {
         </Card>
       </div>
 
-      <Card className="director-admin-billing-plans">
+      <Card className={`director-admin-billing-plans${hasNoActivePlan ? " is-readonly" : ""}`}>
         <div className="director-admin-billing-plan-head">
           <h2 className="pb-section-title">Choose your billing tier</h2>
           <p className="muted">Three tiers are available: Founders, Legacy, and Institutional.</p>
@@ -677,7 +732,7 @@ export default function DirectorAdminBillingPage() {
                   "director-admin-billing-tier-card",
                   isCurrent ? "is-current" : "",
                   isSelected ? "is-selected" : "",
-                  isUnavailable ? "is-disabled" : ""
+                  isUnavailable || hasNoActivePlan ? "is-disabled" : ""
                 ].filter(Boolean).join(" ")}
               >
                 <div className="director-admin-billing-tier-top">
@@ -714,7 +769,7 @@ export default function DirectorAdminBillingPage() {
                   type="button"
                   variant={isSelected ? "primary" : "secondary"}
                   onClick={() => setSelectedPlanCode(tier.code)}
-                  disabled={isUnavailable}
+                  disabled={isUnavailable || hasNoActivePlan}
                 >
                   {isSelected ? "Selected Plan" : "Select Plan"}
                 </Button>
@@ -724,14 +779,14 @@ export default function DirectorAdminBillingPage() {
         </div>
       </Card>
 
-      <Card className="director-admin-billing-invoices-card">
+      <Card className={`director-admin-billing-invoices-card${hasNoActivePlan ? " is-readonly" : ""}`}>
         <div className="director-admin-billing-invoice-head">
           <h2 className="pb-section-title">Recent Invoices</h2>
           <p className="muted">Latest Stripe invoice records for this network.</p>
         </div>
         {!showInvoiceTable ? (
           <div className="director-admin-billing-empty">
-            <p className="muted">Invoice history will appear here once Stripe sync is enabled.</p>
+            <p className="muted">{invoiceEmptyMessage}</p>
           </div>
         ) : (
           <div className="director-admin-table-wrap">
