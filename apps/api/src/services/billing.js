@@ -428,10 +428,7 @@ async function ensureStripeCustomer(tenant, billingOperator = null) {
     return String(freshTenant.stripeCustomerId).trim();
   }
 
-  const contactEmail =
-    String(tenant?.billingDetails?.mailingAddress?.email || "").trim().toLowerCase() ||
-    String(tenant?.content?.contactEmail || "").trim().toLowerCase() ||
-    String(billingOperator?.email || "").trim().toLowerCase();
+  const contactEmail = resolveStripeCustomerEmail(tenant, billingOperator);
 
   const customer = await stripe.customers.create(
     {
@@ -449,6 +446,42 @@ async function ensureStripeCustomer(tenant, billingOperator = null) {
 
   await TenantModel.update(tenantId, { stripeCustomerId: customer.id });
   return customer.id;
+}
+
+function resolveStripeCustomerEmail(tenant = {}, billingOperator = null) {
+  return (
+    String(tenant?.onboardingDraft?.content?.contactEmail || "").trim().toLowerCase() ||
+    String(tenant?.content?.contactEmail || "").trim().toLowerCase() ||
+    String(billingOperator?.email || "").trim().toLowerCase()
+  );
+}
+
+function resolveStripeCustomerName(tenant = {}) {
+  return String(tenant?.name || "").trim();
+}
+
+export async function syncStripeCustomerContact(tenant = {}, billingOperator = null) {
+  const customerId = String(tenant?.stripeCustomerId || "").trim();
+  if (!stripe || !customerId) return { synced: false, customerId };
+
+  const email = resolveStripeCustomerEmail(tenant, billingOperator);
+  const name = resolveStripeCustomerName(tenant);
+
+  await stripe.customers.update(customerId, {
+    ...(email ? { email } : {}),
+    ...(name ? { name } : {}),
+    metadata: {
+      tenantId: String(tenant?._id || tenant?.id || "").trim(),
+      tenantSlug: String(tenant?.slug || "").trim()
+    }
+  });
+
+  return {
+    synced: true,
+    customerId,
+    email,
+    name
+  };
 }
 
 function getPlanCodeFromTenant(tenant) {

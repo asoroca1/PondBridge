@@ -65,7 +65,8 @@ import {
   getFoundersAvailability,
   getTenantSubscriptionStatus,
   listRecentTenantInvoices,
-  resumeTenantSubscription
+  resumeTenantSubscription,
+  syncStripeCustomerContact
 } from "../services/billing.js";
 import {
   normalizeBillingPlan,
@@ -4345,7 +4346,12 @@ router.patch("/settings/identity", async (req, res) => {
     }
   });
 
-  return res.json({ ok: true, identity: resolveContent(tenant) });
+  const stripeContactSync = await syncStripeCustomerContact(tenant, req.user).catch(() => ({
+    synced: false,
+    customerId: String(tenant?.stripeCustomerId || "").trim()
+  }));
+
+  return res.json({ ok: true, identity: resolveContent(tenant), stripeContactSync });
 });
 
 router.patch("/settings/branding", async (req, res) => {

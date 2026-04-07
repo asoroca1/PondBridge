@@ -16,7 +16,8 @@ import {
   getBillingMode,
   getFoundersAvailability,
   isStripeEnabled,
-  listRecentTenantInvoices
+  listRecentTenantInvoices,
+  syncStripeCustomerContact
 } from "../services/billing.js";
 import { runTenantCsvImport } from "../services/csvImport.js";
 import {
@@ -511,6 +512,10 @@ router.patch("/me/theme", async (req, res, next) => {
     }
 
     const updated = await saveTenantOnboarding(tenant._id, update);
+    const stripeContactSync = await syncStripeCustomerContact(updated, req.user).catch(() => ({
+      synced: false,
+      customerId: String(updated?.stripeCustomerId || "").trim()
+    }));
 
     await createAuditLog({
       tenantId: tenant._id,
@@ -521,7 +526,10 @@ router.patch("/me/theme", async (req, res, next) => {
       }
     });
 
-    return res.json(onboardingPayload(updated, null));
+    return res.json({
+      ...onboardingPayload(updated, null),
+      stripeContactSync
+    });
   } catch (error) {
     return next(error);
   }
@@ -1157,6 +1165,12 @@ router.patch("/me/billing", async (req, res) => {
   update.onboardingStatus = tenant.onboardingStatus === "live" ? "live" : "in_progress";
 
   const updated = await saveTenantOnboarding(tenant._id, update);
+  const stripeContactSync = hasBillingDetailsUpdate
+    ? await syncStripeCustomerContact(updated, req.user).catch(() => ({
+        synced: false,
+        customerId: String(updated?.stripeCustomerId || "").trim()
+      }))
+    : { synced: false, customerId: String(updated?.stripeCustomerId || "").trim() };
 
   await createAuditLog({
     tenantId: tenant._id,
@@ -1183,7 +1197,8 @@ router.patch("/me/billing", async (req, res) => {
       onboardingFeeInvoiceId: updated.onboardingFeeInvoiceId || "",
       billingDetails: updated.billingDetails || {}
     },
-    billing: getBillingReadiness(updated)
+    billing: getBillingReadiness(updated),
+    stripeContactSync
   });
 });
 
