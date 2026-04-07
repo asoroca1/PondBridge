@@ -489,10 +489,11 @@ export default function DirectorAdminBillingPage() {
       (institutionalOnboardingAppliesNow ? Number(selectedPlan.onboardingFeeAmount || 0) : 0)
     : 0;
   const selectedPlanRenewsAmount = selectedPlan ? Number(selectedPlan.annualAmount || 0) : 0;
+  const showSelectedPlanPaymentBreakdown = Boolean(selectedPlan) && !hasNoActivePlan && !isComplimentary;
   const selectedPlanOnboardingLabel = hasNoActivePlan
     ? "Billing is inactive for this network. Controls stay disabled until a plan is activated."
     : isComplimentary
-      ? "This network is on a complimentary plan. Billing stays active without Stripe checkout."
+      ? "Complimentary access is active. No checkout or renewal charge applies."
     : selectedPlan
       ? normalizedSelectedPlanCode === "institutional"
         ? institutionalOnboardingAppliesNow
@@ -526,6 +527,9 @@ export default function DirectorAdminBillingPage() {
         ? "Checkout on current tier"
         : "Switch tier at checkout"
       : "Select a plan to continue";
+  const checkoutStateDescription = isComplimentary
+    ? "This complimentary plan stays active without a Stripe payment step."
+    : "Stripe will confirm the final billing details before you pay.";
   const invoiceEmptyMessage = hasNoActivePlan
     ? "Invoices will appear here after billing is activated for this network."
     : isComplimentary
@@ -760,12 +764,12 @@ export default function DirectorAdminBillingPage() {
           <div className="director-admin-billing-checkout-price">
             <p className="director-admin-billing-tier-price">{selectedPlanPriceLabel}</p>
             <p className="director-admin-billing-tier-detail">{selectedPlanOnboardingLabel}</p>
-            {selectedPlan ? (
+            {showSelectedPlanPaymentBreakdown ? (
               <p className="director-admin-billing-tier-detail">
                 Pay now: {formatMoney(selectedPlanPayNowAmount)}. Renews later: {formatMoney(selectedPlanRenewsAmount)}/year.
               </p>
             ) : null}
-            {normalizedSelectedPlanCode === "founders" && foundersAvailabilityText ? (
+            {normalizedSelectedPlanCode === "founders" && foundersAvailabilityText && !isComplimentary ? (
               <p className="director-admin-billing-tier-detail">{foundersAvailabilityText}</p>
             ) : null}
           </div>
@@ -773,7 +777,7 @@ export default function DirectorAdminBillingPage() {
           <div className="director-admin-billing-checkout-row">
             <div>
               <p className="director-admin-billing-checkout-title">{checkoutStateTitle}</p>
-              <p className="muted">Stripe will confirm the final billing details before you pay.</p>
+              <p className="muted">{checkoutStateDescription}</p>
             </div>
             <div className="inline-actions">
               <Button onClick={startCheckout} disabled={startingCheckout || !selectedPlanIsAvailable || hasNoActivePlan || isComplimentary}>

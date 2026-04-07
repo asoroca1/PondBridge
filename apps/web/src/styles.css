@@ -6615,17 +6615,22 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-billing-top-grid{
   display: grid;
-  gap: 12px;
+  gap: 14px;
   grid-template-columns: 1.25fr 1fr;
   align-items: stretch;
 }
 
+.pb-cedar-page .director-admin-billing-top-grid > *{
+  height: 100%;
+  min-height: 100%;
+}
+
 .pb-cedar-page .director-admin-billing-summary-card,
 .pb-cedar-page .director-admin-billing-checkout-card{
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   height: 100%;
-  align-content: start;
 }
 
 .pb-cedar-page .director-admin-billing-summary-card.is-readonly,
@@ -6640,11 +6645,15 @@ img[draggable="false"] { -webkit-user-drag: none; }
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 10px;
+  gap: 14px;
+}
+
+.pb-cedar-page .director-admin-billing-summary-head > :first-child{
+  min-width: 0;
 }
 
 .pb-cedar-page .director-admin-billing-summary-head h2{
-  margin: 2px 0 4px;
+  margin: 4px 0 6px;
   font-size: 1.5rem;
   line-height: 1.1;
 }
@@ -6691,7 +6700,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-billing-key-grid{
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -6726,10 +6735,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-billing-checkout-price{
   border: 1px dashed color-mix(in srgb, var(--brand-primary) 22%, #d7e2f0);
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 14px 14px 12px;
   background: color-mix(in srgb, var(--brand-primary) 3%, #ffffff);
   display: grid;
-  gap: 4px;
+  gap: 8px;
 }
 
 .pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-row{
@@ -6907,12 +6916,12 @@ img[draggable="false"] { -webkit-user-drag: none; }
   border: 1px solid var(--director-admin-surface-border, #dbe4ef);
   border-radius: 12px;
   background: var(--director-admin-surface-bg, #ffffff);
-  padding: 12px;
+  padding: 14px;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .pb-cedar-page .director-admin-billing-checkout-title{
@@ -6922,7 +6931,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
 }
 
 .pb-cedar-page .director-admin-billing-checkout-row .muted{
-  margin: 3px 0 0;
+  margin: 6px 0 0;
+  max-width: 34ch;
 }
 
 .pb-cedar-page .director-admin-billing-invoices-card{
