@@ -30,13 +30,5 @@
     "status": "active",
     "created_at": "2026-03-07T01:24:48.219+00:00",
     "updated_at": "2026-03-13T19:48:01.723555+00:00"
-  },
-  {
-    "id": "1ace24a28c5eb8bdb54cbc3a",
-    "slug": "test22",
-    "name": "test22",
-    "status": "active",
-    "created_at": "2026-03-09T03:06:32.289+00:00",
-    "updated_at": "2026-03-10T00:39:04.300882+00:00"
   }
 ]

@@ -26,6 +26,14 @@ services:
         sync: false
       - key: APP_BASE_DOMAIN
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_TEST_ANNUAL
+        sync: false
+      - key: BILLING_TEST_PLAN_TENANTS
+        sync: false
       - key: AUTH_TOKEN_MODE
         value: hybrid
       - key: AUTH_COOKIE_NAME

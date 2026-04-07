@@ -17,6 +17,7 @@ STRIPE_WEBHOOK_SECRET=
 
 STRIPE_PRICE_BASE=
 STRIPE_PRICE_PREMIUM=
+STRIPE_PRICE_TEST_ANNUAL=
 
 STRIPE_ONBOARDING_PRICE_BASE=
 STRIPE_ONBOARDING_PRICE_PREMIUM=
@@ -25,6 +26,7 @@ STRIPE_SUCCESS_URL=
 STRIPE_CANCEL_URL=
 STRIPE_BILLING_PORTAL_RETURN_URL=
 STRIPE_CURRENCY=usd
+BILLING_TEST_PLAN_TENANTS=
 
 MOCK_BILLING_BASE_URL=https://mock-billing.pondbridge.local
 ```
@@ -90,3 +92,9 @@ curl -X POST http://localhost:4000/api/stripe/webhook \
 - Optionally create dedicated one-time onboarding fee prices.
 - Use production `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL`.
 - Restrict webhook endpoint at network edge (only Stripe source IPs if desired).
+
+## Internal Test Tier
+- PondBridge supports an internal production test tier at `$10/year`.
+- Configure its recurring Stripe price in `STRIPE_PRICE_TEST_ANNUAL`.
+- Expose it only to specific camps by setting `BILLING_TEST_PLAN_TENANTS` to a comma-separated list of tenant slugs.
+- Use `*` in `BILLING_TEST_PLAN_TENANTS` only if you intentionally want the tier visible to every camp.

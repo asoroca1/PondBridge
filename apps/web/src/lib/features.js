@@ -9,7 +9,9 @@ function resolveTenantPlanTier(tenant) {
   const billingPlan = String(tenant?.billingPlan || tenant?.billing?.billingPlan || "")
     .trim()
     .toLowerCase();
-  if (billingPlan === "founders" || billingPlan === "institutional") return "premium";
+  if (billingPlan === "founders" || billingPlan === "institutional" || billingPlan === "test") {
+    return "premium";
+  }
   if (billingPlan === "legacy") return "base";
   return String(tenant?.planTier || "").trim().toLowerCase() === "premium" ? "premium" : "base";
 }

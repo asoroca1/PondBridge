@@ -26,6 +26,12 @@ function formatMoney(value = 0) {
 
 const BILLING_PLAN_OPTIONS = [
   {
+    code: "test",
+    label: "Internal Test",
+    annualAmount: 10,
+    onboardingFeeAmount: 0
+  },
+  {
     code: "legacy",
     label: "Legacy",
     annualAmount: 3000,
@@ -47,6 +53,7 @@ const BILLING_PLAN_OPTIONS = [
 
 function billingPlanLabel(code = "") {
   const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "test") return "Internal Test";
   const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalized);
   return option?.label || "Legacy";
 }
@@ -730,6 +737,10 @@ export function SuperTenantCreatePage() {
           </div>
           <p className="muted full-width">
             This billing plan is saved to the camp now, so directors land on onboarding with billing already pre-selected.
+          </p>
+          <p className="muted full-width">
+            Internal Test is a live $10/year production tier and only succeeds for allowlisted camp slugs, including
+            <code> test23 </code>.
           </p>
         </form>
       </Card>

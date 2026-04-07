@@ -10,7 +10,7 @@ const LIFECYCLE_STATUSES = new Set([
   "paused"
 ]);
 const ONBOARDING_FEE_STATUSES = new Set(["unpaid", "paid", "waived"]);
-const BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
+const BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -243,7 +243,9 @@ export function isTenantBillingAccessAllowed(tenant = {}) {
 
 export function resolveFeatureTierFromBillingPlan(planCode = "") {
   const normalized = normalizeBillingPlanCode(planCode);
-  return normalized === "institutional" || normalized === "founders" ? "premium" : "base";
+  return normalized === "institutional" || normalized === "founders" || normalized === "test"
+    ? "premium"
+    : "base";
 }
 
 export function resolveTenantFeatureTier(tenant = {}) {

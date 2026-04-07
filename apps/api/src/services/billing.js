@@ -65,13 +65,25 @@ const BILLING_PLAN_CATALOG = {
       env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_PREMIUM || ""
     ).trim(),
     foundersOnly: false
+  },
+  test: {
+    code: "test",
+    label: "Internal Test",
+    description: "Internal production validation plan ($10/year)",
+    planTier: "premium",
+    annualAmount: 10,
+    onboardingFeeAmount: 0,
+    annualPriceId: String(env.STRIPE_PRICE_TEST_ANNUAL || "").trim(),
+    onboardingPriceId: "",
+    foundersOnly: false
   }
 };
 
 const STRIPE_PRODUCT_NAME_BY_PLAN_CODE = {
   legacy: "Legacy",
   founders: "Founders",
-  institutional: "Institutional"
+  institutional: "Institutional",
+  test: "Internal Test"
 };
 
 const STRIPE_ONBOARDING_PRODUCT_NAME_BY_PLAN_CODE = {
@@ -99,6 +111,33 @@ function normalizePlanCode(value = "", fallbackTier = "base") {
 
 function getCatalogEntry(planCode = "legacy") {
   return BILLING_PLAN_CATALOG[normalizePlanCode(planCode)] || BILLING_PLAN_CATALOG.legacy;
+}
+
+function parseTenantAllowlist(rawValue = "") {
+  return String(rawValue || "")
+    .split(",")
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isTestPlanEnabledForTenant(tenant = null) {
+  const tenantSlug = String(tenant?.slug || "").trim().toLowerCase();
+  const allowlist = parseTenantAllowlist(env.BILLING_TEST_PLAN_TENANTS);
+  if (!tenantSlug || !allowlist.length) return false;
+  return allowlist.includes("*") || allowlist.includes(tenantSlug);
+}
+
+function listCatalogEntriesForTenant(tenant = null) {
+  return Object.values(BILLING_PLAN_CATALOG).filter((entry) => {
+    if (entry.code !== "test") return true;
+    return isTestPlanEnabledForTenant(tenant);
+  });
+}
+
+export function isBillingPlanAvailableForTenant(planCode = "", tenant = null) {
+  const normalizedPlanCode = normalizePlanCode(planCode, tenant?.planTier || "base");
+  if (normalizedPlanCode !== "test") return true;
+  return isTestPlanEnabledForTenant(tenant);
 }
 
 async function findStripePriceIdByProductName(
@@ -755,9 +794,9 @@ export async function getFoundersAvailability() {
   };
 }
 
-export function getBillingCatalog() {
+export function getBillingCatalog({ tenant = null } = {}) {
   return {
-    plans: Object.values(BILLING_PLAN_CATALOG).map((entry) => ({
+    plans: listCatalogEntriesForTenant(tenant).map((entry) => ({
       code: entry.code,
       label: entry.label,
       description: entry.description,
@@ -795,6 +834,15 @@ export async function createTenantCheckoutSession({
   );
   let catalogEntry = getCatalogEntry(normalizedPlanCode);
   let tenantForUpdate = tenant;
+
+  if (!isBillingPlanAvailableForTenant(catalogEntry.code, tenantForUpdate)) {
+    const error = new Error(
+      "The internal billing test tier is not enabled for this camp."
+    );
+    error.statusCode = 403;
+    error.code = "BILLING_TEST_PLAN_NOT_ENABLED";
+    throw error;
+  }
 
   if (catalogEntry.code === "founders") {
     const reserved = await ensureFoundersReservation(tenantForUpdate);

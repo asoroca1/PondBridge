@@ -10,7 +10,6 @@
   - `demo-code-invalid`
   - `demow`
   - `demoa`
-  - `test22`
 
 ## Architecture findings
 

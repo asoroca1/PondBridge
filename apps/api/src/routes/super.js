@@ -31,7 +31,11 @@ import {
   ResendWebhookEventModel,
   EmailSuppressionModel
 } from "../db/models/index.js";
-import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
+import {
+  createTenantCheckoutSession,
+  getBillingMode,
+  isBillingPlanAvailableForTenant
+} from "../services/billing.js";
 import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
 import { deprovisionTenantDomain, provisionTenantDomain } from "../services/cloudflareDomains.js";
@@ -63,9 +67,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const BILLING_PLAN_MRR = {
   legacy: 3000 / 12,
   founders: 2500 / 12,
-  institutional: 3800 / 12
+  institutional: 3800 / 12,
+  test: 10 / 12
 };
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
+const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
 const BILLING_PLAN_DEFAULTS = {
   legacy: {
     planTier: "base",
@@ -87,6 +92,13 @@ const BILLING_PLAN_DEFAULTS = {
     onboardingFeePaid: false,
     onboardingFeeStatus: "unpaid",
     onboardingFeeWaiveReason: ""
+  },
+  test: {
+    planTier: "premium",
+    onboardingFeeAmount: 0,
+    onboardingFeePaid: true,
+    onboardingFeeStatus: "waived",
+    onboardingFeeWaiveReason: "internal_test_plan"
   }
 };
 const APP_BASE_DOMAIN = String(env.APP_BASE_DOMAIN || "pondbridgealumni.com").trim().toLowerCase();
@@ -942,7 +954,7 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     return res.status(400).json({
       error: {
         code: "INVALID_BILLING_PLAN",
-        message: "Billing plan must be legacy, founders, or institutional."
+        message: "Billing plan must be legacy, founders, institutional, or test."
       }
     });
   }
@@ -951,6 +963,14 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     : req.body.planTier === "premium"
     ? "institutional"
     : "legacy";
+  if (!isBillingPlanAvailableForTenant(billingPlan, { slug, planTier: req.body.planTier || "base" })) {
+    return res.status(403).json({
+      error: {
+        code: "BILLING_TEST_PLAN_NOT_ENABLED",
+        message: "The internal billing test tier is not enabled for this camp."
+      }
+    });
+  }
   const billingDefaults = BILLING_PLAN_DEFAULTS[billingPlan] || BILLING_PLAN_DEFAULTS.legacy;
   const campType = normalizeCampType(req.body.campType || "coed");
   const alumniWord = alumniPluralForCampType(campType, { capitalized: false });
@@ -1401,7 +1421,7 @@ router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, re
       return res.status(400).json({
         error: {
           code: "INVALID_BILLING_PLAN",
-          message: "Billing plan must be legacy, founders, or institutional."
+          message: "Billing plan must be legacy, founders, institutional, or test."
         }
       });
     }

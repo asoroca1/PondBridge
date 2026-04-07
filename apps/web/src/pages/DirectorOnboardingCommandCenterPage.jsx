@@ -40,6 +40,7 @@ function formatMoney(value) {
 
 function billingPlanLabel(code = "") {
   const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "test") return "Internal Test";
   if (normalized === "founders") return "Founders";
   if (normalized === "institutional") return "Institutional";
   return "Legacy";
@@ -47,7 +48,7 @@ function billingPlanLabel(code = "") {
 
 function billingPlanIsPremium(code = "") {
   const normalized = String(code || "").trim().toLowerCase();
-  return normalized === "founders" || normalized === "institutional";
+  return normalized === "founders" || normalized === "institutional" || normalized === "test";
 }
 
 function billingReadinessHint({

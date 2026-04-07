@@ -85,7 +85,7 @@ function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
 const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
 const DIRECTOR_CLIENT_PRIVACY_VERSION = "2026-03-06";
 const DIRECTOR_SERVICE_AGREEMENT_VERSION = "2026-03-06";
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
+const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
 
 function hasOwn(source, key) {
   return Boolean(source && Object.prototype.hasOwnProperty.call(source, key));
@@ -327,7 +327,7 @@ function resolveRequestedBillingPlan(body = {}, tenant = null) {
           payload: {
             error: {
               code: "INVALID_BILLING_PLAN",
-              message: "Billing plan must be legacy, founders, or institutional."
+              message: "Billing plan must be legacy, founders, institutional, or test."
             }
           }
         }
@@ -1295,7 +1295,7 @@ router.post("/me/billing/checkout", async (req, res, next) => {
       checkoutUrl: checkout.checkoutUrl,
       sessionId: checkout.sessionId || "",
       notes: checkout.message || "",
-      catalog: getBillingCatalog(),
+      catalog: getBillingCatalog({ tenant: updatedTenant }),
       foundersAvailability,
       billing: buildBillingPublicSnapshot(updatedTenant),
       tenant: {
@@ -1369,7 +1369,7 @@ router.get("/me/billing", async (req, res) => {
       foundersEligible: billing.foundersEligible
     },
     features: listFeaturesForPlan(planTier, tenant.addOns || []),
-    catalog: getBillingCatalog(),
+    catalog: getBillingCatalog({ tenant }),
     foundersAvailability,
     billing,
     manageSubscriptionUrl: portal.url || "",

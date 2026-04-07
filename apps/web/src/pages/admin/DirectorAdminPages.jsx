@@ -84,6 +84,7 @@ function statusTone(status = "") {
 
 function billingPlanLabel(code = "") {
   const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "test") return "Internal Test";
   if (normalized === "founders") return "Founders";
   if (normalized === "institutional") return "Institutional";
   return "Legacy";
@@ -116,6 +117,11 @@ const MEMBER_COMPLETION_FILTER_OPTIONS = [
   { value: "0-9", label: "0-9%" }
 ];
 const BILLING_TIER_DEFINITIONS = [
+  {
+    code: "test",
+    title: "Internal Test",
+    subtitle: "Allowlisted production billing validation tier."
+  },
   {
     code: "founders",
     title: "Founders",
@@ -4967,6 +4973,9 @@ export function DirectorAdminBillingPage() {
       .map((plan) => [String(plan?.code || "").trim().toLowerCase(), plan])
       .filter(([code]) => Boolean(code))
   );
+  const visibleTierDefinitions = BILLING_TIER_DEFINITIONS.filter((tier) =>
+    catalogPlansByCode.has(tier.code)
+  );
   const selectedPlan = catalogPlansByCode.get(String(selectedPlanCode || "").trim().toLowerCase()) || null;
   const selectedPlanIsAvailable = Boolean(selectedPlan);
   const memberUsagePercent = Math.min(100, Math.max(0, Number(usage.memberUsagePercent || 0)));
@@ -5067,11 +5076,11 @@ export function DirectorAdminBillingPage() {
       <Card className="director-admin-billing-plans">
         <div className="director-admin-billing-plan-head">
           <h2 className="pb-section-title">Choose Your Plan</h2>
-          <p className="muted">Founders, Legacy, and Institutional tiers are available in Stripe checkout.</p>
+          <p className="muted">Available tiers are shown below for this network.</p>
         </div>
 
         <div className="director-admin-billing-tier-grid">
-          {BILLING_TIER_DEFINITIONS.map((tier) => {
+          {visibleTierDefinitions.map((tier) => {
             const plan = catalogPlansByCode.get(tier.code) || null;
             const isCurrent = currentPlanCode === tier.code;
             const isSelected = selectedPlanCode === tier.code;

@@ -14,6 +14,7 @@ function formatMoney(value) {
 
 function billingPlanLabel(code = "") {
   const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "test") return "Internal Test";
   if (normalized === "founders") return "Founders";
   if (normalized === "institutional") return "Institutional";
   return "Legacy";

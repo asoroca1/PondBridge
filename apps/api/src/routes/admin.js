@@ -180,7 +180,7 @@ const exportLimiter = rateLimit({
     }
   }
 });
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional"]);
+const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
 const DEFAULT_AGE_GROUPS = [
   "Super Warrior",
   "Warrior",
@@ -4105,7 +4105,7 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
       isComplimentary: Boolean(billing.isComplimentary)
     },
     billing,
-    catalog: getBillingCatalog(),
+    catalog: getBillingCatalog({ tenant: req.tenant }),
     foundersAvailability,
     usage: {
       members: memberCount,
@@ -4126,7 +4126,7 @@ router.post("/billing/checkout", ensureBillingVisibleForTenant, async (req, res,
       return res.status(400).json({
         error: {
           code: "INVALID_BILLING_PLAN",
-          message: "Billing plan must be legacy, founders, or institutional."
+          message: "Billing plan must be legacy, founders, institutional, or test."
         }
       });
     }
@@ -4153,7 +4153,7 @@ router.post("/billing/checkout", ensureBillingVisibleForTenant, async (req, res,
       sessionId: checkout.sessionId || "",
       notes: checkout.message || "",
       billing: buildBillingPublicSnapshot(updatedTenant),
-      catalog: getBillingCatalog()
+      catalog: getBillingCatalog({ tenant: updatedTenant })
     });
   } catch (error) {
     return next(error);

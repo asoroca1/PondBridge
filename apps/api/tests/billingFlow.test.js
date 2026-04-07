@@ -103,9 +103,11 @@ beforeAll(async () => {
   process.env.FRONTEND_ORIGIN = "http://localhost:5173";
   process.env.APP_BASE_DOMAIN = "pondbridge.test";
   process.env.BILLING_MODE = "mock";
+  process.env.BILLING_TEST_PLAN_TENANTS = "billing-test-tier-allowed-1,billing-test-tier-allowed-3";
   process.env.STRIPE_PRICE_LEGACY_ANNUAL = "price_legacy_annual";
   process.env.STRIPE_PRICE_FOUNDERS_ANNUAL = "price_founders_annual";
   process.env.STRIPE_PRICE_INSTITUTIONAL_ANNUAL = "price_institutional_annual";
+  process.env.STRIPE_PRICE_TEST_ANNUAL = "price_test_annual";
   process.env.STRIPE_PRICE_LEGACY_ONBOARDING = "price_legacy_onboarding";
   process.env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING = "price_institutional_onboarding";
 
@@ -128,6 +130,78 @@ afterEach(async () => {
 afterAll(() => {});
 
 describe("Stripe billing system", () => {
+  test("billing catalog exposes the internal test tier only to allowlisted camps", async () => {
+    const allowedTenant = await createTenant({
+      slug: "billing-test-tier-allowed",
+      onboardingStatus: "in_progress"
+    });
+    const controlTenant = await createTenant({
+      slug: "billing-test-tier-control",
+      onboardingStatus: "in_progress"
+    });
+    await createTenantAdmin(allowedTenant._id, "director@test-tier-allowed.test");
+    await createTenantAdmin(controlTenant._id, "director@test-tier-control.test");
+
+    const allowedToken = await loginTenant(allowedTenant.slug, "director@test-tier-allowed.test");
+    const controlToken = await loginTenant(controlTenant.slug, "director@test-tier-control.test");
+
+    const [allowedResponse, controlResponse] = await Promise.all([
+      request(app).get("/api/tenants/me/billing").set("Authorization", `Bearer ${allowedToken}`),
+      request(app).get("/api/tenants/me/billing").set("Authorization", `Bearer ${controlToken}`)
+    ]);
+
+    expect(allowedResponse.status).toBe(200);
+    expect(controlResponse.status).toBe(200);
+    expect(
+      allowedResponse.body.catalog.plans.some((plan) => plan.code === "test" && plan.annualAmount === 10)
+    ).toBe(true);
+    expect(controlResponse.body.catalog.plans.some((plan) => plan.code === "test")).toBe(false);
+  });
+
+  test("tenant admin can start internal test checkout when the camp is allowlisted", async () => {
+    const tenant = await createTenant({
+      slug: "billing-test-tier-allowed",
+      onboardingStatus: "in_progress"
+    });
+    await createTenantAdmin(tenant._id, "director@test-tier-checkout.test");
+    const token = await loginTenant(tenant.slug, "director@test-tier-checkout.test");
+
+    const response = await request(app)
+      .post("/api/tenants/me/billing/checkout")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ planCode: "test" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.ok).toBe(true);
+    expect(response.body.billing.billingPlan).toBe("test");
+    expect(response.body.billing.onboardingFeeAmount).toBe(0);
+    expect(response.body.billing.onboardingFeeStatus).toBe("waived");
+    expect(
+      response.body.catalog.plans.some((plan) => plan.code === "test" && plan.annualAmount === 10)
+    ).toBe(true);
+
+    const stored = await Tenant.findById(tenant._id);
+    expect(stored.planTier).toBe("premium");
+    expect(stored.settings?.billing?.planCode).toBe("test");
+  });
+
+  test("super admin cannot provision a non-allowlisted camp directly onto the internal test tier", async () => {
+    await createSuperAdmin();
+    const superToken = await loginSuper();
+
+    const response = await request(app)
+      .post("/api/super/tenants")
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        name: "Blocked Internal Test Camp",
+        slug: "billing-test-tier-blocked",
+        billingPlan: "test"
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error?.code).toBe("BILLING_TEST_PLAN_NOT_ENABLED");
+  });
+
   test("tenant admin checkout stores canonical legacy billing metadata", async () => {
     const tenant = await createTenant({
       slug: "billing-legacy-checkout",

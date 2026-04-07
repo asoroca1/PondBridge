@@ -29,12 +29,24 @@ function statusTone(status = "") {
 
 function billingPlanLabel(code = "") {
   const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "test") return "Internal Test";
   if (normalized === "founders") return "Founders";
   if (normalized === "institutional") return "Institutional";
   return "Legacy";
 }
 
 const BILLING_TIER_DEFINITIONS = [
+  {
+    code: "test",
+    title: "Internal Test",
+    subtitle: "$10/year for validating live production billing flows.",
+    tone: "premium",
+    perks: [
+      "Live Stripe subscription checkout",
+      "No onboarding fee",
+      "Allowlisted camps only"
+    ]
+  },
   {
     code: "founders",
     title: "Founders",
@@ -69,6 +81,10 @@ const BILLING_TIER_DEFINITIONS = [
     ]
   }
 ];
+
+const BILLING_TIER_DEFINITIONS_BY_CODE = new Map(
+  BILLING_TIER_DEFINITIONS.map((tier) => [tier.code, tier])
+);
 
 const BILLING_TIER_CODES = new Set(BILLING_TIER_DEFINITIONS.map((tier) => tier.code));
 
@@ -337,11 +353,11 @@ export default function DirectorAdminBillingPage() {
         <Card className="director-admin-billing-plans">
           <div className="director-admin-billing-plan-head">
             <h2 className="pb-section-title">Choose your billing tier</h2>
-            <p className="muted">Three tiers are available: Founders, Legacy, and Institutional.</p>
+            <p className="muted">Available tiers are shown below for this network.</p>
           </div>
 
           <div className="director-admin-billing-tier-grid">
-            {BILLING_TIER_DEFINITIONS.map((tier) => (
+            {BILLING_TIER_DEFINITIONS.filter((tier) => tier.code !== "test").map((tier) => (
               <article
                 key={tier.code}
                 className={[
@@ -434,12 +450,15 @@ export default function DirectorAdminBillingPage() {
       .map((plan) => [String(plan?.code || "").trim().toLowerCase(), plan])
       .filter(([code]) => Boolean(code))
   );
+  const visibleTierDefinitions = BILLING_TIER_DEFINITIONS.filter((tier) =>
+    catalogPlansByCode.has(tier.code)
+  );
   const normalizedSelectedPlanCode = normalizeBillingPlanCode(selectedPlanCode);
   const selectedPlan = catalogPlansByCode.get(normalizedSelectedPlanCode) || null;
   const selectedPlanIsAvailable = Boolean(selectedPlan);
   const currentPlan = catalogPlansByCode.get(currentPlanCode) || null;
-  const selectedTierDefinition = BILLING_TIER_DEFINITIONS.find((item) => item.code === normalizedSelectedPlanCode) || null;
-  const currentTierDefinition = BILLING_TIER_DEFINITIONS.find((item) => item.code === currentPlanCode) || null;
+  const selectedTierDefinition = BILLING_TIER_DEFINITIONS_BY_CODE.get(normalizedSelectedPlanCode) || null;
+  const currentTierDefinition = BILLING_TIER_DEFINITIONS_BY_CODE.get(currentPlanCode) || null;
   const billingStatusLabel = isComplimentary
     ? "complimentary"
     : hasNoActivePlan
@@ -517,7 +536,7 @@ export default function DirectorAdminBillingPage() {
     ? "This billing page is available in read-only mode until a plan is activated for your network."
     : isComplimentary
       ? "Camp Cedar is on a special no-charge plan, so Stripe checkout is disabled."
-    : selectedTierDefinition?.subtitle || "Choose Founders, Legacy, or Institutional, then continue to Stripe.";
+    : selectedTierDefinition?.subtitle || "Choose an available tier, then continue to Stripe.";
   const checkoutStateTitle = hasNoActivePlan
     ? "Billing activation required"
     : isComplimentary
@@ -791,11 +810,11 @@ export default function DirectorAdminBillingPage() {
       <Card className={`director-admin-billing-plans${hasNoActivePlan || isComplimentary ? " is-readonly" : ""}`}>
         <div className="director-admin-billing-plan-head">
           <h2 className="pb-section-title">Choose your billing tier</h2>
-          <p className="muted">Three tiers are available: Founders, Legacy, and Institutional.</p>
+          <p className="muted">Available tiers are shown below for this network.</p>
         </div>
 
         <div className="director-admin-billing-tier-grid">
-          {BILLING_TIER_DEFINITIONS.map((tier) => {
+          {visibleTierDefinitions.map((tier) => {
             const plan = catalogPlansByCode.get(tier.code) || null;
             const isCurrent = currentPlanCode === tier.code;
             const isSelected = selectedPlanCode === tier.code;
