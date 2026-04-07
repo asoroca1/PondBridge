@@ -6482,16 +6482,149 @@ img[draggable="false"] { -webkit-user-drag: none; }
   gap: 14px;
 }
 
+.pb-cedar-page .director-admin-billing-page-header{
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 16%, #dbe4ef);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brand-primary) 10%, #ffffff), transparent 38%),
+    linear-gradient(135deg, #ffffff 0%, color-mix(in srgb, var(--brand-primary) 4%, #f8fbff) 100%);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.06);
+}
+
+.pb-cedar-page .director-admin-billing-page-header::after{
+  content: "";
+  position: absolute;
+  inset: auto -80px -90px auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  pointer-events: none;
+}
+
+.pb-cedar-page .director-admin-billing-page-copy,
+.pb-cedar-page .director-admin-billing-page-actions{
+  position: relative;
+  z-index: 1;
+}
+
+.pb-cedar-page .director-admin-billing-page-copy{
+  display: grid;
+  gap: 10px;
+}
+
+.pb-cedar-page .director-admin-billing-header-eyebrow{
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: .74rem;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--brand-primary) 74%, var(--director-admin-ink-soft));
+}
+
+.pb-cedar-page .director-admin-billing-page-copy h1{
+  margin: 0;
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  line-height: .98;
+  letter-spacing: -.04em;
+  color: var(--brand-primary-strong);
+}
+
+.pb-cedar-page .director-admin-billing-header-subtitle{
+  max-width: 760px;
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--brand-primary) 22%, var(--director-admin-ink-soft));
+}
+
+.pb-cedar-page .director-admin-billing-header-meta{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pb-cedar-page .director-admin-billing-header-chip{
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--director-admin-surface-border, #dbe4ef);
+  background: rgba(255,255,255,.82);
+  color: var(--director-admin-ink);
+  font-size: .83rem;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
+}
+
+.pb-cedar-page .director-admin-billing-header-chip.is-premium{
+  border-color: color-mix(in srgb, var(--brand-primary) 32%, #cfddef);
+  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
+  color: var(--brand-primary-strong);
+}
+
+.pb-cedar-page .director-admin-billing-header-chip.is-base{
+  border-color: color-mix(in srgb, var(--brand-primary) 18%, #d8e3f0);
+  background: color-mix(in srgb, var(--brand-primary) 5%, #ffffff);
+  color: color-mix(in srgb, var(--brand-primary) 75%, #334155);
+}
+
+.pb-cedar-page .director-admin-billing-header-chip.is-inactive,
+.pb-cedar-page .director-admin-billing-header-chip.is-muted{
+  color: var(--director-admin-ink-soft);
+  background: rgba(255,255,255,.72);
+}
+
+.pb-cedar-page .director-admin-billing-header-chip.is-status-success{
+  border-color: #b8e4cb;
+  color: #236947;
+  background: #eefaf3;
+}
+
+.pb-cedar-page .director-admin-billing-header-chip.is-status-warning{
+  border-color: #f0d598;
+  color: #8a5b09;
+  background: #fff7e5;
+}
+
+.pb-cedar-page .director-admin-billing-header-chip.is-status-danger{
+  border-color: #efc3bc;
+  color: #9f2d1e;
+  background: #fff1ee;
+}
+
+.pb-cedar-page .director-admin-billing-header-chip.is-status-neutral{
+  color: var(--director-admin-ink-soft);
+  background: rgba(255,255,255,.72);
+}
+
+.pb-cedar-page .director-admin-billing-page-actions{
+  align-self: flex-start;
+}
+
+.pb-cedar-page .director-admin-billing-page-actions .button,
+.pb-cedar-page .director-admin-billing-page-actions .link-button{
+  min-width: 124px;
+}
+
 .pb-cedar-page .director-admin-billing-top-grid{
   display: grid;
   gap: 12px;
   grid-template-columns: 1.25fr 1fr;
+  align-items: stretch;
 }
 
 .pb-cedar-page .director-admin-billing-summary-card,
 .pb-cedar-page .director-admin-billing-checkout-card{
   display: grid;
   gap: 12px;
+  height: 100%;
   align-content: start;
 }
 
@@ -6597,6 +6730,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
   background: color-mix(in srgb, var(--brand-primary) 3%, #ffffff);
   display: grid;
   gap: 4px;
+}
+
+.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-row{
+  margin-top: auto;
 }
 
 .pb-cedar-page .director-admin-billing-overview{

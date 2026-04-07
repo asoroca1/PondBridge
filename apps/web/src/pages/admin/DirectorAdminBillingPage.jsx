@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button, Card } from "@pondbridge/ui";
-import { PageHeader } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import useAdminApi from "./useAdminApi.js";
 
@@ -170,6 +169,16 @@ export default function DirectorAdminBillingPage() {
         setStatus(
           response?.notes ||
             "Your subscription was updated. Refreshing billing details now."
+        );
+        await loadBilling();
+        setStartingCheckout(false);
+        return;
+      }
+
+      if (action === "complimentary_plan") {
+        setStatus(
+          response?.notes ||
+            "This network is on a complimentary plan. No Stripe checkout is required."
         );
         await loadBilling();
         setStartingCheckout(false);
@@ -400,6 +409,7 @@ export default function DirectorAdminBillingPage() {
   const usage = payload?.usage || {};
   const billingStatus = String(tenant.billingStatus || "").toLowerCase();
   const lifecycleStatus = String(tenant.billingLifecycleStatus || "").toLowerCase();
+  const isComplimentary = Boolean(payload?.tenant?.isComplimentary || payload?.billing?.isComplimentary);
   const resolvedCurrentPlanCode = normalizeBillingPlanCode(tenant.billingPlan || payload?.billing?.billingPlan);
   const initialCheckoutCompletedAt = tenant.initialCheckoutCompletedAt || payload?.billing?.initialCheckoutCompletedAt;
   const renewalDate = tenant.currentPeriodEnd || payload?.billing?.currentPeriodEnd || null;
@@ -425,20 +435,26 @@ export default function DirectorAdminBillingPage() {
   const currentPlan = catalogPlansByCode.get(currentPlanCode) || null;
   const selectedTierDefinition = BILLING_TIER_DEFINITIONS.find((item) => item.code === normalizedSelectedPlanCode) || null;
   const currentTierDefinition = BILLING_TIER_DEFINITIONS.find((item) => item.code === currentPlanCode) || null;
-  const billingStatusLabel = hasNoActivePlan
+  const billingStatusLabel = isComplimentary
+    ? "complimentary"
+    : hasNoActivePlan
     ? "no active plan"
     : formatStatusLabel(tenant.billingStatus, "trialing");
-  const billingStatusBadgeTone = hasNoActivePlan ? "neutral" : statusTone(tenant.billingStatus);
+  const billingStatusBadgeTone = isComplimentary ? "success" : hasNoActivePlan ? "neutral" : statusTone(tenant.billingStatus);
   const lifecycleLabel = formatLifecycleLabel(tenant.billingLifecycleStatus, "uninitialized");
-  const onboardingFeeLabel = hasNoActivePlan ? "-" : formatMoney(tenant.onboardingFeeAmount);
+  const onboardingFeeLabel = hasNoActivePlan ? "-" : isComplimentary ? "$0" : formatMoney(tenant.onboardingFeeAmount);
   const onboardingFeeStatusLabel = hasNoActivePlan
     ? "inactive"
+    : isComplimentary
+      ? "waived"
     : formatStatusLabel(
         tenant.onboardingFeeStatus || (tenant.onboardingFeePaid ? "paid" : "unpaid"),
         tenant.onboardingFeePaid ? "paid" : "unpaid"
       );
   const planSummaryLabel = hasNoActivePlan
     ? "Billing has not been activated for this network yet."
+    : isComplimentary
+      ? "This network is on a complimentary premium plan. No Stripe charge is required."
     : currentPlan?.label || currentTierDefinition?.subtitle || "Selected tenant billing tier";
   const memberUsagePercent = Math.min(100, Math.max(0, Number(usage.memberUsagePercent || 0)));
   const memberUsageLabel = usage.memberLimit
@@ -446,11 +462,15 @@ export default function DirectorAdminBillingPage() {
     : `${usage.members || 0} (unlimited)`;
   const selectedPlanPriceLabel = hasNoActivePlan
     ? "Billing inactive"
+    : isComplimentary
+      ? "No charge"
     : selectedPlan
       ? `${formatMoney(selectedPlan.annualAmount)}/year`
       : "Not available";
   const checkoutButtonLabel = startingCheckout
     ? "Redirecting..."
+    : isComplimentary
+      ? "No Payment Required"
     : hasNoActivePlan
       ? "No Active Plan"
       : normalizedSelectedPlanCode === currentPlanCode
@@ -466,6 +486,8 @@ export default function DirectorAdminBillingPage() {
   const selectedPlanRenewsAmount = selectedPlan ? Number(selectedPlan.annualAmount || 0) : 0;
   const selectedPlanOnboardingLabel = hasNoActivePlan
     ? "Billing is inactive for this network. Controls stay disabled until a plan is activated."
+    : isComplimentary
+      ? "This network is on a complimentary plan. Billing stays active without Stripe checkout."
     : selectedPlan
       ? normalizedSelectedPlanCode === "institutional"
         ? institutionalOnboardingAppliesNow
@@ -477,19 +499,23 @@ export default function DirectorAdminBillingPage() {
   const foundersAvailabilityText = Number.isFinite(foundersAvailabilityRemaining)
     ? `${foundersAvailabilityRemaining} founders slots remaining`
     : "";
-  const currentPlanTitle = hasNoActivePlan ? "No Active Plan" : billingPlanLabel(currentPlanCode);
+  const currentPlanTitle = hasNoActivePlan ? "No Active Plan" : isComplimentary ? "Complimentary Premium" : billingPlanLabel(currentPlanCode);
   const currentPlanToneClass = hasNoActivePlan ? "is-inactive" : `is-${currentTierDefinition?.tone || "base"}`;
   const currentPlanToneLabel = hasNoActivePlan
     ? "Inactive"
     : currentTierDefinition?.tone === "premium"
       ? "Premium"
       : "Base";
-  const checkoutPlanTitle = hasNoActivePlan ? "No Active Plan" : selectedTierDefinition?.title || "Select a tier";
+  const checkoutPlanTitle = hasNoActivePlan ? "No Active Plan" : isComplimentary ? "Complimentary Plan" : selectedTierDefinition?.title || "Select a tier";
   const checkoutPlanSubtitle = hasNoActivePlan
     ? "This billing page is available in read-only mode until a plan is activated for your network."
+    : isComplimentary
+      ? "Camp Cedar is on a special no-charge plan, so Stripe checkout is disabled."
     : selectedTierDefinition?.subtitle || "Choose Founders, Legacy, or Institutional, then continue to Stripe.";
   const checkoutStateTitle = hasNoActivePlan
     ? "Billing activation required"
+    : isComplimentary
+      ? "No checkout required"
     : selectedPlan
       ? normalizedSelectedPlanCode === currentPlanCode
         ? "Checkout on current tier"
@@ -497,15 +523,35 @@ export default function DirectorAdminBillingPage() {
       : "Select a plan to continue";
   const invoiceEmptyMessage = hasNoActivePlan
     ? "Invoices will appear here after billing is activated for this network."
+    : isComplimentary
+      ? "Complimentary networks do not generate Stripe invoices."
     : "Invoice history will appear here once Stripe sync is enabled.";
 
   return (
     <div className="director-admin-stack director-admin-billing-page">
-      <PageHeader
-        title="Billing"
-        subtitle="Manage plan tier, payment status, and Stripe checkout for your network."
-        actions={<Button variant="secondary" onClick={loadBilling} disabled={hasNoActivePlan}>Refresh</Button>}
-      />
+      <header className="pb-admin-ui-page-header director-admin-billing-page-header">
+        <div className="pb-admin-ui-page-copy director-admin-billing-page-copy">
+          <p className="director-admin-billing-header-eyebrow">Director Billing</p>
+          <h1>Billing</h1>
+          <p className="director-admin-billing-header-subtitle">
+            Manage plan tier, payment status, and Stripe checkout for your network.
+          </p>
+          <div className="director-admin-billing-header-meta">
+            <span className={`director-admin-billing-header-chip ${currentPlanToneClass}`}>
+              Plan: {currentPlanTitle}
+            </span>
+            <span className={`director-admin-billing-header-chip is-status-${billingStatusBadgeTone}`}>
+              Status: {billingStatusLabel}
+            </span>
+            <span className="director-admin-billing-header-chip is-muted">
+              Lifecycle: {hasNoActivePlan ? "inactive" : lifecycleLabel}
+            </span>
+          </div>
+        </div>
+        <div className="pb-admin-ui-page-actions director-admin-billing-page-actions">
+          <Button variant="secondary" onClick={loadBilling} disabled={hasNoActivePlan}>Refresh</Button>
+        </div>
+      </header>
 
       {hasNoActivePlan ? (
         <Card className="director-admin-banner tone-info">
@@ -513,6 +559,12 @@ export default function DirectorAdminBillingPage() {
             No active plan. Billing details are shown in read-only mode until a plan is activated for this
             network.
           </p>
+        </Card>
+      ) : null}
+
+      {isComplimentary ? (
+        <Card className="director-admin-banner tone-info">
+          <p>This network is on a complimentary premium plan. Stripe checkout and the billing portal are not required.</p>
         </Card>
       ) : null}
 
@@ -631,7 +683,7 @@ export default function DirectorAdminBillingPage() {
           ) : null}
 
           <div className="inline-actions">
-            {payload?.manageBillingUrl && !hasNoActivePlan ? (
+            {payload?.manageBillingUrl && !hasNoActivePlan && !isComplimentary ? (
               <a className="link-button" href={payload.manageBillingUrl} target="_blank" rel="noreferrer">
                 Open Billing Portal
               </a>
@@ -641,12 +693,12 @@ export default function DirectorAdminBillingPage() {
               </Button>
             )}
             <Button variant="secondary" onClick={loadBilling} disabled={hasNoActivePlan}>Refresh Billing</Button>
-            {hasActiveSubscription && !subscriptionCancelAtPeriodEnd && !hasNoActivePlan ? (
+            {hasActiveSubscription && !subscriptionCancelAtPeriodEnd && !hasNoActivePlan && !isComplimentary ? (
               <Button variant="danger" onClick={() => setShowCancelConfirm(true)} disabled={hasNoActivePlan}>
                 Cancel Plan
               </Button>
             ) : null}
-            {subscriptionCancelAtPeriodEnd && !hasNoActivePlan ? (
+            {subscriptionCancelAtPeriodEnd && !hasNoActivePlan && !isComplimentary ? (
               <Button variant="secondary" onClick={resumeSubscription} disabled={resumingSubscription}>
                 {resumingSubscription ? "Resuming..." : "Resume Plan"}
               </Button>
@@ -703,7 +755,7 @@ export default function DirectorAdminBillingPage() {
               <p className="muted">Stripe will confirm the final billing details before you pay.</p>
             </div>
             <div className="inline-actions">
-              <Button onClick={startCheckout} disabled={startingCheckout || !selectedPlanIsAvailable || hasNoActivePlan}>
+              <Button onClick={startCheckout} disabled={startingCheckout || !selectedPlanIsAvailable || hasNoActivePlan || isComplimentary}>
                 {checkoutButtonLabel}
               </Button>
             </div>
@@ -711,7 +763,7 @@ export default function DirectorAdminBillingPage() {
         </Card>
       </div>
 
-      <Card className={`director-admin-billing-plans${hasNoActivePlan ? " is-readonly" : ""}`}>
+      <Card className={`director-admin-billing-plans${hasNoActivePlan || isComplimentary ? " is-readonly" : ""}`}>
         <div className="director-admin-billing-plan-head">
           <h2 className="pb-section-title">Choose your billing tier</h2>
           <p className="muted">Three tiers are available: Founders, Legacy, and Institutional.</p>
@@ -732,7 +784,7 @@ export default function DirectorAdminBillingPage() {
                   "director-admin-billing-tier-card",
                   isCurrent ? "is-current" : "",
                   isSelected ? "is-selected" : "",
-                  isUnavailable || hasNoActivePlan ? "is-disabled" : ""
+                  isUnavailable || hasNoActivePlan || isComplimentary ? "is-disabled" : ""
                 ].filter(Boolean).join(" ")}
               >
                 <div className="director-admin-billing-tier-top">
@@ -769,7 +821,7 @@ export default function DirectorAdminBillingPage() {
                   type="button"
                   variant={isSelected ? "primary" : "secondary"}
                   onClick={() => setSelectedPlanCode(tier.code)}
-                  disabled={isUnavailable || hasNoActivePlan}
+                  disabled={isUnavailable || hasNoActivePlan || isComplimentary}
                 >
                   {isSelected ? "Selected Plan" : "Select Plan"}
                 </Button>

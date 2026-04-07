@@ -71,6 +71,11 @@ export default function TenantBillingPage() {
         setStartingCheckout(false);
         return;
       }
+      if (action === "complimentary_plan") {
+        await loadBilling();
+        setStartingCheckout(false);
+        return;
+      }
       throw new Error(payload?.notes || "Stripe checkout URL was not returned.");
     } catch (checkoutError) {
       setError(checkoutError.message || "Unable to start Stripe checkout.");

@@ -20,6 +20,7 @@ const FOUNDERS_MAX_CAMPS = 5;
 const ONBOARDING_FEE_UNPAID = "unpaid";
 const ONBOARDING_FEE_PAID = "paid";
 const ONBOARDING_FEE_WAIVED = "waived";
+const COMPLIMENTARY_ADD_ON = "comp";
 
 const stripe = env.STRIPE_SECRET_KEY
   ? new Stripe(env.STRIPE_SECRET_KEY, {
@@ -67,8 +68,25 @@ const BILLING_PLAN_CATALOG = {
   }
 };
 
+const STRIPE_PRODUCT_NAME_BY_PLAN_CODE = {
+  legacy: "Legacy",
+  founders: "Founders",
+  institutional: "Institutional"
+};
+
+const STRIPE_ONBOARDING_PRODUCT_NAME_BY_PLAN_CODE = {
+  institutional: "Institutional Onboarding"
+};
+
+const stripePriceLookupCache = new Map();
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isComplimentaryTenant(tenant = {}) {
+  return Array.isArray(tenant?.addOns) &&
+    tenant.addOns.some((entry) => String(entry || "").trim().toLowerCase() === COMPLIMENTARY_ADD_ON);
 }
 
 function nowIso() {
@@ -81,6 +99,62 @@ function normalizePlanCode(value = "", fallbackTier = "base") {
 
 function getCatalogEntry(planCode = "legacy") {
   return BILLING_PLAN_CATALOG[normalizePlanCode(planCode)] || BILLING_PLAN_CATALOG.legacy;
+}
+
+async function findStripePriceIdByProductName(productName = "", { recurring = false } = {}) {
+  const normalizedName = String(productName || "").trim();
+  if (!stripe || !normalizedName) return "";
+
+  const cacheKey = `${normalizedName}:${recurring ? "recurring" : "one_time"}`;
+  if (stripePriceLookupCache.has(cacheKey)) {
+    return stripePriceLookupCache.get(cacheKey);
+  }
+
+  const prices = await stripe.prices.list({
+    active: true,
+    limit: 100,
+    expand: ["data.product"]
+  });
+
+  const match = (prices.data || []).find((price) => {
+    const productNameValue =
+      typeof price.product === "object" ? String(price.product?.name || "").trim() : "";
+    if (productNameValue !== normalizedName) return false;
+    if (recurring) return price.type === "recurring" && price.recurring?.interval === "year";
+    return price.type === "one_time";
+  });
+
+  const resolved = String(match?.id || "").trim();
+  stripePriceLookupCache.set(cacheKey, resolved);
+  return resolved;
+}
+
+async function resolveCatalogEntryForCheckout(entry = {}) {
+  if (!stripe) return entry;
+
+  let annualPriceId = String(entry?.annualPriceId || "").trim();
+  let onboardingPriceId = String(entry?.onboardingPriceId || "").trim();
+  const normalizedCode = String(entry?.code || "").trim().toLowerCase();
+
+  if (!annualPriceId) {
+    annualPriceId = await findStripePriceIdByProductName(
+      STRIPE_PRODUCT_NAME_BY_PLAN_CODE[normalizedCode] || "",
+      { recurring: true }
+    );
+  }
+
+  if (!onboardingPriceId && Number(entry?.onboardingFeeAmount || 0) > 0) {
+    onboardingPriceId = await findStripePriceIdByProductName(
+      STRIPE_ONBOARDING_PRODUCT_NAME_BY_PLAN_CODE[normalizedCode] || "",
+      { recurring: false }
+    );
+  }
+
+  return {
+    ...entry,
+    annualPriceId,
+    onboardingPriceId
+  };
 }
 
 function dedupeEventIds(values = []) {
@@ -663,13 +737,44 @@ export async function createTenantCheckoutSession({
     planCode || planCodeFromTier || currentBilling.billingPlan,
     tenant.planTier
   );
-  const catalogEntry = getCatalogEntry(normalizedPlanCode);
+  let catalogEntry = getCatalogEntry(normalizedPlanCode);
   let tenantForUpdate = tenant;
 
   if (catalogEntry.code === "founders") {
     const reserved = await ensureFoundersReservation(tenantForUpdate);
     tenantForUpdate = reserved.tenant;
   }
+
+  if (isComplimentaryTenant(tenantForUpdate)) {
+    const updated = await updateTenantWithBillingPatch(tenantForUpdate, {
+      tenantPatch: {
+        billingStatus: "active",
+        onboardingFeeAmount: 0,
+        onboardingFeePaid: true,
+        stripePriceId: ""
+      },
+      billingPatch: {
+        planCode: catalogEntry.code,
+        lifecycleStatus: "active",
+        onboardingFeeStatus: ONBOARDING_FEE_WAIVED,
+        onboardingFeeWaived: true,
+        onboardingFeeWaiveReason: "complimentary_plan"
+      }
+    });
+
+    return {
+      mode,
+      action: "complimentary_plan",
+      sessionId: "",
+      checkoutUrl: "",
+      planCode: catalogEntry.code,
+      onboardingFeeAmount: 0,
+      tenant: updated,
+      message: "This network is on a complimentary plan. No Stripe checkout is required."
+    };
+  }
+
+  catalogEntry = await resolveCatalogEntryForCheckout(catalogEntry);
 
   const tenantBilling = resolveTenantBilling(tenantForUpdate);
   const planTierForFeatures = resolveFeatureTierFromBillingPlan(catalogEntry.code);
@@ -1576,6 +1681,14 @@ export async function createBillingPortalUrl({ tenant, returnUrl, returnPath }) 
   const mode = getBillingMode();
   const fallbackUrl = `${env.MOCK_BILLING_BASE_URL}/portal?tenant=${encodeURIComponent(tenant.slug)}`;
 
+  if (isComplimentaryTenant(tenant)) {
+    return {
+      mode,
+      url: "",
+      message: "This network is on a complimentary plan and does not use the billing portal."
+    };
+  }
+
   if (mode === "mock") {
     if (!allowMockBilling()) {
       return {
@@ -1811,6 +1924,7 @@ export async function resumeTenantSubscription({ tenant, billingOperator = null 
 export function buildBillingPublicSnapshot(tenant = {}) {
   const readiness = isBillingReadyForLaunch(tenant);
   const catalogEntry = getCatalogEntry(readiness.billingPlan);
+  const isComplimentary = isComplimentaryTenant(tenant);
   return {
     billingPlan: readiness.billingPlan,
     annualAmount: catalogEntry.annualAmount,
@@ -1827,6 +1941,7 @@ export function buildBillingPublicSnapshot(tenant = {}) {
     foundersReserved: readiness.foundersReserved,
     foundersSlot: readiness.foundersSlot,
     foundersEligible: readiness.foundersEligible,
+    isComplimentary,
     launchReady: readiness.ok,
     launchReadiness: {
       lifecycleReady: readiness.lifecycleReady,

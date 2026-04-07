@@ -282,6 +282,12 @@ export default function DirectorOnboardingCommandCenterPage() {
         setStartingCheckout(false);
         return;
       }
+      if (action === "complimentary_plan") {
+        setStatus(response?.notes || "This network is on a complimentary plan. No Stripe checkout is required.");
+        await loadCommandCenter();
+        setStartingCheckout(false);
+        return;
+      }
       throw new Error(
         response?.notes ||
           "Unable to start Stripe checkout. Open the billing portal to manage your subscription."

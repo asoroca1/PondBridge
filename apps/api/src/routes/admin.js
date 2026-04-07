@@ -4100,7 +4100,8 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
       canceledAt: billing.canceledAt,
       foundersReserved: billing.foundersReserved,
       foundersSlot: billing.foundersSlot,
-      foundersEligible: billing.foundersEligible
+      foundersEligible: billing.foundersEligible,
+      isComplimentary: Boolean(billing.isComplimentary)
     },
     billing,
     catalog: getBillingCatalog(),
