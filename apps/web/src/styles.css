@@ -6615,23 +6615,21 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-billing-top-grid{
   display: grid;
-  gap: 14px;
+  gap: 16px;
   grid-template-columns: 1.25fr 1fr;
-  align-items: stretch;
+  align-items: start;
 }
 
 .pb-cedar-page .director-admin-billing-top-grid > *{
-  height: 100%;
-  min-height: 100%;
+  min-height: 0;
 }
 
 .pb-cedar-page .director-admin-billing-summary-card,
 .pb-cedar-page .director-admin-billing-checkout-card{
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  height: 100%;
-  min-height: 468px;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
 }
 
 .pb-cedar-page .director-admin-billing-summary-card.is-readonly,
@@ -6709,9 +6707,9 @@ img[draggable="false"] { -webkit-user-drag: none; }
   border: 1px solid var(--director-admin-surface-border, #dbe4ef);
   border-radius: 12px;
   background: var(--director-admin-surface-bg, #ffffff);
-  padding: 10px 11px;
+  padding: 12px 14px;
   display: grid;
-  gap: 4px;
+  gap: 5px;
 }
 
 .pb-cedar-page .director-admin-billing-key-item > span{
@@ -6736,24 +6734,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
 .pb-cedar-page .director-admin-billing-checkout-price{
   border: 1px dashed color-mix(in srgb, var(--brand-primary) 22%, #d7e2f0);
   border-radius: 12px;
-  padding: 14px 14px 12px;
+  padding: 18px 20px 16px;
   background: color-mix(in srgb, var(--brand-primary) 3%, #ffffff);
   display: grid;
-  gap: 8px;
-}
-
-.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-row{
-  margin-top: auto;
-}
-
-.pb-cedar-page .director-admin-billing-checkout-card{
-  justify-content: space-between;
-}
-
-.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-summary-head,
-.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-price,
-.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-row{
-  flex-shrink: 0;
+  gap: 10px;
 }
 
 .pb-cedar-page .director-admin-billing-overview{
@@ -6927,12 +6911,16 @@ img[draggable="false"] { -webkit-user-drag: none; }
   border: 1px solid var(--director-admin-surface-border, #dbe4ef);
   border-radius: 12px;
   background: var(--director-admin-surface-bg, #ffffff);
-  padding: 14px;
+  padding: 18px 20px;
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
+}
+
+.pb-cedar-page .director-admin-billing-checkout-row > :first-child{
+  min-width: 0;
 }
 
 .pb-cedar-page .director-admin-billing-checkout-title{
@@ -6943,7 +6931,11 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-billing-checkout-row .muted{
   margin: 6px 0 0;
-  max-width: 34ch;
+  max-width: 40ch;
+}
+
+.pb-cedar-page .director-admin-billing-checkout-row .inline-actions{
+  margin-left: auto;
 }
 
 .pb-cedar-page .director-admin-billing-invoices-card{
@@ -7307,6 +7299,11 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
   .pb-cedar-page .director-admin-billing-key-grid{
     grid-template-columns: 1fr;
+  }
+
+  .pb-cedar-page .director-admin-billing-checkout-row .inline-actions{
+    width: 100%;
+    margin-left: 0;
   }
 
   .pb-cedar-page .director-admin-billing-metrics{
