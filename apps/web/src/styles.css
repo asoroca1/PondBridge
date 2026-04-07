@@ -6631,6 +6631,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   flex-direction: column;
   gap: 14px;
   height: 100%;
+  min-height: 468px;
 }
 
 .pb-cedar-page .director-admin-billing-summary-card.is-readonly,
@@ -6743,6 +6744,16 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-row{
   margin-top: auto;
+}
+
+.pb-cedar-page .director-admin-billing-checkout-card{
+  justify-content: space-between;
+}
+
+.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-summary-head,
+.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-price,
+.pb-cedar-page .director-admin-billing-checkout-card .director-admin-billing-checkout-row{
+  flex-shrink: 0;
 }
 
 .pb-cedar-page .director-admin-billing-overview{
