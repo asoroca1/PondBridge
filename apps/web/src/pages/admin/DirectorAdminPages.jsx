@@ -3362,7 +3362,10 @@ export function DirectorAdminInvitesPage() {
 
           <div className="director-admin-upload-box">
             <p>Optional: personalize the invite email for this send.</p>
-            <p className="muted">Use `{{firstName}}`, `{{lastName}}`, or `{{networkName}}` in the subject or message.</p>
+            <p className="muted">
+              Use <code>{"{{firstName}}"}</code>, <code>{"{{lastName}}"}</code>, or <code>{"{{networkName}}"}</code> in the
+              subject or message.
+            </p>
             <div style={{ display: "grid", gap: 12 }}>
               <div>
                 <label htmlFor="invite-custom-subject" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
