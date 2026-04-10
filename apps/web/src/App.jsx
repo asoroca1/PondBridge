@@ -264,6 +264,18 @@ function MemberEventsRoute({ children }) {
   return children;
 }
 
+function AdminBillingRoute({ children }) {
+  const { tenant, slug: tenantSlug } = useTenant();
+  const params = useParams();
+  const slug = params.slug || tenantSlug;
+
+  if (tenant?.accessSettings?.demoAccessEnabled) {
+    return <Navigate to={slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard"} replace />;
+  }
+
+  return children;
+}
+
 function TenantScopeRoutes() {
   const { loading, error, tenant, slug: tenantSlug } = useTenant();
   const { isAuthenticated, isReady, user, authProvider, refreshSession, logout } = useAuth();
@@ -799,7 +811,11 @@ function TenantScopeRoutes() {
           <Route path="features" element={<DirectorAdminFeaturesPage />} />
           <Route
             path="billing"
-            element={<DirectorAdminBillingPage />}
+            element={
+              <AdminBillingRoute>
+                <DirectorAdminBillingPage />
+              </AdminBillingRoute>
+            }
           />
           <Route path="settings" element={<DirectorAdminSettingsLayout />}>
             <Route index element={<Navigate to="network" replace />} />
@@ -856,7 +872,19 @@ function TenantScopeRoutes() {
         <Route path="admin/onboarding" element={<Navigate to={slug ? `/t/${slug}/onboarding` : "/onboarding"} replace />} />
         <Route path="admin/import" element={<Navigate to={slug ? `/t/${slug}/admin/invites` : "/admin/invites"} replace />} />
         <Route path="admin/analytics" element={<Navigate to={slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard"} replace />} />
-        <Route path="admin/billing" element={<Navigate to={slug ? `/t/${slug}/admin/billing` : "/admin/billing"} replace />} />
+        <Route
+          path="admin/billing"
+          element={
+            <Navigate
+              to={
+                demoAccessEnabled
+                  ? (slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard")
+                  : (slug ? `/t/${slug}/admin/billing` : "/admin/billing")
+              }
+              replace
+            />
+          }
+        />
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

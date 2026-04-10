@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useParams } from "react-router-dom";
 import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
+import { useTenant } from "../../context/TenantContext.jsx";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 
@@ -33,11 +34,13 @@ function shouldBlockDirectorAdminOnCurrentDevice() {
 
 export default function DirectorAdminLayout() {
   const { slug: routeSlug = "" } = useParams();
+  const { tenant } = useTenant();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileBlocked, setMobileBlocked] = useState(() => shouldBlockDirectorAdminOnCurrentDevice());
   const onSettingsRoute = location.pathname.includes("/admin/settings/");
   const homePath = tenantRoute(routeSlug, "/home");
+  const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   useEffect(() => {
     if (onSettingsRoute) setSettingsOpen(true);
@@ -64,6 +67,7 @@ export default function DirectorAdminLayout() {
 
   const sections = useMemo(() => {
     const base = ADMIN_NAV
+      .filter((item) => !(demoAccessEnabled && item.key === "billing"))
       .map((item) => ({ ...item, className: "director-admin-sidebar-link" }));
 
     base.push({
@@ -77,7 +81,7 @@ export default function DirectorAdminLayout() {
     });
 
     return base;
-  }, [onSettingsRoute, settingsOpen]);
+  }, [demoAccessEnabled, onSettingsRoute, settingsOpen]);
 
   if (mobileBlocked) {
     return (
