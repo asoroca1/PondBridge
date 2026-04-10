@@ -8,6 +8,7 @@ const ADMIN_NAV = [
   { key: "overview", to: "dashboard", label: "Overview" },
   { key: "members", to: "members", label: "Members & Directory", end: true },
   { key: "invites", to: "invites", label: "Invite Members" },
+  { key: "events", to: "events", label: "Events" },
   { key: "features", to: "features", label: "Features & Modules" },
   { key: "email", to: "email/compose", label: "Email" },
   { key: "billing", to: "billing", label: "Billing" }
@@ -16,6 +17,7 @@ const ADMIN_NAV = [
 const SETTINGS_NAV = [
   { key: "network", to: "settings/network", label: "Network Identity", className: "director-admin-sidebar-sublink" },
   { key: "branding", to: "settings/branding", label: "Branding", className: "director-admin-sidebar-sublink" },
+  { key: "notifications", to: "settings/notifications", label: "Mobile Notifications", className: "director-admin-sidebar-sublink" },
   { key: "admins", to: "settings/admins", label: "Admins", className: "director-admin-sidebar-sublink" },
   { key: "support", to: "settings/support", label: "Technical Support", className: "director-admin-sidebar-sublink" },
   { key: "danger", to: "settings/danger", label: "Danger Zone", className: "director-admin-sidebar-sublink" }

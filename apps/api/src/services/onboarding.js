@@ -390,6 +390,7 @@ export function resolveModules(tenant, { applyPlanGating = true } = {}) {
   const modules = {
     directory: live.directory !== false,
     search: live.search !== false,
+    events: live.events !== false,
     photoStream: live.photoStream !== false,
     chat: live.chat !== false,
     map: live.map !== false,

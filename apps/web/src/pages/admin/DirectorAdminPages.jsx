@@ -3078,6 +3078,8 @@ export function DirectorAdminInvitesPage() {
   const [sending, setSending] = useState(false);
   const [loadingInvites, setLoadingInvites] = useState(true);
   const [inviteStatusFilter, setInviteStatusFilter] = useState("pending");
+  const [customSubject, setCustomSubject] = useState("");
+  const [customMessage, setCustomMessage] = useState("");
   const [invites, setInvites] = useState([]);
   const [hiddenInviteIds, setHiddenInviteIds] = useState([]);
   const [error, setError] = useState("");
@@ -3244,6 +3246,12 @@ export function DirectorAdminInvitesPage() {
       if (dedupedRecipients.length > 0) {
         formData.append("recipients", JSON.stringify(dedupedRecipients));
       }
+      if (customSubject.trim()) {
+        formData.append("customSubject", customSubject);
+      }
+      if (customMessage.trim()) {
+        formData.append("customMessage", customMessage);
+      }
       if (file) {
         formData.append("file", file);
       }
@@ -3350,6 +3358,36 @@ export function DirectorAdminInvitesPage() {
                 CSV selected: <strong>{file.name}</strong>
               </p>
             ) : null}
+          </div>
+
+          <div className="director-admin-upload-box">
+            <p>Optional: personalize the invite email for this send.</p>
+            <p className="muted">Use `{{firstName}}`, `{{lastName}}`, or `{{networkName}}` in the subject or message.</p>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label htmlFor="invite-custom-subject" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                  Email subject
+                </label>
+                <Input
+                  id="invite-custom-subject"
+                  value={customSubject}
+                  placeholder="You're invited to {{networkName}}, {{firstName}}"
+                  onChange={(event) => setCustomSubject(event.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="invite-custom-message" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                  Personal message
+                </label>
+                <Textarea
+                  id="invite-custom-message"
+                  rows={6}
+                  value={customMessage}
+                  placeholder={"Hi {{firstName}},\n\nI'd love for you to join our PondBridge community this season."}
+                  onChange={(event) => setCustomMessage(event.target.value)}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="inline-actions">
@@ -4680,6 +4718,7 @@ function modulePreviewPath(slug, key) {
   const map = {
     directory: `/t/${slug}/search`,
     search: `/t/${slug}/search`,
+    events: `/t/${slug}/events`,
     photoStream: `/t/${slug}/photo-stream`,
     chat: `/t/${slug}/chat-rooms`,
     map: `/t/${slug}/location-map`,
@@ -6347,22 +6386,61 @@ export function DirectorAdminSettingsNotificationsPage() {
   const { payload, loading, error, load } = useSettingsLoader();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [history, setHistory] = useState([]);
+  const [sending, setSending] = useState(false);
   const [form, setForm] = useState({
+    mobileEnabled: true,
+    pushEnabled: true,
+    inboxEnabled: true,
+    soundEnabled: true,
     newMemberJoined: true,
     approvalRequests: true,
     memberFlagged: true,
-    weeklySummary: true
+    weeklySummary: false,
+    eventPublished: true,
+    eventCanceled: true,
+    newsletterPublished: true,
+    customBroadcasts: true
+  });
+  const [sendForm, setSendForm] = useState({
+    audience: "all_active_members",
+    category: "announcements",
+    title: "",
+    body: "",
+    deepLink: "",
+    pushRequested: true
   });
 
   useEffect(() => {
     if (!payload?.notifications) return;
     setForm({
+      mobileEnabled: Boolean(payload.notifications.mobileEnabled),
+      pushEnabled: Boolean(payload.notifications.pushEnabled),
+      inboxEnabled: Boolean(payload.notifications.inboxEnabled),
+      soundEnabled: Boolean(payload.notifications.soundEnabled),
       newMemberJoined: Boolean(payload.notifications.newMemberJoined),
       approvalRequests: Boolean(payload.notifications.approvalRequests),
       memberFlagged: Boolean(payload.notifications.memberFlagged),
-      weeklySummary: Boolean(payload.notifications.weeklySummary)
+      weeklySummary: Boolean(payload.notifications.weeklySummary),
+      eventPublished: Boolean(payload.notifications.eventPublished),
+      eventCanceled: Boolean(payload.notifications.eventCanceled),
+      newsletterPublished: Boolean(payload.notifications.newsletterPublished),
+      customBroadcasts: Boolean(payload.notifications.customBroadcasts)
     });
   }, [payload?.notifications]);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const response = await request("/notifications/history");
+      setHistory(Array.isArray(response?.items) ? response.items : []);
+    } catch {
+      setHistory([]);
+    }
+  }, [request]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   async function saveNotifications(event) {
     event.preventDefault();
@@ -6380,41 +6458,180 @@ export function DirectorAdminSettingsNotificationsPage() {
     }
   }
 
+  async function sendMobileNotification(event) {
+    event.preventDefault();
+    setSending(true);
+    setStatus("");
+    try {
+      const response = await request("/notifications/send", {
+        method: "POST",
+        body: sendForm
+      });
+      setStatus(`Mobile notification sent to ${response?.totalRecipients || 0} recipients.`);
+      setSendForm({
+        audience: sendForm.audience,
+        category: sendForm.category,
+        title: "",
+        body: "",
+        deepLink: sendForm.deepLink,
+        pushRequested: sendForm.pushRequested
+      });
+      await loadHistory();
+    } finally {
+      setSending(false);
+    }
+  }
+
   if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
 
   return (
-    <Card>
-      <h2 className="pb-section-title">Notification Preferences</h2>
-      {error ? <p className="error-text">{error}</p> : null}
-      {status ? <p className="success-text">{status}</p> : null}
-      <form className="director-admin-form-grid" onSubmit={saveNotifications}>
-        {[
-          ["newMemberJoined", "New member joined"],
-          ["approvalRequests", "Approval requests"],
-          ["memberFlagged", "Member flagged"],
-          ["weeklySummary", "Weekly summary"]
-        ].map(([key, label]) => (
-          <label key={key} className="director-admin-inline-check full-width">
+    <div className="director-admin-stack">
+      <Card>
+        <h2 className="pb-section-title">Mobile Notification Controls</h2>
+        <p className="muted">These settings drive the mobile inbox and push alerts in the iPhone app.</p>
+        {error ? <p className="error-text">{error}</p> : null}
+        {status ? <p className="success-text">{status}</p> : null}
+        <form className="director-admin-form-grid" onSubmit={saveNotifications}>
+          {[
+            ["mobileEnabled", "Enable mobile notifications"],
+            ["pushEnabled", "Allow push delivery"],
+            ["inboxEnabled", "Keep a mobile inbox"],
+            ["soundEnabled", "Play push sound"],
+            ["newMemberJoined", "Notify admins when new members join"],
+            ["approvalRequests", "Notify admins about approval requests"],
+            ["memberFlagged", "Notify admins when a member is flagged"],
+            ["eventPublished", "Notify members when events are published"],
+            ["eventCanceled", "Notify members when events are canceled"],
+            ["newsletterPublished", "Notify members when newsletters are published"],
+            ["customBroadcasts", "Allow directors to send custom mobile notifications"],
+            ["weeklySummary", "Reserve weekly summary slot"]
+          ].map(([key, label]) => (
+            <label key={key} className="director-admin-inline-check full-width">
+              <input
+                type="checkbox"
+                checked={Boolean(form[key])}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    [key]: event.target.checked
+                  }))
+                }
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+          <div className="director-admin-form-actions full-width">
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Save Mobile Settings"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">Send Custom Mobile Notification</h2>
+        <form className="director-admin-form-grid" onSubmit={sendMobileNotification}>
+          <label className="full-width">
+            Audience
+            <Select
+              value={sendForm.audience}
+              onChange={(event) => setSendForm((prev) => ({ ...prev, audience: event.target.value }))}
+            >
+              <option value="all_active_members">All Active Members</option>
+              <option value="admins">Admins Only</option>
+              <option value="all_users">Everyone</option>
+              <option value="flagged_members">Flagged Members</option>
+              <option value="pending_members">Pending Members</option>
+            </Select>
+          </label>
+          <label className="full-width">
+            Category
+            <Select
+              value={sendForm.category}
+              onChange={(event) => setSendForm((prev) => ({ ...prev, category: event.target.value }))}
+            >
+              <option value="announcements">Announcements</option>
+              <option value="events">Events</option>
+              <option value="community">Community</option>
+              <option value="account">Account</option>
+              <option value="admin">Admin</option>
+            </Select>
+          </label>
+          <label className="full-width">
+            Title
+            <Input
+              value={sendForm.title}
+              onChange={(event) => setSendForm((prev) => ({ ...prev, title: event.target.value }))}
+              maxLength={120}
+            />
+          </label>
+          <label className="full-width">
+            Body
+            <Textarea
+              value={sendForm.body}
+              onChange={(event) => setSendForm((prev) => ({ ...prev, body: event.target.value }))}
+              rows={4}
+              maxLength={500}
+            />
+          </label>
+          <label className="full-width">
+            Deep Link
+            <Input
+              value={sendForm.deepLink}
+              onChange={(event) => setSendForm((prev) => ({ ...prev, deepLink: event.target.value }))}
+              placeholder="/events or /notifications"
+            />
+          </label>
+          <label className="director-admin-inline-check full-width">
             <input
               type="checkbox"
-              checked={Boolean(form[key])}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  [key]: event.target.checked
-                }))
-              }
+              checked={Boolean(sendForm.pushRequested)}
+              onChange={(event) => setSendForm((prev) => ({ ...prev, pushRequested: event.target.checked }))}
             />
-            <span>{label}</span>
+            <span>Deliver as push notification too</span>
           </label>
-        ))}
-        <div className="director-admin-form-actions full-width">
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving..." : "Save Preferences"}
-          </Button>
-        </div>
-      </form>
-    </Card>
+          <div className="director-admin-form-actions full-width">
+            <Button type="submit" disabled={sending}>
+              {sending ? "Sending..." : "Send Mobile Notification"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">Recent Mobile Sends</h2>
+        {!history.length ? (
+          <p className="muted">No mobile notification batches yet.</p>
+        ) : (
+          <div className="director-admin-table-wrap">
+            <table className="director-admin-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Category</th>
+                  <th>Recipients</th>
+                  <th>Delivered</th>
+                  <th>Unread</th>
+                  <th>Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.title}</td>
+                    <td>{item.category}</td>
+                    <td>{item.totalRecipients}</td>
+                    <td>{item.pushDelivered}</td>
+                    <td>{item.unreadCount}</td>
+                    <td>{formatDateTime(item.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 

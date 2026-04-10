@@ -51,6 +51,20 @@ export function isPotentialCustomTenantHost(host = browserHost()) {
   return safeHost.includes(".");
 }
 
+export function isSuperSubdomain(host = browserHost()) {
+  const safeHost = normalizeHost(host);
+  if (!safeHost) return false;
+  const baseDomain = getAppBaseDomain();
+  return Boolean(baseDomain && safeHost === `super.${baseDomain}`);
+}
+
+export function isBaseDomain(host = browserHost()) {
+  const safeHost = normalizeHost(host);
+  if (!safeHost) return false;
+  const baseDomain = getAppBaseDomain();
+  return Boolean(baseDomain && (safeHost === baseDomain || safeHost === `www.${baseDomain}`));
+}
+
 export function defaultTenantDomain(slug = "") {
   const safeSlug = String(slug || "")
     .trim()

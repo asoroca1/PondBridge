@@ -1,4 +1,4 @@
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { isNativeApp } from "../lib/nativeApp.js";
@@ -6,6 +6,7 @@ import { readAuthFromStorage } from "../lib/storage.js";
 
 export default function ProtectedRoute({ children, role }) {
   const { slug } = useParams();
+  const location = useLocation();
   const { slug: tenantSlug } = useTenant();
   const { isAuthenticated, isReady, user } = useAuth();
   const nativeApp = isNativeApp();
@@ -13,7 +14,13 @@ export default function ProtectedRoute({ children, role }) {
   const effectiveUser = user || cachedNativeAuth.user || null;
   const hasNativeCachedSession = nativeApp && Boolean((isAuthenticated || cachedNativeAuth.token) && effectiveUser);
   const effectiveSlug = slug || tenantSlug;
-  const loginPath = effectiveSlug ? `/t/${effectiveSlug}/login` : "/login";
+  const returnTo = `${location.pathname || ""}${location.search || ""}${location.hash || ""}` || "/";
+  const loginParams = new URLSearchParams();
+  if (returnTo.startsWith("/")) {
+    loginParams.set("returnTo", returnTo);
+  }
+  const loginBasePath = effectiveSlug ? `/t/${effectiveSlug}/login` : "/login";
+  const loginPath = loginParams.toString() ? `${loginBasePath}?${loginParams.toString()}` : loginBasePath;
   const fallbackPath = effectiveSlug ? `/t/${effectiveSlug}/home` : "/home";
 
   // Wait until auth is fully resolved before making any routing decisions.

@@ -92,6 +92,19 @@ function ctaButton(href, label, { backgroundColor = BRAND.accent } = {}) {
     </table>`;
 }
 
+function formatPlainTextParagraphs(value = "") {
+  const normalized = String(value || "").replace(/\r\n?/g, "\n").trim();
+  if (!normalized) return "";
+  return normalized
+    .split(/\n{2,}/)
+    .filter(Boolean)
+    .map(
+      (paragraph) =>
+        `<p style="margin:0 0 12px;">${escapeHtml(paragraph).replace(/\n/g, "<br/>")}</p>`
+    )
+    .join("");
+}
+
 function footerHtml({ unsubscribeUrl = "", contextName = "" } = {}) {
   const context = String(contextName || "").trim();
   const poweredByLine = context
@@ -223,6 +236,8 @@ export function inviteTemplate({
   link,
   roleToAssign = "user",
   expiresAt,
+  customSubject = "",
+  customMessage = "",
   firstName = "",
   lastName = "",
   brandPrimary = BRAND.primary,
@@ -235,21 +250,37 @@ export function inviteTemplate({
     .join(" ");
   const safeRecipientName = escapeHtml(recipientName || "there");
   const expiresStr = formatDate(expiresAt);
+  const normalizedCustomSubject = String(customSubject || "").trim();
+  const normalizedCustomMessage = String(customMessage || "").trim();
+  const customMessageHtml = normalizedCustomMessage
+    ? `
+      <div style="margin:0 0 18px;padding:14px 16px;border:1px solid #dbe6f3;border-radius:12px;background:#f8fbff;">
+        <div style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#51657d;">Personal note</div>
+        ${formatPlainTextParagraphs(normalizedCustomMessage)}
+      </div>
+    `
+    : "";
 
-  const subject = `You are invited to ${tenantName}`;
+  const subject = normalizedCustomSubject || `You are invited to ${tenantName}`;
 
-  const text = [
-    `Hi ${recipientName || "there"},`,
-    "",
+  const textLines = [`Hi ${recipientName || "there"},`, ""];
+  if (normalizedCustomMessage) {
+    textLines.push("Personal note:", normalizedCustomMessage, "");
+  }
+  textLines.push(
     `You were invited to join ${tenantName}.`,
-    `Assigned role: ${roleToAssign}.`,
-    expiresStr ? `This invite expires on ${expiresStr}.` : "",
-    `Create your account: ${link}`
-  ].filter(Boolean).join("\n");
+    `Assigned role: ${roleToAssign}.`
+  );
+  if (expiresStr) {
+    textLines.push(`This invite expires on ${expiresStr}.`);
+  }
+  textLines.push(`Create your account: ${link}`);
+  const text = textLines.join("\n");
 
   const html = wrapInviteLayout(`
     <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:#13263f;letter-spacing:-0.02em;">You're Invited</h1>
     <p style="margin:0 0 12px;">Hi <strong>${safeRecipientName}</strong>,</p>
+    ${customMessageHtml}
     <p style="margin:0 0 12px;">You've been invited to join <strong>${safeTenant}</strong>.</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 6px;border:1px solid #dbe6f3;border-radius:10px;background:#f6f9ff;">
       <tr>
@@ -371,7 +402,69 @@ export function welcomeTemplate({
 }
 
 // ---------------------------------------------------------------------------
-// 4. Access approved template
+// 4. Verification code template
+// ---------------------------------------------------------------------------
+
+export function verificationCodeTemplate({
+  brandName = "PondBridge",
+  code,
+  audience = "member",
+  requestIp = "",
+  requestedAt = null,
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
+  const safeBrandName = escapeHtml(brandName || "PondBridge");
+  const safeCode = escapeHtml(String(code || "").trim());
+  const safeRequestIp = escapeHtml(String(requestIp || "").trim());
+  const requestedAtLabel = formatDate(requestedAt);
+  const isDirector = String(audience || "").trim().toLowerCase() === "director";
+  const intro = isDirector
+    ? "Enter the verification code below to continue setting up your PondBridge director account."
+    : `Enter the verification code below to continue to ${safeBrandName}.`;
+  const requestSummary = [safeRequestIp, requestedAtLabel].filter(Boolean).join(" at ");
+  const subject = `${String(code || "").trim()} is your verification code`;
+
+  const text = [
+    brandName || "PondBridge",
+    "",
+    "Verification code",
+    isDirector
+      ? "Enter the verification code below to continue setting up your PondBridge director account."
+      : `Enter the verification code below to continue to ${brandName || "your network"}.`,
+    "",
+    String(code || "").trim(),
+    "",
+    "To protect your account, do not share this code.",
+    requestSummary ? `Requested from ${requestSummary}.` : ""
+  ].filter(Boolean).join("\n");
+
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:#13263f;letter-spacing:-0.02em;">Verification code</h1>
+    <p style="margin:0 0 12px;">${intro}</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 18px;border:1px solid #dbe6f3;border-radius:12px;background:#f6f9ff;">
+      <tr>
+        <td align="center" style="padding:18px 16px;font-size:44px;font-weight:800;letter-spacing:0.08em;color:#13263f;">${safeCode}</td>
+      </tr>
+    </table>
+    <p style="margin:0 0 10px;font-size:14px;color:${BRAND.muted};">To protect your account, do not share this code.</p>
+    ${
+      requestSummary
+        ? `<p style="margin:0;font-size:13px;color:${BRAND.muted};">Requested from ${requestSummary}.</p>`
+        : ""
+    }
+  `, {
+    contextName: brandName,
+    brandPrimary,
+    logoUrl,
+    tagline: isDirector ? "Director onboarding verification" : "Secure account verification"
+  });
+
+  return { subject, text, html };
+}
+
+// ---------------------------------------------------------------------------
+// 5. Access approved template
 // ---------------------------------------------------------------------------
 
 export function accessApprovedTemplate({ tenantName, firstName, loginUrl }) {
@@ -401,7 +494,7 @@ export function accessApprovedTemplate({ tenantName, firstName, loginUrl }) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Access denied template
+// 6. Access denied template
 // ---------------------------------------------------------------------------
 
 export function accessDeniedTemplate({ tenantName, firstName, reason }) {
@@ -432,7 +525,7 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Broadcast template (director email wrapper)
+// 7. Broadcast template (director email wrapper)
 // ---------------------------------------------------------------------------
 
 export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUrl }) {

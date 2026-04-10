@@ -36,6 +36,11 @@ import {
   parseCityStateDetailed
 } from "../utils/location.js";
 import { ensureProfileForUser } from "../services/profileCompletion.js";
+import {
+  normalizeTenantMobileNotificationPrefs,
+  resolveAudienceUserIds,
+  sendMobileNotificationBatch
+} from "../services/mobileNotifications.js";
 import { createTtlCache } from "../utils/ttlCache.js";
 
 const router = Router({ mergeParams: true });
@@ -411,46 +416,124 @@ function resolveNewsletterCoverUrl(req, row = {}) {
   return "";
 }
 
-async function resolveNetworkRecipientEmails(tenantId) {
-  const [users, profiles] = await Promise.all([
-    UserModel.find(tenantId, {}, { select: ["id", "email"] }),
-    ProfileModel.find(tenantId, { status: { $ne: "removed" } }, { select: ["id", "userId", "emails"] })
-  ]);
-
+export function collectTenantNewsletterRecipients({ users = [], profiles = [] } = {}) {
   const userEmailById = new Map();
+  const usersWithActiveProfiles = new Set();
+  const usersWithDeliverableProfileEmails = new Set();
+  const removedUserIds = new Set();
+  const recipients = new Set();
+
   for (const user of users) {
     const userId = String(user?._id || user?.id || "").trim();
     const email = normalizeEmail(user?.email || "");
-    if (userId && isValidEmail(email)) {
-      userEmailById.set(userId, email);
-    }
+    const status = String(user?.status || "active").trim().toLowerCase();
+    if (!userId || !isValidEmail(email) || status === "inactive" || status === "removed") continue;
+    userEmailById.set(userId, email);
   }
 
-  const recipients = new Set();
   for (const profile of profiles) {
+    const userId = String(profile?.userId || "").trim();
+    const status = String(profile?.status || "active").trim().toLowerCase();
+    if (status === "removed") {
+      if (userId) removedUserIds.add(userId);
+      continue;
+    }
+
+    if (userId) usersWithActiveProfiles.add(userId);
+
     const profileEmails = Array.isArray(profile?.emails) ? profile.emails : [];
     const firstValidProfileEmail = profileEmails
       .map((item) => normalizeEmail(item))
       .find((email) => isValidEmail(email));
 
-    if (firstValidProfileEmail) {
-      recipients.add(firstValidProfileEmail);
-      continue;
-    }
-
-    const userId = String(profile?.userId || "").trim();
-    const userEmail = userId ? userEmailById.get(userId) : "";
-    if (userEmail && isValidEmail(userEmail)) {
-      recipients.add(userEmail);
-    }
+    if (!firstValidProfileEmail) continue;
+    recipients.add(firstValidProfileEmail);
+    if (userId) usersWithDeliverableProfileEmails.add(userId);
   }
 
-  // Include any remaining tenant users that may not have a profile row yet.
-  for (const email of userEmailById.values()) {
-    if (isValidEmail(email)) recipients.add(email);
+  for (const [userId, email] of userEmailById.entries()) {
+    if (removedUserIds.has(userId)) continue;
+    if (usersWithActiveProfiles.has(userId) && usersWithDeliverableProfileEmails.has(userId)) continue;
+    recipients.add(email);
   }
 
   return [...recipients];
+}
+
+export function buildNewsletterAnnouncementEmail({
+  tenantName = "",
+  newsletterLabel = "Newsletter",
+  title = "",
+  season = "",
+  year = "",
+  archiveUrl = "",
+  pdfUrl = "",
+  coverImageUrl = ""
+} = {}) {
+  const safeTenantName = escapeHtml(tenantName || "your network");
+  const safeNewsletterLabel = escapeHtml(newsletterLabel || "Newsletter");
+  const safeTitle = escapeHtml(title || `${newsletterLabel} update`);
+  const safeSeason = escapeHtml(season || "");
+  const safeYear = escapeHtml(year || "");
+  const safeArchiveUrl = escapeHtml(archiveUrl || "");
+  const safePdfUrl = escapeHtml(pdfUrl || "");
+  const safeCoverImageUrl = escapeHtml(coverImageUrl || "");
+  const emailSubject = `New ${newsletterLabel}: ${title}`.trim();
+  const coverMarkup = safeCoverImageUrl
+    ? `
+        <div style="margin:0 0 20px;">
+          <img
+            src="${safeCoverImageUrl}"
+            alt="${safeTitle} cover"
+            style="display:block;width:100%;max-width:560px;height:auto;border-radius:14px;border:1px solid #dbe5f0;"
+          />
+        </div>
+      `
+    : "";
+  const actionMarkup = safeArchiveUrl || safePdfUrl
+    ? `
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
+          <tr>
+            ${safeArchiveUrl ? `<td style="padding:0 12px 12px 0;"><a href="${safeArchiveUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#153e75;color:#ffffff;text-decoration:none;font-weight:700;">Open in PondBridge</a></td>` : ""}
+            ${safePdfUrl ? `<td style="padding:0 0 12px 0;"><a href="${safePdfUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#edf3fb;color:#153e75;text-decoration:none;font-weight:700;border:1px solid #c9d8ea;">Download PDF</a></td>` : ""}
+          </tr>
+        </table>
+      `
+    : "";
+
+  const bodyHtml = `
+    ${coverMarkup}
+    <p style="margin:0 0 14px;">A new <strong>${safeNewsletterLabel}</strong> has been published for <strong>${safeTenantName}</strong>.</p>
+    <p style="margin:0 0 14px;">The PDF is attached to this email so members can open it right away, and the archive link below will take them straight back into PondBridge.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid #dbe5f0;border-radius:12px;background:#f8fbff;">
+      <tr>
+        <td style="padding:16px 18px;font-size:14px;color:#1f2937;">
+          <div style="margin:0 0 8px;"><strong>Title:</strong> ${safeTitle}</div>
+          <div style="margin:0 0 8px;"><strong>Season:</strong> ${safeSeason}</div>
+          <div style="margin:0;"><strong>Year:</strong> ${safeYear}</div>
+        </td>
+      </tr>
+    </table>
+    ${actionMarkup}
+    <p style="margin:0 0 10px;font-size:13px;color:#4b5563;">If the buttons above do not open, you can use the attached PDF or copy this archive link into your browser:</p>
+    ${safeArchiveUrl ? `<p style="margin:0 0 8px;font-size:13px;"><a href="${safeArchiveUrl}" style="color:#1e5cb3;text-decoration:underline;">${safeArchiveUrl}</a></p>` : ""}
+    ${safePdfUrl ? `<p style="margin:0;font-size:13px;color:#6b7280;">Direct PDF link: <a href="${safePdfUrl}" style="color:#1e5cb3;text-decoration:underline;">${safePdfUrl}</a></p>` : ""}
+  `;
+
+  return broadcastTemplate({
+    tenantName: tenantName || "PondBridge Network",
+    subject: emailSubject,
+    bodyHtml
+  });
+}
+
+async function resolveNetworkRecipientEmails(tenantId) {
+  const [users, profiles] = await Promise.all([
+    UserModel.find(tenantId, {}, { select: ["id", "email", "status"] }),
+    ProfileModel.find(tenantId, {}, { select: ["id", "userId", "emails", "status"] })
+  ]);
+
+  return collectTenantNewsletterRecipients({ users, profiles });
 }
 
 function parseCityState(raw = "") {
@@ -2977,28 +3060,15 @@ router.post(
       };
     } else {
       const networkUrl = `${req.protocol}://${req.get("host")}/t/${req.tenant.slug}/cedar-chest`;
-      const pdfUrl = uploaded.objectUrl;
-      const emailSubject = `New ${newsletterLabel}: ${title}`;
-      const bodyHtml = `
-        <p style="margin:0 0 12px;">A new <strong>${escapeHtml(newsletterLabel)}</strong> has been published for <strong>${escapeHtml(req.tenant.name || "your network")}</strong>.</p>
-        <p style="margin:0 0 14px;">We've attached the newsletter PDF to this email so members can open it directly.</p>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid #e5e7eb;border-radius:8px;">
-          <tr>
-            <td style="padding:12px 14px;font-size:14px;color:#1f2937;">
-              <div style="margin:0 0 6px;"><strong>Title:</strong> ${escapeHtml(title)}</div>
-              <div style="margin:0 0 6px;"><strong>Season:</strong> ${escapeHtml(season)}</div>
-              <div style="margin:0;"><strong>Year:</strong> ${escapeHtml(year)}</div>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:0 0 10px;">Prefer to view it inside PondBridge?</p>
-        <p style="margin:0 0 8px;"><a href="${escapeHtml(networkUrl)}" style="color:#1e5cb3;text-decoration:underline;">Open newsletter archive</a></p>
-        <p style="margin:0;font-size:13px;color:#6b7280;">Direct PDF link: <a href="${escapeHtml(pdfUrl)}" style="color:#1e5cb3;text-decoration:underline;">${escapeHtml(pdfUrl)}</a></p>
-      `;
-      const { subject, text, html } = broadcastTemplate({
+      const { subject, text, html } = buildNewsletterAnnouncementEmail({
         tenantName: req.tenant.name || "PondBridge Network",
-        subject: emailSubject,
-        bodyHtml
+        newsletterLabel,
+        title,
+        season,
+        year: String(year),
+        archiveUrl: networkUrl,
+        pdfUrl: uploaded.objectUrl,
+        coverImageUrl: uploadedCover.objectUrl
       });
       const emailBranding = buildTenantEmailBranding(req.tenant);
       const resolvedReplyTo = isValidEmail(req.user?.email || "")
@@ -3018,6 +3088,7 @@ router.post(
             { name: "tenant", value: req.tenant.slug || "tenant" }
           ],
           idempotencyKey: `newsletter/${req.tenant.slug || "tenant"}/${created._id}`,
+          maxRecipients: Math.max(1, recipients.length),
           attachments: [
             {
               filename: normalizeAttachmentFileName(file.originalname || `${season}-${year}.pdf`),
@@ -3026,17 +3097,25 @@ router.post(
             }
           ]
         });
+        const sentCount = Number(delivery?.sentCount || 0);
+        const failedCount = Number(delivery?.failedCount || 0);
+        const suppressedCount = Number(delivery?.suppressedCount || 0);
+        const deliveredWithoutIssues = failedCount === 0 && suppressedCount === 0;
+        const summaryParts = [`Newsletter emailed to ${sentCount} member${sentCount === 1 ? "" : "s"}`];
+        if (suppressedCount > 0) {
+          summaryParts.push(`${suppressedCount} suppressed`);
+        }
+        if (failedCount > 0) {
+          summaryParts.push(`${failedCount} failure${failedCount === 1 ? "" : "s"}`);
+        }
 
         emailDelivery = {
           ...emailDelivery,
           attempted: Number(delivery?.attemptedCount || recipients.length),
-          sent: Number(delivery?.sentCount || 0),
-          failed: Number(delivery?.failedCount || 0),
-          status: delivery?.ok ? "sent" : "partial_failure",
-          message:
-            delivery?.ok
-              ? `Newsletter emailed to ${Number(delivery?.sentCount || 0)} members.`
-              : `Newsletter emailed to ${Number(delivery?.sentCount || 0)} members with ${Number(delivery?.failedCount || 0)} failures.`
+          sent: sentCount,
+          failed: failedCount + suppressedCount,
+          status: deliveredWithoutIssues ? "sent" : sentCount > 0 ? "partial_failure" : "failed",
+          message: `${summaryParts.join(", ")}.`
         };
       } catch (error) {
         emailDelivery = {
@@ -3049,6 +3128,24 @@ router.post(
         };
       }
     }
+  }
+
+  const mobilePrefs = normalizeTenantMobileNotificationPrefs(req.tenant.notificationPrefs || {});
+  if (mobilePrefs.newsletterPublished) {
+    const userIds = await resolveAudienceUserIds(req.tenant._id, "all_active_members");
+    await sendMobileNotificationBatch({
+      tenant: req.tenant,
+      userIds,
+      createdByUserId: req.user.id,
+      kind: "newsletter_published",
+      category: "community",
+      title: created.title || `${newsletterLabel} published`,
+      body: `${newsletterLabel} is now available in the archive.`,
+      deepLink: "/cedar-chest",
+      data: {
+        newsletterId: String(created._id || "")
+      }
+    }).catch(() => {});
   }
 
   return res.status(201).json({

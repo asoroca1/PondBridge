@@ -336,6 +336,7 @@ export const tenantSettingsSchema = z.object({
 export const tenantModulesSchema = z.object({
   directory: z.boolean().default(true),
   search: z.boolean().default(true),
+  events: z.boolean().default(true),
   photoStream: z.boolean().default(true),
   chat: z.boolean().default(true),
   map: z.boolean().default(true),

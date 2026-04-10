@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Badge, Button, Card, Input, Select } from "@pondbridge/ui";
+import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { PageHeader } from "../../components/admin/AdminUi.jsx";
 import useAdminApi from "./useAdminApi.js";
 
@@ -80,6 +80,8 @@ export default function DirectorAdminInvitesPage() {
   const [sending, setSending] = useState(false);
   const [loadingInvites, setLoadingInvites] = useState(true);
   const [inviteStatusFilter, setInviteStatusFilter] = useState("pending");
+  const [customSubject, setCustomSubject] = useState("");
+  const [customMessage, setCustomMessage] = useState("");
   const [invites, setInvites] = useState([]);
   const [hiddenInviteIds, setHiddenInviteIds] = useState([]);
   const [error, setError] = useState("");
@@ -246,6 +248,12 @@ export default function DirectorAdminInvitesPage() {
       if (dedupedRecipients.length > 0) {
         formData.append("recipients", JSON.stringify(dedupedRecipients));
       }
+      if (customSubject.trim()) {
+        formData.append("customSubject", customSubject);
+      }
+      if (customMessage.trim()) {
+        formData.append("customMessage", customMessage);
+      }
       if (file) {
         formData.append("file", file);
       }
@@ -352,6 +360,36 @@ export default function DirectorAdminInvitesPage() {
                 CSV selected: <strong>{file.name}</strong>
               </p>
             ) : null}
+          </div>
+
+          <div className="director-admin-upload-box">
+            <p>Optional: personalize the invite email for this send.</p>
+            <p className="muted">Use `{{firstName}}`, `{{lastName}}`, or `{{networkName}}` in the subject or message.</p>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label htmlFor="invite-custom-subject" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                  Email subject
+                </label>
+                <Input
+                  id="invite-custom-subject"
+                  value={customSubject}
+                  placeholder="You're invited to {{networkName}}, {{firstName}}"
+                  onChange={(event) => setCustomSubject(event.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="invite-custom-message" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                  Personal message
+                </label>
+                <Textarea
+                  id="invite-custom-message"
+                  rows={6}
+                  value={customMessage}
+                  placeholder={"Hi {{firstName}},\n\nI'd love for you to join our PondBridge community this season."}
+                  onChange={(event) => setCustomMessage(event.target.value)}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="inline-actions">

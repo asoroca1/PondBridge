@@ -12,6 +12,7 @@
     "test": "echo \"No tests yet\""
   },
   "dependencies": {
+    "@capacitor/push-notifications": "^8.0.0",
     "@clerk/clerk-react": "^5.61.1",
     "@pondbridge/shared": "0.1.0",
     "@pondbridge/ui": "0.1.0",

@@ -27,6 +27,7 @@ import {
 import { resolveSettings } from "../services/onboarding.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
+import { notifyTenantAdmins } from "../services/mobileNotifications.js";
 import {
   canonicalizeCityName,
   canonicalizeCountryName,
@@ -795,6 +796,20 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
   await writeTenantAudit(req.tenant._id, null, "access_request_submitted", {
     email,
     requestId: String(requestRow._id)
+  }).catch(() => {});
+
+  await notifyTenantAdmins({
+    tenant: req.tenant,
+    kind: "approval_request_submitted",
+    title: "New approval request",
+    body: `${profilePayload.firstName || "A member"} ${profilePayload.lastName || ""}`.trim()
+      ? `${`${profilePayload.firstName || "A member"} ${profilePayload.lastName || ""}`.trim()} requested access to ${req.tenant.name || "your camp"}.`
+      : `A new member requested access to ${req.tenant.name || "your camp"}.`,
+    deepLink: "/admin/members",
+    data: {
+      email,
+      requestId: String(requestRow._id || "")
+    }
   }).catch(() => {});
 
   const decision = await buildAccessDecision({

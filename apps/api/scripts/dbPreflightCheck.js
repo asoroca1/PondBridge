@@ -23,6 +23,9 @@ const REQUIRED_TABLES = [
   "tenant_admin_audit_logs",
   "resume_parse_results",
   "activity_items",
+  "mobile_notifications",
+  "mobile_notification_devices",
+  "mobile_notification_preferences",
   "resend_webhook_events",
   "stripe_webhook_events",
   "email_suppressions"
@@ -37,6 +40,8 @@ const REQUIRED_INDEXES = [
   "idx_messages_tenant_convo",
   "idx_import_reports_tenant",
   "idx_audit_logs_tenant",
+  "idx_mobile_notifications_user_inbox",
+  "idx_mobile_notification_devices_user",
   "idx_stripe_webhook_events_status",
   "idx_resend_webhook_events_tenant"
 ];

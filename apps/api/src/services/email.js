@@ -6,6 +6,7 @@ import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import {
   inviteTemplate,
   magicLinkTemplate,
+  verificationCodeTemplate,
   welcomeTemplate,
   accessApprovedTemplate,
   accessDeniedTemplate
@@ -213,6 +214,21 @@ export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) 
     replyTo,
     brandPrimary,
     logoUrl
+  };
+}
+
+export function buildPondBridgeEmailBranding({ senderName = "PondBridge" } = {}) {
+  const safeSenderName = sanitizeSenderName(senderName || "PondBridge", "PondBridge");
+  const baseFromAddress =
+    extractEmailAddress(env.EMAIL_FROM || "") ||
+    extractEmailAddress(normalizeFromAddress(env.EMAIL_FROM || ""));
+  const from = normalizeFromAddress(`${safeSenderName} <${baseFromAddress}>`);
+  return {
+    networkName: "PondBridge",
+    from,
+    replyTo: "",
+    brandPrimary: "#002b5c",
+    logoUrl: ""
   };
 }
 
@@ -1120,10 +1136,21 @@ export async function sendInviteEmail({
   roleToAssign,
   expiresAt,
   replyTo = "",
+  customSubject = "",
+  customMessage = "",
   firstName = "",
   lastName = ""
 }) {
   const branding = buildTenantEmailBranding(tenant);
+  const mergeTagValues = {
+    firstName: String(firstName || "").trim() || "there",
+    lastName: String(lastName || "").trim(),
+    networkName: String(branding.networkName || tenant?.name || tenant?.slug || "").trim()
+  };
+  const applyInviteMergeTags = (value = "") =>
+    String(value || "").replace(/\{\{(firstName|lastName|networkName)\}\}/g, (_match, key) =>
+      mergeTagValues[key] || ""
+    );
   const resolvedReplyTo = isValidEmailAddress(replyTo)
     ? normalizeEmailAddress(replyTo)
     : branding.replyTo;
@@ -1133,6 +1160,8 @@ export async function sendInviteEmail({
     link,
     roleToAssign,
     expiresAt,
+    customSubject: applyInviteMergeTags(customSubject),
+    customMessage: applyInviteMergeTags(customMessage),
     firstName,
     lastName,
     brandPrimary: branding.brandPrimary,
@@ -1200,6 +1229,46 @@ export async function sendWelcomeEmail({ tenant, firstName, email }) {
     tags: [
       { name: "category", value: "welcome" },
       { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  });
+}
+
+export async function sendVerificationCodeEmail({
+  tenant = null,
+  email,
+  code,
+  audience = "member",
+  requestIp = "",
+  requestedAt = null,
+  idempotencyKey = ""
+}) {
+  const normalizedAudience = String(audience || "member").trim().toLowerCase();
+  const useSystemBranding = normalizedAudience === "director" || !tenant;
+  const branding = useSystemBranding
+    ? buildPondBridgeEmailBranding()
+    : buildTenantEmailBranding(tenant);
+  const { subject, text, html } = verificationCodeTemplate({
+    brandName: branding.networkName,
+    code,
+    audience: normalizedAudience,
+    requestIp,
+    requestedAt,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
+  });
+
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject,
+    text,
+    html,
+    idempotencyKey,
+    tags: [
+      { name: "category", value: "clerk_verification_code" },
+      { name: "audience", value: normalizedAudience || "member" },
+      ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
     ]
   });
 }

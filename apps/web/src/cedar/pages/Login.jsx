@@ -36,6 +36,12 @@ function resolveAuthIssueMessage(searchParams) {
   return "";
 }
 
+function normalizeReturnTo(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "";
+  return raw;
+}
+
 function authPageClassName({ nativeApp = false, clerk = false } = {}) {
   return [
     "login1",
@@ -182,6 +188,7 @@ function LegacyLogin() {
   const [magicLinkStatus, setMagicLinkStatus] = useState("");
   const [error, setError] = useState("");
   const notice = resolveAuthIssueMessage(searchParams);
+  const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
   const signUpPath = tenantRoute(
     slug,
     `/create-account${searchParams.toString() ? `?${searchParams.toString()}` : ""}`
@@ -228,7 +235,7 @@ function LegacyLogin() {
       }
 
       login(payload.token, payload.user);
-      navigate(tenantRoute(slug, "/home"), { replace: true });
+      navigate(returnTo || tenantRoute(slug, "/home"), { replace: true });
     } catch (err) {
       setError(String(err?.message || "Unable to login right now. Please try again."));
     } finally {
@@ -286,18 +293,25 @@ function ClerkLogin() {
   const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
   const notice = resolveAuthIssueMessage(searchParams);
   const { user, isAuthenticated, logout } = useAuth();
   const isSuperAdmin = isAuthenticated && user?.roles?.includes("super_admin");
   const nativeApp = isNativeApp();
   const path = tenantRoute(slug, "/login");
+  const callbackParams = new URLSearchParams();
+  if (inviteToken) callbackParams.set("inviteToken", inviteToken);
+  if (returnTo) callbackParams.set("returnTo", returnTo);
   const callbackPath = tenantRoute(
     slug,
-    `/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
+    `/auth/callback${callbackParams.toString() ? `?${callbackParams.toString()}` : ""}`
   );
+  const signUpParams = new URLSearchParams();
+  if (inviteToken) signUpParams.set("inviteToken", inviteToken);
+  if (returnTo) signUpParams.set("returnTo", returnTo);
   const signUpUrl = tenantRoute(
     slug,
-    `/create-account${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
+    `/create-account${signUpParams.toString() ? `?${signUpParams.toString()}` : ""}`
   );
 
   useEffect(() => {
@@ -562,6 +576,7 @@ function DemoCodeLogin() {
   const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
   const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
+  const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -600,7 +615,7 @@ function DemoCodeLogin() {
       }
 
       login(payload.token, payload.user);
-      navigate(tenantRoute(slug, "/home"), { replace: true });
+      navigate(returnTo || tenantRoute(slug, "/home"), { replace: true });
     } catch (submitError) {
       setError(String(submitError?.message || "Unable to verify access code right now."));
     } finally {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   BookOpen,
+  Bell,
+  CalendarDays,
   Home,
   Image,
   LogOut,
@@ -18,6 +20,7 @@ import {
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useMobileNotifications } from "../context/MobileNotificationsContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
 import { readAuthFromStorage } from "../lib/storage.js";
@@ -31,7 +34,9 @@ import {
 } from "../lib/campLabels.js";
 import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "../lib/domain.js";
 import { isNativeApp } from "../lib/nativeApp.js";
+import { tenantRoute } from "../lib/tenantRouting.js";
 import cedarLogo from "../assets/cedar-logo.png";
+import NotificationBadge from "./NotificationBadge.jsx";
 
 const MIN_SEARCH_CHARS = 1;
 const DIRECTOR_ADMIN_DESKTOP_MEDIA = "(max-width: 1020px)";
@@ -167,6 +172,7 @@ export default function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { token, user, isAuthenticated, logout, getAuthToken } = useAuth();
+  const { unreadCount } = useMobileNotifications();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
@@ -284,6 +290,14 @@ export default function NavBar() {
         to: pathWithCamp(slug, "/photo-stream")
       });
     }
+    if (modules.events !== false) {
+      communityItems.push({
+        id: "events",
+        icon: CalendarDays,
+        label: "Events",
+        to: pathWithCamp(slug, "/events")
+      });
+    }
     if (modules.chat !== false) {
       communityItems.push({
         id: "chat",
@@ -341,6 +355,13 @@ export default function NavBar() {
     const sections = [];
     if (accountItems.length) sections.push({ id: "account", title: "Account", items: accountItems });
     if (communityItems.length) sections.push({ id: "community", title: "Community", items: communityItems });
+    if (nativeApp) {
+      sections.push({
+        id: "mobile",
+        title: "Mobile",
+        items: [{ id: "notifications", icon: Bell, label: "Notifications", to: pathWithCamp(slug, "/notifications") }]
+      });
+    }
     if (adminItems.length) sections.push({ id: "admin-tools", title: "Director", items: adminItems });
     sections.push({
       id: "policy",
@@ -355,6 +376,7 @@ export default function NavBar() {
     canSearch,
     alumniWordTitle,
     modules.chat,
+    modules.events,
     modules.map,
     modules.photoStream,
     modules.newsletter,
@@ -362,6 +384,7 @@ export default function NavBar() {
     modules.merchShop,
     newsletterLabel,
     merchShopUrl,
+    nativeApp,
     isCampDirector,
     needsOnboarding,
     hideDirectorAdminTools
@@ -692,6 +715,17 @@ export default function NavBar() {
 
         {showPrivateTools ? (
           <>
+            {nativeApp ? (
+              <button
+                type="button"
+                className="navbar2-notifications-btn"
+                onClick={() => navigate(tenantRoute(slug, "/notifications"))}
+                aria-label="Open mobile notifications"
+              >
+                <Bell size={18} />
+                <NotificationBadge count={unreadCount} size="sm" floating className="navbar2-notifications-badge" />
+              </button>
+            ) : null}
             <button
               type="button"
               className="navbar2-profile-btn"

@@ -2,10 +2,11 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
+import { MobileNotificationsProvider } from "./context/MobileNotificationsContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { resolveCampName } from "./lib/campLabels.js";
-import { defaultTenantDomain, inferCampSlugFromHost, isPotentialCustomTenantHost } from "./lib/domain.js";
+import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
@@ -40,6 +41,9 @@ const CedarLegalPage = lazyPage(() => import("./cedar/pages/Legal.jsx"));
 const CedarFamilyTreesPage = lazyPage(() => import("./cedar/pages/FamilyTrees.jsx"));
 const CedarFamilyTreeCreatePage = lazyPage(() => import("./cedar/pages/FamilyTreeCreate.jsx"));
 const CedarFamilyTreeViewPage = lazyPage(() => import("./cedar/pages/FamilyTreeView.jsx"));
+const EventsPage = lazyPage(() => import("./pages/EventsPage.jsx"));
+const EventDetailPage = lazyPage(() => import("./pages/EventDetailPage.jsx"));
+const MobileNotificationsPage = lazyPage(() => import("./pages/MobileNotificationsPage.jsx"));
 const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
 const TenantAuthCallbackPage = lazyPage(() => import("./pages/TenantAuthCallbackPage.jsx"));
 const SuperLoginPage = lazyPage(() => import("./pages/SuperLoginPage.jsx"));
@@ -63,6 +67,7 @@ const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
 );
 const DirectorAdminInvitesPage = lazyPage(() => import("./pages/admin/DirectorAdminInvitesPage.jsx"));
+const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdminEventsPage.jsx"));
 const DirectorAdminMembersPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
 );
@@ -88,6 +93,11 @@ const DirectorAdminSettingsDangerPage = lazyPage(() =>
 const DirectorAdminSettingsSupportPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminSettingsSupportPage.jsx")
 );
+const DirectorAdminSettingsNotificationsPage = lazyPage(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
+    default: module.DirectorAdminSettingsNotificationsPage
+  }))
+);
 const DirectorAdminSettingsLayout = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminSettingsLayout }))
 );
@@ -96,6 +106,7 @@ const DirectorAdminSettingsNetworkPage = lazyPage(() =>
     default: module.DirectorAdminSettingsNetworkPage
   }))
 );
+const PlatformLandingPage = lazyPage(() => import("./pages/PlatformLandingPage.jsx"));
 const SuperShellLayout = lazyPage(() => import("./pages/super/SuperShellLayout.jsx"));
 const SuperBillingFailedPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingFailedPage }))
@@ -591,6 +602,7 @@ function TenantScopeRoutes() {
   }
 
   return (
+    <MobileNotificationsProvider>
     <AppShell>
       <ErrorBoundary level="page">
       <Suspense fallback={routeFallback}>
@@ -721,6 +733,30 @@ function TenantScopeRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="events"
+          element={
+            <ProtectedRoute>
+              <EventsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="events/:eventId"
+          element={
+            <ProtectedRoute>
+              <EventDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <ProtectedRoute>
+              <MobileNotificationsPage />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="admin"
@@ -739,7 +775,7 @@ function TenantScopeRoutes() {
           <Route path="invites" element={<DirectorAdminInvitesPage />} />
           <Route path="directory" element={<Navigate to="../members" replace />} />
           <Route path="family-trees" element={<Navigate to="../features" replace />} />
-          <Route path="events" element={<Navigate to="../dashboard" replace />} />
+          <Route path="events" element={<DirectorAdminEventsPage />} />
           <Route path="communications" element={<Navigate to="../email/compose" replace />} />
           <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
           <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
@@ -756,7 +792,7 @@ function TenantScopeRoutes() {
             <Route path="access" element={<DirectorAdminSettingsAccessPage />} />
             <Route path="admins" element={<DirectorAdminSettingsAdminsPage />} />
             <Route path="support" element={<DirectorAdminSettingsSupportPage />} />
-            <Route path="notifications" element={<Navigate to="../network" replace />} />
+            <Route path="notifications" element={<DirectorAdminSettingsNotificationsPage />} />
             <Route path="danger" element={<DirectorAdminSettingsDangerPage />} />
           </Route>
           <Route path="*" element={<Navigate to="dashboard" replace />} />
@@ -811,6 +847,7 @@ function TenantScopeRoutes() {
       </Suspense>
       </ErrorBoundary>
     </AppShell>
+    </MobileNotificationsProvider>
   );
 }
 
@@ -836,6 +873,17 @@ function LegacyRootRedirect() {
       replace
     />
   );
+}
+
+function SuperSubdomainRedirect() {
+  const location = useLocation();
+  useEffect(() => {
+    const baseDomain = getAppBaseDomain();
+    const path = String(location.pathname || "/");
+    const dest = `https://super.${baseDomain}${path}${location.search || ""}${location.hash || ""}`;
+    window.location.replace(dest);
+  }, [location]);
+  return null;
 }
 
 function SuperAliasRedirect() {
@@ -878,8 +926,10 @@ export default function App() {
   const hostCampSlug = inferCampSlugFromHost();
   const rememberedSlug = localStorage.getItem("pondbridgeTenantSlug") || "";
   const customDomainHost = isPotentialCustomTenantHost();
+  const rootDomain = isBaseDomain();
+  const superSubdomain = isSuperSubdomain();
   const nativeApp = isNativeApp();
-  const legacyRedirectEnabled = Boolean(!hostCampSlug && !customDomainHost && rememberedSlug);
+  const legacyRedirectEnabled = Boolean(!hostCampSlug && !customDomainHost && !rootDomain && !superSubdomain && rememberedSlug);
   const routeFallback = nativeApp ? null : <RouteLoadingFallback />;
 
   // Use a key-based CSS animation for route transitions instead of React state.
@@ -901,28 +951,33 @@ export default function App() {
 
           {nativeApp ? (
             <Route path="/super/*" element={<Navigate to="/" replace />} />
+          ) : rootDomain ? (
+            <Route path="/super/*" element={<SuperSubdomainRedirect />} />
           ) : (
-            <Route path="/super">
-              <Route index element={<Navigate to="login" replace />} />
-              <Route path="login/*" element={<SuperLoginPage />} />
-              <Route element={<ErrorBoundary level="page"><SuperShellLayout /></ErrorBoundary>}>
-                <Route path="dashboard" element={<SuperPlatformPulsePage />} />
-                <Route path="tenants/create" element={<SuperTenantCreatePage />} />
-                <Route path="tenants" element={<SuperTenantsPage />} />
+            <>
+              {superSubdomain ? <Route path="/" element={<Navigate to="/super/login" replace />} /> : null}
+              <Route path="/super">
+                <Route index element={<Navigate to="login" replace />} />
+                <Route path="login/*" element={<SuperLoginPage />} />
+                <Route element={<ErrorBoundary level="page"><SuperShellLayout /></ErrorBoundary>}>
+                  <Route path="dashboard" element={<SuperPlatformPulsePage />} />
+                  <Route path="tenants/create" element={<SuperTenantCreatePage />} />
+                  <Route path="tenants" element={<SuperTenantsPage />} />
 
-                <Route path="email/transactional" element={<SuperEmailTransactionalPage />} />
-                <Route path="email/broadcast" element={<Navigate to="/super/email/transactional" replace />} />
+                  <Route path="email/transactional" element={<SuperEmailTransactionalPage />} />
+                  <Route path="email/broadcast" element={<Navigate to="/super/email/transactional" replace />} />
 
-                <Route path="billing" element={<Navigate to="/super/billing/tenants" replace />} />
-                <Route path="billing/tenants" element={<SuperBillingTenantsPage />} />
-                <Route path="billing/failed" element={<SuperBillingFailedPage />} />
+                  <Route path="billing" element={<Navigate to="/super/billing/tenants" replace />} />
+                  <Route path="billing/tenants" element={<SuperBillingTenantsPage />} />
+                  <Route path="billing/failed" element={<SuperBillingFailedPage />} />
 
-                <Route path="settings" element={<SuperSettingsPage />} />
-                <Route path="*" element={<Navigate to="/super/dashboard" replace />} />
+                  <Route path="settings" element={<SuperSettingsPage />} />
+                  <Route path="*" element={<Navigate to="/super/dashboard" replace />} />
+                </Route>
               </Route>
-            </Route>
+            </>
           )}
-          {!nativeApp && !hostCampSlug && !customDomainHost ? <Route path="/admin/*" element={<SuperAliasRedirect />} /> : null}
+          {!nativeApp && !hostCampSlug && !customDomainHost && !rootDomain && !superSubdomain ? <Route path="/admin/*" element={<SuperAliasRedirect />} /> : null}
 
           {legacyRedirectEnabled ? <Route path="/:legacy/*" element={<LegacyRootRedirect />} /> : null}
 
@@ -932,6 +987,8 @@ export default function App() {
             <Route path="/*" element={<SubdomainCampLayout />} />
           ) : customDomainHost ? (
             <Route path="/*" element={<CustomDomainCampLayout />} />
+          ) : rootDomain ? (
+            <Route path="*" element={<PlatformLandingPage />} />
           ) : (
             <Route path="*" element={<Navigate to={nativeApp ? "/" : "/super/login"} replace />} />
           )}

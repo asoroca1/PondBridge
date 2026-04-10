@@ -33,7 +33,8 @@ import {
   FamilyTreeModel,
   TenantAdminAuditLogModel,
   ResumeParseResultModel,
-  ActivityItemModel
+  ActivityItemModel,
+  MobileNotificationModel
 } from "../db/models/index.js";
 import { findImportReportForTenant } from "../services/csvImport.js";
 import { env } from "../config/env.js";
@@ -78,6 +79,13 @@ import { sanitizeText, sanitizeHtmlContent } from "../utils/sanitize.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { ensureTenantMobileAppCode } from "../utils/mobileAppCode.js";
 import { createTtlCache } from "../utils/ttlCache.js";
+import {
+  listRecentMobileNotificationBatches,
+  normalizeTenantMobileNotificationPrefs,
+  notifyTenantAdmins,
+  resolveAudienceUserIds,
+  sendMobileNotificationBatch
+} from "../services/mobileNotifications.js";
 import {
   canonicalizeCityName,
   canonicalizeCountryName,
@@ -257,9 +265,21 @@ function isEmail(value = "") {
 }
 
 const SUPPORT_CONTACT_EMAIL = "support@pondbridgealumni.com";
+const MOBILE_NOTIFICATION_AUDIENCES = new Set([
+  "all_active_members",
+  "admins",
+  "all_users",
+  "flagged_members",
+  "pending_members"
+]);
 
 function resolveSupportContactEmail() {
   return SUPPORT_CONTACT_EMAIL;
+}
+
+function normalizeMobileNotificationAudience(value = "") {
+  const audience = String(value || "all_active_members").trim().toLowerCase();
+  return MOBILE_NOTIFICATION_AUDIENCES.has(audience) ? audience : "all_active_members";
 }
 
 function normalizeIdentityLabelList(value = [], fallback = []) {
@@ -564,6 +584,22 @@ function normalizeInviteName(value = "") {
   return sanitizeText(String(value || "").trim()).slice(0, 80);
 }
 
+function normalizeInviteEmailSubject(value = "") {
+  return sanitizeText(String(value || "").replace(/\s+/g, " ").trim()).slice(0, 160);
+}
+
+function normalizeInviteEmailMessage(value = "") {
+  const normalized = String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => sanitizeText(line))
+    .join("\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return normalized.slice(0, 2000).trim();
+}
+
 function parseInviteRowsFromText(text = "") {
   return String(text || "")
     .split(/[\n,;]+/g)
@@ -727,6 +763,11 @@ const MODULE_CATALOG = [
     key: "search",
     label: "Advanced Search",
     description: "Search members by name, role, location, and industry."
+  },
+  {
+    key: "events",
+    label: "Events",
+    description: "Member-facing events, RSVP collection, and invite campaigns."
   },
   {
     key: "photoStream",
@@ -2890,6 +2931,23 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
   });
   clearAdminReadCaches();
 
+  if (cleanPatch.status === "flagged") {
+    await notifyTenantAdmins({
+      tenant: req.tenant,
+      createdByUserId: req.user.id,
+      kind: "member_flagged",
+      title: "Member flagged",
+      body: `${updated.firstName || "A member"} ${updated.lastName || ""}`.trim()
+        ? `${`${updated.firstName || "A member"} ${updated.lastName || ""}`.trim()} was flagged for director follow-up.`
+        : "A member was flagged for director follow-up.",
+      deepLink: "/admin/members",
+      data: {
+        profileId: toObjectIdString(updated._id),
+        userId
+      }
+    }).catch(() => {});
+  }
+
   const refreshedUser = userId ? await UserModel.findOne(req.tenant._id, { _id: userId }) : null;
   return res.json({
     ok: true,
@@ -2978,6 +3036,24 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
     changedFields: Object.keys(patch)
   });
   clearAdminReadCaches();
+
+  if (patch.status === "flagged") {
+    await notifyTenantAdmins({
+      tenant: req.tenant,
+      createdByUserId: req.user.id,
+      kind: "member_flagged",
+      title: "Member flagged",
+      body: `${updated.firstName || "A member"} ${updated.lastName || ""}`.trim()
+        ? `${`${updated.firstName || "A member"} ${updated.lastName || ""}`.trim()} was flagged for director follow-up.`
+        : "A member was flagged for director follow-up.",
+      deepLink: "/admin/members",
+      data: {
+        profileId: toObjectIdString(updated._id),
+        userId: toObjectIdString(updated.userId)
+      }
+    }).catch(() => {});
+  }
+
   return res.json({
     ok: true,
     member: mapMemberRow(updated, user)
@@ -3141,6 +3217,18 @@ router.post("/members/bulk-action", async (req, res) => {
       affected: profiles.length
     });
     clearAdminReadCaches();
+    await notifyTenantAdmins({
+      tenant: req.tenant,
+      createdByUserId: req.user.id,
+      kind: "member_flagged",
+      title: "Members flagged",
+      body: `${profiles.length} member${profiles.length === 1 ? "" : "s"} were flagged for director follow-up.`,
+      deepLink: "/admin/members",
+      data: {
+        affected: profiles.length,
+        reason
+      }
+    }).catch(() => {});
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -3242,6 +3330,19 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
       existingUser: true
     });
     clearAdminReadCaches();
+    await sendMobileNotificationBatch({
+      tenant: req.tenant,
+      userIds: [toObjectIdString(existingUser._id)],
+      createdByUserId: req.user.id,
+      kind: "access_request_approved",
+      category: "account",
+      title: "Access approved",
+      body: `Your access to ${req.tenant.name || "your camp network"} was approved.`,
+      deepLink: "/home",
+      data: {
+        requestId: toObjectIdString(request._id)
+      }
+    }).catch(() => {});
     return res.json({ ok: true, requestId: toObjectIdString(request._id), existingUser: true });
   }
 
@@ -3289,6 +3390,19 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     existingUser: false
   });
   clearAdminReadCaches();
+  await sendMobileNotificationBatch({
+    tenant: req.tenant,
+    userIds: [toObjectIdString(user._id)],
+    createdByUserId: req.user.id,
+    kind: "access_request_approved",
+    category: "account",
+    title: "Access approved",
+    body: `Your access to ${req.tenant.name || "your camp network"} was approved.`,
+    deepLink: "/home",
+    data: {
+      requestId: toObjectIdString(request._id)
+    }
+  }).catch(() => {});
 
   const approvedFirstName = String(
     request.firstName || request.profilePayload?.firstName || ""
@@ -4267,7 +4381,7 @@ router.get("/settings", async (req, res) => {
       createdAt: toIso(item.createdAt),
       expiresAt: toIso(item.expiresAt)
     })),
-    notifications: req.tenant.notificationPrefs || {},
+    notifications: normalizeTenantMobileNotificationPrefs(req.tenant.notificationPrefs || {}),
     deletionRequest: req.tenant.deletionRequest || { status: "none" }
   });
 });
@@ -4716,29 +4830,92 @@ router.delete("/settings/admins/:userId", async (req, res) => {
 });
 
 router.patch("/settings/notifications", async (req, res) => {
-  const current = req.tenant.notificationPrefs || {};
-  const next = {
-    newMemberJoined:
-      req.body?.newMemberJoined !== undefined
-        ? Boolean(req.body.newMemberJoined)
-        : Boolean(current.newMemberJoined),
-    approvalRequests:
-      req.body?.approvalRequests !== undefined
-        ? Boolean(req.body.approvalRequests)
-        : Boolean(current.approvalRequests),
-    memberFlagged:
-      req.body?.memberFlagged !== undefined
-        ? Boolean(req.body.memberFlagged)
-        : Boolean(current.memberFlagged),
-    weeklySummary:
-      req.body?.weeklySummary !== undefined
-        ? Boolean(req.body.weeklySummary)
-        : Boolean(current.weeklySummary)
-  };
+  const current = normalizeTenantMobileNotificationPrefs(req.tenant.notificationPrefs || {});
+  const next = normalizeTenantMobileNotificationPrefs({
+    ...current,
+    mobileEnabled: req.body?.mobileEnabled ?? current.mobileEnabled,
+    pushEnabled: req.body?.pushEnabled ?? current.pushEnabled,
+    inboxEnabled: req.body?.inboxEnabled ?? current.inboxEnabled,
+    newMemberJoined: req.body?.newMemberJoined ?? current.newMemberJoined,
+    approvalRequests: req.body?.approvalRequests ?? current.approvalRequests,
+    memberFlagged: req.body?.memberFlagged ?? current.memberFlagged,
+    weeklySummary: req.body?.weeklySummary ?? current.weeklySummary,
+    eventPublished: req.body?.eventPublished ?? current.eventPublished,
+    eventCanceled: req.body?.eventCanceled ?? current.eventCanceled,
+    newsletterPublished: req.body?.newsletterPublished ?? current.newsletterPublished,
+    customBroadcasts: req.body?.customBroadcasts ?? current.customBroadcasts,
+    soundEnabled: req.body?.soundEnabled ?? current.soundEnabled
+  });
 
   const tenant = await TenantModel.update(req.tenant._id, { notificationPrefs: next });
+  await writeAdminAudit(req, "admin_mobile_notification_settings_updated", {
+    changedKeys: Object.keys(next)
+  });
 
-  return res.json({ ok: true, notifications: tenant.notificationPrefs || next });
+  return res.json({ ok: true, notifications: normalizeTenantMobileNotificationPrefs(tenant.notificationPrefs || next) });
+});
+
+router.get("/notifications/history", async (req, res) => {
+  const items = await listRecentMobileNotificationBatches(req.tenant._id, {
+    limit: req.query.limit || 20
+  });
+  return res.json({ items });
+});
+
+router.post("/notifications/send", async (req, res) => {
+  const tenantPrefs = normalizeTenantMobileNotificationPrefs(req.tenant.notificationPrefs || {});
+  if (!tenantPrefs.mobileEnabled || !tenantPrefs.customBroadcasts) {
+    return res.status(400).json({
+      error: {
+        code: "MOBILE_NOTIFICATIONS_DISABLED",
+        message: "Mobile notifications are disabled for this camp."
+      }
+    });
+  }
+
+  const title = sanitizeText(String(req.body?.title || "").trim()).slice(0, 120);
+  const body = sanitizeText(String(req.body?.body || "").trim()).slice(0, 500);
+  const category = String(req.body?.category || "announcements").trim().toLowerCase() || "announcements";
+  const deepLink = String(req.body?.deepLink || "").trim();
+  const audience = normalizeMobileNotificationAudience(req.body?.audience);
+
+  if (!title || !body) {
+    return res.status(400).json({
+      error: {
+        code: "TITLE_BODY_REQUIRED",
+        message: "Title and body are required."
+      }
+    });
+  }
+
+  const userIds = await resolveAudienceUserIds(req.tenant._id, audience);
+  const result = await sendMobileNotificationBatch({
+    tenant: req.tenant,
+    userIds,
+    createdByUserId: req.user.id,
+    kind: "custom_admin",
+    category,
+    title,
+    body,
+    deepLink,
+    data: {
+      audience
+    },
+    pushRequested: req.body?.pushRequested !== false
+  });
+
+  await writeAdminAudit(req, "admin_mobile_notification_sent", {
+    batchId: result.batchId,
+    audience,
+    category,
+    recipients: result.totalRecipients
+  });
+
+  return res.status(201).json({
+    ok: true,
+    batchId: result.batchId,
+    totalRecipients: result.totalRecipients
+  });
 });
 
 router.post("/settings/pause", async (req, res) => {
@@ -4996,6 +5173,8 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
       max: 30,
       fallback: env.INVITE_EXPIRES_DAYS
     });
+    const customSubject = normalizeInviteEmailSubject(req.body?.customSubject || "");
+    const customMessage = normalizeInviteEmailMessage(req.body?.customMessage || "");
 
     let recipientsFromPayload = [];
     try {
@@ -5053,6 +5232,8 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
           roleToAssign,
           expiresAt: invite.expiresAt,
           replyTo: normalizeEmail(req.user?.email || ""),
+          customSubject,
+          customMessage,
           firstName: recipient.firstName || "",
           lastName: recipient.lastName || ""
         });
@@ -5067,7 +5248,9 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
       attemptedCount: recipients.length,
       createdCount,
       sentCount,
-      skippedCount: skipped.length
+      skippedCount: skipped.length,
+      usedCustomSubject: Boolean(customSubject),
+      customMessageLength: customMessage.length
     });
 
     return res.status(201).json({

@@ -46,6 +46,8 @@ services:
         value: lax
       - key: CLERK_SUPER_ADMIN_EMAILS
         value: adensoroca@gmail.com
+      - key: CLERK_WEBHOOK_SIGNING_SECRET
+        sync: false
       - key: CLERK_SUPER_ADMIN_USER_IDS
         value: ""
       - key: R2_BUCKET_NAME

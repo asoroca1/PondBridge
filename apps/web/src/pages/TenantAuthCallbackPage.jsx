@@ -38,10 +38,17 @@ function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
 }
 
-function buildLoginPath(slug, { inviteToken = "", authIssue = "" } = {}) {
+function normalizeReturnTo(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "";
+  return raw;
+}
+
+function buildLoginPath(slug, { inviteToken = "", authIssue = "", returnTo = "" } = {}) {
   const params = new URLSearchParams();
   if (inviteToken) params.set("inviteToken", inviteToken);
   if (authIssue) params.set("authIssue", authIssue);
+  if (returnTo) params.set("returnTo", returnTo);
   const query = params.toString();
   return routeWithSlug(slug, `/login${query ? `?${query}` : ""}`);
 }
@@ -109,12 +116,12 @@ function shouldForceSessionReset(err) {
   );
 }
 
-function resolveAuthCallbackError(err, slug, inviteToken = "") {
+function resolveAuthCallbackError(err, slug, inviteToken = "", returnTo = "") {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
     .toUpperCase();
   const fallbackMessage = String(err?.message || "Could not complete authentication.");
-  const loginPath = buildLoginPath(slug, { inviteToken });
+  const loginPath = buildLoginPath(slug, { inviteToken, returnTo });
 
   if (code === "SUPER_ADMIN_BLOCKED") {
     return {
@@ -205,6 +212,7 @@ function ClerkAuthCallbackPage() {
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
+  const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
   const directorBootstrap = truthy(searchParams.get("directorBootstrap"));
   const { refreshSession, logout } = useAuth();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
@@ -376,7 +384,7 @@ function ClerkAuthCallbackPage() {
 
         const next = normalizeTenantRouteForHost(
           slug,
-          String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home")
+          returnTo || String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home")
         );
         clearPendingLegalAgreement(slug);
         redirected = true;
@@ -386,6 +394,7 @@ function ClerkAuthCallbackPage() {
         if (isLegalAgreementRequiredError(err)) {
           const params = new URLSearchParams();
           if (inviteToken) params.set("inviteToken", inviteToken);
+          if (returnTo) params.set("returnTo", returnTo);
           params.set("legalRequired", "1");
           redirected = true;
           navigate(routeWithSlug(slug, `/create-account?${params.toString()}`), {
@@ -401,7 +410,7 @@ function ClerkAuthCallbackPage() {
           } finally {
             if (cancelled) return;
             redirected = true;
-            navigate(buildLoginPath(slug, { inviteToken, authIssue: "wrong_network" }), {
+            navigate(buildLoginPath(slug, { inviteToken, authIssue: "wrong_network", returnTo }), {
               replace: true
             });
           }
@@ -415,13 +424,13 @@ function ClerkAuthCallbackPage() {
           } finally {
             if (cancelled) return;
             redirected = true;
-            navigate(buildLoginPath(slug, { inviteToken, authIssue: "session_reset" }), {
+            navigate(buildLoginPath(slug, { inviteToken, authIssue: "session_reset", returnTo }), {
               replace: true
             });
           }
           return;
         }
-        const resolved = resolveAuthCallbackError(err, slug, inviteToken);
+        const resolved = resolveAuthCallbackError(err, slug, inviteToken, returnTo);
         setError(resolved.message);
         setGuidance(resolved.guidance);
         setRetryPath(resolved.retryPath);

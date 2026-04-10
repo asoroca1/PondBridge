@@ -412,7 +412,73 @@ ALTER TABLE public.newsletters
 
 CREATE INDEX IF NOT EXISTS idx_newsletters_tenant ON public.newsletters (tenant_id, year DESC, season, created_at DESC);
 
--- 13. EMAIL BROADCASTS
+-- 13. EVENTS
+CREATE TABLE IF NOT EXISTS public.events (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  slug text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'published', 'canceled')),
+  title text NOT NULL DEFAULT '',
+  summary text NOT NULL DEFAULT '',
+  body_html text NOT NULL DEFAULT '',
+  cover_image_url text NOT NULL DEFAULT '',
+  starts_at timestamptz NOT NULL,
+  ends_at timestamptz,
+  timezone text NOT NULL DEFAULT 'America/New_York',
+  location_name text NOT NULL DEFAULT '',
+  location_address text NOT NULL DEFAULT '',
+  rsvp_deadline_at timestamptz,
+  published_at timestamptz,
+  created_by_user_id text,
+  updated_by_user_id text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_tenant_status_start ON public.events (tenant_id, status, starts_at ASC);
+CREATE INDEX IF NOT EXISTS idx_events_tenant_published_start ON public.events (tenant_id, published_at DESC, starts_at ASC);
+
+CREATE TABLE IF NOT EXISTS public.event_rsvps (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  event_id text NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+  profile_id text NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'attending'
+    CHECK (status IN ('attending', 'maybe', 'not_attending')),
+  responded_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (event_id, profile_id),
+  UNIQUE (event_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_rsvps_tenant_event ON public.event_rsvps (tenant_id, event_id, responded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_event_rsvps_tenant_profile ON public.event_rsvps (tenant_id, profile_id, responded_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.event_messages (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  event_id text NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+  kind text NOT NULL
+    CHECK (kind IN ('invite', 'reminder', 'update', 'cancellation')),
+  subject text NOT NULL DEFAULT '',
+  body_html text NOT NULL DEFAULT '',
+  recipient_profile_ids text[] NOT NULL DEFAULT '{}',
+  recipient_count integer NOT NULL DEFAULT 0,
+  delivery_stats jsonb NOT NULL DEFAULT '{}'::jsonb,
+  sent_at timestamptz,
+  created_by_user_id text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_messages_tenant_event ON public.event_messages (tenant_id, event_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_event_messages_tenant_kind ON public.event_messages (tenant_id, kind, sent_at DESC);
+
+-- 14. EMAIL BROADCASTS
 CREATE TABLE IF NOT EXISTS public.email_broadcasts (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   tenant_id text NOT NULL REFERENCES public.tenants(id),
@@ -435,7 +501,7 @@ CREATE TABLE IF NOT EXISTS public.email_broadcasts (
 CREATE INDEX IF NOT EXISTS idx_email_broadcasts_tenant ON public.email_broadcasts (tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_email_broadcasts_tenant_status ON public.email_broadcasts (tenant_id, status, sent_at DESC);
 
--- 14. FAMILY TREES
+-- 15. FAMILY TREES
 CREATE TABLE IF NOT EXISTS public.family_trees (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   tenant_id text NOT NULL REFERENCES public.tenants(id),
@@ -448,7 +514,7 @@ CREATE TABLE IF NOT EXISTS public.family_trees (
 
 CREATE INDEX IF NOT EXISTS idx_family_trees_tenant ON public.family_trees (tenant_id, name);
 
--- 15. ANALYTICS EVENTS
+-- 16. ANALYTICS EVENTS
 CREATE TABLE IF NOT EXISTS public.analytics_events (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   tenant_id text NOT NULL REFERENCES public.tenants(id),
@@ -463,7 +529,7 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_tenant ON public.analytics_event
 CREATE INDEX IF NOT EXISTS idx_analytics_events_tenant_type ON public.analytics_events (tenant_id, event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_tenant_user ON public.analytics_events (tenant_id, user_id, created_at DESC);
 
--- 16. IMPORT REPORTS
+-- 17. IMPORT REPORTS
 CREATE TABLE IF NOT EXISTS public.import_reports (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   tenant_id text NOT NULL REFERENCES public.tenants(id),
@@ -479,7 +545,7 @@ CREATE TABLE IF NOT EXISTS public.import_reports (
 
 CREATE INDEX IF NOT EXISTS idx_import_reports_tenant ON public.import_reports (tenant_id, created_at DESC);
 
--- 17. TENANT ADMIN AUDIT LOGS
+-- 18. TENANT ADMIN AUDIT LOGS
 CREATE TABLE IF NOT EXISTS public.tenant_admin_audit_logs (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   tenant_id text NOT NULL REFERENCES public.tenants(id),
@@ -493,7 +559,7 @@ CREATE TABLE IF NOT EXISTS public.tenant_admin_audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON public.tenant_admin_audit_logs (tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_event ON public.tenant_admin_audit_logs (tenant_id, event, created_at DESC);
 
--- 18. RESUME PARSE RESULTS
+-- 19. RESUME PARSE RESULTS
 CREATE TABLE IF NOT EXISTS public.resume_parse_results (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   tenant_id text NOT NULL REFERENCES public.tenants(id),
@@ -552,7 +618,70 @@ CREATE TABLE IF NOT EXISTS public.activity_items (
 
 CREATE INDEX IF NOT EXISTS idx_activity_items_tenant ON public.activity_items (tenant_id, pinned DESC, pinned_at DESC, ts DESC);
 
--- 21. RESEND WEBHOOK EVENTS
+-- 21. MOBILE NOTIFICATIONS
+CREATE TABLE IF NOT EXISTS public.mobile_notifications (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  user_id text NOT NULL REFERENCES public.users(id),
+  batch_id text NOT NULL DEFAULT '',
+  created_by_user_id text,
+  kind text NOT NULL DEFAULT 'custom_admin',
+  category text NOT NULL DEFAULT 'announcements',
+  title text NOT NULL DEFAULT '',
+  body text NOT NULL DEFAULT '',
+  deep_link text NOT NULL DEFAULT '',
+  data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  delivery jsonb NOT NULL DEFAULT '{}'::jsonb,
+  read_at timestamptz,
+  archived_at timestamptz,
+  opened_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_notifications_user_inbox
+  ON public.mobile_notifications (tenant_id, user_id, archived_at, read_at, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mobile_notifications_batch
+  ON public.mobile_notifications (tenant_id, batch_id, created_at DESC);
+
+-- 22. MOBILE NOTIFICATION DEVICES
+CREATE TABLE IF NOT EXISTS public.mobile_notification_devices (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  user_id text NOT NULL REFERENCES public.users(id),
+  platform text NOT NULL DEFAULT 'ios',
+  token text NOT NULL UNIQUE,
+  app_id text NOT NULL DEFAULT '',
+  environment text NOT NULL DEFAULT 'sandbox',
+  permission_state text NOT NULL DEFAULT 'prompt',
+  is_active boolean NOT NULL DEFAULT true,
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_registered_at timestamptz NOT NULL DEFAULT now(),
+  last_delivered_at timestamptz,
+  last_error text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_notification_devices_user
+  ON public.mobile_notification_devices (tenant_id, user_id, is_active, updated_at DESC);
+
+-- 23. MOBILE NOTIFICATION PREFERENCES
+CREATE TABLE IF NOT EXISTS public.mobile_notification_preferences (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  user_id text NOT NULL REFERENCES public.users(id),
+  push_enabled boolean NOT NULL DEFAULT true,
+  categories jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_notification_preferences_user
+  ON public.mobile_notification_preferences (tenant_id, user_id);
+
+-- 24. RESEND WEBHOOK EVENTS
 CREATE TABLE IF NOT EXISTS public.resend_webhook_events (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   svix_id text NOT NULL,
@@ -578,7 +707,7 @@ CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_email_id
 CREATE INDEX IF NOT EXISTS idx_resend_webhook_events_recipient
   ON public.resend_webhook_events (recipient_email, occurred_at DESC);
 
--- 22. STRIPE WEBHOOK EVENTS
+-- 25. STRIPE WEBHOOK EVENTS
 CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   stripe_event_id text NOT NULL UNIQUE,
@@ -610,7 +739,7 @@ CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_subscription
 CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_event_type
   ON public.stripe_webhook_events (event_type, updated_at DESC);
 
--- 23. EMAIL SUPPRESSIONS
+-- 26. EMAIL SUPPRESSIONS
 CREATE TABLE IF NOT EXISTS public.email_suppressions (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
   email text NOT NULL UNIQUE,
@@ -808,9 +937,10 @@ BEGIN
     SELECT unnest(ARRAY[
       'tenants', 'users', 'profiles', 'invites', 'access_requests',
       'magic_link_tokens', 'conversations', 'forums', 'photos',
-      'newsletters', 'email_broadcasts', 'family_trees', 'analytics_events',
+      'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees', 'analytics_events',
       'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
-      'city_geo', 'activity_items', 'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
+      'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
+      'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
     EXECUTE format(
@@ -835,9 +965,9 @@ BEGIN
     SELECT unnest(ARRAY[
       'tenants', 'users', 'profiles', 'invites', 'access_requests',
       'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
-      'photos', 'newsletters', 'email_broadcasts', 'family_trees',
+      'photos', 'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
-      'resume_parse_results', 'city_geo', 'activity_items',
+      'resume_parse_results', 'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
       'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
@@ -856,9 +986,9 @@ BEGIN
     SELECT unnest(ARRAY[
       'tenants', 'users', 'profiles', 'invites', 'access_requests',
       'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
-      'photos', 'newsletters', 'email_broadcasts', 'family_trees',
+      'photos', 'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
-      'resume_parse_results', 'city_geo', 'activity_items',
+      'resume_parse_results', 'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
       'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
@@ -990,9 +1120,10 @@ BEGIN
     SELECT unnest(ARRAY[
       'users', 'profiles', 'invites', 'access_requests', 'magic_link_tokens',
       'conversations', 'messages', 'forums', 'forum_posts', 'photos',
-      'newsletters', 'email_broadcasts', 'family_trees', 'analytics_events',
+      'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees', 'analytics_events',
       'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
-      'activity_items', 'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
+      'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
+      'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
     policy_name := format('%s_authenticated_tenant_scope', tbl);

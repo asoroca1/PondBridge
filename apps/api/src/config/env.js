@@ -258,6 +258,14 @@ export const env = {
   R2_MAX_UPLOAD_BYTES: toBoundedInt(process.env.R2_MAX_UPLOAD_BYTES, 20 * 1024 * 1024, 1024, 1024 * 1024 * 1024),
   R2_PRESIGN_EXPIRES_SECONDS: toBoundedInt(process.env.R2_PRESIGN_EXPIRES_SECONDS, 900, 60, 3600),
   R2_DEFAULT_CACHE_CONTROL: String(process.env.R2_DEFAULT_CACHE_CONTROL || "public, max-age=31536000, immutable").trim(),
+  APNS_KEY_ID: String(process.env.APNS_KEY_ID || "").trim(),
+  APNS_TEAM_ID: String(process.env.APNS_TEAM_ID || "").trim(),
+  APNS_BUNDLE_ID: String(process.env.APNS_BUNDLE_ID || "com.pondbridge.ios").trim(),
+  APNS_PRIVATE_KEY: String(process.env.APNS_PRIVATE_KEY || "").trim(),
+  APNS_USE_SANDBOX: toBoolean(
+    process.env.APNS_USE_SANDBOX,
+    String(process.env.NODE_ENV || "").trim().toLowerCase() !== "production"
+  ),
   SMTP_HOST: process.env.SMTP_HOST || "",
   SMTP_PORT: toNumber(process.env.SMTP_PORT, 587),
   SMTP_SECURE: process.env.SMTP_SECURE || "false",
@@ -275,6 +283,7 @@ export const env = {
   ),
   AUTH_COOKIE_MAX_AGE_SECONDS: toNumber(process.env.AUTH_COOKIE_MAX_AGE_SECONDS, 60 * 60 * 24 * 7),
   CLERK_SECRET_KEY: String(process.env.CLERK_SECRET_KEY || "").trim(),
+  CLERK_WEBHOOK_SIGNING_SECRET: String(process.env.CLERK_WEBHOOK_SIGNING_SECRET || "").trim(),
   CLERK_AUTHORIZED_PARTIES: dedupe(toCsvList(process.env.CLERK_AUTHORIZED_PARTIES || "")),
   CLERK_JWT_AUDIENCE: String(process.env.CLERK_JWT_AUDIENCE || "").trim(),
   CLERK_REQUIRE_TENANT_CLAIM: toBoolean(process.env.CLERK_REQUIRE_TENANT_CLAIM, false),

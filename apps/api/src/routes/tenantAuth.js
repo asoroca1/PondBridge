@@ -14,6 +14,7 @@ import { buildAuthenticatedUserPayload, comparePassword, hashPassword, signToken
 import { env } from "../config/env.js";
 import { sendMagicLinkEmail, sendWelcomeEmail } from "../services/email.js";
 import { logTenantEvent } from "../services/analytics.js";
+import { notifyTenantAdmins } from "../services/mobileNotifications.js";
 import { clearAuthCookie, setAuthCookie } from "../utils/authCookie.js";
 import { findInviteByOpaqueToken, markInviteUsed } from "../services/invites.js";
 import { hashOpaqueToken } from "../utils/tokens.js";
@@ -446,6 +447,20 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
       });
     }
 
+    await notifyTenantAdmins({
+      tenant: req.tenant,
+      kind: "approval_request_submitted",
+      title: "New approval request",
+      body: `${firstName || "A member"} ${lastName || ""}`.trim()
+        ? `${`${firstName || "A member"} ${lastName || ""}`.trim()} requested access to ${req.tenant.name || "your camp"}.`
+        : `A new member requested access to ${req.tenant.name || "your camp"}.`,
+      deepLink: "/admin/members",
+      data: {
+        email,
+        requestType: "signup_approval"
+      }
+    }).catch(() => {});
+
     return res.status(403).json({
       error: {
         code: "APPROVAL_REQUIRED",
@@ -485,6 +500,19 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
       label: "profile"
     },
     ts: new Date()
+  }).catch(() => {});
+
+  await notifyTenantAdmins({
+    tenant: req.tenant,
+    createdByUserId: user._id,
+    kind: "member_joined",
+    title: "New member joined",
+    body: `${actorName} joined ${req.tenant.name || "your camp network"}.`,
+    deepLink: "/admin/members",
+    data: {
+      profileId: String(profile._id || ""),
+      userId: String(user._id || "")
+    }
   }).catch(() => {});
 
   if (matchingInvite) {
