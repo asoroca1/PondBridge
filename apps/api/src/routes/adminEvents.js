@@ -1,3 +1,4 @@
+import { MEMBER_EVENTS_PAGES_ENABLED } from "@pondbridge/shared";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
@@ -182,6 +183,7 @@ router.get("/", async (req, res) => {
   );
   return res.json({
     moduleEnabled: isEventsModuleEnabled(req.tenant),
+    platformDisabled: !MEMBER_EVENTS_PAGES_ENABLED,
     items
   });
 });

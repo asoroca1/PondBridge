@@ -4823,6 +4823,8 @@ export function DirectorAdminFeaturesPage() {
           </div>
           {module.locked ? (
             <span className="director-admin-status-badge tone-warning">Premium</span>
+          ) : module.platformDisabled ? (
+            <span className="director-admin-status-badge tone-warning">Temporarily hidden</span>
           ) : (
             <label className="director-admin-switch">
               <input
@@ -4881,6 +4883,8 @@ export function DirectorAdminFeaturesPage() {
         ) : null}
         {module.locked ? (
           <p className="muted">This feature requires Premium.</p>
+        ) : module.platformDisabled ? (
+          <p className="muted">{module.disabledReason || "Temporarily hidden from members across all networks."}</p>
         ) : (
           <Link className="director-admin-inline-link" to={modulePreviewPath(slug, module.key)}>
             Preview in network

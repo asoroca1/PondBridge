@@ -8,6 +8,7 @@ import { parse as parseCsv } from "csv-parse/sync";
 import {
   alumniPluralForCampType,
   hasFeature,
+  MEMBER_EVENTS_PAGES_ENABLED,
   listFeaturesForPlan,
   normalizeCampType,
   replaceAlumniForCampType
@@ -4105,12 +4106,15 @@ router.get("/features", async (req, res) => {
     const locked = module.requiredFeature
       ? !hasFeature(planTier, module.requiredFeature, req.tenant.addOns || [])
       : false;
+    const platformDisabled = module.key === "events" && !MEMBER_EVENTS_PAGES_ENABLED;
     return {
       ...module,
       label: replaceAlumniForCampType(module.label, campType),
       description: replaceAlumniForCampType(module.description, campType),
-      enabled: locked ? false : Boolean(modules[module.key]),
-      locked
+      enabled: locked || platformDisabled ? false : Boolean(modules[module.key]),
+      locked,
+      platformDisabled,
+      disabledReason: platformDisabled ? "Temporarily hidden from members across all networks." : ""
     };
   });
 
@@ -4150,7 +4154,8 @@ router.patch("/features", async (req, res) => {
     const locked = module.requiredFeature
       ? !hasFeature(planTier, module.requiredFeature, req.tenant.addOns || [])
       : false;
-    if (locked) continue;
+    const platformDisabled = module.key === "events" && !MEMBER_EVENTS_PAGES_ENABLED;
+    if (locked || platformDisabled) continue;
     nextModules[module.key] = Boolean(incomingModules[module.key]);
   }
 

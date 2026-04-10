@@ -1,3 +1,4 @@
+import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { broadcastTemplate } from "./emailTemplates.js";
 import { buildTenantEmailBranding } from "./email.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
@@ -61,7 +62,7 @@ export function createEventError(message, code = "INVALID_EVENT", statusCode = 4
 }
 
 export function isEventsModuleEnabled(tenant = {}) {
-  return tenant?.modules?.events !== false;
+  return isMemberEventsModuleEnabled(tenant?.modules?.events);
 }
 
 export function normalizeEventStatus(value = "", fallback = "draft") {

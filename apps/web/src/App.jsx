@@ -252,6 +252,18 @@ function RouteLoadingFallback() {
   );
 }
 
+function MemberEventsRoute({ children }) {
+  const { tenant, slug: tenantSlug } = useTenant();
+  const params = useParams();
+  const slug = params.slug || tenantSlug;
+
+  if (tenant?.modules?.events === false) {
+    return <Navigate to={slug ? `/t/${slug}/home` : "/home"} replace />;
+  }
+
+  return children;
+}
+
 function TenantScopeRoutes() {
   const { loading, error, tenant, slug: tenantSlug } = useTenant();
   const { isAuthenticated, isReady, user, authProvider, refreshSession, logout } = useAuth();
@@ -737,7 +749,9 @@ function TenantScopeRoutes() {
           path="events"
           element={
             <ProtectedRoute>
-              <EventsPage />
+              <MemberEventsRoute>
+                <EventsPage />
+              </MemberEventsRoute>
             </ProtectedRoute>
           }
         />
@@ -745,7 +759,9 @@ function TenantScopeRoutes() {
           path="events/:eventId"
           element={
             <ProtectedRoute>
-              <EventDetailPage />
+              <MemberEventsRoute>
+                <EventDetailPage />
+              </MemberEventsRoute>
             </ProtectedRoute>
           }
         />

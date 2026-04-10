@@ -1,6 +1,7 @@
 import {
   defaultNetworkDisplayNameForCamp,
   hasFeature,
+  isMemberEventsModuleEnabled,
   normalizeCampType,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
@@ -390,7 +391,7 @@ export function resolveModules(tenant, { applyPlanGating = true } = {}) {
   const modules = {
     directory: live.directory !== false,
     search: live.search !== false,
-    events: live.events !== false,
+    events: isMemberEventsModuleEnabled(live.events),
     photoStream: live.photoStream !== false,
     chat: live.chat !== false,
     map: live.map !== false,

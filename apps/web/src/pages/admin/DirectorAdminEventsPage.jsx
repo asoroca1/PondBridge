@@ -78,6 +78,7 @@ export default function DirectorAdminEventsPage() {
   const { slug, request } = useAdminApi();
   const [items, setItems] = useState([]);
   const [moduleEnabled, setModuleEnabled] = useState(true);
+  const [platformDisabled, setPlatformDisabled] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -103,6 +104,7 @@ export default function DirectorAdminEventsPage() {
       const nextItems = Array.isArray(payload?.items) ? payload.items : [];
       setItems(nextItems);
       setModuleEnabled(payload?.moduleEnabled !== false);
+      setPlatformDisabled(Boolean(payload?.platformDisabled));
       if (!nextSelectedEventId && nextItems.length > 0) {
         setSelectedEventId(nextItems[0].id);
       }
@@ -358,7 +360,11 @@ export default function DirectorAdminEventsPage() {
           }
         />
         {!moduleEnabled ? (
-          <p className="muted">Events are currently hidden from members because the module is disabled in Features & Modules.</p>
+          <p className="muted">
+            {platformDisabled
+              ? "Events are temporarily hidden from members across all networks."
+              : "Events are currently hidden from members because the module is disabled in Features & Modules."}
+          </p>
         ) : null}
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
