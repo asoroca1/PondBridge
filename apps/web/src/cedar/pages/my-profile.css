@@ -13,7 +13,7 @@
 
   /* cover + avatar */
   --p1-cover-height: 150px;
-  --mp-cover-gap: 60px;
+  --mp-cover-gap: calc((var(--p1-avatar-total) / 2) + 6px + var(--p1-avatar-overlap));
   --p1-avatar-diam: 150px;
   --p1-avatar-ring: 6px;
   --p1-ring-color: #c3c5c8;
@@ -349,7 +349,6 @@
     --p1-avatar-diam: 96px;
     --p1-avatar-ring: 4px;
     --p1-ring-color: #eef2f7;
-    --mp-cover-gap: 46px;
     --p1-avatar-overlap: -2px;
     --profile-extra-top: 14px;
   }
@@ -473,7 +472,6 @@
     --p1-avatar-diam: 84px;
     --p1-avatar-ring: 4px;
     --p1-ring-color: #f2f5f9;
-    --mp-cover-gap: 38px;
     --p1-avatar-overlap: 0px;
     --profile-extra-top: 8px;
   }
