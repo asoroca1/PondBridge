@@ -2740,8 +2740,8 @@ img[draggable="false"] { -webkit-user-drag: none; }
 /* Small phones: enforce hard-fit layout so nav never overflows viewport */
 @media (max-width:576px){
   :root{
-    --nav-h: 60px;
-    --nav-pad-x: 8px;
+    --nav-h: 58px;
+    --nav-pad-x: 6px;
     --left-guard: 72px;
     --s-btn-size: 30px;
   }
@@ -2751,7 +2751,7 @@ img[draggable="false"] { -webkit-user-drag: none; }
   .navbar2.is-auth-route .navbar2-title{ display:block; }
 
   .navbar2{
-    gap: 6px;
+    gap: 4px;
     padding-left: calc(var(--nav-pad-x) + env(safe-area-inset-left));
     padding-right: calc(var(--nav-pad-x) + env(safe-area-inset-right));
   }
@@ -2773,13 +2773,13 @@ img[draggable="false"] { -webkit-user-drag: none; }
     min-width: 0;
     margin-left: 0;
     max-width: none;
-    gap: 4px;
+    gap: 3px;
   }
 
   .navbar2-search{
     flex: 1 1 auto;
     min-width: 0;
-    max-width: calc(100% - 96px);
+    max-width: none;
   }
 
   .navbar2-search-inputWrap{
@@ -2809,14 +2809,14 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .navbar2-profile-btn{
-    width: 44px;
-    height: 44px;
-    border-radius: 11px;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
   }
 
   .navbar2-profile{
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
   }
 
   .navbar2-profile-initials{
@@ -2828,14 +2828,14 @@ img[draggable="false"] { -webkit-user-drag: none; }
   }
 
   .navbar2-burger{
-    width: 44px;
-    height: 44px;
-    border-radius: 11px;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
     padding: 0;
   }
 
   .navbar2-burger-line{
-    width: 22px;
+    width: 20px;
   }
 
   .navbar2.is-auth-route .navbar2-right{
@@ -2861,12 +2861,21 @@ img[draggable="false"] { -webkit-user-drag: none; }
     margin-right: 8px;
   }
 
+  .navbar2-logo,
+  .navbar2-logo-fallback{
+    margin-right: 6px;
+  }
+
+  .navbar2-logo{
+    max-height: 36px;
+    margin-left: 0;
+  }
+
   .navbar2-logo-fallback{
     width: 28px;
     height: 28px;
     flex-basis: 28px;
     margin-left: 0;
-    margin-right: 8px;
     font-size: 0.7rem;
     box-shadow: none;
   }
@@ -2881,15 +2890,15 @@ img[draggable="false"] { -webkit-user-drag: none; }
 @media (max-width:430px){
   :root{ --nav-h: 58px; --s-input-w: clamp(116px, 35vw, 154px); --left-guard: 64px; --s-btn-size: 28px; }
   .navbar2-right{ gap:4px; }
-  .navbar2-logo{ max-height:34px; margin-right:8px; }
-  .navbar2-logo-fallback{ width:34px; height:34px; flex-basis:34px; font-size:0.72rem; }
-  .navbar2-search{ max-width: calc(100% - 104px); }
-  .navbar2-notifications-btn{ width:44px; height:44px; border-radius:12px; }
-  .navbar2-profile-btn{ width:44px; height:44px; border-radius:12px; }
-  .navbar2-profile{ width:32px; height:32px; }
+  .navbar2-logo{ max-height:34px; margin-right:6px; }
+  .navbar2-logo-fallback{ width:34px; height:34px; flex-basis:34px; font-size:0.72rem; margin-right:6px; }
+  .navbar2-search{ max-width: none; }
+  .navbar2-notifications-btn{ width:42px; height:42px; border-radius:10px; }
+  .navbar2-profile-btn{ width:40px; height:40px; border-radius:10px; }
+  .navbar2-profile{ width:30px; height:30px; }
   .navbar2-profile-initials{ font-size: .72rem; }
-  .navbar2-burger{ width:44px; height:44px; border-radius:12px; }
-  .navbar2-burger-line{ width:22px; }
+  .navbar2-burger{ width:40px; height:40px; border-radius:10px; }
+  .navbar2-burger-line{ width:20px; }
   .navbar2.is-auth-route .navbar2-title{
     font-size: clamp(.88rem, 3.7vw, 1.05rem);
     max-width: min(32vw, 120px);
@@ -2914,28 +2923,28 @@ img[draggable="false"] { -webkit-user-drag: none; }
 }
 @media (max-width:375px){
   :root{ --nav-h: 56px; --s-input-w: clamp(108px, 33vw, 136px); --left-guard: 58px; --s-btn-size:26px; }
-  .navbar2-logo{ max-height:32px; margin-right:6px; }
-  .navbar2-logo-fallback{ width:32px; height:32px; flex-basis:32px; font-size:0.68rem; }
-  .navbar2-search{ max-width: calc(100% - 98px); }
+  .navbar2-logo{ max-height:30px; margin-right:5px; }
+  .navbar2-logo-fallback{ width:30px; height:30px; flex-basis:30px; font-size:0.66rem; margin-right:5px; }
+  .navbar2-search{ max-width: none; }
   .navbar2-notifications-btn{
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     border-radius: 10px;
   }
   .navbar2-profile-btn{
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
     border-radius: 10px;
   }
-  .navbar2-profile{ width:31px; height:31px; }
+  .navbar2-profile{ width:28px; height:28px; }
   .navbar2-profile-initials{ font-size: .68rem; }
   .navbar2-burger{
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
     border-radius: 10px;
     padding: 0;
   }
-  .navbar2-burger-line{ width:21px; }
+  .navbar2-burger-line{ width:18px; }
 
   .navbar2.is-auth-route .navbar2-title{
     max-width: min(30vw, 104px);
