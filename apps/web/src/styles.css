@@ -10327,6 +10327,57 @@ button.super-stat-card {
   align-items:stretch;
 }
 
+.events-overview-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:18px;
+}
+
+.events-overview-card{
+  display:grid;
+  gap:12px;
+  padding:24px 26px;
+  border:1px solid rgba(13, 56, 93, 0.08);
+  background:linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,249,252,0.98));
+}
+
+.events-overview-card h2,
+.events-message-card h2,
+.director-events-empty-state h3{
+  margin:0;
+  color:#10273f;
+  font-size:1.5rem;
+  line-height:1.08;
+}
+
+.events-overview-card p,
+.events-message-card p,
+.director-events-empty-state p{
+  margin:0;
+}
+
+.events-overview-card-accent{
+  background:
+    radial-gradient(circle at top right, rgba(13, 56, 93, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(243,248,252,0.98), rgba(237,244,250,0.98));
+}
+
+.events-overview-label,
+.events-message-eyebrow{
+  font-size:0.78rem;
+  font-weight:800;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  color:#577086;
+}
+
+.events-overview-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:4px;
+}
+
 .events-feature-copy{
   padding:32px;
   border-radius:28px;
@@ -10430,6 +10481,18 @@ button.super-stat-card {
 .events-section{
   display:grid;
   gap:16px;
+}
+
+.events-message-card{
+  display:grid;
+  gap:12px;
+  padding:24px 26px;
+  background:linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,249,252,0.98));
+}
+
+.events-message-card.is-schema-warning{
+  border-color:rgba(189, 91, 52, 0.2);
+  background:linear-gradient(180deg, rgba(255,251,248,0.98), rgba(250,244,240,0.98));
 }
 
 .events-section-head{
@@ -10559,6 +10622,15 @@ button.super-stat-card {
   gap:20px;
 }
 
+.director-events-empty-state{
+  display:grid;
+  gap:10px;
+  padding:18px;
+  border-radius:20px;
+  border:1px dashed rgba(13, 56, 93, 0.18);
+  background:linear-gradient(180deg, rgba(248,251,255,0.98), rgba(242,247,252,0.98));
+}
+
 .director-events-list{
   display:grid;
   gap:12px;
@@ -10675,6 +10747,7 @@ button.super-stat-card {
     gap:20px;
   }
 
+  .events-overview-grid,
   .events-hero,
   .events-feature-grid,
   .event-detail-hero,
@@ -10702,7 +10775,9 @@ button.super-stat-card {
 
   .events-hero,
   .event-detail-hero,
-  .events-feature-copy{
+  .events-feature-copy,
+  .events-overview-card,
+  .events-message-card{
     border-radius:24px;
     padding:24px;
   }

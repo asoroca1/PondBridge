@@ -379,7 +379,16 @@ export default function DirectorAdminEventsPage() {
           {loading ? (
             <p className="muted">Loading events...</p>
           ) : items.length === 0 ? (
-            <p className="muted">No events yet. Create the first one from this page.</p>
+            <div className="director-events-empty-state">
+              <p className="events-message-eyebrow">Start Here</p>
+              <h3>Create your first event</h3>
+              <p className="muted">
+                Draft the event page, save it, then publish when you are ready for members to see it.
+              </p>
+              <div className="director-events-action-row">
+                <Button onClick={startNewEvent}>Create First Event</Button>
+              </div>
+            </div>
           ) : (
             <div className="director-events-list">
               {items.map((item) => (

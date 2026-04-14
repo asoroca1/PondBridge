@@ -45,6 +45,17 @@ function rsvpLabel(item = {}) {
   return item.phase === "past" ? "Past event" : "RSVP open";
 }
 
+function hasDirectorPrivileges(user = {}) {
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+    : user?.roles
+      ? [user.roles]
+      : user?.role
+        ? [user.role]
+        : [];
+  return roles.some((role) => ["tenant_admin", "super_admin", "admin"].includes(String(role || "").trim().toLowerCase()));
+}
+
 function EventCard({ item, slug, featured = false }) {
   return (
     <article className={`events-card ${featured ? "events-card-featured" : ""}`.trim()}>
@@ -75,7 +86,7 @@ function EventCard({ item, slug, featured = false }) {
 
 export default function EventsPage() {
   const params = useParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { tenant, slug: tenantSlug } = useTenant();
   const slug = params.slug || tenantSlug || "";
   const [payload, setPayload] = useState({ featured: null, upcoming: [], past: [] });
@@ -114,6 +125,8 @@ export default function EventsPage() {
     return payload.upcoming.filter((item) => item.id !== featured.id);
   }, [featured, payload.upcoming]);
   const brandPrimary = String(tenant?.config?.branding?.brandPrimary || tenant?.theme?.brandPrimary || "#0d385d");
+  const isDirector = hasDirectorPrivileges(user);
+  const schemaMissing = /supabase:apply-schema|schema is missing/i.test(error);
 
   return (
     <PageShell className="pb-cedar-page nav2-page-shell events-page-shell">
@@ -129,6 +142,33 @@ export default function EventsPage() {
         </div>
       </section>
 
+      <section className="events-overview-grid">
+        <Card className="events-overview-card">
+          <p className="events-overview-label">How It Works</p>
+          <h2>Everything your camp is planning, in one place.</h2>
+          <p>
+            Published events show up here for members to browse, RSVP, and revisit later. Directors create and publish
+            them from the dashboard first.
+          </p>
+        </Card>
+        <Card className="events-overview-card events-overview-card-accent">
+          <p className="events-overview-label">{isDirector ? "Director Access" : "Need Something Added?"}</p>
+          <h2>{isDirector ? "Create and publish events from Director Dashboard." : "Your directors publish events here."}</h2>
+          <p>
+            {isDirector
+              ? "Use the Events workspace to draft a page, publish it, and send invites without leaving PondBridge."
+              : "If the calendar is empty right now, it usually means no events have been published yet."}
+          </p>
+          {isDirector ? (
+            <div className="events-overview-actions">
+              <Link className="pb-btn pb-btn-primary" to={tenantRoute(slug, "/admin/events")}>
+                Open Director Events
+              </Link>
+            </div>
+          ) : null}
+        </Card>
+      </section>
+
       {loading ? (
         <Card>
           <p className="muted">Loading events...</p>
@@ -136,8 +176,21 @@ export default function EventsPage() {
       ) : null}
 
       {error ? (
-        <Card>
-          <p className="error-text">{error}</p>
+        <Card className={`events-message-card ${schemaMissing ? "is-schema-warning" : ""}`.trim()}>
+          <p className="events-message-eyebrow">{schemaMissing ? "Calendar Setup" : "Events Unavailable"}</p>
+          <h2>{schemaMissing ? "This calendar is still being connected." : "We couldn’t load events just now."}</h2>
+          <p className={schemaMissing ? "muted" : "error-text"}>
+            {schemaMissing
+              ? "The events database tables were missing in this environment. The backend schema repair is the right fix, and directors will be able to create events once that finishes."
+              : error}
+          </p>
+          {isDirector ? (
+            <div className="events-overview-actions">
+              <Link className="pb-btn pb-btn-secondary" to={tenantRoute(slug, "/admin/events")}>
+                Go To Director Events
+              </Link>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
@@ -169,8 +222,21 @@ export default function EventsPage() {
             <p>Every published event in your network, with your RSVP status right on the card.</p>
           </div>
           {payload.upcoming.length === 0 ? (
-            <Card>
-              <p className="muted">No upcoming events yet. Directors can publish them from the dashboard.</p>
+            <Card className="events-message-card">
+              <p className="events-message-eyebrow">Nothing Scheduled Yet</p>
+              <h2>The calendar is ready for its first event.</h2>
+              <p className="muted">
+                {isDirector
+                  ? "Create a draft, publish it, and it will appear here for members right away."
+                  : "Check back soon or reach out to your camp directors if you expected an event here."}
+              </p>
+              {isDirector ? (
+                <div className="events-overview-actions">
+                  <Link className="pb-btn pb-btn-primary" to={tenantRoute(slug, "/admin/events")}>
+                    Create An Event
+                  </Link>
+                </div>
+              ) : null}
             </Card>
           ) : upcomingCards.length === 0 ? (
             <Card>
