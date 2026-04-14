@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
+import { isMemberEventsModuleEnabled, normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
 
 const TenantContext = createContext(null);
@@ -185,7 +185,18 @@ function tenantConfigCacheKey({ slug = "", host = "" } = {}) {
 
 function normalizeTenantPayload(tenant = null, fallbackSlug = "") {
   if (!tenant || typeof tenant !== "object") return null;
-  const config = tenant?.config || {};
+  const rawConfig = tenant?.config && typeof tenant.config === "object" ? tenant.config : {};
+  const modules = {
+    ...(tenant?.modules && typeof tenant.modules === "object" ? tenant.modules : {}),
+    events: isMemberEventsModuleEnabled(tenant?.modules?.events)
+  };
+  const config = {
+    ...rawConfig,
+    modules: {
+      ...(rawConfig?.modules && typeof rawConfig.modules === "object" ? rawConfig.modules : {}),
+      events: isMemberEventsModuleEnabled(rawConfig?.modules?.events)
+    }
+  };
   const resolvedSlug = String(tenant?.slug || fallbackSlug || "").trim().toLowerCase();
   return {
     ...tenant,
@@ -194,7 +205,7 @@ function normalizeTenantPayload(tenant = null, fallbackSlug = "") {
     theme: tenant.theme || config.branding || {},
     content: tenant.content || config.content || {},
     accessSettings: tenant.accessSettings || config.accessRules || {},
-    modules: tenant.modules || config.modules || {}
+    modules
   };
 }
 

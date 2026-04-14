@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import {
   BookOpen,
   Bell,
@@ -193,7 +194,10 @@ export default function NavBar() {
   const config = tenant?.config || {};
   const branding = config.branding || tenant?.theme || {};
   useEffect(() => setLogoError(false), [slug, branding.logoUrl]);
-  const modules = config.modules || tenant?.modules || {};
+  const modules = {
+    ...(config.modules || tenant?.modules || {}),
+    events: isMemberEventsModuleEnabled(config?.modules?.events ?? tenant?.modules?.events)
+  };
   const roleSet = normalizedRoleSet(user);
 
   const isCampDirector = roleSet.has("tenant_admin") || roleSet.has("super_admin") || roleSet.has("admin");

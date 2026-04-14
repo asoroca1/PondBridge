@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import { MobileNotificationsProvider } from "./context/MobileNotificationsContext.jsx";
@@ -257,7 +258,7 @@ function MemberEventsRoute({ children }) {
   const params = useParams();
   const slug = params.slug || tenantSlug;
 
-  if (tenant?.modules?.events === false) {
+  if (!isMemberEventsModuleEnabled(tenant?.modules?.events)) {
     return <Navigate to={slug ? `/t/${slug}/home` : "/home"} replace />;
   }
 
