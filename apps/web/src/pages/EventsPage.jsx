@@ -74,9 +74,10 @@ function EventCard({ item, slug, featured = false }) {
 }
 
 export default function EventsPage() {
-  const { slug } = useParams();
+  const params = useParams();
   const { token } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, slug: tenantSlug } = useTenant();
+  const slug = params.slug || tenantSlug || "";
   const [payload, setPayload] = useState({ featured: null, upcoming: [], past: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -115,7 +116,7 @@ export default function EventsPage() {
   const brandPrimary = String(tenant?.config?.branding?.brandPrimary || tenant?.theme?.brandPrimary || "#0d385d");
 
   return (
-    <PageShell className="events-page-shell">
+    <PageShell className="pb-cedar-page nav2-page-shell events-page-shell">
       <section className="events-hero" style={{ "--events-brand": brandPrimary }}>
         <div className="events-hero-copy">
           <p className="events-kicker">Community Calendar</p>

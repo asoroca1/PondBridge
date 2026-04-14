@@ -41,9 +41,11 @@ function rsvpLabel(status = "") {
 }
 
 export default function EventDetailPage() {
-  const { slug, eventId } = useParams();
+  const params = useParams();
+  const eventId = params.eventId;
   const { token } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, slug: tenantSlug } = useTenant();
+  const slug = params.slug || tenantSlug || "";
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -93,7 +95,7 @@ export default function EventDetailPage() {
   const rsvpLocked = Boolean(item?.rsvpClosed || item?.status === "canceled");
 
   return (
-    <PageShell className="event-detail-shell">
+    <PageShell className="pb-cedar-page nav2-page-shell event-detail-shell">
       <div className="event-detail-backlink">
         <Link to={tenantRoute(slug, "/events")}>All events</Link>
       </div>

@@ -4156,6 +4156,10 @@ router.patch("/features", async (req, res) => {
       : false;
     const platformDisabled = module.key === "events" && !MEMBER_EVENTS_PAGES_ENABLED;
     if (locked || platformDisabled) continue;
+    if (module.key === "events") {
+      nextModules[module.key] = true;
+      continue;
+    }
     nextModules[module.key] = Boolean(incomingModules[module.key]);
   }
 

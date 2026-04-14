@@ -1,6 +1,11 @@
 import crypto from "crypto";
 import dotenv from "dotenv";
-import { normalizeSlug } from "@pondbridge/shared";
+import {
+  defaultNetworkDisplayNameForCamp,
+  normalizeCampType,
+  normalizeSlug,
+  replaceAlumniForCampType
+} from "@pondbridge/shared";
 import { connectToDatabase } from "../src/db/connect.js";
 import { ProfileModel, TenantModel, UserModel } from "../src/db/models/index.js";
 import { hashPassword } from "../src/utils/auth.js";
@@ -18,7 +23,8 @@ function parseArgs(argv = []) {
     slug: "",
     networkName: "",
     directorEmail: "",
-    accessCode: ""
+    accessCode: "",
+    campType: "coed"
   };
 
   while (args.length) {
@@ -37,18 +43,24 @@ function parseArgs(argv = []) {
     if (key === "--network-name") options.networkName = nextValue;
     if (key === "--director-email") options.directorEmail = nextValue;
     if (key === "--access-code") options.accessCode = nextValue;
+    if (key === "--camp-type") options.campType = nextValue;
   }
 
   return options;
 }
 
-function defaultChecklistCompletedNow() {
+function defaultChecklistCompletedNow(campType = "coed") {
   const nowIso = new Date().toISOString();
   return [
     { id: "name_branding", label: "Brand your network", status: "completed", completedAt: nowIso },
     { id: "welcome_message", label: "Name and welcome message", status: "completed", completedAt: nowIso },
     { id: "signup_controls", label: "Choose who can join", status: "completed", completedAt: nowIso },
-    { id: "import_alumni", label: "Import your alumni list", status: "completed", completedAt: nowIso },
+    {
+      id: "import_alumni",
+      label: replaceAlumniForCampType("Import your alumni list", campType),
+      status: "completed",
+      completedAt: nowIso
+    },
     { id: "modules", label: "Enable modules", status: "completed", completedAt: nowIso },
     { id: "review_launch", label: "Review and launch", status: "completed", completedAt: nowIso }
   ];
@@ -121,10 +133,11 @@ async function run() {
   const options = parseArgs(process.argv.slice(2));
   const campName = String(options.campName || "").trim();
   const slug = normalizeSlug(String(options.slug || campName).trim());
+  const campType = normalizeCampType(options.campType || "coed");
   assertInput({ campName, slug });
 
   const networkName =
-    String(options.networkName || "").trim() || `Demo (${campName}) Network`;
+    String(options.networkName || "").trim() || defaultNetworkDisplayNameForCamp(campName, campType);
   const directorEmail =
     normalizeEmail(options.directorEmail) || `director+${slug}@demo.pondbridge.local`;
   const accessCode = String(options.accessCode || "").trim().toUpperCase() || generateAccessCode(8);
@@ -147,7 +160,7 @@ async function run() {
     billingStatus: "active",
     onboardingStatus: "live",
     onboardingStep: "review_launch",
-    onboardingChecklist: defaultChecklistCompletedNow(),
+    onboardingChecklist: defaultChecklistCompletedNow(campType),
     onboardingProgress: {
       currentStep: 6,
       completedSteps: [1, 2, 3, 4, 5, 6],
@@ -157,10 +170,13 @@ async function run() {
     customDomain: defaultDomain(slug),
     theme: cedarThemeWithoutLogo(),
     content: {
-      campType: "coed",
+      campType,
       networkDisplayName: networkName,
       welcomeHeadline: `Welcome to ${networkName}`,
-      welcomeBody: "Explore the demo network with your team.",
+      welcomeBody: replaceAlumniForCampType(
+        "Connect with alumni, staff, and directors while exploring the demo network.",
+        campType
+      ),
       newsletterName: "Newsletter",
       ageGroups: [
         "Super Warrior",
@@ -249,6 +265,7 @@ async function run() {
   const appUrl = domain.endsWith(".localhost") ? `http://${domain}` : `https://${domain}`;
 
   console.log(`[demo:create] camp=${campName}`);
+  console.log(`[demo:create] camp_type=${campType}`);
   console.log(`[demo:create] slug=${slug}`);
   console.log(`[demo:create] domain=${domain}`);
   console.log(`[demo:create] login_url=${appUrl}/login`);

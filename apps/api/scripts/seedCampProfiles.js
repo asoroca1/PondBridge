@@ -313,6 +313,19 @@ const FEED_MESSAGES = [
   "Forum roundtable this Friday for counselors and staff."
 ];
 
+const CAMP_PHOTO_KEYWORD_GROUPS = [
+  ["summer", "camp", "lake"],
+  ["summer", "camp", "waterfront"],
+  ["summer", "camp", "canoe"],
+  ["summer", "camp", "campfire"],
+  ["summer", "camp", "cabin"],
+  ["summer", "camp", "friendship"],
+  ["summer", "camp", "outdoors"],
+  ["summer", "camp", "arts"],
+  ["summer", "camp", "hiking"],
+  ["summer", "camp", "field"]
+];
+
 function envFlag(name, fallback = false) {
   const normalized = String(process.env[name] ?? "")
     .trim()
@@ -339,6 +352,24 @@ function uniqueIdList(values = []) {
 
 function seedPrefixForTenant(slug = "") {
   return `SEED:${String(slug || "").toUpperCase()}:`;
+}
+
+function buildSeedPhotoUrls(tenant = {}, index = 1) {
+  const campType = String(tenant?.content?.campType || tenant?.settings?.campType || "coed")
+    .trim()
+    .toLowerCase();
+  const keywords = [...pick(CAMP_PHOTO_KEYWORD_GROUPS, index, 5)];
+  if (campType === "all_girls") {
+    keywords.push("girls");
+  } else if (campType === "all_boys") {
+    keywords.push("boys");
+  }
+  const query = keywords.join(",");
+  const lock = `${String(tenant?.slug || "camp")}-${index}`;
+  return {
+    imageUrl: `https://loremflickr.com/1400/1000/${query}?lock=${encodeURIComponent(lock)}`,
+    thumbUrl: `https://loremflickr.com/500/350/${query}?lock=${encodeURIComponent(lock)}`
+  };
 }
 
 function resolveLocationPool(locationCount = 0) {
@@ -832,6 +863,9 @@ async function seedSupplementalContent({ tenant, members, prefix }) {
     activityItems: 0
   };
 
+  const photoCount = Math.max(48, Math.min(96, Math.ceil(members.length * 0.4)));
+  const activityItemCount = Math.max(24, Math.min(72, Math.ceil(members.length * 0.3)));
+
   for (let idx = 0; idx < 10; idx += 1) {
     const season = SEASONS[idx % SEASONS.length];
     const year = 2021 + idx;
@@ -850,7 +884,7 @@ async function seedSupplementalContent({ tenant, members, prefix }) {
     created.newsletters += 1;
   }
 
-  for (let idx = 1; idx <= 48; idx += 1) {
+  for (let idx = 1; idx <= photoCount; idx += 1) {
     const owner = pick(members, idx, 1);
     const likeCount = (idx % 5) + 1;
     const likes = [];
@@ -871,12 +905,14 @@ async function seedSupplementalContent({ tenant, members, prefix }) {
       });
     }
 
+    const { imageUrl, thumbUrl } = buildSeedPhotoUrls(tenant, idx);
+
     await PhotoModel.create({
       tenantId: tenant._id,
       ownerId: owner.userId,
       ownerName: owner.fullName,
-      imageUrl: `https://picsum.photos/seed/${tenant.slug}-seed-photo-${idx}/1400/1000`,
-      thumbUrl: `https://picsum.photos/seed/${tenant.slug}-seed-photo-${idx}/500/350`,
+      imageUrl,
+      thumbUrl,
       caption: `${prefix}${pick(PHOTO_CAPTIONS, idx, 2)}`,
       captionMentions: [],
       likes: uniqueIdList(likes),
@@ -951,7 +987,7 @@ async function seedSupplementalContent({ tenant, members, prefix }) {
     });
   }
 
-  for (let idx = 0; idx < 24; idx += 1) {
+  for (let idx = 0; idx < activityItemCount; idx += 1) {
     const actor = pick(members, idx + 1, 4);
     const pinned = idx === 0;
     await ActivityItemModel.create({
