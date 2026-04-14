@@ -45,17 +45,6 @@ function rsvpLabel(item = {}) {
   return item.phase === "past" ? "Past event" : "RSVP open";
 }
 
-function hasDirectorPrivileges(user = {}) {
-  const roles = Array.isArray(user?.roles)
-    ? user.roles
-    : user?.roles
-      ? [user.roles]
-      : user?.role
-        ? [user.role]
-        : [];
-  return roles.some((role) => ["tenant_admin", "super_admin", "admin"].includes(String(role || "").trim().toLowerCase()));
-}
-
 function EventCard({ item, slug, featured = false }) {
   return (
     <article className={`events-card ${featured ? "events-card-featured" : ""}`.trim()}>
@@ -86,7 +75,7 @@ function EventCard({ item, slug, featured = false }) {
 
 export default function EventsPage() {
   const params = useParams();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const { tenant, slug: tenantSlug } = useTenant();
   const slug = params.slug || tenantSlug || "";
   const [payload, setPayload] = useState({ featured: null, upcoming: [], past: [] });
@@ -125,7 +114,6 @@ export default function EventsPage() {
     return payload.upcoming.filter((item) => item.id !== featured.id);
   }, [featured, payload.upcoming]);
   const brandPrimary = String(tenant?.config?.branding?.brandPrimary || tenant?.theme?.brandPrimary || "#0d385d");
-  const isDirector = hasDirectorPrivileges(user);
   const schemaMissing = /supabase:apply-schema|schema is missing/i.test(error);
 
   return (
@@ -152,20 +140,11 @@ export default function EventsPage() {
           </p>
         </Card>
         <Card className="events-overview-card events-overview-card-accent">
-          <p className="events-overview-label">{isDirector ? "Director Access" : "Need Something Added?"}</p>
-          <h2>{isDirector ? "Create and publish events from Director Dashboard." : "Your directors publish events here."}</h2>
+          <p className="events-overview-label">Need Something Added?</p>
+          <h2>Your directors publish events here.</h2>
           <p>
-            {isDirector
-              ? "Use the Events workspace to draft a page, publish it, and send invites without leaving PondBridge."
-              : "If the calendar is empty right now, it usually means no events have been published yet."}
+            If the calendar is empty right now, it usually means no events have been published yet.
           </p>
-          {isDirector ? (
-            <div className="events-overview-actions">
-              <Link className="pb-btn pb-btn-primary" to={tenantRoute(slug, "/admin/events")}>
-                Open Director Events
-              </Link>
-            </div>
-          ) : null}
         </Card>
       </section>
 
@@ -184,13 +163,6 @@ export default function EventsPage() {
               ? "The events database tables were missing in this environment. The backend schema repair is the right fix, and directors will be able to create events once that finishes."
               : error}
           </p>
-          {isDirector ? (
-            <div className="events-overview-actions">
-              <Link className="pb-btn pb-btn-secondary" to={tenantRoute(slug, "/admin/events")}>
-                Go To Director Events
-              </Link>
-            </div>
-          ) : null}
         </Card>
       ) : null}
 
@@ -226,17 +198,8 @@ export default function EventsPage() {
               <p className="events-message-eyebrow">Nothing Scheduled Yet</p>
               <h2>The calendar is ready for its first event.</h2>
               <p className="muted">
-                {isDirector
-                  ? "Create a draft, publish it, and it will appear here for members right away."
-                  : "Check back soon or reach out to your camp directors if you expected an event here."}
+                Check back soon or reach out to your camp directors if you expected an event here.
               </p>
-              {isDirector ? (
-                <div className="events-overview-actions">
-                  <Link className="pb-btn pb-btn-primary" to={tenantRoute(slug, "/admin/events")}>
-                    Create An Event
-                  </Link>
-                </div>
-              ) : null}
             </Card>
           ) : upcomingCards.length === 0 ? (
             <Card>
