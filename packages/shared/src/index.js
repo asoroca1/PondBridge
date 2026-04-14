@@ -9,10 +9,10 @@ import {
 
 export const PLAN_TIERS = ["base", "premium"];
 export { FEATURE_ALIASES, PLAN_FEATURES, hasFeature, listFeaturesForPlan, normalizeFeatureName };
-export const MEMBER_EVENTS_PAGES_ENABLED = true;
+export const MEMBER_EVENTS_PAGES_ENABLED = false;
 
-export function isMemberEventsModuleEnabled(_value = true) {
-  return MEMBER_EVENTS_PAGES_ENABLED;
+export function isMemberEventsModuleEnabled(value = true) {
+  return MEMBER_EVENTS_PAGES_ENABLED && value !== false;
 }
 
 export const onboardingStatuses = ["not_started", "in_progress", "live"];

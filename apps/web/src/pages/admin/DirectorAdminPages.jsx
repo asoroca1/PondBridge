@@ -4824,9 +4824,7 @@ export function DirectorAdminFeaturesPage() {
             <h3>{module.label}</h3>
             <p>{module.description}</p>
           </div>
-          {module.key === "events" ? (
-            <span className="director-admin-status-badge tone-success">Always on</span>
-          ) : module.locked ? (
+          {module.locked ? (
             <span className="director-admin-status-badge tone-warning">Premium</span>
           ) : module.platformDisabled ? (
             <span className="director-admin-status-badge tone-warning">Temporarily hidden</span>
@@ -4888,8 +4886,6 @@ export function DirectorAdminFeaturesPage() {
         ) : null}
         {module.locked ? (
           <p className="muted">This feature requires Premium.</p>
-        ) : module.key === "events" ? (
-          <p className="muted">Events are now part of every network and stay enabled for members.</p>
         ) : module.platformDisabled ? (
           <p className="muted">{module.disabledReason || "Temporarily hidden from members across all networks."}</p>
         ) : (
