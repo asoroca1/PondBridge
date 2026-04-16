@@ -12,12 +12,25 @@ import { isNativeApp } from "./lib/nativeApp.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
 
+const CHUNK_RECOVERY_GRACE_MS = 2500;
+
+function createChunkRecoveryTimeoutError() {
+  const error = new Error("A page asset failed to load. Please refresh and try again.");
+  error.code = "CHUNK_RECOVERY_TIMEOUT";
+  return error;
+}
+
 function lazyPage(loader) {
   return lazy(() =>
     loader().catch((error) => {
       if (recoverFromMissingChunk(error)) {
-        // Keep suspense pending while the one-time recovery navigation starts.
-        return new Promise(() => {});
+        // Give the recovery redirect a brief head start, but never leave the
+        // app suspended forever if navigation does not actually occur.
+        return new Promise((_, reject) => {
+          window.setTimeout(() => {
+            reject(createChunkRecoveryTimeoutError());
+          }, CHUNK_RECOVERY_GRACE_MS);
+        });
       }
       throw error;
     })
