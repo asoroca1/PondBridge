@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CalendarDays, MapPin, Users, Filter, ChevronRight } from "lucide-react";
+import { Input, Textarea } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import CedarPageHeader from "../cedar/components/CedarPageHeader.jsx";
+
+const DEFAULT_EVENT_FORM = {
+  title: "",
+  summary: "",
+  bodyHtml: "",
+  coverImageUrl: "",
+  startsAt: "",
+  endsAt: "",
+  timezone: "America/New_York",
+  locationName: "",
+  locationAddress: "",
+  rsvpDeadlineAt: ""
+};
 
 function normalizeRoleSet(value) {
   const rawRoles = Array.isArray(value?.roles)
@@ -169,35 +183,87 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("upcoming"); // upcoming | past | going
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createStatus, setCreateStatus] = useState("");
+  const [eventForm, setEventForm] = useState({ ...DEFAULT_EVENT_FORM });
   const roleSet = useMemo(() => normalizeRoleSet(user), [user]);
   const canManageEvents =
     roleSet.has("tenant_admin") || roleSet.has("admin") || roleSet.has("super_admin");
 
-  useEffect(() => {
-    let cancelled = false;
+  async function loadEvents() {
     setLoading(true);
     setError("");
-    requestJson(`/api/t/${slug}/events`, { token })
-      .then((next) => {
-        if (cancelled) return;
-        setPayload({
-          featured: next?.featured || null,
-          upcoming: Array.isArray(next?.upcoming) ? next.upcoming : [],
-          past: Array.isArray(next?.past) ? next.past : []
-        });
-      })
-      .catch((loadError) => {
-        if (cancelled) return;
-        setError(loadError.message || "Unable to load events right now.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+    try {
+      const next = await requestJson(`/api/t/${slug}/events`, { token });
+      setPayload({
+        featured: next?.featured || null,
+        upcoming: Array.isArray(next?.upcoming) ? next.upcoming : [],
+        past: Array.isArray(next?.past) ? next.past : []
       });
+    } catch (loadError) {
+      setError(loadError.message || "Unable to load events right now.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    loadEvents().catch(() => {});
   }, [slug, token]);
+
+  function openCreateModal() {
+    setEventForm({ ...DEFAULT_EVENT_FORM });
+    setCreateError("");
+    setCreateStatus("");
+    setCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    if (createSaving) return;
+    setCreateModalOpen(false);
+    setCreateError("");
+  }
+
+  function updateEventField(key, value) {
+    setEventForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function createEvent(event) {
+    event.preventDefault();
+    setCreateSaving(true);
+    setCreateError("");
+    setCreateStatus("");
+
+    try {
+      const response = await requestJson(`/api/t/${slug}/admin/events`, {
+        method: "POST",
+        token,
+        body: {
+          title: eventForm.title,
+          summary: eventForm.summary,
+          bodyHtml: eventForm.bodyHtml,
+          coverImageUrl: eventForm.coverImageUrl,
+          startsAt: eventForm.startsAt ? new Date(eventForm.startsAt).toISOString() : null,
+          endsAt: eventForm.endsAt ? new Date(eventForm.endsAt).toISOString() : null,
+          timezone: eventForm.timezone,
+          locationName: eventForm.locationName,
+          locationAddress: eventForm.locationAddress,
+          rsvpDeadlineAt: eventForm.rsvpDeadlineAt ? new Date(eventForm.rsvpDeadlineAt).toISOString() : null
+        }
+      });
+      const createdTitle = String(response?.item?.title || eventForm.title || "Event").trim();
+      setCreateStatus(`Draft event "${createdTitle}" created. Publish it when you're ready.`);
+      setCreateModalOpen(false);
+      setEventForm({ ...DEFAULT_EVENT_FORM });
+      await loadEvents();
+    } catch (requestError) {
+      setCreateError(requestError.message || "Failed to create event.");
+    } finally {
+      setCreateSaving(false);
+    }
+  }
 
   const featured = payload.featured;
   const upcomingCards = useMemo(() => {
@@ -264,12 +330,14 @@ export default function EventsPage() {
             </button>
           </div>
           {canManageEvents ? (
-            <Link className="ev-btn ev-btn-primary ev-admin-link" to={tenantRoute(slug, "/admin/events")}>
-              Create / Manage Events
-            </Link>
+            <button type="button" className="ev-btn ev-btn-primary ev-admin-link" onClick={openCreateModal}>
+              Create Event
+            </button>
           ) : null}
         </div>
       </CedarPageHeader>
+
+      {createStatus ? <div className="ev-message is-success"><p>{createStatus}</p></div> : null}
 
       {showFeaturedBanner ? (
         <section className="ev-featured">
@@ -370,6 +438,107 @@ export default function EventsPage() {
             </div>
           )}
         </section>
+      ) : null}
+
+      {createModalOpen ? (
+        <div className="pb-admin-ui-modal-backdrop" role="dialog" aria-modal="true" onClick={closeCreateModal}>
+          <div className="pb-admin-ui-modal director-admin-event-modal" onClick={(event) => event.stopPropagation()}>
+            <h3>Create Event</h3>
+            <p>Create a draft event right here, then publish it when you're ready.</p>
+            <form className="director-events-form-grid director-admin-event-modal-form" onSubmit={createEvent}>
+              <label className="full-width">
+                Event title
+                <Input
+                  value={eventForm.title}
+                  onChange={(event) => updateEventField("title", event.target.value)}
+                  placeholder="Camp Cedar Alumni Weekend"
+                />
+              </label>
+              <label className="full-width">
+                Summary
+                <Textarea
+                  value={eventForm.summary}
+                  onChange={(event) => updateEventField("summary", event.target.value)}
+                  placeholder="A short overview for the event card and hero section."
+                />
+              </label>
+              <label className="full-width">
+                Event details
+                <Textarea
+                  rows={8}
+                  value={eventForm.bodyHtml}
+                  onChange={(event) => updateEventField("bodyHtml", event.target.value)}
+                  placeholder="Share the schedule, who should attend, and what to expect."
+                />
+              </label>
+              <label className="full-width">
+                Cover image URL
+                <Input
+                  value={eventForm.coverImageUrl}
+                  onChange={(event) => updateEventField("coverImageUrl", event.target.value)}
+                  placeholder="https://..."
+                />
+              </label>
+              <label>
+                Starts at
+                <Input
+                  type="datetime-local"
+                  value={eventForm.startsAt}
+                  onChange={(event) => updateEventField("startsAt", event.target.value)}
+                />
+              </label>
+              <label>
+                Ends at
+                <Input
+                  type="datetime-local"
+                  value={eventForm.endsAt}
+                  onChange={(event) => updateEventField("endsAt", event.target.value)}
+                />
+              </label>
+              <label>
+                Timezone
+                <Input
+                  value={eventForm.timezone}
+                  onChange={(event) => updateEventField("timezone", event.target.value)}
+                  placeholder="America/New_York"
+                />
+              </label>
+              <label>
+                RSVP deadline
+                <Input
+                  type="datetime-local"
+                  value={eventForm.rsvpDeadlineAt}
+                  onChange={(event) => updateEventField("rsvpDeadlineAt", event.target.value)}
+                />
+              </label>
+              <label>
+                Location name
+                <Input
+                  value={eventForm.locationName}
+                  onChange={(event) => updateEventField("locationName", event.target.value)}
+                  placeholder="Camp Cedar waterfront"
+                />
+              </label>
+              <label>
+                Location address
+                <Input
+                  value={eventForm.locationAddress}
+                  onChange={(event) => updateEventField("locationAddress", event.target.value)}
+                  placeholder="123 Camp Road, City, State"
+                />
+              </label>
+              {createError ? <p className="error-text">{createError}</p> : null}
+              <div className="pb-admin-ui-modal-actions">
+                <button type="button" className="ev-btn" onClick={closeCreateModal} disabled={createSaving}>
+                  Cancel
+                </button>
+                <button type="submit" className="ev-btn ev-btn-primary" disabled={createSaving}>
+                  {createSaving ? "Creating..." : "Create Draft"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       ) : null}
     </main>
   );

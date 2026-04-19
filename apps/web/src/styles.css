@@ -11384,6 +11384,11 @@ button.super-stat-card {
   background:#fffbeb;
 }
 
+.ev-message.is-success{
+  border-color:#bbf7d0;
+  background:#f0fdf4;
+}
+
 .ev-message-eyebrow{
   margin:0;
   font-size:11px;
