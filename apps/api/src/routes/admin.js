@@ -1556,6 +1556,31 @@ function normalizeMemberYear(value = "") {
   return /^\d{4}$/.test(year) ? year : "";
 }
 
+function parseMemberFilterYear(value = "") {
+  const match = String(value || "").match(/\b\d{4}\b/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeMemberYearBounds(minValue, maxValue) {
+  const minYear = parseMemberFilterYear(minValue);
+  const maxYear = parseMemberFilterYear(maxValue);
+  if (minYear === null && maxYear === null) {
+    return { minYear: null, maxYear: null };
+  }
+  if (minYear !== null && maxYear !== null) {
+    return {
+      minYear: Math.min(minYear, maxYear),
+      maxYear: Math.max(minYear, maxYear)
+    };
+  }
+  return {
+    minYear: minYear ?? maxYear,
+    maxYear: maxYear ?? minYear
+  };
+}
+
 function normalizeMemberYearStints(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   let stints = Array.isArray(source.stints)
@@ -1609,6 +1634,10 @@ function normalizeMemberYearStints(value = {}) {
   );
 }
 
+function resolveMemberSocials(profile = {}) {
+  return profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+}
+
 function normalizeMemberCamperYears(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const stints = normalizeMemberYearStints(source);
@@ -1626,6 +1655,74 @@ function normalizeMemberStaffYears(value = {}) {
   return {
     stints: normalizeMemberYearStints(source)
   };
+}
+
+function resolveMemberCamperYearsSource(profile = {}) {
+  const socials = resolveMemberSocials(profile);
+  if (socials?.camperYears && typeof socials.camperYears === "object") {
+    return socials.camperYears;
+  }
+  if (profile?.camperYears && typeof profile.camperYears === "object") {
+    return profile.camperYears;
+  }
+  return {};
+}
+
+function resolveMemberStaffYearsSource(profile = {}) {
+  const socials = resolveMemberSocials(profile);
+  if (socials?.staffYears && typeof socials.staffYears === "object") {
+    return socials.staffYears;
+  }
+  if (profile?.staffYears && typeof profile.staffYears === "object") {
+    return profile.staffYears;
+  }
+  return {};
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return startA <= endB && startB <= endA;
+}
+
+function matchesMemberYearRange(source = {}, minYear = null, maxYear = null) {
+  if (minYear === null && maxYear === null) return true;
+  const targetStart = minYear ?? maxYear;
+  const targetEnd = maxYear ?? minYear;
+  const stints = normalizeMemberYearStints(source);
+  if (!stints.length) return false;
+  return stints.some((stint) =>
+    rangesOverlap(
+      Number(stint?.startYear || 0),
+      Number(stint?.endYear || 0),
+      targetStart,
+      targetEnd
+    )
+  );
+}
+
+function compareMemberRows(left = {}, right = {}, sort = "join_desc") {
+  const key = String(sort || "join_desc").trim().toLowerCase();
+  if (key === "name_asc") {
+    return `${left.lastName || ""} ${left.firstName || ""}`.localeCompare(
+      `${right.lastName || ""} ${right.firstName || ""}`
+    );
+  }
+  if (key === "name_desc") {
+    return `${right.lastName || ""} ${right.firstName || ""}`.localeCompare(
+      `${left.lastName || ""} ${left.firstName || ""}`
+    );
+  }
+  if (key === "join_asc") {
+    return new Date(left.joinDate || 0).getTime() - new Date(right.joinDate || 0).getTime();
+  }
+  if (key === "last_active_asc") {
+    return new Date(left.lastActiveAt || 0).getTime() - new Date(right.lastActiveAt || 0).getTime();
+  }
+  if (key === "last_active_desc") {
+    return new Date(right.lastActiveAt || 0).getTime() - new Date(left.lastActiveAt || 0).getTime();
+  }
+  if (key === "completion_asc") return Number(left.completionScore || 0) - Number(right.completionScore || 0);
+  if (key === "completion_desc") return Number(right.completionScore || 0) - Number(left.completionScore || 0);
+  return new Date(right.joinDate || 0).getTime() - new Date(left.joinDate || 0).getTime();
 }
 
 function normalizeMemberRoleList(value = []) {
@@ -2466,6 +2563,19 @@ router.get("/members", async (req, res, next) => {
     const year = String(req.query.year || "").trim();
     const status = String(req.query.status || "").trim().toLowerCase();
     const sort = String(req.query.sort || "join_desc").trim().toLowerCase();
+    const { minYear: camperMinYear, maxYear: camperMaxYear } = normalizeMemberYearBounds(
+      req.query.camperMin,
+      req.query.camperMax
+    );
+    const { minYear: staffMinYear, maxYear: staffMaxYear } = normalizeMemberYearBounds(
+      req.query.staffMin,
+      req.query.staffMax
+    );
+    const hasNestedYearFilters =
+      camperMinYear !== null ||
+      camperMaxYear !== null ||
+      staffMinYear !== null ||
+      staffMaxYear !== null;
     const completionRange = parseCompletionRange(req.query);
     const { page, pageSize, skip } = parseMemberPagination(req.query);
     const cacheKey = [
@@ -2495,7 +2605,7 @@ router.get("/members", async (req, res, next) => {
     }
 
     let mongoSort = sortForMembers(sort);
-    if (completionRange) {
+    if (completionRange || hasNestedYearFilters) {
       mongoSort = null;
     }
     let profiles = [];
@@ -2517,7 +2627,14 @@ router.get("/members", async (req, res, next) => {
         (p.emails || []).some((e) => rx.test(e)) ||
         rx.test(p.cityState || "") ||
         rx.test(p.roleAtCamp || "") ||
-        (p.collegeYears || []).some((y) => rx.test(y))
+          (p.collegeYears || []).some((y) => rx.test(y))
+      );
+    }
+
+    if (hasNestedYearFilters) {
+      allProfiles = allProfiles.filter((profile) =>
+        matchesMemberYearRange(resolveMemberCamperYearsSource(profile), camperMinYear, camperMaxYear) &&
+        matchesMemberYearRange(resolveMemberStaffYearsSource(profile), staffMinYear, staffMaxYear)
       );
     }
 
@@ -2557,17 +2674,7 @@ router.get("/members", async (req, res, next) => {
         mapMemberRow(profile, usersById.get(toObjectIdString(profile.userId)) || null, { directorUserId })
       );
 
-      mapped.sort((a, b) => {
-        if (sort === "completion_asc") return a.completionScore - b.completionScore;
-        if (sort === "completion_desc") return b.completionScore - a.completionScore;
-        if (sort === "last_active_asc") {
-          return new Date(a.lastActiveAt || 0).getTime() - new Date(b.lastActiveAt || 0).getTime();
-        }
-        if (sort === "last_active_desc") {
-          return new Date(b.lastActiveAt || 0).getTime() - new Date(a.lastActiveAt || 0).getTime();
-        }
-        return new Date(b.joinDate || 0).getTime() - new Date(a.joinDate || 0).getTime();
-      });
+      mapped.sort((a, b) => compareMemberRows(a, b, sort));
 
       const filteredByCompletion = mapped.filter((item) =>
         matchesCompletionRange(item.completionScore, completionRange)

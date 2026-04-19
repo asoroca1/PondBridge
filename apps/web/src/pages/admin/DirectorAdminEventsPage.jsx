@@ -24,6 +24,10 @@ const DEFAULT_EMAIL_FORM = {
   bodyHtml: "",
   recipientProfileIds: []
 };
+const DEFAULT_MEMBER_FILTERS = {
+  staffMin: "",
+  staffMax: ""
+};
 
 function toLocalDateTimeValue(value = "") {
   if (!value) return "";
@@ -87,6 +91,7 @@ export default function DirectorAdminEventsPage() {
   const [eventForm, setEventForm] = useState(DEFAULT_EVENT_FORM);
   const [emailForm, setEmailForm] = useState(DEFAULT_EMAIL_FORM);
   const [memberQuery, setMemberQuery] = useState("");
+  const [memberFilters, setMemberFilters] = useState(DEFAULT_MEMBER_FILTERS);
   const [memberResults, setMemberResults] = useState([]);
   const [selectedMembersById, setSelectedMembersById] = useState({});
   const [searchingMembers, setSearchingMembers] = useState(false);
@@ -176,13 +181,19 @@ export default function DirectorAdminEventsPage() {
 
   useEffect(() => {
     const term = memberQuery.trim();
-    if (term.length < 2) {
+    const hasMemberFilters = Object.values(memberFilters).some((value) => String(value || "").trim());
+    if (term.length < 2 && !hasMemberFilters) {
       setMemberResults([]);
       return undefined;
     }
     setSearchingMembers(true);
     const timer = window.setTimeout(() => {
-      request(`/members?q=${encodeURIComponent(term)}&pageSize=8`)
+      const params = new URLSearchParams();
+      params.set("pageSize", "8");
+      if (term) params.set("q", term);
+      if (memberFilters.staffMin.trim()) params.set("staffMin", memberFilters.staffMin.trim());
+      if (memberFilters.staffMax.trim()) params.set("staffMax", memberFilters.staffMax.trim());
+      request(`/members?${params.toString()}`)
         .then((payload) => {
           const next = Array.isArray(payload?.items) ? payload.items : [];
           setMemberResults(next.filter((item) => !emailForm.recipientProfileIds.includes(item.id)));
@@ -201,7 +212,7 @@ export default function DirectorAdminEventsPage() {
     }, 220);
 
     return () => window.clearTimeout(timer);
-  }, [memberQuery, emailForm.recipientProfileIds, request]);
+  }, [memberFilters, memberQuery, emailForm.recipientProfileIds, request]);
 
   const selectedMembers = useMemo(
     () =>
@@ -313,6 +324,15 @@ export default function DirectorAdminEventsPage() {
       ...current,
       recipientProfileIds: current.recipientProfileIds.filter((id) => id !== profileId)
     }));
+  }
+
+  function updateMemberFilter(key, value) {
+    const normalized = String(value || "").replace(/[^\d]/g, "").slice(0, 4);
+    setMemberFilters((current) => ({ ...current, [key]: normalized }));
+  }
+
+  function clearMemberFilters() {
+    setMemberFilters(DEFAULT_MEMBER_FILTERS);
   }
 
   async function sendEventEmail() {
@@ -535,9 +555,43 @@ export default function DirectorAdminEventsPage() {
                 </div>
 
                 <div className="director-events-member-picker">
+                  <div className="director-events-member-filter-grid">
+                    <label>
+                      Staff years min
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={memberFilters.staffMin}
+                        onChange={(event) => updateMemberFilter("staffMin", event.target.value)}
+                        placeholder="year"
+                      />
+                    </label>
+                    <label>
+                      Staff years max
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={memberFilters.staffMax}
+                        onChange={(event) => updateMemberFilter("staffMax", event.target.value)}
+                        placeholder="year"
+                      />
+                    </label>
+                  </div>
+                  <div className="director-events-member-filter-actions">
+                    <p className="muted">Use a staff year range to narrow the member picker before sending.</p>
+                    {memberFilters.staffMin || memberFilters.staffMax ? (
+                      <Button type="button" variant="secondary" size="sm" onClick={clearMemberFilters}>
+                        Clear Staff Years
+                      </Button>
+                    ) : null}
+                  </div>
                   <label className="full-width">
                     Search members
-                    <Input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search by name or email" />
+                    <Input
+                      value={memberQuery}
+                      onChange={(event) => setMemberQuery(event.target.value)}
+                      placeholder="Search by name or email, or use staff years only"
+                    />
                   </label>
                   {searchingMembers ? <p className="muted">Searching members...</p> : null}
                   {memberResults.length > 0 ? (

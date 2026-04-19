@@ -10729,6 +10729,20 @@ button.super-stat-card {
   margin-top:16px;
 }
 
+.director-events-member-filter-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.director-events-member-filter-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
 .director-events-member-results,
 .director-events-selected-members,
 .director-events-message-list{
@@ -10790,6 +10804,10 @@ button.super-stat-card {
   }
 
   .director-events-form-grid{
+    grid-template-columns:1fr;
+  }
+
+  .director-events-member-filter-grid{
     grid-template-columns:1fr;
   }
 }
