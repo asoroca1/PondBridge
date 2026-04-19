@@ -77,6 +77,7 @@ const DirectorAdminEmailComposePage = lazyPage(() => import("./pages/admin/Direc
 const DirectorAdminEmailHistoryPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailHistoryPage }))
 );
+const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdminEventsPage.jsx"));
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
 );
@@ -816,7 +817,7 @@ function TenantScopeRoutes() {
           <Route path="invites" element={<DirectorAdminInvitesPage />} />
           <Route path="directory" element={<Navigate to="../members" replace />} />
           <Route path="family-trees" element={<Navigate to="../features" replace />} />
-          <Route path="events" element={<Navigate to="../invites" replace />} />
+          <Route path="events" element={<DirectorAdminEventsPage />} />
           <Route path="communications" element={<Navigate to="../email/compose" replace />} />
           <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
           <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />

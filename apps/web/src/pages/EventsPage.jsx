@@ -7,6 +7,22 @@ import { useTenant } from "../context/TenantContext.jsx";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import CedarPageHeader from "../cedar/components/CedarPageHeader.jsx";
 
+function normalizeRoleSet(value) {
+  const rawRoles = Array.isArray(value?.roles)
+    ? value.roles
+    : value?.roles
+      ? [value.roles]
+      : value?.role
+        ? [value.role]
+        : [];
+
+  return new Set(
+    rawRoles
+      .map((role) => String(role || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
 function formatDatePartLong(item = {}) {
   const timezone = String(item?.timezone || "America/New_York");
   const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
@@ -146,13 +162,16 @@ function SkeletonCard() {
 
 export default function EventsPage() {
   const params = useParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { slug: tenantSlug } = useTenant();
   const slug = params.slug || tenantSlug || "";
   const [payload, setPayload] = useState({ featured: null, upcoming: [], past: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("upcoming"); // upcoming | past | going
+  const roleSet = useMemo(() => normalizeRoleSet(user), [user]);
+  const canManageEvents =
+    roleSet.has("tenant_admin") || roleSet.has("admin") || roleSet.has("super_admin");
 
   useEffect(() => {
     let cancelled = false;
@@ -211,37 +230,44 @@ export default function EventsPage() {
         title="Events"
         subtitle="Gatherings, reunions, and community moments from your camp."
       >
-        <div className="ev-header-tools" role="tablist" aria-label="Filter events">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "upcoming"}
-            className={`ev-tab ${tab === "upcoming" ? "is-active" : ""}`}
-            onClick={() => setTab("upcoming")}
-          >
-            Upcoming
-            <span className="ev-tab-count">{counts.upcoming}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "going"}
-            className={`ev-tab ${tab === "going" ? "is-active" : ""}`}
-            onClick={() => setTab("going")}
-          >
-            My RSVPs
-            <span className="ev-tab-count">{counts.going}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "past"}
-            className={`ev-tab ${tab === "past" ? "is-active" : ""}`}
-            onClick={() => setTab("past")}
-          >
-            Past
-            <span className="ev-tab-count">{counts.past}</span>
-          </button>
+        <div className="ev-header-actions">
+          <div className="ev-header-tools" role="tablist" aria-label="Filter events">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "upcoming"}
+              className={`ev-tab ${tab === "upcoming" ? "is-active" : ""}`}
+              onClick={() => setTab("upcoming")}
+            >
+              Upcoming
+              <span className="ev-tab-count">{counts.upcoming}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "going"}
+              className={`ev-tab ${tab === "going" ? "is-active" : ""}`}
+              onClick={() => setTab("going")}
+            >
+              My RSVPs
+              <span className="ev-tab-count">{counts.going}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "past"}
+              className={`ev-tab ${tab === "past" ? "is-active" : ""}`}
+              onClick={() => setTab("past")}
+            >
+              Past
+              <span className="ev-tab-count">{counts.past}</span>
+            </button>
+          </div>
+          {canManageEvents ? (
+            <Link className="ev-btn ev-btn-primary ev-admin-link" to={tenantRoute(slug, "/admin/events")}>
+              Create / Manage Events
+            </Link>
+          ) : null}
         </div>
       </CedarPageHeader>
 

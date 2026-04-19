@@ -13,18 +13,6 @@ const MERGE_TOKEN_OPTIONS = [
   { label: "Last Name", token: "{{lastName}}" },
   { label: "Network Name", token: "{{networkName}}" }
 ];
-const DEFAULT_EVENT_FORM = {
-  title: "",
-  summary: "",
-  bodyHtml: "",
-  coverImageUrl: "",
-  startsAt: "",
-  endsAt: "",
-  timezone: "America/New_York",
-  locationName: "",
-  locationAddress: "",
-  rsvpDeadlineAt: ""
-};
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -62,10 +50,6 @@ function normalizeInviteEmail(value = "") {
 
 function isValidInviteEmail(value = "") {
   return INVITE_EMAIL_REGEX.test(normalizeInviteEmail(value));
-}
-
-function toApiDateTimeValue(value = "") {
-  return value ? new Date(value).toISOString() : null;
 }
 
 function insertTokenAtSelection({ value = "", token = "", start = 0, end = 0 } = {}) {
@@ -120,10 +104,6 @@ export default function DirectorAdminInvitesPage() {
   const [customMessage, setCustomMessage] = useState("");
   const [invites, setInvites] = useState([]);
   const [hiddenInviteIds, setHiddenInviteIds] = useState([]);
-  const [eventModalOpen, setEventModalOpen] = useState(false);
-  const [eventSaving, setEventSaving] = useState(false);
-  const [eventError, setEventError] = useState("");
-  const [eventForm, setEventForm] = useState({ ...DEFAULT_EVENT_FORM });
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [result, setResult] = useState(null);
@@ -214,22 +194,6 @@ export default function DirectorAdminInvitesPage() {
     });
   }
 
-  function openEventModal() {
-    setEventForm({ ...DEFAULT_EVENT_FORM });
-    setEventError("");
-    setEventModalOpen(true);
-  }
-
-  function closeEventModal() {
-    if (eventSaving) return;
-    setEventModalOpen(false);
-    setEventError("");
-  }
-
-  function updateEventField(key, value) {
-    setEventForm((current) => ({ ...current, [key]: value }));
-  }
-
   function insertMergeToken(fieldId, setter, token) {
     if (typeof document === "undefined") {
       setter((current) => `${String(current || "")}${token}`);
@@ -254,39 +218,6 @@ export default function DirectorAdminInvitesPage() {
         refreshedField.setSelectionRange(nextCursor, nextCursor);
       }
     });
-  }
-
-  async function createEvent(event) {
-    event.preventDefault();
-    setEventSaving(true);
-    setEventError("");
-    setStatus("");
-
-    try {
-      const response = await request("/events", {
-        method: "POST",
-        body: {
-          title: eventForm.title,
-          summary: eventForm.summary,
-          bodyHtml: eventForm.bodyHtml,
-          coverImageUrl: eventForm.coverImageUrl,
-          startsAt: toApiDateTimeValue(eventForm.startsAt),
-          endsAt: toApiDateTimeValue(eventForm.endsAt),
-          timezone: eventForm.timezone,
-          locationName: eventForm.locationName,
-          locationAddress: eventForm.locationAddress,
-          rsvpDeadlineAt: toApiDateTimeValue(eventForm.rsvpDeadlineAt)
-        }
-      });
-      const createdTitle = String(response?.item?.title || eventForm.title || "Event").trim();
-      setStatus(`Draft event "${createdTitle}" created.`);
-      setEventModalOpen(false);
-      setEventForm({ ...DEFAULT_EVENT_FORM });
-    } catch (requestError) {
-      setEventError(requestError.message || "Failed to create event.");
-    } finally {
-      setEventSaving(false);
-    }
   }
 
   async function downloadTemplate() {
@@ -402,14 +333,9 @@ export default function DirectorAdminInvitesPage() {
           title="Invite Members"
           subtitle="Invite people with first name, last name, and email. Accounts are created only when they accept and sign up."
           actions={
-            <>
-              <Button variant="secondary" onClick={openEventModal}>
-                Create Event
-              </Button>
-              <Button variant="secondary" onClick={downloadTemplate}>
-                Download Template CSV
-              </Button>
-            </>
+            <Button variant="secondary" onClick={downloadTemplate}>
+              Download Template CSV
+            </Button>
           }
         />
         <form onSubmit={sendInvites}>
@@ -670,106 +596,6 @@ export default function DirectorAdminInvitesPage() {
         ) : null}
       </Card>
 
-      {eventModalOpen ? (
-        <div className="pb-admin-ui-modal-backdrop" role="dialog" aria-modal="true" onClick={closeEventModal}>
-          <div className="pb-admin-ui-modal director-admin-event-modal" onClick={(event) => event.stopPropagation()}>
-            <h3>Create Event</h3>
-            <p>Draft a new event from the invites page, then publish it later when you are ready.</p>
-            <form className="director-events-form-grid director-admin-event-modal-form" onSubmit={createEvent}>
-              <label className="full-width">
-                Event title
-                <Input
-                  value={eventForm.title}
-                  onChange={(event) => updateEventField("title", event.target.value)}
-                  placeholder="Camp Cedar Alumni Weekend"
-                />
-              </label>
-              <label className="full-width">
-                Summary
-                <Textarea
-                  value={eventForm.summary}
-                  onChange={(event) => updateEventField("summary", event.target.value)}
-                  placeholder="A short overview for the event card and hero section."
-                />
-              </label>
-              <label className="full-width">
-                Event details
-                <Textarea
-                  rows={8}
-                  value={eventForm.bodyHtml}
-                  onChange={(event) => updateEventField("bodyHtml", event.target.value)}
-                  placeholder="Share the schedule, who should attend, and what to expect."
-                />
-              </label>
-              <label className="full-width">
-                Cover image URL
-                <Input
-                  value={eventForm.coverImageUrl}
-                  onChange={(event) => updateEventField("coverImageUrl", event.target.value)}
-                  placeholder="https://..."
-                />
-              </label>
-              <label>
-                Starts at
-                <Input
-                  type="datetime-local"
-                  value={eventForm.startsAt}
-                  onChange={(event) => updateEventField("startsAt", event.target.value)}
-                />
-              </label>
-              <label>
-                Ends at
-                <Input
-                  type="datetime-local"
-                  value={eventForm.endsAt}
-                  onChange={(event) => updateEventField("endsAt", event.target.value)}
-                />
-              </label>
-              <label>
-                Timezone
-                <Input
-                  value={eventForm.timezone}
-                  onChange={(event) => updateEventField("timezone", event.target.value)}
-                  placeholder="America/New_York"
-                />
-              </label>
-              <label>
-                RSVP deadline
-                <Input
-                  type="datetime-local"
-                  value={eventForm.rsvpDeadlineAt}
-                  onChange={(event) => updateEventField("rsvpDeadlineAt", event.target.value)}
-                />
-              </label>
-              <label>
-                Location name
-                <Input
-                  value={eventForm.locationName}
-                  onChange={(event) => updateEventField("locationName", event.target.value)}
-                  placeholder="Camp Cedar waterfront"
-                />
-              </label>
-              <label>
-                Location address
-                <Input
-                  value={eventForm.locationAddress}
-                  onChange={(event) => updateEventField("locationAddress", event.target.value)}
-                  placeholder="123 Camp Road, City, State"
-                />
-              </label>
-              {eventError ? <p className="error-text">{eventError}</p> : null}
-              <div className="pb-admin-ui-modal-actions">
-                <Button type="button" variant="secondary" onClick={closeEventModal} disabled={eventSaving}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={eventSaving}>
-                  {eventSaving ? "Creating..." : "Create Draft"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

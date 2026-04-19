@@ -10840,6 +10840,14 @@ button.super-stat-card {
   margin-bottom:0;
 }
 
+.ev-header-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
 .ev-header-tools{
   display:inline-flex;
   flex-wrap:wrap;
@@ -10893,6 +10901,10 @@ button.super-stat-card {
 .ev-tab.is-active .ev-tab-count{
   background: color-mix(in srgb, var(--ev-navy) 12%, #ffffff);
   color:var(--ev-navy);
+}
+
+.ev-admin-link{
+  white-space:nowrap;
 }
 
 /* Featured banner */
@@ -11771,6 +11783,11 @@ button.super-stat-card {
     gap:12px;
   }
 
+  .ev-header-actions{
+    width:100%;
+    align-items:stretch;
+  }
+
   .ev-header-tools{
     width:100%;
     justify-content:center;
@@ -11783,6 +11800,10 @@ button.super-stat-card {
   .ev-header-tools::-webkit-scrollbar{ display:none; }
 
   .ev-tab{ flex-shrink:0; }
+
+  .ev-admin-link{
+    width:100%;
+  }
 
   .ev-featured{
     grid-template-columns:1fr;
