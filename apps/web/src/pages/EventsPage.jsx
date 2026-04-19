@@ -441,11 +441,13 @@ export default function EventsPage() {
       ) : null}
 
       {createModalOpen ? (
-        <div className="pb-admin-ui-modal-backdrop" role="dialog" aria-modal="true" onClick={closeCreateModal}>
-          <div className="pb-admin-ui-modal director-admin-event-modal" onClick={(event) => event.stopPropagation()}>
-            <h3>Create Event</h3>
-            <p>Create a draft event right here, then publish it when you're ready.</p>
-            <form className="director-events-form-grid director-admin-event-modal-form" onSubmit={createEvent}>
+        <div className="pb-admin-ui-modal-backdrop ev-create-modal-backdrop" role="dialog" aria-modal="true" onClick={closeCreateModal}>
+          <div className="pb-admin-ui-modal director-admin-event-modal ev-create-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="ev-create-modal-head">
+              <h3>Create Event</h3>
+              <p>Create a draft event right here, then publish it when you're ready.</p>
+            </div>
+            <form className="director-events-form-grid director-admin-event-modal-form ev-create-modal-form" onSubmit={createEvent}>
               <label className="full-width">
                 Event title
                 <Input
@@ -457,6 +459,8 @@ export default function EventsPage() {
               <label className="full-width">
                 Summary
                 <Textarea
+                  className="ev-create-modal-summary"
+                  rows={4}
                   value={eventForm.summary}
                   onChange={(event) => updateEventField("summary", event.target.value)}
                   placeholder="A short overview for the event card and hero section."
@@ -465,7 +469,8 @@ export default function EventsPage() {
               <label className="full-width">
                 Event details
                 <Textarea
-                  rows={8}
+                  className="ev-create-modal-details"
+                  rows={6}
                   value={eventForm.bodyHtml}
                   onChange={(event) => updateEventField("bodyHtml", event.target.value)}
                   placeholder="Share the schedule, who should attend, and what to expect."
@@ -528,7 +533,7 @@ export default function EventsPage() {
                 />
               </label>
               {createError ? <p className="error-text">{createError}</p> : null}
-              <div className="pb-admin-ui-modal-actions">
+              <div className="pb-admin-ui-modal-actions ev-create-modal-actions">
                 <button type="button" className="ev-btn" onClick={closeCreateModal} disabled={createSaving}>
                   Cancel
                 </button>

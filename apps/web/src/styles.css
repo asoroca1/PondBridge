@@ -3847,6 +3847,58 @@ img[draggable="false"] { -webkit-user-drag: none; }
   margin-top: 14px;
 }
 
+.ev-create-modal-backdrop{
+  place-items:start center;
+  overflow-y:auto;
+  padding:
+    calc(var(--page-shell-top, 72px) + 18px)
+    16px
+    max(24px, env(safe-area-inset-bottom, 0px));
+}
+
+.ev-create-modal{
+  width:min(720px, 100%);
+  max-height:calc(100dvh - var(--page-shell-top, 72px) - 36px);
+  border-radius:18px;
+  padding:18px 18px 16px;
+}
+
+.ev-create-modal-head{
+  display:grid;
+  gap:6px;
+  padding-bottom:12px;
+  border-bottom:1px solid rgba(15, 23, 42, 0.08);
+}
+
+.ev-create-modal-form{
+  margin-top:12px;
+  gap:12px 14px;
+  align-content:start;
+}
+
+.ev-create-modal-form label{
+  display:grid;
+  gap:6px;
+  color:#223449;
+  font-weight:600;
+}
+
+.ev-create-modal-summary{
+  min-height:108px;
+}
+
+.ev-create-modal-details{
+  min-height:172px;
+}
+
+.ev-create-modal-actions{
+  position:sticky;
+  bottom:0;
+  padding-top:12px;
+  margin-top:4px;
+  background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #ffffff 32%);
+}
+
 .pb-admin-ui-empty-state{
   border: 1px dashed #d7e3f2;
   border-radius: 12px;
@@ -10831,6 +10883,27 @@ button.super-stat-card {
 
   .events-card-body{
     padding:18px;
+  }
+}
+
+@media (max-width: 720px){
+  .ev-create-modal-backdrop{
+    padding-top:calc(var(--page-shell-top, 72px) + 10px);
+    padding-left:12px;
+    padding-right:12px;
+  }
+
+  .ev-create-modal{
+    padding:14px;
+    border-radius:16px;
+  }
+
+  .ev-create-modal-actions{
+    justify-content:stretch;
+  }
+
+  .ev-create-modal-actions .ev-btn{
+    flex:1 1 0;
   }
 }
 
