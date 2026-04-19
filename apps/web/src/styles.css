@@ -10815,6 +10815,49 @@ button.super-stat-card {
   text-align:left;
 }
 
+.ev-cover-field{
+  display:grid;
+  gap:8px;
+}
+
+.ev-cover-field > span{
+  color:#223449;
+  font-weight:600;
+}
+
+.ev-cover-upload{
+  display:grid;
+  gap:10px;
+  padding:12px;
+  border:1px solid rgba(13, 56, 93, 0.12);
+  border-radius:16px;
+  background:#f8fbff;
+}
+
+.ev-cover-upload-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.ev-cover-preview{
+  position:relative;
+  overflow:hidden;
+  border-radius:14px;
+  border:1px solid rgba(13, 56, 93, 0.12);
+  background:#e8eef6;
+  min-height:164px;
+}
+
+.ev-cover-preview img{
+  display:block;
+  width:100%;
+  max-height:280px;
+  object-fit:cover;
+}
+
 .director-events-member-result strong,
 .director-events-selected-chip strong,
 .director-events-message-item strong{
@@ -10861,6 +10904,10 @@ button.super-stat-card {
 
   .director-events-member-filter-grid{
     grid-template-columns:1fr;
+  }
+
+  .ev-cover-upload-actions{
+    align-items:flex-start;
   }
 }
 

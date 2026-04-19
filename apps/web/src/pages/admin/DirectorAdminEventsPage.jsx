@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { PageHeader } from "../../components/admin/AdminUi.jsx";
+import { uploadTenantImage } from "../../lib/imageUploads.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import useAdminApi from "./useAdminApi.js";
 
@@ -79,7 +80,7 @@ function suggestedSubject(kind = "", title = "") {
 }
 
 export default function DirectorAdminEventsPage() {
-  const { slug, request } = useAdminApi();
+  const { slug, token, request } = useAdminApi();
   const [items, setItems] = useState([]);
   const [moduleEnabled, setModuleEnabled] = useState(true);
   const [platformDisabled, setPlatformDisabled] = useState(false);
@@ -97,6 +98,9 @@ export default function DirectorAdminEventsPage() {
   const [searchingMembers, setSearchingMembers] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [coverUploadError, setCoverUploadError] = useState("");
+  const [coverInputKey, setCoverInputKey] = useState(0);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
@@ -229,12 +233,42 @@ export default function DirectorAdminEventsPage() {
     setDetail(null);
     setEventForm({ ...DEFAULT_EVENT_FORM });
     setEmailForm({ ...DEFAULT_EMAIL_FORM });
+    setCoverUploadError("");
+    setCoverInputKey((value) => value + 1);
     setStatus("");
     setError("");
   }
 
   function updateEventField(key, value) {
     setEventForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handleCoverFileChange(event) {
+    const file = event.target.files?.[0] || null;
+    if (!file) return;
+
+    setCoverUploading(true);
+    setCoverUploadError("");
+    try {
+      const objectUrl = await uploadTenantImage({
+        slug,
+        token,
+        file,
+        scope: "event-cover"
+      });
+      setEventForm((current) => ({ ...current, coverImageUrl: objectUrl }));
+    } catch (uploadError) {
+      setCoverUploadError(uploadError.message || "Failed to upload cover image.");
+    } finally {
+      setCoverUploading(false);
+      setCoverInputKey((value) => value + 1);
+    }
+  }
+
+  function clearCoverImage() {
+    setEventForm((current) => ({ ...current, coverImageUrl: "" }));
+    setCoverUploadError("");
+    setCoverInputKey((value) => value + 1);
   }
 
   function buildEventPayload() {
@@ -459,10 +493,34 @@ export default function DirectorAdminEventsPage() {
                 Event details
                 <Textarea value={eventForm.bodyHtml} onChange={(event) => updateEventField("bodyHtml", event.target.value)} placeholder="Write event details here. Plain text paragraphs are supported." rows={10} />
               </label>
-              <label className="full-width">
-                Cover image URL
-                <Input value={eventForm.coverImageUrl} onChange={(event) => updateEventField("coverImageUrl", event.target.value)} placeholder="https://..." />
-              </label>
+              <div className="full-width ev-cover-field">
+                <span>Cover image</span>
+                <div className="ev-cover-upload">
+                  <Input
+                    key={coverInputKey}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                    onChange={handleCoverFileChange}
+                  />
+                  <div className="ev-cover-upload-actions">
+                    <p className="muted">
+                      Upload a PNG, JPG, WebP, GIF, or SVG cover image.
+                      {coverUploading ? " Uploading..." : ""}
+                    </p>
+                    {eventForm.coverImageUrl ? (
+                      <Button type="button" variant="secondary" size="sm" onClick={clearCoverImage} disabled={coverUploading}>
+                        Remove image
+                      </Button>
+                    ) : null}
+                  </div>
+                  {coverUploadError ? <p className="error-text">{coverUploadError}</p> : null}
+                  {eventForm.coverImageUrl ? (
+                    <div className="ev-cover-preview">
+                      <img src={eventForm.coverImageUrl} alt="Event cover preview" />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
               <label>
                 Starts at
                 <Input type="datetime-local" value={eventForm.startsAt} onChange={(event) => updateEventField("startsAt", event.target.value)} />

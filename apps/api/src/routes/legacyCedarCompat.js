@@ -115,7 +115,7 @@ const IMAGE_MIME_TYPES = new Set([
   "image/svg+xml"
 ]);
 const PUBLIC_UPLOAD_SCOPES = new Set(["avatar"]);
-const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero"]);
+const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero", "event-cover"]);
 const PRELAUNCH_PUBLIC_BRANDING_SCOPES = new Set(["branding-logo", "branding-hero"]);
 const IMMUTABLE_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const PRIVATE_UPLOAD_PROXY_CACHE_CONTROL = "private, max-age=120, stale-while-revalidate=240";
@@ -242,6 +242,7 @@ function scopeToPrefix(scope = "avatar") {
   }
   if (normalized === "branding-logo") return "branding/logos";
   if (normalized === "branding-hero") return "branding/heroes";
+  if (normalized === "event-cover") return "events/covers";
   return "profiles/avatars";
 }
 
