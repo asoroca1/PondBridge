@@ -6,6 +6,25 @@ import useAdminApi from "./useAdminApi.js";
 
 const INVITE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INVITE_HIDDEN_STORAGE_PREFIX = "pb_admin_hidden_invites";
+const INVITE_SUBJECT_FIELD_ID = "invite-custom-subject";
+const INVITE_MESSAGE_FIELD_ID = "invite-custom-message";
+const MERGE_TOKEN_OPTIONS = [
+  { label: "First Name", token: "{{firstName}}" },
+  { label: "Last Name", token: "{{lastName}}" },
+  { label: "Network Name", token: "{{networkName}}" }
+];
+const DEFAULT_EVENT_FORM = {
+  title: "",
+  summary: "",
+  bodyHtml: "",
+  coverImageUrl: "",
+  startsAt: "",
+  endsAt: "",
+  timezone: "America/New_York",
+  locationName: "",
+  locationAddress: "",
+  rsvpDeadlineAt: ""
+};
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -43,6 +62,23 @@ function normalizeInviteEmail(value = "") {
 
 function isValidInviteEmail(value = "") {
   return INVITE_EMAIL_REGEX.test(normalizeInviteEmail(value));
+}
+
+function toApiDateTimeValue(value = "") {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function insertTokenAtSelection({ value = "", token = "", start = 0, end = 0 } = {}) {
+  const currentValue = String(value || "");
+  const safeToken = String(token || "");
+  const selectionStart = Math.max(0, Number(start) || 0);
+  const selectionEnd = Math.max(selectionStart, Number(end) || selectionStart);
+  const nextValue =
+    currentValue.slice(0, selectionStart) +
+    safeToken +
+    currentValue.slice(selectionEnd);
+  const nextCursor = selectionStart + safeToken.length;
+  return { nextValue, nextCursor };
 }
 
 function hiddenInvitesStorageKey(slug = "") {
@@ -84,6 +120,10 @@ export default function DirectorAdminInvitesPage() {
   const [customMessage, setCustomMessage] = useState("");
   const [invites, setInvites] = useState([]);
   const [hiddenInviteIds, setHiddenInviteIds] = useState([]);
+  const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [eventSaving, setEventSaving] = useState(false);
+  const [eventError, setEventError] = useState("");
+  const [eventForm, setEventForm] = useState({ ...DEFAULT_EVENT_FORM });
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [result, setResult] = useState(null);
@@ -172,6 +212,81 @@ export default function DirectorAdminInvitesPage() {
       if (current.length <= 1) return [createInviteRow()];
       return current.filter((row) => row.id !== rowId);
     });
+  }
+
+  function openEventModal() {
+    setEventForm({ ...DEFAULT_EVENT_FORM });
+    setEventError("");
+    setEventModalOpen(true);
+  }
+
+  function closeEventModal() {
+    if (eventSaving) return;
+    setEventModalOpen(false);
+    setEventError("");
+  }
+
+  function updateEventField(key, value) {
+    setEventForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function insertMergeToken(fieldId, setter, token) {
+    if (typeof document === "undefined") {
+      setter((current) => `${String(current || "")}${token}`);
+      return;
+    }
+
+    const field = document.getElementById(fieldId);
+    const currentValue = String(field?.value || "");
+    const { nextValue, nextCursor } = insertTokenAtSelection({
+      value: currentValue,
+      token,
+      start: field?.selectionStart,
+      end: field?.selectionEnd
+    });
+
+    setter(nextValue);
+    window.requestAnimationFrame(() => {
+      const refreshedField = document.getElementById(fieldId);
+      if (!refreshedField || typeof refreshedField.focus !== "function") return;
+      refreshedField.focus();
+      if (typeof refreshedField.setSelectionRange === "function") {
+        refreshedField.setSelectionRange(nextCursor, nextCursor);
+      }
+    });
+  }
+
+  async function createEvent(event) {
+    event.preventDefault();
+    setEventSaving(true);
+    setEventError("");
+    setStatus("");
+
+    try {
+      const response = await request("/events", {
+        method: "POST",
+        body: {
+          title: eventForm.title,
+          summary: eventForm.summary,
+          bodyHtml: eventForm.bodyHtml,
+          coverImageUrl: eventForm.coverImageUrl,
+          startsAt: toApiDateTimeValue(eventForm.startsAt),
+          endsAt: toApiDateTimeValue(eventForm.endsAt),
+          timezone: eventForm.timezone,
+          locationName: eventForm.locationName,
+          locationAddress: eventForm.locationAddress,
+          rsvpDeadlineAt: toApiDateTimeValue(eventForm.rsvpDeadlineAt)
+        }
+      });
+      const createdTitle = String(response?.item?.title || eventForm.title || "Event").trim();
+      setStatus(`Draft event "${createdTitle}" created.`);
+      setEventModalOpen(false);
+      setEventForm({ ...DEFAULT_EVENT_FORM });
+    } catch (requestError) {
+      setEventError(requestError.message || "Failed to create event.");
+    } finally {
+      setEventSaving(false);
+    }
   }
 
   async function downloadTemplate() {
@@ -287,9 +402,14 @@ export default function DirectorAdminInvitesPage() {
           title="Invite Members"
           subtitle="Invite people with first name, last name, and email. Accounts are created only when they accept and sign up."
           actions={
-            <Button variant="secondary" onClick={downloadTemplate}>
-              Download Template CSV
-            </Button>
+            <>
+              <Button variant="secondary" onClick={openEventModal}>
+                Create Event
+              </Button>
+              <Button variant="secondary" onClick={downloadTemplate}>
+                Download Template CSV
+              </Button>
+            </>
           }
         />
         <form onSubmit={sendInvites}>
@@ -365,16 +485,28 @@ export default function DirectorAdminInvitesPage() {
           <div className="director-admin-upload-box">
             <p>Optional: personalize the invite email for this send.</p>
             <p className="muted">
-              Use <code>{"{{firstName}}"}</code>, <code>{"{{lastName}}"}</code>, or <code>{"{{networkName}}"}</code> in the
-              subject or message.
+              Tap a merge field button to drop it into the subject or message at your cursor.
             </p>
             <div style={{ display: "grid", gap: 12 }}>
               <div>
                 <label htmlFor="invite-custom-subject" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
                   Email subject
                 </label>
+                <div className="director-admin-token-row" aria-label="Insert merge field into invite subject">
+                  {MERGE_TOKEN_OPTIONS.map((item) => (
+                    <Button
+                      key={`subject_${item.token}`}
+                      type="button"
+                      variant="secondary"
+                      className="director-admin-token-button"
+                      onClick={() => insertMergeToken(INVITE_SUBJECT_FIELD_ID, setCustomSubject, item.token)}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
                 <Input
-                  id="invite-custom-subject"
+                  id={INVITE_SUBJECT_FIELD_ID}
                   value={customSubject}
                   placeholder="You're invited to {{networkName}}, {{firstName}}"
                   onChange={(event) => setCustomSubject(event.target.value)}
@@ -384,8 +516,21 @@ export default function DirectorAdminInvitesPage() {
                 <label htmlFor="invite-custom-message" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
                   Personal message
                 </label>
+                <div className="director-admin-token-row" aria-label="Insert merge field into invite message">
+                  {MERGE_TOKEN_OPTIONS.map((item) => (
+                    <Button
+                      key={`message_${item.token}`}
+                      type="button"
+                      variant="secondary"
+                      className="director-admin-token-button"
+                      onClick={() => insertMergeToken(INVITE_MESSAGE_FIELD_ID, setCustomMessage, item.token)}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
                 <Textarea
-                  id="invite-custom-message"
+                  id={INVITE_MESSAGE_FIELD_ID}
                   rows={6}
                   value={customMessage}
                   placeholder={"Hi {{firstName}},\n\nI'd love for you to join our PondBridge community this season."}
@@ -524,6 +669,107 @@ export default function DirectorAdminInvitesPage() {
           <p className="muted">{hiddenInvitesInCurrentFilter} invite(s) currently hidden in this filter.</p>
         ) : null}
       </Card>
+
+      {eventModalOpen ? (
+        <div className="pb-admin-ui-modal-backdrop" role="dialog" aria-modal="true" onClick={closeEventModal}>
+          <div className="pb-admin-ui-modal director-admin-event-modal" onClick={(event) => event.stopPropagation()}>
+            <h3>Create Event</h3>
+            <p>Draft a new event from the invites page, then publish it later when you are ready.</p>
+            <form className="director-events-form-grid director-admin-event-modal-form" onSubmit={createEvent}>
+              <label className="full-width">
+                Event title
+                <Input
+                  value={eventForm.title}
+                  onChange={(event) => updateEventField("title", event.target.value)}
+                  placeholder="Camp Cedar Alumni Weekend"
+                />
+              </label>
+              <label className="full-width">
+                Summary
+                <Textarea
+                  value={eventForm.summary}
+                  onChange={(event) => updateEventField("summary", event.target.value)}
+                  placeholder="A short overview for the event card and hero section."
+                />
+              </label>
+              <label className="full-width">
+                Event details
+                <Textarea
+                  rows={8}
+                  value={eventForm.bodyHtml}
+                  onChange={(event) => updateEventField("bodyHtml", event.target.value)}
+                  placeholder="Share the schedule, who should attend, and what to expect."
+                />
+              </label>
+              <label className="full-width">
+                Cover image URL
+                <Input
+                  value={eventForm.coverImageUrl}
+                  onChange={(event) => updateEventField("coverImageUrl", event.target.value)}
+                  placeholder="https://..."
+                />
+              </label>
+              <label>
+                Starts at
+                <Input
+                  type="datetime-local"
+                  value={eventForm.startsAt}
+                  onChange={(event) => updateEventField("startsAt", event.target.value)}
+                />
+              </label>
+              <label>
+                Ends at
+                <Input
+                  type="datetime-local"
+                  value={eventForm.endsAt}
+                  onChange={(event) => updateEventField("endsAt", event.target.value)}
+                />
+              </label>
+              <label>
+                Timezone
+                <Input
+                  value={eventForm.timezone}
+                  onChange={(event) => updateEventField("timezone", event.target.value)}
+                  placeholder="America/New_York"
+                />
+              </label>
+              <label>
+                RSVP deadline
+                <Input
+                  type="datetime-local"
+                  value={eventForm.rsvpDeadlineAt}
+                  onChange={(event) => updateEventField("rsvpDeadlineAt", event.target.value)}
+                />
+              </label>
+              <label>
+                Location name
+                <Input
+                  value={eventForm.locationName}
+                  onChange={(event) => updateEventField("locationName", event.target.value)}
+                  placeholder="Camp Cedar waterfront"
+                />
+              </label>
+              <label>
+                Location address
+                <Input
+                  value={eventForm.locationAddress}
+                  onChange={(event) => updateEventField("locationAddress", event.target.value)}
+                  placeholder="123 Camp Road, City, State"
+                />
+              </label>
+              {eventError ? <p className="error-text">{eventError}</p> : null}
+              <div className="pb-admin-ui-modal-actions">
+                <Button type="button" variant="secondary" onClick={closeEventModal} disabled={eventSaving}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={eventSaving}>
+                  {eventSaving ? "Creating..." : "Create Draft"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

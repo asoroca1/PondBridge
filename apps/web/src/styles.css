@@ -3837,6 +3837,16 @@ img[draggable="false"] { -webkit-user-drag: none; }
   gap: 8px;
 }
 
+.director-admin-event-modal{
+  width: min(760px, 100%);
+  max-height: min(90vh, 100%);
+  overflow-y: auto;
+}
+
+.director-admin-event-modal-form{
+  margin-top: 14px;
+}
+
 .pb-admin-ui-empty-state{
   border: 1px dashed #d7e3f2;
   border-radius: 12px;
@@ -5328,6 +5338,21 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 .pb-cedar-page .director-admin-upload-box p{
   margin-top: 0;
+}
+
+.pb-cedar-page .director-admin-token-row{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pb-cedar-page .director-admin-token-button{
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .pb-cedar-page .director-admin-import-summary{
@@ -10225,13 +10250,17 @@ button.super-stat-card {
   grid-auto-columns:max-content;
   align-items:center;
   justify-content:center;
-  gap:0.08em;
+  gap:0.02em;
   font:inherit;
-  line-height:1;
+  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-weight: 800;
+  line-height:.9;
   letter-spacing:0;
   text-transform:uppercase;
   font-kerning:none;
   font-variant-ligatures:none;
+  font-feature-settings:"liga" 0, "calt" 0;
+  text-rendering:geometricPrecision;
 }
 
 .pb-initials-mark[data-count="1"]{
@@ -10242,7 +10271,7 @@ button.super-stat-card {
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-width:0.58em;
+  min-width:0.5em;
   text-align:center;
 }
 

@@ -278,7 +278,11 @@
     background:var(--cedar-navy);
     color:#fff;
     font-weight:700;
-    letter-spacing:.3px;
+    letter-spacing:0;
+  }
+  .home-wrap .p1-suggest-fallback .pb-initials-mark{
+    font-size: .96rem;
+    line-height: .88;
   }
   .home-wrap .p1-suggest-main{ min-width:0; display:grid; row-gap:2px; align-content:start; padding-top:1px; }
   .home-wrap .p1-suggest-name{

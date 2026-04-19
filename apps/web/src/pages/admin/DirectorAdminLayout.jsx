@@ -9,7 +9,6 @@ const ADMIN_NAV = [
   { key: "overview", to: "dashboard", label: "Overview" },
   { key: "members", to: "members", label: "Members & Directory", end: true },
   { key: "invites", to: "invites", label: "Invite Members" },
-  { key: "events", to: "events", label: "Events" },
   { key: "features", to: "features", label: "Features & Modules" },
   { key: "email", to: "email/compose", label: "Email" },
   { key: "billing", to: "billing", label: "Billing" }

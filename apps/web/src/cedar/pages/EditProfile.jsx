@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { UserRoundPen } from "lucide-react";
+import { tenantHasFeature } from "../../lib/features.js";
 import "./edit-profile.css";
 
 /* Data */
@@ -165,6 +166,76 @@ const normalizeUrl = (s) => {
   return /^https?:\/\//i.test(v) ? v : `https://${v}`;
 };
 const ensureUrl = (s) => normalizeUrl(s);
+
+function mergeParsedProfileIntoForm(currentForm, parsedProfile = {}) {
+  const safeCurrent = currentForm && typeof currentForm === "object" ? currentForm : {};
+  const safeParsed = parsedProfile && typeof parsedProfile === "object" ? parsedProfile : {};
+  const parsedColleges = Array.isArray(safeParsed.colleges) ? safeParsed.colleges : [];
+  const parsedCollegeYears = Array.isArray(safeParsed.collegeYears) ? safeParsed.collegeYears : [];
+  const parsedEducationLength = Math.max(parsedColleges.length, parsedCollegeYears.length);
+  const parsedEducation =
+    parsedEducationLength > 0
+      ? Array.from({ length: parsedEducationLength }, (_, index) => ({
+          college: String(parsedColleges[index] || "").trim(),
+          year: String(parsedCollegeYears[index] || "").trim(),
+          major: ""
+        })).filter((row) => row.college || row.year || row.major)
+      : [];
+  const parsedCurrentJobs = Array.isArray(safeParsed.currentJobs)
+    ? safeParsed.currentJobs
+        .map((job) => ({
+          role: String(job?.role || "").trim(),
+          company: String(job?.company || "").trim(),
+          years: String(job?.years || "").trim()
+        }))
+        .filter((job) => job.role || job.company || job.years)
+    : [];
+  const parsedPastJobs = Array.isArray(safeParsed.pastJobs)
+    ? safeParsed.pastJobs
+        .map((job) => ({
+          role: String(job?.role || "").trim(),
+          company: String(job?.company || "").trim(),
+          years: String(job?.years || "").trim()
+        }))
+        .filter((job) => job.role || job.company || job.years)
+    : [];
+  const parsedSocials = safeParsed.socials && typeof safeParsed.socials === "object" ? safeParsed.socials : {};
+
+  return {
+    ...safeCurrent,
+    firstName: String(safeParsed.firstName || "").trim() || safeCurrent.firstName || "",
+    lastName: String(safeParsed.lastName || "").trim() || safeCurrent.lastName || "",
+    email: String(safeParsed.email || "").trim() || safeCurrent.email || "",
+    phone: String(safeParsed.phone || "").trim() || safeCurrent.phone || "",
+    cityState: String(safeParsed.cityState || "").trim() || safeCurrent.cityState || "",
+    highSchool: String(safeParsed.highSchool || "").trim() || safeCurrent.highSchool || "",
+    education:
+      parsedEducation.length > 0
+        ? parsedEducation
+        : Array.isArray(safeCurrent.education) && safeCurrent.education.length
+        ? safeCurrent.education
+        : [{ college: "", year: "", major: "" }],
+    industry: String(safeParsed.industry || "").trim() || safeCurrent.industry || "",
+    currentJobs:
+      parsedCurrentJobs.length > 0
+        ? parsedCurrentJobs
+        : Array.isArray(safeCurrent.currentJobs) && safeCurrent.currentJobs.length
+        ? safeCurrent.currentJobs
+        : [{ role: "", company: "", years: "" }],
+    pastJobs:
+      parsedPastJobs.length > 0
+        ? parsedPastJobs
+        : Array.isArray(safeCurrent.pastJobs) && safeCurrent.pastJobs.length
+        ? safeCurrent.pastJobs
+        : [{ role: "", company: "", years: "" }],
+    social: {
+      ...(safeCurrent.social && typeof safeCurrent.social === "object" ? safeCurrent.social : {}),
+      linkedin: String(parsedSocials.linkedin || "").trim() || safeCurrent?.social?.linkedin || "",
+      instagram: String(parsedSocials.instagram || "").trim() || safeCurrent?.social?.instagram || "",
+      facebook: String(parsedSocials.facebook || "").trim() || safeCurrent?.social?.facebook || ""
+    }
+  };
+}
 
 /* ================= City/State/Country helpers ================= */
 const normalizeLocationToken = (value = "") =>
@@ -559,12 +630,16 @@ export default function EditProfile() {
   const navigate = useNavigate();
   const { tenant } = useTenant();
   const { getAuthToken } = useAuth();
+  const canUseResumeParsing = tenantHasFeature(tenant, "resumeParsing");
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
   const ageGroupOptions = useMemo(() => resolveAgeGroupOptions(tenant), [tenant]);
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showStaffYears, setShowStaffYears] = useState(false);
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [resumeUploadStatus, setResumeUploadStatus] = useState("");
+  const [resumeUploadKey, setResumeUploadKey] = useState(0);
 
   const [errors, setErrors] = useState({});
 
@@ -677,6 +752,58 @@ export default function EditProfile() {
       console.warn("Photo autosave network error:", e);
     }
   }, [resolveAuthToken]);
+
+  const handleResumeAutofillUpload = useCallback(
+    async (event) => {
+      if (!canUseResumeParsing) return;
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      setResumeUploadStatus("");
+      setErrors((current) => {
+        if (!current?.resumeUpload) return current;
+        const next = { ...current };
+        delete next.resumeUpload;
+        return next;
+      });
+      setResumeUploading(true);
+
+      try {
+        const token = await resolveAuthToken();
+        if (!token) {
+          throw new Error("Please sign in again before uploading a PDF.");
+        }
+
+        const data = new FormData();
+        data.append("resume", file);
+
+        const response = await fetch(`${API_BASE}/resume/parse`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: data
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(normalizeErrorMessage(payload, "Unable to parse that PDF right now."));
+        }
+
+        setForm((current) => mergeParsedProfileIntoForm(current, payload?.profile || {}));
+        setResumeUploadStatus("Autofill complete. Review the imported details, then save your profile.");
+        setResumeUploadKey((value) => value + 1);
+      } catch (uploadError) {
+        setErrors((current) => ({
+          ...current,
+          resumeUpload: uploadError?.message || "Unable to parse that PDF right now."
+        }));
+      } finally {
+        setResumeUploading(false);
+      }
+    },
+    [API_BASE, canUseResumeParsing, resolveAuthToken]
+  );
 
   // load current profile
   useEffect(() => {
@@ -1121,6 +1248,38 @@ export default function EditProfile() {
         <div className="wizard1-span-8">
           <h2 className="wizard1-h2">Personal Info</h2>
           <div className="wizard1-grid wizard1-gap">
+            <div className="wizard1-span-12">
+              <div className="wizard1-dottedbox">
+                {canUseResumeParsing ? (
+                  <>
+                    <div className="wizard1-upload-actions" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                      <label className="wizard1-btn-secondary" style={{ display: "inline-flex", alignItems: "center" }}>
+                        {resumeUploading ? "Parsing PDF..." : "Upload Resume or LinkedIn PDF"}
+                        <input
+                          key={resumeUploadKey}
+                          type="file"
+                          accept="application/pdf"
+                          onChange={handleResumeAutofillUpload}
+                          disabled={resumeUploading}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                      <span className="wizard1-hint">Autofill name, contact, school, jobs, industry, and LinkedIn.</span>
+                    </div>
+                    <p className="wizard1-hint" style={{ marginTop: 8 }}>
+                      Upload a standard resume PDF or a LinkedIn profile PDF export. We’ll merge what we can into the form.
+                    </p>
+                  </>
+                ) : (
+                  <p className="wizard1-hint" style={{ margin: 0 }}>
+                    Resume and LinkedIn PDF autofill is available on the Premium plan.
+                  </p>
+                )}
+                {resumeUploadStatus ? <p className="wizard1-success">{resumeUploadStatus}</p> : null}
+                {errors.resumeUpload ? <p className="wizard1-error">{errors.resumeUpload}</p> : null}
+              </div>
+            </div>
+
             <div className="wizard1-span-6">
               <div className="wizard1-field">
                 <label className="wizard1-label">First Name <span className="req">*</span></label>
