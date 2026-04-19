@@ -1,86 +1,158 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Badge, Card, PageShell } from "@pondbridge/ui";
+import { CalendarDays, MapPin, Users, Filter, ChevronRight } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantRoute } from "../lib/tenantRouting.js";
+import CedarPageHeader from "../cedar/components/CedarPageHeader.jsx";
 
-function formatEventWindow(item = {}) {
+function formatDatePartLong(item = {}) {
+  const timezone = String(item?.timezone || "America/New_York");
+  const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return "Date coming soon";
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: timezone
+  }).format(startsAt);
+}
+
+function formatTimePart(item = {}) {
   const timezone = String(item?.timezone || "America/New_York");
   const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
   const endsAt = item?.endsAt ? new Date(item.endsAt) : null;
-  if (!startsAt || Number.isNaN(startsAt.getTime())) return "Date coming soon";
-
-  const dateFormatter = new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    timeZone: timezone
-  });
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return "";
   const timeFormatter = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     timeZone: timezone
   });
-
-  const startDate = dateFormatter.format(startsAt);
-  const startTime = timeFormatter.format(startsAt);
-  const endTime = endsAt && !Number.isNaN(endsAt.getTime()) ? timeFormatter.format(endsAt) : "";
-  return `${startDate} • ${startTime}${endTime ? ` - ${endTime}` : ""} ${timezone}`;
+  const start = timeFormatter.format(startsAt);
+  const end = endsAt && !Number.isNaN(endsAt.getTime()) ? timeFormatter.format(endsAt) : "";
+  return end ? `${start} – ${end}` : start;
 }
 
-function eventTone(item = {}) {
-  if (item.status === "canceled") return "danger";
-  if (item.myRsvp?.status === "attending") return "success";
-  if (item.myRsvp?.status === "maybe") return "warning";
-  return "neutral";
+function dateBadge(item = {}) {
+  const timezone = String(item?.timezone || "America/New_York");
+  const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return { month: "TBD", day: "--" };
+  const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: timezone }).format(startsAt);
+  const day = new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: timezone }).format(startsAt);
+  return { month: month.toUpperCase(), day };
 }
 
 function rsvpLabel(item = {}) {
   if (item.status === "canceled") return "Canceled";
   if (item.myRsvp?.status === "attending") return "You’re going";
-  if (item.myRsvp?.status === "maybe") return "You’re maybe";
+  if (item.myRsvp?.status === "maybe") return "You said maybe";
   if (item.myRsvp?.status === "not_attending") return "Not attending";
   return item.phase === "past" ? "Past event" : "RSVP open";
 }
 
+function rsvpToneClass(item = {}) {
+  if (item.status === "canceled") return "is-danger";
+  if (item.myRsvp?.status === "attending") return "is-success";
+  if (item.myRsvp?.status === "maybe") return "is-warning";
+  if (item.myRsvp?.status === "not_attending") return "is-neutral";
+  return "is-open";
+}
+
 function EventCard({ item, slug, featured = false }) {
+  const bd = dateBadge(item);
+  const toneClass = rsvpToneClass(item);
+  const coverStyle = item.coverImageUrl
+    ? {
+        backgroundImage: `linear-gradient(180deg, rgba(9,22,37,0.05) 0%, rgba(9,22,37,0.72) 100%), url(${item.coverImageUrl})`
+      }
+    : undefined;
+
   return (
-    <article className={`events-card ${featured ? "events-card-featured" : ""}`.trim()}>
-      <div
-        className="events-card-media"
-        style={item.coverImageUrl ? { backgroundImage: `linear-gradient(180deg, rgba(9,22,37,0.12), rgba(9,22,37,0.78)), url(${item.coverImageUrl})` } : undefined}
-      >
-        <Badge tone={eventTone(item)}>{rsvpLabel(item)}</Badge>
-        {item.status === "canceled" ? <span className="events-card-pill">Update posted</span> : null}
-      </div>
-      <div className="events-card-body">
-        <p className="events-card-date">{formatEventWindow(item)}</p>
-        <h3>{item.title}</h3>
-        <p>{item.summary || "Event details are on the way."}</p>
-        <div className="events-card-meta">
-          <span>{item.locationName || "Location to be announced"}</span>
-          <span>{item.counts?.attending || 0} attending</span>
+    <Link
+      to={tenantRoute(slug, `/events/${item.id}`)}
+      className={`ev-card ${featured ? "is-featured" : ""}`.trim()}
+      aria-label={`Open ${item.title}`}
+    >
+      <div className="ev-card-cover" style={coverStyle}>
+        <div className="ev-date-chip" aria-hidden="true">
+          <span className="ev-date-chip-month">{bd.month}</span>
+          <span className="ev-date-chip-day">{bd.day}</span>
         </div>
-        <div className="events-card-actions">
-          <Link className="pb-btn pb-btn-secondary" to={tenantRoute(slug, `/events/${item.id}`)}>
-            {featured ? "Open Event" : "View Details"}
-          </Link>
+        <span className={`ev-status-chip ${toneClass}`}>{rsvpLabel(item)}</span>
+      </div>
+      <div className="ev-card-body">
+        <p className="ev-card-when">{formatDatePartLong(item)}{formatTimePart(item) ? ` · ${formatTimePart(item)}` : ""}</p>
+        <h3 className="ev-card-title">{item.title}</h3>
+        {item.summary ? <p className="ev-card-summary">{item.summary}</p> : null}
+        <div className="ev-card-meta">
+          <span className="ev-meta-item">
+            <MapPin size={14} aria-hidden="true" />
+            <span>{item.locationName || "Location TBA"}</span>
+          </span>
+          <span className="ev-meta-item">
+            <Users size={14} aria-hidden="true" />
+            <span>{item.counts?.attending || 0} going</span>
+          </span>
+        </div>
+        <span className="ev-card-cta">
+          {featured ? "Open event" : "View details"}
+          <ChevronRight size={14} aria-hidden="true" />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function EventRow({ item, slug }) {
+  const bd = dateBadge(item);
+  const toneClass = rsvpToneClass(item);
+  return (
+    <Link to={tenantRoute(slug, `/events/${item.id}`)} className="ev-row">
+      <div className="ev-row-date" aria-hidden="true">
+        <span className="ev-row-date-month">{bd.month}</span>
+        <span className="ev-row-date-day">{bd.day}</span>
+      </div>
+      <div className="ev-row-body">
+        <div className="ev-row-head">
+          <h3>{item.title}</h3>
+          <span className={`ev-status-chip ${toneClass}`}>{rsvpLabel(item)}</span>
+        </div>
+        <div className="ev-row-meta">
+          <span>{formatTimePart(item) || "Time TBA"}</span>
+          <span className="ev-row-dot" aria-hidden="true" />
+          <span>{item.locationName || "Location TBA"}</span>
+          <span className="ev-row-dot" aria-hidden="true" />
+          <span>{item.counts?.attending || 0} going</span>
         </div>
       </div>
-    </article>
+      <ChevronRight size={18} className="ev-row-chev" aria-hidden="true" />
+    </Link>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div className="ev-card ev-card-skel" aria-hidden="true">
+      <div className="ev-card-cover ev-skel-shimmer" />
+      <div className="ev-card-body">
+        <div className="ev-skel-line ev-skel-shimmer" style={{ width: "40%" }} />
+        <div className="ev-skel-line ev-skel-shimmer" style={{ width: "85%", height: 18 }} />
+        <div className="ev-skel-line ev-skel-shimmer" style={{ width: "65%" }} />
+      </div>
+    </div>
   );
 }
 
 export default function EventsPage() {
   const params = useParams();
   const { token } = useAuth();
-  const { tenant, slug: tenantSlug } = useTenant();
+  const { slug: tenantSlug } = useTenant();
   const slug = params.slug || tenantSlug || "";
   const [payload, setPayload] = useState({ featured: null, upcoming: [], past: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState("upcoming"); // upcoming | past | going
 
   useEffect(() => {
     let cancelled = false;
@@ -113,121 +185,166 @@ export default function EventsPage() {
     if (!featured) return payload.upcoming;
     return payload.upcoming.filter((item) => item.id !== featured.id);
   }, [featured, payload.upcoming]);
-  const brandPrimary = String(tenant?.config?.branding?.brandPrimary || tenant?.theme?.brandPrimary || "#0d385d");
+
+  const goingList = useMemo(() => {
+    const src = [...payload.upcoming, ...payload.past];
+    return src.filter((item) => item?.myRsvp?.status === "attending" || item?.myRsvp?.status === "maybe");
+  }, [payload.upcoming, payload.past]);
+
   const schemaMissing = /supabase:apply-schema|schema is missing/i.test(error);
 
+  const counts = {
+    upcoming: payload.upcoming.length,
+    past: payload.past.length,
+    going: goingList.length
+  };
+
+  const activeList =
+    tab === "past" ? payload.past : tab === "going" ? goingList : upcomingCards;
+
+  const showFeaturedBanner = !loading && !error && tab === "upcoming" && featured;
+
   return (
-    <PageShell className="pb-cedar-page nav2-page-shell events-page-shell">
-      <section className="events-hero" style={{ "--events-brand": brandPrimary }}>
-        <div className="events-hero-copy">
-          <p className="events-kicker">Community Calendar</p>
-          <h1>Events</h1>
-          <p>Gatherings, reunions, and camp community moments all in one place.</p>
+    <main className="ev-wrap nav2-page-shell">
+      <CedarPageHeader
+        icon={<CalendarDays size={18} />}
+        title="Events"
+        subtitle="Gatherings, reunions, and community moments from your camp."
+      >
+        <div className="ev-header-tools" role="tablist" aria-label="Filter events">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "upcoming"}
+            className={`ev-tab ${tab === "upcoming" ? "is-active" : ""}`}
+            onClick={() => setTab("upcoming")}
+          >
+            Upcoming
+            <span className="ev-tab-count">{counts.upcoming}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "going"}
+            className={`ev-tab ${tab === "going" ? "is-active" : ""}`}
+            onClick={() => setTab("going")}
+          >
+            My RSVPs
+            <span className="ev-tab-count">{counts.going}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "past"}
+            className={`ev-tab ${tab === "past" ? "is-active" : ""}`}
+            onClick={() => setTab("past")}
+          >
+            Past
+            <span className="ev-tab-count">{counts.past}</span>
+          </button>
         </div>
-        <div className="events-hero-panel">
-          <strong>{payload.upcoming.length}</strong>
-          <span>Upcoming event{payload.upcoming.length === 1 ? "" : "s"}</span>
-        </div>
-      </section>
+      </CedarPageHeader>
 
-      <section className="events-overview-grid">
-        <Card className="events-overview-card">
-          <p className="events-overview-label">How It Works</p>
-          <h2>Everything your camp is planning, in one place.</h2>
-          <p>
-            Published events show up here for members to browse, RSVP, and revisit later. Directors create and publish
-            them from the dashboard first.
-          </p>
-        </Card>
-        <Card className="events-overview-card events-overview-card-accent">
-          <p className="events-overview-label">Need Something Added?</p>
-          <h2>Your directors publish events here.</h2>
-          <p>
-            If the calendar is empty right now, it usually means no events have been published yet.
-          </p>
-        </Card>
-      </section>
-
-      {loading ? (
-        <Card>
-          <p className="muted">Loading events...</p>
-        </Card>
-      ) : null}
-
-      {error ? (
-        <Card className={`events-message-card ${schemaMissing ? "is-schema-warning" : ""}`.trim()}>
-          <p className="events-message-eyebrow">{schemaMissing ? "Calendar Setup" : "Events Unavailable"}</p>
-          <h2>{schemaMissing ? "This calendar is still being connected." : "We couldn’t load events just now."}</h2>
-          <p className={schemaMissing ? "muted" : "error-text"}>
-            {schemaMissing
-              ? "The events database tables were missing in this environment. The backend schema repair is the right fix, and directors will be able to create events once that finishes."
-              : error}
-          </p>
-        </Card>
-      ) : null}
-
-      {!loading && !error && featured ? (
-        <section className="events-feature-grid">
-          <div className="events-feature-copy">
-            <p className="events-kicker">Featured Next Up</p>
+      {showFeaturedBanner ? (
+        <section className="ev-featured">
+          <div
+            className="ev-featured-media"
+            style={
+              featured.coverImageUrl
+                ? {
+                    backgroundImage: `linear-gradient(100deg, rgba(10,24,40,0.86) 0%, rgba(10,24,40,0.35) 60%, rgba(10,24,40,0.05) 100%), url(${featured.coverImageUrl})`
+                  }
+                : undefined
+            }
+          />
+          <div className="ev-featured-copy">
+            <span className="ev-featured-eyebrow">Featured · Next up</span>
             <h2>{featured.title}</h2>
-            <p>{featured.summary || "Save the date and open the full event for the latest details."}</p>
-            <div className="events-feature-details">
-              <span>{formatEventWindow(featured)}</span>
-              <span>{featured.locationName || "Location coming soon"}</span>
+            <p className="ev-featured-when">
+              {formatDatePartLong(featured)}
+              {formatTimePart(featured) ? ` · ${formatTimePart(featured)}` : ""}
+            </p>
+            {featured.summary ? <p className="ev-featured-summary">{featured.summary}</p> : null}
+            <div className="ev-featured-meta">
+              <span className="ev-meta-item">
+                <MapPin size={14} aria-hidden="true" />
+                <span>{featured.locationName || "Location TBA"}</span>
+              </span>
+              <span className="ev-meta-item">
+                <Users size={14} aria-hidden="true" />
+                <span>{featured.counts?.attending || 0} going</span>
+              </span>
+              <span className={`ev-status-chip ${rsvpToneClass(featured)}`}>{rsvpLabel(featured)}</span>
             </div>
-            <div className="events-feature-actions">
-              <Link className="pb-btn pb-btn-primary" to={tenantRoute(slug, `/events/${featured.id}`)}>
-                See Event Details
-              </Link>
-              <Badge tone={eventTone(featured)}>{rsvpLabel(featured)}</Badge>
-            </div>
+            <Link className="ev-btn ev-btn-primary" to={tenantRoute(slug, `/events/${featured.id}`)}>
+              See event details
+              <ChevronRight size={16} aria-hidden="true" />
+            </Link>
           </div>
-          <EventCard item={featured} slug={slug} featured />
         </section>
       ) : null}
 
+      {loading ? (
+        <section className="ev-grid" aria-label="Loading events">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </section>
+      ) : null}
+
+      {error && !loading ? (
+        <div className={`ev-message ${schemaMissing ? "is-warning" : "is-error"}`}>
+          <p className="ev-message-eyebrow">{schemaMissing ? "Calendar setup" : "Events unavailable"}</p>
+          <h2>{schemaMissing ? "This calendar is still being connected." : "We couldn’t load events just now."}</h2>
+          <p>
+            {schemaMissing
+              ? "The events database is being provisioned for this environment. Directors will be able to create events once that finishes."
+              : error}
+          </p>
+        </div>
+      ) : null}
+
       {!loading && !error ? (
-        <section className="events-section">
-          <div className="events-section-head">
-            <h2>Upcoming</h2>
-            <p>Every published event in your network, with your RSVP status right on the card.</p>
-          </div>
-          {payload.upcoming.length === 0 ? (
-            <Card className="events-message-card">
-              <p className="events-message-eyebrow">Nothing Scheduled Yet</p>
-              <h2>The calendar is ready for its first event.</h2>
-              <p className="muted">
-                Check back soon or reach out to your camp directors if you expected an event here.
+        <section className="ev-list-section">
+          {activeList.length === 0 ? (
+            <div className="ev-empty">
+              <CalendarDays size={32} className="ev-empty-icon" aria-hidden="true" />
+              <h3>
+                {tab === "past"
+                  ? "No past events yet."
+                  : tab === "going"
+                  ? "You haven’t RSVP’d to anything."
+                  : "The calendar is ready for its first event."}
+              </h3>
+              <p>
+                {tab === "past"
+                  ? "When events wrap up, they’ll move here so you can revisit the highlights."
+                  : tab === "going"
+                  ? "Tap into an upcoming event and let your camp know you’re coming."
+                  : "Check back soon or reach out to your camp directors if you expected an event here."}
               </p>
-            </Card>
-          ) : upcomingCards.length === 0 ? (
-            <Card>
-              <p className="muted">The featured event above is the next one on the calendar.</p>
-            </Card>
+              {tab !== "upcoming" ? (
+                <button type="button" className="ev-btn" onClick={() => setTab("upcoming")}>
+                  View upcoming events
+                </button>
+              ) : null}
+            </div>
+          ) : tab === "past" ? (
+            <div className="ev-rows">
+              {activeList.map((item) => (
+                <EventRow key={item.id} item={item} slug={slug} />
+              ))}
+            </div>
           ) : (
-            <div className="events-grid">
-              {upcomingCards.map((item) => (
+            <div className="ev-grid">
+              {activeList.map((item) => (
                 <EventCard key={item.id} item={item} slug={slug} />
               ))}
             </div>
           )}
         </section>
       ) : null}
-
-      {!loading && !error && payload.past.length > 0 ? (
-        <section className="events-section">
-          <div className="events-section-head">
-            <h2>Past Events</h2>
-            <p>Revisit recent gatherings and see how your community has been showing up.</p>
-          </div>
-          <div className="events-grid">
-            {payload.past.map((item) => (
-              <EventCard key={item.id} item={item} slug={slug} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-    </PageShell>
+    </main>
   );
 }

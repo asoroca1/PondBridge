@@ -392,6 +392,8 @@
     border: 1px solid #e1e8f2;
     border-radius: 12px;
     background: #fbfdff;
+    min-height: 44px;
+    box-sizing: border-box;
   }
 
   .p1-leftcol,

@@ -131,7 +131,7 @@
   
   /* ---------- Announce + feed ---------- */
   .announce-form{ display:flex; gap:8px; padding:8px 10px; background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px; }
-  .announce-input{ flex:1; border:0; background:transparent; outline:none; font-size:15px; padding:10px 8px; }
+  .announce-input{ flex:1; border:0; background:transparent; outline:none; font-size:16px; padding:10px 8px; }
   .announce-btn{ background:var(--cedar-navy); color:var(--brand-on-primary); border:0; border-radius:var(--radius-md); padding:10px 12px; font-weight:700; cursor:pointer; }
   .announce-btn:disabled{ opacity:.6; cursor:not-allowed; }
   
@@ -410,7 +410,7 @@
     .welcome-avatar{ width:56px; height:56px; flex:0 0 56px; }
     .qa-btn{ min-height:72px; padding:12px 8px; font-size:0.9rem; }
     .qa-chip{ padding:7px 10px; }
-    .announce-input{ font-size:14.5px; }
+    .announce-input{ font-size:16px; }
     .announce-btn{ padding:9px 12px; }
 
     .feed-card{ max-height: none; }

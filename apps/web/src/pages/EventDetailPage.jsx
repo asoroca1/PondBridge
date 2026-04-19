@@ -1,36 +1,55 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Badge, Button, Card, PageShell } from "@pondbridge/ui";
+import {
+  CalendarDays,
+  ChevronLeft,
+  MapPin,
+  Clock,
+  Users,
+  Check,
+  X as XIcon,
+  HelpCircle
+} from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantRoute } from "../lib/tenantRouting.js";
 
-function formatEventWindow(item = {}) {
+function formatFullDate(item = {}) {
   const timezone = String(item?.timezone || "America/New_York");
   const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
-  const endsAt = item?.endsAt ? new Date(item.endsAt) : null;
   if (!startsAt || Number.isNaN(startsAt.getTime())) return "Date coming soon";
-  const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
     timeZone: timezone
-  });
+  }).format(startsAt);
+}
+
+function formatTimeRange(item = {}) {
+  const timezone = String(item?.timezone || "America/New_York");
+  const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
+  const endsAt = item?.endsAt ? new Date(item.endsAt) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return "";
   const timeFormatter = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     timeZone: timezone
   });
-  return `${dateFormatter.format(startsAt)} • ${timeFormatter.format(startsAt)}${endsAt && !Number.isNaN(endsAt.getTime()) ? ` - ${timeFormatter.format(endsAt)}` : ""} ${timezone}`;
+  const start = timeFormatter.format(startsAt);
+  const end = endsAt && !Number.isNaN(endsAt.getTime()) ? timeFormatter.format(endsAt) : "";
+  return end ? `${start} – ${end}` : start;
 }
 
-function rsvpTone(status = "") {
-  if (status === "attending") return "success";
-  if (status === "maybe") return "warning";
-  if (status === "not_attending") return "neutral";
-  return "neutral";
+function dateBadge(item = {}) {
+  const timezone = String(item?.timezone || "America/New_York");
+  const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return { month: "TBD", day: "--" };
+  const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: timezone }).format(startsAt);
+  const day = new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: timezone }).format(startsAt);
+  return { month: month.toUpperCase(), day };
 }
 
 function rsvpLabel(status = "") {
@@ -40,11 +59,17 @@ function rsvpLabel(status = "") {
   return "No RSVP yet";
 }
 
+const RSVP_OPTIONS = [
+  { value: "attending", label: "Going", Icon: Check },
+  { value: "maybe", label: "Maybe", Icon: HelpCircle },
+  { value: "not_attending", label: "Can’t go", Icon: XIcon }
+];
+
 export default function EventDetailPage() {
   const params = useParams();
   const eventId = params.eventId;
   const { token } = useAuth();
-  const { tenant, slug: tenantSlug } = useTenant();
+  const { slug: tenantSlug } = useTenant();
   const slug = params.slug || tenantSlug || "";
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -91,119 +116,162 @@ export default function EventDetailPage() {
     }
   }
 
-  const brandPrimary = String(tenant?.config?.branding?.brandPrimary || tenant?.theme?.brandPrimary || "#0d385d");
   const rsvpLocked = Boolean(item?.rsvpClosed || item?.status === "canceled");
+  const bd = useMemo(() => dateBadge(item || {}), [item]);
+  const coverStyle = item?.coverImageUrl
+    ? {
+        backgroundImage: `linear-gradient(100deg, rgba(10,24,40,0.82) 0%, rgba(10,24,40,0.35) 55%, rgba(10,24,40,0.05) 100%), url(${item.coverImageUrl})`
+      }
+    : undefined;
 
   return (
-    <PageShell className="pb-cedar-page nav2-page-shell event-detail-shell">
-      <div className="event-detail-backlink">
-        <Link to={tenantRoute(slug, "/events")}>All events</Link>
+    <main className="ev-wrap ev-detail-wrap nav2-page-shell">
+      <div className="ev-detail-backlink">
+        <Link to={tenantRoute(slug, "/events")}>
+          <ChevronLeft size={16} aria-hidden="true" />
+          <span>All events</span>
+        </Link>
       </div>
 
       {loading ? (
-        <Card>
-          <p className="muted">Loading event...</p>
-        </Card>
+        <div className="ev-detail-skel">
+          <div className="ev-detail-hero ev-skel-shimmer" />
+          <div className="ev-detail-grid">
+            <div className="ev-detail-card ev-skel-shimmer" style={{ minHeight: 200 }} />
+            <div className="ev-detail-card ev-skel-shimmer" style={{ minHeight: 200 }} />
+          </div>
+        </div>
       ) : null}
 
-      {error && !item ? (
-        <Card>
-          <p className="error-text">{error}</p>
-        </Card>
+      {error && !item && !loading ? (
+        <div className="ev-message is-error">
+          <p className="ev-message-eyebrow">Events unavailable</p>
+          <h2>We couldn’t load this event.</h2>
+          <p>{error}</p>
+        </div>
       ) : null}
 
       {item ? (
         <>
-          <section className="event-detail-hero" style={{ "--events-brand": brandPrimary }}>
-            <div
-              className="event-detail-hero-media"
-              style={item.coverImageUrl ? { backgroundImage: `linear-gradient(180deg, rgba(10,24,40,0.16), rgba(10,24,40,0.84)), url(${item.coverImageUrl})` } : undefined}
-            />
-            <div className="event-detail-hero-copy">
-              <div className="event-detail-badges">
-                <Badge tone={item.status === "canceled" ? "danger" : rsvpTone(item?.myRsvp?.status || "")}>
-                  {item.status === "canceled" ? "Canceled" : rsvpLabel(item?.myRsvp?.status || "")}
-                </Badge>
-                <Badge tone="neutral">{item.counts?.attending || 0} attending</Badge>
+          <section className="ev-detail-hero" style={coverStyle}>
+            <div className="ev-detail-hero-inner">
+              <div className="ev-detail-date-chip" aria-hidden="true">
+                <span className="ev-date-chip-month">{bd.month}</span>
+                <span className="ev-date-chip-day">{bd.day}</span>
               </div>
-              <h1>{item.title}</h1>
-              <p>{item.summary || "Open for the latest details, RSVP updates, and location info."}</p>
-              <div className="event-detail-meta">
-                <span>{formatEventWindow(item)}</span>
-                <span>{item.locationName || "Location coming soon"}</span>
+              <div className="ev-detail-hero-copy">
+                {item.status === "canceled" ? (
+                  <span className="ev-status-chip is-danger">Canceled</span>
+                ) : item.myRsvp?.status === "attending" ? (
+                  <span className="ev-status-chip is-success">You’re going</span>
+                ) : (
+                  <span className="ev-status-chip is-open">RSVP open</span>
+                )}
+                <h1>{item.title}</h1>
+                {item.summary ? <p className="ev-detail-hero-summary">{item.summary}</p> : null}
+                <div className="ev-detail-hero-meta">
+                  <span className="ev-meta-item">
+                    <CalendarDays size={14} aria-hidden="true" />
+                    <span>{formatFullDate(item)}</span>
+                  </span>
+                  {formatTimeRange(item) ? (
+                    <span className="ev-meta-item">
+                      <Clock size={14} aria-hidden="true" />
+                      <span>{formatTimeRange(item)}</span>
+                    </span>
+                  ) : null}
+                  <span className="ev-meta-item">
+                    <MapPin size={14} aria-hidden="true" />
+                    <span>{item.locationName || "Location coming soon"}</span>
+                  </span>
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="event-detail-grid">
-            <article className="event-detail-main">
-              <Card>
-                <div className="event-detail-section-head">
-                  <h2>About this event</h2>
-                  <p>{item.locationAddress || "Address details will appear here when they are ready."}</p>
-                </div>
-                {item.bodyHtml ? (
-                  <div className="event-detail-richtext" dangerouslySetInnerHTML={{ __html: item.bodyHtml }} />
-                ) : (
-                  <p className="muted">More details will be shared here soon.</p>
-                )}
-              </Card>
+          <section className="ev-detail-grid">
+            <article className="ev-detail-card ev-detail-main">
+              <header className="ev-detail-card-head">
+                <h2>About this event</h2>
+                {item.locationAddress ? (
+                  <p className="ev-detail-card-sub">
+                    <MapPin size={13} aria-hidden="true" />
+                    <span>{item.locationAddress}</span>
+                  </p>
+                ) : null}
+              </header>
+              {item.bodyHtml ? (
+                <div className="ev-detail-richtext" dangerouslySetInnerHTML={{ __html: item.bodyHtml }} />
+              ) : (
+                <p className="ev-detail-muted">More details will be shared here soon.</p>
+              )}
             </article>
 
-            <aside className="event-detail-side">
-              <Card>
-                <div className="event-detail-section-head">
-                  <h2>RSVP</h2>
-                  <p>{item.rsvpDeadlineAt ? `RSVP by ${new Date(item.rsvpDeadlineAt).toLocaleString()}` : "Respond whenever you’re ready."}</p>
-                </div>
-                <div className="event-rsvp-stack">
-                  {["attending", "maybe", "not_attending"].map((value) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      disabled={saving || rsvpLocked}
-                      variant={item?.myRsvp?.status === value ? "primary" : "secondary"}
-                      onClick={() => updateRsvp(value)}
-                    >
-                      {value === "attending" ? "Attending" : value === "maybe" ? "Maybe" : "Not attending"}
-                    </Button>
-                  ))}
+            <aside className="ev-detail-side">
+              <article className="ev-detail-card">
+                <header className="ev-detail-card-head">
+                  <h2>Your RSVP</h2>
+                  <p className="ev-detail-card-sub">
+                    {item.rsvpDeadlineAt
+                      ? `Respond by ${new Date(item.rsvpDeadlineAt).toLocaleString()}`
+                      : "Respond whenever you’re ready."}
+                  </p>
+                </header>
+                <div className="ev-rsvp-stack">
+                  {RSVP_OPTIONS.map(({ value, label, Icon }) => {
+                    const isActive = item?.myRsvp?.status === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={saving || rsvpLocked}
+                        className={`ev-rsvp-btn ${isActive ? `is-active is-${value.replace("_", "-")}` : ""}`}
+                        onClick={() => updateRsvp(value)}
+                      >
+                        <Icon size={15} aria-hidden="true" />
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
                 {rsvpLocked ? (
-                  <p className="muted">
+                  <p className="ev-detail-muted ev-detail-locked">
                     {item.status === "canceled"
                       ? "This event has been canceled."
                       : "The RSVP deadline has passed."}
                   </p>
                 ) : null}
-                {status ? <p className="success-text">{status}</p> : null}
-                {error ? <p className="error-text">{error}</p> : null}
-              </Card>
+                {status ? <p className="ev-detail-success">{status}</p> : null}
+                {error && item ? <p className="ev-detail-error">{error}</p> : null}
+              </article>
 
-              <Card>
-                <div className="event-detail-section-head">
-                  <h2>Response Snapshot</h2>
-                  <p>See how the community is planning.</p>
-                </div>
-                <div className="event-detail-counts">
-                  <div>
+              <article className="ev-detail-card">
+                <header className="ev-detail-card-head">
+                  <h2>Who’s coming</h2>
+                  <p className="ev-detail-card-sub">
+                    <Users size={13} aria-hidden="true" />
+                    <span>See how the community is planning.</span>
+                  </p>
+                </header>
+                <div className="ev-detail-counts">
+                  <div className="ev-detail-count is-attending">
                     <strong>{item.counts?.attending || 0}</strong>
-                    <span>Attending</span>
+                    <span>Going</span>
                   </div>
-                  <div>
+                  <div className="ev-detail-count is-maybe">
                     <strong>{item.counts?.maybe || 0}</strong>
                     <span>Maybe</span>
                   </div>
-                  <div>
+                  <div className="ev-detail-count is-not">
                     <strong>{item.counts?.notAttending || 0}</strong>
-                    <span>Not attending</span>
+                    <span>Can’t go</span>
                   </div>
                 </div>
-              </Card>
+              </article>
             </aside>
           </section>
         </>
       ) : null}
-    </PageShell>
+    </main>
   );
 }
