@@ -7,6 +7,7 @@ import {
 } from "../../lib/campLabels.js";
 import AvatarCropper from "../components/AvatarCropper";
 import CedarBackground from "../components/CedarBackground";
+import CityCombobox from "../components/CityCombobox.jsx";
 import { API_BASE, getMe } from "../lib/api";
 import { getToken } from "../lib/helpers";
 import { useNavigate } from "react-router-dom";
@@ -1345,18 +1346,20 @@ export default function EditProfile() {
             <div className="wizard1-span-12">
               <div className="wizard1-field">
                 <label className="wizard1-label">Current Location <span className="req">*</span></label>
-                <input
-                  className={`wizard1-input ${errors.cityState ? "has-error" : ""}`}
+                <CityCombobox
                   value={form.cityState}
+                  hasError={Boolean(errors.cityState)}
                   placeholder="City, State (US) or City, Country"
-                  onChange={(e) => setField({ cityState: e.target.value })}
-                  onBlur={(e) => {
-                    const normalized = composeCityStateLabel(e.target.value);
-                    setField({ cityState: normalized || normalizeCity(e.target.value) });
+                  onChange={(next, selected) => {
+                    if (selected) {
+                      setField({ cityState: selected.label });
+                    } else {
+                      setField({ cityState: next });
+                    }
                   }}
                 />
                 <p className="wizard1-hint" style={{ marginTop: 6 }}>
-                  Examples: New York, NY or London, United Kingdom
+                  Start typing — pick a match, or add a new city if it's missing.
                 </p>
                 {errors.cityState && <p className="wizard1-error">{errors.cityState}</p>}
               </div>

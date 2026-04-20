@@ -5,7 +5,9 @@ import {
   MobileNotificationDeviceModel,
   MobileNotificationModel,
   MobileNotificationPreferenceModel,
+  MobileNotificationScheduleModel,
   ProfileModel,
+  TenantModel,
   UserModel
 } from "../db/models/index.js";
 
@@ -241,6 +243,79 @@ async function sendApnsAlert({
     };
   } finally {
     client.close();
+  }
+}
+
+function hasFcmConfiguration() {
+  return Boolean(env.FCM_SERVER_KEY);
+}
+
+const PERMANENT_FCM_ERRORS = new Set([
+  "NotRegistered",
+  "InvalidRegistration",
+  "MismatchSenderId"
+]);
+
+async function sendFcmAlert({
+  token,
+  title,
+  body,
+  category,
+  deepLink,
+  data = {},
+  soundEnabled = true
+}) {
+  if (!hasFcmConfiguration()) {
+    return { ok: false, status: "skipped_no_provider", error: "FCM not configured", permanent: false };
+  }
+
+  try {
+    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
+      method: "POST",
+      headers: {
+        authorization: `key=${env.FCM_SERVER_KEY}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        to: token,
+        priority: "high",
+        notification: {
+          title: normalizeText(title, 120),
+          body: normalizeLongText(body, 240),
+          sound: soundEnabled ? "default" : undefined,
+          click_action: "FLUTTER_NOTIFICATION_CLICK"
+        },
+        data: {
+          category: String(category || ""),
+          deepLink: String(deepLink || ""),
+          ...Object.fromEntries(
+            Object.entries(isObject(data) ? data : {}).map(([key, value]) => [key, String(value ?? "")])
+          )
+        }
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+    const firstError = results.find((item) => item?.error)?.error || "";
+
+    if (response.ok && !firstError) {
+      return { ok: true, status: "delivered", error: "", permanent: false };
+    }
+
+    return {
+      ok: false,
+      status: "failed",
+      error: firstError || `FCM ${response.status}`,
+      permanent: PERMANENT_FCM_ERRORS.has(firstError)
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      error: String(error?.message || "FCM send failed"),
+      permanent: false
+    };
   }
 }
 
@@ -526,7 +601,7 @@ async function deliverNotificationToUser({
     delivery.pushStatus = "no_device";
     return updateNotificationDelivery(notification._id, delivery);
   }
-  if (!hasApnsConfiguration()) {
+  if (!hasApnsConfiguration() && !hasFcmConfiguration()) {
     delivery.pushStatus = "skipped_no_provider";
     return updateNotificationDelivery(notification._id, delivery);
   }
@@ -534,7 +609,10 @@ async function deliverNotificationToUser({
   delivery.devicesAttempted = devices.length;
 
   for (const device of devices) {
-    const result = await sendApnsAlert({
+    const platform = String(device?.platform || "ios").trim().toLowerCase();
+    const isAndroid = platform === "android" || platform === "fcm";
+    const sender = isAndroid ? sendFcmAlert : sendApnsAlert;
+    const result = await sender({
       token: device.token,
       title: notification.title,
       body: notification.body,
@@ -693,8 +771,19 @@ export async function notifyTenantAdmins({
   });
 }
 
-export async function resolveAudienceUserIds(tenantId, audience = "all_active_members") {
+export async function resolveAudienceUserIds(tenantId, audience = "all_active_members", extra = {}) {
   const safeAudience = String(audience || "all_active_members").trim().toLowerCase();
+
+  if (safeAudience === "specific_members") {
+    const ids = Array.isArray(extra?.userIds) ? extra.userIds : [];
+    const normalized = [...new Set(ids.map((item) => String(item || "").trim()).filter(Boolean))];
+    if (!normalized.length) return [];
+    const users = await UserModel.find(tenantId, { _id: { $in: normalized }, status: "active" }, {
+      select: ["id", "status"]
+    });
+    return users.map((user) => String(user._id || user.id || "")).filter(Boolean);
+  }
+
   const users = await UserModel.find(tenantId, { status: "active" }, {
     select: ["id", "roles", "status", "email"]
   });
@@ -728,4 +817,99 @@ export async function resolveAudienceUserIds(tenantId, audience = "all_active_me
     })
     .map((user) => String(user._id || user.id || ""))
     .filter(Boolean);
+}
+
+export async function runDueMobileNotificationSchedules({ now = new Date(), batchLimit = 25 } = {}) {
+  const due = await MobileNotificationScheduleModel.find(
+    {
+      status: "pending",
+      runAt: { $lte: now }
+    },
+    {
+      sort: { runAt: 1 },
+      limit: Math.max(1, Math.min(Number(batchLimit || 25), 200))
+    }
+  );
+
+  const results = [];
+  for (const schedule of due) {
+    try {
+      await MobileNotificationScheduleModel.update(schedule._id, {
+        status: "sending",
+        attemptedAt: new Date()
+      });
+
+      const tenant = await TenantModel.findById(schedule.tenantId);
+      if (!tenant) {
+        await MobileNotificationScheduleModel.update(schedule._id, {
+          status: "failed",
+          error: "Tenant not found"
+        });
+        continue;
+      }
+
+      const tenantPrefs = normalizeTenantMobileNotificationPrefs(tenant.notificationPrefs || {});
+      if (!tenantPrefs.mobileEnabled || !tenantPrefs.customBroadcasts) {
+        await MobileNotificationScheduleModel.update(schedule._id, {
+          status: "canceled",
+          error: "Mobile broadcasts disabled"
+        });
+        continue;
+      }
+
+      const userIds = await resolveAudienceUserIds(schedule.tenantId, schedule.audience, {
+        userIds: Array.isArray(schedule.userIds) ? schedule.userIds : []
+      });
+
+      const result = await sendMobileNotificationBatch({
+        tenant,
+        userIds,
+        createdByUserId: schedule.createdByUserId || "",
+        kind: "scheduled_admin",
+        category: schedule.category,
+        title: schedule.title,
+        body: schedule.body,
+        deepLink: schedule.deepLink || "",
+        data: { audience: schedule.audience, scheduleId: String(schedule._id || "") },
+        pushRequested: schedule.pushRequested !== false
+      });
+
+      await MobileNotificationScheduleModel.update(schedule._id, {
+        status: "sent",
+        batchId: result.batchId || "",
+        error: ""
+      });
+      results.push({ id: schedule._id, batchId: result.batchId, recipients: result.totalRecipients });
+    } catch (error) {
+      await MobileNotificationScheduleModel.update(schedule._id, {
+        status: "failed",
+        error: String(error?.message || "Schedule run failed")
+      }).catch(() => {});
+    }
+  }
+
+  return results;
+}
+
+let schedulerTimer = null;
+
+export function startMobileNotificationScheduler({ intervalMs = 30000 } = {}) {
+  if (schedulerTimer) return;
+  const tick = async () => {
+    try {
+      await runDueMobileNotificationSchedules();
+    } catch (error) {
+      console.error("Mobile notification scheduler tick failed", error);
+    }
+  };
+  schedulerTimer = setInterval(tick, Math.max(5000, intervalMs));
+  if (typeof schedulerTimer.unref === "function") schedulerTimer.unref();
+  tick().catch(() => {});
+}
+
+export function stopMobileNotificationScheduler() {
+  if (schedulerTimer) {
+    clearInterval(schedulerTimer);
+    schedulerTimer = null;
+  }
 }

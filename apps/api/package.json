@@ -21,7 +21,8 @@
     "rls:audit": "node scripts/rlsCoverageReport.js",
     "db:preflight": "node scripts/dbPreflightCheck.js",
     "supabase:harden-users-uniqueness": "node scripts/hardenUsersUniqueness.js",
-    "migrate:legacy-media-to-r2": "node scripts/migrateLegacyMediaToR2.js"
+    "migrate:legacy-media-to-r2": "node scripts/migrateLegacyMediaToR2.js",
+    "seed:geo": "node scripts/seedCityGeo.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.995.0",

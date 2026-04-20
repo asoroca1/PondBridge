@@ -35,7 +35,8 @@ import {
   TenantAdminAuditLogModel,
   ResumeParseResultModel,
   ActivityItemModel,
-  MobileNotificationModel
+  MobileNotificationTemplateModel,
+  MobileNotificationScheduleModel
 } from "../db/models/index.js";
 import { findImportReportForTenant } from "../services/csvImport.js";
 import { env } from "../config/env.js";
@@ -271,8 +272,35 @@ const MOBILE_NOTIFICATION_AUDIENCES = new Set([
   "admins",
   "all_users",
   "flagged_members",
-  "pending_members"
+  "pending_members",
+  "specific_members"
 ]);
+const MOBILE_NOTIFICATION_CATEGORIES = new Set([
+  "announcements",
+  "events",
+  "community",
+  "account",
+  "admin"
+]);
+
+function normalizeMobileNotificationCategory(value = "") {
+  const category = String(value || "announcements").trim().toLowerCase();
+  return MOBILE_NOTIFICATION_CATEGORIES.has(category) ? category : "announcements";
+}
+
+function normalizeMobileNotificationUserIds(value = []) {
+  const list = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const out = [];
+  for (const entry of list) {
+    const normalized = String(entry || "").trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+    if (out.length >= 500) break;
+  }
+  return out;
+}
 
 function resolveSupportContactEmail() {
   return SUPPORT_CONTACT_EMAIL;
@@ -4987,9 +5015,13 @@ router.post("/notifications/send", async (req, res) => {
 
   const title = sanitizeText(String(req.body?.title || "").trim()).slice(0, 120);
   const body = sanitizeText(String(req.body?.body || "").trim()).slice(0, 500);
-  const category = String(req.body?.category || "announcements").trim().toLowerCase() || "announcements";
+  const category = normalizeMobileNotificationCategory(req.body?.category);
   const deepLink = String(req.body?.deepLink || "").trim();
   const audience = normalizeMobileNotificationAudience(req.body?.audience);
+  const userIds = normalizeMobileNotificationUserIds(req.body?.userIds);
+  const pushRequested = req.body?.pushRequested !== false;
+  const scheduleAtRaw = req.body?.scheduleAt ? new Date(req.body.scheduleAt) : null;
+  const scheduleAt = scheduleAtRaw && !Number.isNaN(scheduleAtRaw.getTime()) ? scheduleAtRaw : null;
 
   if (!title || !body) {
     return res.status(400).json({
@@ -5000,10 +5032,50 @@ router.post("/notifications/send", async (req, res) => {
     });
   }
 
-  const userIds = await resolveAudienceUserIds(req.tenant._id, audience);
+  if (audience === "specific_members" && !userIds.length) {
+    return res.status(400).json({
+      error: {
+        code: "USER_IDS_REQUIRED",
+        message: "Pick at least one member to send to."
+      }
+    });
+  }
+
+  if (scheduleAt && scheduleAt.getTime() > Date.now() + 30 * 1000) {
+    const created = await MobileNotificationScheduleModel.create({
+      tenantId: req.tenant._id,
+      runAt: scheduleAt,
+      status: "pending",
+      category,
+      title,
+      body,
+      deepLink,
+      audience,
+      userIds,
+      pushRequested,
+      createdByUserId: req.user.id,
+      batchId: "",
+      error: ""
+    });
+
+    await writeAdminAudit(req, "admin_mobile_notification_scheduled", {
+      scheduleId: created._id,
+      runAt: created.runAt,
+      audience,
+      category
+    });
+
+    return res.status(201).json({
+      ok: true,
+      scheduled: true,
+      schedule: created
+    });
+  }
+
+  const resolvedUserIds = await resolveAudienceUserIds(req.tenant._id, audience, { userIds });
   const result = await sendMobileNotificationBatch({
     tenant: req.tenant,
-    userIds,
+    userIds: resolvedUserIds,
     createdByUserId: req.user.id,
     kind: "custom_admin",
     category,
@@ -5013,7 +5085,7 @@ router.post("/notifications/send", async (req, res) => {
     data: {
       audience
     },
-    pushRequested: req.body?.pushRequested !== false
+    pushRequested
   });
 
   await writeAdminAudit(req, "admin_mobile_notification_sent", {
@@ -5028,6 +5100,85 @@ router.post("/notifications/send", async (req, res) => {
     batchId: result.batchId,
     totalRecipients: result.totalRecipients
   });
+});
+
+router.get("/notifications/templates", async (req, res) => {
+  const items = await MobileNotificationTemplateModel.find(req.tenant._id, {}, {
+    sort: { updatedAt: -1 },
+    limit: 100
+  });
+  return res.json({ items });
+});
+
+router.post("/notifications/templates", async (req, res) => {
+  const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 80);
+  const title = sanitizeText(String(req.body?.title || "").trim()).slice(0, 120);
+  const body = sanitizeText(String(req.body?.body || "").trim()).slice(0, 500);
+  const category = normalizeMobileNotificationCategory(req.body?.category);
+  const deepLink = String(req.body?.deepLink || "").trim();
+  const audience = normalizeMobileNotificationAudience(req.body?.audience);
+  const userIds = normalizeMobileNotificationUserIds(req.body?.userIds);
+
+  if (!name || !title || !body) {
+    return res.status(400).json({
+      error: {
+        code: "TEMPLATE_FIELDS_REQUIRED",
+        message: "Name, title, and body are required."
+      }
+    });
+  }
+
+  const created = await MobileNotificationTemplateModel.create({
+    tenantId: req.tenant._id,
+    name,
+    title,
+    body,
+    category,
+    deepLink,
+    audience,
+    userIds,
+    createdByUserId: req.user.id
+  });
+
+  await writeAdminAudit(req, "admin_mobile_notification_template_saved", {
+    templateId: created._id,
+    name
+  });
+
+  return res.status(201).json({ ok: true, template: created });
+});
+
+router.delete("/notifications/templates/:id", async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  const existing = await MobileNotificationTemplateModel.findOne(req.tenant._id, { _id: id });
+  if (!existing) {
+    return res.status(404).json({ error: { code: "TEMPLATE_NOT_FOUND", message: "Template not found." } });
+  }
+  await MobileNotificationTemplateModel.delete(id);
+  await writeAdminAudit(req, "admin_mobile_notification_template_deleted", { templateId: id });
+  return res.json({ ok: true });
+});
+
+router.get("/notifications/schedules", async (req, res) => {
+  const items = await MobileNotificationScheduleModel.find(req.tenant._id, {}, {
+    sort: { runAt: -1 },
+    limit: 100
+  });
+  return res.json({ items });
+});
+
+router.delete("/notifications/schedules/:id", async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  const existing = await MobileNotificationScheduleModel.findOne(req.tenant._id, { _id: id });
+  if (!existing) {
+    return res.status(404).json({ error: { code: "SCHEDULE_NOT_FOUND", message: "Scheduled notification not found." } });
+  }
+  if (existing.status !== "pending") {
+    return res.status(400).json({ error: { code: "SCHEDULE_NOT_CANCELABLE", message: "Only pending schedules can be canceled." } });
+  }
+  await MobileNotificationScheduleModel.update(id, { status: "canceled" });
+  await writeAdminAudit(req, "admin_mobile_notification_schedule_canceled", { scheduleId: id });
+  return res.json({ ok: true });
 });
 
 router.post("/settings/pause", async (req, res) => {

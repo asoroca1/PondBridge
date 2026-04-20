@@ -6,6 +6,8 @@ const COLUMNS = {
   key: "key",
   city: "city",
   state: "state",
+  country: "country",
+  population: "population",
   lat: "lat",
   lng: "lng",
   source: "source",

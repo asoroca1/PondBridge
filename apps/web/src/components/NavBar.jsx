@@ -102,6 +102,29 @@ function pathWithCamp(slug, path) {
   return `/t/${slug}${nextPath}`;
 }
 
+function tenantRelativePath(pathname = "") {
+  const normalizedPath = String(pathname || "").trim() || "/";
+  const tenantMatch = normalizedPath.match(/^\/t\/[^/]+(\/.*)?$/);
+  if (tenantMatch) return tenantMatch[1] || "/";
+  return normalizedPath;
+}
+
+function nativeMemberNavTitle(pathname = "", { newsletterLabel = "Newsletter", alumniWordTitle = "Alumni" } = {}) {
+  if (pathname === "/" || pathname === "/home") return "Home";
+  if (pathname === "/my-profile") return "My Profile";
+  if (pathname === "/edit-profile") return "Edit Profile";
+  if (pathname === "/search" || pathname === "/search-results") return "Search";
+  if (/^\/profile\/[^/]+$/.test(pathname)) return "Profile";
+  if (pathname === "/photo-stream") return "Photos";
+  if (/^\/chat(?:-rooms)?(?:\/|$)/.test(pathname)) return "Messages";
+  if (/^\/events(?:\/|$)/.test(pathname)) return pathname === "/events" ? "Events" : "Event";
+  if (pathname === "/notifications") return "Notifications";
+  if (pathname === "/location-map") return `${alumniWordTitle} Map`;
+  if (pathname === "/cedar-chest") return newsletterLabel;
+  if (/^\/family-trees(?:\/|$)/.test(pathname)) return "Family Trees";
+  return "PondBridge";
+}
+
 function searchSubtitleFrom(entry = {}) {
   const firstJob = Array.isArray(entry?.currentJobs) ? entry.currentJobs[0] || null : null;
   const role = String(firstJob?.role || entry?.roleAtCamp || entry?.role || "").trim();
@@ -244,10 +267,15 @@ export default function NavBar() {
   const onAdminModeRoute =
     currentPath.includes(`/t/${slug}/admin`) || /^\/admin(\/|$)/.test(currentPath);
   const usePublicNav = onAuthRoute || onPublicEntryRoute;
+  const currentTenantPath = tenantRelativePath(currentPath);
 
-  const showSearch = canSearch && !usePublicNav && !onAdminModeRoute;
   const showAuthActions = !isAuthenticated || usePublicNav;
   const showPrivateTools = isAuthenticated && !usePublicNav;
+  const useNativeMemberRoute = nativeApp && showPrivateTools && !onAdminModeRoute;
+  const showSearch = canSearch && !usePublicNav && !onAdminModeRoute && !useNativeMemberRoute;
+  const navTitle = useNativeMemberRoute
+    ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle })
+    : title;
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -602,7 +630,9 @@ export default function NavBar() {
   }
 
   return (
-    <nav className={`navbar2 ${nativeApp ? "is-native-app" : ""} ${onAuthRoute ? "is-auth-route" : ""}`.trim()}>
+    <nav
+      className={`navbar2 ${nativeApp ? "is-native-app" : ""} ${onAuthRoute ? "is-auth-route" : ""} ${useNativeMemberRoute ? "is-native-member-route" : ""}`.trim()}
+    >
       <div className="navbar2-left">
         <Link
           to={pathWithCamp(slug, isAuthenticated ? "/home" : "/")}
@@ -627,7 +657,7 @@ export default function NavBar() {
             </div>
           )}
         </Link>
-        <span className="navbar2-title">{title}</span>
+        <span className={`navbar2-title ${useNativeMemberRoute ? "is-native-page-title" : ""}`.trim()}>{navTitle}</span>
       </div>
 
       <div className="navbar2-right">

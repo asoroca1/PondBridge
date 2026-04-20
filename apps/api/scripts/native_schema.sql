@@ -593,12 +593,22 @@ CREATE TABLE IF NOT EXISTS public.city_geo (
   key text NOT NULL UNIQUE,
   city text NOT NULL DEFAULT '',
   state text NOT NULL DEFAULT '',
+  country text NOT NULL DEFAULT '',
+  population integer NOT NULL DEFAULT 0,
   lat double precision,
   lng double precision,
   source text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.city_geo ADD COLUMN IF NOT EXISTS country text NOT NULL DEFAULT '';
+ALTER TABLE public.city_geo ADD COLUMN IF NOT EXISTS population integer NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_city_geo_city_lower
+  ON public.city_geo (lower(city));
+CREATE INDEX IF NOT EXISTS idx_city_geo_population
+  ON public.city_geo (population DESC);
 
 -- 20. ACTIVITY ITEMS
 CREATE TABLE IF NOT EXISTS public.activity_items (
@@ -680,6 +690,51 @@ CREATE TABLE IF NOT EXISTS public.mobile_notification_preferences (
 
 CREATE INDEX IF NOT EXISTS idx_mobile_notification_preferences_user
   ON public.mobile_notification_preferences (tenant_id, user_id);
+
+-- 23b. MOBILE NOTIFICATION TEMPLATES
+CREATE TABLE IF NOT EXISTS public.mobile_notification_templates (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  name text NOT NULL DEFAULT '',
+  category text NOT NULL DEFAULT 'announcements',
+  title text NOT NULL DEFAULT '',
+  body text NOT NULL DEFAULT '',
+  deep_link text NOT NULL DEFAULT '',
+  audience text NOT NULL DEFAULT 'all_active_members',
+  user_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_by_user_id text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_notification_templates_tenant
+  ON public.mobile_notification_templates (tenant_id, updated_at DESC);
+
+-- 23c. MOBILE NOTIFICATION SCHEDULES
+CREATE TABLE IF NOT EXISTS public.mobile_notification_schedules (
+  id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
+  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  run_at timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  category text NOT NULL DEFAULT 'announcements',
+  title text NOT NULL DEFAULT '',
+  body text NOT NULL DEFAULT '',
+  deep_link text NOT NULL DEFAULT '',
+  audience text NOT NULL DEFAULT 'all_active_members',
+  user_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+  push_requested boolean NOT NULL DEFAULT true,
+  created_by_user_id text,
+  batch_id text NOT NULL DEFAULT '',
+  attempted_at timestamptz,
+  error text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_notification_schedules_due
+  ON public.mobile_notification_schedules (status, run_at);
+CREATE INDEX IF NOT EXISTS idx_mobile_notification_schedules_tenant
+  ON public.mobile_notification_schedules (tenant_id, run_at DESC);
 
 -- 24. RESEND WEBHOOK EVENTS
 CREATE TABLE IF NOT EXISTS public.resend_webhook_events (
@@ -939,7 +994,7 @@ BEGIN
       'magic_link_tokens', 'conversations', 'forums', 'photos',
       'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees', 'analytics_events',
       'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
-      'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
+      'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences', 'mobile_notification_templates', 'mobile_notification_schedules',
       'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
@@ -967,7 +1022,7 @@ BEGIN
       'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
       'photos', 'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
-      'resume_parse_results', 'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
+      'resume_parse_results', 'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences', 'mobile_notification_templates', 'mobile_notification_schedules',
       'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
@@ -988,7 +1043,7 @@ BEGIN
       'magic_link_tokens', 'conversations', 'messages', 'forums', 'forum_posts',
       'photos', 'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees',
       'analytics_events', 'import_reports', 'tenant_admin_audit_logs',
-      'resume_parse_results', 'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
+      'resume_parse_results', 'city_geo', 'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences', 'mobile_notification_templates', 'mobile_notification_schedules',
       'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP
@@ -1122,7 +1177,7 @@ BEGIN
       'conversations', 'messages', 'forums', 'forum_posts', 'photos',
       'newsletters', 'events', 'event_rsvps', 'event_messages', 'email_broadcasts', 'family_trees', 'analytics_events',
       'import_reports', 'tenant_admin_audit_logs', 'resume_parse_results',
-      'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences',
+      'activity_items', 'mobile_notifications', 'mobile_notification_devices', 'mobile_notification_preferences', 'mobile_notification_templates', 'mobile_notification_schedules',
       'resend_webhook_events', 'stripe_webhook_events', 'email_suppressions'
     ])
   LOOP

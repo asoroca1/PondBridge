@@ -108,9 +108,7 @@ const DirectorAdminSettingsSupportPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminSettingsSupportPage.jsx")
 );
 const DirectorAdminSettingsNotificationsPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
-    default: module.DirectorAdminSettingsNotificationsPage
-  }))
+  import("./pages/admin/DirectorAdminNotificationsPage.jsx")
 );
 const DirectorAdminSettingsLayout = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminSettingsLayout }))

@@ -266,6 +266,7 @@ export const env = {
     process.env.APNS_USE_SANDBOX,
     String(process.env.NODE_ENV || "").trim().toLowerCase() !== "production"
   ),
+  FCM_SERVER_KEY: String(process.env.FCM_SERVER_KEY || "").trim(),
   SMTP_HOST: process.env.SMTP_HOST || "",
   SMTP_PORT: toNumber(process.env.SMTP_PORT, 587),
   SMTP_SECURE: process.env.SMTP_SECURE || "false",

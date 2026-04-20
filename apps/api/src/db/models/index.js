@@ -24,6 +24,8 @@ export { ActivityItemModel } from "./ActivityItemModel.js";
 export { MobileNotificationModel } from "./MobileNotificationModel.js";
 export { MobileNotificationDeviceModel } from "./MobileNotificationDeviceModel.js";
 export { MobileNotificationPreferenceModel } from "./MobileNotificationPreferenceModel.js";
+export { MobileNotificationTemplateModel } from "./MobileNotificationTemplateModel.js";
+export { MobileNotificationScheduleModel } from "./MobileNotificationScheduleModel.js";
 export { ResendWebhookEventModel } from "./ResendWebhookEventModel.js";
 export { StripeWebhookEventModel } from "./StripeWebhookEventModel.js";
 export { EmailSuppressionModel } from "./EmailSuppressionModel.js";

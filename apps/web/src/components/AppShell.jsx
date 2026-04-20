@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import NavBar from "./NavBar.jsx";
+import NativeMemberTabBar from "./NativeMemberTabBar.jsx";
 import ProductHeader from "./ProductHeader.jsx";
 import SessionWarningBanner from "./SessionWarningBanner.jsx";
 import CedarBackground from "../cedar/components/CedarBackground.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { isNativeApp } from "../lib/nativeApp.js";
 
@@ -13,6 +15,7 @@ const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account", 
 export default function AppShell({ children }) {
   const location = useLocation();
   const { tenant } = useTenant();
+  const { isAuthenticated } = useAuth();
   const nativeApp = isNativeApp();
 
   const onboardingIncomplete = tenant?.onboardingStatus !== "live";
@@ -44,6 +47,18 @@ export default function AppShell({ children }) {
     },
     [location.pathname, location.search, isTenantRoot, onboardingIncomplete]
   );
+  const useNativeMemberShell = useMemo(
+    () =>
+      nativeApp &&
+      isAuthenticated &&
+      !useNativeAuthLayout &&
+      !useProductLayout &&
+      !currentPath.includes("/admin") &&
+      !currentPath.includes("/onboarding") &&
+      !currentPath.includes("/director-") &&
+      !/\/legal\/?$/.test(currentPath),
+    [currentPath, isAuthenticated, nativeApp, useNativeAuthLayout, useProductLayout]
+  );
 
   if (useProductLayout) {
     return (
@@ -56,16 +71,19 @@ export default function AppShell({ children }) {
   }
 
   return (
-    <div className={`app-shell alumni-app-shell ${useNativeAuthLayout ? "app-shell-native-auth" : ""}`.trim()}>
+    <div
+      className={`app-shell alumni-app-shell ${useNativeAuthLayout ? "app-shell-native-auth" : ""} ${useNativeMemberShell ? "is-native-member-shell" : ""}`.trim()}
+    >
       <SessionWarningBanner />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <div className={`app-shell-content ${useNativeAuthLayout ? "app-shell-content-native-auth" : ""}`.trim()}>
         {useNativeAuthLayout ? null : <NavBar />}
         <main
-          className={`app-shell-main ${needsOffset ? "page-container" : ""} ${useNativeAuthLayout ? "app-shell-main-native-auth" : ""}`.trim()}
+          className={`app-shell-main ${needsOffset ? "page-container" : ""} ${useNativeAuthLayout ? "app-shell-main-native-auth" : ""} ${useNativeMemberShell ? "app-shell-main-native-member" : ""}`.trim()}
         >
           {children}
         </main>
+        {useNativeMemberShell ? <NativeMemberTabBar /> : null}
       </div>
     </div>
   );

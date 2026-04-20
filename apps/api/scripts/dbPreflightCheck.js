@@ -26,6 +26,8 @@ const REQUIRED_TABLES = [
   "mobile_notifications",
   "mobile_notification_devices",
   "mobile_notification_preferences",
+  "mobile_notification_templates",
+  "mobile_notification_schedules",
   "resend_webhook_events",
   "stripe_webhook_events",
   "email_suppressions"

@@ -1092,6 +1092,37 @@ function profileToSuggestion(profile = {}) {
   };
 }
 
+export function buildSuggestionResults({ primaryProfiles = [], fallbackProfiles = [], limit = 5 } = {}) {
+  const resolvedLimit = Math.min(Math.max(Number(limit || 5), 1), 20);
+  const items = [];
+  const seenIds = new Set();
+
+  function appendProfile(profile) {
+    const suggestion = profileToSuggestion(profile);
+    if (!suggestion) return;
+    const id = String(suggestion._id || suggestion.id || "").trim();
+    if (!id || seenIds.has(id)) return;
+    seenIds.add(id);
+    items.push(suggestion);
+  }
+
+  for (const profile of Array.isArray(primaryProfiles) ? primaryProfiles : []) {
+    appendProfile(profile);
+    if (items.length >= resolvedLimit) return items;
+  }
+
+  const sortedFallback = [...(Array.isArray(fallbackProfiles) ? fallbackProfiles : [])].sort(
+    (a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime()
+  );
+
+  for (const profile of sortedFallback) {
+    appendProfile(profile);
+    if (items.length >= resolvedLimit) return items;
+  }
+
+  return items;
+}
+
 function activityToClient(item = {}) {
   const ts = item?.ts || item?.createdAt || new Date().toISOString();
   return {
@@ -1764,21 +1795,13 @@ router.get("/suggestions", async (req, res) => {
       return new Date(b.profile.createdAt || 0).getTime() - new Date(a.profile.createdAt || 0).getTime();
     });
 
-  const ranked = scored
-    .slice(0, limit)
-    .map((item) => profileToSuggestion(item.profile))
-    .filter(Boolean);
-  if (ranked.length > 0) {
-    return res.json({ items: ranked, forUserId: String(targetProfile._id) });
-  }
+  const items = buildSuggestionResults({
+    primaryProfiles: scored.slice(0, limit).map((item) => item.profile),
+    fallbackProfiles: candidates,
+    limit
+  });
 
-  const fallback = candidates
-    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-    .slice(0, limit)
-    .map((profile) => profileToSuggestion(profile))
-    .filter(Boolean);
-
-  return res.json({ items: fallback, forUserId: String(targetProfile._id) });
+  return res.json({ items, forUserId: String(targetProfile._id) });
 });
 
 async function readHomeStatsPayload(tenantId = "") {
