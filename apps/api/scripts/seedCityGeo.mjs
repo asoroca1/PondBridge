@@ -21,6 +21,7 @@ import { spawnSync } from "node:child_process";
 import dotenv from "dotenv";
 import { getSupabaseAdmin } from "../src/db/supabaseAdmin.js";
 import { cityKey } from "../src/utils/geocode.js";
+import { canonicalizeCityName } from "../src/utils/location.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url).pathname });
 
@@ -119,10 +120,14 @@ function buildRow(fields, admin1Map) {
   const cc = (countryCode || "").trim().toUpperCase();
   const state = resolveState(cc, (admin1Code || "").trim(), admin1Map);
   const pop = Number(population) || 0;
+  const canonicalCity = canonicalizeCityName(city, {
+    state,
+    country: cc === "US" ? "United States" : cc
+  }) || city;
 
   return {
-    key: cityKey(city, state || cc),
-    city,
+    key: cityKey(canonicalCity, state || cc),
+    city: canonicalCity,
     state: state || "",
     country: cc,
     population: pop,
