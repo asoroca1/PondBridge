@@ -114,6 +114,10 @@ function createAuthBootstrapTimeoutError() {
   return error;
 }
 
+function isClerkLoadTimeoutErrorMessage(value = "") {
+  return String(value || "").trim().startsWith("CLERK_LOAD_TIMEOUT:");
+}
+
 function markTabSessionAuthenticated() {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(TAB_AUTH_SESSION_KEY, "1");
@@ -437,6 +441,7 @@ function LegacyAuthProvider({ children }) {
       authProvider: "legacy",
       authConfigError: "",
       bootstrapError: "",
+      clerkLoadTimedOut: false,
       sessionWarningMinutes: 0,
       dismissSessionWarning: () => {},
       login,
@@ -524,6 +529,7 @@ function ClerkBackedAuthProvider({ children }) {
   // Tracks bootstrap-level auth errors (e.g. 401 from /api/auth/session)
   // so login pages can detect the failure and avoid auto-redirect loops.
   const [bootstrapError, setBootstrapError] = useState("");
+  const clerkLoadTimedOut = isClerkLoadTimeoutErrorMessage(bootstrapError);
   const { isLoaded, isSignedIn, getToken, sessionId } = useClerkAuth();
   const { signOut } = useClerk();
   const userRef = useRef(null);
@@ -1116,10 +1122,11 @@ function ClerkBackedAuthProvider({ children }) {
       token,
       user,
       isAuthenticated: Boolean(token || (isSignedIn && user?.id)),
-      isReady: Boolean(isLoaded) && !sessionRefreshing,
+      isReady: (Boolean(isLoaded) || clerkLoadTimedOut) && !sessionRefreshing,
       authProvider: AUTH_PROVIDER,
       authConfigError: "",
       bootstrapError,
+      clerkLoadTimedOut,
       sessionWarningMinutes,
       dismissSessionWarning,
       login,
@@ -1135,7 +1142,7 @@ function ClerkBackedAuthProvider({ children }) {
         writeAuthToStorage(token || "", normalized);
       }
     }),
-    [bootstrapError, dismissSessionWarning, getAuthToken, isLoaded, login, logout, refreshSession, retryBootstrap, sessionRefreshing, sessionWarningMinutes, token, user]
+    [bootstrapError, clerkLoadTimedOut, dismissSessionWarning, getAuthToken, isLoaded, login, logout, refreshSession, retryBootstrap, sessionRefreshing, sessionWarningMinutes, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -1158,6 +1165,7 @@ function ClerkUnavailableAuthProvider({ children }) {
       authProvider: AUTH_PROVIDER,
       authConfigError: configError,
       bootstrapError: "",
+      clerkLoadTimedOut: false,
       sessionWarningMinutes: 0,
       dismissSessionWarning: () => {},
       login: () => {},

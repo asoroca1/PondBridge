@@ -30,7 +30,7 @@ export default function DirectorCreateAccountClerkPage() {
     Boolean(slug) &&
     (location.pathname === `/t/${slug}` || location.pathname.startsWith(`/t/${slug}/`));
   const { isLoaded, isSignedIn } = useClerkAuth();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const bootstrapInFlightRef = useRef(false);
   const callbackPath = `${routeWithSlug(slug, "/auth/callback", usingSlugRoute)}?directorBootstrap=1`;
   const signUpPath = routeWithSlug(slug, "/director-create-account", usingSlugRoute);
@@ -83,6 +83,43 @@ export default function DirectorCreateAccountClerkPage() {
     } finally {
       bootstrapInFlightRef.current = false;
     }
+  }
+
+  if (bootstrapError && clerkLoadTimedOut) {
+    return (
+      <section className="product-claim-page product-director-create-page product-director-create-clerk-page">
+        <div className="product-claim-wrap product-director-create-wrap product-director-create-clerk-wrap">
+          <article className="product-claim-card product-director-create-card product-director-create-clerk-card">
+            <div className="product-director-create-clerk-intro">
+              <p className="product-director-create-kicker">Director Onboarding</p>
+              <h1>We Couldn&apos;t Start Director Sign-Up</h1>
+              <p className="product-claim-body director-create-subtitle">
+                The sign-up service did not finish loading for {networkName}.
+              </p>
+            </div>
+            <p className="error-text">
+              Refresh once and try again. If this repeats, sign out first so we can clear the stalled session.
+            </p>
+            <p className="product-claim-body" style={{ fontSize: "0.92rem", opacity: 0.75 }}>
+              <code>{bootstrapError}</code>
+            </p>
+            <div className="product-claim-actions director-claim-actions">
+              <Button
+                onClick={() => {
+                  retryBootstrap();
+                  window.location.reload();
+                }}
+              >
+                Refresh and Retry
+              </Button>
+              <Button variant="secondary" onClick={() => logout()}>
+                Sign out first
+              </Button>
+            </div>
+          </article>
+        </div>
+      </section>
+    );
   }
 
   return (

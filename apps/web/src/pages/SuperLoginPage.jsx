@@ -22,7 +22,7 @@ function superDestinationFromUser(user) {
 }
 
 function ClerkSuperLoginPage() {
-  const { token, user, isReady, logout, bootstrapError, retryBootstrap } = useAuth();
+  const { token, user, isReady, logout, bootstrapError, clerkLoadTimedOut, retryBootstrap } = useAuth();
   const { isSignedIn, isLoaded: clerkIsLoaded } = useClerkAuth();
   const [signingOutUnauthorized, setSigningOutUnauthorized] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -113,7 +113,7 @@ function ClerkSuperLoginPage() {
   // force-redirects to /super/tenants, which redirects back here.
   // Instead, show a diagnostic error with retry / sign-out options.
   // -----------------------------------------------------------------
-  if (isReady && !token && clerkIsLoaded && isSignedIn && bootstrapError) {
+  if (bootstrapError && (clerkLoadTimedOut || (isReady && !token && clerkIsLoaded && isSignedIn))) {
     return (
       <section className="super-login-shell">
         <div className="super-login-backdrop" />
@@ -122,20 +122,32 @@ function ClerkSuperLoginPage() {
             <div className="super-login-panel-header">
               <p className="super-login-kicker">PondBridge</p>
               <h1>Super Admin Console</h1>
-              <p className="error-text">Could not verify your admin access.</p>
+              <p className="error-text">
+                {clerkLoadTimedOut ? "Could not load the sign-in service." : "Could not verify your admin access."}
+              </p>
               <p className="super-login-subtitle">
-                You are signed in through Clerk but the server could not establish
+                {clerkLoadTimedOut
+                  ? "The Clerk bootstrap did not finish, so we stopped before the console could get stuck on a loading state."
+                  : `You are signed in through Clerk but the server could not establish
                 your super admin session. This usually means the API server is
                 unreachable, your account is not provisioned as a super admin, or
-                there is an environment configuration mismatch.
+                there is an environment configuration mismatch.`}
               </p>
               <p className="super-login-subtitle" style={{ fontSize: "0.85em", opacity: 0.75 }}>
                 <code>{bootstrapError}</code>
               </p>
             </div>
             <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
-              <Button onClick={handleRetryBootstrap} disabled={retrying || !isReady}>
-                {retrying ? "Retrying..." : "Retry"}
+              <Button
+                onClick={() => {
+                  handleRetryBootstrap();
+                  if (clerkLoadTimedOut) {
+                    window.location.reload();
+                  }
+                }}
+                disabled={retrying || (!isReady && !clerkLoadTimedOut)}
+              >
+                {retrying ? "Retrying..." : clerkLoadTimedOut ? "Refresh and Retry" : "Retry"}
               </Button>
               <Button variant="ghost" onClick={handleSwitchAccount}>
                 Sign out &amp; switch account

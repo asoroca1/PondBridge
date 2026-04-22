@@ -488,7 +488,7 @@ async function optimizeImageFile(
 }
 
 function DirectorCreateAccountClerkGate() {
-  const { isReady, isAuthenticated, user } = useAuth();
+  const { isReady, isAuthenticated, user, bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const hasWizardAccess = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
 
   if (!isReady) {
@@ -497,6 +497,39 @@ function DirectorCreateAccountClerkGate() {
         <div className="app-status-card">
           <h1>Loading your account...</h1>
           <p>We are syncing your director access.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (clerkLoadTimedOut) {
+    return (
+      <section className="app-status-shell is-error">
+        <div className="app-status-card">
+          <h1>Create Network</h1>
+          <p>Director auth did not finish loading, so we paused setup before it could get stuck.</p>
+          <p>
+            <code>{bootstrapError}</code>
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+            <button
+              type="button"
+              className="login1-btn"
+              onClick={() => {
+                retryBootstrap();
+                window.location.reload();
+              }}
+            >
+              Refresh and Retry
+            </button>
+            <button
+              type="button"
+              className="login1-btn login1-btn-secondary"
+              onClick={() => logout()}
+            >
+              Sign out first
+            </button>
+          </div>
         </div>
       </section>
     );

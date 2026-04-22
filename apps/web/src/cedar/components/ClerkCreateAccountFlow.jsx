@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../../lib/http.js";
-import { noteTabLoginIntent } from "../../context/AuthContext.jsx";
+import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
@@ -27,6 +27,7 @@ export default function ClerkCreateAccountFlow() {
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const legalRequired = String(searchParams.get("legalRequired") || "").trim() === "1";
   const { isLoaded, isSignedIn } = useClerkAuth();
+  const { bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [legalError, setLegalError] = useState("");
@@ -94,6 +95,60 @@ export default function ClerkCreateAccountFlow() {
     event.stopPropagation();
     setLegalError("You must agree to Terms and Privacy to create your account.");
   };
+
+  if (bootstrapError && (clerkLoadTimedOut || (isLoaded && isSignedIn))) {
+    return (
+      <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
+        <section className="login1-main login1-main-modern login1-main-create-bg">
+          <div className="login1-wrap">
+            <article className="login1-card login1-card-modern">
+              <div className="login1-intro">
+                <p className="login1-kicker">Camp Access</p>
+                <h1 className="login1-title auth-entry-title">We Couldn&apos;t Start Account Creation</h1>
+                <p className="login1-clerk-panel-subtitle">
+                  {clerkLoadTimedOut
+                    ? `The sign-up service did not finish loading for ${networkName}.`
+                    : `You are signed in, but we could not finish starting your ${networkName} sign-up session.`}
+                </p>
+              </div>
+              <p className="login1-error">
+                {clerkLoadTimedOut
+                  ? "Refresh once and try again. If this keeps happening, use a different browser profile so we can rule out a stale Clerk session."
+                  : "Retry once. If it keeps happening, sign out and restart the camp account flow."}
+              </p>
+              <p className="login1-forgot">
+                <code>{bootstrapError}</code>
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="login1-btn"
+                  onClick={() => {
+                    retryBootstrap();
+                    if (clerkLoadTimedOut) {
+                      window.location.reload();
+                    }
+                  }}
+                >
+                  {clerkLoadTimedOut ? "Refresh and Retry" : "Retry"}
+                </button>
+                <button
+                  type="button"
+                  className="login1-btn login1-btn-secondary"
+                  onClick={() => logout()}
+                >
+                  Sign out and restart
+                </button>
+                <Link to={signInUrl} className="auth-create-account-link" style={{ textAlign: "center" }}>
+                  Back to login
+                </Link>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>

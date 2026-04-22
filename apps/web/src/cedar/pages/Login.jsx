@@ -295,10 +295,9 @@ function ClerkLogin() {
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
   const notice = resolveAuthIssueMessage(searchParams);
-  const { token, user, isAuthenticated, isReady, bootstrapError, retryBootstrap, logout } = useAuth();
+  const { token, user, isAuthenticated, isReady, bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const { isLoaded: clerkIsLoaded, isSignedIn } = useClerkAuth();
   const isSuperAdmin = isAuthenticated && user?.roles?.includes("super_admin");
-  const clerkLoadTimedOut = String(bootstrapError || "").startsWith("CLERK_LOAD_TIMEOUT:");
   const nativeApp = isNativeApp();
   const path = tenantRoute(slug, "/login");
   const callbackParams = new URLSearchParams();
