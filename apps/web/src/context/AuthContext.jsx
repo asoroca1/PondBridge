@@ -26,6 +26,7 @@ const AUTO_LOGOUT_TIMEOUT_MS =
 const CLERK_TOKEN_SYNC_INTERVAL_MS = 4 * 60 * 1000;
 const SESSION_TOKEN_STORAGE_KEY = "pondbridgeSessionToken";
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 12_000;
+const CLERK_SDK_LOAD_TIMEOUT_MS = 12_000;
 const SESSION_WARNING_TIMEOUT_MS =
   AUTO_LOGOUT_TIMEOUT_MS > SESSION_WARNING_MINUTES * 60 * 1000
     ? AUTO_LOGOUT_TIMEOUT_MS - SESSION_WARNING_MINUTES * 60 * 1000
@@ -557,6 +558,28 @@ function ClerkBackedAuthProvider({ children }) {
     const { candidateToken } = readStoredSessionCandidate(initialTenantSlug);
     legacySessionOverrideRef.current = Boolean(candidateToken && !isSignedIn);
   }, [isSignedIn]);
+
+  useEffect(() => {
+    if (isLoaded) {
+      if (!isSignedIn) {
+        setBootstrapError("");
+      }
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled || isLoaded) return;
+      setBootstrapError("CLERK_LOAD_TIMEOUT: Sign-in service did not finish loading.");
+      bootstrapDoneRef.current = true;
+      setSessionRefreshing(false);
+    }, CLERK_SDK_LOAD_TIMEOUT_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isLoaded, isSignedIn]);
 
   const clearLocalAuth = useCallback(() => {
     legacySessionOverrideRef.current = false;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { SignIn } from "@clerk/clerk-react";
+import { SignIn, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import Navbar1 from "../components/Navbar1";
 import { API_BASE } from "../lib/api";
 import { requestJson } from "../../lib/http.js";
@@ -295,8 +295,10 @@ function ClerkLogin() {
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
   const notice = resolveAuthIssueMessage(searchParams);
-  const { user, isAuthenticated, logout } = useAuth();
+  const { token, user, isAuthenticated, isReady, bootstrapError, retryBootstrap, logout } = useAuth();
+  const { isLoaded: clerkIsLoaded, isSignedIn } = useClerkAuth();
   const isSuperAdmin = isAuthenticated && user?.roles?.includes("super_admin");
+  const clerkLoadTimedOut = String(bootstrapError || "").startsWith("CLERK_LOAD_TIMEOUT:");
   const nativeApp = isNativeApp();
   const path = tenantRoute(slug, "/login");
   const callbackParams = new URLSearchParams();
@@ -317,6 +319,59 @@ function ClerkLogin() {
   useEffect(() => {
     noteTabLoginIntent();
   }, []);
+
+  if (bootstrapError && (clerkLoadTimedOut || (isReady && !token && clerkIsLoaded && isSignedIn))) {
+    return (
+      <div className={authPageClassName({ nativeApp, clerk: true })}>
+        <Navbar1 />
+        <section className="login1-main login1-main-modern login1-main-create-bg">
+          <div className="login1-wrap">
+            <article className="login1-card login1-card-modern">
+              <AuthBrandHeader tenant={tenant} />
+              <div className="login1-intro">
+                <p className="login1-kicker">Camp Access</p>
+                <h1 className="login1-title auth-entry-title">We Couldn&apos;t Verify Your Access</h1>
+                <p className="login1-clerk-panel-subtitle">
+                  {clerkLoadTimedOut
+                    ? `The sign-in service did not finish loading for ${networkName}.`
+                    : `You are signed in, but we could not finish starting your ${networkName} session.`}
+                </p>
+              </div>
+              <p className="login1-error">
+                {clerkLoadTimedOut
+                  ? "This usually means the camp domain could not complete its Clerk bootstrap. Refresh once, then try again."
+                  : "Retry once. If it keeps happening, sign out and switch accounts so we can rebuild the camp session cleanly."}
+              </p>
+              <p className="login1-forgot">
+                <code>{bootstrapError}</code>
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="login1-btn"
+                  onClick={() => {
+                    retryBootstrap();
+                    if (clerkLoadTimedOut) {
+                      window.location.reload();
+                    }
+                  }}
+                >
+                  {clerkLoadTimedOut ? "Refresh and Retry" : "Retry"}
+                </button>
+                <button
+                  type="button"
+                  className="login1-btn login1-btn-secondary"
+                  onClick={() => logout()}
+                >
+                  Sign out and use a different account
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   // If the current user is a super admin, block them from proceeding into
   // the camp login flow. This prevents creating unwanted user/profile records.
