@@ -135,6 +135,7 @@ function CreateAccount() {
 
   // Validation
   const [errors, setErrors] = useState({});
+  const [saveStatus, setSaveStatus] = useState("");
 
   const onPickPhoto = (e) => {
     const f = e.target.files?.[0];
@@ -205,6 +206,7 @@ function CreateAccount() {
 
   const onSave = (e) => {
     e.preventDefault();
+    setSaveStatus("");
     if (!validate()) return;
 
     const payload = {
@@ -221,7 +223,7 @@ function CreateAccount() {
       }
     };
     console.log("CREATE PROFILE (mock save):", payload);
-    alert("Profile saved (mock). Backend wiring next.");
+    setSaveStatus("Profile draft validated. This legacy mock page does not submit to the server.");
   };
 
   return (
@@ -546,6 +548,7 @@ function CreateAccount() {
           <div className="create1-actions">
             <button className="create1-btn-primary" onClick={onSave}>Save Profile</button>
           </div>
+          {saveStatus ? <p className="create1-span-12 success-text" role="status">{saveStatus}</p> : null}
         </div>
       </main>
     </div>

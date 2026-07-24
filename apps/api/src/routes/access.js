@@ -29,15 +29,27 @@ import { logTenantEvent } from "../services/analytics.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 import { notifyTenantAdmins } from "../services/mobileNotifications.js";
 import {
+  isEmailAllowedByPolicy,
+  resolveTenantAccessPolicy,
+  verifyTenantAccessCodeGrant,
+  verifyTenantAccessCode
+} from "../services/accessPolicy.js";
+import {
   canonicalizeCityName,
   canonicalizeCountryName,
   composeCityState,
   parseCityStateDetailed
 } from "../utils/location.js";
+import {
+  AGE_POLICY_VERSION,
+  DEFAULT_MEMBER_PRIVACY_VERSION,
+  DEFAULT_MEMBER_TERMS_VERSION,
+  MINIMUM_MEMBER_AGE,
+  isMemberEligibilityComplete,
+  normalizeMemberLegalAgreement as normalizeLegalAgreement
+} from "../services/memberEligibility.js";
 
 const router = Router({ mergeParams: true });
-const DEFAULT_TERMS_VERSION = "2026-03-04";
-const DEFAULT_PRIVACY_VERSION = "2026-03-04";
 
 function accessLimiterKey(req, { includeIdentity = false } = {}) {
   const tenantSlug = String(req.params?.slug || req.tenant?.slug || "").trim().toLowerCase();
@@ -120,38 +132,6 @@ function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-function normalizeBoolean(value = false) {
-  if (typeof value === "boolean") return value;
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
-}
-
-function normalizeLegalAgreement(body = {}) {
-  const provided = body && typeof body === "object" ? body : {};
-  const nested = provided.legalAgreement && typeof provided.legalAgreement === "object" ? provided.legalAgreement : {};
-  const accepted = normalizeBoolean(
-    provided.legalAgreementAccepted ??
-      provided.acceptedLegal ??
-      provided.acceptTerms ??
-      provided.termsAccepted ??
-      nested.accepted
-  );
-  const rawAcceptedAt = String(nested.acceptedAt || provided.legalAgreementAcceptedAt || "").trim();
-  const acceptedAtDate = rawAcceptedAt ? new Date(rawAcceptedAt) : new Date();
-  const acceptedAt = Number.isNaN(acceptedAtDate.getTime()) ? new Date().toISOString() : acceptedAtDate.toISOString();
-  const termsVersion =
-    String(nested.termsVersion || provided.termsVersion || DEFAULT_TERMS_VERSION).trim() || DEFAULT_TERMS_VERSION;
-  const privacyVersion =
-    String(nested.privacyVersion || provided.privacyVersion || DEFAULT_PRIVACY_VERSION).trim() ||
-    DEFAULT_PRIVACY_VERSION;
-  return {
-    accepted,
-    acceptedAt,
-    termsVersion,
-    privacyVersion
-  };
-}
-
 async function persistProfileLegalAgreement(profile, legalAgreement = null) {
   if (!profile?._id || !legalAgreement?.accepted) return profile;
 
@@ -163,15 +143,21 @@ async function persistProfileLegalAgreement(profile, legalAgreement = null) {
   const nextAgreement = {
     accepted: true,
     acceptedAt: legalAgreement.acceptedAt || existingAgreement.acceptedAt || new Date().toISOString(),
-    termsVersion: legalAgreement.termsVersion || existingAgreement.termsVersion || DEFAULT_TERMS_VERSION,
-    privacyVersion: legalAgreement.privacyVersion || existingAgreement.privacyVersion || DEFAULT_PRIVACY_VERSION
+    termsVersion: legalAgreement.termsVersion || existingAgreement.termsVersion || DEFAULT_MEMBER_TERMS_VERSION,
+    privacyVersion: legalAgreement.privacyVersion || existingAgreement.privacyVersion || DEFAULT_MEMBER_PRIVACY_VERSION,
+    ageEligibilityConfirmed: Boolean(legalAgreement.ageEligibilityConfirmed),
+    minimumAge: MINIMUM_MEMBER_AGE,
+    agePolicyVersion: AGE_POLICY_VERSION
   };
 
   const needsPatch =
     !existingAgreement.accepted ||
     String(existingAgreement.acceptedAt || "") !== String(nextAgreement.acceptedAt || "") ||
     String(existingAgreement.termsVersion || "") !== String(nextAgreement.termsVersion || "") ||
-    String(existingAgreement.privacyVersion || "") !== String(nextAgreement.privacyVersion || "");
+    String(existingAgreement.privacyVersion || "") !== String(nextAgreement.privacyVersion || "") ||
+    Boolean(existingAgreement.ageEligibilityConfirmed) !== nextAgreement.ageEligibilityConfirmed ||
+    Number(existingAgreement.minimumAge || 0) !== MINIMUM_MEMBER_AGE ||
+    String(existingAgreement.agePolicyVersion || "") !== AGE_POLICY_VERSION;
   if (!needsPatch) return profile;
 
   return ProfileModel.update(profile._id, {
@@ -180,11 +166,6 @@ async function persistProfileLegalAgreement(profile, legalAgreement = null) {
       legalAgreement: nextAgreement
     }
   });
-}
-
-function tenantJoinMode(_tenant) {
-  // Access policy is retired: all networks use open join.
-  return "open_join";
 }
 
 function normalizeCamperYears(value = {}) {
@@ -356,8 +337,9 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
   }
 
   const settings = resolveSettings(tenant);
-  const signupMode = "open";
-  const joinMode = tenantJoinMode(tenant);
+  const policy = resolveTenantAccessPolicy(tenant);
+  const signupMode = policy.signupMode;
+  const joinMode = policy.joinMode;
   const billingAccess = isTenantBillingAccessAllowed(tenant);
 
   const membership = await findTenantUserForIdentity(tenantId, identity);
@@ -444,7 +426,56 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
     };
   }
 
-  if (joinMode === "open_join") {
+  const pendingRequest = email ? await findPendingRequest(tenantId, email) : null;
+  if (pendingRequest) {
+    return {
+      state: "access_pending",
+      action: "wait_for_approval",
+      nextRoute: pendingRoute,
+      joinMode,
+      signupMode,
+      request: {
+        id: String(pendingRequest._id),
+        status: pendingRequest.status,
+        requestedAt: pendingRequest.requestedAt
+      }
+    };
+  }
+
+  if (!isEmailAllowedByPolicy(policy, email)) {
+    return {
+      state: "not_member",
+      action: "request_access",
+      nextRoute: pendingRoute,
+      joinMode,
+      signupMode,
+      reason: "email_domain_not_allowed"
+    };
+  }
+
+  if (signupMode === "approval_queue") {
+    return {
+      state: "not_member",
+      action: "request_access",
+      nextRoute: pendingRoute,
+      joinMode,
+      signupMode,
+      reason: "approval_required"
+    };
+  }
+
+  if (signupMode === "invite_only") {
+    return {
+      state: "not_member",
+      action: "invite_required",
+      nextRoute: loginRoute,
+      joinMode,
+      signupMode,
+      reason: "invite_required"
+    };
+  }
+
+  if (signupMode === "open" || signupMode === "code") {
     if (!billingAccess.allowed) {
       return {
         state: "billing_restricted",
@@ -463,7 +494,8 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
       action: "join_network",
       nextRoute: `${base}/create-account`,
       joinMode,
-      signupMode
+      signupMode,
+      requiresAccessCode: signupMode === "code"
     };
   }
 
@@ -641,12 +673,50 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
       error: { code: "IDENTITY_EMAIL_REQUIRED", message: "A verified email is required to join this network." }
     });
   }
+  const policy = resolveTenantAccessPolicy(req.tenant);
+  if (!isEmailAllowedByPolicy(policy, email)) {
+    return res.status(403).json({
+      error: {
+        code: "EMAIL_DOMAIN_NOT_ALLOWED",
+        message: "This email domain is not allowed to join directly. Request director approval instead."
+      }
+    });
+  }
+  if (policy.signupMode === "invite_only") {
+    return res.status(403).json({
+      error: {
+        code: "INVITE_REQUIRED",
+        message: "A valid invite is required to join this network."
+      }
+    });
+  }
+  if (policy.signupMode === "approval_queue") {
+    return res.status(403).json({
+      error: {
+        code: "APPROVAL_REQUIRED",
+        message: "A director must approve your request before you can join this network."
+      }
+    });
+  }
+  if (policy.signupMode === "code") {
+    const codeMatched =
+      verifyTenantAccessCodeGrant(req.tenant, req.body?.accessGrant) ||
+      (await verifyTenantAccessCode(req.tenant, req.body?.accessCode));
+    if (!codeMatched) {
+      return res.status(403).json({
+        error: {
+          code: "ACCESS_CODE_INVALID",
+          message: "A valid join code is required to join this network."
+        }
+      });
+    }
+  }
   const legalAgreement = normalizeLegalAgreement(req.body || {});
-  if (!legalAgreement.accepted) {
+  if (!isMemberEligibilityComplete(legalAgreement)) {
     return res.status(400).json({
       error: {
         code: "LEGAL_AGREEMENT_REQUIRED",
-        message: "You must agree to Terms and Privacy before creating an account."
+        message: `You must confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy before creating an account.`
       }
     });
   }
@@ -681,11 +751,11 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
     tenantId: req.tenant._id,
     userId: member._id,
     eventType: "signup_created",
-    metadata: { method: "clerk_open_join" }
+    metadata: { method: policy.signupMode === "code" ? "clerk_code_join" : "clerk_open_join" }
   }).catch(() => {});
 
   await writeTenantAudit(req.tenant._id, member._id, "membership_created", {
-    source: "open_join",
+    source: policy.signupMode === "code" ? "code_join" : "open_join",
     email
   }).catch(() => {});
 
@@ -902,11 +972,11 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
     });
   }
   const legalAgreement = normalizeLegalAgreement(req.body || {});
-  if (!legalAgreement.accepted) {
+  if (!isMemberEligibilityComplete(legalAgreement)) {
     return res.status(400).json({
       error: {
         code: "LEGAL_AGREEMENT_REQUIRED",
-        message: "You must agree to Terms and Privacy before creating an account."
+        message: `You must confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy before creating an account.`
       }
     });
   }

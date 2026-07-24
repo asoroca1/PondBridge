@@ -103,7 +103,9 @@ describe("Super provisioning", () => {
         lastName: "Director",
         email: "director@pineridge.org",
         password: "DirectorPass123!",
-        directorSignup: true
+        directorSignup: true,
+        legalAgreementAccepted: true,
+        ageEligibilityConfirmed: true
       });
 
     expect(registerDirector.status).toBe(201);

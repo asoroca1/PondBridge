@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import { CalendarDays, Home, Image, MessageSquare, Search, Bell, TreePine, User } from "lucide-react";
+import { CalendarDays, Home, Image, MessageSquare, Search, Bell, Shield, TreePine, User } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
+import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { useMobileNotifications } from "../context/MobileNotificationsContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
@@ -26,6 +27,7 @@ export default function NativeMemberTabBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
+  const { user } = useAuth();
   const { slug: contextSlug, tenant } = useTenant();
   const { unreadCount } = useMobileNotifications();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
@@ -43,6 +45,12 @@ export default function NativeMemberTabBar() {
   const canEvents = modules.events !== false;
   const canPhotos = modules.photoStream !== false;
   const canFamilyTrees = modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees");
+  const roles = new Set(
+    (Array.isArray(user?.roles) ? user.roles : user?.roles ? [user.roles] : [])
+      .map((role) => String(role || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const isCampDirector = roles.has("tenant_admin") || roles.has("admin");
 
   const tabs = useMemo(() => {
     const nextTabs = [
@@ -116,16 +124,26 @@ export default function NativeMemberTabBar() {
       });
     }
 
-    nextTabs.push({
-      id: "profile",
-      label: "Profile",
-      icon: User,
-      to: tenantRoute(slug, "/my-profile"),
-      matchers: ["/my-profile", "/edit-profile"]
-    });
+    if (isCampDirector) {
+      nextTabs.push({
+        id: "manage",
+        label: "Manage",
+        icon: Shield,
+        to: tenantRoute(slug, "/admin/dashboard"),
+        matchers: [/^\/admin(?:\/|$)/, /^\/onboarding(?:\/|$)/]
+      });
+    } else {
+      nextTabs.push({
+        id: "profile",
+        label: "Profile",
+        icon: User,
+        to: tenantRoute(slug, "/my-profile"),
+        matchers: ["/my-profile", "/edit-profile"]
+      });
+    }
 
     return nextTabs;
-  }, [canChat, canEvents, canFamilyTrees, canPhotos, canSearch, slug, unreadCount]);
+  }, [canChat, canEvents, canFamilyTrees, canPhotos, canSearch, isCampDirector, slug, unreadCount]);
 
   return (
     <nav className="native-member-tabbar" aria-label="App navigation">

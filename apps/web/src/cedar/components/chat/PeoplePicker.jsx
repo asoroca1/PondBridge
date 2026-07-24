@@ -62,7 +62,9 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
   const [q, setQ] = useState("");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const debounce = useRef(null);
+  const searchRequest = useRef(0);
   const myUserId = useMemo(() => myUserIdFromToken(), []);
 
   function displaySelectedCount() {
@@ -74,15 +76,24 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
   }, []);
 
   async function search(term) {
-    if (!term) { setItems([]); return; }
+    const requestId = ++searchRequest.current;
+    if (!term) {
+      setItems([]);
+      setError("");
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setError("");
     try {
       const res = await fetch(`${API_BASE}/search/names?q=${encodeURIComponent(term)}&limit=10`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json().catch(() => null);
+      if (requestId !== searchRequest.current) return;
       if (!res.ok) {
         setItems([]);
+        setError(data?.error?.message || "Unable to search members. Try again.");
         return;
       }
       const rawItems = Array.isArray(data?.items) ? data.items : [];
@@ -104,15 +115,18 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
       });
       setItems(next);
     } catch {
+      if (requestId !== searchRequest.current) return;
       setItems([]);
+      setError("Unable to search members. Check your connection and try again.");
     } finally {
-      setLoading(false);
+      if (requestId === searchRequest.current) setLoading(false);
     }
   }
 
   function onInput(e) {
     const v = e.target.value;
     setQ(v);
+    setError("");
     clearTimeout(debounce.current);
     debounce.current = setTimeout(() => search(v.trim()), 200);
   }
@@ -121,9 +135,17 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
     <div className="pp-wrap">
       <div className="pp-search">
         <Search size={16}/>
-        <input className="pp-input" placeholder="Search names…" value={q} onChange={onInput}/>
+        <input
+          className="pp-input"
+          placeholder="Search names…"
+          value={q}
+          onChange={onInput}
+          aria-label="Search camp members"
+          aria-describedby={error ? "pp-search-error" : undefined}
+        />
         {displaySelectedCount()}
       </div>
+      {error ? <div id="pp-search-error" className="pp-error" role="alert">{error}</div> : null}
       <ul className="pp-list">
         {loading && <li className="pp-item muted">Searching…</li>}
         {!loading && items.map(u => {
@@ -135,25 +157,27 @@ export default function PeoplePicker({ onSelect, selected = [], multi = false })
           const job  = u.currentJob || "";
           const isSel = selected.some((s) => normalizeEntityId(s?.id || s?.userId) === id);
           return (
-            <li
-              key={id}
-              className={`pp-item ${isSel?"is-selected":""}`}
-              onClick={() =>
-                onSelect &&
-                onSelect({
-                  ...u,
-                  id,
-                  _id: id,
-                  userId: identity.userId || id,
-                  profileId: identity.profileId
-                })
-              }
-            >
-              <PickerAvatar photo={pic} firstName={u.firstName} lastName={u.lastName} name={name} />
-              <div className="pp-text">
-                <div className="pp-name">{name}</div>
-                {job && <div className="pp-sub">{job}</div>}
-              </div>
+            <li key={id}>
+              <button
+                type="button"
+                className={`pp-item ${isSel?"is-selected":""}`}
+                aria-pressed={isSel}
+                onClick={() =>
+                  onSelect?.({
+                    ...u,
+                    id,
+                    _id: id,
+                    userId: identity.userId || id,
+                    profileId: identity.profileId
+                  })
+                }
+              >
+                <PickerAvatar photo={pic} firstName={u.firstName} lastName={u.lastName} name={name} />
+                <div className="pp-text">
+                  <div className="pp-name">{name}</div>
+                  {job && <div className="pp-sub">{job}</div>}
+                </div>
+              </button>
             </li>
           );
         })}

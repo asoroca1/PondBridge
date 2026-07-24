@@ -14,10 +14,15 @@ function formatDateTime(value) {
   return parsed.toLocaleString();
 }
 
-function Toggle({ label, checked, onChange }) {
+function Toggle({ label, checked, onChange, disabled = false }) {
   return (
     <label className="mobile-notifications-toggle">
-      <input type="checkbox" checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} />
+      <input
+        type="checkbox"
+        checked={Boolean(checked)}
+        disabled={disabled}
+        onChange={(event) => Promise.resolve(onChange(event.target.checked)).catch(() => {})}
+      />
       <span>{label}</span>
     </label>
   );
@@ -33,6 +38,8 @@ export default function MobileNotificationsPage() {
     permissionState,
     preferences,
     loading,
+    error,
+    lastUpdatedAt,
     refresh,
     loadInbox,
     enablePush,
@@ -43,6 +50,7 @@ export default function MobileNotificationsPage() {
   } = useMobileNotifications();
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!supported) return;
@@ -64,15 +72,34 @@ export default function MobileNotificationsPage() {
 
   async function saveCategory(key, value) {
     setSaving(true);
+    setNotice("");
     try {
       await updatePreferences({
         categories: {
           [key]: value
         }
       });
+      setNotice("Notification preferences saved.");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function savePushEnabled(value) {
+    setSaving(true);
+    setNotice("");
+    try {
+      await updatePreferences({ pushEnabled: value });
+      setNotice(value ? "Push alerts are allowed for this account." : "Push alerts are paused for this account.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleEnablePush() {
+    setNotice("");
+    const result = await enablePush();
+    if (result === "granted") setNotice("This phone is registered for push alerts.");
   }
 
   return (
@@ -83,11 +110,12 @@ export default function MobileNotificationsPage() {
           <h1>Inbox and push alerts</h1>
           <p className="muted">
             {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}` : "All caught up"}
+            {lastUpdatedAt ? ` · Updated ${lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}
           </p>
         </div>
         <div className="mobile-notifications-header-actions">
-          <Button variant="ghost" onClick={() => refresh().catch(() => {})}>
-            Refresh
+          <Button variant="ghost" loading={loading} onClick={() => refresh().catch(() => {})}>
+            {loading ? "Refreshing" : "Refresh"}
           </Button>
           {unreadCount > 0 ? (
             <Button variant="secondary" onClick={() => markAllRead().catch(() => {})}>
@@ -107,28 +135,60 @@ export default function MobileNotificationsPage() {
                 : "Push notifications are not enabled yet."}
             </p>
           </div>
-          <Button onClick={() => enablePush().catch(() => {})}>
+          <Button onClick={() => handleEnablePush().catch(() => {})}>
             {permissionState === "granted" ? <Bell size={16} /> : <BellOff size={16} />}
             {permissionState === "granted" ? "Re-register push" : "Enable push"}
           </Button>
+        </div>
+
+        <div className="mobile-notifications-master-pref">
+          <Toggle
+            label="Allow push alerts for this account"
+            checked={preferences?.pushEnabled !== false}
+            disabled={!preferences || saving}
+            onChange={savePushEnabled}
+          />
+          <p className="muted">Pause pushes here without losing messages from your in-app inbox.</p>
         </div>
 
         <div className="mobile-notifications-pref-grid">
           <Toggle
             label="Announcements"
             checked={categoryPrefs.announcements}
+            disabled={!preferences || saving || preferences?.pushEnabled === false}
             onChange={(value) => saveCategory("announcements", value)}
           />
-          <Toggle label="Events" checked={categoryPrefs.events} onChange={(value) => saveCategory("events", value)} />
+          <Toggle
+            label="Events"
+            checked={categoryPrefs.events}
+            disabled={!preferences || saving || preferences?.pushEnabled === false}
+            onChange={(value) => saveCategory("events", value)}
+          />
           <Toggle
             label="Community"
             checked={categoryPrefs.community}
+            disabled={!preferences || saving || preferences?.pushEnabled === false}
             onChange={(value) => saveCategory("community", value)}
           />
-          <Toggle label="Account" checked={categoryPrefs.account} onChange={(value) => saveCategory("account", value)} />
-          <Toggle label="Admin" checked={categoryPrefs.admin} onChange={(value) => saveCategory("admin", value)} />
+          <Toggle
+            label="Account"
+            checked={categoryPrefs.account}
+            disabled={!preferences || saving || preferences?.pushEnabled === false}
+            onChange={(value) => saveCategory("account", value)}
+          />
+          <Toggle
+            label="Admin"
+            checked={categoryPrefs.admin}
+            disabled={!preferences || saving || preferences?.pushEnabled === false}
+            onChange={(value) => saveCategory("admin", value)}
+          />
         </div>
-        {saving ? <p className="muted">Saving preferences...</p> : null}
+        {permissionState === "denied" ? (
+          <p className="mobile-notifications-warning">Push is disabled in iPhone Settings. Your inbox remains available here.</p>
+        ) : null}
+        {error ? <p className="mobile-notifications-error" role="alert">{error}</p> : null}
+        {saving ? <p className="muted" role="status">Saving preferences...</p> : null}
+        {!saving && notice ? <p className="mobile-notifications-success" role="status">{notice}</p> : null}
       </Card>
 
       <Card className="mobile-notifications-card">

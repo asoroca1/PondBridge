@@ -2,16 +2,23 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { isValidObjectId } from "../utils/objectId.js";
 import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
+import { requireTenantModule } from "../middleware/requireFeature.js";
 import { UserModel, ProfileModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { sanitizeText } from "../utils/sanitize.js";
 import { createTtlCache } from "../utils/ttlCache.js";
+import { filterProfileContactFields, normalizeProfilePrivacy } from "../services/profilePrivacy.js";
 import {
   canonicalizeCityName,
   canonicalizeCountryName,
   composeCityState,
   parseCityStateDetailed
 } from "../utils/location.js";
+import {
+  findMemberBlockBetween,
+  getMutuallyBlockedUserIds,
+  isSafetyModerator
+} from "../services/memberSafety.js";
 
 const router = Router({ mergeParams: true });
 const PROFILE_LIST_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
@@ -206,6 +213,7 @@ router.put("/me", profileUpdateLimiter, async (req, res) => {
     pastJobs: Array.isArray(req.body.pastJobs) ? req.body.pastJobs : undefined,
     industry: sanitizeText(String(req.body.industry || "").trim()),
     socials: nextSocials,
+    privacy: req.body?.privacy !== undefined ? normalizeProfilePrivacy(req.body.privacy) : undefined,
     avatarUrl: String(req.body.avatarUrl || "").trim(),
     bio: sanitizeText(String(req.body.bio || "").trim())
   };
@@ -227,7 +235,7 @@ router.put("/me", profileUpdateLimiter, async (req, res) => {
   return res.json({ profile: withNickname(profile) });
 });
 
-router.get("/", async (req, res) => {
+router.get("/", requireTenantModule("directory"), async (req, res) => {
   const q = String(req.query.q || "").trim();
   const roleAtCamp = String(req.query.roleAtCamp || "").trim();
   const industry = String(req.query.industry || "").trim();
@@ -235,9 +243,14 @@ router.get("/", async (req, res) => {
   const view = String(req.query.view || "summary").trim().toLowerCase();
   const includeFull = view === "full";
   const limit = Math.min(Math.max(Number(req.query.limit || 30) || 30, 1), 100);
+  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+    user: req.user
+  });
+  const blockedUserIdSet = new Set(blockedUserIds);
   const cacheKey = [
     String(req.tenant?._id || ""),
     String(req.user?.id || ""),
+    blockedUserIds.join(","),
     q,
     roleAtCamp,
     industry,
@@ -261,11 +274,14 @@ router.get("/", async (req, res) => {
     limit
   });
 
+  const visibleItems = items.filter(
+    (profile) => !blockedUserIdSet.has(String(profile?.userId || ""))
+  );
   const payload = {
-    total: items.length,
+    total: visibleItems.length,
     items: includeFull
-      ? items.map((profile) => withNickname(profile))
-      : items.map((profile) => mapProfileSummary(profile))
+      ? visibleItems.map((profile) => withNickname(filterProfileContactFields(profile, req.user)))
+      : visibleItems.map((profile) => mapProfileSummary(profile))
   };
 
   if (!includeFull) {
@@ -276,7 +292,7 @@ router.get("/", async (req, res) => {
   return res.json(payload);
 });
 
-router.get("/:profileId", async (req, res) => {
+router.get("/:profileId", requireTenantModule("directory"), async (req, res) => {
   const profileId = String(req.params.profileId || "");
   if (!isValidObjectId(profileId)) {
     return res.status(400).json({
@@ -291,7 +307,19 @@ router.get("/:profileId", async (req, res) => {
     });
   }
 
-  return res.json({ profile: withNickname(profile) });
+  if (
+    !isSafetyModerator(req.user) &&
+    profile?.userId &&
+    (await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId))
+  ) {
+    return res.status(404).json({
+      error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }
+    });
+  }
+
+  return res.json({
+    profile: withNickname(filterProfileContactFields(profile, req.user))
+  });
 });
 
 export default router;

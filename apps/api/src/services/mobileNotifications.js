@@ -2,6 +2,10 @@ import crypto from "crypto";
 import http2 from "http2";
 import { env } from "../config/env.js";
 import {
+  hasFcmHttpV1Configuration,
+  sendFcmHttpV1Message
+} from "./fcmHttpV1.js";
+import {
   MobileNotificationDeviceModel,
   MobileNotificationModel,
   MobileNotificationPreferenceModel,
@@ -39,6 +43,12 @@ export const DEFAULT_USER_MOBILE_NOTIFICATION_PREFERENCES = {
 
 const PUSHABLE_CATEGORIES = new Set(["announcements", "events", "community", "account", "admin"]);
 const PERMANENT_APNS_ERRORS = new Set(["BadDeviceToken", "DeviceTokenNotForTopic", "Unregistered"]);
+const AUTOMATIC_NOTIFICATION_PREF_BY_KIND = new Map([
+  ["member_joined", "newMemberJoined"],
+  ["approval_request_submitted", "approvalRequests"],
+  ["member_flagged", "memberFlagged"],
+  ["content_report_created", "memberFlagged"]
+]);
 
 function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -247,14 +257,23 @@ async function sendApnsAlert({
 }
 
 function hasFcmConfiguration() {
-  return Boolean(env.FCM_SERVER_KEY);
+  return hasFcmHttpV1Configuration({
+    projectId: env.FCM_PROJECT_ID,
+    clientEmail: env.FCM_CLIENT_EMAIL,
+    privateKey: env.FCM_PRIVATE_KEY
+  });
 }
 
-const PERMANENT_FCM_ERRORS = new Set([
-  "NotRegistered",
-  "InvalidRegistration",
-  "MismatchSenderId"
-]);
+export function getMobileNotificationProviderStatus() {
+  const apnsConfigured = hasApnsConfiguration();
+  const fcmConfigured = hasFcmConfiguration();
+  return {
+    available: apnsConfigured || fcmConfigured,
+    apnsConfigured,
+    fcmConfigured,
+    fcmProtocol: "http_v1"
+  };
+}
 
 async function sendFcmAlert({
   token,
@@ -270,45 +289,24 @@ async function sendFcmAlert({
   }
 
   try {
-    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
-      method: "POST",
-      headers: {
-        authorization: `key=${env.FCM_SERVER_KEY}`,
-        "content-type": "application/json"
+    return await sendFcmHttpV1Message({
+      config: {
+        projectId: env.FCM_PROJECT_ID,
+        clientEmail: env.FCM_CLIENT_EMAIL,
+        privateKey: env.FCM_PRIVATE_KEY
       },
-      body: JSON.stringify({
-        to: token,
-        priority: "high",
-        notification: {
-          title: normalizeText(title, 120),
-          body: normalizeLongText(body, 240),
-          sound: soundEnabled ? "default" : undefined,
-          click_action: "FLUTTER_NOTIFICATION_CLICK"
-        },
-        data: {
-          category: String(category || ""),
-          deepLink: String(deepLink || ""),
-          ...Object.fromEntries(
-            Object.entries(isObject(data) ? data : {}).map(([key, value]) => [key, String(value ?? "")])
-          )
-        }
-      })
+      token,
+      title: normalizeText(title, 120),
+      body: normalizeLongText(body, 240),
+      soundEnabled,
+      data: {
+        category: String(category || ""),
+        deepLink: String(deepLink || ""),
+        ...Object.fromEntries(
+          Object.entries(isObject(data) ? data : {}).map(([key, value]) => [key, String(value ?? "")])
+        )
+      }
     });
-
-    const payload = await response.json().catch(() => ({}));
-    const results = Array.isArray(payload?.results) ? payload.results : [];
-    const firstError = results.find((item) => item?.error)?.error || "";
-
-    if (response.ok && !firstError) {
-      return { ok: true, status: "delivered", error: "", permanent: false };
-    }
-
-    return {
-      ok: false,
-      status: "failed",
-      error: firstError || `FCM ${response.status}`,
-      permanent: PERMANENT_FCM_ERRORS.has(firstError)
-    };
   } catch (error) {
     return {
       ok: false,
@@ -342,6 +340,13 @@ export function normalizeTenantMobileNotificationPrefs(value = {}) {
     weeklySummary: normalizeBoolean(source.weeklySummary, DEFAULT_TENANT_MOBILE_NOTIFICATION_PREFS.weeklySummary),
     soundEnabled: normalizeBoolean(source.soundEnabled, DEFAULT_TENANT_MOBILE_NOTIFICATION_PREFS.soundEnabled)
   };
+}
+
+export function tenantAllowsAutomaticMobileNotification(value = {}, kind = "") {
+  const preferences = normalizeTenantMobileNotificationPrefs(value);
+  if (!preferences.mobileEnabled) return false;
+  const preferenceKey = AUTOMATIC_NOTIFICATION_PREF_BY_KIND.get(String(kind || "").trim().toLowerCase());
+  return preferenceKey ? Boolean(preferences[preferenceKey]) : true;
 }
 
 export function normalizeUserMobileNotificationPreferences(value = {}) {
@@ -379,7 +384,7 @@ export async function registerMobileDevice({
   userId,
   token,
   platform = "ios",
-  appId = env.APNS_BUNDLE_ID,
+  appId = "",
   environment = env.APNS_USE_SANDBOX ? "sandbox" : "production",
   permissionState = "granted"
 }) {
@@ -387,15 +392,23 @@ export async function registerMobileDevice({
   if (!tenantId || !userId || !normalizedToken) {
     throw new Error("tenantId, userId, and token are required.");
   }
+  const normalizedPlatform = String(platform || "").trim().toLowerCase() === "android" ? "android" : "ios";
+  const normalizedAppId = normalizeText(
+    appId || (normalizedPlatform === "android" ? env.FCM_ANDROID_APP_ID : env.APNS_BUNDLE_ID),
+    120
+  );
+  const normalizedEnvironment = normalizedPlatform === "android"
+    ? "production"
+    : normalizeText(environment, 32) || "sandbox";
 
   const existing = await MobileNotificationDeviceModel.findOne({ token: normalizedToken });
   if (existing) {
     return MobileNotificationDeviceModel.update(existing._id, {
       tenantId,
       userId,
-      platform: normalizeText(platform, 24) || "ios",
-      appId: normalizeText(appId, 120),
-      environment: normalizeText(environment, 32) || "sandbox",
+      platform: normalizedPlatform,
+      appId: normalizedAppId,
+      environment: normalizedEnvironment,
       permissionState: normalizeText(permissionState, 24) || "granted",
       isActive: true,
       lastSeenAt: new Date(),
@@ -407,10 +420,10 @@ export async function registerMobileDevice({
   return MobileNotificationDeviceModel.create({
     tenantId,
     userId,
-    platform: normalizeText(platform, 24) || "ios",
+    platform: normalizedPlatform,
     token: normalizedToken,
-    appId: normalizeText(appId, 120),
-    environment: normalizeText(environment, 32) || "sandbox",
+    appId: normalizedAppId,
+    environment: normalizedEnvironment,
     permissionState: normalizeText(permissionState, 24) || "granted",
     isActive: true,
     lastSeenAt: new Date(),
@@ -465,17 +478,24 @@ export async function listUserMobileNotifications(tenantId, userId, { limit = 40
 
   const rows = await MobileNotificationModel.find(tenantId, filter, {
     sort: { createdAt: -1 },
-    limit: Math.max(1, Math.min(Number(limit || 40), 100))
+    limit: Math.max(1, Math.min(Number(limit || 40) * 2, 200))
   });
-  return rows.map((row) => toNotificationClient(row));
+  return rows
+    .filter((row) => row?.delivery?.inboxVisible !== false)
+    .slice(0, Math.max(1, Math.min(Number(limit || 40), 100)))
+    .map((row) => toNotificationClient(row));
 }
 
 export async function countUnreadMobileNotifications(tenantId, userId) {
-  return MobileNotificationModel.count(tenantId, {
+  const rows = await MobileNotificationModel.find(tenantId, {
     userId,
     archivedAt: null,
     readAt: null
+  }, {
+    select: ["id", "delivery"],
+    limit: 5000
   });
+  return rows.filter((row) => row?.delivery?.inboxVisible !== false).length;
 }
 
 export async function markMobileNotificationsRead(tenantId, userId, ids = []) {
@@ -560,7 +580,7 @@ export async function listRecentMobileNotificationBatches(tenantId, { limit = 20
     group.totalRecipients += 1;
     if (String(delivery.pushStatus || "") === "delivered") group.pushDelivered += 1;
     if (String(delivery.pushStatus || "") === "failed") group.pushFailed += 1;
-    if (!row.readAt && !row.archivedAt) group.unreadCount += 1;
+    if (delivery.inboxVisible !== false && !row.readAt && !row.archivedAt) group.unreadCount += 1;
   }
 
   return [...grouped.values()]
@@ -580,7 +600,7 @@ async function deliverNotificationToUser({
   userPrefs
 }) {
   const delivery = {
-    inboxVisible: true,
+    inboxVisible: Boolean(tenantPrefs.inboxEnabled),
     pushRequested: true,
     pushStatus: "pending",
     pushDeliveredAt: null,
@@ -671,6 +691,9 @@ export async function sendMobileNotificationBatch({
   }
 
   const tenantPrefs = normalizeTenantMobileNotificationPrefs(tenant?.notificationPrefs || {});
+  if (!tenantPrefs.mobileEnabled || (!tenantPrefs.inboxEnabled && (!tenantPrefs.pushEnabled || !pushRequested))) {
+    return { batchId, notifications: [], totalRecipients: 0, skipped: "tenant_disabled" };
+  }
   const users = await UserModel.find(tenantId, { _id: { $in: normalizedUserIds } }, {
     select: ["id", "roles", "status", "email"]
   });
@@ -705,7 +728,7 @@ export async function sendMobileNotificationBatch({
       deepLink: normalizeDeepLink(deepLink),
       data: isObject(data) ? data : {},
       delivery: {
-        inboxVisible: true,
+        inboxVisible: Boolean(tenantPrefs.inboxEnabled),
         pushRequested: Boolean(pushRequested),
         pushStatus: pushRequested ? "pending" : "disabled"
       }
@@ -749,6 +772,9 @@ export async function notifyTenantAdmins({
 }) {
   const tenantId = String(tenant?._id || tenant?.id || "").trim();
   if (!tenantId) return { batchId: "", notifications: [], totalRecipients: 0 };
+  if (!tenantAllowsAutomaticMobileNotification(tenant?.notificationPrefs || {}, kind)) {
+    return { batchId: "", notifications: [], totalRecipients: 0, skipped: "automatic_trigger_disabled" };
+  }
 
   const admins = await UserModel.find(tenantId, { status: "active" }, {
     select: ["id", "roles", "status", "email"]

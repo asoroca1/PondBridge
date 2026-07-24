@@ -15,6 +15,96 @@ export function isMemberEventsModuleEnabled(value = true) {
   return MEMBER_EVENTS_PAGES_ENABLED && value !== false;
 }
 
+export const TENANT_MODULE_CATALOG = Object.freeze([
+  {
+    key: "directory",
+    label: "Member Directory",
+    description: "Member profiles and directory browsing.",
+    memberPath: "/search"
+  },
+  {
+    key: "search",
+    label: "Advanced Search",
+    description: "Search members by name, camp role, location, industry, and more.",
+    memberPath: "/search",
+    dependsOn: ["directory"]
+  },
+  {
+    key: "events",
+    label: "Events",
+    description: "Member-facing events, RSVP collection, and director invite campaigns.",
+    memberPath: "/events",
+    directorPath: "/admin/events"
+  },
+  {
+    key: "photoStream",
+    label: "Photo Stream",
+    description: "Shared gallery where members upload and browse camp photos.",
+    memberPath: "/photo-stream"
+  },
+  {
+    key: "chat",
+    label: "Messaging",
+    description: "Direct messages, group conversations, and community forums.",
+    memberPath: "/chat-rooms?tab=personal"
+  },
+  {
+    key: "map",
+    label: "Location Map",
+    description: "Interactive map showing where members live and work.",
+    memberPath: "/location-map"
+  },
+  {
+    key: "familyTrees",
+    label: "Family Trees",
+    description: "Visualize multi-generational camp family connections.",
+    memberPath: "/family-trees",
+    requiredFeature: "familyTrees"
+  },
+  {
+    key: "relatedProfiles",
+    label: "Related Profiles",
+    description: "Recommend relevant member connections throughout the community.",
+    memberPath: "/search",
+    dependsOn: ["directory"]
+  },
+  {
+    key: "newsletter",
+    label: "Newsletter",
+    description: "Newsletter archive and camp announcements for members.",
+    memberPath: "/cedar-chest"
+  },
+  {
+    key: "merchShop",
+    label: "Merch Shop",
+    description: "Link members to the camp's external merchandise storefront.",
+    setupField: "merchShopUrl"
+  }
+]);
+
+export const DEFAULT_TENANT_MODULES = Object.freeze(
+  Object.fromEntries(TENANT_MODULE_CATALOG.map((module) => [module.key, true]))
+);
+
+export function resolveTenantModules(value = {}, { applyPlatformAvailability = true } = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const modules = Object.fromEntries(
+    TENANT_MODULE_CATALOG.map((module) => [
+      module.key,
+      source[module.key] !== false
+    ])
+  );
+
+  if (modules.directory === false) {
+    modules.search = false;
+    modules.relatedProfiles = false;
+  }
+  if (applyPlatformAvailability) {
+    modules.events = isMemberEventsModuleEnabled(modules.events);
+  }
+  return modules;
+}
+
 export const onboardingStatuses = ["not_started", "in_progress", "live"];
 export const onboardingStepIds = [
   "name_branding",
@@ -231,6 +321,7 @@ export const resumeProfileSchema = z.object({
   email: z.string().trim().default(""),
   phone: z.string().trim().default(""),
   cityState: z.string().trim().default(""),
+  bio: z.string().trim().max(1600).default(""),
   highSchool: z.string().trim().default(""),
   colleges: z.array(z.string().trim()).default([]),
   collegeYears: z.array(z.string().trim()).default([]),
@@ -349,7 +440,7 @@ export const tenantModulesSchema = z.object({
   relatedProfiles: z.boolean().default(true),
   newsletter: z.boolean().default(true),
   merchShop: z.boolean().default(true)
-});
+}).transform((modules) => resolveTenantModules(modules, { applyPlatformAvailability: false }));
 
 export const onboardingChecklistItemSchema = z.object({
   id: z.string().trim().min(1),

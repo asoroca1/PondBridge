@@ -150,6 +150,7 @@ export default function BrandImageColorPicker({
           accept="image/*"
           onChange={handleUpload}
           className="brand-image-picker-file-input"
+          aria-label="Reference image upload"
         />
         {uploadedImageUrl ? (
           <button

@@ -2,23 +2,117 @@
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Paperclip, Send, X } from "lucide-react";
 
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+const ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+
+const MIME_BY_EXTENSION = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  csv: "text/csv",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+};
+
+function attachmentMime(file) {
+  const provided = String(file?.type || "").trim().toLowerCase();
+  if (provided) return provided;
+  const extension = String(file?.name || "").split(".").pop()?.toLowerCase();
+  return MIME_BY_EXTENSION[extension] || "";
+}
+
+function createClientRequestId() {
+  if (globalThis.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(12);
+    globalThis.crypto.getRandomValues(bytes);
+    return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.slice(0, 24).padEnd(24, "0");
+}
+
+function draftStorageKey(draftKey = "") {
+  const key = String(draftKey || "").trim();
+  return key ? `pondbridge:message-draft:${key}` : "";
+}
+
+function readDraft(draftKey = "", maxLength = 4000) {
+  const key = draftStorageKey(draftKey);
+  if (!key) return "";
+  try {
+    return String(localStorage.getItem(key) || "").slice(0, maxLength);
+  } catch {
+    return "";
+  }
+}
+
+function writeDraft(draftKey = "", value = "", maxLength = 4000) {
+  const key = draftStorageKey(draftKey);
+  if (!key) return;
+  try {
+    const text = String(value || "").slice(0, maxLength);
+    if (text) localStorage.setItem(key, text);
+    else localStorage.removeItem(key);
+  } catch {
+    // Draft persistence is a convenience; storage restrictions must not block messaging.
+  }
+}
+
 export default function MessageComposer({
   onSend,
   onPresign,
   labelOverride,
+  draftKey,
+  maxLength = 4000,
   onTypingStart,
   onTypingStop,
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => readDraft(draftKey, maxLength));
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   // Pending attachment (preview before upload)
   const [attach, setAttach] = useState(
-    /** @type {null | { kind: "image"|"file", file: File, previewUrl?: string }} */ (null)
+    /** @type {null | { kind: "image"|"file", file: File, mime: string, previewUrl?: string }} */ (null)
   );
 
   const fileRef = useRef(null);
   const typingTimerRef = useRef(null);
+  const typingStopRef = useRef(onTypingStop);
+  const textRequestIdRef = useRef("");
+  const attachmentRequestIdRef = useRef("");
+  typingStopRef.current = onTypingStop;
 
   // Clean up object URLs
   useEffect(() => {
@@ -26,6 +120,13 @@ export default function MessageComposer({
       if (attach?.previewUrl) URL.revokeObjectURL(attach.previewUrl);
     };
   }, [attach?.previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(typingTimerRef.current);
+      typingStopRef.current?.();
+    };
+  }, []);
 
   function pingTyping() {
     if (onTypingStart) onTypingStart();
@@ -47,6 +148,22 @@ export default function MessageComposer({
     input.onchange = () => {
       const f = input.files?.[0];
       if (!f) return;
+      const mime = attachmentMime(f);
+
+      if (f.size > MAX_ATTACHMENT_BYTES) {
+        setError("Attachment must be 20 MB or smaller.");
+        input.value = "";
+        return;
+      }
+      if (!ATTACHMENT_MIME_TYPES.has(mime) || (kind === "image" && !mime.startsWith("image/"))) {
+        setError(
+          kind === "image"
+            ? "Choose a JPG, PNG, GIF, WebP, HEIC, or HEIF image."
+            : "Choose an image, PDF, document, spreadsheet, presentation, text, CSV, or video file."
+        );
+        input.value = "";
+        return;
+      }
 
       // Make/replace preview; don't upload yet
       setAttach((prev) => {
@@ -54,10 +171,12 @@ export default function MessageComposer({
         const next = {
           kind: kind === "image" ? "image" : "file",
           file: f,
+          mime,
           previewUrl: kind === "image" ? URL.createObjectURL(f) : undefined,
         };
         return next;
       });
+      attachmentRequestIdRef.current = "";
 
       input.value = "";
     };
@@ -69,6 +188,7 @@ export default function MessageComposer({
       if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
       return null;
     });
+    attachmentRequestIdRef.current = "";
   }
 
   async function uploadAndSendAttachment() {
@@ -78,7 +198,10 @@ export default function MessageComposer({
     const kind = attach.kind;
 
     // 1) Ask server for presign
-    const presigned = await onPresign?.(f);
+    const presigned = await onPresign?.(f, { kind, mime: attach.mime });
+    if (presigned?.error) {
+      throw new Error(presigned.error?.message || presigned.error || "Unable to prepare this attachment.");
+    }
     const { uploadUrl, objectUrl, headers, key } = presigned || {};
     if (!uploadUrl || !objectUrl) {
       throw new Error("Missing presign data");
@@ -97,16 +220,20 @@ export default function MessageComposer({
     }
 
     // 3) Send message referencing uploaded object
+    const clientRequestId = attachmentRequestIdRef.current || createClientRequestId();
+    attachmentRequestIdRef.current = clientRequestId;
     await onSend?.({
       kind,
+      clientRequestId,
       media: {
         url: objectUrl,
         key,              // keep for deletion/cleanup
-        mime: f.type,
+        mime: attach.mime,
         name: f.name,
         size: f.size,
       },
     });
+    attachmentRequestIdRef.current = "";
 
     // 4) Clear local preview
     removeAttachment();
@@ -118,6 +245,7 @@ export default function MessageComposer({
     if ((!hasText && !hasAttach) || busy) return;
 
     setBusy(true);
+    setError("");
     try {
       // If there is an attachment, upload & send it first
       if (hasAttach) {
@@ -125,12 +253,16 @@ export default function MessageComposer({
       }
       // Then send the text (if provided)
       if (hasText) {
-        await onSend?.({ kind: "text", text: text.trim() });
+        const clientRequestId = textRequestIdRef.current || createClientRequestId();
+        textRequestIdRef.current = clientRequestId;
+        await onSend?.({ kind: "text", text: text.trim(), clientRequestId });
+        textRequestIdRef.current = "";
         setText("");
+        writeDraft(draftKey, "", maxLength);
       }
     } catch (e) {
       console.error(e);
-      // Optionally: alert("Upload failed. Please try again.");
+      setError(String(e?.message || "Unable to send this message. Please try again."));
     } finally {
       setBusy(false);
       clearTyping();
@@ -141,7 +273,9 @@ export default function MessageComposer({
 
   return (
     <div className="mc-wrap">
+      {error ? <div className="mc-error" role="alert">{error}</div> : null}
       <button
+        type="button"
         className="mc-icon"
         title="Add image"
         onClick={() => openPicker("image")}
@@ -152,6 +286,7 @@ export default function MessageComposer({
       </button>
 
       <button
+        type="button"
         className="mc-icon"
         title="Add file"
         onClick={() => openPicker("file")}
@@ -175,6 +310,7 @@ export default function MessageComposer({
             </div>
           )}
           <button
+            type="button"
             className="mc-attach-remove"
             onClick={removeAttachment}
             title="Remove attachment"
@@ -194,32 +330,42 @@ export default function MessageComposer({
         value={text}
         onChange={(e) => {
           setText(e.target.value);
+          writeDraft(draftKey, e.target.value, maxLength);
+          textRequestIdRef.current = "";
+          setError("");
           pingTyping();
         }}
         onKeyDown={(e) => {
+          if (e.nativeEvent?.isComposing || e.isComposing) return;
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             submit();
-            return;
           }
-          pingTyping();
         }}
         onBlur={clearTyping}
         rows={1}
+        maxLength={maxLength}
         disabled={busy}
+        aria-label={labelOverride ? `Write a ${labelOverride.toLowerCase()}` : "Write a message"}
       />
 
+      {maxLength - text.length <= 500 ? (
+        <span className="mc-count" aria-live="polite">{maxLength - text.length} characters left</span>
+      ) : null}
+
       <button
+        type="button"
         className="mc-send"
         onClick={submit}
         disabled={!canSend}
         aria-disabled={!canSend}
+        aria-label={busy ? "Sending message" : labelOverride || "Send message"}
       >
         <Send size={16} />
         <span>{labelOverride || "Send"}</span>
       </button>
 
-      <input ref={fileRef} type="file" style={{ display: "none" }} />
+      <input ref={fileRef} type="file" style={{ display: "none" }} tabIndex={-1} aria-hidden="true" />
       {/* Quick inline styles for the preview; you can move into chats.css */}
       <style>{`
         .mc-attach {

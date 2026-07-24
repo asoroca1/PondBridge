@@ -21,5 +21,7 @@
     console.error("PondBridge compatibility bootstrap failed", error);
   }
 
-  window.location.replace(`/?pb_compat_retry=${Date.now()}`);
+  // Preserve the current document. The static recovery module shows an
+  // explicit update action instead of forcing an unexplained page reload.
+  await import(`/chunk-missing-reload.js?pb_notice=${Date.now()}`).catch(() => {});
 })();

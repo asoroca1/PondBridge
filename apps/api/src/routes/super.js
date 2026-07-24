@@ -13,6 +13,7 @@ import {
   UserModel,
   ProfileModel,
   InviteModel,
+  AlumniContactModel,
   AccessRequestModel,
   MagicLinkTokenModel,
   ConversationModel,
@@ -26,6 +27,7 @@ import {
   ImportReportModel,
   AnalyticsEventModel,
   TenantAdminAuditLogModel,
+  PlatformAdminAuditLogModel,
   ResumeParseResultModel,
   ActivityItemModel,
   ResendWebhookEventModel,
@@ -41,11 +43,31 @@ import { createDefaultChecklist } from "../services/onboarding.js";
 import { deprovisionTenantDomain, provisionTenantDomain } from "../services/cloudflareDomains.js";
 import { getEmailServiceStatus } from "../services/email.js";
 import { getR2ServiceStatus, purgeTenantObjectsFromR2 } from "../services/objectStorage.js";
-import { buildTenantUrls, defaultTenantDomain, isReservedSubdomain } from "../utils/domainProvisioning.js";
+import {
+  buildTenantUrls,
+  defaultTenantDomain,
+  isReservedSubdomain,
+  isValidTenantDomain,
+  normalizeTenantDomain
+} from "../utils/domainProvisioning.js";
 import { generateUniqueMobileAppCode } from "../utils/mobileAppCode.js";
-import { hashOpaqueToken } from "../utils/tokens.js";
 import { env } from "../config/env.js";
 import { deleteClerkUserAccount, isClerkManagementConfigured } from "../services/clerkIdentity.js";
+import {
+  buildModuleAdoption,
+  buildResendDeliveryTelemetry
+} from "../services/operationalTelemetry.js";
+import {
+  buildSuperSearchTenantItem,
+  superSearchIncludesDirectors
+} from "../services/superSearchPolicy.js";
+import {
+  getFeatureRollout,
+  listFeatureRollouts,
+  normalizeFeatureRolloutInput,
+  saveFeatureRollout
+} from "../services/featureRollouts.js";
+import { removeAllTenantMembershipIdentityLinks } from "../services/identityUsers.js";
 
 const router = Router();
 const superSearchLimiter = rateLimit({
@@ -124,120 +146,10 @@ const TENANT_PURGE_STEPS = [
   { key: "magicLinkTokens", model: MagicLinkTokenModel },
   { key: "accessRequests", model: AccessRequestModel },
   { key: "invites", model: InviteModel },
+  { key: "alumniContacts", model: AlumniContactModel },
   { key: "profiles", model: ProfileModel },
   { key: "users", model: UserModel }
 ];
-const FLAG_TEMPLATES = [
-  {
-    key: "directory_module",
-    name: "Directory",
-    description: "Member directory and search experience",
-    enabled: true,
-    rolloutPercent: 100,
-    tierConfig: { base: true, premium: true },
-    overrides: []
-  },
-  {
-    key: "messaging_module",
-    name: "Messaging",
-    description: "Direct messaging and chat rooms",
-    enabled: true,
-    rolloutPercent: 100,
-    tierConfig: { base: true, premium: true },
-    overrides: []
-  },
-  {
-    key: "events_module",
-    name: "Events",
-    description: "Event publishing and RSVP flow",
-    enabled: false,
-    rolloutPercent: 35,
-    tierConfig: { base: false, premium: true },
-    overrides: []
-  },
-  {
-    key: "family_trees_module",
-    name: "Family Trees",
-    description: "Camp lineage and relationship mapping",
-    enabled: true,
-    rolloutPercent: 100,
-    tierConfig: { base: false, premium: true },
-    overrides: []
-  },
-  {
-    key: "photo_archive_module",
-    name: "Photo Archive",
-    description: "Photo feed and archive browser",
-    enabled: true,
-    rolloutPercent: 100,
-    tierConfig: { base: true, premium: true },
-    overrides: []
-  },
-  {
-    key: "merch_module",
-    name: "Merch",
-    description: "Merch store links and campaign cards",
-    enabled: true,
-    rolloutPercent: 100,
-    tierConfig: { base: true, premium: true },
-    overrides: []
-  },
-  {
-    key: "newsletter_module",
-    name: "Newsletter",
-    description: "Newsletter archive and publish workflows",
-    enabled: true,
-    rolloutPercent: 100,
-    tierConfig: { base: true, premium: true },
-    overrides: []
-  }
-];
-const featureFlagState = new Map(FLAG_TEMPLATES.map((flag) => [flag.key, { ...flag }]));
-const scheduledJobsState = new Map([
-  [
-    "nightly-analytics-refresh",
-    {
-      key: "nightly-analytics-refresh",
-      name: "Nightly Analytics Refresh",
-      schedule: "0 2 * * *",
-      scheduleHuman: "Daily at 2:00 AM UTC",
-      enabled: true,
-      lastRunAt: null,
-      nextRunAt: null,
-      lastStatus: "success",
-      lastError: ""
-    }
-  ],
-  [
-    "onboarding-health-check",
-    {
-      key: "onboarding-health-check",
-      name: "Onboarding Health Check",
-      schedule: "0 */6 * * *",
-      scheduleHuman: "Every 6 hours",
-      enabled: true,
-      lastRunAt: null,
-      nextRunAt: null,
-      lastStatus: "success",
-      lastError: ""
-    }
-  ],
-  [
-    "billing-followup-reminders",
-    {
-      key: "billing-followup-reminders",
-      name: "Billing Followup Reminders",
-      schedule: "30 14 * * 1-5",
-      scheduleHuman: "Weekdays at 2:30 PM UTC",
-      enabled: true,
-      lastRunAt: null,
-      nextRunAt: null,
-      lastStatus: "success",
-      lastError: ""
-    }
-  ]
-]);
-
 router.use(requireAuth, requireRole(...SUPER_CONSOLE_ROLES));
 
 function nowIso() {
@@ -527,6 +439,11 @@ async function purgeTenantGlobalUserArtifacts({ emailCandidates = [] } = {}) {
 async function purgeTenantRows(tenantId) {
   const counts = {};
 
+  const identityCleanup = await removeAllTenantMembershipIdentityLinks(tenantId);
+  counts.tenantMemberships = identityCleanup.membershipsDeleted;
+  counts.unusedIdentities = identityCleanup.identitiesDeleted;
+  counts.identityStorageAvailable = identityCleanup.storageAvailable;
+
   for (const step of TENANT_PURGE_STEPS) {
     const existing = await step.model.count(tenantId, {});
     counts[step.key] = existing;
@@ -575,14 +492,14 @@ function tenantMrr(tenant = {}) {
   return planMonthlyAmount(tenant);
 }
 
-function fauxPaymentMethod(tenant = {}) {
+function paymentMethodSummary(tenant = {}) {
   if (!tenant.stripeCustomerId) {
     return { status: "no_card", label: "No card on file" };
   }
   if (tenant.billingStatus === "past_due") {
     return { status: "issue", label: "Card issue — action required" };
   }
-  return { status: "ok", label: "Visa •••• 4242 exp 12/26" };
+  return { status: "ok", label: "Managed in Stripe" };
 }
 
 function inferOnboardingStage(tenant = {}) {
@@ -605,6 +522,16 @@ function statusTone(status = "") {
   return "neutral";
 }
 
+function operationNotAvailable(res, capability, message) {
+  return res.status(501).json({
+    error: {
+      code: "OPERATION_NOT_AVAILABLE",
+      capability,
+      message
+    }
+  });
+}
+
 function buildSeries(days, reducerMap) {
   const base = startOfUtcDay(new Date());
   const points = [];
@@ -621,7 +548,7 @@ function mapOnboardingStepLabel(step = "") {
     name_branding: "Branding",
     welcome_message: "Welcome Copy",
     signup_controls: "Access Rules",
-    import_alumni: "Members Imported",
+    import_alumni: "First Invitations",
     modules: "Features",
     review_launch: "Review"
   };
@@ -709,6 +636,16 @@ router.get("/search", superSearchLimiter, async (req, res) => {
   }
 
   const ilikePattern = `%${q}%`;
+  const role = getPrimaryRole(req.user);
+  const directorSearch = superSearchIncludesDirectors(role)
+    ? UserModel.find(
+        {
+          roles: { $contains: ["tenant_admin"] },
+          email: { $ilike: ilikePattern }
+        },
+        { select: ["id", "tenantId", "email"], sort: { email: 1 }, limit: 8 }
+      )
+    : Promise.resolve([]);
   const [tenantsByName, tenantsBySlug, directors] = await Promise.all([
     TenantModel.find(
       { name: { $ilike: ilikePattern } },
@@ -718,13 +655,7 @@ router.get("/search", superSearchLimiter, async (req, res) => {
       { slug: { $ilike: ilikePattern } },
       { select: ["id", "name", "slug", "customDomain"], sort: { slug: 1 }, limit: 8 }
     ),
-    UserModel.find(
-      {
-        roles: { $contains: ["tenant_admin"] },
-        email: { $ilike: ilikePattern }
-      },
-      { select: ["id", "tenantId", "email"], sort: { email: 1 }, limit: 8 }
-    )
+    directorSearch
   ]);
 
   const tenantMap = new Map();
@@ -753,17 +684,13 @@ router.get("/search", superSearchLimiter, async (req, res) => {
   }
 
   const tenants = Array.from(tenantMap.values()).slice(0, 8);
-  const includeHidden = getPrimaryRole(req.user) === "super_admin";
+  const includeHidden = role === "super_admin";
   const visibleTenants = includeHidden ? tenants : tenants.filter((tenant) => !isTestOrSandboxTenant(tenant));
 
   const items = [
-    ...visibleTenants.map((tenant) => ({
-      id: `tenant_${tenant.slug}`,
-      type: "tenant",
-      label: tenant.name,
-      meta: tenant.customDomain || `${tenant.slug}.${APP_BASE_DOMAIN}`,
-      href: `/super/tenants?search=${encodeURIComponent(tenant.slug)}`
-    })),
+    ...visibleTenants.map((tenant) =>
+      buildSuperSearchTenantItem(tenant, role, { appBaseDomain: APP_BASE_DOMAIN })
+    ),
     ...directors.map((director) => {
       const tenant = tenantMap.get(toObjectIdString(director.tenantId));
       if (!tenant || (!includeHidden && isTestOrSandboxTenant(tenant))) return null;
@@ -793,13 +720,15 @@ router.get("/dashboard", requireRole("support_admin"), async (_req, res) => {
 router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) => {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * DAY_MS);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * DAY_MS);
 
-  const [tenants, profiles7dCount, failedJobs7d, invites7d, inactiveTenants] = await Promise.all([
+  const [tenants, profiles7dCount, failedJobs7d, emailEvents7d, inactiveTenants] = await Promise.all([
     TenantModel.find({}),
     ProfileModel.count({ createdAt: { $gte: sevenDaysAgo } }),
     ImportReportModel.count({ "summary.errorCount": { $gt: 0 }, createdAt: { $gte: sevenDaysAgo } }),
-    InviteModel.find({ createdAt: { $gte: sevenDaysAgo } }, { sort: { createdAt: -1 } }),
+    ResendWebhookEventModel.find(
+      { occurredAt: { $gte: sevenDaysAgo } },
+      { sort: { occurredAt: -1 }, limit: 5000 }
+    ),
     TenantModel.count({ status: "inactive" })
   ]);
 
@@ -808,44 +737,9 @@ router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) =>
   const pendingApprovals = tenants.filter((tenant) => tenant?.settings?.signupMode === "approval_queue").length;
 
   const mrrCurrent = tenants.reduce((sum, tenant) => sum + tenantMrr(tenant), 0);
-  const mrrPrevious = tenants
-    .filter((tenant) => new Date(tenant.createdAt) < thirtyDaysAgo)
-    .reduce((sum, tenant) => sum + tenantMrr(tenant), 0);
-  const mrrDeltaPercent = computeDeltaPercent(mrrCurrent, mrrPrevious);
 
-  let sent = 0;
-  let delivered = 0;
-  let bounced = 0;
-  const inviteDaily = new Map();
-  for (const invite of invites7d) {
-    sent += 1;
-    if (invite.usedAt) delivered += 1;
-    else if (invite.expiresAt && new Date(invite.expiresAt) < now) bounced += 1;
-
-    const key = dayKey(invite.createdAt || now);
-    const row = inviteDaily.get(key) || { sent: 0, delivered: 0 };
-    row.sent += 1;
-    if (invite.usedAt) row.delivered += 1;
-    inviteDaily.set(key, row);
-  }
-  const emailHealthRate = sent > 0 ? ((delivered + Math.max(0, sent - delivered - bounced)) / sent) * 100 : 99.2;
-
-  const emailSeriesMap = new Map();
-  for (const [key, value] of inviteDaily.entries()) {
-    const rate = value.sent ? (value.delivered / value.sent) * 100 : 100;
-    emailSeriesMap.set(key, rate);
-  }
-
-  const mrrSeriesMap = new Map();
-  for (let i = 0; i < 7; i += 1) {
-    const date = new Date(startOfUtcDay(now).getTime() - i * DAY_MS);
-    const key = dayKey(date);
-    const activeThatDay = tenants.filter((tenant) => {
-      const createdAt = new Date(tenant.createdAt || now);
-      return createdAt <= date && billingStatusLabel(tenant) === "active";
-    });
-    mrrSeriesMap.set(key, activeThatDay.reduce((sum, tenant) => sum + planMonthlyAmount(tenant), 0));
-  }
+  const emailTelemetry = buildResendDeliveryTelemetry({ events: emailEvents7d, tenants, now });
+  const emailHealthRate = emailTelemetry.stats.deliveryRate;
 
   const alerts = [];
   if (pastDue > 0) {
@@ -868,7 +762,7 @@ router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) =>
       time: nowIso()
     });
   }
-  if (emailHealthRate < 95) {
+  if (emailHealthRate != null && emailHealthRate < 95) {
     alerts.push({
       id: "email",
       type: "low_delivery",
@@ -895,17 +789,18 @@ router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) =>
     stats: {
       activeTenants,
       mrrCurrent,
-      mrrDeltaPercent,
+      mrrDeltaPercent: null,
       emailHealthRate,
-      openJobs: 0,
+      openJobs: null,
       failedJobs7d,
       newMembers7d: profiles7dCount,
       pendingApprovals
     },
     charts: {
-      mrr7d: buildSeries(7, mrrSeriesMap),
-      emailHealth7d: buildSeries(7, emailSeriesMap)
+      mrr7d: [],
+      emailHealth7d: emailTelemetry.charts.deliverySeries
     },
+    billingTrendAvailable: false,
     alerts: alerts.slice(0, 5),
     integrations: {
       stripe: "db_synced",
@@ -913,7 +808,7 @@ router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) =>
       r2: getR2ServiceStatus(),
       loops: "not_connected",
       posthog: "partial",
-      trigger: "proxy_from_import_reports"
+      trigger: "not_connected"
     }
   });
 });
@@ -1115,15 +1010,15 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     networkDirectorClaimLink,
     directorInvite,
     loopsSync: {
-      status: "queued_mock",
-      message: "Director lifecycle contact sync is scaffolded and can be connected to Loops API."
+      status: "not_configured",
+      message: "No director lifecycle contact sync was attempted. Configure and verify a provider integration before enabling this step."
     },
     nextSteps: [
       domainReady
         ? "Share the director claim link."
         : "Share the fallback claim link now while camp domain activation completes in Cloudflare.",
       "The first verified signup on this camp domain claims director access.",
-      "Director is redirected into onboarding wizard."
+      "Director is redirected into the resumable onboarding command center."
     ]
   });
 });
@@ -1140,7 +1035,18 @@ router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
   if (req.body.planTier) update.planTier = req.body.planTier;
   if (req.body.onboardingStatus) update.onboardingStatus = req.body.onboardingStatus;
   if (req.body.theme) update.theme = req.body.theme;
-  if (req.body.customDomain) update.customDomain = String(req.body.customDomain).trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(req.body, "customDomain")) {
+    const customDomain = normalizeTenantDomain(req.body.customDomain);
+    if (!isValidTenantDomain(customDomain)) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_CUSTOM_DOMAIN",
+          message: "Custom domain must be a valid hostname, such as alumni.examplecamp.org."
+        }
+      });
+    }
+    update.customDomain = customDomain;
+  }
 
   if (Object.prototype.hasOwnProperty.call(req.body, "slug")) {
     const nextSlug = normalizeSlug(String(req.body.slug || "").trim());
@@ -1175,7 +1081,35 @@ router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
     }
   }
 
-  const tenant = await TenantModel.update(req.params.tenantId, update);
+  if (Object.prototype.hasOwnProperty.call(update, "customDomain")) {
+    const duplicateDomainTenant = await TenantModel.findByDomain(update.customDomain);
+    if (
+      duplicateDomainTenant &&
+      String(duplicateDomainTenant._id) !== String(existingTenant._id)
+    ) {
+      return res.status(409).json({
+        error: {
+          code: "CUSTOM_DOMAIN_IN_USE",
+          message: `Custom domain '${update.customDomain}' is already assigned to another camp.`
+        }
+      });
+    }
+  }
+
+  let tenant = null;
+  try {
+    tenant = await TenantModel.update(req.params.tenantId, update);
+  } catch (error) {
+    if (String(error?.code || "") === "23505") {
+      return res.status(409).json({
+        error: {
+          code: "TENANT_IDENTITY_CONFLICT",
+          message: "That camp slug or custom domain is already in use."
+        }
+      });
+    }
+    throw error;
+  }
   if (!tenant) {
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
   }
@@ -1463,154 +1397,30 @@ router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, re
 router.get("/email/transactional", requireRole("support_admin"), async (req, res) => {
   const days = Math.min(Math.max(Number(req.query.days || 7), 1), 30);
   const since = new Date(Date.now() - days * DAY_MS);
-  const [invites, tenants] = await Promise.all([
-    InviteModel.find({ createdAt: { $gte: since } }, { sort: { createdAt: -1 } }),
+  const [events, tenants] = await Promise.all([
+    ResendWebhookEventModel.find(
+      { occurredAt: { $gte: since } },
+      { sort: { occurredAt: -1 }, limit: 5000 }
+    ),
     TenantModel.find({})
   ]);
 
-  const tenantMap = new Map(tenants.map((tenant) => [toObjectIdString(tenant._id), tenant]));
-  const now = new Date();
-
-  let sentCount = 0;
-  let deliveredCount = 0;
-  let bouncedCount = 0;
-  let complainedCount = 0;
-  const deliveryMap = new Map();
-  const bounceMap = new Map();
-  const domainCounts = new Map();
-  const tenantVolume = new Map();
-
-  const rows = invites.map((invite) => {
-    const tenant = tenantMap.get(toObjectIdString(invite.tenantId));
-    const email = String(invite.email || "").toLowerCase();
-    const domain = email.includes("@") ? email.split("@").pop() : "unknown";
-
-    sentCount += 1;
-    let status = "sent";
-    if (invite.usedAt) {
-      status = "delivered";
-      deliveredCount += 1;
-    } else if (invite.expiresAt && new Date(invite.expiresAt) < now) {
-      status = "bounced";
-      bouncedCount += 1;
-      domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
-    }
-
-    const key = dayKey(invite.createdAt || now);
-    if (!deliveryMap.has(key)) deliveryMap.set(key, { sent: 0, delivered: 0, bounced: 0 });
-    const dayTotals = deliveryMap.get(key);
-    dayTotals.sent += 1;
-    if (status === "delivered") dayTotals.delivered += 1;
-    if (status === "bounced") dayTotals.bounced += 1;
-    bounceMap.set(key, dayTotals.bounced / Math.max(dayTotals.sent, 1));
-
-    const tenantName = tenant?.name || "Unknown camp";
-    tenantVolume.set(tenantName, (tenantVolume.get(tenantName) || 0) + 1);
-
-    return {
-      id: toObjectIdString(invite._id),
-      timestamp: invite.createdAt,
-      tenantName,
-      emailType: invite.roleToAssign === "tenant_admin" ? "director_invite" : "member_invite",
-      recipientDomain: domain,
-      status,
-      statusTone: statusTone(status),
-      messageId: toObjectIdString(invite._id).slice(0, 20),
-      canRetry: status === "bounced"
-    };
-  });
-
-  const deliveryRate = sentCount > 0 ? (deliveredCount / sentCount) * 100 : 100;
-  const bounceRate = sentCount > 0 ? (bouncedCount / sentCount) * 100 : 0;
-  const spamRate = complainedCount > 0 && sentCount > 0 ? (complainedCount / sentCount) * 100 : 0;
-
-  const deliverySeries = buildSeries(
-    7,
-    new Map(
-      Array.from(deliveryMap.entries()).map(([key, totals]) => [
-        key,
-        totals.sent > 0 ? (totals.delivered / totals.sent) * 100 : 100
-      ])
-    )
-  );
-  const bounceSeries = buildSeries(
-    7,
-    new Map(Array.from(bounceMap.entries()).map(([key, rate]) => [key, rate * 100]))
-  );
-
-  const topBouncingDomains = Array.from(domainCounts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([domain, count]) => ({
-      domain,
-      bounces: count,
-      rate: sentCount > 0 ? (count / sentCount) * 100 : 0
-    }));
-
-  const volumeByTenant = Array.from(tenantVolume.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
-    .map(([tenantName, sent]) => ({ tenantName, sent }));
-
-  return res.json({
-    asOf: nowIso(),
-    source: "invite-event-proxy",
-    stats: {
-      deliveryRate,
-      bounceRate,
-      spamRate,
-      totalSent: sentCount
-    },
-    charts: {
-      deliverySeries,
-      bounceSeries,
-      volumeByTenant
-    },
-    topBouncingDomains,
-    rows,
-    notice: "Recipient addresses are privacy-safe. Domain only is shown."
-  });
+  return res.json(buildResendDeliveryTelemetry({ events, tenants }));
 });
 
-router.post("/email/retry", requireSuperMutation, async (req, res) => {
-  const inviteId = String(req.body.inviteId || "").trim();
-  const token = String(req.body.token || "").trim();
-  if (!inviteId && !token) {
-    return res.status(400).json({
-      error: { code: "INVALID_INPUT", message: "inviteId or token is required" }
-    });
-  }
-
-  const invite =
-    (inviteId ? await InviteModel.findOne({ _id: inviteId }) : null) ||
-    (token
-      ? await InviteModel.findOne({ token: hashOpaqueToken(token) })
-      : null) ||
-    (token ? await InviteModel.findOne({ token }) : null);
-
-  if (!invite) {
-    return res.status(404).json({
-      error: { code: "INVITE_NOT_FOUND", message: "Invite not found" }
-    });
-  }
-
-  await InviteModel.update(invite._id, {
-    usedAt: null,
-    usedByUserId: null,
-    expiresAt: new Date(Date.now() + 14 * DAY_MS)
-  });
-
-  await writeAudit(invite.tenantId, req.user.id, "super_email_retry", {
-    inviteId: toObjectIdString(invite._id)
-  });
-
-  return res.json({ ok: true, status: "queued", inviteId: toObjectIdString(invite._id) });
+router.post("/email/retry", requireSuperMutation, async (_req, res) => {
+  return operationNotAvailable(
+    res,
+    "transactional_email_retry",
+    "Email retry is disabled until a provider-backed retry workflow can recreate the original message safely."
+  );
 });
 
 router.get("/email/broadcast", requireRole("support_admin"), async (_req, res) => {
-  const [directorCount, tenants] = await Promise.all([
+  const [directorCount, tenants, activeSuppressions] = await Promise.all([
     UserModel.count({ roles: { $contains: ["tenant_admin"] } }),
-    TenantModel.find({})
+    TenantModel.find({}),
+    EmailSuppressionModel.count({ status: "active" })
   ]);
 
   const stageCounts = {
@@ -1636,49 +1446,15 @@ router.get("/email/broadcast", requireRole("support_admin"), async (_req, res) =
     if (stage === "Launched") stageCounts.launched += 1;
   }
 
-  const unsubscribed = Math.round(directorCount * 0.06);
-  const bounced = Math.round(directorCount * 0.01);
-
   return res.json({
     asOf: nowIso(),
+    integrationConnected: false,
     contacts: {
       total: directorCount,
-      subscribed: Math.max(0, directorCount - unsubscribed - bounced),
-      unsubscribed,
-      bounced
+      source: "pondbridge_director_accounts",
+      activeSuppressions
     },
-    sequences: [
-      {
-        id: "welcome-sequence",
-        name: "Director Welcome Sequence",
-        enrolled: Math.max(stageCounts.accountCreated, 1),
-        openRate: 38.4,
-        clickRate: 11.8,
-        unsubscribes: Math.max(1, Math.round(unsubscribed * 0.4)),
-        lastSendAt: nowIso(),
-        externalUrl: "https://loops.so"
-      },
-      {
-        id: "onboarding-nudges",
-        name: "Onboarding Nudge Sequence",
-        enrolled: Math.max(stageCounts.brandingDone, 1),
-        openRate: 32.1,
-        clickRate: 9.3,
-        unsubscribes: Math.max(1, Math.round(unsubscribed * 0.35)),
-        lastSendAt: nowIso(),
-        externalUrl: "https://loops.so"
-      },
-      {
-        id: "launch-followup",
-        name: "Post-Launch Director Sequence",
-        enrolled: Math.max(stageCounts.launched, 1),
-        openRate: 44.6,
-        clickRate: 15.9,
-        unsubscribes: Math.max(1, Math.round(unsubscribed * 0.25)),
-        lastSendAt: nowIso(),
-        externalUrl: "https://loops.so"
-      }
-    ],
+    sequences: [],
     contactsByStage: [
       { stage: "Invited", count: stageCounts.invited },
       { stage: "Account Created", count: stageCounts.accountCreated },
@@ -1686,7 +1462,8 @@ router.get("/email/broadcast", requireRole("support_admin"), async (_req, res) =
       { stage: "Features Done", count: stageCounts.featuresDone },
       { stage: "Launched", count: stageCounts.launched }
     ],
-    notes: "Loops API integration is scaffold-ready. Data shown uses live tenant onboarding state for now."
+    notes:
+      "Lifecycle-provider contact and sequence telemetry is not connected. Counts shown come only from PondBridge director accounts, onboarding state, and provider suppressions."
   });
 });
 
@@ -1697,11 +1474,11 @@ router.post("/email/broadcast/contact", requireSuperMutation, async (req, res) =
       error: { code: "INVALID_INPUT", message: "Valid email is required" }
     });
   }
-  return res.status(201).json({
-    ok: true,
-    status: "queued",
-    message: "Contact sync request queued. Connect Loops API to persist this action."
-  });
+  return operationNotAvailable(
+    res,
+    "lifecycle_contact_sync",
+    "Contact sync is disabled until a lifecycle email provider is connected."
+  );
 });
 
 router.post("/email/broadcast/suppress", requireSuperMutation, async (req, res) => {
@@ -1711,11 +1488,11 @@ router.post("/email/broadcast/suppress", requireSuperMutation, async (req, res) 
       error: { code: "INVALID_INPUT", message: "Valid email is required" }
     });
   }
-  return res.status(201).json({
-    ok: true,
-    status: "queued",
-    message: "Suppress contact request queued. Connect Loops API to persist this action."
-  });
+  return operationNotAvailable(
+    res,
+    "lifecycle_contact_suppression",
+    "Lifecycle-provider suppression is disabled until that provider is connected. Resend bounce and complaint suppressions remain automatic."
+  );
 });
 
 router.get("/billing/overview", requireRole("support_admin", "finance_admin"), async (_req, res) => {
@@ -1724,16 +1501,18 @@ router.get("/billing/overview", requireRole("support_admin", "finance_admin"), a
   const thirtyDaysAgo = new Date(now.getTime() - 30 * DAY_MS);
 
   const mrrCurrent = tenants.reduce((sum, tenant) => sum + tenantMrr(tenant), 0);
-  const mrrPrevious = tenants
-    .filter((tenant) => new Date(tenant.createdAt || now) < thirtyDaysAgo)
-    .reduce((sum, tenant) => sum + tenantMrr(tenant), 0);
-
   const newSubs = tenants.filter(
-    (tenant) => new Date(tenant.createdAt || now) >= thirtyDaysAgo && billingStatusLabel(tenant) === "active"
+    (tenant) => {
+      const billing = resolveTenantBilling(tenant);
+      return billing.activatedAt && new Date(billing.activatedAt) >= thirtyDaysAgo;
+    }
   );
 
   const churned = tenants.filter(
-    (tenant) => new Date(tenant.updatedAt || now) >= thirtyDaysAgo && billingStatusLabel(tenant) === "canceled"
+    (tenant) => {
+      const billing = resolveTenantBilling(tenant);
+      return billing.canceledAt && new Date(billing.canceledAt) >= thirtyDaysAgo;
+    }
   );
 
   const failedPayments = tenants.filter((tenant) => billingStatusLabel(tenant) === "past_due").length;
@@ -1745,28 +1524,20 @@ router.get("/billing/overview", requireRole("support_admin", "finance_admin"), a
     comp: tenants.filter((tenant) => billingStatusLabel(tenant) === "comp").length
   };
 
-  const mrrTrendMap = new Map();
-  for (let i = 0; i < 60; i += 1) {
-    const pointDate = new Date(startOfUtcDay(now).getTime() - i * DAY_MS);
-    const key = dayKey(pointDate);
-    const pointValue = tenants
-      .filter((tenant) => new Date(tenant.createdAt || now) <= pointDate)
-      .reduce((sum, tenant) => sum + tenantMrr(tenant), 0);
-    mrrTrendMap.set(key, pointValue);
-  }
-
   res.json({
     asOf: nowIso(),
+    source: "pondbridge_billing_state",
+    trendAvailable: false,
     stats: {
       mrr: mrrCurrent,
-      mrrDeltaPercent: computeDeltaPercent(mrrCurrent, mrrPrevious),
+      mrrDeltaPercent: null,
       newSubscriptions30d: newSubs.length,
       churned30d: churned.length,
       churnedMrrLost30d: churned.reduce((sum, tenant) => sum + planMonthlyAmount(tenant), 0),
       failedPayments
     },
     charts: {
-      mrrTrend60d: buildSeries(60, mrrTrendMap),
+      mrrTrend60d: [],
       planDistribution
     }
   });
@@ -1794,8 +1565,8 @@ router.get("/billing/tenants", requireRole("support_admin", "finance_admin"), as
   }
 
   const mapped = tenants.map((tenant) => {
-    const payment = fauxPaymentMethod(tenant);
-    const nextRenewal = new Date(new Date(tenant.createdAt || Date.now()).getTime() + 30 * DAY_MS);
+    const payment = paymentMethodSummary(tenant);
+    const billing = resolveTenantBilling(tenant);
     return {
       id: toObjectIdString(tenant._id),
       name: tenant.name,
@@ -1804,7 +1575,7 @@ router.get("/billing/tenants", requireRole("support_admin", "finance_admin"), as
       planTier: tenant.planTier,
       billingStatus: billingStatusLabel(tenant),
       mrr: tenantMrr(tenant),
-      nextRenewal,
+      nextRenewal: billing.currentPeriodEnd,
       paymentMethodStatus: payment.status,
       paymentMethodLabel: payment.label,
       stripeCustomerId: tenant.stripeCustomerId || ""
@@ -1837,41 +1608,11 @@ router.post("/billing/tenants/:tenantId/actions", requireSuperMutation, async (r
     });
   }
 
-  const action = String(req.body.action || "").trim();
-  const patch = {};
-
-  if (action === "change_plan") {
-    patch.planTier = req.body.planTier === "premium" ? "premium" : "base";
-  } else if (action === "extend_trial") {
-    patch.billingStatus = "trialing";
-  } else if (action === "mark_comp") {
-    const addOns = new Set(tenant.addOns || []);
-    addOns.add("comp");
-    patch.addOns = Array.from(addOns);
-    patch.billingStatus = "active";
-  } else if (action === "cancel_subscription") {
-    patch.billingStatus = "canceled";
-  } else if (action === "apply_discount") {
-    const addOns = new Set((tenant.addOns || []).filter((entry) => !String(entry).startsWith("coupon:")));
-    const code = String(req.body.couponCode || "").trim();
-    if (code) addOns.add(`coupon:${code}`);
-    patch.addOns = Array.from(addOns);
-  } else if (action === "manual_invoice") {
-    patch.onboardingFeeInvoiceId = `manual_${Date.now()}`;
-  } else {
-    return res.status(400).json({
-      error: { code: "INVALID_ACTION", message: "Unsupported billing action" }
-    });
-  }
-
-  const updatedTenant = await TenantModel.update(tenant._id, patch);
-
-  await writeAudit(tenant._id, req.user.id, "super_billing_action", {
-    action,
-    payload: req.body
-  });
-
-  return res.json({ ok: true, tenant: updatedTenant });
+  return operationNotAvailable(
+    res,
+    "billing_account_mutation",
+    "Plan, trial, discount, invoice, comp, and cancellation actions are disabled until they execute through Stripe and confirm the resulting state."
+  );
 });
 
 router.get("/billing/failed", requireRole("support_admin", "finance_admin"), async (_req, res) => {
@@ -1905,11 +1646,11 @@ router.post("/billing/failed/:tenantId/retry", requireSuperMutation, async (req,
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
   }
 
-  const updatedTenant = await TenantModel.update(tenant._id, { billingStatus: "active" });
-
-  await writeAudit(tenant._id, req.user.id, "super_billing_retry", {});
-
-  return res.json({ ok: true, tenant: updatedTenant });
+  return operationNotAvailable(
+    res,
+    "billing_payment_retry",
+    "Payment retry is disabled until it invokes Stripe and confirms the resulting payment state."
+  );
 });
 
 router.post("/billing/failed/:tenantId/reminder", requireSuperMutation, async (req, res) => {
@@ -1918,9 +1659,11 @@ router.post("/billing/failed/:tenantId/reminder", requireSuperMutation, async (r
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
   }
 
-  await writeAudit(tenant._id, req.user.id, "super_billing_reminder", {});
-
-  return res.json({ ok: true, queued: true, message: "Reminder queued." });
+  return operationNotAvailable(
+    res,
+    "billing_payment_reminder",
+    "Payment reminders are disabled until a provider-backed delivery workflow is connected."
+  );
 });
 
 router.post("/billing/failed/:tenantId/grace", requireSuperMutation, async (req, res) => {
@@ -1959,11 +1702,8 @@ router.get("/analytics/engagement", requireRole("support_admin"), async (_req, r
       .map((event) => toObjectIdString(event.userId))
       .filter(Boolean)
   ).size;
-  const mau = Math.max(
-    1,
-    new Set(events30d.map((event) => toObjectIdString(event.userId)).filter(Boolean)).size || users.length
-  );
-  const dauMauRatio = clampPercent((dau / mau) * 100);
+  const mau = new Set(events30d.map((event) => toObjectIdString(event.userId)).filter(Boolean)).size;
+  const dauMauRatio = mau > 0 ? clampPercent((dau / mau) * 100) : null;
 
   const completionScores = profiles.map((profile) => {
     const checks = [
@@ -1995,9 +1735,7 @@ router.get("/analytics/engagement", requireRole("support_admin"), async (_req, r
     .map((tenant) => ({
       tenantId: toObjectIdString(tenant._id),
       name: tenant.name,
-      activeUsers:
-        eventTenantCounts.get(toObjectIdString(tenant._id))?.size ||
-        users.filter((user) => toObjectIdString(user.tenantId) === toObjectIdString(tenant._id)).length
+      activeUsers: eventTenantCounts.get(toObjectIdString(tenant._id))?.size || 0
     }))
     .sort((a, b) => b.activeUsers - a.activeUsers)
     .slice(0, 10);
@@ -2042,9 +1780,10 @@ router.get("/analytics/engagement", requireRole("support_admin"), async (_req, r
   }
 
   return res.json({
-    asOf: new Date(startOfUtcDay(now).getTime() - DAY_MS).toISOString(),
+    asOf: nowIso(),
+    measurementSource: "pondbridge_analytics_events",
     stats: {
-      activeUsers7d: activeUsers7d || users.length,
+      activeUsers7d,
       dauMauRatio,
       profileCompletion,
       inactiveTenants: inactiveTenants.length
@@ -2063,9 +1802,11 @@ router.post("/analytics/reengage/:tenantId", requireSuperMutation, async (req, r
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
   }
 
-  await writeAudit(tenant._id, req.user.id, "super_analytics_reengagement", {});
-
-  return res.json({ ok: true, queued: true, tenantId: toObjectIdString(tenant._id) });
+  return operationNotAvailable(
+    res,
+    "tenant_reengagement_campaign",
+    "Re-engagement campaigns are disabled until a previewable, provider-backed delivery workflow is connected."
+  );
 });
 
 router.get("/analytics/funnel", requireRole("support_admin"), async (_req, res) => {
@@ -2184,70 +1925,93 @@ router.get("/analytics/funnel", requireRole("support_admin"), async (_req, res) 
 });
 
 router.get("/analytics/flags", requireRole("support_admin"), async (_req, res) => {
-  const tenants = await TenantModel.find({});
+  const since = new Date(Date.now() - 30 * DAY_MS);
+  const [tenants, analyticsEvents] = await Promise.all([
+    TenantModel.find({}),
+    AnalyticsEventModel.find(
+      { createdAt: { $gte: since } },
+      { select: ["tenantId", "eventType"], limit: 10000 }
+    )
+  ]);
 
-  const moduleConfig = [
-    { key: "directory", name: "Directory" },
-    { key: "chat", name: "Messaging" },
-    { key: "map", name: "Events" },
-    { key: "familyTrees", name: "Family Trees" },
-    { key: "photoStream", name: "Photo Archive" },
-    { key: "merchShop", name: "Merch" },
-    { key: "newsletter", name: "Newsletter" }
-  ];
-
-  const moduleAdoption = moduleConfig.map((module) => {
-    const enabled = tenants.filter((tenant) => tenant?.modules?.[module.key] !== false).length;
-    const used = Math.round(enabled * 0.62);
-    return {
-      moduleKey: module.key,
-      moduleName: module.name,
-      enabledTenants: enabled,
-      activelyUsedTenants: used,
-      adoptionPercent: enabled > 0 ? (used / enabled) * 100 : 0
-    };
-  });
+  const rolloutControl = await listFeatureRollouts();
 
   return res.json({
     asOf: nowIso(),
-    moduleAdoption,
-    flags: Array.from(featureFlagState.values())
+    moduleAdoption: buildModuleAdoption({ tenants, analyticsEvents }),
+    flags: rolloutControl.items,
+    tenants: tenants.map((tenant) => ({
+      id: String(tenant._id || ""),
+      slug: String(tenant.slug || ""),
+      name: String(tenant.name || ""),
+      status: String(tenant.status || "")
+    })),
+    controlAvailable: rolloutControl.controlAvailable,
+    notice: rolloutControl.controlAvailable
+      ? "Rollouts are enforced server-side by tenant ID. Keep the kill switch on until target and control checks pass."
+      : "Rollout controls are locked until the feature_rollouts schema is applied. All supported features fail closed."
   });
 });
 
-router.patch("/analytics/flags/:key", requireSuperMutation, async (req, res) => {
-  const key = String(req.params.key || "").trim();
-  const existing = featureFlagState.get(key);
-  if (!existing) {
-    return res.status(404).json({
-      error: { code: "FLAG_NOT_FOUND", message: "Feature flag not found" }
+router.patch("/analytics/flags/:key", requireSuperMutation, async (req, res, next) => {
+  try {
+    const featureKey = String(req.params.key || "").trim();
+    const normalized = normalizeFeatureRolloutInput(req.body || {});
+    const referencedTenantIds = [...new Set([
+      ...normalized.tenantIds,
+      ...normalized.excludedTenantIds
+    ])];
+    const tenants = referencedTenantIds.length
+      ? await TenantModel.find({ _id: { $in: referencedTenantIds } }, { select: ["id", "slug", "name"] })
+      : [];
+    const knownTenantIds = new Set(tenants.map((tenant) => String(tenant._id || "")));
+    const unknownTenantIds = referencedTenantIds.filter((tenantId) => !knownTenantIds.has(tenantId));
+    if (unknownTenantIds.length) {
+      return res.status(400).json({
+        error: {
+          code: "ROLLOUT_TENANT_NOT_FOUND",
+          message: "One or more rollout tenant IDs do not exist.",
+          details: { unknownTenantIds }
+        }
+      });
+    }
+
+    const current = await getFeatureRollout(featureKey);
+    await PlatformAdminAuditLogModel.create({
+      actorUserId: String(req.user?.id || "") || null,
+      event: "feature_rollout_change_authorized",
+      metadata: {
+        requestId: String(req.requestId || ""),
+        featureKey,
+        previous: current.record
+          ? {
+              state: current.record.state,
+              killSwitch: current.record.killSwitch,
+              tenantIds: current.record.tenantIds || [],
+              excludedTenantIds: current.record.excludedTenantIds || [],
+              revision: current.record.revision
+            }
+          : null,
+        proposed: normalized
+      }
     });
-  }
 
-  const patch = { ...existing };
-  if (typeof req.body.enabled === "boolean") patch.enabled = req.body.enabled;
-  if (typeof req.body.rolloutPercent === "number") patch.rolloutPercent = clampPercent(req.body.rolloutPercent);
-  if (req.body.tierConfig && typeof req.body.tierConfig === "object") {
-    patch.tierConfig = {
-      ...patch.tierConfig,
-      ...(typeof req.body.tierConfig.base === "boolean" ? { base: req.body.tierConfig.base } : {}),
-      ...(typeof req.body.tierConfig.premium === "boolean" ? { premium: req.body.tierConfig.premium } : {})
-    };
+    const result = await saveFeatureRollout(featureKey, normalized, req.user?.id);
+    return res.json({
+      ok: true,
+      rollout: {
+        featureKey: result.saved.featureKey,
+        state: result.saved.state,
+        killSwitch: result.saved.killSwitch,
+        tenantIds: result.saved.tenantIds || [],
+        excludedTenantIds: result.saved.excludedTenantIds || [],
+        revision: result.saved.revision,
+        updatedAt: result.saved.updatedAt
+      }
+    });
+  } catch (error) {
+    return next(error);
   }
-  if (Array.isArray(req.body.overrides)) {
-    patch.overrides = req.body.overrides
-      .filter((override) => override && override.tenantId)
-      .map((override) => ({
-        tenantId: String(override.tenantId),
-        enabled: Boolean(override.enabled),
-        setBy: String(req.user.email || "super_admin"),
-        setAt: nowIso()
-      }));
-  }
-
-  featureFlagState.set(key, patch);
-
-  return res.json({ ok: true, flag: patch });
 });
 
 router.get("/jobs/health", requireRole("support_admin"), async (_req, res) => {
@@ -2289,8 +2053,9 @@ router.get("/jobs/health", requireRole("support_admin"), async (_req, res) => {
   return res.json({
     asOf: nowIso(),
     queue: {
-      running: 0,
-      queued: 0,
+      connected: false,
+      running: null,
+      queued: null,
       completed24h,
       failed24h
     },
@@ -2299,7 +2064,7 @@ router.get("/jobs/health", requireRole("support_admin"), async (_req, res) => {
     banner:
       failed24h > 0
         ? `${failed24h} jobs failed in the last 24 hours. Review job log for details.`
-        : ""
+        : "Durable queue telemetry is not connected. Counts below are completed import reports only."
   });
 });
 
@@ -2390,15 +2155,11 @@ router.post("/jobs/log/:runId/retry", requireSuperMutation, async (req, res) => 
     return res.status(404).json({ error: { code: "RUN_NOT_FOUND", message: "Job run not found" } });
   }
 
-  await writeAudit(report.tenantId, req.user.id, "super_job_retry", {
-    runId
-  });
-
-  return res.json({
-    ok: true,
-    status: "queued",
-    message: "Retry queued with the same source payload."
-  });
+  return operationNotAvailable(
+    res,
+    "job_retry",
+    "Retry is disabled because the original import payload is not retained in a durable job queue."
+  );
 });
 
 router.post("/jobs/log/:runId/cancel", requireSuperMutation, async (req, res) => {
@@ -2408,11 +2169,11 @@ router.post("/jobs/log/:runId/cancel", requireSuperMutation, async (req, res) =>
     return res.status(404).json({ error: { code: "RUN_NOT_FOUND", message: "Job run not found" } });
   }
 
-  await writeAudit(report.tenantId, req.user.id, "super_job_cancel", {
-    runId
-  });
-
-  return res.json({ ok: true, status: "canceled" });
+  return operationNotAvailable(
+    res,
+    "job_cancel",
+    "Completed import reports cannot be canceled, and no active durable job is attached to this record."
+  );
 });
 
 router.get("/jobs/imports", requireRole("support_admin"), async (_req, res) => {
@@ -2454,11 +2215,11 @@ router.post("/jobs/imports/:id/rerun", requireSuperMutation, async (req, res) =>
     return res.status(404).json({ error: { code: "IMPORT_NOT_FOUND", message: "Import not found" } });
   }
 
-  await writeAudit(report.tenantId, req.user.id, "super_import_rerun", {
-    importId: toObjectIdString(report._id)
-  });
-
-  return res.json({ ok: true, status: "queued" });
+  return operationNotAvailable(
+    res,
+    "import_rerun",
+    "Import re-run is disabled because the source file is not retained in a durable, replayable job."
+  );
 });
 
 router.get("/jobs/imports/:id/errors.csv", requireRole("support_admin"), async (req, res) => {
@@ -2482,58 +2243,28 @@ router.get("/jobs/imports/:id/errors.csv", requireRole("support_admin"), async (
 });
 
 router.get("/jobs/scheduled", requireRole("support_admin"), async (_req, res) => {
-  const now = new Date();
-  const items = Array.from(scheduledJobsState.values()).map((job) => {
-    const normalized = { ...job };
-    if (!normalized.lastRunAt) {
-      normalized.lastRunAt = new Date(now.getTime() - 2 * DAY_MS).toISOString();
-    }
-    if (!normalized.nextRunAt) {
-      normalized.nextRunAt = new Date(now.getTime() + DAY_MS).toISOString();
-    }
-    return normalized;
+  return res.json({
+    items: [],
+    controlAvailable: false,
+    notice:
+      "No durable scheduler registry is connected. Scheduled email delivery is managed separately through the email provider."
   });
-
-  return res.json({ items });
 });
 
-router.post("/jobs/scheduled/:key/trigger", requireSuperMutation, async (req, res) => {
-  const key = String(req.params.key || "").trim();
-  const job = scheduledJobsState.get(key);
-  if (!job) {
-    return res.status(404).json({
-      error: { code: "SCHEDULED_JOB_NOT_FOUND", message: "Scheduled job not found" }
-    });
-  }
-
-  const updated = {
-    ...job,
-    lastRunAt: nowIso(),
-    lastStatus: "running"
-  };
-  scheduledJobsState.set(key, updated);
-
-  return res.json({ ok: true, item: updated });
+router.post("/jobs/scheduled/:key/trigger", requireSuperMutation, async (_req, res) => {
+  return operationNotAvailable(
+    res,
+    "scheduled_job_trigger",
+    "Manual job triggering is disabled until a durable scheduler is connected."
+  );
 });
 
-router.post("/jobs/scheduled/:key/toggle", requireSuperMutation, async (req, res) => {
-  const key = String(req.params.key || "").trim();
-  const job = scheduledJobsState.get(key);
-  if (!job) {
-    return res.status(404).json({
-      error: { code: "SCHEDULED_JOB_NOT_FOUND", message: "Scheduled job not found" }
-    });
-  }
-
-  const nextEnabled = typeof req.body.enabled === "boolean" ? req.body.enabled : !job.enabled;
-  const updated = {
-    ...job,
-    enabled: nextEnabled,
-    lastStatus: nextEnabled ? "success" : "disabled"
-  };
-  scheduledJobsState.set(key, updated);
-
-  return res.json({ ok: true, item: updated });
+router.post("/jobs/scheduled/:key/toggle", requireSuperMutation, async (_req, res) => {
+  return operationNotAvailable(
+    res,
+    "scheduled_job_toggle",
+    "Scheduled job toggles are disabled until a durable scheduler is connected."
+  );
 });
 
 router.get("/settings", requireRole("support_admin", "finance_admin"), async (req, res) => {

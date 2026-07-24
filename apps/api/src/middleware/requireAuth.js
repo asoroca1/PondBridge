@@ -8,8 +8,13 @@ import {
   applySuperConsoleRolePolicy,
   ensureGlobalSuperAdmin,
   findSingleTenantMembershipForIdentity,
+  findTenantUserFromMembershipIdentity,
   findTenantUserForIdentity
 } from "../services/identityUsers.js";
+import {
+  evaluateFeatureRollout,
+  MULTI_CAMP_IDENTITY_FLAG
+} from "../services/featureRollouts.js";
 import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
 
 function authUsesLegacy() {
@@ -153,16 +158,21 @@ export async function requireAuth(req, res, next) {
   return requireIdentity(req, res, async () => {
     const tenantId = await resolveTenantIdForAuth(req);
     const identity = req.identity || {};
+    const identityRollout = tenantId
+      ? await evaluateFeatureRollout(MULTI_CAMP_IDENTITY_FLAG, { _id: tenantId })
+      : { enabled: false };
 
     let appUser = null;
-    if (identity.provider === "legacy" && identity.userId) {
+    if (tenantId && identityRollout.enabled) {
+      appUser = await findTenantUserFromMembershipIdentity(tenantId, identity);
+    } else if (identity.provider === "legacy" && identity.userId) {
       appUser = await UserModel.findById(String(identity.userId || ""));
     }
 
     const shouldResolveGlobalSuper = String(identity.provider || "").toLowerCase() === "clerk";
     const superUser = shouldResolveGlobalSuper ? await ensureGlobalSuperAdmin(identity) : null;
     if (tenantId) {
-      if (!appUser) {
+      if (!appUser && !identityRollout.enabled) {
         appUser = await findTenantUserForIdentity(tenantId, identity);
       }
     } else {

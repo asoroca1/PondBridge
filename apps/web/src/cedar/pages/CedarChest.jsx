@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { ModalConfirm, useDialogFocus } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import { resolveNetworkDisplayName, resolveNewsletterLabel } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
@@ -222,17 +224,7 @@ export default function CedarChest() {
     if (uploadBusy) return;
     setUploadOpen(false);
   }, [uploadBusy]);
-
-  useEffect(() => {
-    if (!uploadOpen) return;
-    const onEsc = (event) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      requestCloseUploadModal();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [uploadOpen, requestCloseUploadModal]);
+  const uploadDialogRef = useDialogFocus(uploadOpen, requestCloseUploadModal);
 
   function handleDeleted(id) {
     setNewsletters((prev) => prev.filter((x) => (x._id || x.id) !== id));
@@ -367,7 +359,7 @@ export default function CedarChest() {
           aria-labelledby="cc-upload-modal-title"
           onClick={requestCloseUploadModal}
         >
-          <div className="cc-modal-card" onClick={(event) => event.stopPropagation()}>
+          <div ref={uploadDialogRef} className="cc-modal-card" onClick={(event) => event.stopPropagation()} tabIndex={-1}>
             <div className="cc-modal-head">
               <h2 id="cc-upload-modal-title">Upload New Issue</h2>
               <button
@@ -409,6 +401,7 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
   const [openErr, setOpenErr] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [delErr, setDelErr] = useState("");
+  const { confirm, confirmDialogProps } = useConfirmDialog();
 
   useEffect(() => {
     setCoverBroken(false);
@@ -456,7 +449,12 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
   async function handleDelete(event) {
     event.stopPropagation();
     if (!isAdmin || !id || deleting) return;
-    if (!window.confirm("Delete this newsletter? This cannot be undone.")) return;
+    const accepted = await confirm({
+      title: "Delete this newsletter?",
+      description: `“${title}” and its PDF will no longer be available to members. This cannot be undone.`,
+      confirmLabel: "Delete newsletter",
+    });
+    if (!accepted) return;
 
     setDeleting(true);
     setDelErr("");
@@ -480,7 +478,8 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
   const clickable = Boolean(pdfUrl) && !deleting;
 
   return (
-    <article
+    <>
+      <article
       className={`cc-card ${clickable ? "is-clickable" : ""}`.trim()}
       style={{ animationDelay: `${index * 0.03}s` }}
       role={clickable ? "button" : undefined}
@@ -541,7 +540,9 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
         {!!openErr && <div className="cc-error small">{openErr}</div>}
         {!!delErr && <div className="cc-error small">{delErr}</div>}
       </div>
-    </article>
+      </article>
+      <ModalConfirm {...confirmDialogProps} />
+    </>
   );
 }
 

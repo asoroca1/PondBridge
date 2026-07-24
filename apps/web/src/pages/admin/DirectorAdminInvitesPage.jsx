@@ -107,6 +107,7 @@ export default function DirectorAdminInvitesPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [result, setResult] = useState(null);
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     setHiddenInviteIds(readHiddenInviteIds(slug));
@@ -171,6 +172,7 @@ export default function DirectorAdminInvitesPage() {
   }
 
   function updateRow(rowId, key, value) {
+    setPreview(null);
     setRows((current) =>
       current.map((row) =>
         row.id === rowId
@@ -184,10 +186,12 @@ export default function DirectorAdminInvitesPage() {
   }
 
   function addRow() {
+    setPreview(null);
     setRows((current) => [...current, createInviteRow()]);
   }
 
   function removeRow(rowId) {
+    setPreview(null);
     setRows((current) => {
       if (current.length <= 1) return [createInviteRow()];
       return current.filter((row) => row.id !== rowId);
@@ -195,6 +199,7 @@ export default function DirectorAdminInvitesPage() {
   }
 
   function insertMergeToken(fieldId, setter, token) {
+    setPreview(null);
     if (typeof document === "undefined") {
       setter((current) => `${String(current || "")}${token}`);
       return;
@@ -303,11 +308,25 @@ export default function DirectorAdminInvitesPage() {
       if (file) {
         formData.append("file", file);
       }
+      if (preview?.previewToken) {
+        formData.append("previewToken", preview.previewToken);
+      }
 
-      const response = await request("/invites/send", {
+      const response = await request(preview?.previewToken ? "/invites/send" : "/invites/preview", {
         method: "POST",
         body: formData
       });
+
+      if (!preview?.previewToken) {
+        setPreview(response);
+        const readyCount = Number(response?.summary?.readyCount || 0);
+        setStatus(
+          readyCount > 0
+            ? `Review complete. ${readyCount} invitation${readyCount === 1 ? " is" : "s are"} ready to send.`
+            : "Review complete. There are no new invitations to send."
+        );
+        return;
+      }
 
       setResult(response);
       setStatus(
@@ -317,6 +336,7 @@ export default function DirectorAdminInvitesPage() {
       );
       setRows([createInviteRow()]);
       setFile(null);
+      setPreview(null);
       setFileInputKey((value) => value + 1);
       await loadInvites();
     } catch (requestError) {
@@ -339,7 +359,7 @@ export default function DirectorAdminInvitesPage() {
           }
         />
         <form onSubmit={sendInvites}>
-          <div className="director-admin-table-wrap">
+          <div className="director-admin-table-wrap director-admin-invite-entry-table">
             <table className="director-admin-table" style={{ minWidth: 720 }}>
               <thead>
                 <tr>
@@ -384,11 +404,53 @@ export default function DirectorAdminInvitesPage() {
               </tbody>
             </table>
           </div>
+          <div className="director-admin-invite-mobile-list" aria-label="People to invite">
+            {rows.map((row, index) => (
+              <fieldset key={row.id} className="director-admin-invite-mobile-card">
+                <legend>Invite {index + 1}</legend>
+                <label>
+                  First name
+                  <Input
+                    value={row.firstName}
+                    placeholder="First name"
+                    onChange={(event) => updateRow(row.id, "firstName", event.target.value)}
+                  />
+                </label>
+                <label>
+                  Last name
+                  <Input
+                    value={row.lastName}
+                    placeholder="Last name"
+                    onChange={(event) => updateRow(row.id, "lastName", event.target.value)}
+                  />
+                </label>
+                <label>
+                  Email address
+                  <Input
+                    type="email"
+                    value={row.email}
+                    placeholder="name@email.com"
+                    onChange={(event) => updateRow(row.id, "email", event.target.value)}
+                  />
+                </label>
+                <Button type="button" variant="secondary" size="sm" onClick={() => removeRow(row.id)}>
+                  Remove this invite
+                </Button>
+              </fieldset>
+            ))}
+          </div>
           <div className="inline-actions">
             <Button type="button" variant="secondary" onClick={addRow}>
               Add Row
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setRows([createInviteRow()])}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setRows([createInviteRow()]);
+                setPreview(null);
+              }}
+            >
               Clear Rows
             </Button>
           </div>
@@ -399,7 +461,10 @@ export default function DirectorAdminInvitesPage() {
               key={fileInputKey}
               type="file"
               accept=".csv,text/csv"
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
+              onChange={(event) => {
+                setFile(event.target.files?.[0] || null);
+                setPreview(null);
+              }}
             />
             {file ? (
               <p className="muted">
@@ -435,7 +500,10 @@ export default function DirectorAdminInvitesPage() {
                   id={INVITE_SUBJECT_FIELD_ID}
                   value={customSubject}
                   placeholder="You're invited to {{networkName}}, {{firstName}}"
-                  onChange={(event) => setCustomSubject(event.target.value)}
+                  onChange={(event) => {
+                    setCustomSubject(event.target.value);
+                    setPreview(null);
+                  }}
                 />
               </div>
               <div>
@@ -460,15 +528,73 @@ export default function DirectorAdminInvitesPage() {
                   rows={6}
                   value={customMessage}
                   placeholder={"Hi {{firstName}},\n\nI'd love for you to join our PondBridge community this season."}
-                  onChange={(event) => setCustomMessage(event.target.value)}
+                  onChange={(event) => {
+                    setCustomMessage(event.target.value);
+                    setPreview(null);
+                  }}
                 />
               </div>
             </div>
           </div>
 
+          {preview ? (
+            <div className="director-admin-upload-box" role="status" aria-live="polite">
+              <h2 className="pb-section-title">Recipient Review</h2>
+              <p>
+                <strong>{preview.summary?.readyCount || 0}</strong> ready to send · {preview.summary?.existingMemberCount || 0} existing members · {preview.summary?.pendingInviteCount || 0} already invited · {preview.summary?.invalidCount || 0} invalid rows · {preview.summary?.duplicateInputCount || 0} duplicates removed
+              </p>
+              {preview.items?.length ? (
+                <div className="director-admin-table-wrap">
+                  <table className="director-admin-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.items.map((item) => (
+                        <tr key={`${item.email}_${item.status}`}>
+                          <td>{`${item.firstName || ""} ${item.lastName || ""}`.trim() || "-"}</td>
+                          <td>{item.email}</td>
+                          <td>{String(item.status || "").replaceAll("_", " ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {preview.excludedRows?.length ? (
+                <details>
+                  <summary>{preview.excludedRows.length} excluded CSV row(s)</summary>
+                  <ul>
+                    {preview.excludedRows.map((item) => (
+                      <li key={`${item.rowNumber}_${item.code}`}>
+                        Row {item.rowNumber}: {item.message}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+              <Button type="button" variant="secondary" size="sm" onClick={() => setPreview(null)}>
+                Change recipients
+              </Button>
+            </div>
+          ) : null}
+
           <div className="inline-actions">
-            <Button type="submit" disabled={sending}>
-              {sending ? "Sending Invites..." : "Send Invites"}
+            <Button
+              type="submit"
+              disabled={sending || Boolean(preview && Number(preview.summary?.readyCount || 0) === 0)}
+            >
+              {sending
+                ? preview
+                  ? "Sending Invites..."
+                  : "Reviewing Recipients..."
+                : preview
+                ? `Send ${preview.summary?.readyCount || 0} Invite${Number(preview.summary?.readyCount || 0) === 1 ? "" : "s"}`
+                : "Review Recipients"}
             </Button>
             <Link className="link-button secondary" to={`/t/${slug}/admin/members`}>
               View Members

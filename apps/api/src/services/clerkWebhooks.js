@@ -134,12 +134,23 @@ function recursiveStringValues(value, out = [], depth = 0) {
 
 function slugFromTenantHost(hostname = "") {
   const host = safeString(hostname).toLowerCase();
-  const baseDomain = safeString(env.APP_BASE_DOMAIN).toLowerCase();
-  if (!host || !baseDomain || !host.endsWith(`.${baseDomain}`)) return "";
-  const candidate = host.slice(0, -1 * (baseDomain.length + 1)).split(".")[0] || "";
-  const normalizedCandidate = normalizeSlug(candidate);
-  if (!normalizedCandidate || RESERVED_SUBDOMAINS.has(normalizedCandidate)) return "";
-  return normalizedCandidate;
+  if (!host) return "";
+
+  // Clerk payloads may contain a production continuation URL while this
+  // worker is running in staging or local development. Preserve that tenant
+  // hint as well as recognizing the environment's active base domain.
+  const baseDomains = new Set([
+    safeString(env.APP_BASE_DOMAIN).toLowerCase(),
+    "pondbridgealumni.com"
+  ]);
+  for (const baseDomain of baseDomains) {
+    if (!baseDomain || !host.endsWith(`.${baseDomain}`)) continue;
+    const candidate = host.slice(0, -1 * (baseDomain.length + 1)).split(".")[0] || "";
+    const normalizedCandidate = normalizeSlug(candidate);
+    if (!normalizedCandidate || RESERVED_SUBDOMAINS.has(normalizedCandidate)) return "";
+    return normalizedCandidate;
+  }
+  return "";
 }
 
 export function extractVerificationRouteHint(value = "") {

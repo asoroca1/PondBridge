@@ -9,6 +9,7 @@ import {
   parseHeroImagePosition,
   replaceAlumniForCampType
 } from "@pondbridge/shared";
+import { useDialogFocus } from "./admin/AdminUi.jsx";
 import "./HeroImageEditor.css";
 
 const DRAG_CLAMP_MIN = 0;
@@ -16,6 +17,8 @@ const DRAG_CLAMP_MAX = 100;
 const ZOOM_MIN = 60;
 const ZOOM_MAX = 200;
 const ZOOM_STEP = 2;
+const VIEWPORT_DESKTOP = "desktop";
+const VIEWPORT_MOBILE = "mobile";
 
 const PREVIEW_META = {
   landing: {
@@ -140,10 +143,13 @@ export default function HeroImageEditor({
 
   const [isDragging, setIsDragging] = useState(false);
   const [activePreview, setActivePreview] = useState("");
+  const [selectedPreview, setSelectedPreview] = useState(PREVIEW_META.landing.key);
+  const [previewViewport, setPreviewViewport] = useState(VIEWPORT_DESKTOP);
   const dragPointerIdRef = useRef(null);
   const pendingPositionRef = useRef(null);
   const positionFrameRef = useRef(0);
   const modalSurfaceRef = useRef(null);
+  const previewTabRefs = useRef({});
   const activePreviewKey = activePreview === PREVIEW_META.member.key
     ? PREVIEW_META.member.key
     : PREVIEW_META.landing.key;
@@ -245,15 +251,10 @@ export default function HeroImageEditor({
     dragPointerIdRef.current = null;
     setActivePreview("");
   }, []);
+  const dialogRef = useDialogFocus(Boolean(activePreview), closePreviewEditor);
 
   useEffect(() => {
     if (!activePreview) return undefined;
-
-    const onEscape = (event) => {
-      if (String(event.key || "") === "Escape") {
-        closePreviewEditor();
-      }
-    };
 
     const previousOverflow =
       typeof document !== "undefined" ? String(document.body.style.overflow || "") : "";
@@ -262,22 +263,12 @@ export default function HeroImageEditor({
       document.body.style.overflow = "hidden";
     }
 
-    window.addEventListener("keydown", onEscape);
     return () => {
-      window.removeEventListener("keydown", onEscape);
       if (typeof document !== "undefined") {
         document.body.style.overflow = previousOverflow;
       }
     };
   }, [activePreview, closePreviewEditor]);
-
-  useEffect(() => {
-    if (!activePreview) return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      modalSurfaceRef.current?.focus();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [activePreview]);
 
   const updatePositionFromPointer = useCallback(
     (event, previewKey) => {
@@ -437,6 +428,28 @@ export default function HeroImageEditor({
     .filter(Boolean)
     .join(" ");
 
+  const simulatorStyle = useMemo(
+    () => ({ "--brand-primary": brandPrimary }),
+    [brandPrimary]
+  );
+
+  function onPreviewTabKeyDown(event) {
+    const previewKeys = Object.keys(PREVIEW_META);
+    const currentIndex = previewKeys.indexOf(selectedPreview);
+    let nextIndex = currentIndex;
+
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % previewKeys.length;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + previewKeys.length) % previewKeys.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = previewKeys.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextPreview = previewKeys[nextIndex];
+    setSelectedPreview(nextPreview);
+    previewTabRefs.current[nextPreview]?.focus();
+  }
+
   function renderLandingPreview({ interactive = false, modal = false } = {}) {
     return (
       <div
@@ -580,10 +593,12 @@ export default function HeroImageEditor({
             }}
           >
             <div
+              ref={dialogRef}
               className="hero-image-editor__modal"
               role="dialog"
               aria-modal="true"
               aria-labelledby={`hero-image-editor-modal-title-${variant}`}
+              tabIndex={-1}
             >
               <header className="hero-image-editor__modal-header">
                 <div>
@@ -614,9 +629,14 @@ export default function HeroImageEditor({
 
   return (
     <>
-      <section className={rootClassName}>
+      <section className={rootClassName} style={simulatorStyle}>
         <div className="hero-image-editor__header">
-          <p className="hero-image-editor__label">{label}</p>
+          <div>
+            <p className="hero-image-editor__label">{label}</p>
+            <p className="hero-image-editor__status">
+              <span aria-hidden="true" /> Draft changes appear here instantly
+            </p>
+          </div>
           <button
             type="button"
             className="hero-image-editor__reset"
@@ -626,42 +646,76 @@ export default function HeroImageEditor({
           </button>
         </div>
 
-        <div className="hero-image-editor__preview-grid">
-          <article className="hero-image-editor__preview-card">
-            <header>
-              <h4>{PREVIEW_META.landing.title}</h4>
-              <p>{PREVIEW_META.landing.subtitle}</p>
-            </header>
-            <button
-              type="button"
-              className="hero-image-editor__preview-launcher"
-              onClick={() => setActivePreview(PREVIEW_META.landing.key)}
-              aria-label={PREVIEW_META.landing.aria}
-            >
-              {renderLandingPreview()}
-              <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
-            </button>
-          </article>
+        <div className="hero-image-editor__simulator-toolbar">
+          <div className="hero-image-editor__screen-tabs" role="tablist" aria-label="Preview screen">
+            {Object.values(PREVIEW_META).map((preview) => (
+              <button
+                key={preview.key}
+                type="button"
+                role="tab"
+                ref={(node) => {
+                  previewTabRefs.current[preview.key] = node;
+                }}
+                aria-selected={selectedPreview === preview.key}
+                tabIndex={selectedPreview === preview.key ? 0 : -1}
+                className={selectedPreview === preview.key ? "is-active" : ""}
+                onClick={() => setSelectedPreview(preview.key)}
+                onKeyDown={onPreviewTabKeyDown}
+              >
+                {preview.key === PREVIEW_META.landing.key ? "Public landing" : "Member home"}
+              </button>
+            ))}
+          </div>
 
-          <article className="hero-image-editor__preview-card">
-            <header>
-              <h4>{PREVIEW_META.member.title}</h4>
-              <p>{PREVIEW_META.member.subtitle}</p>
-            </header>
+          <div className="hero-image-editor__viewport-toggle" role="group" aria-label="Preview device">
             <button
               type="button"
-              className="hero-image-editor__preview-launcher"
-              onClick={() => setActivePreview(PREVIEW_META.member.key)}
-              aria-label={PREVIEW_META.member.aria}
+              className={previewViewport === VIEWPORT_DESKTOP ? "is-active" : ""}
+              aria-pressed={previewViewport === VIEWPORT_DESKTOP}
+              onClick={() => setPreviewViewport(VIEWPORT_DESKTOP)}
             >
-              {renderMemberPreview()}
-              <span className="hero-image-editor__preview-launch-label">Click to edit framing</span>
+              Desktop
             </button>
-          </article>
+            <button
+              type="button"
+              className={previewViewport === VIEWPORT_MOBILE ? "is-active" : ""}
+              aria-pressed={previewViewport === VIEWPORT_MOBILE}
+              onClick={() => setPreviewViewport(VIEWPORT_MOBILE)}
+            >
+              Mobile
+            </button>
+          </div>
+        </div>
+
+        <div className="hero-image-editor__simulator-canvas">
+          <div
+            className={`hero-image-editor__browser hero-image-editor__browser--${previewViewport}`}
+            aria-label={`${PREVIEW_META[selectedPreview].title}, ${previewViewport} simulation`}
+          >
+            <div className="hero-image-editor__browser-bar" aria-hidden="true">
+              <span className="hero-image-editor__browser-dots"><i /><i /><i /></span>
+              <span className="hero-image-editor__browser-address">
+                {safeCampName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "your-camp"}.pondbridgealumni.com
+              </span>
+            </div>
+            <button
+              type="button"
+              className="hero-image-editor__preview-launcher hero-image-editor__simulator-screen"
+              onClick={() => setActivePreview(selectedPreview)}
+              aria-label={PREVIEW_META[selectedPreview].aria}
+            >
+              {selectedPreview === PREVIEW_META.landing.key
+                ? renderLandingPreview()
+                : renderMemberPreview()}
+              <span className="hero-image-editor__preview-launch-label">
+                Open full preview and adjust photo framing
+              </span>
+            </button>
+          </div>
         </div>
 
         <p className="hero-image-editor__hint">
-          Click either preview to open the full editor. In the popup: drag to reposition, use trackpad or wheel to zoom, or use arrow keys and +/- when focused.
+          Switch screens and device sizes to review the experience. Open the full preview to drag the photo, zoom with a trackpad or wheel, or use arrow keys and +/- when focused.
         </p>
       </section>
       {modalPortal}

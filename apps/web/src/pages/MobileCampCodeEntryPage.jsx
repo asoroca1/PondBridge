@@ -27,6 +27,8 @@ export default function MobileCampCodeEntryPage() {
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const codeHelpId = "mobile-camp-code-help";
+  const codeErrorId = "mobile-camp-code-error";
 
   const rememberedSlug =
     typeof window !== "undefined"
@@ -78,31 +80,42 @@ export default function MobileCampCodeEntryPage() {
       <div className="app-status-card mobile-camp-code-card">
         <div className="mobile-camp-code-head">
           <p className="mobile-camp-code-kicker">PondBridge</p>
-          <h1>Enter camp code</h1>
-          <p>Use the code your camp gave you to continue.</p>
+          <h1>Find your camp</h1>
+          <p>Enter the six-character app code from your camp director.</p>
         </div>
 
         <form className="mobile-camp-code-form" onSubmit={handleSubmit}>
-          <label className="mobile-camp-code-field">
-            <span>Camp code</span>
+          <label className="mobile-camp-code-field" htmlFor="mobile-camp-code">
+            <span>Six-character camp code</span>
             <input
+              id="mobile-camp-code"
               type="text"
               value={code}
               onChange={(event) => setCode(normalizeCode(event.target.value))}
-              placeholder="Camp code"
+              placeholder="ABC123"
               autoCapitalize="characters"
               autoCorrect="off"
+              autoComplete="one-time-code"
               spellCheck="false"
               inputMode="text"
+              maxLength={6}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? `${codeHelpId} ${codeErrorId}` : codeHelpId}
             />
           </label>
 
-          {error ? <p className="login1-error">{error}</p> : null}
+          <p id={codeHelpId} className="mobile-camp-code-hint">
+            The code is not case-sensitive. Ask your camp if you do not have it.
+          </p>
+
+          {error ? <p id={codeErrorId} className="login1-error" role="alert">{error}</p> : null}
 
           <button type="submit" className="login1-btn mobile-camp-code-submit" disabled={submitting}>
             {submitting ? "Checking code..." : "Continue"}
           </button>
         </form>
+
+        <p className="mobile-camp-code-privacy">Your camp code only selects the right private network. You will still sign in securely.</p>
       </div>
     </section>
   );

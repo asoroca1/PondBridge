@@ -196,6 +196,11 @@
 
 .product-director-create-wrap {
   width: min(860px, 100%);
+  transition: width 180ms ease;
+}
+
+.product-director-create-wrap.is-design-studio {
+  width: min(1240px, 100%);
 }
 
 .product-director-create-clerk-wrap {
@@ -569,6 +574,40 @@
 
 .director-design-fields {
   gap: 14px;
+}
+
+.director-design-simulator {
+  min-width: 0;
+}
+
+@media (min-width: 1081px) {
+  .director-design-fields {
+    grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.55fr);
+    align-items: start;
+    column-gap: 20px;
+  }
+
+  .director-design-fields > .wizard1-field {
+    grid-column: 1;
+  }
+
+  .director-design-fields > .director-design-simulator {
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    position: sticky;
+    top: calc(var(--nav-h, 76px) + 18px);
+  }
+
+  .director-design-fields > .wizard1-field.wizard1-span-6,
+  .director-design-fields > .wizard1-field.wizard1-span-12,
+  .director-design-fields > .director-design-simulator.wizard1-span-12 {
+    grid-column-end: auto;
+  }
+
+  .director-design-simulator .hero-image-editor__simulator-canvas {
+    min-height: 390px;
+    padding: 12px;
+  }
 }
 
 .director-feature-fields {

@@ -26,6 +26,8 @@ Recommended codes:
 - `TENANT_SCOPE_DENIED`
 - `TENANT_CONTEXT_REQUIRED`
 
-## Canonical import route
-- Preferred: `POST /api/tenants/me/import-csv`
-- Legacy admin endpoint `/api/t/:slug/admin/import-csv` should not be used for new UI/client paths.
+## Member onboarding route contract
+- Direct member import is retired; `/api/t/:slug/admin/import-csv` returns `410`.
+- Preview invitation recipients with `POST /api/t/:slug/admin/invites/preview`.
+- Send only the reviewed audience with `POST /api/t/:slug/admin/invites/send`
+  and the matching signed preview token.

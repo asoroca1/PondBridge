@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Badge, Button, Card, Input, Select } from "@pondbridge/ui";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
+import { ModalDialog, useDialogFocus } from "../../components/admin/AdminUi.jsx";
 
 function roleFromUser(user) {
   const roles = new Set(user?.roles || []);
@@ -311,20 +312,20 @@ export function SuperPlatformPulsePage() {
         <div className="super-stat-grid seven-up">
           <StatCard label="Active Tenants" value={stats.activeTenants ?? 0} subtext="Live camps" tone="success" />
           <StatCard
-            label="MRR"
+            label="Configured MRR"
             value={formatMoney(stats.mrrCurrent || 0)}
-            subtext={`${stats.mrrDeltaPercent >= 0 ? "+" : ""}${formatPct(stats.mrrDeltaPercent || 0)} vs last month`}
-            tone={stats.mrrDeltaPercent >= 0 ? "success" : "danger"}
+            subtext="Active plan value; not Stripe revenue"
+            tone="success"
           />
           <StatCard
             label="Email Health"
-            value={formatPct(stats.emailHealthRate || 0)}
-            subtext="Delivery rate 7d"
-            tone={stats.emailHealthRate > 95 ? "success" : stats.emailHealthRate >= 90 ? "warning" : "danger"}
+            value={stats.emailHealthRate == null ? "Not available" : formatPct(stats.emailHealthRate)}
+            subtext="Resend delivery rate 7d"
+            tone={stats.emailHealthRate == null ? "neutral" : stats.emailHealthRate > 95 ? "success" : stats.emailHealthRate >= 90 ? "warning" : "danger"}
           />
-          <StatCard label="Open Jobs" value={stats.openJobs ?? 0} subtext="Running + queued" tone="info" />
+          <StatCard label="Open Jobs" value="Not connected" subtext="Queue telemetry unavailable" tone="neutral" />
           <StatCard
-            label="Failed Jobs (7d)"
+            label="Failed Import Reports (7d)"
             value={stats.failedJobs7d ?? 0}
             subtext="Needs review"
             tone={stats.failedJobs7d > 0 ? "danger" : "success"}
@@ -341,12 +342,16 @@ export function SuperPlatformPulsePage() {
 
       <div className="super-two-col super-equal-height super-pulse-visual-row">
         <Card className="super-visual-card">
-          <h2 className="pb-section-title">MRR Trend (7d)</h2>
-          <SparkBars items={data?.charts?.mrr7d || []} />
+          <h2 className="pb-section-title">MRR Trend</h2>
+          <p className="muted">Not available until historical Stripe subscription snapshots are stored.</p>
         </Card>
         <Card className="super-visual-card">
           <h2 className="pb-section-title">Email Health (7d)</h2>
-          <SparkBars items={data?.charts?.emailHealth7d || []} percent />
+          {stats.emailHealthRate == null ? (
+            <p className="muted">No Resend webhook telemetry is available for this period.</p>
+          ) : (
+            <SparkBars items={data?.charts?.emailHealth7d || []} percent />
+          )}
         </Card>
         <Card className="super-visual-card">
           <h2 className="pb-section-title">Alerts Feed</h2>
@@ -380,6 +385,8 @@ export function SuperTenantsPage() {
   const [status, setStatus] = useState("");
   const [provisioningTenantId, setProvisioningTenantId] = useState("");
   const [deletingTenantId, setDeletingTenantId] = useState("");
+  const [wipeTarget, setWipeTarget] = useState(null);
+  const [wipeConfirmation, setWipeConfirmation] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "", plan: "", billingStatus: "" });
 
   async function loadData() {
@@ -455,12 +462,23 @@ export function SuperTenantsPage() {
     }
   }
 
-  async function wipeTenant(camp) {
+  function requestTenantWipe(camp) {
+    setWipeTarget(camp);
+    setWipeConfirmation("");
+    setError("");
+  }
+
+  function closeTenantWipe() {
+    if (deletingTenantId) return;
+    setWipeTarget(null);
+    setWipeConfirmation("");
+  }
+
+  async function wipeTenant() {
+    const camp = wipeTarget;
+    if (!camp) return;
     const phrase = `WIPE ${camp.slug} ${camp._id}`;
-    const typed = window.prompt(
-      `This permanently deletes ${camp.name} (${camp.slug}) and all Supabase/backend records for this camp, plus Clerk users that belong only to this camp.\n\nType "${phrase}" to continue.`
-    );
-    if (typed === null) return;
+    if (wipeConfirmation !== phrase) return;
 
     try {
       setError("");
@@ -472,13 +490,15 @@ export function SuperTenantsPage() {
         body: {
           mode: "manual_super_console",
           slug: String(camp.slug || "").trim().toLowerCase(),
-          confirmation: typed
+          confirmation: wipeConfirmation
         }
       });
 
       const removed = payload?.removed?.counts || {};
       const removedTotal = Object.values(removed).reduce((sum, value) => sum + Number(value || 0), 0);
       setStatus(`Deleted ${camp.name} and wiped ${removedTotal} related record${removedTotal === 1 ? "" : "s"}.`);
+      setWipeTarget(null);
+      setWipeConfirmation("");
       loadData();
     } catch (deleteError) {
       setError(deleteError.message || "Could not wipe camp.");
@@ -571,25 +591,28 @@ export function SuperTenantsPage() {
                   <td>{camp.counts?.users || 0}</td>
                   <td>{camp.counts?.profiles || 0}</td>
                   <td>
-                    <div className="super-inline-row">
-                      <Button variant="secondary" onClick={() => toggleTenant(camp)} disabled={!canMutate(role)}>
-                        {camp.status === "active" ? "Disable" : "Enable"}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => provisionDomain(camp)}
-                        disabled={!canMutate(role) || provisioningTenantId === String(camp._id || "")}
-                      >
-                        {provisioningTenantId === String(camp._id || "") ? "Provisioning..." : "Provision Domain"}
-                      </Button>
-                      <Button
-                        variant="danger"
-                        onClick={() => wipeTenant(camp)}
-                        disabled={!canMutate(role) || deletingTenantId === String(camp._id || "")}
-                      >
-                        {deletingTenantId === String(camp._id || "") ? "Wiping..." : "Wipe Camp"}
-                      </Button>
-                    </div>
+                    <details className="super-row-actions">
+                      <summary aria-label={`Manage ${camp.name}`}>Manage</summary>
+                      <div className="super-row-actions-menu">
+                        <Button variant="secondary" onClick={() => toggleTenant(camp)} disabled={!canMutate(role)}>
+                          {camp.status === "active" ? "Disable Camp" : "Enable Camp"}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => provisionDomain(camp)}
+                          disabled={!canMutate(role) || provisioningTenantId === String(camp._id || "")}
+                        >
+                          {provisioningTenantId === String(camp._id || "") ? "Provisioning..." : "Provision Domain"}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() => requestTenantWipe(camp)}
+                          disabled={!canMutate(role) || deletingTenantId === String(camp._id || "")}
+                        >
+                          {deletingTenantId === String(camp._id || "") ? "Wiping..." : "Wipe Camp"}
+                        </Button>
+                      </div>
+                    </details>
                   </td>
                 </tr>
               ))}
@@ -597,6 +620,39 @@ export function SuperTenantsPage() {
           </table>
         </div>
       </Card>
+      <ModalDialog
+        open={Boolean(wipeTarget)}
+        title="Permanently wipe this camp?"
+        description={wipeTarget ? `This deletes ${wipeTarget.name} and all tenant-scoped backend records. Clerk users belonging only to this camp are also deleted.` : ""}
+        onClose={closeTenantWipe}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeTenantWipe} disabled={Boolean(deletingTenantId)}>
+              Keep Camp
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={wipeTenant}
+              disabled={!wipeTarget || wipeConfirmation !== `WIPE ${wipeTarget.slug} ${wipeTarget._id}` || Boolean(deletingTenantId)}
+            >
+              {deletingTenantId ? "Wiping..." : "Permanently Wipe Camp"}
+            </Button>
+          </>
+        }
+      >
+        {wipeTarget ? (
+          <label className="director-admin-dialog-field">
+            Type <code>{`WIPE ${wipeTarget.slug} ${wipeTarget._id}`}</code> to continue
+            <Input
+              value={wipeConfirmation}
+              onChange={(event) => setWipeConfirmation(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        ) : null}
+      </ModalDialog>
     </div>
   );
 }
@@ -862,12 +918,10 @@ export function SuperTenantCreatePage() {
 }
 
 export function SuperEmailTransactionalPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [days, setDays] = useState(7);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
   const [filters, setFilters] = useState({ tenant: "", emailType: "", status: "", search: "" });
 
   async function loadData() {
@@ -900,27 +954,12 @@ export function SuperEmailTransactionalPage() {
 
   const tenants = useMemo(() => Array.from(new Set((data?.rows || []).map((row) => row.tenantName))), [data]);
 
-  async function retryRow(row) {
-    try {
-      setStatus("");
-      await requestJson("/api/super/email/retry", {
-        method: "POST",
-        token,
-        body: { inviteId: row.id }
-      });
-      setStatus(`Retry queued for ${row.recipientDomain}.`);
-      loadData();
-    } catch (retryError) {
-      setError(retryError.message || "Could not queue retry.");
-    }
-  }
-
   return (
     <div className="super-panel-stack">
       <Card>
         <PanelHeader
           title="Transactional Email — Health"
-          subtitle="Delivery health, bounce diagnostics, and retry controls."
+          subtitle="Verified provider delivery events and privacy-safe diagnostics."
           actions={
             <div className="super-inline-row">
               <Select value={days} onChange={(event) => setDays(Number(event.target.value || 7))}>
@@ -945,23 +984,28 @@ export function SuperEmailTransactionalPage() {
         />
 
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
+        {data?.notice ? <p className={data.telemetryAvailable ? "muted" : "super-warning-banner"}>{data.notice}</p> : null}
 
         <div className="super-stat-grid four-up">
-          <StatCard label="Delivery Rate" value={formatPct(data?.stats?.deliveryRate || 0)} subtext="Last period" tone="success" />
+          <StatCard
+            label="Delivery Rate"
+            value={data?.stats?.deliveryRate == null ? "Not available" : formatPct(data.stats.deliveryRate)}
+            subtext="Latest provider state"
+            tone={data?.stats?.deliveryRate == null ? "neutral" : "success"}
+          />
           <StatCard
             label="Bounce Rate"
-            value={formatPct(data?.stats?.bounceRate || 0)}
+            value={data?.stats?.bounceRate == null ? "Not available" : formatPct(data.stats.bounceRate)}
             subtext="Warn if >2%"
-            tone={(data?.stats?.bounceRate || 0) > 2 ? "danger" : "warning"}
+            tone={data?.stats?.bounceRate == null ? "neutral" : data.stats.bounceRate > 2 ? "danger" : "warning"}
           />
           <StatCard
             label="Spam Rate"
-            value={formatPct(data?.stats?.spamRate || 0, 2)}
+            value={data?.stats?.spamRate == null ? "Not available" : formatPct(data.stats.spamRate, 2)}
             subtext="Last 30d"
-            tone={(data?.stats?.spamRate || 0) > 0.1 ? "danger" : "neutral"}
+            tone={data?.stats?.spamRate == null ? "neutral" : data.stats.spamRate > 0.1 ? "danger" : "neutral"}
           />
-          <StatCard label="Total Sent" value={data?.stats?.totalSent || 0} subtext="Across all tenants" tone="neutral" />
+          <StatCard label="Tracked Deliveries" value={data?.stats?.totalSent || 0} subtext="Across all camps" tone="neutral" />
         </div>
       </Card>
 
@@ -1028,8 +1072,13 @@ export function SuperEmailTransactionalPage() {
               onChange={(event) => setFilters((prev) => ({ ...prev, emailType: event.target.value }))}
             >
               <option value="">All</option>
-              <option value="director_invite">Director invite</option>
-              <option value="member_invite">Member invite</option>
+              <option value="invite">Invite</option>
+              <option value="director_broadcast">Director broadcast</option>
+              <option value="magic_link">Magic link</option>
+              <option value="welcome">Welcome</option>
+              <option value="access_approved">Access approved</option>
+              <option value="access_denied">Access denied</option>
+              <option value="transactional">Other transactional</option>
             </Select>
           </label>
           <label>
@@ -1038,7 +1087,12 @@ export function SuperEmailTransactionalPage() {
               <option value="">All</option>
               <option value="sent">Sent</option>
               <option value="delivered">Delivered</option>
+              <option value="clicked">Clicked</option>
               <option value="bounced">Bounced</option>
+              <option value="complained">Complained</option>
+              <option value="failed">Failed</option>
+              <option value="delivery_delayed">Delayed</option>
+              <option value="suppressed">Suppressed</option>
             </Select>
           </label>
           <label>
@@ -1057,7 +1111,6 @@ export function SuperEmailTransactionalPage() {
                 <th>Recipient Domain</th>
                 <th>Status</th>
                 <th>Message ID</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1071,15 +1124,6 @@ export function SuperEmailTransactionalPage() {
                     <StatusBadge status={row.status} tone={row.statusTone} />
                   </td>
                   <td className="mono">{row.messageId}</td>
-                  <td>
-                    {row.canRetry && canMutate(role) ? (
-                      <Button variant="secondary" onClick={() => retryRow(row)}>
-                        Retry
-                      </Button>
-                    ) : (
-                      <span className="muted">-</span>
-                    )}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1091,13 +1135,9 @@ export function SuperEmailTransactionalPage() {
 }
 
 export function SuperEmailBroadcastPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
-  const [contactForm, setContactForm] = useState({ email: "", campName: "", tier: "base", stage: "Invited" });
-  const [suppressEmail, setSuppressEmail] = useState("");
 
   async function loadData() {
     try {
@@ -1114,179 +1154,34 @@ export function SuperEmailBroadcastPage() {
     loadData();
   }, [token]);
 
-  async function addContact(event) {
-    event.preventDefault();
-    try {
-      setStatus("");
-      await requestJson("/api/super/email/broadcast/contact", {
-        method: "POST",
-        token,
-        body: contactForm
-      });
-      setStatus("Director contact queued for sync.");
-      setContactForm({ email: "", campName: "", tier: "base", stage: "Invited" });
-    } catch (requestError) {
-      setError(requestError.message || "Could not queue contact.");
-    }
-  }
-
-  async function suppressContact(event) {
-    event.preventDefault();
-    try {
-      setStatus("");
-      await requestJson("/api/super/email/broadcast/suppress", {
-        method: "POST",
-        token,
-        body: { email: suppressEmail }
-      });
-      setStatus("Suppress request queued.");
-      setSuppressEmail("");
-    } catch (requestError) {
-      setError(requestError.message || "Could not queue suppression.");
-    }
-  }
-
   return (
     <div className="super-panel-stack">
       <Card>
         <PanelHeader
-          title="Broadcast & Lifecycle Email — Loops"
-          subtitle="Manage director lifecycle sequences and contact health."
-          actions={
-            <a className="link-button secondary" href="https://loops.so" target="_blank" rel="noreferrer">
-              Open in Loops
-            </a>
-          }
+          title="Director Lifecycle Readiness"
+          subtitle="PondBridge director-account and onboarding state. Lifecycle automation is not connected."
         />
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
+        {data?.notes ? <p className="super-warning-banner">{data.notes}</p> : null}
         <div className="super-stat-grid four-up">
-          <StatCard label="Total Contacts" value={data?.contacts?.total || 0} subtext="In Loops" />
-          <StatCard label="Subscribed" value={data?.contacts?.subscribed || 0} subtext="Active" tone="success" />
-          <StatCard label="Unsubscribed" value={data?.contacts?.unsubscribed || 0} subtext="Last 30d" tone="warning" />
-          <StatCard label="Bounced" value={data?.contacts?.bounced || 0} subtext="Hard bounces" tone="danger" />
+          <StatCard label="Director Accounts" value={data?.contacts?.total || 0} subtext="PondBridge memberships" />
+          <StatCard
+            label="Active Suppressions"
+            value={data?.contacts?.activeSuppressions || 0}
+            subtext="Resend bounces and complaints"
+            tone={(data?.contacts?.activeSuppressions || 0) > 0 ? "warning" : "success"}
+          />
+          <StatCard label="Lifecycle Provider" value="Not connected" subtext="No contact sync" tone="neutral" />
+          <StatCard label="Automated Sequences" value="Not connected" subtext="No campaigns active" tone="neutral" />
         </div>
       </Card>
 
       <Card>
-        <h2 className="pb-section-title">Active Sequences</h2>
-        <div className="super-table-wrap">
-          <table className="super-data-table">
-            <thead>
-              <tr>
-                <th>Sequence</th>
-                <th>Enrolled</th>
-                <th>Open Rate</th>
-                <th>Click Rate</th>
-                <th>Unsubscribes</th>
-                <th>Last Send</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.sequences || []).map((sequence) => (
-                <tr key={sequence.id}>
-                  <td>{sequence.name}</td>
-                  <td>{sequence.enrolled}</td>
-                  <td>
-                    <StatusBadge
-                      status={formatPct(sequence.openRate)}
-                      tone={sequence.openRate > 30 ? "success" : sequence.openRate >= 15 ? "warning" : "danger"}
-                    />
-                  </td>
-                  <td>{formatPct(sequence.clickRate)}</td>
-                  <td>{sequence.unsubscribes}</td>
-                  <td>{formatDateTime(sequence.lastSendAt)}</td>
-                  <td>
-                    <a href={sequence.externalUrl} target="_blank" rel="noreferrer" className="super-inline-link">
-                      View in Loops
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <h2 className="pb-section-title">Director Accounts by Onboarding Stage</h2>
+        <HorizontalBars
+          items={(data?.contactsByStage || []).map((item) => ({ label: item.stage, value: item.count }))}
+        />
       </Card>
-
-      <div className="super-two-col">
-        <Card>
-          <h2 className="pb-section-title">Contacts by Onboarding Stage</h2>
-          <HorizontalBars
-            items={(data?.contactsByStage || []).map((item) => ({ label: item.stage, value: item.count }))}
-          />
-        </Card>
-        <Card>
-          <h2 className="pb-section-title">Quick Actions</h2>
-          <form className="super-form-grid" onSubmit={addContact}>
-            <label>
-              Director email
-              <Input
-                type="email"
-                value={contactForm.email}
-                onChange={(event) => setContactForm((prev) => ({ ...prev, email: event.target.value }))}
-                required
-                disabled={!canMutate(role)}
-              />
-            </label>
-            <label>
-              Camp name
-              <Input
-                value={contactForm.campName}
-                onChange={(event) => setContactForm((prev) => ({ ...prev, campName: event.target.value }))}
-                required
-                disabled={!canMutate(role)}
-              />
-            </label>
-            <label>
-              Tier
-              <Select
-                value={contactForm.tier}
-                onChange={(event) => setContactForm((prev) => ({ ...prev, tier: event.target.value }))}
-                disabled={!canMutate(role)}
-              >
-                <option value="base">Base</option>
-                <option value="premium">Premium</option>
-              </Select>
-            </label>
-            <label>
-              Stage
-              <Select
-                value={contactForm.stage}
-                onChange={(event) => setContactForm((prev) => ({ ...prev, stage: event.target.value }))}
-                disabled={!canMutate(role)}
-              >
-                <option>Invited</option>
-                <option>Account Created</option>
-                <option>Branding Done</option>
-                <option>Features Done</option>
-                <option>Launched</option>
-              </Select>
-            </label>
-            <div className="super-form-actions full-width">
-              <Button disabled={!canMutate(role)}>+ Add Director Contact</Button>
-            </div>
-          </form>
-
-          <form className="super-form-grid top-space" onSubmit={suppressContact}>
-            <label>
-              Suppress contact email
-              <Input
-                type="email"
-                value={suppressEmail}
-                onChange={(event) => setSuppressEmail(event.target.value)}
-                disabled={!canMutate(role)}
-                required
-              />
-            </label>
-            <div className="super-form-actions full-width">
-              <Button variant="secondary" disabled={!canMutate(role)}>
-                Suppress Contact
-              </Button>
-            </div>
-          </form>
-        </Card>
-      </div>
     </div>
   );
 }
@@ -1316,13 +1211,12 @@ export function SuperBillingOverviewPage() {
       <Card>
         <PanelHeader
           title="Billing Overview"
-          subtitle="Revenue, plan mix, and payment health from Stripe-synced billing state."
-          actions={<ExportCsvButton rows={data?.charts?.mrrTrend60d || []} headers={[{ key: "date", label: "Date" }, { key: "value", label: "MRR" }]} filename="billing-mrr-trend.csv" />}
+          subtitle="Configured recurring value, plan mix, and provider-synchronized lifecycle state."
         />
         {error ? <p className="error-text">{error}</p> : null}
 
         <div className="super-stat-grid four-up">
-          <StatCard label="MRR" value={formatMoney(data?.stats?.mrr || 0)} subtext={`${formatPct(data?.stats?.mrrDeltaPercent || 0)} vs last month`} tone="success" />
+          <StatCard label="Configured MRR" value={formatMoney(data?.stats?.mrr || 0)} subtext="Active plans; not Stripe revenue" tone="success" />
           <StatCard label="New Subs (30d)" value={data?.stats?.newSubscriptions30d || 0} subtext="New paying tenants" tone="info" />
           <StatCard
             label="Churned (30d)"
@@ -1341,8 +1235,8 @@ export function SuperBillingOverviewPage() {
 
       <div className="super-two-col super-equal-height super-visuals-row">
         <Card className="super-visual-card">
-          <h2 className="pb-section-title">MRR Trend — 60d</h2>
-          <SparkBars items={data?.charts?.mrrTrend60d || []} />
+          <h2 className="pb-section-title">MRR Trend</h2>
+          <p className="muted">Not available until historical Stripe subscription snapshots are stored.</p>
         </Card>
         <Card className="super-visual-card">
           <h2 className="pb-section-title">Plan Distribution</h2>
@@ -1361,14 +1255,13 @@ export function SuperBillingOverviewPage() {
 }
 
 export function SuperBillingTenantsPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [filters, setFilters] = useState({ search: "", plan: "", status: "", paymentMethod: "" });
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ items: [], total: 0, page: 1, pageSize: 25 });
   const [error, setError] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
   const [selected, setSelected] = useState(null);
+  const billingPanelRef = useDialogFocus(Boolean(selected), () => setSelected(null));
 
   async function loadData() {
     const query = new URLSearchParams({ page: String(page), pageSize: "25" });
@@ -1391,29 +1284,12 @@ export function SuperBillingTenantsPage() {
     loadData();
   }, [token, filters.search, filters.plan, filters.status, filters.paymentMethod, page]);
 
-  async function runAction(action, extra = {}) {
-    if (!selected) return;
-    try {
-      setError("");
-      await requestJson(`/api/super/billing/tenants/${selected.id}/actions`, {
-        method: "POST",
-        token,
-        body: { action, ...extra }
-      });
-      setStatusMessage("Billing action saved.");
-      loadData();
-      setSelected((prev) => ({ ...prev, ...extra }));
-    } catch (actionError) {
-      setError(actionError.message || "Billing action failed.");
-    }
-  }
-
   return (
     <div className="super-panel-stack">
       <Card>
-        <PanelHeader title="Tenant Billing" subtitle="Plan, status, and payment health by tenant." />
+        <PanelHeader title="Tenant Billing" subtitle="Stored plan and Stripe-synchronized lifecycle state by camp." />
         {error ? <p className="error-text">{error}</p> : null}
-        {statusMessage ? <p className="success-text">{statusMessage}</p> : null}
+        <p className="muted">Billing mutations are managed in Stripe until provider-confirmed controls are implemented here.</p>
 
         <div className="super-filter-grid super-filter-grid-billing">
           <label>
@@ -1512,14 +1388,14 @@ export function SuperBillingTenantsPage() {
       </Card>
 
       {selected ? (
-        <div className="super-sidepanel-overlay" onClick={() => setSelected(null)}>
-          <aside className="super-sidepanel" onClick={(event) => event.stopPropagation()}>
+        <div className="super-sidepanel-overlay" onClick={() => setSelected(null)} role="dialog" aria-modal="true" aria-labelledby="super-billing-panel-title">
+          <aside ref={billingPanelRef} className="super-sidepanel" onClick={(event) => event.stopPropagation()} tabIndex={-1}>
             <header className="super-sidepanel-head">
               <div>
-                <h2>{selected.name}</h2>
+                <h2 id="super-billing-panel-title">{selected.name}</h2>
                 <StatusBadge status={selected.billingStatus} />
               </div>
-              <button type="button" className="super-sidepanel-close" onClick={() => setSelected(null)}>
+              <button type="button" className="super-sidepanel-close" onClick={() => setSelected(null)} aria-label="Close billing details">
                 ×
               </button>
             </header>
@@ -1548,24 +1424,8 @@ export function SuperBillingTenantsPage() {
             </section>
 
             <section>
-              <h3>Actions</h3>
-              {canMutate(role) ? (
-                <div className="super-panel-actions-vertical">
-                  <div className="super-inline-row">
-                    <Button variant="secondary" onClick={() => runAction("change_plan", { planTier: "base" })}>
-                      Set Base
-                    </Button>
-                    <Button variant="secondary" onClick={() => runAction("change_plan", { planTier: "premium" })}>
-                      Set Premium
-                    </Button>
-                  </div>
-                  <Button variant="secondary" onClick={() => runAction("extend_trial")}>Extend Trial</Button>
-                  <Button variant="secondary" onClick={() => runAction("mark_comp")}>Mark as Comp</Button>
-                  <Button variant="danger" onClick={() => runAction("cancel_subscription")}>Cancel Subscription</Button>
-                </div>
-              ) : (
-                <p className="muted">View only role. Mutations are disabled.</p>
-              )}
+              <h3>Billing controls</h3>
+              <p className="muted">Change plans, trials, discounts, invoices, and subscriptions in Stripe so webhook-confirmed state remains authoritative.</p>
             </section>
           </aside>
         </div>
@@ -1580,6 +1440,9 @@ export function SuperBillingFailedPage() {
   const [data, setData] = useState({ items: [], count: 0 });
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [graceTarget, setGraceTarget] = useState(null);
+  const [graceDays, setGraceDays] = useState("7");
+  const [graceError, setGraceError] = useState("");
 
   async function loadData() {
     try {
@@ -1600,13 +1463,34 @@ export function SuperBillingFailedPage() {
 
   async function rowAction(path, body = {}) {
     try {
+      setError("");
       setStatus("");
       await requestJson(path, { method: "POST", token, body });
       setStatus("Action completed.");
       loadData();
+      return true;
     } catch (actionError) {
       setError(actionError.message || "Action failed.");
+      return false;
     }
+  }
+
+  function requestGraceExtension(row) {
+    setGraceTarget(row);
+    setGraceDays("7");
+    setGraceError("");
+  }
+
+  async function applyGraceExtension() {
+    const days = Number(graceDays);
+    if (!Number.isInteger(days) || days <= 0) {
+      setGraceError("Enter a whole number of days greater than zero.");
+      return;
+    }
+    const completed = await rowAction(`/api/super/billing/failed/${graceTarget.id}/grace`, { days });
+    if (!completed) return;
+    setGraceTarget(null);
+    setGraceError("");
   }
 
   return (
@@ -1642,21 +1526,11 @@ export function SuperBillingFailedPage() {
                   <td>
                     {canMutate(role) ? (
                       <div className="super-inline-row wrap">
-                        <Button variant="secondary" onClick={() => rowAction(`/api/super/billing/failed/${row.id}/retry`)}>
-                          Retry
-                        </Button>
-                        <Button variant="secondary" onClick={() => rowAction(`/api/super/billing/failed/${row.id}/reminder`)}>
-                          Reminder
-                        </Button>
                         <Button
                           variant="secondary"
-                          onClick={() => {
-                            const days = Number(window.prompt("Extend grace period by how many days?", "7") || 7);
-                            if (!Number.isFinite(days) || days <= 0) return;
-                            rowAction(`/api/super/billing/failed/${row.id}/grace`, { days });
-                          }}
+                          onClick={() => requestGraceExtension(row)}
                         >
-                          Grace
+                          Extend Grace Period
                         </Button>
                       </div>
                     ) : (
@@ -1671,16 +1545,43 @@ export function SuperBillingFailedPage() {
 
         {!data.count ? <p className="success-text">No failed payments. All tenants are up to date.</p> : null}
       </Card>
+      <ModalDialog
+        open={Boolean(graceTarget)}
+        title="Extend Grace Period"
+        description={graceTarget ? `Choose how many days to add for ${graceTarget.name}.` : ""}
+        onClose={() => setGraceTarget(null)}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setGraceTarget(null)}>Cancel</Button>
+            <Button type="button" onClick={applyGraceExtension}>Extend Grace Period</Button>
+          </>
+        }
+      >
+        <label className="director-admin-dialog-field">
+          Additional days
+          <Input
+            type="number"
+            min="1"
+            step="1"
+            value={graceDays}
+            onChange={(event) => {
+              setGraceDays(event.target.value);
+              setGraceError("");
+            }}
+            aria-invalid={Boolean(graceError)}
+            aria-describedby={graceError ? "super-grace-error" : undefined}
+          />
+        </label>
+        {graceError ? <p id="super-grace-error" className="error-text" role="alert">{graceError}</p> : null}
+      </ModalDialog>
     </div>
   );
 }
 
 export function SuperAnalyticsEngagementPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
 
   async function loadData() {
     try {
@@ -1697,41 +1598,22 @@ export function SuperAnalyticsEngagementPage() {
     loadData();
   }, [token]);
 
-  async function sendReengage(tenantId) {
-    try {
-      setStatus("");
-      await requestJson(`/api/super/analytics/reengage/${tenantId}`, {
-        method: "POST",
-        token
-      });
-      setStatus("Re-engagement email sequence queued.");
-    } catch (requestError) {
-      setError(requestError.message || "Could not queue re-engagement email.");
-    }
-  }
-
   return (
     <div className="super-panel-stack">
       <Card>
         <PanelHeader
           title="Platform Engagement"
-          subtitle={`Analytics data as of ${formatDateTime(data?.asOf)}`}
-          actions={
-            <a className="link-button secondary" href="https://posthog.com" target="_blank" rel="noreferrer">
-              Open in PostHog
-            </a>
-          }
+          subtitle={`PondBridge analytics events as of ${formatDateTime(data?.asOf)}`}
         />
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
 
         <div className="super-stat-grid four-up">
           <StatCard label="Active Users (7d)" value={data?.stats?.activeUsers7d || 0} subtext="Unique logins" tone="success" />
           <StatCard
             label="DAU / MAU"
-            value={formatPct(data?.stats?.dauMauRatio || 0)}
+            value={data?.stats?.dauMauRatio == null ? "Not available" : formatPct(data.stats.dauMauRatio)}
             subtext="Engagement depth"
-            tone={(data?.stats?.dauMauRatio || 0) >= 20 ? "success" : "warning"}
+            tone={data?.stats?.dauMauRatio == null ? "neutral" : data.stats.dauMauRatio >= 20 ? "success" : "warning"}
           />
           <StatCard
             label="Profile Completion"
@@ -1770,7 +1652,6 @@ export function SuperAnalyticsEngagementPage() {
                 <th>Members</th>
                 <th>Plan</th>
                 <th>Days Inactive</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1781,15 +1662,6 @@ export function SuperAnalyticsEngagementPage() {
                   <td>{row.members}</td>
                   <td>{row.planTier === "premium" ? "Premium" : "Base"}</td>
                   <td>{row.daysInactive}</td>
-                  <td>
-                    {canMutate(role) ? (
-                      <Button variant="secondary" onClick={() => sendReengage(row.tenantId)}>
-                        Send Re-engagement
-                      </Button>
-                    ) : (
-                      <span className="muted">View only</span>
-                    )}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1893,23 +1765,17 @@ export function SuperAnalyticsFunnelPage() {
 }
 
 export function SuperAnalyticsFlagsPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
-  const [editingFlags, setEditingFlags] = useState({});
 
   async function loadData() {
     try {
       setError("");
       const payload = await requestJson("/api/super/analytics/flags", { token });
       setData(payload);
-      setEditingFlags(
-        Object.fromEntries((payload.flags || []).map((flag) => [flag.key, { ...flag }]))
-      );
     } catch (loadError) {
-      setError(loadError.message || "Could not load feature flags.");
+      setError(loadError.message || "Could not load module rollout visibility.");
     }
   }
 
@@ -1918,47 +1784,20 @@ export function SuperAnalyticsFlagsPage() {
     loadData();
   }, [token]);
 
-  function patchLocalFlag(key, patch) {
-    setEditingFlags((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], ...patch }
-    }));
-  }
-
-  async function saveFlag(key) {
-    try {
-      setStatus("");
-      const payload = editingFlags[key];
-      await requestJson(`/api/super/analytics/flags/${key}`, {
-        method: "PATCH",
-        token,
-        body: {
-          enabled: payload.enabled,
-          rolloutPercent: Number(payload.rolloutPercent || 0),
-          tierConfig: payload.tierConfig
-        }
-      });
-      setStatus(`Saved ${payload.name}.`);
-      loadData();
-    } catch (saveError) {
-      setError(saveError.message || "Could not save flag.");
-    }
-  }
-
   return (
     <div className="super-panel-stack">
       <Card>
         <PanelHeader
-          title="Feature Flags & Module Control"
-          subtitle="Control module access by tier and rollout percentage."
+          title="Module Rollout Visibility"
+          subtitle="See camp enablement and measured 30-day adoption without implying a global control plane exists."
           actions={
-            <a className="link-button secondary" href="https://posthog.com" target="_blank" rel="noreferrer">
-              Open in PostHog
-            </a>
+            <Link className="link-button secondary" to="/super/tenants">
+              Manage camp modules
+            </Link>
           }
         />
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
+        {data?.notice ? <p className="super-warning-banner">{data.notice}</p> : null}
       </Card>
 
       <Card>
@@ -1978,12 +1817,16 @@ export function SuperAnalyticsFlagsPage() {
                 <tr key={row.moduleKey}>
                   <td>{row.moduleName}</td>
                   <td>{row.enabledTenants}</td>
-                  <td>{row.activelyUsedTenants}</td>
+                  <td>{row.activelyUsedTenants == null ? "Not measured" : row.activelyUsedTenants}</td>
                   <td>
-                    <StatusBadge
-                      status={formatPct(row.adoptionPercent || 0)}
-                      tone={row.adoptionPercent > 60 ? "success" : row.adoptionPercent >= 30 ? "warning" : "danger"}
-                    />
+                    {row.adoptionPercent == null ? (
+                      <StatusBadge status="Not instrumented" tone="neutral" />
+                    ) : (
+                      <StatusBadge
+                        status={formatPct(row.adoptionPercent)}
+                        tone={row.adoptionPercent > 60 ? "success" : row.adoptionPercent >= 30 ? "warning" : "danger"}
+                      />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1992,66 +1835,6 @@ export function SuperAnalyticsFlagsPage() {
         </div>
       </Card>
 
-      <Card>
-        <h2 className="pb-section-title">Flag Configurations</h2>
-        <div className="super-flag-grid">
-          {Object.values(editingFlags).map((flag) => (
-            <article key={flag.key} className="super-flag-card">
-              <h3>{flag.name}</h3>
-              <p className="muted">{flag.description}</p>
-              <label>
-                Global toggle
-                <Select
-                  value={flag.enabled ? "enabled" : "disabled"}
-                  onChange={(event) => patchLocalFlag(flag.key, { enabled: event.target.value === "enabled" })}
-                  disabled={!canMutate(role)}
-                >
-                  <option value="enabled">Enabled</option>
-                  <option value="disabled">Disabled</option>
-                </Select>
-              </label>
-              <label>
-                Rollout %
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={flag.rolloutPercent}
-                  onChange={(event) => patchLocalFlag(flag.key, { rolloutPercent: Number(event.target.value || 0) })}
-                  disabled={!canMutate(role)}
-                />
-              </label>
-              <div className="super-inline-row wrap">
-                <label className="super-inline-check">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(flag?.tierConfig?.base)}
-                    onChange={(event) =>
-                      patchLocalFlag(flag.key, { tierConfig: { ...flag.tierConfig, base: event.target.checked } })
-                    }
-                    disabled={!canMutate(role)}
-                  />
-                  Base tier
-                </label>
-                <label className="super-inline-check">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(flag?.tierConfig?.premium)}
-                    onChange={(event) =>
-                      patchLocalFlag(flag.key, { tierConfig: { ...flag.tierConfig, premium: event.target.checked } })
-                    }
-                    disabled={!canMutate(role)}
-                  />
-                  Premium tier
-                </label>
-              </div>
-              <Button variant="secondary" onClick={() => saveFlag(flag.key)} disabled={!canMutate(role)}>
-                Save Changes
-              </Button>
-            </article>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
@@ -2088,30 +1871,25 @@ export function SuperJobsHealthPage() {
       <Card>
         <PanelHeader
           title="Job Health"
-          subtitle="Real-time monitoring for background jobs and imports."
+          subtitle="Completed import-report outcomes. Live queue telemetry is not connected."
           actions={
-            <div className="super-inline-row">
-              <label className="super-inline-check">
-                <input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} />
-                Auto-refresh
-              </label>
-              <a className="link-button secondary" href="https://trigger.dev" target="_blank" rel="noreferrer">
-                Open in Trigger.dev
-              </a>
-            </div>
+            <label className="super-inline-check">
+              <input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} />
+              Auto-refresh
+            </label>
           }
         />
         {data?.banner ? <p className="super-warning-banner">{data.banner}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
 
         <div className="super-stat-grid four-up">
-          <StatCard label="Running" value={data?.queue?.running || 0} subtext="Active now" tone="info" />
-          <StatCard label="Queued" value={data?.queue?.queued || 0} subtext="Waiting" tone="warning" />
-          <StatCard label="Completed (24h)" value={data?.queue?.completed24h || 0} subtext="Successful" tone="success" />
+          <StatCard label="Running" value="Not connected" subtext="Queue telemetry unavailable" tone="neutral" />
+          <StatCard label="Queued" value="Not connected" subtext="Queue telemetry unavailable" tone="neutral" />
+          <StatCard label="Completed Reports (24h)" value={data?.queue?.completed24h || 0} subtext="Successful imports" tone="success" />
           <StatCard
-            label="Failed (24h)"
+            label="Failed Reports (24h)"
             value={data?.queue?.failed24h || 0}
-            subtext="Requires review"
+            subtext="Imports requiring review"
             tone={(data?.queue?.failed24h || 0) > 0 ? "danger" : "success"}
           />
         </div>
@@ -2134,11 +1912,9 @@ export function SuperJobsHealthPage() {
 }
 
 export function SuperJobsLogPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [data, setData] = useState({ items: [] });
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
   const [filters, setFilters] = useState({ status: "", search: "" });
   const [expandedRunId, setExpandedRunId] = useState("");
 
@@ -2159,17 +1935,6 @@ export function SuperJobsLogPage() {
     if (!token) return;
     loadData();
   }, [token, filters.status, filters.search]);
-
-  async function runAction(path, okMessage) {
-    try {
-      setStatus("");
-      await requestJson(path, { method: "POST", token });
-      setStatus(okMessage);
-      loadData();
-    } catch (actionError) {
-      setError(actionError.message || "Action failed.");
-    }
-  }
 
   return (
     <div className="super-panel-stack">
@@ -2194,7 +1959,7 @@ export function SuperJobsLogPage() {
           }
         />
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
+        <p className="muted">This view contains completed import reports. Retry and cancel require a future durable job queue.</p>
 
         <div className="super-filter-grid">
           <label>
@@ -2222,7 +1987,7 @@ export function SuperJobsLogPage() {
                 <th>Duration</th>
                 <th>Triggered By</th>
                 <th>Run ID</th>
-                <th>Actions</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody>
@@ -2246,14 +2011,6 @@ export function SuperJobsLogPage() {
                         >
                           {expandedRunId === row.runId ? "Hide" : "Expand"}
                         </Button>
-                        {canMutate(role) ? (
-                          <>
-                            {row.status === "failed" ? (
-                              <Button variant="secondary" onClick={() => runAction(`/api/super/jobs/log/${row.runId}/retry`, "Retry queued.")}>Retry</Button>
-                            ) : null}
-                            <Button variant="secondary" onClick={() => runAction(`/api/super/jobs/log/${row.runId}/cancel`, "Cancel requested.")}>Cancel</Button>
-                          </>
-                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -2298,12 +2055,10 @@ export function SuperJobsLogPage() {
 }
 
 export function SuperJobsImportsPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [data, setData] = useState({ activeImports: [], history: [] });
   const [expandedImportId, setExpandedImportId] = useState("");
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
 
   async function loadData() {
     try {
@@ -2322,36 +2077,15 @@ export function SuperJobsImportsPage() {
     return () => window.clearInterval(id);
   }, [token]);
 
-  async function rerunImport(id) {
-    try {
-      await requestJson(`/api/super/jobs/imports/${id}/rerun`, {
-        method: "POST",
-        token
-      });
-      setStatus("Import rerun queued.");
-    } catch (rerunError) {
-      setError(rerunError.message || "Could not queue rerun.");
-    }
-  }
-
   return (
     <div className="super-panel-stack">
       <Card>
         <PanelHeader
           title="Data Imports"
-          subtitle="Cross-tenant import visibility and error diagnostics."
-          actions={
-            <Button
-              variant="secondary"
-              onClick={() => setStatus("Manual import upload modal scaffold is ready for R2 + Trigger.dev wiring.")}
-              disabled={!canMutate(role)}
-            >
-              + Manual Import
-            </Button>
-          }
+          subtitle="Cross-camp import-report history and error diagnostics."
         />
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
+        <p className="muted">Source files are not retained for replay. Re-run controls remain hidden until a durable import workflow exists.</p>
       </Card>
 
       {data.activeImports?.length ? (
@@ -2411,11 +2145,6 @@ export function SuperJobsImportsPage() {
                             Download Error CSV
                           </a>
                         ) : null}
-                        {canMutate(role) ? (
-                          <Button variant="secondary" onClick={() => rerunImport(row.id)}>
-                            Re-run
-                          </Button>
-                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -2459,11 +2188,9 @@ export function SuperJobsImportsPage() {
 }
 
 export function SuperJobsScheduledPage() {
-  const { token, user } = useAuth();
-  const role = roleFromUser(user);
+  const { token } = useAuth();
   const [data, setData] = useState({ items: [] });
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
 
   async function loadData() {
     try {
@@ -2480,41 +2207,14 @@ export function SuperJobsScheduledPage() {
     loadData();
   }, [token]);
 
-  async function triggerNow(job) {
-    try {
-      await requestJson(`/api/super/jobs/scheduled/${job.key}/trigger`, {
-        method: "POST",
-        token
-      });
-      setStatus(`Triggered ${job.name}.`);
-      loadData();
-    } catch (requestError) {
-      setError(requestError.message || "Could not trigger job.");
-    }
-  }
-
-  async function toggleJob(job) {
-    try {
-      await requestJson(`/api/super/jobs/scheduled/${job.key}/toggle`, {
-        method: "POST",
-        token,
-        body: { enabled: !job.enabled }
-      });
-      setStatus(`${job.name} ${job.enabled ? "disabled" : "enabled"}.`);
-      loadData();
-    } catch (requestError) {
-      setError(requestError.message || "Could not update scheduled job.");
-    }
-  }
-
   return (
     <div className="super-panel-stack">
       <Card>
-        <PanelHeader title="Scheduled Jobs" subtitle="Manage recurring maintenance and analytics jobs." />
+        <PanelHeader title="Scheduled Jobs" subtitle="Durable recurring-work visibility and controls." />
         {error ? <p className="error-text">{error}</p> : null}
-        {status ? <p className="success-text">{status}</p> : null}
+        {data?.notice ? <p className="super-warning-banner">{data.notice}</p> : null}
 
-        <div className="super-table-wrap">
+        {(data.items || []).length ? <div className="super-table-wrap">
           <table className="super-data-table">
             <thead>
               <tr>
@@ -2523,7 +2223,6 @@ export function SuperJobsScheduledPage() {
                 <th>Last Run</th>
                 <th>Last Status</th>
                 <th>Next Run</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -2539,21 +2238,11 @@ export function SuperJobsScheduledPage() {
                     <StatusBadge status={job.lastStatus} />
                   </td>
                   <td>{formatDateTime(job.nextRunAt)}</td>
-                  <td>
-                    <div className="super-inline-row wrap">
-                      <Button variant="secondary" onClick={() => triggerNow(job)} disabled={!canMutate(role)}>
-                        Trigger Now
-                      </Button>
-                      <Button variant="secondary" onClick={() => toggleJob(job)} disabled={!canMutate(role)}>
-                        {job.enabled ? "Disable" : "Enable"}
-                      </Button>
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </div> : <p className="muted">There are no connected scheduled jobs to display.</p>}
       </Card>
     </div>
   );
@@ -2562,20 +2251,79 @@ export function SuperJobsScheduledPage() {
 export function SuperSettingsPage() {
   const { token } = useAuth();
   const [data, setData] = useState(null);
+  const [rolloutData, setRolloutData] = useState(null);
+  const [rolloutDrafts, setRolloutDrafts] = useState({});
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [savingKey, setSavingKey] = useState("");
+
+  function installRolloutData(payload) {
+    setRolloutData(payload);
+    setRolloutDrafts(Object.fromEntries((payload?.flags || []).map((flag) => [
+      flag.featureKey,
+      {
+        state: flag.state || "disabled",
+        killSwitch: flag.killSwitch !== false,
+        tenantIds: flag.tenantIds || [],
+        excludedTenantIds: flag.excludedTenantIds || []
+      }
+    ])));
+  }
 
   useEffect(() => {
     if (!token) return;
-    requestJson("/api/super/settings", { token })
-      .then((payload) => setData(payload))
+    Promise.all([
+      requestJson("/api/super/settings", { token }),
+      requestJson("/api/super/analytics/flags", { token })
+    ])
+      .then(([settingsPayload, rolloutPayload]) => {
+        setData(settingsPayload);
+        installRolloutData(rolloutPayload);
+      })
       .catch((loadError) => setError(loadError.message || "Could not load super settings."));
   }, [token]);
+
+  function patchRolloutDraft(featureKey, patch) {
+    setRolloutDrafts((current) => ({
+      ...current,
+      [featureKey]: { ...(current[featureKey] || {}), ...patch }
+    }));
+  }
+
+  function toggleRolloutTenant(featureKey, tenantId, field) {
+    const current = rolloutDrafts[featureKey] || {};
+    const values = new Set(current[field] || []);
+    if (values.has(tenantId)) values.delete(tenantId);
+    else values.add(tenantId);
+    patchRolloutDraft(featureKey, { [field]: [...values] });
+  }
+
+  async function saveRollout(featureKey) {
+    try {
+      setError("");
+      setStatus("");
+      setSavingKey(featureKey);
+      await requestJson(`/api/super/analytics/flags/${encodeURIComponent(featureKey)}`, {
+        method: "PATCH",
+        token,
+        body: rolloutDrafts[featureKey] || {}
+      });
+      const refreshed = await requestJson("/api/super/analytics/flags", { token });
+      installRolloutData(refreshed);
+      setStatus(`${featureKey} rollout saved and audited.`);
+    } catch (saveError) {
+      setError(saveError.message || "Could not save the rollout control.");
+    } finally {
+      setSavingKey("");
+    }
+  }
 
   return (
     <div className="super-panel-stack">
       <Card>
-        <PanelHeader title="Settings" subtitle="Role-aware access and dashboard behavior." />
-        {error ? <p className="error-text">{error}</p> : null}
+        <PanelHeader title="Platform settings" subtitle="Role-aware access, runtime status, and reviewed rollout controls." />
+        {error ? <p className="error-text" role="alert">{error}</p> : null}
+        {status ? <p className="success-text" role="status">{status}</p> : null}
       </Card>
 
       {data ? (
@@ -2604,6 +2352,99 @@ export function SuperSettingsPage() {
           <p>
             <strong>Imports refresh:</strong> {data.settings.refreshIntervals.importsSeconds}s
           </p>
+        </Card>
+      ) : null}
+
+      {rolloutData ? (
+        <Card>
+          <PanelHeader
+            title="Rollout controls"
+            subtitle="Features fail closed and are evaluated on the server using stable tenant IDs."
+          />
+          <p className={rolloutData.controlAvailable ? "muted" : "super-warning-banner"}>
+            {rolloutData.notice}
+          </p>
+          <div className="super-rollout-list">
+            {(rolloutData.flags || []).map((flag) => {
+              const draft = rolloutDrafts[flag.featureKey] || {};
+              const cohortField = draft.state === "enabled" ? "excludedTenantIds" : "tenantIds";
+              const selected = new Set(draft[cohortField] || []);
+              const cohortLabel = draft.state === "enabled" ? "Control camps held back" : "Pilot camps";
+              return (
+                <article key={flag.featureKey} className="super-rollout-card">
+                  <div className="super-rollout-heading">
+                    <div>
+                      <span className="mono">{flag.featureKey}</span>
+                      <h3>{flag.label}</h3>
+                      <p>{flag.description}</p>
+                    </div>
+                    <Badge tone={draft.killSwitch ? "warning" : draft.state === "disabled" ? "neutral" : "success"}>
+                      {draft.killSwitch ? "Kill switch on" : draft.state}
+                    </Badge>
+                  </div>
+
+                  <div className="super-rollout-controls">
+                    <label>
+                      <span>Rollout state</span>
+                      <select
+                        value={draft.state || "disabled"}
+                        onChange={(event) => patchRolloutDraft(flag.featureKey, { state: event.target.value })}
+                        disabled={!data?.permissions?.canMutate || !rolloutData.controlAvailable}
+                      >
+                        <option value="disabled">Disabled</option>
+                        <option value="pilot">Pilot cohort</option>
+                        <option value="enabled">Enabled except controls</option>
+                      </select>
+                    </label>
+                    <label className="super-rollout-switch">
+                      <input
+                        type="checkbox"
+                        checked={draft.killSwitch !== false}
+                        onChange={(event) => patchRolloutDraft(flag.featureKey, { killSwitch: event.target.checked })}
+                        disabled={!data?.permissions?.canMutate || !rolloutData.controlAvailable}
+                      />
+                      <span>Immediate kill switch</span>
+                    </label>
+                  </div>
+
+                  {draft.state !== "disabled" ? (
+                    <fieldset className="super-rollout-cohort">
+                      <legend>{cohortLabel}</legend>
+                      <p>
+                        {draft.state === "pilot"
+                          ? "Only checked camps receive the feature."
+                          : "Checked camps remain unchanged while the wider rollout is enabled."}
+                      </p>
+                      <div>
+                        {(rolloutData.tenants || []).map((tenant) => (
+                          <label key={tenant.id}>
+                            <input
+                              type="checkbox"
+                              checked={selected.has(tenant.id)}
+                              onChange={() => toggleRolloutTenant(flag.featureKey, tenant.id, cohortField)}
+                              disabled={!data?.permissions?.canMutate || !rolloutData.controlAvailable}
+                            />
+                            <span>{tenant.name} <small>/{tenant.slug}</small></span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ) : null}
+
+                  <div className="super-rollout-footer">
+                    <small>Revision {flag.revision || 0} · {flag.updatedAt ? formatDateTime(flag.updatedAt) : "not configured"}</small>
+                    <Button
+                      onClick={() => saveRollout(flag.featureKey)}
+                      loading={savingKey === flag.featureKey}
+                      disabled={!data?.permissions?.canMutate || !rolloutData.controlAvailable || Boolean(savingKey)}
+                    >
+                      Save reviewed rollout
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </Card>
       ) : null}
     </div>

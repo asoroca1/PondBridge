@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, TreePine } from "lucide-react";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
@@ -96,7 +97,7 @@ function FamilyTreeCard({ tree, isYour = false, onOpen }) {
 
 export default function FamilyTrees() {
   const navigate = useNavigate();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const alumniWord = resolveAlumniWord(tenant);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -131,7 +132,7 @@ export default function FamilyTrees() {
         if (ignore) return;
         const rows = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
         setState({ loading: false, items: rows.map(toTree), error: "" });
-      } catch (_err) {
+      } catch {
         if (ignore) return;
         setState({ loading: false, items: [], error: "Unable to load family trees." });
       }
@@ -145,7 +146,7 @@ export default function FamilyTrees() {
   const currentUserId = getCurrentUserId();
   const openTree = (treeId, edit = false) => {
     if (!treeId) return;
-    navigate(edit ? `/family-trees/${treeId}?edit=1` : `/family-trees/${treeId}`);
+    navigate(tenantRoute(slug, edit ? `/family-trees/${treeId}?edit=1` : `/family-trees/${treeId}`));
   };
 
   const view = useMemo(() => {
@@ -175,7 +176,7 @@ export default function FamilyTrees() {
           title="Family Trees"
           subtitle={`Explore family tree containers across ${alumniWord} profiles.`}
         >
-          <Link className="btn-cedar" to="/family-trees/new">
+          <Link className="btn-cedar" to={tenantRoute(slug, "/family-trees/new")}>
             Create New Family Tree
           </Link>
         </CedarPageHeader>
@@ -215,7 +216,7 @@ export default function FamilyTrees() {
                 <div className="ft-empty-sub">
                   No family trees are available yet. Start one and add members.
                 </div>
-                <Link className="btn-cedar" to="/family-trees/new">
+                <Link className="btn-cedar" to={tenantRoute(slug, "/family-trees/new")}>
                   Create New Family Tree
                 </Link>
               </>

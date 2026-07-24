@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
 import InitialsMark from "../../components/InitialsMark.jsx";
 import CedarBackground from "../components/CedarBackground";
@@ -87,7 +88,7 @@ function ResultAvatar({ person = {} }) {
 
 export default function FamilyTreeCreate() {
   const navigate = useNavigate();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const me = useMemo(() => readCurrentUser(), []);
 
@@ -220,7 +221,7 @@ export default function FamilyTreeCreate() {
 
       const id = String(data?.id || data?._id || "").trim();
       if (!id) throw new Error("Tree created, but no id was returned.");
-      navigate(`/family-trees/${id}`);
+      navigate(tenantRoute(slug, `/family-trees/${id}`));
     } catch (err) {
       setError(err?.message || "Unable to create family tree.");
     } finally {
@@ -245,7 +246,7 @@ export default function FamilyTreeCreate() {
               {`Name your tree, add ${alumniWordTitle.toLowerCase()} members, then define relationships.`}
             </p>
           </div>
-          <Link className="btn-ghost" to="/family-trees">
+          <Link className="btn-ghost" to={tenantRoute(slug, "/family-trees")}>
             Back to Family Trees
           </Link>
         </header>

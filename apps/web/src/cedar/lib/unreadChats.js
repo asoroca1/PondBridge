@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "./api";
 import { authHeaders, getToken } from "./helpers";
 
-const READ_KEY = "cedarChatLastRead_v1"; // { [conversationId]: isoString }
+const READ_KEY = "cedarChatLastRead_v2"; // { [conversationId]: isoString }
 
 function safeParse(json, fallback) {
   try {
@@ -28,8 +28,28 @@ function maxIso(...isos) {
   return latest ? new Date(latest).toISOString() : null;
 }
 
+function tokenSubject() {
+  const token = String(getToken() || "").trim();
+  if (!token.includes(".")) return "anonymous";
+  try {
+    const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(encoded));
+    return String(payload?.sub || payload?.userId || "anonymous").trim() || "anonymous";
+  } catch {
+    return "anonymous";
+  }
+}
+
+export function getChatReadStorageKey() {
+  const tenant =
+    window.location.pathname.match(/^\/t\/([^/]+)/i)?.[1] ||
+    localStorage.getItem("pondbridgeTenantSlug") ||
+    "tenant";
+  return `${READ_KEY}:${decodeURIComponent(tenant)}:${tokenSubject()}`;
+}
+
 export function getChatReadMap() {
-  return safeParse(localStorage.getItem(READ_KEY) || "{}", {});
+  return safeParse(localStorage.getItem(getChatReadStorageKey()) || "{}", {});
 }
 
 export function getChatLastRead(conversationId) {
@@ -49,7 +69,7 @@ export function setChatLastRead(conversationId, iso) {
   if (next <= prev) return;
 
   map[id] = new Date(next).toISOString();
-  localStorage.setItem(READ_KEY, JSON.stringify(map));
+  localStorage.setItem(getChatReadStorageKey(), JSON.stringify(map));
 
   // Let other parts of the app update instantly
   window.dispatchEvent(
@@ -87,11 +107,12 @@ export function computeUnreadCount(conversations = []) {
 
   for (const c of conversations) {
     if (!c || !(c.type === "dm" || c.type === "group")) continue;
+    if (!c.lastMessage || typeof c.lastMessage !== "object") continue;
     const last = c.lastMessageAt ? new Date(c.lastMessageAt).getTime() : 0;
     if (!last) continue;
 
     const readIso = map[String(c._id)];
-    const read = readIso ? new Date(readIso).getTime() : 0;
+    const read = Math.max(toMs(readIso), toMs(c.lastReadAt));
 
     if (last > read) count += 1;
   }
@@ -132,6 +153,7 @@ export function useUnreadChatsCount({ pollMs = 25000 } = {}) {
     };
 
     window.addEventListener("cedar:chat-read", onRead);
+    window.addEventListener("cedar:chat-message", onRead);
     document.addEventListener("visibilitychange", onVis);
 
     let timer = null;
@@ -139,6 +161,7 @@ export function useUnreadChatsCount({ pollMs = 25000 } = {}) {
 
     return () => {
       window.removeEventListener("cedar:chat-read", onRead);
+      window.removeEventListener("cedar:chat-message", onRead);
       document.removeEventListener("visibilitychange", onVis);
       if (timer) window.clearInterval(timer);
     };

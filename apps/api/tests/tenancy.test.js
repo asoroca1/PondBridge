@@ -184,12 +184,13 @@ describe("API tenancy isolation", () => {
     expect(response.status).toBe(200);
     expect(response.body.total).toBeGreaterThan(0);
 
-    const tenantIds = response.body.items.map((item) => String(item.tenantId));
-    expect(tenantIds.every((id) => id === String(tenantA._id))).toBe(true);
-
     const lastNames = response.body.items.map((item) => item.lastName);
     expect(lastNames).toContain("ScopeA");
     expect(lastNames).not.toContain("ScopeB");
+
+    // Directory summaries intentionally omit internal tenant identifiers. The
+    // scoped result set itself is the isolation contract.
+    expect(response.body.items.every((item) => item.tenantId === undefined)).toBe(true);
   });
 
   test("/search returns only tenant-scoped profiles", async () => {

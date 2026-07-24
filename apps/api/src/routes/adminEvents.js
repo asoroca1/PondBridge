@@ -47,6 +47,15 @@ const eventMessageLimiter = rateLimit({
 });
 
 router.use(...requireTenantRoleScope("tenant_admin"));
+router.use((req, res, next) => {
+  if (isEventsModuleEnabled(req.tenant)) return next();
+  return res.status(403).json({
+    error: {
+      code: "EVENTS_MODULE_DISABLED",
+      message: "This camp has disabled events. Enable the module before managing events."
+    }
+  });
+});
 
 async function writeAdminAudit(req, event, metadata = {}) {
   try {

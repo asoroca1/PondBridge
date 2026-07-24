@@ -20,15 +20,25 @@ import { findInviteByOpaqueToken, markInviteUsed } from "../services/invites.js"
 import { hashOpaqueToken } from "../utils/tokens.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 import {
+  createTenantAccessCodeGrant,
+  isEmailAllowedByPolicy,
+  resolveTenantAccessPolicy,
+  verifyTenantAccessCodeGrant,
+  verifyTenantAccessCode
+} from "../services/accessPolicy.js";
+import {
   canonicalizeCityName,
   canonicalizeCountryName,
   composeCityState,
   parseCityStateDetailed
 } from "../utils/location.js";
+import {
+  MINIMUM_MEMBER_AGE,
+  isMemberEligibilityComplete,
+  normalizeMemberLegalAgreement as normalizeLegalAgreementFromBody
+} from "../services/memberEligibility.js";
 
 const router = Router({ mergeParams: true });
-const DEFAULT_TERMS_VERSION = "2026-03-04";
-const DEFAULT_PRIVACY_VERSION = "2026-03-04";
 function authLimiterKey(req, { includeEmail = false } = {}) {
   const tenantSlug = String(req.params?.slug || req.tenant?.slug || "").trim().toLowerCase();
   const ip = String(req.ip || "").trim();
@@ -49,6 +59,13 @@ const registerLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => authLimiterKey(req, { includeEmail: true })
+});
+const accessCodeVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req)
 });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -89,11 +106,6 @@ function rolesFromInvite(invite) {
     return ["tenant_admin", "user"];
   }
   return ["user"];
-}
-
-function resolveSignupMode(_tenant) {
-  // Access policy is retired: all tenant signups are open.
-  return "open";
 }
 
 function normalizeCamperYears(value = {}) {
@@ -186,38 +198,6 @@ function normalizeJobRows(rows = []) {
   }));
 }
 
-function normalizeBoolean(value = false) {
-  if (typeof value === "boolean") return value;
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
-}
-
-function normalizeLegalAgreementFromBody(body = {}) {
-  const provided = body && typeof body === "object" ? body : {};
-  const nested = provided.legalAgreement && typeof provided.legalAgreement === "object" ? provided.legalAgreement : {};
-  const accepted = normalizeBoolean(
-    provided.legalAgreementAccepted ??
-      provided.acceptedLegal ??
-      provided.acceptTerms ??
-      provided.termsAccepted ??
-      nested.accepted
-  );
-  const rawAcceptedAt = String(nested.acceptedAt || provided.legalAgreementAcceptedAt || "").trim();
-  const acceptedAtDate = rawAcceptedAt ? new Date(rawAcceptedAt) : new Date();
-  const acceptedAt = Number.isNaN(acceptedAtDate.getTime()) ? new Date().toISOString() : acceptedAtDate.toISOString();
-  const termsVersion =
-    String(nested.termsVersion || provided.termsVersion || DEFAULT_TERMS_VERSION).trim() || DEFAULT_TERMS_VERSION;
-  const privacyVersion =
-    String(nested.privacyVersion || provided.privacyVersion || DEFAULT_PRIVACY_VERSION).trim() ||
-    DEFAULT_PRIVACY_VERSION;
-  return {
-    accepted,
-    acceptedAt,
-    termsVersion,
-    privacyVersion
-  };
-}
-
 function resolveDemoAccessSettings(tenant = null) {
   const settings = tenant?.settings && typeof tenant.settings === "object" ? tenant.settings : {};
   const demoAccess = settings.demoAccess && typeof settings.demoAccess === "object" ? settings.demoAccess : {};
@@ -260,7 +240,10 @@ function profileFromBody(body) {
           accepted: true,
           acceptedAt: legalAgreement.acceptedAt,
           termsVersion: legalAgreement.termsVersion,
-          privacyVersion: legalAgreement.privacyVersion
+          privacyVersion: legalAgreement.privacyVersion,
+          ageEligibilityConfirmed: legalAgreement.ageEligibilityConfirmed,
+          minimumAge: legalAgreement.minimumAge,
+          agePolicyVersion: legalAgreement.agePolicyVersion
         }
       }
     : normalizedSocials;
@@ -286,6 +269,34 @@ function profileFromBody(body) {
     avatarUrl: String(body.uploads?.photoUrl || body.avatarUrl || body.photoUrl || "").trim()
   };
 }
+
+router.post("/access-code/verify", accessCodeVerifyLimiter, requireTenant, async (req, res) => {
+  const policy = resolveTenantAccessPolicy(req.tenant);
+  if (policy.signupMode !== "code") {
+    return res.status(409).json({
+      error: {
+        code: "ACCESS_CODE_NOT_REQUIRED",
+        message: "This network does not currently require a join code."
+      }
+    });
+  }
+
+  const matched = await verifyTenantAccessCode(req.tenant, req.body?.accessCode || req.body?.code);
+  if (!matched) {
+    return res.status(403).json({
+      error: {
+        code: "ACCESS_CODE_INVALID",
+        message: "That join code is not valid."
+      }
+    });
+  }
+
+  return res.json({
+    ok: true,
+    accessGrant: createTenantAccessCodeGrant(req.tenant),
+    expiresInSeconds: 600
+  });
+});
 
 router.post("/register", registerLimiter, requireTenant, async (req, res) => {
   if (isDemoAccessOnlyTenant(req.tenant)) {
@@ -319,7 +330,8 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     });
   }
 
-  const signupMode = resolveSignupMode(req.tenant);
+  const policy = resolveTenantAccessPolicy(req.tenant);
+  const signupMode = policy.signupMode;
   let matchingInvite = null;
   if (inviteToken) {
     const inviteByToken = await findInviteByOpaqueToken(req.tenant._id, inviteToken);
@@ -356,6 +368,15 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     });
   }
 
+  if (!bypassAccessControls && !matchingInvite && !isEmailAllowedByPolicy(policy, email)) {
+    return res.status(403).json({
+      error: {
+        code: "EMAIL_DOMAIN_NOT_ALLOWED",
+        message: "This email domain is not allowed to join directly. Contact your camp director."
+      }
+    });
+  }
+
   if (!bypassAccessControls && signupMode === "invite_only") {
     if (!matchingInvite) {
       return res.status(403).json({
@@ -369,12 +390,9 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
 
   if (!bypassAccessControls && signupMode === "code") {
     if (!matchingInvite) {
-      const sentCode = String(req.body.accessCode || "").trim();
-      const codeHash = String(req.tenant?.settings?.accessCodeHash || "").trim();
-      const legacyCode = String(req.tenant?.accessSettings?.accessCode || "").trim();
       const codeMatched =
-        (codeHash ? await comparePassword(sentCode, codeHash) : false) ||
-        (legacyCode ? sentCode === legacyCode : false);
+        verifyTenantAccessCodeGrant(req.tenant, req.body.accessGrant) ||
+        (await verifyTenantAccessCode(req.tenant, req.body.accessCode));
       if (!codeMatched) {
         return res.status(403).json({
           error: {
@@ -386,11 +404,11 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     }
   }
 
-  if (!legalAgreement.accepted) {
+  if (!isMemberEligibilityComplete(legalAgreement)) {
     return res.status(400).json({
       error: {
         code: "LEGAL_AGREEMENT_REQUIRED",
-        message: "You must agree to Terms and Privacy before creating an account."
+        message: `You must confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy before creating an account.`
       }
     });
   }

@@ -1,54 +1,25 @@
-# Supabase Migration — Complete
+# Supabase Migration Status
 
-MongoDB has been fully removed. The API runs exclusively on Supabase.
+Last reviewed: 2026-07-14
 
-## Architecture
+The runtime migration is complete: PondBridge uses native relational tables in
+Supabase PostgreSQL through `apps/api/src/db/models/*`.
 
-All data is stored in a single Supabase table (`pb_mongo_mirror`) using a document-model pattern:
+The historical `pb_mongo_mirror` document table and Mongo-compatible model layer
+are not the target runtime and must not be introduced into new code. Any remaining
+legacy utilities exist only for controlled migration/compatibility work and
+should be removed after their data-retention window closes.
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| `collection` | text | Model name (e.g. "Tenant", "User") |
-| `id` | text | Document ID (24-char hex string) |
-| `tenant_id` | text | Tenant scoping |
-| `payload` | jsonb | Full document data |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last update |
-| `synced_at` | timestamp | Sync timestamp |
+## Current governance
 
-Primary key: `(collection, id)`
+1. Define relational changes in `apps/api/scripts/native_schema.sql`.
+2. Rehearse them against staging with a backup and rollback plan.
+3. Run `db:preflight`, `domains:audit` when domain constraints are involved,
+   `supabase:apply-schema`, and `rls:audit`.
+4. Keep API model column mappings aligned with the schema.
+5. Require `tenant_id` scope in application queries and authenticated RLS
+   policies in the database.
+6. Do not run seed/reset utilities against production.
 
-## Key files
-
-- `apps/api/src/db/supabaseDocumentModel.js` — Core runtime: Mongoose-compatible API over Supabase JSONB
-- `apps/api/src/db/mongooseCompat.js` — Lightweight shim exporting `Schema` and `model()` (no mongoose dependency)
-- `apps/api/src/db/supabaseAdmin.js` — Supabase client initialization (service role)
-- `apps/api/src/db/connect.js` — Validates Supabase table readiness on startup
-- `apps/api/src/utils/objectId.js` — ObjectId validation and generation utilities
-
-## Setup
-
-1. Create table/indexes:
-   ```
-   npm --workspace @pondbridge/api run supabase:apply-schema
-   ```
-2. Ensure `apps/api/.env` has:
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `SUPABASE_MIRROR_TABLE=pb_mongo_mirror`
-3. Start API:
-   ```
-   npm --workspace @pondbridge/api run dev
-   ```
-
-## Data model guardrails
-
-- Every document includes tenant scoping (`tenant_id`) with indexes.
-- Server-side role checks in API middleware are the primary access gate.
-- Never expose service role key to client.
-
-## Future improvements
-
-- Migrate from single JSONB table to proper relational tables per model
-- Enable Supabase RLS policies for defense-in-depth tenant isolation
-- Add Supabase Realtime subscriptions for chat/forum features
+The planned identity-membership normalization is documented separately in
+`docs/adr/0001-multi-camp-identity-memberships.md`.

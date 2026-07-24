@@ -14,26 +14,134 @@ services:
         value: production
       - key: PORT
         value: "4000"
+      - key: API_JSON_LIMIT
+        value: 15mb
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: FRONTEND_ORIGIN
+      - key: AUTH_PROVIDER
         sync: false
+      - key: HYBRID_ALLOW_LEGACY_TOKENS
+        value: "true"
+      - key: FRONTEND_ORIGIN
+        value: https://app.pondbridgealumni.com
       - key: FRONTEND_ORIGINS
         sync: false
+      - key: PUBLIC_API_ORIGIN
+        value: https://api.pondbridgealumni.com
       - key: APP_BASE_DOMAIN
+        value: pondbridgealumni.com
+      - key: TENANT_HOST_SUFFIXES
+        value: pondbridgealumni.com
+      - key: CORS_ALLOW_SUBDOMAIN_ORIGINS
+        value: "true"
+      - key: CUSTOM_DOMAIN_ALLOWLIST
+        value: ""
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: OPENAI_API_KEY
         sync: false
+      - key: OPENAI_DIRECTOR_COPILOT_MODEL
+        value: gpt-5.6-luna
+      - key: OPENAI_DIRECTOR_COPILOT_MAX_OUTPUT_TOKENS
+        value: "900"
+      - key: OPENAI_DIRECTOR_COPILOT_TIMEOUT_MS
+        value: "30000"
+      - key: OPENAI_EMAIL_AGENT_MODEL
+        value: gpt-5.6-luna
+      - key: OPENAI_EMAIL_AGENT_MAX_OUTPUT_TOKENS
+        value: "1800"
+      - key: OPENAI_EMAIL_AGENT_TIMEOUT_MS
+        value: "30000"
+      - key: EMAIL_AGENT_MONTHLY_BUDGET_USD
+        value: "25"
+      - key: OPENAI_SEARCH_MODEL
+        value: gpt-5.6-luna
+      - key: OPENAI_SEARCH_MAX_OUTPUT_TOKENS
+        value: "500"
+      - key: OPENAI_SEARCH_TIMEOUT_MS
+        value: "20000"
+      - key: AI_SEARCH_MONTHLY_BUDGET_USD
+        value: "15"
+      - key: OPENAI_PROFILE_IMPORT_MODEL
+        value: gpt-5.6-luna
+      - key: OPENAI_PROFILE_IMPORT_MAX_OUTPUT_TOKENS
+        value: "1600"
+      - key: OPENAI_PROFILE_IMPORT_TIMEOUT_MS
+        value: "30000"
+      - key: PROFILE_IMPORT_MONTHLY_BUDGET_USD
+        value: "15"
+      - key: SUPER_COPILOT_ENABLED
+        value: "false"
+      - key: OPENAI_SUPER_COPILOT_MODEL
+        value: gpt-5.6-terra
+      - key: OPENAI_SUPER_COPILOT_MAX_OUTPUT_TOKENS
+        value: "1100"
+      - key: OPENAI_SUPER_COPILOT_TIMEOUT_MS
+        value: "30000"
+      - key: BILLING_MODE
+        value: auto
+      - key: ALLOW_MOCK_BILLING_IN_PRODUCTION
+        value: "false"
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: STRIPE_PRICE_LEGACY_ANNUAL
+        value: price_1T8tD3KmSeC5JnMupWTAn1kQ
+      - key: STRIPE_PRICE_FOUNDERS_ANNUAL
+        value: price_1THBiAKmSeC5JnMu5C33ovqH
+      - key: STRIPE_PRICE_INSTITUTIONAL_ANNUAL
+        value: price_1T8tDWKmSeC5JnMufEtrpCCj
       - key: STRIPE_PRICE_TEST_ANNUAL
-        sync: false
+        value: price_1TJdoAKmSeC5JnMuIjxDUD4m
+      - key: STRIPE_PRICE_LEGACY_ONBOARDING
+        value: ""
+      - key: STRIPE_PRICE_INSTITUTIONAL_ONBOARDING
+        value: price_1T8tDqKmSeC5JnMuWfkuQk8s
+      - key: STRIPE_SUCCESS_URL
+        value: https://app.pondbridgealumni.com/admin/billing?checkout=success
+      - key: STRIPE_CANCEL_URL
+        value: https://app.pondbridgealumni.com/admin/billing?checkout=canceled
+      - key: STRIPE_BILLING_PORTAL_RETURN_URL
+        value: https://app.pondbridgealumni.com/admin/billing
+      - key: STRIPE_CURRENCY
+        value: usd
       - key: BILLING_TEST_PLAN_TENANTS
         sync: false
+      - key: EMAIL_MODE
+        value: resend
+      - key: EMAIL_FROM
+        value: PondBridge <no-reply@pondbridgealumni.com>
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_API_BASE_URL
+        value: https://api.resend.com
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_WEBHOOK_TOLERANCE_SECONDS
+        value: "300"
+      - key: RESEND_USER_AGENT
+        value: pondbridge-api/1.0
+      - key: RESEND_REQUEST_TIMEOUT_MS
+        value: "12000"
+      - key: RESEND_MAX_RETRIES
+        value: "2"
+      - key: RESEND_RETRY_BASE_DELAY_MS
+        value: "300"
+      - key: RESEND_BATCH_ENABLED
+        value: "true"
+      - key: EMAIL_SUPPRESSION_ENABLED
+        value: "true"
+      - key: EMAIL_PREFERENCE_TOKEN_SECRET
+        sync: false
+      - key: EMAIL_BROADCAST_BATCH_SIZE
+        value: "40"
+      - key: EMAIL_BROADCAST_MAX_RECIPIENTS
+        value: "500"
       - key: AUTH_TOKEN_MODE
         value: hybrid
       - key: AUTH_COOKIE_NAME
@@ -46,10 +154,26 @@ services:
         value: lax
       - key: CLERK_SUPER_ADMIN_EMAILS
         value: adensoroca@gmail.com
+      - key: CLERK_SECRET_KEY
+        sync: false
       - key: CLERK_WEBHOOK_SIGNING_SECRET
         sync: false
+      - key: CLERK_AUTHORIZED_PARTIES
+        sync: false
+      - key: CLERK_JWT_AUDIENCE
+        sync: false
+      - key: CLERK_REQUIRE_TENANT_CLAIM
+        value: "false"
       - key: CLERK_SUPER_ADMIN_USER_IDS
         value: ""
+      - key: CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN
+        value: "true"
+      - key: ALLOW_PUBLIC_AUTO_BOOTSTRAP_FIRST_TENANT
+        value: "false"
+      - key: ALLOW_EMPTY_PRODUCTION_TENANTS
+        value: "false"
+      - key: PRODUCTION_MIN_TENANTS
+        value: "1"
       - key: R2_BUCKET_NAME
         sync: false
       - key: R2_ACCESS_KEY_ID
@@ -62,6 +186,12 @@ services:
         value: auto
       - key: R2_PUBLIC_BASE_URL
         sync: false
+      - key: R2_MAX_UPLOAD_BYTES
+        value: "20971520"
+      - key: R2_PRESIGN_EXPIRES_SECONDS
+        value: "900"
+      - key: R2_DEFAULT_CACHE_CONTROL
+        value: public, max-age=31536000, immutable
       - key: CLOUDFLARE_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_API_TOKEN
@@ -80,3 +210,13 @@ services:
         value: "25000"
       - key: CLOUDFLARE_DOMAIN_READY_POLL_MS
         value: "1200"
+      - key: APNS_KEY_ID
+        sync: false
+      - key: APNS_TEAM_ID
+        sync: false
+      - key: APNS_BUNDLE_ID
+        value: com.pondbridge.ios
+      - key: APNS_PRIVATE_KEY
+        sync: false
+      - key: APNS_USE_SANDBOX
+        value: "false"

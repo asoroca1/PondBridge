@@ -18,6 +18,15 @@ async function createTenant({ slug, name, onboardingStatus = "live" }) {
     status: "active",
     planTier: "premium",
     onboardingStatus,
+    billingDetails: {
+      mailingAddress: {
+        line1: "1 Camp Road",
+        city: "Chicago",
+        state: "IL",
+        postalCode: "60601",
+        country: "US"
+      }
+    },
     settings: { signupMode: "open" },
     modules: { search: true, chat: true, photoStream: true, newsletter: true }
   });

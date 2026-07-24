@@ -15,6 +15,9 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { UserRoundPen } from "lucide-react";
 import { tenantHasFeature } from "../../lib/features.js";
+import { tenantRoute } from "../../lib/tenantRouting.js";
+import { useUnsavedChangesGuard } from "../../lib/useUnsavedChangesGuard.js";
+import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
 import "./edit-profile.css";
 
 /* Data */
@@ -206,9 +209,11 @@ function mergeParsedProfileIntoForm(currentForm, parsedProfile = {}) {
     ...safeCurrent,
     firstName: String(safeParsed.firstName || "").trim() || safeCurrent.firstName || "",
     lastName: String(safeParsed.lastName || "").trim() || safeCurrent.lastName || "",
-    email: String(safeParsed.email || "").trim() || safeCurrent.email || "",
+    // Account email is identity-managed and must never be replaced by resume text.
+    email: safeCurrent.email || "",
     phone: String(safeParsed.phone || "").trim() || safeCurrent.phone || "",
     cityState: String(safeParsed.cityState || "").trim() || safeCurrent.cityState || "",
+    bio: String(safeParsed.bio || "").trim() || safeCurrent.bio || "",
     highSchool: String(safeParsed.highSchool || "").trim() || safeCurrent.highSchool || "",
     education:
       parsedEducation.length > 0
@@ -236,6 +241,51 @@ function mergeParsedProfileIntoForm(currentForm, parsedProfile = {}) {
       facebook: String(parsedSocials.facebook || "").trim() || safeCurrent?.social?.facebook || ""
     }
   };
+}
+
+function formatProfileImportValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (entry && typeof entry === "object") {
+          return Object.values(entry).map((part) => String(part || "").trim()).filter(Boolean).join(" · ");
+        }
+        return String(entry || "").trim();
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, entry]) => entry ? `${key}: ${entry}` : "")
+      .filter(Boolean)
+      .join("; ");
+  }
+  return String(value || "").trim();
+}
+
+function summarizeResumeChanges(currentForm = {}, suggestedForm = {}) {
+  const fields = [
+    ["firstName", "First name"],
+    ["lastName", "Last name"],
+    ["phone", "Phone"],
+    ["cityState", "Location"],
+    ["bio", "About me"],
+    ["highSchool", "High school"],
+    ["education", "Education"],
+    ["industry", "Industry"],
+    ["currentJobs", "Current jobs"],
+    ["pastJobs", "Past jobs"],
+    ["social", "Social links"]
+  ];
+  return fields
+    .filter(([key]) => JSON.stringify(currentForm?.[key] ?? null) !== JSON.stringify(suggestedForm?.[key] ?? null))
+    .map(([key, label]) => ({
+      key,
+      label,
+      before: formatProfileImportValue(currentForm?.[key]),
+      after: formatProfileImportValue(suggestedForm?.[key])
+    }));
 }
 
 /* ================= City/State/Country helpers ================= */
@@ -629,7 +679,7 @@ const digitsOnly = (s = "") => String(s).replace(/\D/g, "").slice(0, 10);
 
 export default function EditProfile() {
   const navigate = useNavigate();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const { getAuthToken } = useAuth();
   const canUseResumeParsing = tenantHasFeature(tenant, "resumeParsing");
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
@@ -641,6 +691,10 @@ export default function EditProfile() {
   const [resumeUploading, setResumeUploading] = useState(false);
   const [resumeUploadStatus, setResumeUploadStatus] = useState("");
   const [resumeUploadKey, setResumeUploadKey] = useState(0);
+  const [resumeProcessingConsent, setResumeProcessingConsent] = useState(false);
+  const [profilePdfType, setProfilePdfType] = useState("auto");
+  const [resumeReview, setResumeReview] = useState(null);
+  const [saveError, setSaveError] = useState("");
 
   const [errors, setErrors] = useState({});
 
@@ -650,8 +704,10 @@ export default function EditProfile() {
     firstName: "", lastName: "", nickname: "",
     email: "", // read-only in UI
     phone: "",
+    privacy: { email: "members", phone: "members" },
 
     cityState: "",
+    bio: "",
 
     roles: [],
 
@@ -667,6 +723,9 @@ export default function EditProfile() {
 
     social: { linkedin: "", instagram: "", facebook: "" },
   });
+  const savedFormRef = useRef(JSON.stringify(form));
+  const hasUnsavedChanges = !loading && JSON.stringify(form) !== savedFormRef.current;
+  const unsavedGuard = useUnsavedChangesGuard(hasUnsavedChanges);
 
   const setField = (patch) => setForm((f) => ({ ...f, ...patch }));
   const setSocial = (patch) => setForm((f) => ({ ...f, social: { ...f.social, ...patch } }));
@@ -760,7 +819,26 @@ export default function EditProfile() {
       const file = event.target.files?.[0];
       if (!file) return;
 
+      if (Number(file.size || 0) > 10 * 1024 * 1024) {
+        setErrors((current) => ({
+          ...current,
+          resumeUpload: "Choose a PDF smaller than 10 MB."
+        }));
+        setResumeUploadKey((value) => value + 1);
+        return;
+      }
+
+      if (!resumeProcessingConsent) {
+        setErrors((current) => ({
+          ...current,
+          resumeUpload: "Confirm the resume-processing disclosure before choosing a PDF."
+        }));
+        setResumeUploadKey((value) => value + 1);
+        return;
+      }
+
       setResumeUploadStatus("");
+      setResumeReview(null);
       setErrors((current) => {
         if (!current?.resumeUpload) return current;
         const next = { ...current };
@@ -777,6 +855,8 @@ export default function EditProfile() {
 
         const data = new FormData();
         data.append("resume", file);
+        data.append("aiConsent", "true");
+        data.append("documentType", profilePdfType);
 
         const response = await fetch(`${API_BASE}/resume/parse`, {
           method: "POST",
@@ -791,19 +871,32 @@ export default function EditProfile() {
           throw new Error(normalizeErrorMessage(payload, "Unable to parse that PDF right now."));
         }
 
-        setForm((current) => mergeParsedProfileIntoForm(current, payload?.profile || {}));
-        setResumeUploadStatus("Autofill complete. Review the imported details, then save your profile.");
+        const suggestedForm = mergeParsedProfileIntoForm(form, payload?.profile || {});
+        const changes = summarizeResumeChanges(form, suggestedForm);
+        setResumeReview({
+          suggestedForm,
+          changes,
+          selectedKeys: changes.map((change) => change.key),
+          processing: payload?.processing || {},
+          document: payload?.document || {}
+        });
+        setResumeUploadStatus(
+          changes.length
+            ? `${payload?.document?.type === "linkedin" ? "LinkedIn profile" : "Resume"} extraction complete. Review each suggested change below.`
+            : "Extraction complete. No new profile details were found."
+        );
         setResumeUploadKey((value) => value + 1);
       } catch (uploadError) {
         setErrors((current) => ({
           ...current,
           resumeUpload: uploadError?.message || "Unable to parse that PDF right now."
         }));
+        setResumeUploadKey((value) => value + 1);
       } finally {
         setResumeUploading(false);
       }
     },
-    [API_BASE, canUseResumeParsing, resolveAuthToken]
+    [API_BASE, canUseResumeParsing, form, profilePdfType, resolveAuthToken, resumeProcessingConsent]
   );
 
   // load current profile
@@ -855,8 +948,17 @@ export default function EditProfile() {
           ).trim(),
           email: fresh.email || "",
           phone: fresh.phone || "",
+          privacy: {
+            email: ["members", "admins_only", "hidden"].includes(fresh?.privacy?.email)
+              ? fresh.privacy.email
+              : "members",
+            phone: ["members", "admins_only", "hidden"].includes(fresh?.privacy?.phone)
+              ? fresh.privacy.phone
+              : "members"
+          },
 
           cityState: normalizedLocation || normalizeCity(fresh.cityState || fallbackLocation),
+          bio: String(fresh.bio || "").trim(),
 
           roles: Array.isArray(fresh.roles) ? fresh.roles : (fresh.roles ? [fresh.roles] : []),
 
@@ -882,6 +984,7 @@ export default function EditProfile() {
           social: fresh.social || { linkedin: "", instagram: "", facebook: "" },
         };
 
+        savedFormRef.current = JSON.stringify(normalized);
         setForm(normalized);
         setShowStaffYears(staffYearStints.length > 0);
       } finally {
@@ -925,6 +1028,14 @@ export default function EditProfile() {
     return objectUrl;
   }, [resolveAuthToken, savePhotoUrlNow]);
 
+  const showValidationErrors = (nextErrors) => {
+    setErrors(nextErrors);
+    if (!Object.keys(nextErrors).length) return;
+    window.requestAnimationFrame(() => {
+      document.querySelector(".edit-profile-page [aria-invalid='true'], .edit-profile-page .has-error")?.focus?.();
+    });
+  };
+
   const validateStep1 = () => {
     const e = {};
     if (!form.firstName.trim()) e.firstName = "First name is required.";
@@ -962,7 +1073,7 @@ export default function EditProfile() {
     validateYearStints(form.camperYearStints, "camper_stint", "Camper year entry");
     validateYearStints(form.staffYearStints, "staff_stint", "Staff year entry");
 
-    setErrors(e);
+    showValidationErrors(e);
     return Object.keys(e).length === 0;
   };
 
@@ -973,7 +1084,7 @@ export default function EditProfile() {
         e[`edu_year_${idx}`] = "Use a 4-digit year (e.g., 2024).";
       }
     });
-    setErrors(e);
+    showValidationErrors(e);
     return Object.keys(e).length === 0;
   };
 
@@ -994,7 +1105,7 @@ export default function EditProfile() {
     checkList("currentJobs", "cur");
     checkList("pastJobs", "past");
 
-    setErrors(e);
+    showValidationErrors(e);
     return Object.keys(e).length === 0;
   };
 
@@ -1015,7 +1126,7 @@ export default function EditProfile() {
       try { new URL(fb); } catch { e.social_facebook = "Enter a valid Facebook username or URL."; }
     }
 
-    setErrors(e);
+    showValidationErrors(e);
     return Object.keys(e).length === 0;
   };
 
@@ -1070,6 +1181,7 @@ export default function EditProfile() {
   async function persistProfile({ exitAfterSave = false } = {}) {
     try {
       setSubmitting(true);
+      setSaveError("");
       const token = await resolveAuthToken();
       const payload = buildUpdatePayload(form);
 
@@ -1099,7 +1211,7 @@ export default function EditProfile() {
           msg = normalizeErrorMessage(j, msg);
         } catch {}
         console.error("Update failed:", res.status, text);
-        alert(msg);
+        setSaveError(msg);
         return false;
       }
 
@@ -1111,14 +1223,15 @@ export default function EditProfile() {
       localStorage.setItem("pondbridgeUser", serialized);
       window.dispatchEvent(new CustomEvent("pondbridge-auth-updated"));
       window.dispatchEvent(new Event("cedar:userChanged"));
+      savedFormRef.current = JSON.stringify(form);
 
       if (exitAfterSave) {
-        navigate("/my-profile");
+        navigate(tenantRoute(slug, "/my-profile"));
       }
       return true;
     } catch (err) {
       console.error(err);
-      alert("Network error. Please try again.");
+      setSaveError("Network error. Your changes were not saved. Please try again.");
       return false;
     } finally {
       setSubmitting(false);
@@ -1157,8 +1270,10 @@ export default function EditProfile() {
       lastName: form.lastName,
       nickname: form.nickname,
       phone: form.phone,
+      privacy: form.privacy,
 
       cityState,
+      bio: String(form.bio || "").trim(),
       city: splitLocation.city,
       state: splitLocation.state,
       country: splitLocation.country,
@@ -1253,22 +1368,54 @@ export default function EditProfile() {
               <div className="wizard1-dottedbox">
                 {canUseResumeParsing ? (
                   <>
-                    <div className="wizard1-upload-actions" style={{ alignItems: "center", flexWrap: "wrap" }}>
-                      <label className="wizard1-btn-secondary" style={{ display: "inline-flex", alignItems: "center" }}>
-                        {resumeUploading ? "Parsing PDF..." : "Upload Resume or LinkedIn PDF"}
+                    <label className="inline-check" style={{ alignItems: "flex-start", marginBottom: 10 }}>
+                      <input
+                        type="checkbox"
+                        checked={resumeProcessingConsent}
+                        onChange={(event) => {
+                          setResumeProcessingConsent(event.target.checked);
+                          setResumeReview(null);
+                        }}
+                      />
+                      <span>
+                        I consent to PDF text extraction. If AI parsing is configured, the extracted text is sent to OpenAI for this request. PondBridge does not retain the uploaded PDF or extracted text in this flow, and no suggestion is saved until I apply it and save my profile.
+                      </span>
+                    </label>
+                    <div className="wizard1-profile-import-controls">
+                      <label className="wizard1-field" htmlFor="edit-profile-pdf-type">
+                        <span className="wizard1-label">I’m uploading</span>
+                        <select
+                          id="edit-profile-pdf-type"
+                          className="wizard1-input wizard1-select"
+                          value={profilePdfType}
+                          onChange={(event) => setProfilePdfType(event.target.value)}
+                          disabled={resumeUploading}
+                        >
+                          <option value="auto">Detect automatically</option>
+                          <option value="linkedin">LinkedIn profile PDF</option>
+                          <option value="resume">Resume PDF</option>
+                        </select>
+                      </label>
+                      <label className="wizard1-btn-secondary wizard1-file-picker" style={{ display: "inline-flex", alignItems: "center" }}>
+                        {resumeUploading
+                          ? "Parsing PDF..."
+                          : profilePdfType === "linkedin"
+                            ? "Upload LinkedIn PDF"
+                            : profilePdfType === "resume"
+                              ? "Upload Resume PDF"
+                              : "Choose PDF"}
                         <input
                           key={resumeUploadKey}
                           type="file"
-                          accept="application/pdf"
+                          accept=".pdf,application/pdf"
                           onChange={handleResumeAutofillUpload}
-                          disabled={resumeUploading}
-                          style={{ display: "none" }}
+                          disabled={resumeUploading || !resumeProcessingConsent}
+                          className="wizard1-file-input"
                         />
                       </label>
-                      <span className="wizard1-hint">Autofill name, contact, school, jobs, industry, and LinkedIn.</span>
                     </div>
                     <p className="wizard1-hint" style={{ marginTop: 8 }}>
-                      Upload a standard resume PDF or a LinkedIn profile PDF export. We’ll merge what we can into the form.
+                      On LinkedIn, open your profile, choose More → Save to PDF, then upload that file here. We can suggest your name, location, About section, education, experience, industry, and LinkedIn URL.
                     </p>
                   </>
                 ) : (
@@ -1276,39 +1423,110 @@ export default function EditProfile() {
                     Resume and LinkedIn PDF autofill is available on the Premium plan.
                   </p>
                 )}
-                {resumeUploadStatus ? <p className="wizard1-success">{resumeUploadStatus}</p> : null}
-                {errors.resumeUpload ? <p className="wizard1-error">{errors.resumeUpload}</p> : null}
+                {resumeUploadStatus ? <p className="wizard1-success" role="status">{resumeUploadStatus}</p> : null}
+                {errors.resumeUpload ? <p className="wizard1-error" role="alert">{errors.resumeUpload}</p> : null}
+                {resumeReview ? (
+                  <div className="wizard1-camp-section" style={{ marginTop: 12 }}>
+                    <h3 className="wizard1-subtitle">Review extracted suggestions</h3>
+                    {resumeReview.changes.length ? (
+                      <div className="wizard1-import-review-list">
+                        {resumeReview.changes.map((change) => {
+                          const selected = resumeReview.selectedKeys.includes(change.key);
+                          return (
+                            <label className="wizard1-import-review-row" key={change.key}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => setResumeReview((current) => ({
+                                  ...current,
+                                  selectedKeys: selected
+                                    ? current.selectedKeys.filter((key) => key !== change.key)
+                                    : [...current.selectedKeys, change.key]
+                                }))}
+                              />
+                              <span className="wizard1-import-review-copy">
+                                <strong>{change.label}</strong>
+                                {change.before ? <small>Current: {change.before}</small> : <small>Currently blank</small>}
+                                <span>Suggested: {change.after || "Blank"}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="wizard1-hint">No fields would change.</p>
+                    )}
+                    <div className="wizard1-upload-actions" style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="wizard1-btn-primary"
+                        disabled={!resumeReview.selectedKeys.length}
+                        onClick={() => {
+                          const selected = new Set(resumeReview.selectedKeys);
+                          setForm((current) => {
+                            const next = { ...current };
+                            resumeReview.changes.forEach((change) => {
+                              if (selected.has(change.key)) next[change.key] = resumeReview.suggestedForm[change.key];
+                            });
+                            return next;
+                          });
+                          setResumeReview(null);
+                          setResumeUploadStatus("Selected suggestions were applied to the form. Review them, then save your profile.");
+                        }}
+                      >
+                        Apply suggestions
+                      </button>
+                      <button
+                        type="button"
+                        className="wizard1-btn-secondary"
+                        onClick={() => {
+                          setResumeReview(null);
+                          setResumeUploadStatus("PDF suggestions discarded.");
+                        }}
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
             <div className="wizard1-span-6">
               <div className="wizard1-field">
-                <label className="wizard1-label">First Name <span className="req">*</span></label>
+                <label className="wizard1-label" htmlFor="edit-profile-first-name">First Name <span className="req">*</span></label>
                 <input
+                  id="edit-profile-first-name"
                   className={`wizard1-input ${errors.firstName ? "has-error" : ""}`}
                   value={form.firstName}
                   onChange={(e) => setField({ firstName: e.target.value })}
+                  aria-invalid={Boolean(errors.firstName)}
+                  aria-describedby={errors.firstName ? "edit-profile-first-name-error" : undefined}
                 />
-                {errors.firstName && <p className="wizard1-error">{errors.firstName}</p>}
+                {errors.firstName && <p id="edit-profile-first-name-error" className="wizard1-error">{errors.firstName}</p>}
               </div>
             </div>
 
             <div className="wizard1-span-6">
               <div className="wizard1-field">
-                <label className="wizard1-label">Last Name <span className="req">*</span></label>
+                <label className="wizard1-label" htmlFor="edit-profile-last-name">Last Name <span className="req">*</span></label>
                 <input
+                  id="edit-profile-last-name"
                   className={`wizard1-input ${errors.lastName ? "has-error" : ""}`}
                   value={form.lastName}
                   onChange={(e) => setField({ lastName: e.target.value })}
+                  aria-invalid={Boolean(errors.lastName)}
+                  aria-describedby={errors.lastName ? "edit-profile-last-name-error" : undefined}
                 />
-                {errors.lastName && <p className="wizard1-error">{errors.lastName}</p>}
+                {errors.lastName && <p id="edit-profile-last-name-error" className="wizard1-error">{errors.lastName}</p>}
               </div>
             </div>
 
             <div className="wizard1-span-6">
               <div className="wizard1-field">
-                <label className="wizard1-label">Camp Nickname</label>
+                <label className="wizard1-label" htmlFor="edit-profile-nickname">Camp Nickname</label>
                 <input
+                  id="edit-profile-nickname"
                   className="wizard1-input"
                   value={form.nickname}
                   onChange={(e) => setField({ nickname: e.target.value })}
@@ -1318,15 +1536,31 @@ export default function EditProfile() {
 
             <div className="wizard1-span-6">
               <div className="wizard1-field">
-                <label className="wizard1-label">Email</label>
-                <input className="wizard1-input" value={form.email} disabled />
+                <label className="wizard1-label" htmlFor="edit-profile-email">Email</label>
+                <input id="edit-profile-email" className="wizard1-input" value={form.email} disabled />
+                <label className="wizard1-label" htmlFor="edit-profile-email-privacy" style={{ marginTop: 8 }}>
+                  Who can see my email?
+                </label>
+                <select
+                  id="edit-profile-email-privacy"
+                  className="wizard1-input wizard1-select"
+                  value={form.privacy?.email || "members"}
+                  onChange={(event) => setField({
+                    privacy: { ...form.privacy, email: event.target.value }
+                  })}
+                >
+                  <option value="members">All signed-in members</option>
+                  <option value="admins_only">Camp directors only</option>
+                  <option value="hidden">Only me</option>
+                </select>
               </div>
             </div>
 
             <div className="wizard1-span-6">
               <div className="wizard1-field">
-                <label className="wizard1-label">Phone</label>
+                <label className="wizard1-label" htmlFor="edit-profile-phone">Phone</label>
                 <input
+                  id="edit-profile-phone"
                   className="wizard1-input"
                   value={form.phone}
                   onChange={(e) => {
@@ -1340,15 +1574,32 @@ export default function EditProfile() {
                   }}
                   inputMode="tel"
                 />
+                <label className="wizard1-label" htmlFor="edit-profile-phone-privacy" style={{ marginTop: 8 }}>
+                  Who can see my phone?
+                </label>
+                <select
+                  id="edit-profile-phone-privacy"
+                  className="wizard1-input wizard1-select"
+                  value={form.privacy?.phone || "members"}
+                  onChange={(event) => setField({
+                    privacy: { ...form.privacy, phone: event.target.value }
+                  })}
+                >
+                  <option value="members">All signed-in members</option>
+                  <option value="admins_only">Camp directors only</option>
+                  <option value="hidden">Only me</option>
+                </select>
               </div>
             </div>
 
             <div className="wizard1-span-12">
               <div className="wizard1-field">
-                <label className="wizard1-label">Current Location <span className="req">*</span></label>
+                <label className="wizard1-label" htmlFor="edit-profile-location">Current Location <span className="req">*</span></label>
                 <CityCombobox
+                  inputId="edit-profile-location"
                   value={form.cityState}
                   hasError={Boolean(errors.cityState)}
+                  ariaDescribedBy={errors.cityState ? "edit-profile-location-error" : "edit-profile-location-hint"}
                   placeholder="City, State (US) or City, Country"
                   onChange={(next, selected) => {
                     if (selected) {
@@ -1358,10 +1609,26 @@ export default function EditProfile() {
                     }
                   }}
                 />
-                <p className="wizard1-hint" style={{ marginTop: 6 }}>
+                <p id="edit-profile-location-hint" className="wizard1-hint" style={{ marginTop: 6 }}>
                   Start typing — pick a match, or add a new city if it's missing.
                 </p>
-                {errors.cityState && <p className="wizard1-error">{errors.cityState}</p>}
+                {errors.cityState && <p id="edit-profile-location-error" className="wizard1-error">{errors.cityState}</p>}
+              </div>
+            </div>
+
+            <div className="wizard1-span-12">
+              <div className="wizard1-field">
+                <label className="wizard1-label" htmlFor="edit-profile-bio">About Me</label>
+                <textarea
+                  id="edit-profile-bio"
+                  className="wizard1-input"
+                  rows={5}
+                  maxLength={1600}
+                  value={form.bio}
+                  onChange={(event) => setField({ bio: event.target.value })}
+                  placeholder="Share a little about what you’re doing now and what you’d enjoy reconnecting around."
+                />
+                <p className="wizard1-hint">LinkedIn PDF imports can suggest this from your About section. {form.bio.length}/1600</p>
               </div>
             </div>
 
@@ -1390,8 +1657,9 @@ export default function EditProfile() {
                     <div key={`camper-stint-${idx}`} className="wizard1-camp-section wizard1-year-row">
                       <div className="wizard1-year-fields wizard1-year-fields-camper">
                         <div className="wizard1-field wizard1-year-field">
-                          <label className="wizard1-label">Start Year</label>
+                          <label className="wizard1-label" htmlFor={`edit-profile-camper-${idx}-start-year`}>Start Year</label>
                           <input
+                            id={`edit-profile-camper-${idx}-start-year`}
                             className={`wizard1-input ${errors[`camper_stint_${idx}_start`] ? "has-error" : ""}`}
                             value={stint?.startYear || ""}
                             onChange={(e) =>
@@ -1399,11 +1667,14 @@ export default function EditProfile() {
                             }
                             placeholder="e.g., 2014"
                             inputMode="numeric"
+                            aria-invalid={Boolean(errors[`camper_stint_${idx}_start`] || errors[`camper_stint_${idx}_pair`] || errors[`camper_stint_${idx}_order`])}
+                            aria-describedby={rowError ? `edit-profile-camper-${idx}-error` : undefined}
                           />
                         </div>
                         <div className="wizard1-field wizard1-year-field">
-                          <label className="wizard1-label">Start Age Group</label>
+                          <label className="wizard1-label" htmlFor={`edit-profile-camper-${idx}-start-group`}>Start Age Group</label>
                           <select
+                            id={`edit-profile-camper-${idx}-start-group`}
                             className="wizard1-input wizard1-select"
                             value={stint?.startAgeGroup || ""}
                             onChange={(e) =>
@@ -1419,8 +1690,9 @@ export default function EditProfile() {
                           </select>
                         </div>
                         <div className="wizard1-field wizard1-year-field">
-                          <label className="wizard1-label">End Year</label>
+                          <label className="wizard1-label" htmlFor={`edit-profile-camper-${idx}-end-year`}>End Year</label>
                           <input
+                            id={`edit-profile-camper-${idx}-end-year`}
                             className={`wizard1-input ${errors[`camper_stint_${idx}_end`] ? "has-error" : ""}`}
                             value={stint?.endYear || ""}
                             onChange={(e) =>
@@ -1428,11 +1700,14 @@ export default function EditProfile() {
                             }
                             placeholder="e.g., 2020"
                             inputMode="numeric"
+                            aria-invalid={Boolean(errors[`camper_stint_${idx}_end`] || errors[`camper_stint_${idx}_pair`] || errors[`camper_stint_${idx}_order`])}
+                            aria-describedby={rowError ? `edit-profile-camper-${idx}-error` : undefined}
                           />
                         </div>
                         <div className="wizard1-field wizard1-year-field">
-                          <label className="wizard1-label">End Age Group</label>
+                          <label className="wizard1-label" htmlFor={`edit-profile-camper-${idx}-end-group`}>End Age Group</label>
                           <select
+                            id={`edit-profile-camper-${idx}-end-group`}
                             className="wizard1-input wizard1-select"
                             value={stint?.endAgeGroup || ""}
                             onChange={(e) =>
@@ -1458,7 +1733,7 @@ export default function EditProfile() {
                           Remove
                         </button>
                       </div>
-                      {rowError ? <p className="wizard1-error">{rowError}</p> : null}
+                      {rowError ? <p id={`edit-profile-camper-${idx}-error`} className="wizard1-error">{rowError}</p> : null}
                     </div>
                   );
                 })}
@@ -1498,8 +1773,9 @@ export default function EditProfile() {
                         <div key={`staff-stint-${idx}`} className="wizard1-camp-section wizard1-year-row">
                           <div className="wizard1-year-fields wizard1-year-fields-staff">
                             <div className="wizard1-field wizard1-year-field">
-                              <label className="wizard1-label">Start Year</label>
+                              <label className="wizard1-label" htmlFor={`edit-profile-staff-${idx}-start-year`}>Start Year</label>
                               <input
+                                id={`edit-profile-staff-${idx}-start-year`}
                                 className={`wizard1-input ${errors[`staff_stint_${idx}_start`] ? "has-error" : ""}`}
                                 value={stint?.startYear || ""}
                                 onChange={(e) =>
@@ -1507,11 +1783,14 @@ export default function EditProfile() {
                                 }
                                 placeholder="e.g., 2021"
                                 inputMode="numeric"
+                                aria-invalid={Boolean(errors[`staff_stint_${idx}_start`] || errors[`staff_stint_${idx}_pair`] || errors[`staff_stint_${idx}_order`])}
+                                aria-describedby={rowError ? `edit-profile-staff-${idx}-error` : undefined}
                               />
                             </div>
                             <div className="wizard1-field wizard1-year-field">
-                              <label className="wizard1-label">End Year</label>
+                              <label className="wizard1-label" htmlFor={`edit-profile-staff-${idx}-end-year`}>End Year</label>
                               <input
+                                id={`edit-profile-staff-${idx}-end-year`}
                                 className={`wizard1-input ${errors[`staff_stint_${idx}_end`] ? "has-error" : ""}`}
                                 value={stint?.endYear || ""}
                                 onChange={(e) =>
@@ -1519,6 +1798,8 @@ export default function EditProfile() {
                                 }
                                 placeholder="e.g., 2024"
                                 inputMode="numeric"
+                                aria-invalid={Boolean(errors[`staff_stint_${idx}_end`] || errors[`staff_stint_${idx}_pair`] || errors[`staff_stint_${idx}_order`])}
+                                aria-describedby={rowError ? `edit-profile-staff-${idx}-error` : undefined}
                               />
                             </div>
                           </div>
@@ -1532,7 +1813,7 @@ export default function EditProfile() {
                               Remove
                             </button>
                           </div>
-                          {rowError ? <p className="wizard1-error">{rowError}</p> : null}
+                          {rowError ? <p id={`edit-profile-staff-${idx}-error`} className="wizard1-error">{rowError}</p> : null}
                         </div>
                       );
                     })}
@@ -1571,8 +1852,9 @@ export default function EditProfile() {
 
         <div className="wizard1-span-6">
           <div className="wizard1-field">
-            <label className="wizard1-label">High School</label>
+            <label className="wizard1-label" htmlFor="edit-profile-high-school">High School</label>
             <input
+              id="edit-profile-high-school"
               className="wizard1-input"
               value={form.highSchool}
               onChange={(e) => setField({ highSchool: e.target.value })}
@@ -1586,8 +1868,9 @@ export default function EditProfile() {
             {form.education.map((row, idx) => (
               <div key={idx} className="wizard1-edu-row">
                 <div className="wizard1-field">
-                  <label className="wizard1-label">College</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-college`}>College</label>
                   <input
+                    id={`edit-profile-education-${idx}-college`}
                     className="wizard1-input"
                     value={row.college}
                     onChange={(e) => updateEdu(idx, { college: e.target.value })}
@@ -1596,8 +1879,9 @@ export default function EditProfile() {
                 </div>
 
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Major</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-major`}>Major</label>
                   <input
+                    id={`edit-profile-education-${idx}-major`}
                     className="wizard1-input"
                     value={row.major || ""}
                     onChange={(e) => updateEdu(idx, { major: e.target.value })}
@@ -1606,15 +1890,18 @@ export default function EditProfile() {
                 </div>
 
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Grad Year</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-year`}>Grad Year</label>
                   <input
+                    id={`edit-profile-education-${idx}-year`}
                     className={`wizard1-input ${errors[`edu_year_${idx}`] ? "has-error" : ""}`}
                     value={row.year}
                     onChange={(e) => updateEdu(idx, { year: e.target.value })}
                     placeholder="e.g., 2026"
                     inputMode="numeric"
+                    aria-invalid={Boolean(errors[`edu_year_${idx}`])}
+                    aria-describedby={errors[`edu_year_${idx}`] ? `edit-profile-education-${idx}-year-error` : undefined}
                   />
-                  {errors[`edu_year_${idx}`] && <p className="wizard1-error">{errors[`edu_year_${idx}`]}</p>}
+                  {errors[`edu_year_${idx}`] && <p id={`edit-profile-education-${idx}-year-error`} className="wizard1-error">{errors[`edu_year_${idx}`]}</p>}
                 </div>
 
                 <div className="wizard1-edu-actions">
@@ -1645,16 +1932,19 @@ export default function EditProfile() {
 
         <div className="wizard1-span-6">
           <div className="wizard1-field">
-            <label className="wizard1-label">Industry <span className="req">*</span></label>
+            <label className="wizard1-label" htmlFor="edit-profile-industry">Industry <span className="req">*</span></label>
             <select
+              id="edit-profile-industry"
               className={`wizard1-input wizard1-select ${errors.industry ? "has-error" : ""}`}
               value={form.industry}
               onChange={(e) => setField({ industry: e.target.value })}
+              aria-invalid={Boolean(errors.industry)}
+              aria-describedby={errors.industry ? "edit-profile-industry-error" : undefined}
             >
               <option value="">Select…</option>
               {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
             </select>
-            {errors.industry && <p className="wizard1-error">{errors.industry}</p>}
+            {errors.industry && <p id="edit-profile-industry-error" className="wizard1-error">{errors.industry}</p>}
           </div>
         </div>
 
@@ -1664,12 +1954,15 @@ export default function EditProfile() {
             {form.currentJobs.map((row, idx) => (
               <div key={idx} className="wizard1-job-row">
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Role</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-current-job-${idx}-role`}>Role</label>
                   <input
+                    id={`edit-profile-current-job-${idx}-role`}
                     className={`wizard1-input ${errors[`cur_${idx}`] ? "has-error" : ""}`}
                     value={row.role}
                     onChange={(e)=>updateJob("currentJobs", idx, { role: e.target.value })}
                     placeholder="e.g., Associate"
+                    aria-invalid={Boolean(errors[`cur_${idx}`])}
+                    aria-describedby={errors[`cur_${idx}`] ? `edit-profile-current-job-${idx}-error` : undefined}
                   />
                   <div className="wizard1-inline-actions">
                     <button type="button" className="wizard1-btn-text" onClick={() => moveJob("currentJobs", "pastJobs", idx)}>
@@ -1684,25 +1977,31 @@ export default function EditProfile() {
                 </div>
 
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Company</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-current-job-${idx}-company`}>Company</label>
                   <input
+                    id={`edit-profile-current-job-${idx}-company`}
                     className={`wizard1-input ${errors[`cur_${idx}`] ? "has-error" : ""}`}
                     value={row.company}
                     onChange={(e)=>updateJob("currentJobs", idx, { company: e.target.value })}
                     placeholder="e.g., Nike"
+                    aria-invalid={Boolean(errors[`cur_${idx}`])}
+                    aria-describedby={errors[`cur_${idx}`] ? `edit-profile-current-job-${idx}-error` : undefined}
                   />
                 </div>
 
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Years</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-current-job-${idx}-years`}>Years</label>
                   <input
+                    id={`edit-profile-current-job-${idx}-years`}
                     className={`wizard1-input ${errors[`cur_years_${idx}`] ? "has-error" : ""}`}
                     value={row.years}
                     onChange={(e)=>updateJob("currentJobs", idx, { years: e.target.value })}
                     placeholder="e.g., 2024–Present"
+                    aria-invalid={Boolean(errors[`cur_years_${idx}`])}
+                    aria-describedby={(errors[`cur_${idx}`] || errors[`cur_years_${idx}`]) ? `edit-profile-current-job-${idx}-error` : undefined}
                   />
                   {(errors[`cur_${idx}`] || errors[`cur_years_${idx}`]) && (
-                    <p className="wizard1-error">{errors[`cur_${idx}`] || errors[`cur_years_${idx}`]}</p>
+                    <p id={`edit-profile-current-job-${idx}-error`} className="wizard1-error">{errors[`cur_${idx}`] || errors[`cur_years_${idx}`]}</p>
                   )}
                 </div>
               </div>
@@ -1719,12 +2018,15 @@ export default function EditProfile() {
             {form.pastJobs.map((row, idx) => (
               <div key={idx} className="wizard1-job-row">
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Role</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-past-job-${idx}-role`}>Role</label>
                   <input
+                    id={`edit-profile-past-job-${idx}-role`}
                     className={`wizard1-input ${errors[`past_${idx}`] ? "has-error" : ""}`}
                     value={row.role}
                     onChange={(e)=>updateJob("pastJobs", idx, { role: e.target.value })}
                     placeholder="e.g., Intern"
+                    aria-invalid={Boolean(errors[`past_${idx}`])}
+                    aria-describedby={errors[`past_${idx}`] ? `edit-profile-past-job-${idx}-error` : undefined}
                   />
                   <div className="wizard1-inline-actions">
                     <button type="button" className="wizard1-btn-text" onClick={() => moveJob("pastJobs", "currentJobs", idx)}>
@@ -1739,25 +2041,31 @@ export default function EditProfile() {
                 </div>
 
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Company</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-past-job-${idx}-company`}>Company</label>
                   <input
+                    id={`edit-profile-past-job-${idx}-company`}
                     className={`wizard1-input ${errors[`past_${idx}`] ? "has-error" : ""}`}
                     value={row.company}
                     onChange={(e)=>updateJob("pastJobs", idx, { company: e.target.value })}
                     placeholder="e.g., Morgan Stanley"
+                    aria-invalid={Boolean(errors[`past_${idx}`])}
+                    aria-describedby={errors[`past_${idx}`] ? `edit-profile-past-job-${idx}-error` : undefined}
                   />
                 </div>
 
                 <div className="wizard1-field">
-                  <label className="wizard1-label">Years</label>
+                  <label className="wizard1-label" htmlFor={`edit-profile-past-job-${idx}-years`}>Years</label>
                   <input
+                    id={`edit-profile-past-job-${idx}-years`}
                     className={`wizard1-input ${errors[`past_years_${idx}`] ? "has-error" : ""}`}
                     value={row.years}
                     onChange={(e)=>updateJob("pastJobs", idx, { years: e.target.value })}
                     placeholder="e.g., 2023"
+                    aria-invalid={Boolean(errors[`past_years_${idx}`])}
+                    aria-describedby={(errors[`past_${idx}`] || errors[`past_years_${idx}`]) ? `edit-profile-past-job-${idx}-error` : undefined}
                   />
                   {(errors[`past_${idx}`] || errors[`past_years_${idx}`]) && (
-                    <p className="wizard1-error">{errors[`past_${idx}`] || errors[`past_years_${idx}`]}</p>
+                    <p id={`edit-profile-past-job-${idx}-error`} className="wizard1-error">{errors[`past_${idx}`] || errors[`past_years_${idx}`]}</p>
                   )}
                 </div>
               </div>
@@ -1780,46 +2088,55 @@ export default function EditProfile() {
 
         <div className="wizard1-span-6">
           <div className="wizard1-field">
-            <label className="wizard1-label">LinkedIn</label>
+            <label className="wizard1-label" htmlFor="edit-profile-linkedin">LinkedIn</label>
             <input
+              id="edit-profile-linkedin"
               type="url"
               className={`wizard1-input ${errors.social_linkedin ? "has-error" : ""}`}
               placeholder="https://linkedin.com/in/you"
               value={form.social.linkedin}
               onChange={(e)=>setSocial({ linkedin: e.target.value })}
               onBlur={(e)=>setSocial({ linkedin: ensureUrl(e.target.value) })}
+              aria-invalid={Boolean(errors.social_linkedin)}
+              aria-describedby={errors.social_linkedin ? "edit-profile-linkedin-error" : undefined}
             />
-            {errors.social_linkedin && <p className="wizard1-error">{errors.social_linkedin}</p>}
+            {errors.social_linkedin && <p id="edit-profile-linkedin-error" className="wizard1-error">{errors.social_linkedin}</p>}
           </div>
         </div>
 
         <div className="wizard1-span-6">
           <div className="wizard1-field">
-            <label className="wizard1-label">Instagram</label>
+            <label className="wizard1-label" htmlFor="edit-profile-instagram">Instagram</label>
             <input
+              id="edit-profile-instagram"
               type="text"
               className={`wizard1-input ${errors.social_instagram ? "has-error" : ""}`}
               placeholder="username (or paste a link)"
               value={form.social.instagram}
               onChange={(e)=>setSocial({ instagram: e.target.value })}
               onBlur={(e)=>setSocial({ instagram: toInstagramUrl(e.target.value) })}
+              aria-invalid={Boolean(errors.social_instagram)}
+              aria-describedby={errors.social_instagram ? "edit-profile-instagram-error" : undefined}
             />
-            {errors.social_instagram && <p className="wizard1-error">{errors.social_instagram}</p>}
+            {errors.social_instagram && <p id="edit-profile-instagram-error" className="wizard1-error">{errors.social_instagram}</p>}
           </div>
         </div>
 
         <div className="wizard1-span-6">
           <div className="wizard1-field">
-            <label className="wizard1-label">Facebook</label>
+            <label className="wizard1-label" htmlFor="edit-profile-facebook">Facebook</label>
             <input
+              id="edit-profile-facebook"
               type="text"
               className={`wizard1-input ${errors.social_facebook ? "has-error" : ""}`}
               placeholder="username (or paste a link)"
               value={form.social.facebook}
               onChange={(e)=>setSocial({ facebook: e.target.value })}
               onBlur={(e)=>setSocial({ facebook: toFacebookUrl(e.target.value) })}
+              aria-invalid={Boolean(errors.social_facebook)}
+              aria-describedby={errors.social_facebook ? "edit-profile-facebook-error" : undefined}
             />
-            {errors.social_facebook && <p className="wizard1-error">{errors.social_facebook}</p>}
+            {errors.social_facebook && <p id="edit-profile-facebook-error" className="wizard1-error">{errors.social_facebook}</p>}
           </div>
         </div>
       </div>
@@ -1864,6 +2181,8 @@ export default function EditProfile() {
 
           {step === 0 ? Step1 : step === 1 ? Step2 : step === 2 ? Step3 : Step4}
 
+          {saveError ? <p className="wizard1-error" role="alert">{saveError}</p> : null}
+
           <div className="wizard1-actions edit-profile-actions">
             {step > 0 ? (
               <button className="wizard1-btn-primary" onClick={onBack} disabled={submitting}>
@@ -1884,6 +2203,16 @@ export default function EditProfile() {
           </div>
         </div>
       </main>
+      <ModalConfirm
+        open={Boolean(unsavedGuard.pendingDestination)}
+        title="Discard unsaved profile changes?"
+        description="Your profile edits have not been saved. Leaving now will discard them."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onCancel={unsavedGuard.keepEditing}
+        onConfirm={unsavedGuard.discardAndContinue}
+      />
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import crypto from "crypto";
 import request from "supertest";
+import { assertReviewedMigrationTarget } from "./applyPlatformAuditSchema.js";
 
 // Force legacy auth only for this script process so we can run end-to-end
 // provisioning and sample-account checks in local/dev without Clerk UI steps.
 process.env.AUTH_PROVIDER = "legacy";
 process.env.JWT_SECRET = process.env.JWT_SECRET || `dev-jwt-${crypto.randomBytes(12).toString("hex")}`;
 process.env.BCRYPT_ROUNDS = process.env.BCRYPT_ROUNDS || "10";
+process.env.EMAIL_MODE = "mock";
 
 function fail(message, payload) {
   const error = new Error(message);
@@ -45,20 +47,33 @@ function randomSuffix() {
 }
 
 async function main() {
+  assertReviewedMigrationTarget({
+    targetEnvironment: process.env.PONDBRIDGE_TARGET_ENV,
+    acknowledgement: process.env.PONDBRIDGE_FRESH_CAMP_REHEARSAL_ACK,
+    connectionString: process.env.SUPABASE_DB_URL,
+    requiredAcknowledgement: "run-fresh-camp-rehearsal-staging"
+  });
+
   const flowStamp = `${stamp()}${randomSuffix()}`;
-  const superEmail = "aden@sorocafamily.com";
+  const isLocalStaging = String(process.env.PONDBRIDGE_LOCAL_STAGING || "") === "1";
+  const rehearsalEmailDomain = isLocalStaging
+    ? "pondbridge.example.test"
+    : "pondbridge.local";
+  const superEmail = isLocalStaging
+    ? `rehearsal-super+${flowStamp}@${rehearsalEmailDomain}`
+    : "aden@sorocafamily.com";
   const superPassword = `PondBridge!${flowStamp}`;
 
   const campSlug = `cedar-${flowStamp.slice(-8)}`;
   const campName = `Cedar Test ${flowStamp.slice(-8)}`;
-  const directorEmail = `director+${flowStamp}@pondbridge.local`;
+  const directorEmail = `director+${flowStamp}@${rehearsalEmailDomain}`;
   const directorPassword = `Director!${flowStamp}`;
 
   const sampleUsers = [
     {
       firstName: "Jordan",
       lastName: "Camper",
-      email: `camper1+${flowStamp}@pondbridge.local`,
+      email: `camper1+${flowStamp}@${rehearsalEmailDomain}`,
       password: `Camper1!${flowStamp}`,
       cityState: "Chicago, IL",
       roleAtCamp: "Camper"
@@ -66,7 +81,7 @@ async function main() {
     {
       firstName: "Taylor",
       lastName: "Counselor",
-      email: `staff1+${flowStamp}@pondbridge.local`,
+      email: `staff1+${flowStamp}@${rehearsalEmailDomain}`,
       password: `Staff1!${flowStamp}`,
       cityState: "Denver, CO",
       roleAtCamp: "Counselor"
@@ -74,7 +89,7 @@ async function main() {
     {
       firstName: "Riley",
       lastName: "Alum",
-      email: `camper2+${flowStamp}@pondbridge.local`,
+      email: `camper2+${flowStamp}@${rehearsalEmailDomain}`,
       password: `Camper2!${flowStamp}`,
       cityState: "Austin, TX",
       roleAtCamp: "Camper"
@@ -146,17 +161,20 @@ async function main() {
   if (!tenantSlug || !tenantId) {
     fail("Tenant creation response missing id/slug", createTenant.body);
   }
-  if (!directorInviteToken) {
-    fail("Director invite token was not returned", createTenant.body);
+  const usesFirstSignupBootstrap = directorInvite.mode === "first_signup_bootstrap";
+  if (!directorInviteToken && !usesFirstSignupBootstrap) {
+    fail("Director claim response did not expose a supported claim mode", createTenant.body);
   }
 
-  await expectStatus(
-    request(app)
-      .post(`/api/t/${tenantSlug}/auth/invite/verify`)
-      .send({ inviteToken: directorInviteToken }),
-    200,
-    "Verify director invite"
-  );
+  if (directorInviteToken) {
+    await expectStatus(
+      request(app)
+        .post(`/api/t/${tenantSlug}/auth/invite/verify`)
+        .send({ inviteToken: directorInviteToken }),
+      200,
+      "Verify director invite"
+    );
+  }
 
   const directorRegister = await expectStatus(
     request(app)
@@ -166,7 +184,11 @@ async function main() {
         lastName: "Director",
         email: directorEmail,
         password: directorPassword,
-        inviteToken: directorInviteToken,
+        ...(directorInviteToken
+          ? { inviteToken: directorInviteToken }
+          : { directorSignup: true }),
+        legalAgreementAccepted: true,
+        ageEligibilityConfirmed: true,
         cityState: "Chicago, IL",
         roleAtCamp: "Director"
       }),
@@ -200,7 +222,7 @@ async function main() {
           welcomeHeadline: `Welcome to ${campName} Alumni Network`,
           welcomeBody: "Reconnect with campers, staff, and directors.",
           aboutText: "A test camp for full provisioning validation.",
-          contactEmail: "admin@pondbridge.local",
+          contactEmail: `admin@${rehearsalEmailDomain}`,
           supportUrl: "https://pondbridgealumni.com/support",
           footerLinks: [
             { label: "Terms", url: `https://${tenantSlug}.pondbridgealumni.com/legal` },
@@ -225,26 +247,41 @@ async function main() {
     "Onboarding settings step"
   );
 
-  const seedCsvLines = [
+  const inviteCsvLines = [
     "firstName,lastName,email,cityState,roleAtCamp",
-    `SeedOne,Member,seed1+${flowStamp}@pondbridge.local,Chicago IL,Camper`,
-    `SeedTwo,Member,seed2+${flowStamp}@pondbridge.local,Denver CO,Camper`,
-    `SeedThree,Member,seed3+${flowStamp}@pondbridge.local,Austin TX,Camper`,
-    `SeedFour,Member,seed4+${flowStamp}@pondbridge.local,Miami FL,Camper`,
-    `SeedFive,Member,seed5+${flowStamp}@pondbridge.local,Boston MA,Camper`
+    `InviteOne,Member,invite1+${flowStamp}@${rehearsalEmailDomain},Chicago IL,Camper`,
+    `InviteTwo,Member,invite2+${flowStamp}@${rehearsalEmailDomain},Denver CO,Camper`,
+    `InviteThree,Member,invite3+${flowStamp}@${rehearsalEmailDomain},Austin TX,Camper`,
+    `InviteFour,Member,invite4+${flowStamp}@${rehearsalEmailDomain},Miami FL,Camper`,
+    `InviteFive,Member,invite5+${flowStamp}@${rehearsalEmailDomain},Boston MA,Camper`
   ];
-  const seedCsv = `${seedCsvLines.join("\n")}\n`;
+  const inviteCsv = `${inviteCsvLines.join("\n")}\n`;
 
-  const importStep = await expectStatus(
+  const invitePreview = await expectStatus(
     request(app)
-      .post("/api/tenants/me/import/csv")
+      .post(`/api/t/${tenantSlug}/admin/invites/preview`)
       .set("Authorization", `Bearer ${directorToken}`)
-      .attach("file", Buffer.from(seedCsv, "utf8"), "seed-members.csv"),
+      .field("roleToAssign", "user")
+      .attach("file", Buffer.from(inviteCsv, "utf8"), "initial-invitations.csv"),
     200,
-    "Onboarding import step (csv)"
+    "Preview initial invitation wave"
   );
-  if (Number(importStep.body?.importSummary?.rowsRead || 0) < 5) {
-    fail("CSV import did not read at least 5 rows", importStep.body);
+  if (Number(invitePreview.body?.summary?.readyCount || 0) !== 5) {
+    fail("Invitation preview did not produce five ready recipients", invitePreview.body);
+  }
+
+  const inviteSend = await expectStatus(
+    request(app)
+      .post(`/api/t/${tenantSlug}/admin/invites/send`)
+      .set("Authorization", `Bearer ${directorToken}`)
+      .field("roleToAssign", "user")
+      .field("previewToken", String(invitePreview.body?.previewToken || ""))
+      .attach("file", Buffer.from(inviteCsv, "utf8"), "initial-invitations.csv"),
+    201,
+    "Send reviewed initial invitation wave"
+  );
+  if (Number(inviteSend.body?.createdCount || 0) !== 5 || Number(inviteSend.body?.sentCount || 0) !== 5) {
+    fail("Reviewed invitation wave was not fully created and delivered in mock mode", inviteSend.body);
   }
 
   await expectStatus(
@@ -338,6 +375,8 @@ async function main() {
           email: sample.email,
           password: sample.password,
           inviteToken,
+          legalAgreementAccepted: true,
+          ageEligibilityConfirmed: true,
           cityState: sample.cityState,
           roleAtCamp: sample.roleAtCamp
         }),
@@ -377,6 +416,87 @@ async function main() {
     "Create isolation tenant"
   );
   const isolationSlug = String(isolationTenant.body?.tenant?.slug || "").trim();
+  const isolationTenantId = String(isolationTenant.body?.tenant?._id || isolationTenant.body?.tenant?.id || "");
+  if (!isolationSlug || !isolationTenantId) {
+    fail("Isolation tenant creation response missing id/slug", isolationTenant.body);
+  }
+
+  let targetAiCapabilities = null;
+  let controlAiCapabilities = null;
+  let killedAiCapabilities = null;
+  await expectStatus(
+    request(app)
+      .patch("/api/super/analytics/flags/camp_ai_search_v1")
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        state: "pilot",
+        killSwitch: false,
+        tenantIds: [tenantId],
+        excludedTenantIds: [isolationTenantId]
+      }),
+    200,
+    "Enable Camp Search AI target/control pilot"
+  );
+  try {
+    targetAiCapabilities = await expectStatus(
+      request(app)
+        .get(`/api/t/${tenantSlug}/search/ai/capabilities`)
+        .set("Authorization", `Bearer ${superToken}`),
+      200,
+      "Target camp AI search capability"
+    );
+    controlAiCapabilities = await expectStatus(
+      request(app)
+        .get(`/api/t/${isolationSlug}/search/ai/capabilities`)
+        .set("Authorization", `Bearer ${superToken}`),
+      200,
+      "Control camp AI search capability"
+    );
+    if (!targetAiCapabilities.body?.featureEnabled || controlAiCapabilities.body?.featureEnabled) {
+      fail("Camp Search AI target/control boundary failed", {
+        target: targetAiCapabilities.body,
+        control: controlAiCapabilities.body
+      });
+    }
+
+    await expectStatus(
+      request(app)
+        .patch("/api/super/analytics/flags/camp_ai_search_v1")
+        .set("Authorization", `Bearer ${superToken}`)
+        .send({
+          state: "pilot",
+          killSwitch: true,
+          tenantIds: [tenantId],
+          excludedTenantIds: [isolationTenantId]
+        }),
+      200,
+      "Activate Camp Search AI kill switch"
+    );
+    killedAiCapabilities = await expectStatus(
+      request(app)
+        .get(`/api/t/${tenantSlug}/search/ai/capabilities`)
+        .set("Authorization", `Bearer ${superToken}`),
+      200,
+      "Target camp AI search kill-switch capability"
+    );
+    if (killedAiCapabilities.body?.featureEnabled || killedAiCapabilities.body?.rolloutReason !== "kill_switch") {
+      fail("Camp Search AI kill switch did not fail closed", killedAiCapabilities.body);
+    }
+  } finally {
+    await expectStatus(
+      request(app)
+        .patch("/api/super/analytics/flags/camp_ai_search_v1")
+        .set("Authorization", `Bearer ${superToken}`)
+        .send({
+          state: "disabled",
+          killSwitch: true,
+          tenantIds: [],
+          excludedTenantIds: []
+        }),
+      200,
+      "Restore Camp Search AI disabled state"
+    );
+  }
 
   const sampleLoginForIsolation = await expectStatus(
     request(app)
@@ -428,24 +548,31 @@ async function main() {
     users: {
       superAdmin: {
         email: superEmail,
-        password: superPassword
+        credentialsLogged: false
       },
       director: {
         email: directorEmail,
-        password: directorPassword
+        credentialsLogged: false
       },
       samples: createdSampleUsers.map((user) => ({
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        password: user.password,
         cityState: user.cityState,
-        roleAtCamp: user.roleAtCamp
+        roleAtCamp: user.roleAtCamp,
+        credentialsLogged: false
       }))
     },
     checks: {
       directorPreLaunchBlocked: blockedLaunch.body?.error?.code === "LAUNCH_BLOCKED",
       crossTenantIsolation: crossTenantCode === "TENANT_SCOPE_DENIED",
+      invitationPreviewReady: Number(invitePreview.body?.summary?.readyCount || 0) === 5,
+      invitationWaveSent:
+        Number(inviteSend.body?.createdCount || 0) === 5 && Number(inviteSend.body?.sentCount || 0) === 5,
+      aiSearchTargetEnabled: Boolean(targetAiCapabilities?.body?.featureEnabled),
+      aiSearchControlDisabled: !Boolean(controlAiCapabilities?.body?.featureEnabled),
+      aiSearchKillSwitch: killedAiCapabilities?.body?.rolloutReason === "kill_switch",
+      aiSearchRestoredDisabled: true,
       onboardingStep: onboardingOverview.body?.tenant?.onboardingStep || "",
       onboardingStatus: onboardingOverview.body?.tenant?.onboardingStatus || ""
     }

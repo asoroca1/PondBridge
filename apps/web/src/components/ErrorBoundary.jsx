@@ -1,5 +1,9 @@
 import { Component } from "react";
-import { recoverFromMissingChunk } from "../lib/chunkRecovery.js";
+import {
+  isLikelyMissingChunkError,
+  loadLatestBuild,
+  recoverFromMissingChunk
+} from "../lib/chunkRecovery.js";
 
 /**
  * Catches render errors in child components and displays a recovery UI
@@ -31,7 +35,8 @@ export default class ErrorBoundary extends Component {
   }
 
   handleRetry = () => {
-    if (recoverFromMissingChunk(this.state.error)) {
+    if (isLikelyMissingChunkError(this.state.error)) {
+      loadLatestBuild();
       return;
     }
     this.setState({ hasError: false, error: null });
@@ -57,6 +62,7 @@ export default class ErrorBoundary extends Component {
     const level = this.props.level || "page";
     const message =
       this.state.error?.message || "An unexpected error occurred.";
+    const missingChunk = isLikelyMissingChunkError(this.state.error);
 
     if (level === "app") {
       return (
@@ -64,15 +70,16 @@ export default class ErrorBoundary extends Component {
           <div className="app-status-card">
             <h1>Something went wrong</h1>
             <p>
-              The application encountered an unexpected error. This has been
-              logged and we apologize for the inconvenience.
+              {missingChunk
+                ? "A newer PondBridge version is available. The app did not refresh automatically. Update when you are ready."
+                : "The application encountered an unexpected error. This has been logged and we apologize for the inconvenience."}
             </p>
             {process.env.NODE_ENV !== "production" && (
               <pre className="eb-detail">{message}</pre>
             )}
             <div className="eb-actions">
-              <button className="eb-btn eb-btn--primary" onClick={this.handleReload}>
-                Reload Page
+              <button className="eb-btn eb-btn--primary" onClick={missingChunk ? loadLatestBuild : this.handleReload}>
+                {missingChunk ? "Update PondBridge" : "Reload Page"}
               </button>
             </div>
           </div>
@@ -83,9 +90,11 @@ export default class ErrorBoundary extends Component {
     if (level === "section") {
       return (
         <div className="eb-inline">
-          <p className="eb-inline-msg">Something went wrong loading this section.</p>
+          <p className="eb-inline-msg">
+            {missingChunk ? "This section needs the latest PondBridge update." : "Something went wrong loading this section."}
+          </p>
           <button className="eb-btn eb-btn--small" onClick={this.handleRetry}>
-            Retry
+            {missingChunk ? "Update" : "Retry"}
           </button>
         </div>
       );
@@ -97,14 +106,16 @@ export default class ErrorBoundary extends Component {
         <div className="app-status-card">
           <h1>Something went wrong</h1>
           <p>
-            This page encountered an error. You can try again or go back.
+            {missingChunk
+              ? "This page needs the latest PondBridge update. Your current screen was not refreshed automatically."
+              : "This page encountered an error. You can try again or go back."}
           </p>
           {process.env.NODE_ENV !== "production" && (
             <pre className="eb-detail">{message}</pre>
           )}
           <div className="eb-actions">
             <button className="eb-btn eb-btn--primary" onClick={this.handleRetry}>
-              Try Again
+              {missingChunk ? "Update PondBridge" : "Try Again"}
             </button>
             <button className="eb-btn" onClick={this.handleGoBack}>
               Go Back

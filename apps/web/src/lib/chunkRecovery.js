@@ -1,41 +1,15 @@
-const CHUNK_RECOVERY_PARAM = "pb_recover";
-const CHUNK_RECOVERY_KEY_PREFIX = "pondbridge_chunk_recovery_state";
-const CHUNK_RECOVERY_MAX_ATTEMPTS = 3;
-const CHUNK_RECOVERY_ATTEMPT_TTL_MS = 5 * 60 * 1000;
+const CHUNK_UPDATE_EVENT = "pondbridge:asset-update-required";
+const CHUNK_UPDATE_KEY_PREFIX = "pondbridge_chunk_update_required";
+const CHUNK_UPDATE_PARAM = "pb_update";
+const LISTENER_FLAG = "__PONDBRIDGE_CHUNK_LISTENERS_INSTALLED__";
 
 function getBuildMarker() {
   if (typeof window === "undefined") return "server";
   return String(window.__PONDBRIDGE_BUILD__ || "unknown-build");
 }
 
-function getRecoveryStorageKey() {
-  return `${CHUNK_RECOVERY_KEY_PREFIX}:${getBuildMarker()}`;
-}
-
-function getRouteRecoveryKey() {
-  if (typeof window === "undefined") return "server-route";
-  return String(window.location.pathname || "/");
-}
-
-function readRecoveryState() {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.sessionStorage.getItem(getRecoveryStorageKey());
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeRecoveryState(nextState = {}) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(getRecoveryStorageKey(), JSON.stringify(nextState));
-  } catch {
-    // Best effort only.
-  }
+function getUpdateStorageKey() {
+  return `${CHUNK_UPDATE_KEY_PREFIX}:${getBuildMarker()}`;
 }
 
 function extractErrorMessage(value) {
@@ -44,6 +18,20 @@ function extractErrorMessage(value) {
   if (typeof value?.message === "string") return value.message;
   if (typeof value?.reason?.message === "string") return value.reason.message;
   return String(value);
+}
+
+function currentRoute() {
+  if (typeof window === "undefined") return "/";
+  return `${window.location.pathname || "/"}${window.location.search || ""}${window.location.hash || ""}`;
+}
+
+function writeUpdateNotice(notice) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(getUpdateStorageKey(), JSON.stringify(notice));
+  } catch {
+    // The in-memory event below still keeps the active screen informed.
+  }
 }
 
 export function isLikelyMissingChunkError(errorLike) {
@@ -59,34 +47,60 @@ export function isLikelyMissingChunkError(errorLike) {
   );
 }
 
+export function readChunkUpdateNotice() {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(getUpdateStorageKey()) || "null");
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function dismissChunkUpdateNotice() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(getUpdateStorageKey());
+  } catch {
+    // Best effort only.
+  }
+}
+
+/**
+ * Reports a stale/missing lazy asset without navigating the document.
+ *
+ * This deliberately preserves the current React tree. A previous version
+ * called location.replace() here, which made asset failures look like random
+ * page refreshes and could discard in-progress work.
+ */
 export function recoverFromMissingChunk(errorLike) {
-  if (typeof window === "undefined") return false;
-  if (!isLikelyMissingChunkError(errorLike)) return false;
+  if (typeof window === "undefined" || !isLikelyMissingChunkError(errorLike)) return false;
 
-  const routeKey = getRouteRecoveryKey();
-  const state = readRecoveryState();
-  const prev = state[routeKey] && typeof state[routeKey] === "object" ? state[routeKey] : {};
-  const lastAttemptAt = Number(prev.lastAttemptAt || 0);
-  const now = Date.now();
-  const stale = !lastAttemptAt || now - lastAttemptAt > CHUNK_RECOVERY_ATTEMPT_TTL_MS;
-  const attemptCount = stale ? 0 : Number(prev.attemptCount || 0);
-
-  if (attemptCount >= CHUNK_RECOVERY_MAX_ATTEMPTS) return false;
-
-  state[routeKey] = {
-    attemptCount: attemptCount + 1,
-    lastAttemptAt: now
+  const notice = {
+    build: getBuildMarker(),
+    detectedAt: Date.now(),
+    route: currentRoute()
   };
-  writeRecoveryState(state);
+  writeUpdateNotice(notice);
 
-  const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.set(CHUNK_RECOVERY_PARAM, String(now));
-  window.location.replace(nextUrl.toString());
+  if (typeof window.CustomEvent === "function") {
+    window.dispatchEvent(new window.CustomEvent(CHUNK_UPDATE_EVENT, { detail: notice }));
+  }
   return true;
 }
 
-export function installChunkRecoveryListeners() {
+/** Only call from an explicit user action. */
+export function loadLatestBuild() {
   if (typeof window === "undefined") return;
+  dismissChunkUpdateNotice();
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set(CHUNK_UPDATE_PARAM, String(Date.now()));
+  window.location.assign(nextUrl.toString());
+}
+
+export function installChunkRecoveryListeners() {
+  if (typeof window === "undefined" || window[LISTENER_FLAG]) return;
+  window[LISTENER_FLAG] = true;
 
   const onWindowError = (event) => {
     const errorLike = event?.error || event?.message || event;
@@ -100,3 +114,5 @@ export function installChunkRecoveryListeners() {
   window.addEventListener("error", onWindowError);
   window.addEventListener("unhandledrejection", onUnhandledRejection);
 }
+
+export { CHUNK_UPDATE_EVENT };

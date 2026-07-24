@@ -12,15 +12,18 @@ import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { useUnsavedChangesGuard } from "../../lib/useUnsavedChangesGuard.js";
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
   DataTable,
   FilterBar,
   LoadingSkeleton,
+  ModalDialog,
   ModalConfirm,
   PageHeader
 } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -1081,7 +1084,8 @@ function TopProfileBreakdownCard({
 }
 
 export function DirectorAdminDashboardPage() {
-  const { request } = useAdminApi();
+  const { slug, request } = useAdminApi();
+  const { tenant } = useTenant();
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1128,6 +1132,9 @@ export function DirectorAdminDashboardPage() {
   }, [loadDashboard]);
 
   const stats = payload?.stats || {};
+  const isLive = tenant?.onboardingStatus === "live";
+  const communityName = String(tenant?.name || tenant?.networkName || "Your camp").trim();
+  const actionQueue = Array.isArray(payload?.actionQueue) ? payload.actionQueue : [];
   const totalMembers = Number(stats.totalMembers || 0);
   const activeMembers = Number(stats.activeMembers ?? totalMembers);
   const recentSignups = Number(stats.newThisWeek || 0);
@@ -1206,7 +1213,67 @@ export function DirectorAdminDashboardPage() {
 
   return (
     <div className="director-admin-stack">
+      <section className="director-command-hero" aria-labelledby="director-command-title">
+        <div className="director-command-hero-copy">
+          <div className="director-command-hero-kicker-row">
+            <p className="director-command-kicker">Camp control room</p>
+            <span className={`director-command-status ${isLive ? "is-live" : "is-setup"}`}>
+              <span aria-hidden="true" />
+              {isLive ? "Community live" : "Setup in progress"}
+            </span>
+          </div>
+          <h1 id="director-command-title">{communityName} at a glance</h1>
+          <p>
+            See what needs attention, understand community momentum, and take the next best action from one place.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="director-command-refresh"
+          onClick={loadDashboard}
+          disabled={loading}
+        >
+          {loading ? "Refreshing…" : "Refresh status"}
+        </button>
+        <nav className="director-command-actions" aria-label="Director quick actions">
+          <Link to={`/t/${slug}/onboarding`}>Ask PondBridge</Link>
+          <Link to={`/t/${slug}/admin/invites`}>Invite members</Link>
+          <Link to={`/t/${slug}/admin/email/compose`}>Send an update</Link>
+          <Link to={`/t/${slug}/admin/members`}>Manage people</Link>
+        </nav>
+      </section>
       {error ? <p className="error-text">{error}</p> : null}
+      <Card className="director-admin-action-queue">
+        <div className="director-admin-action-queue-head">
+          <div>
+            <p className="director-admin-eyebrow">Today</p>
+            <h2>Director action queue</h2>
+          </div>
+          <Badge tone={actionQueue.length ? "warning" : "success"}>
+            {actionQueue.length ? `${actionQueue.length} to review` : "All caught up"}
+          </Badge>
+        </div>
+        {actionQueue.length ? (
+          <ol className="director-admin-action-queue-list">
+            {actionQueue.map((item) => (
+              <li key={item.id} className={`priority-${item.priority || "low"}`}>
+                <span className="director-admin-action-priority" aria-label={`${item.priority || "low"} priority`} />
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.detail}</p>
+                </div>
+                <Link className="link-button secondary" to={item.href}>
+                  {item.actionLabel}
+                </Link>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="director-admin-action-empty">
+            No access, communication, setup, or billing issues need your attention right now.
+          </p>
+        )}
+      </Card>
       <div className="director-admin-stat-grid director-admin-stat-grid-hero">
         {statCards.map((item) => (
           <StatCard
@@ -1270,6 +1337,7 @@ export function DirectorAdminDashboardPage() {
 export function DirectorAdminMembersPage() {
   const navigate = useNavigate();
   const { slug, request, download } = useAdminApi();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   const requestRef = useRef(request);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 280);
@@ -1286,6 +1354,7 @@ export function DirectorAdminMembersPage() {
   const [rowMenuState, setRowMenuState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deletingMemberId, setDeletingMemberId] = useState("");
+  const [memberToDelete, setMemberToDelete] = useState(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportFieldsCatalog, setExportFieldsCatalog] = useState(FALLBACK_MEMBER_EXPORT_FIELDS);
   const [exportDefaultFields, setExportDefaultFields] = useState(FALLBACK_MEMBER_EXPORT_DEFAULT_FIELDS);
@@ -1602,16 +1671,11 @@ export function DirectorAdminMembersPage() {
     }
   }
 
-  async function hardDeleteMember(member) {
+  async function hardDeleteMember(member = memberToDelete) {
     const memberId = String(member?.id || "").trim();
     if (!memberId) return;
 
     const label = member?.fullName || member?.email || "this member";
-    const confirmed = window.confirm(
-      `Delete ${label} from this network permanently?\n\nThis will remove their profile, account membership, chats, forum posts, photos, and feed activity. This cannot be undone.`
-    );
-    if (!confirmed) return;
-
     setDeletingMemberId(memberId);
     setError("");
     setStatus("");
@@ -1627,6 +1691,7 @@ export function DirectorAdminMembersPage() {
       setError(requestError.message || "Failed to delete member.");
     } finally {
       setDeletingMemberId("");
+      setMemberToDelete(null);
     }
   }
 
@@ -1751,11 +1816,15 @@ export function DirectorAdminMembersPage() {
     setStatus(`Loaded preset "${preset.name}".`);
   }
 
-  function deleteNamedExportPreset() {
+  async function deleteNamedExportPreset() {
     if (!selectedExportPresetId) return;
     const preset = exportPresets.find((item) => item.id === selectedExportPresetId);
     if (!preset) return;
-    const confirmed = window.confirm(`Delete export preset "${preset.name}"?`);
+    const confirmed = await confirm({
+      title: `Delete “${preset.name}”?`,
+      description: "The saved export field selection will be permanently removed.",
+      confirmLabel: "Delete preset",
+    });
     if (!confirmed) return;
     const nextPresets = exportPresets.filter((item) => item.id !== selectedExportPresetId);
     writeSavedMemberExportPresets(slug, nextPresets);
@@ -1896,12 +1965,13 @@ export function DirectorAdminMembersPage() {
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
 
-        <DataTable className="director-admin-table-wrap" tableClassName="director-admin-table" minWidth={860}>
+        <DataTable className="director-admin-table-wrap director-admin-members-table" tableClassName="director-admin-table" minWidth={860}>
             <thead>
               <tr>
                 <th>
                   <input
                     type="checkbox"
+                    aria-label="Select all members on this page"
                     checked={
                       (payload?.items || [])
                         .map((item) => normalizeMemberRowId(item))
@@ -1944,6 +2014,7 @@ export function DirectorAdminMembersPage() {
                     <td>
                       <input
                         type="checkbox"
+                        aria-label={`Select ${item.fullName || item.email || "member"}`}
                         checked={memberId ? selected.includes(memberId) : false}
                         onChange={() => toggleOne(memberId)}
                         disabled={!memberId}
@@ -1974,7 +2045,7 @@ export function DirectorAdminMembersPage() {
                         <button
                           type="button"
                           className="director-admin-row-menu-trigger"
-                          aria-label="Open row actions"
+                          aria-label={`Open actions for ${item.fullName || item.email || "member"}`}
                           aria-expanded={rowMenuId === memberId}
                           disabled={!memberId}
                           onClick={(event) => openRowMenu(event, memberId)}
@@ -1989,6 +2060,86 @@ export function DirectorAdminMembersPage() {
               )}
             </tbody>
         </DataTable>
+        <div className="director-admin-member-mobile-list" aria-label="Members">
+          {loading ? <p className="muted">Loading members...</p> : null}
+          {!loading && !payload?.items?.length ? <p className="muted">No members found.</p> : null}
+          {!loading && payload?.items?.length ? (
+            <label className="director-admin-member-mobile-select-all">
+              <input
+                type="checkbox"
+                checked={
+                  payload.items
+                    .map((item) => normalizeMemberRowId(item))
+                    .filter(Boolean)
+                    .every((id) => selected.includes(id))
+                }
+                onChange={toggleAll}
+              />
+              Select this page
+            </label>
+          ) : null}
+          {(payload?.items || []).map((item, index) => {
+            const memberId = normalizeMemberRowId(item);
+            const rowKey = memberId || String(item?.userId || item?.email || `member-mobile-${index}`);
+            const memberLabel = item.fullName || item.email || "member";
+            return (
+              <article key={rowKey} className="director-admin-member-mobile-card">
+                <header>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${memberLabel}`}
+                    checked={memberId ? selected.includes(memberId) : false}
+                    onChange={() => toggleOne(memberId)}
+                    disabled={!memberId}
+                  />
+                  <div className="director-admin-member-cell">
+                    <strong>{item.fullName || "Unnamed Member"}</strong>
+                    <small>{item.email || "No email"}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className="director-admin-row-menu-trigger"
+                    aria-label={`Open actions for ${memberLabel}`}
+                    aria-expanded={rowMenuId === memberId}
+                    disabled={!memberId}
+                    onClick={(event) => openRowMenu(event, memberId)}
+                  >
+                    ⋯
+                  </button>
+                </header>
+                <dl>
+                  <div>
+                    <dt>Role</dt>
+                    <dd>{item.role || "Member"}</dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>
+                      <span className={`director-admin-status-badge tone-${statusTone(item.status)}`.trim()}>
+                        {item.status || "Unknown"}
+                      </span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Location</dt>
+                    <dd>{item.location || "Not added"}</dd>
+                  </div>
+                  <div>
+                    <dt>Joined</dt>
+                    <dd>{formatDate(item.joinDate)}</dd>
+                  </div>
+                </dl>
+                <div className="director-admin-member-mobile-completion">
+                  <span>Profile completion</span>
+                  <strong>{item.completionScore || 0}%</strong>
+                  <div className="director-admin-progress" aria-hidden="true">
+                    <span style={{ width: `${item.completionScore || 0}%` }} />
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
         {rowMenuState && activeRowMenuMember && typeof document !== "undefined"
           ? createPortal(
               <div
@@ -2023,7 +2174,10 @@ export function DirectorAdminMembersPage() {
                   type="button"
                   className="director-admin-inline-link"
                   disabled={!activeRowMenuMemberId || deletingMemberId === activeRowMenuMemberId}
-                  onClick={() => hardDeleteMember({ ...activeRowMenuMember, id: activeRowMenuMemberId })}
+                  onClick={() => {
+                    setMemberToDelete({ ...activeRowMenuMember, id: activeRowMenuMemberId });
+                    setRowMenuState(null);
+                  }}
                 >
                   {deletingMemberId === activeRowMenuMemberId ? "Deleting..." : "Delete from Network"}
                 </button>
@@ -2050,34 +2204,13 @@ export function DirectorAdminMembersPage() {
           </div>
         </div>
 
-        {exportModalOpen ? (
-          <div
-            className="director-admin-modal-backdrop"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Export CSV configuration"
-            onClick={() => {
-              if (!exportingCsv) setExportModalOpen(false);
-            }}
-          >
-            <div className="director-admin-modal director-admin-export-modal" onClick={(event) => event.stopPropagation()}>
-              <div className="director-admin-export-modal-head">
-                <div>
-                  <h2>Export Members CSV</h2>
-                  <p>Choose fields, drag to reorder columns, preview the sheet, then export.</p>
-                </div>
-                <button
-                  type="button"
-                  className="director-admin-row-menu-trigger"
-                  aria-label="Close export dialog"
-                  onClick={() => {
-                    if (!exportingCsv) setExportModalOpen(false);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-
+        <ModalDialog
+          open={exportModalOpen}
+          title="Export Members CSV"
+          description="Choose fields, reorder columns, preview the sheet, then export."
+          onClose={exportingCsv ? undefined : () => setExportModalOpen(false)}
+          className="director-admin-export-modal"
+        >
               <div className="director-admin-export-toolbar">
                 <Button
                   type="button"
@@ -2298,10 +2431,25 @@ export function DirectorAdminMembersPage() {
                   {exportingCsv ? "Exporting..." : "Export CSV"}
                 </Button>
               </div>
-            </div>
-          </div>
-        ) : null}
+        </ModalDialog>
       </Card>
+
+      <ModalConfirm
+        open={Boolean(memberToDelete)}
+        title="Permanently remove this member?"
+        description={
+          memberToDelete
+            ? `This will permanently remove ${memberToDelete.fullName || memberToDelete.email || "this member"}'s profile, network membership, chats, forum posts, photos, and feed activity. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Permanently remove"
+        cancelLabel="Keep member"
+        tone="danger"
+        busy={Boolean(deletingMemberId)}
+        onCancel={() => setMemberToDelete(null)}
+        onConfirm={() => hardDeleteMember(memberToDelete)}
+      />
+      <ModalConfirm {...confirmDialogProps} />
 
     </div>
   );
@@ -2398,7 +2546,6 @@ function normalizeMemberEditorPayloadYearStints(rows = [], { includeAgeGroups = 
 }
 
 export function DirectorAdminMemberEditPage() {
-  const navigate = useNavigate();
   const { profileId = "" } = useParams();
   const { slug, request } = useAdminApi();
   const [loading, setLoading] = useState(true);
@@ -2406,6 +2553,7 @@ export function DirectorAdminMemberEditPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [form, setForm] = useState(() => normalizeMemberEditorForm(null));
+  const savedFormRef = useRef(JSON.stringify(normalizeMemberEditorForm(null)));
 
   const normalizedProfileId = String(profileId || "").trim();
 
@@ -2419,7 +2567,9 @@ export function DirectorAdminMemberEditPage() {
     setError("");
     try {
       const response = await request(`/members/${normalizedProfileId}/full`);
-      setForm(normalizeMemberEditorForm(response?.profile || null));
+      const nextForm = normalizeMemberEditorForm(response?.profile || null);
+      savedFormRef.current = JSON.stringify(nextForm);
+      setForm(nextForm);
     } catch (requestError) {
       setError(requestError.message || "Failed to load member profile.");
     } finally {
@@ -2430,6 +2580,9 @@ export function DirectorAdminMemberEditPage() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  const hasUnsavedChanges = !loading && JSON.stringify(form) !== savedFormRef.current;
+  const unsavedGuard = useUnsavedChangesGuard(hasUnsavedChanges);
 
   function setField(patch = {}) {
     setForm((prev) => ({ ...prev, ...patch }));
@@ -2535,7 +2688,9 @@ export function DirectorAdminMemberEditPage() {
         method: "PUT",
         body: payload
       });
-      setForm(normalizeMemberEditorForm(response?.profile || null));
+      const nextForm = normalizeMemberEditorForm(response?.profile || null);
+      savedFormRef.current = JSON.stringify(nextForm);
+      setForm(nextForm);
       setStatus("Member profile updated.");
     } catch (requestError) {
       setError(requestError.message || "Failed to save member profile.");
@@ -2545,6 +2700,7 @@ export function DirectorAdminMemberEditPage() {
   }
 
   return (
+    <>
     <Card>
       <AdminPageHeader
         title="Edit Member"
@@ -2897,7 +3053,11 @@ export function DirectorAdminMemberEditPage() {
           </label>
 
           <div className="director-admin-form-actions full-width director-admin-network-form-actions">
-            <Button type="button" variant="secondary" onClick={() => navigate(`/t/${slug}/admin/members`)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => unsavedGuard.requestNavigation(`/t/${slug}/admin/members`)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
@@ -2907,6 +3067,17 @@ export function DirectorAdminMemberEditPage() {
         </form>
       )}
     </Card>
+    <ModalConfirm
+      open={Boolean(unsavedGuard.pendingDestination)}
+      title="Discard unsaved member changes?"
+      description="Your edits have not been saved. Leaving now will discard them."
+      confirmLabel="Discard changes"
+      cancelLabel="Keep editing"
+      tone="danger"
+      onCancel={unsavedGuard.keepEditing}
+      onConfirm={unsavedGuard.discardAndContinue}
+    />
+    </>
   );
 }
 
@@ -2917,6 +3088,9 @@ export function DirectorAdminApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [denyTarget, setDenyTarget] = useState(null);
+  const [denialReason, setDenialReason] = useState("");
+  const [decisionBusy, setDecisionBusy] = useState(false);
 
   const signupMode =
     tenant?.config?.accessRules?.signupMode ||
@@ -2942,6 +3116,7 @@ export function DirectorAdminApprovalsPage() {
   }, [loadApprovals]);
 
   async function approve(requestId) {
+    setDecisionBusy(true);
     setError("");
     setStatus("");
     try {
@@ -2950,22 +3125,30 @@ export function DirectorAdminApprovalsPage() {
       await loadApprovals();
     } catch (requestError) {
       setError(requestError.message || "Failed to approve request.");
+    } finally {
+      setDecisionBusy(false);
     }
   }
 
-  async function deny(requestId) {
-    const reason = window.prompt("Optional denial reason");
+  async function deny() {
+    const requestId = String(denyTarget?.id || "").trim();
+    if (!requestId) return;
+    setDecisionBusy(true);
     setError("");
     setStatus("");
     try {
       await request(`/members/approvals/${requestId}/deny`, {
         method: "POST",
-        body: { reason: reason || "" }
+        body: { reason: denialReason.trim() }
       });
       setStatus("Request denied.");
+      setDenyTarget(null);
+      setDenialReason("");
       await loadApprovals();
     } catch (requestError) {
       setError(requestError.message || "Failed to deny request.");
+    } finally {
+      setDecisionBusy(false);
     }
   }
 
@@ -2975,24 +3158,8 @@ export function DirectorAdminApprovalsPage() {
     }
   }
 
-  if (signupMode !== "approval_queue") {
-    return (
-      <Card>
-        <AdminPageHeader
-          title="Pending Approvals"
-          subtitle="This page is only used when access policy is approval-required."
-        />
-        <p className="muted">
-          Your current access policy is <strong>{String(signupMode).replace(/_/g, " ")}</strong>.
-        </p>
-        <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
-          Change access policy
-        </Link>
-      </Card>
-    );
-  }
-
   return (
+    <>
     <Card>
       <AdminPageHeader
         title="Pending Approvals"
@@ -3007,8 +3174,9 @@ export function DirectorAdminApprovalsPage() {
       />
       <div className="director-admin-info-banner">
         <p>
-          Your network is set to approval-required access. Review each request before granting
-          access.
+          {signupMode === "approval_queue"
+            ? "Your network requires approval for new members. Review each request before granting access."
+            : "Requests can appear when someone needs an exception to your current access policy. Review each request before granting access."}
         </p>
         <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
           Change access policy
@@ -3054,8 +3222,15 @@ export function DirectorAdminApprovalsPage() {
                   <td>{formatDateTime(item.requestedAt)}</td>
                   <td>
                     <div className="inline-actions">
-                      <Button onClick={() => approve(item.id)}>Approve</Button>
-                      <Button variant="secondary" onClick={() => deny(item.id)}>
+                      <Button onClick={() => approve(item.id)} disabled={decisionBusy}>Approve</Button>
+                      <Button
+                        variant="secondary"
+                        disabled={decisionBusy}
+                        onClick={() => {
+                          setDenyTarget(item);
+                          setDenialReason("");
+                        }}
+                      >
                         Deny
                       </Button>
                     </div>
@@ -3067,6 +3242,34 @@ export function DirectorAdminApprovalsPage() {
         </table>
       </div>
     </Card>
+    <ModalDialog
+      open={Boolean(denyTarget)}
+      title="Deny access request?"
+      description={`This will deny access for ${denyTarget?.email || "this applicant"}. You can include a short reason in the notification.`}
+      onClose={decisionBusy ? undefined : () => setDenyTarget(null)}
+      footer={
+        <>
+          <Button type="button" variant="secondary" disabled={decisionBusy} onClick={() => setDenyTarget(null)}>
+            Keep pending
+          </Button>
+          <Button type="button" variant="danger" loading={decisionBusy} onClick={deny}>
+            Deny request
+          </Button>
+        </>
+      }
+    >
+      <label htmlFor="approval-denial-reason" className="director-admin-dialog-field">
+        <span>Reason (optional)</span>
+        <Textarea
+          id="approval-denial-reason"
+          value={denialReason}
+          maxLength={500}
+          onChange={(event) => setDenialReason(event.target.value)}
+          placeholder="Explain why access was not approved"
+        />
+      </label>
+    </ModalDialog>
+    </>
   );
 }
 
@@ -3532,6 +3735,7 @@ export function DirectorAdminEmailComposePage() {
   const { slug, request } = useAdminApi();
   const { tenant } = useTenant();
   const { user } = useAuth();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   const initialSelectedIds = parseIdsParam(searchParams.get("selected") || "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -3827,11 +4031,15 @@ export function DirectorAdminEmailComposePage() {
     setError("");
   }
 
-  function deleteRecipientGroup() {
+  async function deleteRecipientGroup() {
     if (!selectedRecipientGroupId) return;
     const group = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId);
     if (!group) return;
-    const confirmed = window.confirm(`Delete recipient group "${group.name}"?`);
+    const confirmed = await confirm({
+      title: `Delete “${group.name}”?`,
+      description: "The saved recipient group will be removed. Member profiles are not affected.",
+      confirmLabel: "Delete group",
+    });
     if (!confirmed) return;
     const nextGroups = savedRecipientGroups.filter((item) => item.id !== selectedRecipientGroupId);
     writeSavedEmailRecipientGroups(slug, nextGroups);
@@ -3918,7 +4126,11 @@ export function DirectorAdminEmailComposePage() {
     if (!selectedFooterPresetId) return;
     const preset = footerPresets.find((item) => item.id === selectedFooterPresetId);
     if (!preset) return;
-    const confirmed = window.confirm(`Delete footer "${preset.name}"?`);
+    const confirmed = await confirm({
+      title: `Delete “${preset.name}”?`,
+      description: "The saved footer preset will be permanently removed.",
+      confirmLabel: "Delete footer",
+    });
     if (!confirmed) return;
     const remaining = footerPresets.filter((item) => item.id !== selectedFooterPresetId);
     const nextPresets = remaining.length
@@ -4383,6 +4595,7 @@ export function DirectorAdminEmailComposePage() {
           </div>
         </aside>
       </form>
+      <ModalConfirm {...confirmDialogProps} />
     </Card>
   );
 }
@@ -4483,8 +4696,8 @@ export function DirectorAdminEmailHistoryPage() {
   return (
     <Card>
       <AdminPageHeader
-        title="Sent Emails"
-        subtitle="Delivery and engagement history for your network sends."
+        title="Email History"
+        subtitle="Scheduled, sent, canceled, and failed network broadcasts."
         actions={
           <Link className="link-button" to={`/t/${slug}/admin/email/compose`}>
             Compose New Email
@@ -4504,7 +4717,7 @@ export function DirectorAdminEmailHistoryPage() {
             <tr>
               <th>Subject</th>
               <th>Recipients</th>
-              <th>Sent</th>
+              <th>Timing</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -4550,7 +4763,7 @@ export function DirectorAdminEmailHistoryPage() {
                           className="director-admin-inline-link"
                           onClick={() => navigate(`/t/${slug}/admin/email/compose?subject=${encodeURIComponent(item.subject)}&body=${encodeURIComponent(item.body || "")}`)}
                         >
-                          Edit
+                          Copy as new
                         </button>
                       </>
                     ) : null}
@@ -4620,13 +4833,18 @@ export function DirectorAdminEmailHistoryPage() {
       </div>
 
       {/* Detail modal */}
-      {selected ? (
-        <div className="director-admin-modal-backdrop">
-          <div className="director-admin-modal director-admin-modal-wide">
-            <h2>{selected.subject}</h2>
-            <p className="muted">
-              {selected.status} &middot; {formatDateTime(selected.sentAt || selected.scheduledFor || selected.createdAt)}
-            </p>
+      <ModalDialog
+        open={Boolean(selected)}
+        title={selected?.subject || "Email details"}
+        description={selected
+          ? `${selected.status} · ${formatDateTime(selected.sentAt || selected.scheduledFor || selected.createdAt)}`
+          : ""}
+        onClose={() => setSelected(null)}
+        backdropClassName="director-admin-modal-backdrop"
+        className="director-admin-modal director-admin-modal-wide"
+      >
+        {selected ? (
+          <>
             <p><strong>Recipients:</strong> {selected.recipientCount}</p>
 
             {/* Delivery stats */}
@@ -4635,8 +4853,14 @@ export function DirectorAdminEmailHistoryPage() {
                 {selected.stats.delivery ? (
                   <>
                     <div className="director-admin-email-stat">
-                      <span className="director-admin-email-stat-value">{selected.stats.delivery.sentCount ?? "-"}</span>
-                      <span className="director-admin-email-stat-label">Sent</span>
+                      <span className="director-admin-email-stat-value">
+                        {selected.status === "scheduled"
+                          ? selected.stats.delivery.acceptedCount ?? "-"
+                          : selected.stats.delivery.sentCount ?? "-"}
+                      </span>
+                      <span className="director-admin-email-stat-label">
+                        {selected.status === "scheduled" ? "Scheduled" : "Sent"}
+                      </span>
                     </div>
                     <div className="director-admin-email-stat">
                       <span className="director-admin-email-stat-value">{selected.stats.delivery.failedCount ?? "-"}</span>
@@ -4697,9 +4921,9 @@ export function DirectorAdminEmailHistoryPage() {
                 Close
               </Button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </ModalDialog>
 
       {/* Cancel scheduled confirmation */}
       <ModalConfirm
@@ -4737,17 +4961,23 @@ const MODULE_LAYOUT_HINTS = {
   newsletter: {
     row: "bottom",
     fullWidth: true
+  },
+  merchShop: {
+    row: "bottom",
+    fullWidth: true
   }
 };
 
 export function DirectorAdminFeaturesPage() {
   const { slug, request } = useAdminApi();
   const { tenant } = useTenant();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   const [payload, setPayload] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [moduleDisplayNames, setModuleDisplayNames] = useState({ newsletter: "Newsletter" });
+  const [moduleSettings, setModuleSettings] = useState({ merchShopUrl: "" });
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   const loadFeatures = useCallback(async () => {
@@ -4756,6 +4986,7 @@ export function DirectorAdminFeaturesPage() {
       const response = await request("/features");
       setPayload(response);
       setModuleDisplayNames(response.moduleDisplayNames || { newsletter: "Newsletter" });
+      setModuleSettings(response.moduleSettings || { merchShopUrl: "" });
     } catch (requestError) {
       setError(requestError.message || "Failed to load features.");
     }
@@ -4765,7 +4996,11 @@ export function DirectorAdminFeaturesPage() {
     loadFeatures();
   }, [loadFeatures]);
 
-  async function saveModules(nextModules, nextNames = moduleDisplayNames) {
+  async function saveModules(
+    nextModules,
+    nextNames = moduleDisplayNames,
+    nextSettings = payload?.moduleSettings || moduleSettings
+  ) {
     setSaving(true);
     setError("");
     setStatus("");
@@ -4774,13 +5009,16 @@ export function DirectorAdminFeaturesPage() {
         method: "PATCH",
         body: {
           modules: nextModules,
-          moduleDisplayNames: nextNames
+          moduleDisplayNames: nextNames,
+          moduleSettings: nextSettings
         }
       });
       setStatus("Features updated.");
       await loadFeatures();
     } catch (requestError) {
-      setError(requestError.message || "Failed to update features.");
+      const message = requestError.message || "Failed to update features.";
+      await loadFeatures();
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -4824,31 +5062,39 @@ export function DirectorAdminFeaturesPage() {
             <h3>{module.label}</h3>
             <p>{module.description}</p>
           </div>
-          {module.locked ? (
-            <span className="director-admin-status-badge tone-warning">Premium</span>
-          ) : module.platformDisabled ? (
-            <span className="director-admin-status-badge tone-warning">Temporarily hidden</span>
+          {module.locked || module.platformDisabled ? (
+            <span className="director-admin-status-badge tone-warning">{module.statusLabel}</span>
           ) : (
             <label className="director-admin-switch">
               <input
                 type="checkbox"
                 checked={Boolean(module.enabled)}
-                onChange={(event) => {
+                onChange={async (event) => {
                   const nextEnabled = Boolean(event.target.checked);
                   if (!nextEnabled && module.enabled) {
-                    const confirmed = window.confirm(
-                      `Turn off ${module.label}? This hides it from members, but data is preserved.`
-                    );
+                    const confirmed = await confirm({
+                      title: `Turn off ${module.label}?`,
+                      description: "Members will no longer see this module, but its existing data will be preserved.",
+                      confirmLabel: "Turn off module",
+                    });
                     if (!confirmed) return;
                   }
                   const nextModules = Object.fromEntries(
                     payload.modules.map((item) => [item.key, item.key === module.key ? nextEnabled : item.enabled])
                   );
+                  if (module.key === "directory" && !nextEnabled) {
+                    nextModules.search = false;
+                    nextModules.relatedProfiles = false;
+                  }
+                  if ((module.key === "search" || module.key === "relatedProfiles") && nextEnabled) {
+                    nextModules.directory = true;
+                  }
                   setPayload((prev) => ({
                     ...prev,
-                    modules: prev.modules.map((item) =>
-                      item.key === module.key ? { ...item, enabled: nextEnabled } : item
-                    )
+                    modules: prev.modules.map((item) => ({
+                      ...item,
+                      enabled: Boolean(nextModules[item.key])
+                    }))
                   }));
                   saveModules(nextModules);
                 }}
@@ -4884,12 +5130,61 @@ export function DirectorAdminFeaturesPage() {
             </Button>
           </div>
         ) : null}
+        {module.key === "merchShop" && !module.locked ? (
+          <div className="director-admin-module-settings">
+            <label>
+              Storefront URL
+              <Input
+                type="url"
+                value={moduleSettings.merchShopUrl || ""}
+                onChange={(event) =>
+                  setModuleSettings((prev) => ({ ...prev, merchShopUrl: event.target.value }))
+                }
+                placeholder="https://shop.examplecamp.org"
+                aria-describedby="director-merch-shop-help"
+              />
+            </label>
+            <small id="director-merch-shop-help" className={module.enabled && !moduleSettings.merchShopUrl ? "error-text" : "muted"}>
+              {module.enabled && !moduleSettings.merchShopUrl
+                ? "Members will not see this module until a storefront URL is saved."
+                : "PondBridge opens this external store in a separate browser view."}
+            </small>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const nextModules = Object.fromEntries(
+                  payload.modules.map((item) => [item.key, item.enabled])
+                );
+                saveModules(nextModules, moduleDisplayNames, moduleSettings);
+              }}
+              disabled={saving}
+            >
+              Save Storefront
+            </Button>
+          </div>
+        ) : null}
+        {Array.isArray(module.dependsOn) && module.dependsOn.length ? (
+          <p className="muted director-admin-module-dependency">
+            Requires {module.dependsOn.map((key) => payload.modules.find((item) => item.key === key)?.label || key).join(", ")}.
+          </p>
+        ) : null}
         {module.locked ? (
           <p className="muted">This feature requires Premium.</p>
         ) : module.platformDisabled ? (
           <p className="muted">{module.disabledReason || "Temporarily hidden from members across all networks."}</p>
+        ) : module.setupRequired ? (
+          <p className="muted">{module.disabledReason}</p>
+        ) : module.externalHref ? (
+          <a
+            className="director-admin-inline-link"
+            href={module.externalHref}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open storefront
+          </a>
         ) : (
-          <Link className="director-admin-inline-link" to={modulePreviewPath(slug, module.key)}>
+          <Link className="director-admin-inline-link" to={module.href || modulePreviewPath(slug, module.key)}>
             Preview in network
           </Link>
         )}
@@ -4898,7 +5193,8 @@ export function DirectorAdminFeaturesPage() {
   }
 
   return (
-    <Card>
+    <>
+      <Card>
       <AdminPageHeader
         title="Features & Modules"
         subtitle="Control which features are active in your network. Changes apply immediately."
@@ -4919,7 +5215,50 @@ export function DirectorAdminFeaturesPage() {
       <div className="director-admin-modules-grid">
         {orderedModules.map((module) => renderModuleCard(module))}
       </div>
-    </Card>
+      </Card>
+      <Card className="director-admin-capabilities-card">
+        <AdminPageHeader
+          title="Director toolkit"
+          subtitle="Every operational, plan, provider, and AI capability available to this camp—including items that need setup or PondBridge rollout approval."
+          actions={
+            <>
+              <Badge tone="success">{payload?.summary?.ready || 0} ready</Badge>
+              {payload?.summary?.attention ? <Badge tone="warning">{payload.summary.attention} need setup</Badge> : null}
+            </>
+          }
+        />
+        <div className="director-admin-capability-grid">
+          {(payload?.capabilities || []).map((capability) => {
+            const tone = capability.status === "active"
+              ? "success"
+              : capability.status === "locked" || capability.status === "pilot"
+                ? "neutral"
+                : "warning";
+            return (
+              <article className={`director-admin-capability-card status-${capability.status}`} key={capability.key}>
+                <div className="director-admin-capability-head">
+                  <div>
+                    <p className="director-admin-capability-category">{capability.category === "ai" ? "AI pilot" : capability.category === "plan" ? "Plan capability" : "Operations"}</p>
+                    <h3>{capability.label}</h3>
+                  </div>
+                  <Badge tone={tone}>{capability.statusLabel}</Badge>
+                </div>
+                <p>{capability.description}</p>
+                <div className="director-admin-capability-footer">
+                  <small>Managed by {capability.managedBy}</small>
+                  {capability.href ? (
+                    <Link className="director-admin-inline-link" to={capability.href}>
+                      {capability.status === "locked" || capability.status === "pilot" ? "View details" : "Open"}
+                    </Link>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </Card>
+      <ModalConfirm {...confirmDialogProps} />
+    </>
   );
 }
 
@@ -5772,8 +6111,6 @@ export function DirectorAdminSettingsBrandingPage() {
       // Backward-compatible shared fields mirror the landing framing.
       payloadToSave.heroImagePosition = payloadToSave.heroImagePositionLanding;
       payloadToSave.heroImageSize = payloadToSave.heroImageSizeLanding;
-      const currentBrandPrimary = normalizeBrandHex(payload?.branding?.brandPrimary, DEFAULT_BRAND_PRIMARY);
-      const brandColorChanged = currentBrandPrimary !== payloadToSave.brandPrimary;
       if (pendingLogoFile) {
         payloadToSave.logoUrl = await uploadBrandingBlob({
           blob: pendingLogoFile,
@@ -5832,10 +6169,6 @@ export function DirectorAdminSettingsBrandingPage() {
         await refreshTenant(slug);
       } catch {
         // Branding save already succeeded; skip blocking UI on tenant-config refresh.
-      }
-      if (brandColorChanged) {
-        window.location.reload();
-        return;
       }
       setStatus("Branding saved.");
       await load();

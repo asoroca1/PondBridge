@@ -1,19 +1,27 @@
 import dotenv from "dotenv";
+import { assertMatchingSupabaseProject } from "../utils/supabaseConfig.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const repoLocalEnvPath = path.resolve(__dirname, "../../../../.env.local");
 const repoEnvPath = path.resolve(__dirname, "../../../../.env");
 const apiEnvPath = path.resolve(__dirname, "../../.env");
 const isTestEnv = String(process.env.NODE_ENV || "").toLowerCase() === "test";
+const isLocalStaging = String(process.env.PONDBRIDGE_LOCAL_STAGING || "") === "1";
 
-// For local/dev/runtime we support a shared root .env.
-// In tests we skip it so suite behavior stays deterministic.
-if (!isTestEnv) {
+// For local/dev/runtime we support an ignored shared root .env.local for
+// developer secrets, with the existing shared root .env as a fallback.
+// Tests and isolated local staging skip it so behavior stays deterministic and
+// host/provider credentials cannot leak into the synthetic environment.
+if (!isTestEnv && !isLocalStaging) {
+  dotenv.config({ path: repoLocalEnvPath, override: false });
   dotenv.config({ path: repoEnvPath, override: false });
 }
-dotenv.config({ path: apiEnvPath, override: false });
+if (!isLocalStaging) {
+  dotenv.config({ path: apiEnvPath, override: false });
+}
 
 function toNumber(value, fallback) {
   const parsed = Number(value);
@@ -83,6 +91,11 @@ function assertValidChoice(name, value, allowedValues) {
 const frontendOrigin =
   normalizeOrigin(process.env.FRONTEND_ORIGIN || "http://localhost:5173") ||
   "http://localhost:5173";
+const publicApiOrigin =
+  normalizeOrigin(
+    process.env.PUBLIC_API_ORIGIN ||
+      `http://localhost:${toNumber(process.env.PORT, 4000)}`
+  ) || `http://localhost:${toNumber(process.env.PORT, 4000)}`;
 const extraOrigins = toCsvList(process.env.FRONTEND_ORIGINS || "").map(normalizeOrigin);
 const resendApiBaseUrl = normalizeUrl(
   process.env.RESEND_API_BASE_URL || "https://api.resend.com",
@@ -140,11 +153,11 @@ export const env = {
   SUPABASE_URL: process.env.SUPABASE_URL || "",
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   SUPABASE_DB_URL: process.env.SUPABASE_DB_URL || "",
-  SUPABASE_MIRROR_TABLE: String(process.env.SUPABASE_MIRROR_TABLE || "pb_mongo_mirror").trim(),
   JWT_SECRET: process.env.JWT_SECRET || "",
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   BCRYPT_ROUNDS: toNumber(process.env.BCRYPT_ROUNDS, 12),
   FRONTEND_ORIGIN: frontendOrigin,
+  PUBLIC_API_ORIGIN: publicApiOrigin,
   FRONTEND_ORIGINS: dedupe([
     frontendOrigin,
     normalizeOrigin("https://localhost"),
@@ -163,6 +176,94 @@ export const env = {
   CUSTOM_DOMAIN_ALLOWLIST: dedupe(toCsvList(process.env.CUSTOM_DOMAIN_ALLOWLIST || "")),
   TRUST_PROXY_HOPS: toNumber(process.env.TRUST_PROXY_HOPS, 1),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
+  OPENAI_DIRECTOR_COPILOT_MODEL:
+    String(process.env.OPENAI_DIRECTOR_COPILOT_MODEL || "gpt-5.6-luna").trim() ||
+    "gpt-5.6-luna",
+  OPENAI_DIRECTOR_COPILOT_MAX_OUTPUT_TOKENS: toBoundedInt(
+    process.env.OPENAI_DIRECTOR_COPILOT_MAX_OUTPUT_TOKENS,
+    900,
+    200,
+    2400
+  ),
+  OPENAI_DIRECTOR_COPILOT_TIMEOUT_MS: toBoundedInt(
+    process.env.OPENAI_DIRECTOR_COPILOT_TIMEOUT_MS,
+    30000,
+    5000,
+    60000
+  ),
+  OPENAI_EMAIL_AGENT_MODEL:
+    String(process.env.OPENAI_EMAIL_AGENT_MODEL || "gpt-5.6-luna").trim() ||
+    "gpt-5.6-luna",
+  OPENAI_EMAIL_AGENT_MAX_OUTPUT_TOKENS: toBoundedInt(
+    process.env.OPENAI_EMAIL_AGENT_MAX_OUTPUT_TOKENS,
+    1800,
+    500,
+    4000
+  ),
+  OPENAI_EMAIL_AGENT_TIMEOUT_MS: toBoundedInt(
+    process.env.OPENAI_EMAIL_AGENT_TIMEOUT_MS,
+    30000,
+    5000,
+    60000
+  ),
+  OPENAI_SEARCH_MODEL:
+    String(process.env.OPENAI_SEARCH_MODEL || "gpt-5.6-luna").trim() ||
+    "gpt-5.6-luna",
+  OPENAI_SEARCH_MAX_OUTPUT_TOKENS: toBoundedInt(
+    process.env.OPENAI_SEARCH_MAX_OUTPUT_TOKENS,
+    500,
+    200,
+    1200
+  ),
+  OPENAI_SEARCH_TIMEOUT_MS: toBoundedInt(
+    process.env.OPENAI_SEARCH_TIMEOUT_MS,
+    20000,
+    5000,
+    60000
+  ),
+  AI_SEARCH_MONTHLY_BUDGET_USD: Math.max(
+    0,
+    toNumber(process.env.AI_SEARCH_MONTHLY_BUDGET_USD, 15)
+  ),
+  OPENAI_PROFILE_IMPORT_MODEL:
+    String(process.env.OPENAI_PROFILE_IMPORT_MODEL || "gpt-5.6-luna").trim() ||
+    "gpt-5.6-luna",
+  OPENAI_PROFILE_IMPORT_MAX_OUTPUT_TOKENS: toBoundedInt(
+    process.env.OPENAI_PROFILE_IMPORT_MAX_OUTPUT_TOKENS,
+    1600,
+    500,
+    4000
+  ),
+  OPENAI_PROFILE_IMPORT_TIMEOUT_MS: toBoundedInt(
+    process.env.OPENAI_PROFILE_IMPORT_TIMEOUT_MS,
+    30000,
+    5000,
+    60000
+  ),
+  PROFILE_IMPORT_MONTHLY_BUDGET_USD: Math.max(
+    0,
+    toNumber(process.env.PROFILE_IMPORT_MONTHLY_BUDGET_USD, 15)
+  ),
+  EMAIL_AGENT_MONTHLY_BUDGET_USD: Math.max(
+    0,
+    toNumber(process.env.EMAIL_AGENT_MONTHLY_BUDGET_USD, 25)
+  ),
+  SUPER_COPILOT_ENABLED: toBoolean(process.env.SUPER_COPILOT_ENABLED, false),
+  OPENAI_SUPER_COPILOT_MODEL:
+    String(process.env.OPENAI_SUPER_COPILOT_MODEL || "gpt-5.6-terra").trim() ||
+    "gpt-5.6-terra",
+  OPENAI_SUPER_COPILOT_MAX_OUTPUT_TOKENS: toBoundedInt(
+    process.env.OPENAI_SUPER_COPILOT_MAX_OUTPUT_TOKENS,
+    1100,
+    300,
+    3000
+  ),
+  OPENAI_SUPER_COPILOT_TIMEOUT_MS: toBoundedInt(
+    process.env.OPENAI_SUPER_COPILOT_TIMEOUT_MS,
+    30000,
+    5000,
+    60000
+  ),
   BILLING_MODE: process.env.BILLING_MODE || "auto",
   DIRECTOR_WIZARD_REQUIRE_BILLING: toBoolean(
     process.env.DIRECTOR_WIZARD_REQUIRE_BILLING,
@@ -216,6 +317,8 @@ export const env = {
   RESEND_RETRY_BASE_DELAY_MS: toBoundedInt(process.env.RESEND_RETRY_BASE_DELAY_MS, 300, 0, 10000),
   RESEND_BATCH_ENABLED: toBoolean(process.env.RESEND_BATCH_ENABLED, true),
   EMAIL_SUPPRESSION_ENABLED: toBoolean(process.env.EMAIL_SUPPRESSION_ENABLED, true),
+  EMAIL_PREFERENCE_TOKEN_SECRET:
+    String(process.env.EMAIL_PREFERENCE_TOKEN_SECRET || process.env.JWT_SECRET || "").trim(),
   EMAIL_BROADCAST_BATCH_SIZE: toBoundedInt(process.env.EMAIL_BROADCAST_BATCH_SIZE, 40, 1, 200),
   EMAIL_BROADCAST_MAX_RECIPIENTS: toBoundedInt(process.env.EMAIL_BROADCAST_MAX_RECIPIENTS, 500, 1, 5000),
   CLOUDFLARE_ACCOUNT_ID: cloudflareAccountId,
@@ -266,7 +369,10 @@ export const env = {
     process.env.APNS_USE_SANDBOX,
     String(process.env.NODE_ENV || "").trim().toLowerCase() !== "production"
   ),
-  FCM_SERVER_KEY: String(process.env.FCM_SERVER_KEY || "").trim(),
+  FCM_PROJECT_ID: String(process.env.FCM_PROJECT_ID || "").trim(),
+  FCM_CLIENT_EMAIL: String(process.env.FCM_CLIENT_EMAIL || "").trim(),
+  FCM_PRIVATE_KEY: String(process.env.FCM_PRIVATE_KEY || "").trim(),
+  FCM_ANDROID_APP_ID: String(process.env.FCM_ANDROID_APP_ID || "com.pondbridge.android").trim(),
   SMTP_HOST: process.env.SMTP_HOST || "",
   SMTP_PORT: toNumber(process.env.SMTP_PORT, 587),
   SMTP_SECURE: process.env.SMTP_SECURE || "false",
@@ -328,6 +434,11 @@ if (!env.SUPABASE_URL) {
 if (!env.SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY in apps/api/.env");
 }
+
+assertMatchingSupabaseProject({
+  apiUrl: env.SUPABASE_URL,
+  databaseUrl: env.SUPABASE_DB_URL
+});
 
 // Production safety: refuse to start if the database URL points to localhost.
 if (env.NODE_ENV === "production" && env.SUPABASE_DB_URL) {

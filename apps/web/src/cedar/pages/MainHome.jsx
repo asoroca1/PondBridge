@@ -13,10 +13,13 @@ import {
 import CedarBackground from "../components/CedarBackground";
 import NotificationBadge from "../../components/NotificationBadge.jsx";
 import InitialsMark from "../../components/InitialsMark.jsx";
+import { ModalConfirm, ModalDialog } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import cedarBg from "../assets/cedar-bg.jpg";
 import { API_BASE, getMe } from "../lib/api";
 import { authHeaders, initialsOf, displayName, avatarUrl, getToken } from "../lib/helpers.js";
 import { useUnreadChatsCount } from "../lib/unreadChats.js";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import {
   Users,
   MapPin,
@@ -153,6 +156,7 @@ function hasDirectorPrivileges(...sources) {
 
 /* ============= Related Profiles ============= */
 function RelatedProfilesCard({ targetUserId }) {
+  const { slug } = useTenant();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [avatarErrorIds, setAvatarErrorIds] = useState(() => new Set());
@@ -208,7 +212,7 @@ function RelatedProfilesCard({ targetUserId }) {
             return (
               <li key={id} className="p1-suggest-item">
                 <Link
-                  to={`/profile/${id}`}
+                  to={tenantRoute(slug, `/profile/${id}`)}
                   className="p1-suggest-avatar"
                   aria-label={`Open ${name}'s profile`}
                 >
@@ -233,7 +237,7 @@ function RelatedProfilesCard({ targetUserId }) {
                   )}
                 </Link>
                 <div className="p1-suggest-main">
-                  <Link to={`/profile/${id}`} className="p1-suggest-name">
+                  <Link to={tenantRoute(slug, `/profile/${id}`)} className="p1-suggest-name">
                     {name}
                   </Link>
                   <div className="p1-suggest-sub">{job}</div>
@@ -249,6 +253,7 @@ function RelatedProfilesCard({ targetUserId }) {
 
 /* ============= Photo Stream (latest two) ============= */
 function PhotosPreviewCard() {
+  const { slug } = useTenant();
   const [items, setItems] = useState([]);
 
   useEffect(() => {
@@ -268,7 +273,7 @@ function PhotosPreviewCard() {
     <div className="p1-card">
       <div className="card-head">
         <h3>Photo Stream</h3>
-        <Link to="/photo-stream" className="link-subtle">
+        <Link to={tenantRoute(slug, "/photo-stream")} className="link-subtle">
           Open photos <ChevronRight size={16} />
         </Link>
       </div>
@@ -279,7 +284,7 @@ function PhotosPreviewCard() {
           {items.map((p) => (
             <Link
               key={p._id || p.id}
-              to="/photo-stream"
+              to={tenantRoute(slug, "/photo-stream")}
               className="photos-mini-item"
               title={p.caption || "Camp photo"}
             >
@@ -342,6 +347,8 @@ function AnnouncementForm({ onPosted }) {
 
 /* ============ feed list ============ */
 function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
+  const { slug } = useTenant();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   if (!items.length) {
     return (
       <EmptyHint
@@ -355,7 +362,12 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
 
   async function doDelete(id) {
     if (!id) return;
-    if (!window.confirm("Delete this post?")) return;
+    const accepted = await confirm({
+      title: "Delete this post?",
+      description: "The announcement will be removed from the camp feed. This cannot be undone.",
+      confirmLabel: "Delete post",
+    });
+    if (!accepted) return;
     try {
       const r = await fetch(`${API_BASE}/activity/${id}`, {
         method: "DELETE",
@@ -380,7 +392,8 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
   }
 
   return (
-    <ul className="activity-list">
+    <>
+      <ul className="activity-list">
       {items.map((it) => {
         const actorId = String(it.actor?.id || it.actorUserId || "").trim();
         const isMine = !!myId && actorId === myId;
@@ -404,7 +417,12 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
                       : it.actor?.name) || "Someone"}
                   </span>{" "}
                   {renderVerb(it.type)}{" "}
-                  <Link to={it.target?.href || "#"} className="activity-target">
+                  <Link
+                    to={String(it.target?.href || "").startsWith("/")
+                      ? tenantRoute(slug, it.target.href)
+                      : it.target?.href || "#"}
+                    className="activity-target"
+                  >
                     {it.target?.label || it.target?.title || it.target?.name || "the app"}
                   </Link>
                 </>
@@ -444,7 +462,9 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
           </li>
         );
       })}
-    </ul>
+      </ul>
+      <ModalConfirm {...confirmDialogProps} />
+    </>
   );
 }
 
@@ -495,13 +515,14 @@ function normalizeActivityList(payload) {
 
 /* ============ empty hint ============ */
 function EmptyHint({ icon, title, desc, cta }) {
+  const { slug } = useTenant();
   return (
     <div className="empty-hint">
       {icon ? <div className="empty-icon">{icon}</div> : null}
       <div className="empty-title">{title}</div>
       {desc ? <div className="empty-desc">{desc}</div> : null}
       {cta ? (
-        <Link to={cta.to} className="btn-cedar-sm">
+        <Link to={tenantRoute(slug, cta.to)} className="btn-cedar-sm">
           {cta.label}
         </Link>
       ) : null}
@@ -512,7 +533,7 @@ function EmptyHint({ icon, title, desc, cta }) {
 /* ================== page ================== */
 export default function MainHome() {
   const navigate = useNavigate();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const { user: authUser } = useAuth();
   const [me, setMe] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -548,14 +569,14 @@ export default function MainHome() {
     (async () => {
       try {
         const token = getToken();
-        if (!token) return navigate("/login");
+        if (!token) return navigate(tenantRoute(slug, "/login"));
         const data = await getMe(token);
         setMe(data?.user || data?.profile || data || null);
       } catch {
-        navigate("/login");
+        navigate(tenantRoute(slug, "/login"));
       }
     })();
-  }, [navigate]);
+  }, [navigate, slug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -630,8 +651,8 @@ export default function MainHome() {
 
   const openEditProfileFromPrompt = useCallback(() => {
     dismissProfilePrompt();
-    navigate("/edit-profile");
-  }, [dismissProfilePrompt, navigate]);
+    navigate(tenantRoute(slug, "/edit-profile"));
+  }, [dismissProfilePrompt, navigate, slug]);
 
   useEffect(() => {
     if (!me || !currentUserId) return;
@@ -645,15 +666,6 @@ export default function MainHome() {
     }
     setShowProfilePrompt(true);
   }, [authUser, currentUserId, me, profilePromptSeenKey]);
-
-  useEffect(() => {
-    if (!showProfilePrompt) return;
-    function onEsc(event) {
-      if (event.key === "Escape") dismissProfilePrompt();
-    }
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [dismissProfilePrompt, showProfilePrompt]);
 
   const locCount = resolveLocations(stats, locationsSummary);
   const quickActions = useMemo(() => {
@@ -842,7 +854,7 @@ export default function MainHome() {
           return (
             <Link
               key={action.key}
-              to={action.to}
+              to={tenantRoute(slug, action.to)}
               className={`qa-btn ${isChat ? "has-badge" : ""}`.trim()}
             >
               <Icon /> {action.label}
@@ -894,25 +906,24 @@ export default function MainHome() {
         </aside>
       </main>
 
-      {showProfilePrompt ? (
-        <div className="profile-prompt-overlay" role="dialog" aria-modal="true" aria-labelledby="profile-prompt-title">
-          <div className="profile-prompt-card">
-            <h2 id="profile-prompt-title">Complete Your Profile</h2>
-            <p>
-              {`Add your profile details so camp ${alumniWord} can find you and connect.`}
-              <strong> You are {profileCompletion}% complete.</strong>
-            </p>
-            <div className="profile-prompt-actions">
-              <button type="button" className="profile-prompt-secondary" onClick={dismissProfilePrompt}>
-                Maybe Later
-              </button>
-              <button type="button" className="profile-prompt-primary" onClick={openEditProfileFromPrompt}>
-                Open Edit Profile
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ModalDialog
+        open={showProfilePrompt}
+        title="Complete Your Profile"
+        description={`Add your profile details so camp ${alumniWord} can find you and connect. You are ${profileCompletion}% complete.`}
+        onClose={dismissProfilePrompt}
+        backdropClassName="profile-prompt-overlay"
+        className="profile-prompt-card"
+        footer={
+          <>
+            <button type="button" className="profile-prompt-secondary" onClick={dismissProfilePrompt}>
+              Maybe Later
+            </button>
+            <button type="button" className="profile-prompt-primary" onClick={openEditProfileFromPrompt}>
+              Open Edit Profile
+            </button>
+          </>
+        }
+      />
     </div>
   );
 }

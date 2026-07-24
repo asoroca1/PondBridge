@@ -17,7 +17,6 @@ import { getSupabaseAdmin } from "../src/db/supabaseAdmin.js";
 import { generateObjectId, isValidObjectId } from "../src/utils/objectId.js";
 import {
   CEDAR_SLUG,
-  EXISTING_ARCHIVE_MANIFEST,
   EXISTING_BACKUP_DIR,
   IMPORT_SUMMARY_JSON,
   LEGACY_AUDIT_JSON,
@@ -25,7 +24,6 @@ import {
   MAPPING_DIR,
   NEW_TENANT_MANIFEST,
   basenameFromUrl,
-  buildProfileSocials,
   buildTenantObjectProxyBaseUrl,
   clerkClientOrNull,
   encodeR2Pointer,
@@ -42,13 +40,11 @@ import {
   parseApplyFlag,
   readJsonIfExists,
   stableJson,
-  timestampSlugSuffix,
   writeJson,
   writeMarkdown
 } from "./cedarMigrationCommon.js";
 
 const ADEN_EMAIL = "aden@sorocafamily.com";
-const ADEN_NAME = "Aden Soroca";
 const DIRECTOR_TERMS_VERSION = "2026-03-06";
 
 function legacyUserId(user = {}) {
@@ -57,10 +53,6 @@ function legacyUserId(user = {}) {
 
 function legacyRecordId(row = {}, prefix = "legacy-row") {
   return ensureHexObjectId(row?._id || row?.id || "", prefix);
-}
-
-function byId(items = [], getId) {
-  return new Map(items.map((item) => [String(getId(item)), item]));
 }
 
 function pickTemplateTenant() {

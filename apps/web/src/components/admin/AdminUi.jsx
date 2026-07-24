@@ -1,10 +1,70 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 
 const ToastContext = createContext(null);
 
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
+}
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+export function useDialogFocus(open, onClose) {
+  const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const returnFocusTo = document.activeElement;
+    const dialog = dialogRef.current;
+    const focusable = () => [...(dialog?.querySelectorAll(FOCUSABLE_SELECTOR) || [])]
+      .filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
+    const frame = window.requestAnimationFrame(() => {
+      const first = focusable()[0];
+      (first || dialog)?.focus?.();
+    });
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        dialog?.focus?.();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKeyDown);
+      if (returnFocusTo && document.contains(returnFocusTo)) returnFocusTo.focus?.();
+    };
+  }, [open]);
+
+  return dialogRef;
 }
 
 export function ContextBanner({ title, subtitle = "", exitTo = "", exitLabel = "Exit" }) {
@@ -26,6 +86,7 @@ export function ContextBanner({ title, subtitle = "", exitTo = "", exitLabel = "
 export function SidebarNav({
   title,
   sections = [],
+  footer = null,
   className = "",
   navClassName = "",
   linkClassName = "",
@@ -35,7 +96,16 @@ export function SidebarNav({
     <aside className={classNames("pb-admin-ui-sidebar", className)} aria-label={`${title || "Admin"} navigation`}>
       {title ? <p className="pb-admin-ui-sidebar-title">{title}</p> : null}
       <nav className={classNames("pb-admin-ui-sidebar-nav", navClassName)}>
-        {sections.map((item) => (
+        {sections.map((item) => {
+          if (item.type === "label") {
+            return (
+              <p key={item.key || item.label} className={classNames("pb-admin-ui-sidebar-group-label", item.className)}>
+                {item.label}
+              </p>
+            );
+          }
+          const Icon = item.icon || null;
+          return (
           <div key={item.key || item.label} className={classNames("pb-admin-ui-sidebar-item", item.className)}>
             {item.children?.length ? (
               <>
@@ -45,12 +115,17 @@ export function SidebarNav({
                   onClick={item.onToggle}
                   aria-expanded={item.isExpanded}
                 >
-                  <span>{item.label}</span>
+                  <span className="pb-admin-ui-sidebar-link-copy">
+                    {Icon ? <Icon className="pb-admin-ui-sidebar-icon" aria-hidden="true" /> : null}
+                    <span>{item.label}</span>
+                  </span>
                   <span className={classNames("pb-admin-ui-sidebar-caret", item.isExpanded ? "is-open" : "")}>▾</span>
                 </button>
                 {item.isExpanded ? (
                   <div className="pb-admin-ui-sidebar-subnav">
-                    {item.children.map((child) => (
+                    {item.children.map((child) => {
+                      const ChildIcon = child.icon || null;
+                      return (
                       <NavLink
                         key={child.key || child.label}
                         to={child.to}
@@ -65,9 +140,11 @@ export function SidebarNav({
                           )
                         }
                       >
-                        {child.label}
+                        {ChildIcon ? <ChildIcon className="pb-admin-ui-sidebar-icon" aria-hidden="true" /> : null}
+                        <span>{child.label}</span>
                       </NavLink>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : null}
               </>
@@ -84,12 +161,15 @@ export function SidebarNav({
                   )
                 }
               >
-                {item.label}
+                {Icon ? <Icon className="pb-admin-ui-sidebar-icon" aria-hidden="true" /> : null}
+                <span>{item.label}</span>
               </NavLink>
             )}
           </div>
-        ))}
+          );
+        })}
       </nav>
+      {footer ? <div className="pb-admin-ui-sidebar-footer">{footer}</div> : null}
     </aside>
   );
 }
@@ -111,7 +191,7 @@ export function SuperAdminLayout({ topbar = null, sidebar = null, children, clas
     <div className={classNames("pb-admin-ui-super-shell", className)}>
       {topbar}
       {sidebar}
-      <main className="pb-admin-ui-super-main">{children}</main>
+      <main id="main-content" className="pb-admin-ui-super-main" tabIndex={-1}>{children}</main>
     </div>
   );
 }
@@ -143,13 +223,27 @@ export function DataTable({ children, minWidth = 760, className = "", tableClass
 }
 
 export function SlideOverPanel({ open, title, subtitle = "", onClose, footer = null, children }) {
+  const titleId = useId();
+  const dialogRef = useDialogFocus(open, onClose);
   if (!open) return null;
   return (
-    <div className="pb-admin-ui-slideover-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <aside className="pb-admin-ui-slideover" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="pb-admin-ui-slideover-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <aside
+        ref={dialogRef}
+        className="pb-admin-ui-slideover"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
         <header className="pb-admin-ui-slideover-head">
           <div>
-            <h2>{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
           <button type="button" className="pb-admin-ui-slideover-close" onClick={onClose} aria-label="Close panel">
@@ -163,6 +257,45 @@ export function SlideOverPanel({ open, title, subtitle = "", onClose, footer = n
   );
 }
 
+export function ModalDialog({
+  open,
+  title,
+  description = "",
+  onClose,
+  children,
+  footer = null,
+  backdropClassName = "",
+  className = ""
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useDialogFocus(open, onClose);
+  if (!open) return null;
+  return (
+    <div
+      className={classNames("pb-admin-ui-modal-backdrop", backdropClassName)}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className={classNames("pb-admin-ui-modal", className)}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+      >
+        <h3 id={titleId}>{title}</h3>
+        {description ? <p id={descriptionId}>{description}</p> : null}
+        {children}
+        {footer ? <div className="pb-admin-ui-modal-actions">{footer}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 export function ModalConfirm({
   open,
   title,
@@ -172,15 +305,20 @@ export function ModalConfirm({
   tone = "danger",
   busy = false,
   onConfirm,
-  onCancel
+  onCancel,
+  backdropClassName = "",
+  className = ""
 }) {
-  if (!open) return null;
   return (
-    <div className="pb-admin-ui-modal-backdrop" role="dialog" aria-modal="true" onClick={onCancel}>
-      <div className="pb-admin-ui-modal" onClick={(event) => event.stopPropagation()}>
-        <h3>{title}</h3>
-        <p>{description}</p>
-        <div className="pb-admin-ui-modal-actions">
+    <ModalDialog
+      open={open}
+      title={title}
+      description={description}
+      onClose={busy ? undefined : onCancel}
+      backdropClassName={backdropClassName}
+      className={className}
+      footer={
+        <>
           <button type="button" className="link-button secondary" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </button>
@@ -192,9 +330,9 @@ export function ModalConfirm({
           >
             {busy ? "Working..." : confirmLabel}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }
 

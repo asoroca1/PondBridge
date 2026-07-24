@@ -6,32 +6,19 @@ import { useAuth } from "./context/AuthContext.jsx";
 import { MobileNotificationsProvider } from "./context/MobileNotificationsContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import NativeAppExperience from "./components/NativeAppExperience.jsx";
 import { resolveCampName } from "./lib/campLabels.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
 
-const CHUNK_RECOVERY_GRACE_MS = 2500;
-
-function createChunkRecoveryTimeoutError() {
-  const error = new Error("A page asset failed to load. Please refresh and try again.");
-  error.code = "CHUNK_RECOVERY_TIMEOUT";
-  return error;
-}
-
 function lazyPage(loader) {
   return lazy(() =>
     loader().catch((error) => {
-      if (recoverFromMissingChunk(error)) {
-        // Give the recovery redirect a brief head start, but never leave the
-        // app suspended forever if navigation does not actually occur.
-        return new Promise((_, reject) => {
-          window.setTimeout(() => {
-            reject(createChunkRecoveryTimeoutError());
-          }, CHUNK_RECOVERY_GRACE_MS);
-        });
-      }
+      // Report the stale asset, but never navigate or reload automatically.
+      // The route boundary and global notice offer a user-controlled update.
+      recoverFromMissingChunk(error);
       throw error;
     })
   );
@@ -60,20 +47,24 @@ const EventDetailPage = lazyPage(() => import("./pages/EventDetailPage.jsx"));
 const MobileNotificationsPage = lazyPage(() => import("./pages/MobileNotificationsPage.jsx"));
 const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
 const TenantAuthCallbackPage = lazyPage(() => import("./pages/TenantAuthCallbackPage.jsx"));
+const TenantAccessPendingPage = lazyPage(() => import("./pages/TenantAccessPendingPage.jsx"));
 const SuperLoginPage = lazyPage(() => import("./pages/SuperLoginPage.jsx"));
 const MobileCampCodeEntryPage = lazyPage(() => import("./pages/MobileCampCodeEntryPage.jsx"));
 const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage.jsx"));
 
 const DirectorOnboardingCommandCenterPage = lazyPage(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
+const DirectorOnboardingAgentPage = lazyPage(() => import("./pages/DirectorOnboardingAgentPage.jsx"));
 const DirectorClaimPage = lazyPage(() => import("./pages/DirectorClaimPage.jsx"));
 const DirectorCreateAccountPage = lazyPage(() => import("./pages/DirectorCreateAccountPage.jsx"));
 const DirectorLegalAgreementPage = lazyPage(() => import("./pages/DirectorLegalAgreementPage.jsx"));
 const DirectorAdminLayout = lazyPage(() => import("./pages/admin/DirectorAdminLayout.jsx"));
+const DirectorAdminCopilotPage = lazyPage(() => import("./pages/admin/DirectorAdminCopilotPage.jsx"));
 const DirectorAdminBillingPage = lazyPage(() => import("./pages/admin/DirectorAdminBillingPage.jsx"));
 const DirectorAdminDashboardPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminDashboardPage }))
 );
 const DirectorAdminEmailComposePage = lazyPage(() => import("./pages/admin/DirectorAdminEmailComposePage.jsx"));
+const DirectorAdminGrowthPage = lazyPage(() => import("./pages/admin/DirectorAdminGrowthPage.jsx"));
 const DirectorAdminEmailHistoryPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailHistoryPage }))
 );
@@ -85,6 +76,10 @@ const DirectorAdminInvitesPage = lazyPage(() => import("./pages/admin/DirectorAd
 const DirectorAdminMembersPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
 );
+const DirectorAdminApprovalsPage = lazyPage(() =>
+  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminApprovalsPage }))
+);
+const DirectorAdminSafetyPage = lazyPage(() => import("./pages/admin/DirectorAdminSafetyPage.jsx"));
 const DirectorAdminMemberEditPage = lazyPage(() => import("./pages/admin/DirectorAdminMemberEditPage.jsx"));
 const DirectorAdminSettingsAdminsPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminSettingsAdminsPage.jsx")
@@ -119,7 +114,10 @@ const DirectorAdminSettingsNetworkPage = lazyPage(() =>
   }))
 );
 const PlatformLandingPage = lazyPage(() => import("./pages/PlatformLandingPage.jsx"));
+const EmailPreferencesPage = lazyPage(() => import("./pages/EmailPreferencesPage.jsx"));
 const SuperShellLayout = lazyPage(() => import("./pages/super/SuperShellLayout.jsx"));
+const SuperOperationsAgentPage = lazyPage(() => import("./pages/super/SuperOperationsAgentPage.jsx"));
+const SuperStatusPage = lazyPage(() => import("./pages/super/SuperStatusPage.jsx"));
 const SuperBillingFailedPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingFailedPage }))
 );
@@ -128,9 +126,6 @@ const SuperBillingTenantsPage = lazyPage(() =>
 );
 const SuperEmailTransactionalPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperEmailTransactionalPage }))
-);
-const SuperPlatformPulsePage = lazyPage(() =>
-  import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperPlatformPulsePage }))
 );
 const SuperSettingsPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperSettingsPage }))
@@ -276,6 +271,19 @@ function MemberEventsRoute({ children }) {
   return children;
 }
 
+function MemberModuleRoute({ moduleKey, children, fallbackPath = "/home" }) {
+  const { tenant, slug: tenantSlug } = useTenant();
+  const params = useParams();
+  const slug = params.slug || tenantSlug;
+  const modules = tenant?.config?.modules || tenant?.modules || {};
+
+  if (modules?.[moduleKey] === false) {
+    return <Navigate to={slug ? `/t/${slug}${fallbackPath}` : fallbackPath} replace />;
+  }
+
+  return children;
+}
+
 function AdminBillingRoute({ children }) {
   const { tenant, slug: tenantSlug } = useTenant();
   const params = useParams();
@@ -324,7 +332,8 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-claim") ||
     currentPath.includes("/director-create-account") ||
     currentPath.includes("/login") ||
-    currentPath.includes("/create-account");
+    currentPath.includes("/create-account") ||
+    currentPath.includes("/request-access");
   const waitingForTenantScopedUser = clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute;
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
@@ -372,7 +381,8 @@ function TenantScopeRoutes() {
     const onSyncBlockedRoute =
       path.includes("/auth/callback") ||
       path.includes("/director-claim") ||
-      path.includes("/director-create-account");
+      path.includes("/director-create-account") ||
+      path.includes("/request-access");
     // Wait for auth to be fully ready before syncing membership. This prevents
     // firing a second refreshSession while the initial bootstrap is in flight,
     // which was a major source of cascading re-renders and glitching.
@@ -420,7 +430,8 @@ function TenantScopeRoutes() {
       path.includes("/director-claim") ||
       path.includes("/director-create-account") ||
       path.includes("/login") ||
-      path.includes("/create-account");
+      path.includes("/create-account") ||
+      path.includes("/request-access");
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
     const tenantId = String(tenant?.id || tenant?._id || "").trim();
     const userTenantId = String(user?.tenantId || "").trim();
@@ -469,7 +480,8 @@ function TenantScopeRoutes() {
       path.includes("/director-claim") ||
       path.includes("/director-create-account") ||
       path.includes("/login") ||
-      path.includes("/create-account");
+      path.includes("/create-account") ||
+      path.includes("/request-access");
     if (onAuthBootstrapRoute) return;
 
     let cancelled = false;
@@ -651,6 +663,7 @@ function TenantScopeRoutes() {
           element={demoAccessEnabled ? <Navigate to={slug ? `/t/${slug}/login` : "/login"} replace /> : <CedarCreateProfileWizardPage />}
         />
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
+        <Route path="request-access" element={<TenantAccessPendingPage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
         <Route path="director-create-account/*" element={<DirectorCreateAccountPage />} />
         <Route path="director-legal" element={<DirectorLegalAgreementPage />} />
@@ -684,7 +697,9 @@ function TenantScopeRoutes() {
           path="search"
           element={
             <ProtectedRoute>
-              <CedarAdvancedSearchPage />
+              <MemberModuleRoute moduleKey="search">
+                <CedarAdvancedSearchPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -692,7 +707,9 @@ function TenantScopeRoutes() {
           path="profile/:id"
           element={
             <ProtectedRoute>
-              <CedarPublicProfilePage />
+              <MemberModuleRoute moduleKey="directory">
+                <CedarPublicProfilePage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -701,7 +718,9 @@ function TenantScopeRoutes() {
           path="photo-stream"
           element={
             <ProtectedRoute>
-              <CedarPhotoStreamPage />
+              <MemberModuleRoute moduleKey="photoStream">
+                <CedarPhotoStreamPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -709,7 +728,9 @@ function TenantScopeRoutes() {
           path="chat-rooms"
           element={
             <ProtectedRoute>
-              <CedarChatAndForumsPage />
+              <MemberModuleRoute moduleKey="chat">
+                <CedarChatAndForumsPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -717,7 +738,9 @@ function TenantScopeRoutes() {
           path="chat/:id"
           element={
             <ProtectedRoute>
-              <CedarChatAndForumsPage />
+              <MemberModuleRoute moduleKey="chat">
+                <CedarChatAndForumsPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -725,7 +748,9 @@ function TenantScopeRoutes() {
           path="cedar-chest"
           element={
             <ProtectedRoute>
-              <CedarChestPage />
+              <MemberModuleRoute moduleKey="newsletter">
+                <CedarChestPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -733,7 +758,9 @@ function TenantScopeRoutes() {
           path="location-map"
           element={
             <ProtectedRoute>
-              <CedarLocationMapPage />
+              <MemberModuleRoute moduleKey="map">
+                <CedarLocationMapPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -741,7 +768,9 @@ function TenantScopeRoutes() {
           path="search-results"
           element={
             <ProtectedRoute>
-              <CedarSearchResultsPage />
+              <MemberModuleRoute moduleKey="search">
+                <CedarSearchResultsPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -749,7 +778,9 @@ function TenantScopeRoutes() {
           path="family-trees"
           element={
             <ProtectedRoute>
-              <CedarFamilyTreesPage />
+              <MemberModuleRoute moduleKey="familyTrees">
+                <CedarFamilyTreesPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -757,7 +788,9 @@ function TenantScopeRoutes() {
           path="family-trees/new"
           element={
             <ProtectedRoute>
-              <CedarFamilyTreeCreatePage />
+              <MemberModuleRoute moduleKey="familyTrees">
+                <CedarFamilyTreeCreatePage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -765,7 +798,9 @@ function TenantScopeRoutes() {
           path="family-trees/:id"
           element={
             <ProtectedRoute>
-              <CedarFamilyTreeViewPage />
+              <MemberModuleRoute moduleKey="familyTrees">
+                <CedarFamilyTreeViewPage />
+              </MemberModuleRoute>
             </ProtectedRoute>
           }
         />
@@ -808,14 +843,24 @@ function TenantScopeRoutes() {
         >
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DirectorAdminDashboardPage />} />
+          <Route path="copilot" element={<DirectorAdminCopilotPage />} />
           <Route path="members" element={<DirectorAdminMembersPage />} />
+          <Route path="growth" element={<DirectorAdminGrowthPage />} />
           <Route path="members/:profileId/edit" element={<DirectorAdminMemberEditPage />} />
-          <Route path="members/approvals" element={<Navigate to="../members" replace />} />
+          <Route path="members/approvals" element={<DirectorAdminApprovalsPage />} />
+          <Route path="safety" element={<DirectorAdminSafetyPage />} />
           <Route path="members/import" element={<Navigate to="../invites" replace />} />
           <Route path="invites" element={<DirectorAdminInvitesPage />} />
           <Route path="directory" element={<Navigate to="../members" replace />} />
           <Route path="family-trees" element={<Navigate to="../features" replace />} />
-          <Route path="events" element={<DirectorAdminEventsPage />} />
+          <Route
+            path="events"
+            element={
+              <MemberModuleRoute moduleKey="events" fallbackPath="/admin/features">
+                <DirectorAdminEventsPage />
+              </MemberModuleRoute>
+            }
+          />
           <Route path="communications" element={<Navigate to="../email/compose" replace />} />
           <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
           <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
@@ -844,6 +889,14 @@ function TenantScopeRoutes() {
 
         <Route
           path="onboarding"
+          element={
+            <ProtectedRoute role="tenant_admin">
+              <DirectorOnboardingAgentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="onboarding/details"
           element={
             <ProtectedRoute role="tenant_admin">
               <DirectorOnboardingCommandCenterPage />
@@ -994,6 +1047,8 @@ export default function App() {
   const routeKey = `${location.pathname}${location.search}${location.hash}`;
 
   return (
+    <>
+    <NativeAppExperience />
     <div className="app-route-shell">
       <div className="app-route-progress" key={routeKey} aria-hidden="true" />
       <div className="app-route-stage">
@@ -1016,7 +1071,9 @@ export default function App() {
                 <Route index element={<Navigate to="login" replace />} />
                 <Route path="login/*" element={<SuperLoginPage />} />
                 <Route element={<ErrorBoundary level="page"><SuperShellLayout /></ErrorBoundary>}>
-                  <Route path="dashboard" element={<SuperPlatformPulsePage />} />
+                  <Route path="dashboard" element={<SuperOperationsAgentPage />} />
+                  <Route path="status" element={<SuperStatusPage />} />
+                  <Route path="pulse" element={<Navigate to="/super/status" replace />} />
                   <Route path="tenants/create" element={<SuperTenantCreatePage />} />
                   <Route path="tenants" element={<SuperTenantsPage />} />
 
@@ -1038,6 +1095,7 @@ export default function App() {
           {legacyRedirectEnabled ? <Route path="/:legacy/*" element={<LegacyRootRedirect />} /> : null}
 
           {nativeApp && !hostCampSlug && !customDomainHost ? <Route path="/" element={<NativeAppRoot />} /> : null}
+          <Route path="/email-preferences" element={<EmailPreferencesPage />} />
           <Route path="/404" element={<NotFoundPage />} />
           {hostCampSlug ? (
             <Route path="/*" element={<SubdomainCampLayout />} />
@@ -1052,5 +1110,6 @@ export default function App() {
         </Suspense>
       </div>
     </div>
+    </>
   );
 }
