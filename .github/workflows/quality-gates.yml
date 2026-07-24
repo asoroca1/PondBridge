@@ -9,6 +9,9 @@ on:
 jobs:
   web-and-security:
     runs-on: ubuntu-latest
+    env:
+      VITE_API_BASE: https://api.pondbridge.example.test
+      VITE_AUTH_PROVIDER: legacy
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,7 +19,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: npm
 
       - name: Install dependencies
@@ -34,17 +37,15 @@ jobs:
       - name: Web performance budget
         run: npm run perf:check-web
 
-  api-test-and-db-gates:
+  api-and-hosted-db-gates:
     runs-on: ubuntu-latest
     env:
       NODE_ENV: test
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      PONDBRIDGE_ALLOW_DB_RESET: "1"
-      PONDBRIDGE_TEST_RESET_ACK: "1"
-      PONDBRIDGE_TEST_DB_MARKERS: ${{ secrets.PONDBRIDGE_TEST_DB_MARKERS }}
+      AUTH_PROVIDER: legacy
+      JWT_SECRET: pondbridge-ci-only-jwt-secret-not-for-runtime
+      SUPABASE_URL: https://pondbridge-ci.invalid
+      SUPABASE_SERVICE_ROLE_KEY: pondbridge-ci-only-service-role-placeholder
+      PONDBRIDGE_CI_DB_ENABLED: ${{ vars.PONDBRIDGE_CI_DB_ENABLED || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,17 +53,51 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: DB preflight
+      - name: Safe API tests
+        run: npm --workspace @pondbridge/api test
+
+      - name: Offline Copilot safety evaluation
+        run: npm --workspace @pondbridge/api run copilot:eval
+
+      - name: Hosted DB preflight
+        if: env.PONDBRIDGE_CI_DB_ENABLED == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PONDBRIDGE_ALLOW_DB_RESET: "1"
+          PONDBRIDGE_TEST_RESET_ACK: "1"
+          PONDBRIDGE_TEST_DB_MARKERS: ${{ secrets.PONDBRIDGE_TEST_DB_MARKERS }}
         run: npm run db:preflight
 
-      - name: RLS audit
+      - name: Hosted RLS audit
+        if: env.PONDBRIDGE_CI_DB_ENABLED == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PONDBRIDGE_ALLOW_DB_RESET: "1"
+          PONDBRIDGE_TEST_RESET_ACK: "1"
+          PONDBRIDGE_TEST_DB_MARKERS: ${{ secrets.PONDBRIDGE_TEST_DB_MARKERS }}
         run: npm --workspace @pondbridge/api run rls:audit
 
-      - name: API tests
+      - name: Hosted database-backed API tests
+        if: env.PONDBRIDGE_CI_DB_ENABLED == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PONDBRIDGE_ALLOW_DB_RESET: "1"
+          PONDBRIDGE_TEST_RESET_ACK: "1"
+          PONDBRIDGE_TEST_DB_MARKERS: ${{ secrets.PONDBRIDGE_TEST_DB_MARKERS }}
         run: npm --workspace @pondbridge/api run test:with-reset
+
+      - name: Hosted database gate status
+        if: env.PONDBRIDGE_CI_DB_ENABLED != 'true'
+        run: echo "::notice::Hosted database gates are disabled. Local isolated Supabase reset, RLS verification, and 196 database-backed tests remain required release evidence."
