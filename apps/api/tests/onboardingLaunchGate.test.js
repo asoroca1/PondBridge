@@ -12,7 +12,13 @@ let Tenant;
 let User;
 let Profile;
 
-async function createReadyTenant({ slug, billingStatus = "past_due", onboardingFeePaid = false }) {
+async function createReadyTenant({
+  slug,
+  billingStatus = "past_due",
+  onboardingFeePaid = false,
+  logoUrl = "https://example.com/logo.png",
+  welcomeBody = "Hello alumni"
+}) {
   return Tenant.create({
     name: `Camp ${slug}`,
     slug,
@@ -24,12 +30,13 @@ async function createReadyTenant({ slug, billingStatus = "past_due", onboardingF
     onboardingFeeAmount: 1200,
     onboardingFeePaid,
     theme: {
-      logoUrl: "https://example.com/logo.png"
+      logoUrl
     },
     content: {
       networkDisplayName: `${slug} Alumni Network`,
       welcomeHeadline: "Welcome",
-      welcomeBody: "Hello alumni"
+      welcomeBody,
+      merchShopUrl: "https://shop.example.com"
     },
     settings: {
       signupMode: "open",
@@ -52,12 +59,13 @@ async function createReadyTenant({ slug, billingStatus = "past_due", onboardingF
     },
     onboardingDraft: {
       theme: {
-        logoUrl: "https://example.com/logo.png"
+        logoUrl
       },
       content: {
         networkDisplayName: `${slug} Alumni Network`,
         welcomeHeadline: "Welcome",
-        welcomeBody: "Hello alumni"
+        welcomeBody,
+        merchShopUrl: "https://shop.example.com"
       },
       settings: {
         signupMode: "open",
@@ -225,6 +233,60 @@ describe("Onboarding launch billing gate", () => {
     expect(response.body.error?.details?.blockers?.some((blocker) => blocker.id === "billing")).toBe(true);
   });
 
+  test("director wizard cannot bypass missing required content", async () => {
+    const tenant = await createReadyTenant({
+      slug: "launch-wizard-content-gate",
+      billingStatus: "active",
+      onboardingFeePaid: true,
+      welcomeBody: ""
+    });
+
+    await createTenantAdmin(tenant._id, "director@contentgate.test");
+    const token = await loginTenant(
+      "launch-wizard-content-gate",
+      "director@contentgate.test",
+      "AdminPass123!"
+    );
+
+    const response = await request(app)
+      .post("/api/tenants/me/launch")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ mode: "director_wizard", legalAgreementAccepted: true });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error?.code).toBe("LAUNCH_BLOCKED");
+    expect(response.body.error?.details?.blockers?.some((blocker) => blocker.id === "headline")).toBe(true);
+  });
+
+  test("logo and initial member count are recommendations, not universal blockers", async () => {
+    const tenant = await createReadyTenant({
+      slug: "launch-optional-setup",
+      billingStatus: "active",
+      onboardingFeePaid: true,
+      logoUrl: ""
+    });
+
+    await createTenantAdmin(tenant._id, "director@optionalsetup.test");
+    const token = await loginTenant(
+      "launch-optional-setup",
+      "director@optionalsetup.test",
+      "AdminPass123!"
+    );
+
+    const response = await request(app)
+      .post("/api/tenants/me/launch")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ mode: "director_wizard", legalAgreementAccepted: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body.onboarding?.readiness?.optionalChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "logo", ok: false }),
+        expect.objectContaining({ id: "initial_members", ok: false })
+      ])
+    );
+  });
+
   test("super admin can override billing gate on launch", async () => {
     const tenant = await createReadyTenant({
       slug: "launch-override-camp",
@@ -246,5 +308,46 @@ describe("Onboarding launch billing gate", () => {
     expect(response.body.ok).toBe(true);
     expect(response.body.onboarding.tenant.onboardingStatus).toBe("live");
     expect(response.body.onboarding.launchMeta?.superAdminOverride).toBe(true);
+  });
+
+  test("manual super-admin billing repair updates the authoritative lifecycle", async () => {
+    const tenant = await createReadyTenant({
+      slug: "manual-billing-repair",
+      billingStatus: "past_due",
+      onboardingFeePaid: false
+    });
+    await createSuperAdmin();
+    const superToken = await loginSuper();
+
+    const response = await request(app)
+      .patch("/api/tenants/me/billing")
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        tenantId: String(tenant._id),
+        billingStatus: "active",
+        onboardingFeePaid: true,
+        onboardingFeeInvoiceId: "manual_test_invoice"
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.billing).toEqual(
+      expect.objectContaining({
+        lifecycleStatus: "active",
+        billingStatusReady: true,
+        onboardingFeeStatus: "paid",
+        onboardingFeeReady: true,
+        ok: true
+      })
+    );
+
+    const stored = await Tenant.findById(tenant._id);
+    expect(stored.settings?.billing).toEqual(
+      expect.objectContaining({
+        lifecycleStatus: "active",
+        legacyStatus: "active",
+        onboardingFeeStatus: "paid",
+        lastInvoiceId: "manual_test_invoice"
+      })
+    );
   });
 });

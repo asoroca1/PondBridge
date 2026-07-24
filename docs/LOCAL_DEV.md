@@ -1,9 +1,15 @@
 # Local Development
 
+For the canonical zero-cost staging workflow—including the isolated Supabase
+stack, synthetic target/control camps, outbound-provider guardrails, and reset
+verification—start with [`LOCAL_STAGING.md`](./LOCAL_STAGING.md).
+
 ## 1. Requirements
-- Node.js 20+
+- Node.js 22.12+ recommended (or Node.js 20.19+). The current Vite toolchain will not start on earlier Node 20 releases.
 - npm 10+
-- MongoDB running locally (`mongodb://127.0.0.1:27017`)
+- Docker CLI, Colima, and the repository-pinned Supabase CLI. The staging
+  runner uses a dedicated `pondbridge` Colima profile. Never point reset/seed
+  commands at production.
 
 ## 2. Install dependencies
 From repo root:
@@ -11,7 +17,24 @@ From repo root:
 npm install
 ```
 
-## 3. Configure environment files
+## 3. Preferred local staging setup
+
+No hosted credentials or copied `.env` files are required:
+
+```bash
+npm run staging:local:reset
+npm run staging:local:dev
+```
+
+The staging runner injects safe local Supabase credentials and disables all
+outbound providers even when another `.env` file exists.
+
+## 4. Manual environment setup
+
+Developer-only provider credentials can be stored in the ignored root
+`.env.local`. PondBridge loads it before the shared root `.env`, while tests and
+the isolated local-staging runner deliberately ignore both files.
+
 Copy examples:
 ```bash
 cp apps/api/.env.example apps/api/.env
@@ -20,15 +43,40 @@ cp apps/web/.env.example apps/web/.env
 
 Minimum required in `apps/api/.env`:
 ```env
-MONGODB_URI=mongodb://127.0.0.1:27017/pondbridge
+SUPABASE_URL=https://YOUR_DEV_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_DEV_SERVICE_ROLE_KEY
+SUPABASE_DB_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_DEV_PROJECT.supabase.co:5432/postgres
 JWT_SECRET=change_me
 PORT=4000
+```
+
+Apply the native relational schema to the dedicated development database:
+
+```bash
+npm --workspace @pondbridge/api run supabase:apply-schema
+npm --workspace @pondbridge/api run rls:audit
 ```
 
 Optional for resume parsing with OpenAI:
 ```env
 OPENAI_API_KEY=...
+OPENAI_PROFILE_IMPORT_MODEL=gpt-5.6-luna
+OPENAI_PROFILE_IMPORT_MAX_OUTPUT_TOKENS=1600
+PROFILE_IMPORT_MONTHLY_BUDGET_USD=15
+OPENAI_SEARCH_MODEL=gpt-5.6-luna
+OPENAI_SEARCH_MAX_OUTPUT_TOKENS=500
+AI_SEARCH_MONTHLY_BUDGET_USD=15
 ```
+
+Camp Search AI stays off until `camp_ai_search_v1` is enabled for the local
+tenant in the durable rollout controls. Profile PDF Import remains usable with
+its conservative local parser when OpenAI or the usage ledger is unavailable.
+
+To reproduce the additive fall-rollout foundation locally, run `db:preflight`
+and follow its ordered `migrationPlan`. The available guarded installers cover
+platform audit, rollout control, communications/AI usage, multi-camp identity,
+and member safety; all five accept `PONDBRIDGE_TARGET_ENV=local` without a
+remote-staging acknowledgement.
 
 Optional for transactional email with Resend:
 ```env
@@ -89,10 +137,13 @@ Health check now includes integration readiness details:
 curl http://localhost:4000/health
 ```
 
-## 4. Seed Cedar tenant + users
+## 5. Seed Cedar tenant + users
 ```bash
 npm --workspace @pondbridge/api run seed
 ```
+
+The seed command is for a dedicated development database only. Production seeding
+is guarded and should remain disabled.
 
 This creates:
 - Tenant: `Camp Cedar` (`cedar`)
@@ -100,7 +151,7 @@ This creates:
 - Sample users: `camper1@campcedar.local`, `staff1@campcedar.local` / `Pondbridge123!`
 - Super admin: `superadmin@pondbridge.local` / `SuperAdmin123!`
 
-## 5. Run locally
+## 6. Run locally
 API only:
 ```bash
 npm run dev:api
@@ -116,7 +167,7 @@ Both together:
 npm run dev
 ```
 
-## 6. Open app
+## 7. Open app
 - Tenant app: [http://localhost:5173/t/cedar](http://localhost:5173/t/cedar)
 - Super admin login: [http://localhost:5173/super/login](http://localhost:5173/super/login)
 
@@ -124,12 +175,16 @@ If port `5173` is already in use (for example by your marketing site), Vite will
 - Tenant app: [http://localhost:5174/t/cedar](http://localhost:5174/t/cedar)
 - Super admin login: [http://localhost:5174/super/login](http://localhost:5174/super/login)
 
-## 7. Useful commands
+## 8. Useful commands
 - `npm run lint`
-- `npm run test`
+- `npm run test` runs the non-destructive API unit/helper tests.
+- `npm --workspace @pondbridge/api run test:db` runs the full API suite and will refuse to reset data unless the DB reset safeguards are explicitly configured.
+- `npm --workspace @pondbridge/api run test:with-reset` is only for a dedicated local/CI test database with `PONDBRIDGE_TEST_DB_MARKERS` proving it is non-production.
+- `npm --workspace @pondbridge/api run domains:audit` checks normalized domain
+  assignments without writing data.
 - `npm run build`
 
-## 8. One-time legacy media migration to R2
+## 9. One-time legacy media migration to R2
 Dry run (no writes):
 ```bash
 npm --workspace @pondbridge/api run migrate:legacy-media-to-r2

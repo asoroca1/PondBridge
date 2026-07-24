@@ -11,6 +11,8 @@ import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
+import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
 
 function safeUrl(u) { if (!u) return ""; return /^https?:\/\//i.test(u) ? u : `https://${u}`; }
 
@@ -180,6 +182,7 @@ function sortEducationNewest(rows = []) {
 
 /** === Right-column mosaic of photos this user has posted === */
 function PhotosMosaic({ userId }) {
+  const { slug } = useTenant();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -219,7 +222,7 @@ function PhotosMosaic({ userId }) {
           {items.map((p) => (
             <Link
               key={p._id || p.id}
-              to="/photo-stream"
+              to={tenantRoute(slug, "/photo-stream")}
               className="p1-mosaic-link"
               title={p.caption || "View in Photo Stream"}
             >
@@ -237,6 +240,85 @@ function PhotosMosaic({ userId }) {
   );
 }
 
+function BlockedMembersCard() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/safety/blocks`, { headers: authHeaders() });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error?.message || "Unable to load blocked members.");
+        if (!cancelled) setItems(Array.isArray(payload?.items) ? payload.items : []);
+      } catch (requestError) {
+        if (!cancelled) setError(requestError.message || "Unable to load blocked members.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function unblockSelected() {
+    if (!selected?.blockedUserId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `${API_BASE}/safety/blocks/${encodeURIComponent(selected.blockedUserId)}`,
+        { method: "DELETE", headers: authHeaders() }
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error?.message || "Unable to unblock this member.");
+      setItems((current) => current.filter((item) => item.blockedUserId !== selected.blockedUserId));
+      setSelected(null);
+    } catch (requestError) {
+      setError(requestError.message || "Unable to unblock this member.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <aside className="p1-card p1-blocked-card">
+        <h2 className="p1-h2">Blocked Members</h2>
+        <p className="p1-blocked-help">Blocked members cannot contact you directly or find your profile.</p>
+        {loading ? <CedarSkeleton.Lines lines={2} /> : null}
+        {error ? <p className="p1-safety-note is-error" role="alert">{error}</p> : null}
+        {!loading && !items.length ? <div className="p1-empty">No blocked members.</div> : null}
+        {items.length ? (
+          <ul className="p1-blocked-list">
+            {items.map((item) => (
+              <li key={item.id || item.blockedUserId}>
+                <span>{item.name || "Member"}</span>
+                <button type="button" className="profile1-btn is-secondary" onClick={() => setSelected(item)}>
+                  Unblock
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </aside>
+      <ModalConfirm
+        open={Boolean(selected)}
+        title={`Unblock ${selected?.name || "this member"}?`}
+        description="One-to-one messaging and profile visibility will be restored."
+        confirmLabel="Unblock member"
+        tone="neutral"
+        busy={busy}
+        onCancel={() => setSelected(null)}
+        onConfirm={unblockSelected}
+      />
+    </>
+  );
+}
+
 /* ===== Related Profiles ===== */
 function topCurrentJob(u = {}) {
   const j = (u.currentJobs || [])[0];
@@ -244,6 +326,7 @@ function topCurrentJob(u = {}) {
 }
 
 function RelatedProfilesCard({ targetUserId }) {
+  const { slug } = useTenant();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [avatarErrorIds, setAvatarErrorIds] = useState(() => new Set());
@@ -294,7 +377,7 @@ function RelatedProfilesCard({ targetUserId }) {
             const showImage = Boolean(url) && !avatarErrorIds.has(id);
             return (
               <li key={id} className="p1-suggest-item">
-                <Link to={`/profile/${id}`} className="p1-suggest-avatar" aria-label={`Open ${name}'s profile`}>
+                <Link to={tenantRoute(slug, `/profile/${id}`)} className="p1-suggest-avatar" aria-label={`Open ${name}'s profile`}>
                   {showImage ? (
                     <img
                       className="p1-suggest-img"
@@ -314,7 +397,7 @@ function RelatedProfilesCard({ targetUserId }) {
                   )}
                 </Link>
                 <div className="p1-suggest-main">
-                  <Link to={`/profile/${id}`} className="p1-suggest-name">{name}</Link>
+                  <Link to={tenantRoute(slug, `/profile/${id}`)} className="p1-suggest-name">{name}</Link>
                   <div className="p1-suggest-sub">{job}</div>
                 </div>
               </li>
@@ -328,7 +411,7 @@ function RelatedProfilesCard({ targetUserId }) {
 
 export default function MyProfile() {
   const navigate = useNavigate();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
@@ -421,7 +504,7 @@ export default function MyProfile() {
             <div className="profile1-container">
               <div className="profile1-empty">
                 {error || "No profile found."}
-                <button className="profile1-btn" onClick={() => navigate("/create-account")}>
+                <button className="profile1-btn" onClick={() => navigate(tenantRoute(slug, "/create-account"))}>
                   Create your profile
                 </button>
               </div>
@@ -511,7 +594,7 @@ export default function MyProfile() {
                   ) : null}
 
                   <div className="p1-actions">
-                    <button className="profile1-btn" onClick={() => navigate("/edit-profile")}>
+                    <button className="profile1-btn" onClick={() => navigate(tenantRoute(slug, "/edit-profile"))}>
                       Edit Profile
                     </button>
                   </div>
@@ -631,6 +714,8 @@ export default function MyProfile() {
                     )}
                   </div>
                 </aside>
+
+                <BlockedMembersCard />
 
                 <PhotosMosaic userId={profile.userId || profile.id || profile._id} />
               </div>

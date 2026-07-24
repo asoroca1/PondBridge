@@ -1,6 +1,14 @@
-import { UserModel } from "../db/models/index.js";
+import {
+  IdentityModel,
+  TenantMembershipModel,
+  UserModel
+} from "../db/models/index.js";
 import { env } from "../config/env.js";
 import { syncClerkTenantMetadata } from "./clerkIdentity.js";
+import {
+  evaluateFeatureRollout,
+  MULTI_CAMP_IDENTITY_FLAG
+} from "./featureRollouts.js";
 
 const SUPER_CONSOLE_ROLES = new Set(["super_admin", "support_admin", "finance_admin"]);
 
@@ -10,6 +18,13 @@ function normalizeEmail(value = "") {
 
 function normalizeTenantId(value = "") {
   return String(value || "").trim();
+}
+
+function isMissingIdentitySchema(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  return code === "42P01" || code === "PGRST205" ||
+    /(identities|tenant_memberships).*(does not exist|schema cache)/i.test(message);
 }
 
 function mergeRoleSet(existing = [], required = []) {
@@ -210,6 +225,228 @@ export async function findTenantUserForIdentity(tenantId, identity = {}) {
   return UserModel.update(user._id, patch);
 }
 
+async function findGlobalIdentity(identity = {}) {
+  const clerkUserId = String(identity?.clerkUserId || "").trim();
+  const email = normalizeEmail(identity?.email || "");
+  const [byClerk, byEmail] = await Promise.all([
+    clerkUserId ? IdentityModel.findOne({ clerkUserId }) : Promise.resolve(null),
+    email ? IdentityModel.findOne({ primaryEmail: email }) : Promise.resolve(null)
+  ]);
+  if (byClerk && byEmail && String(byClerk._id) !== String(byEmail._id)) {
+    const error = new Error("Identity references resolve to different global records.");
+    error.code = "IDENTITY_COLLISION";
+    error.statusCode = 409;
+    throw error;
+  }
+  if (byEmail?.clerkUserId && clerkUserId && byEmail.clerkUserId !== clerkUserId) {
+    const error = new Error("Email is already attached to a different global identity.");
+    error.code = "IDENTITY_COLLISION";
+    error.statusCode = 409;
+    throw error;
+  }
+  return byClerk || byEmail || null;
+}
+
+export async function findTenantUserFromMembershipIdentity(tenantId, identity = {}) {
+  const normalizedTenantId = normalizeTenantId(tenantId);
+  if (!normalizedTenantId) return null;
+  const globalIdentity = await findGlobalIdentity(identity);
+  if (!globalIdentity || globalIdentity.status !== "active") return null;
+  const membership = await TenantMembershipModel.findOne({
+    tenantId: normalizedTenantId,
+    identityId: globalIdentity._id,
+    status: "active"
+  });
+  if (!membership?.legacyUserId) return null;
+  const user = await UserModel.findById(membership.legacyUserId);
+  return buildMembershipBackedUser({
+    tenantId: normalizedTenantId,
+    globalIdentity,
+    membership,
+    user
+  });
+}
+
+export function buildMembershipBackedUser({
+  tenantId,
+  globalIdentity,
+  membership,
+  user
+} = {}) {
+  const normalizedTenantId = normalizeTenantId(tenantId);
+  if (
+    !normalizedTenantId ||
+    !globalIdentity ||
+    globalIdentity.status !== "active" ||
+    !membership ||
+    membership.status !== "active" ||
+    String(membership.tenantId || "") !== normalizedTenantId ||
+    String(membership.identityId || "") !== String(globalIdentity._id || globalIdentity.id || "") ||
+    !user ||
+    String(user._id || user.id || "") !== String(membership.legacyUserId || "") ||
+    String(user.tenantId || "") !== normalizedTenantId
+  ) {
+    return null;
+  }
+  return {
+    ...user,
+    roles: Array.isArray(membership.roles) ? membership.roles : user.roles || [],
+    status: membership.status,
+    identityId: globalIdentity._id,
+    tenantMembershipId: membership._id,
+    authorizationSource: "tenant_membership"
+  };
+}
+
+export function canDeleteUnusedIdentity({ remainingMembershipCount = 0, platformRoles = [] } = {}) {
+  return Number(remainingMembershipCount || 0) === 0 &&
+    (!Array.isArray(platformRoles) || platformRoles.length === 0);
+}
+
+async function ensureIdentityMembership({
+  tenantId,
+  identity,
+  legacyUser,
+  roles,
+  status,
+  joinMethod
+}) {
+  const email = normalizeEmail(identity?.email || legacyUser?.email || "");
+  const clerkUserId = String(identity?.clerkUserId || legacyUser?.clerkUserId || "").trim();
+  if (!email || !legacyUser?._id) {
+    throw new Error("A verified email and legacy user are required for membership dual-write.");
+  }
+
+  let globalIdentity = await findGlobalIdentity({ email, clerkUserId });
+  if (!globalIdentity) {
+    try {
+      globalIdentity = await IdentityModel.create({
+        clerkUserId: clerkUserId || null,
+        primaryEmail: email,
+        verifiedEmails: [email],
+        platformRoles: [],
+        status: "active",
+        metadata: { source: "membership_dual_write_v1" }
+      });
+    } catch (error) {
+      if (String(error?.code || "") !== "23505") throw error;
+      globalIdentity = await findGlobalIdentity({ email, clerkUserId });
+      if (!globalIdentity) throw error;
+    }
+  }
+
+  let membership = await TenantMembershipModel.findOne({
+    tenantId,
+    identityId: globalIdentity._id
+  });
+  const payload = {
+    tenantId,
+    identityId: globalIdentity._id,
+    legacyUserId: legacyUser._id,
+    roles: mergeRoleSet([], roles || legacyUser.roles || ["user"]),
+    status: status === "inactive" ? "inactive" : "active",
+    joinMethod: membership?.joinMethod || joinMethod
+  };
+  membership = membership
+    ? await TenantMembershipModel.update(membership._id, payload)
+    : await TenantMembershipModel.create(payload);
+  return { globalIdentity, membership };
+}
+
+async function deleteIdentityWhenUnused(identityId) {
+  const normalizedIdentityId = String(identityId || "").trim();
+  if (!normalizedIdentityId) return false;
+  const remaining = await TenantMembershipModel.count({ identityId: normalizedIdentityId });
+  const identity = await IdentityModel.findById(normalizedIdentityId);
+  if (!identity || !canDeleteUnusedIdentity({
+    remainingMembershipCount: remaining,
+    platformRoles: identity.platformRoles || []
+  })) return false;
+  await IdentityModel.delete(normalizedIdentityId);
+  return true;
+}
+
+export async function removeTenantMembershipIdentityLink({
+  tenantId,
+  legacyUserId,
+  tenantMembershipId
+} = {}) {
+  const normalizedTenantId = normalizeTenantId(tenantId);
+  const normalizedLegacyUserId = String(legacyUserId || "").trim();
+  const normalizedMembershipId = String(tenantMembershipId || "").trim();
+  if (!normalizedTenantId || (!normalizedLegacyUserId && !normalizedMembershipId)) {
+    return { membershipDeleted: 0, identityDeleted: 0, storageAvailable: true };
+  }
+  const rollout = await evaluateFeatureRollout(MULTI_CAMP_IDENTITY_FLAG, { _id: normalizedTenantId });
+  try {
+    const membership = await TenantMembershipModel.findOne(
+      normalizedMembershipId
+        ? { _id: normalizedMembershipId, tenantId: normalizedTenantId }
+        : { tenantId: normalizedTenantId, legacyUserId: normalizedLegacyUserId }
+    );
+    if (!membership) {
+      if (rollout.enabled) {
+        const error = new Error("Membership-backed tenant is missing its identity membership record.");
+        error.code = "TENANT_MEMBERSHIP_RECORD_REQUIRED";
+        error.statusCode = 409;
+        throw error;
+      }
+      return { membershipDeleted: 0, identityDeleted: 0, storageAvailable: true };
+    }
+    await TenantMembershipModel.delete(membership._id);
+    const identityDeleted = await deleteIdentityWhenUnused(membership.identityId);
+    return {
+      membershipDeleted: 1,
+      identityDeleted: identityDeleted ? 1 : 0,
+      storageAvailable: true
+    };
+  } catch (error) {
+    if (!rollout.enabled && isMissingIdentitySchema(error)) {
+      return { membershipDeleted: 0, identityDeleted: 0, storageAvailable: false };
+    }
+    throw error;
+  }
+}
+
+export async function removeAllTenantMembershipIdentityLinks(tenantId) {
+  const normalizedTenantId = normalizeTenantId(tenantId);
+  if (!normalizedTenantId) {
+    return { membershipsDeleted: 0, identitiesDeleted: 0, storageAvailable: true };
+  }
+  const rollout = await evaluateFeatureRollout(MULTI_CAMP_IDENTITY_FLAG, { _id: normalizedTenantId });
+  try {
+    const memberships = [];
+    const pageSize = 1000;
+    for (let offset = 0; offset < 500_000; offset += pageSize) {
+      const page = await TenantMembershipModel.find(
+        normalizedTenantId,
+        {},
+        { select: ["id", "identityId"], limit: pageSize, offset }
+      );
+      memberships.push(...page);
+      if (page.length < pageSize) break;
+    }
+    const identityIds = [...new Set(memberships.map((item) => String(item.identityId || "")).filter(Boolean))];
+    if (memberships.length > 0) {
+      await TenantMembershipModel.deleteMany(normalizedTenantId, {});
+    }
+    let identitiesDeleted = 0;
+    for (const identityId of identityIds) {
+      if (await deleteIdentityWhenUnused(identityId)) identitiesDeleted += 1;
+    }
+    return {
+      membershipsDeleted: memberships.length,
+      identitiesDeleted,
+      storageAvailable: true
+    };
+  } catch (error) {
+    if (!rollout.enabled && isMissingIdentitySchema(error)) {
+      return { membershipsDeleted: 0, identitiesDeleted: 0, storageAvailable: false };
+    }
+    throw error;
+  }
+}
+
 export async function findSingleTenantMembershipForIdentity(identity = {}) {
   const memberships = await findTenantMembershipsForIdentity(identity, { activeOnly: false });
   const active = memberships.filter((item) => item.status === "active");
@@ -265,9 +502,16 @@ export async function createTenantMembershipFromIdentity({
   roles = ["user"],
   status = "active",
   tenantSlug = "",
-  allowCrossTenant = false
+  allowCrossTenant = false,
+  joinMethod = "open_signup"
 }) {
-  await assertIdentityTenantBinding({ tenantId, identity, allowCrossTenant });
+  const rollout = await evaluateFeatureRollout(MULTI_CAMP_IDENTITY_FLAG, { _id: tenantId });
+  const membershipBacked = Boolean(rollout.enabled);
+  await assertIdentityTenantBinding({
+    tenantId,
+    identity,
+    allowCrossTenant: allowCrossTenant || membershipBacked
+  });
   const email = normalizeEmail(identity?.email || "");
   const clerkUserId = String(identity?.clerkUserId || "").trim();
   const existing = await findTenantUserForIdentity(tenantId, identity);
@@ -277,13 +521,38 @@ export async function createTenantMembershipFromIdentity({
     if ((existing.roles || []).length !== nextRoles.length) patch.roles = nextRoles;
     if (status && existing.status !== status) patch.status = status;
     const updated = Object.keys(patch).length === 0 ? existing : await UserModel.update(existing._id, patch);
-    await enforceClerkTenantMetadataSync({
-      clerkUserId,
-      tenantId,
-      tenantSlug,
-      role: resolvePrimaryTenantRole(updated.roles || nextRoles)
-    });
-    return updated;
+    let dualWrite = null;
+    try {
+      dualWrite = await ensureIdentityMembership({
+        tenantId,
+        identity,
+        legacyUser: updated,
+        roles: updated.roles || nextRoles,
+        status: updated.status || status,
+        joinMethod
+      });
+    } catch (error) {
+      if (membershipBacked || !isMissingIdentitySchema(error)) {
+        if (Object.keys(patch).length > 0) {
+          const rollback = {};
+          if (Object.prototype.hasOwnProperty.call(patch, "roles")) rollback.roles = existing.roles || [];
+          if (Object.prototype.hasOwnProperty.call(patch, "status")) rollback.status = existing.status || "active";
+          await UserModel.update(updated._id, rollback).catch(() => {});
+        }
+        throw error;
+      }
+    }
+    if (!membershipBacked) {
+      await enforceClerkTenantMetadataSync({
+        clerkUserId,
+        tenantId,
+        tenantSlug,
+        role: resolvePrimaryTenantRole(updated.roles || nextRoles)
+      });
+    }
+    return dualWrite?.membership
+      ? { ...updated, identityId: dualWrite.globalIdentity._id, tenantMembershipId: dualWrite.membership._id }
+      : updated;
   }
 
   const created = await UserModel.create({
@@ -294,11 +563,31 @@ export async function createTenantMembershipFromIdentity({
     roles: mergeRoleSet([], roles),
     status
   });
-  await enforceClerkTenantMetadataSync({
-    clerkUserId,
-    tenantId,
-    tenantSlug,
-    role: resolvePrimaryTenantRole(created.roles || roles)
-  });
-  return created;
+  let dualWrite = null;
+  try {
+    dualWrite = await ensureIdentityMembership({
+      tenantId,
+      identity,
+      legacyUser: created,
+      roles: created.roles || roles,
+      status: created.status || status,
+      joinMethod
+    });
+  } catch (error) {
+    if (membershipBacked || !isMissingIdentitySchema(error)) {
+      await UserModel.delete(created._id).catch(() => {});
+      throw error;
+    }
+  }
+  if (!membershipBacked) {
+    await enforceClerkTenantMetadataSync({
+      clerkUserId,
+      tenantId,
+      tenantSlug,
+      role: resolvePrimaryTenantRole(created.roles || roles)
+    });
+  }
+  return dualWrite?.membership
+    ? { ...created, identityId: dualWrite.globalIdentity._id, tenantMembershipId: dualWrite.membership._id }
+    : created;
 }

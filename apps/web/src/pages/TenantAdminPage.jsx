@@ -5,6 +5,8 @@ import { requestBlob, requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
+import { ModalConfirm } from "../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../components/admin/useConfirmDialog.js";
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -19,6 +21,7 @@ export default function TenantAdminPage() {
   const { slug } = useParams();
   const { token } = useAuth();
   const { tenant } = useTenant();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
 
   const [overview, setOverview] = useState(null);
   const [profiles, setProfiles] = useState([]);
@@ -120,7 +123,12 @@ export default function TenantAdminPage() {
   }
 
   async function deleteProfile(profileId) {
-    if (!window.confirm("Delete this profile?")) return;
+    const accepted = await confirm({
+      title: "Delete this profile?",
+      description: "The member profile will be permanently removed from this camp. This cannot be undone.",
+      confirmLabel: "Delete profile",
+    });
+    if (!accepted) return;
 
     setError("");
     setStatus("");
@@ -303,6 +311,7 @@ export default function TenantAdminPage() {
           ))}
         </div>
       </Card>
+      <ModalConfirm {...confirmDialogProps} />
     </PageShell>
   );
 }

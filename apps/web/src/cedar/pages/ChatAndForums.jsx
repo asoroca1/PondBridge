@@ -5,12 +5,17 @@ import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
 import { createSocket } from "../lib/socket";
 import "./chats.css";
-import { MessageSquare, Users, Megaphone, Plus, Paperclip, Shield, ChevronLeft, Search } from "lucide-react";
+import { MessageSquare, Users, Megaphone, Plus, Shield, ChevronLeft, Search } from "lucide-react";
 import PeoplePicker from "../components/chat/PeoplePicker";
 import MessageComposer from "../components/chat/MessageComposer";
+import ContentReportAction from "../components/chat/ContentReportAction.jsx";
+import AuthenticatedAttachment from "../components/chat/AuthenticatedAttachment.jsx";
+import { useTypingIndicator } from "../components/chat/useTypingIndicator.js";
 import NotificationBadge from "../../components/NotificationBadge.jsx";
 import InitialsMark from "../../components/InitialsMark.jsx";
-import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
+import { ModalConfirm, ModalDialog, useDialogFocus } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
+import { Link, useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import {
   getToken,
   authHeaders,
@@ -23,6 +28,8 @@ import {
 } from "../lib/helpers.js";
 import { markConversationRead } from "../lib/unreadChats.js";
 import { readAuthFromStorage } from "../../lib/storage.js";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 
 /* ======================= Helpers ======================= */
 function toMs(iso) {
@@ -53,7 +60,17 @@ function normalizeConversationEntity(conversation = null) {
   const participantIds = Array.isArray(conversation.participantIds)
     ? conversation.participantIds.map((entry) => normalizeEntityId(entry)).filter(isObjectIdLike)
     : [];
-  return { ...conversation, _id: id, id, participantIds };
+  const participants = Array.isArray(conversation.participants)
+    ? conversation.participants
+        .map((participant) => ({
+          userId: normalizeEntityId(participant?.userId),
+          profileId: normalizeEntityId(participant?.profileId),
+          name: String(participant?.name || "Member"),
+          avatarUrl: String(participant?.avatarUrl || "")
+        }))
+        .filter((participant) => participant.userId)
+    : [];
+  return { ...conversation, _id: id, id, participantIds, participants };
 }
 
 function normalizeForumEntity(forum = null) {
@@ -302,6 +319,7 @@ function canDelete({ meId, roles, resource }) {
 /* ======================= Avatars ======================= */
 /** Clickable person avatar when `userId` or `linkTo` is provided. Stops row click bubbling. */
 function Avatar({ name, url, size = "md", userId, linkTo }) {
+  const { slug } = useTenant();
   const [broken, setBroken] = useState(false);
   const cls = ["cf-avatar", size === "sm" ? "cf-sm" : "", size === "lg" ? "cf-lg" : ""]
     .filter(Boolean)
@@ -331,19 +349,20 @@ function Avatar({ name, url, size = "md", userId, linkTo }) {
     />
   );
 
-  const href = linkTo || (safeUserId ? profilePath(safeUserId) : null);
+  const rawHref = linkTo || (safeUserId ? profilePath(safeUserId) : null);
+  const href = String(rawHref || "").startsWith("/") ? tenantRoute(slug, rawHref) : rawHref;
   if (!href) return base;
 
   return (
-    <a
-      href={href}
+    <Link
+      to={href}
       className="cf-avatar-link"
       onClick={(e) => e.stopPropagation()}
       aria-label={name ? `Open ${name}'s profile` : "Open profile"}
       style={{ display: "inline-flex" }}
     >
       {base}
-    </a>
+    </Link>
   );
 }
 
@@ -375,10 +394,45 @@ export default function ChatAndForums() {
   const initialTab = tabParam === "groups" || tabParam === "forums" ? tabParam : "personal";
   const [tab, setTab] = useState(initialTab); // personal | groups | forums
   const [socket] = useState(() => createSocket(getToken() || ""));
+  const [realtimeStatus, setRealtimeStatus] = useState("connecting");
 
   useEffect(() => {
+    const onConnect = () => setRealtimeStatus("connected");
+    const onDisconnect = () => setRealtimeStatus("reconnecting");
+    const onConnectError = () => setRealtimeStatus("reconnecting");
+    const onReconnectAttempt = () => {
+      socket.auth = { ...socket.auth, token: getToken() || socket.auth?.token || "" };
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        socket.disconnect();
+        return;
+      }
+      socket.auth = { ...socket.auth, token: getToken() || socket.auth?.token || "" };
+      setRealtimeStatus("connecting");
+      socket.connect();
+    };
+    const onAnyMessage = (message) => {
+      window.dispatchEvent(
+        new CustomEvent("cedar:chat-message", { detail: { conversationId: message?.conversationId || "" } })
+      );
+    };
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
+    socket.io.on("reconnect_attempt", onReconnectAttempt);
+    socket.on("message:new", onAnyMessage);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     socket.connect();
-    return () => socket.disconnect();
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
+      socket.io.off("reconnect_attempt", onReconnectAttempt);
+      socket.off("message:new", onAnyMessage);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      socket.disconnect();
+    };
   }, [socket]);
 
   useEffect(() => {
@@ -431,6 +485,12 @@ export default function ChatAndForums() {
           </nav>
         </CedarPageHeader>
 
+        {realtimeStatus !== "connected" ? (
+          <div className="cf-connection-status" role="status" aria-live="polite">
+            Reconnecting live updates. You can keep sending messages.
+          </div>
+        ) : null}
+
         {tab === "personal" && <PersonalTab socket={socket} />}
         {tab === "groups" && <GroupsTab socket={socket} />}
         {tab === "forums" && <ForumsTab socket={socket} />}
@@ -449,44 +509,125 @@ function MessageBubble({ me, msg, nameLookup, userLookup }) {
   const isText = msg.kind === "text";
   const isImage = msg.kind === "image";
   const isFile = msg.kind === "file";
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("harassment");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportStatus, setReportStatus] = useState("");
+
+  async function submitReport() {
+    setReportBusy(true);
+    setReportStatus("");
+    try {
+      const response = await fetch(`${API_BASE}/safety/reports`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          targetType: "message",
+          targetId: msg._id || msg.id,
+          reason: reportReason,
+          details: reportDetails
+        })
+      });
+      const payload = await readJsonSafe(response);
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Unable to submit this report."));
+      setReportStatus(payload?.message || "Report submitted.");
+      setReportDetails("");
+      setReportOpen(false);
+    } catch (requestError) {
+      setReportStatus(requestError.message || "Unable to submit this report.");
+    } finally {
+      setReportBusy(false);
+    }
+  }
 
   return (
-    <div className={`cf-row ${mine ? "is-right" : "is-left"}`}>
-      <div className="cf-row-line">
-        {!mine && (
-          <div className="cf-msg-avatar">
-            <Avatar name={who} url={avatar} size="sm" userId={String(msg.senderId)} />
+    <>
+      <div className={`cf-row ${mine ? "is-right" : "is-left"}`}>
+        <div className="cf-row-line">
+          {!mine && (
+            <div className="cf-msg-avatar">
+              <Avatar name={who} url={avatar} size="sm" userId={String(msg.senderId)} />
+            </div>
+          )}
+          <div className="cf-row-stack">
+            {!mine && <div className="cf-badge">{who}</div>}
+            <div className={`cf-bubble ${mine ? "is-mine" : ""}`}>
+              {isText && <div className="cf-bubble-body">{msg.text}</div>}
+              {isImage && (
+                <div className="cf-bubble-media">
+                  <AuthenticatedAttachment
+                    media={msg.media}
+                    kind="image"
+                    scope="conversation"
+                    resourceId={msg.conversationId}
+                  />
+                </div>
+              )}
+              {isFile && (
+                <div className="cf-bubble-file">
+                  <AuthenticatedAttachment
+                    media={msg.media}
+                    kind="file"
+                    scope="conversation"
+                    resourceId={msg.conversationId}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="cf-time">
+              {time}
+              {!mine && isObjectIdLike(msg?._id || msg?.id) ? (
+                <button type="button" className="cf-report-btn" onClick={() => setReportOpen(true)}>
+                  Report
+                </button>
+              ) : null}
+            </div>
+            {reportStatus ? <div className="cf-report-status" role="status">{reportStatus}</div> : null}
           </div>
-        )}
-        <div className="cf-row-stack">
-          {!mine && <div className="cf-badge">{who}</div>}
-          <div className={`cf-bubble ${mine ? "is-mine" : ""}`}>
-            {isText && <div className="cf-bubble-body">{msg.text}</div>}
-            {isImage && (
-              <div className="cf-bubble-media">
-                <a href={msg.media?.url} target="_blank" rel="noreferrer">
-                  <img src={msg.media?.url} alt={msg.media?.name || "image"} />
-                </a>
-              </div>
-            )}
-            {isFile && (
-              <div className="cf-bubble-file">
-                <Paperclip size={16} />
-                <a href={msg.media?.url} target="_blank" rel="noreferrer">
-                  {msg.media?.name || "file"}
-                </a>
-              </div>
-            )}
-          </div>
-          <div className="cf-time">{time}</div>
         </div>
       </div>
-    </div>
+      <ModalDialog
+        open={reportOpen}
+        title="Report this message"
+        description="This report goes to the camp's directors. The sender will not be told who submitted it."
+        onClose={reportBusy ? undefined : () => setReportOpen(false)}
+        footer={
+          <>
+            <button type="button" className="link-button secondary" onClick={() => setReportOpen(false)} disabled={reportBusy}>Cancel</button>
+            <button type="button" className="link-button is-danger" onClick={submitReport} disabled={reportBusy}>
+              {reportBusy ? "Submitting..." : "Submit report"}
+            </button>
+          </>
+        }
+      >
+        <div className="cf-report-form">
+          <label>
+            Reason
+            <select value={reportReason} onChange={(event) => setReportReason(event.target.value)}>
+              <option value="harassment">Harassment or bullying</option>
+              <option value="spam">Spam or scams</option>
+              <option value="privacy">Privacy concern</option>
+              <option value="impersonation">Impersonation</option>
+              <option value="inappropriate">Inappropriate content</option>
+              <option value="safety">Immediate safety concern</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>
+            Details (optional)
+            <textarea rows={4} maxLength={1200} value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} />
+          </label>
+        </div>
+      </ModalDialog>
+    </>
   );
 }
 
 /* ======================= Personal (DM) ======================= */
 function PersonalTab({ socket }) {
+  const { slug } = useTenant();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   const [list, setList] = useState([]); // DM conversations
   const [loadingList, setLoadingList] = useState(true);
   const [active, setActive] = useState(null); // active conversation object
@@ -494,7 +635,7 @@ function PersonalTab({ socket }) {
   const [nextCursor, setNextCursor] = useState(null);
   const [userCache, setUserCache] = useState({}); // { userId: {name, avatar} }
   const [titles, setTitles] = useState({}); // conversationId -> title
-  const [typing, setTyping] = useState(false);
+  const [typing, updateTyping] = useTypingIndicator();
   const [lastReadISO, setLastReadISO] = useState(null);
   const [other, setOther] = useState({ name: "", avatar: "" }); // header display
   const [search, setSearch] = useState("");
@@ -525,7 +666,7 @@ function PersonalTab({ socket }) {
       searchParams.delete("dm");
       setSearchParams(searchParams, { replace: true });
       if (/\/chat\/[^/]+/i.test(location.pathname)) {
-        navigate("/chat-rooms", { replace: true });
+        navigate(tenantRoute(slug, "/chat-rooms"), { replace: true });
       }
       return;
     }
@@ -557,7 +698,7 @@ function PersonalTab({ socket }) {
         setSearchParams(searchParams, { replace: true });
 
         if (/\/chat\/[^/]+/i.test(location.pathname)) {
-          navigate("/chat-rooms", { replace: true });
+          navigate(tenantRoute(slug, "/chat-rooms"), { replace: true });
         }
       }
     })();
@@ -605,6 +746,17 @@ function PersonalTab({ socket }) {
           .find((id) => id !== String(meId));
         if (!convoId || !otherId) {
           return { convoId, otherId: "", name: "Direct Message", avatar: "" };
+        }
+        const participant = (conversation?.participants || []).find(
+          (item) => normalizeEntityId(item?.userId) === normalizeEntityId(otherId)
+        );
+        if (participant) {
+          return {
+            convoId,
+            otherId,
+            name: participant.name || "Direct Message",
+            avatar: participant.avatarUrl || ""
+          };
         }
         const user = await fetchUser(otherId);
         return {
@@ -736,7 +888,17 @@ function PersonalTab({ socket }) {
       .map((id) => normalizeEntityId(id))
       .find((id) => id && id !== String(meId));
     if (otherId) {
-      if (userCache[otherId]) {
+      const participant = (normalizedConvo?.participants || []).find(
+        (item) => normalizeEntityId(item?.userId) === normalizeEntityId(otherId)
+      );
+      if (participant) {
+        const info = {
+          name: participant.name || "Direct Message",
+          avatar: participant.avatarUrl || ""
+        };
+        setUserCache((prev) => ({ ...prev, [otherId]: info }));
+        setOther(info);
+      } else if (userCache[otherId]) {
         setOther(userCache[otherId]);
       } else {
         try {
@@ -763,10 +925,10 @@ function PersonalTab({ socket }) {
     else clearUnreadLocally(convoId);
   }
 
-  async function onSend({ kind, text, media }) {
+  async function onSend({ kind, text, media, clientRequestId }) {
     const activeId = normalizeEntityId(active?._id || active?.id);
     if (!isObjectIdLike(activeId)) return;
-    const clientMessageId = createClientMessageId();
+    const clientMessageId = clientRequestId || createClientMessageId();
 
     const optimistic = {
       _id: `tmp_${Date.now()}`,
@@ -784,7 +946,7 @@ function PersonalTab({ socket }) {
     try {
       let saved = null;
 
-      if (socket?.connected) {
+      if (socket?.connected && kind === "text") {
         try {
           const ack = await sendConversationViaSocket({
             socket,
@@ -808,7 +970,7 @@ function PersonalTab({ socket }) {
         });
         const data = await res.json().catch(() => null);
         if (!res.ok) {
-          const err = new Error(data?.error || "Unable to send message");
+          const err = new Error(apiErrorMessage(data, "Unable to send message"));
           err.status = res.status;
           throw err;
         }
@@ -826,8 +988,10 @@ function PersonalTab({ socket }) {
       await markRead(activeId, lastIso, active?.lastMessageAt);
 
       queueMicrotask(() => forceScrollToBottom(scrollRef));
-    } catch {
+    } catch (sendError) {
+      setActionError(String(sendError?.message || "Unable to send message."));
       setMessages((m) => m.filter((x) => x._id !== optimistic._id));
+      throw sendError;
     }
   }
 
@@ -835,33 +999,40 @@ function PersonalTab({ socket }) {
     if (!socket) return;
 
     const onNew = async (msg) => {
-      if (active && String(msg.conversationId) === String(active._id)) {
+      const isActiveConversation = active && String(msg.conversationId) === String(active._id);
+      setList((previous) =>
+        previous
+          .map((conversation) => {
+            if (String(conversation?._id) !== String(msg.conversationId)) return conversation;
+            const current = Number(
+              conversation.unreadCount ?? conversation.unread ?? conversation.unreadMessages ?? conversation.unseenCount ?? 0
+            ) || 0;
+            const unread = isActiveConversation ? 0 : current + 1;
+            return {
+              ...conversation,
+              lastMessage: msg,
+              lastMessageAt: msg?.createdAt || new Date().toISOString(),
+              unreadCount: unread,
+              unread,
+              unreadMessages: unread,
+              unseenCount: unread
+            };
+          })
+          .sort((left, right) => toMs(right?.lastMessageAt) - toMs(left?.lastMessageAt))
+      );
+      if (isActiveConversation) {
         setMessages((m) => (hasId(m, msg._id) ? m : [...m, msg]));
         queueMicrotask(() => forceScrollToBottom(scrollRef));
 
         const lastIso = msg?.createdAt || new Date().toISOString();
         await markRead(active._id, lastIso, active?.lastMessageAt);
-      } else {
-        setList((prev) =>
-          prev.map((c) => {
-            if (String(c?._id) !== String(msg.conversationId)) return c;
-            const current = Number(c.unreadCount ?? c.unread ?? c.unreadMessages ?? c.unseenCount ?? 0) || 0;
-            return {
-              ...c,
-              unreadCount: current + 1,
-              unread: current + 1,
-              unreadMessages: current + 1,
-              unseenCount: current + 1,
-            };
-          })
-        );
       }
     };
 
     const onTyping = ({ room, userId, on }) => {
       if (!active) return;
       if (room === `conversation:${active._id}` && String(userId) !== String(meId)) {
-        setTyping(!!on);
+        updateTyping(!!on);
       }
     };
 
@@ -877,23 +1048,59 @@ function PersonalTab({ socket }) {
       if (active && normalizeEntityId(active?._id || active?.id) === deletedId) setActive(null);
       setList((ls) => ls.filter((c) => normalizeEntityId(c?._id || c?.id) !== deletedId));
     };
+    const onMessageDeleted = ({ id, conversationId }) => {
+      if (normalizeEntityId(active?._id) === normalizeEntityId(conversationId)) {
+        setMessages((items) => items.filter((message) => normalizeEntityId(message?._id || message?.id) !== normalizeEntityId(id)));
+      }
+      void loadList();
+    };
+
+    const onConnect = () => {
+      void loadList();
+      if (!active?._id) return;
+      socket.emit("join", `conversation:${active._id}`);
+      void loadMessages(active._id).catch((error) => {
+        setActionError(String(error?.message || "Unable to resync this conversation."));
+      });
+    };
 
     socket.on("message:new", onNew);
     socket.on("typing", onTyping);
     socket.on("read:upto", onReadUpto);
     socket.on("conversation:deleted", onConvoDeleted);
+    socket.on("message:deleted", onMessageDeleted);
+    socket.on("connect", onConnect);
 
     return () => {
       socket.off("message:new", onNew);
       socket.off("typing", onTyping);
       socket.off("read:upto", onReadUpto);
       socket.off("conversation:deleted", onConvoDeleted);
+      socket.off("message:deleted", onMessageDeleted);
+      socket.off("connect", onConnect);
     };
-  }, [socket, active, meId]);
+  }, [socket, active, meId, updateTyping]);
 
   useEffect(() => {
     loadList();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (active?._id) socket.emit("leave", `conversation:${active._id}`);
+    };
+  }, [socket, active?._id]);
+
+  useEffect(() => {
+    const conversationId = normalizeEntityId(searchParams.get("conversation"));
+    if (!isObjectIdLike(conversationId) || !list.length) return;
+    const conversation = list.find((item) => normalizeEntityId(item?._id || item?.id) === conversationId);
+    if (!conversation) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("conversation");
+    setSearchParams(nextParams, { replace: true });
+    void onOpen(conversation);
+  }, [list, searchParams]);
 
   useLayoutEffect(() => {
     if (active?._id) forceScrollToBottom(scrollRef);
@@ -922,7 +1129,12 @@ function PersonalTab({ socket }) {
   async function deleteDM() {
     const activeId = normalizeEntityId(active?._id || active?.id);
     if (!isObjectIdLike(activeId)) return;
-    if (!window.confirm("Delete this DM thread for everyone? This cannot be undone.")) return;
+    const accepted = await confirm({
+      title: "Delete this direct message?",
+      description: "The conversation and all of its messages will be removed for everyone. This cannot be undone.",
+      confirmLabel: "Delete conversation",
+    });
+    if (!accepted) return;
     const res = await fetch(`${API_BASE}/conversations/${activeId}`, {
       method: "DELETE",
       headers: authHeaders(),
@@ -948,7 +1160,8 @@ function PersonalTab({ socket }) {
   }, [dms, search, titles]);
 
   return (
-    <section className={`cf-panel ${active ? "is-thread-open" : ""}`}>
+    <>
+      <section className={`cf-panel ${active ? "is-thread-open" : ""}`}>
       <aside className="cf-sidebar">
         <div className="cf-sidebar-head">
           <div className="cf-sidebar-title-wrap">
@@ -971,7 +1184,7 @@ function PersonalTab({ socket }) {
             placeholder="Search conversations..."
           />
         </label>
-        {actionError ? <div className="cf-loading">{actionError}</div> : null}
+        {actionError ? <div className="cf-loading" role="alert">{actionError}</div> : null}
 
         {loadingList ? (
           <div className="cf-loading">Loading…</div>
@@ -1049,6 +1262,10 @@ function PersonalTab({ socket }) {
             <div
               className="cf-thread-body"
               ref={scrollRef}
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-label={other.name ? `Messages with ${other.name}` : "Direct messages"}
               style={{ scrollBehavior: "auto" }}
               onScroll={(e) => {
                 const el = e.currentTarget;
@@ -1068,19 +1285,21 @@ function PersonalTab({ socket }) {
                   userLookup={userCache}
                 />
               ))}
-              {typing && <div className="cf-typing">Typing…</div>}
-              {lastReadISO && <div className="cf-read">Seen up to {fmtDateTime(lastReadISO)}</div>}
+              {typing && <div className="cf-typing" role="status">Typing…</div>}
+              {lastReadISO && <div className="cf-read" role="status">Seen up to {fmtDateTime(lastReadISO)}</div>}
             </div>
 
             <MessageComposer
+              key={active._id}
+              draftKey={`${meId}:${active._id}`}
               onSend={onSend}
-              onPresign={async (file) => {
+              onPresign={async (file, attachment) => {
                 const res = await fetch(`${API_BASE}/conversations/${active._id}/presign`, {
                   method: "POST",
                   headers: authHeaders(),
                   body: JSON.stringify({
                     fileName: file.name,
-                    fileType: file.type,
+                    fileType: attachment?.mime || file.type,
                     fileSize: Number(file.size || 0)
                   }),
                 });
@@ -1092,7 +1311,9 @@ function PersonalTab({ socket }) {
           </>
         )}
       </section>
-    </section>
+      </section>
+      <ModalConfirm {...confirmDialogProps} />
+    </>
   );
 }
 
@@ -1101,6 +1322,7 @@ function StartDMButton({ onStarted }) {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
+  const dialogRef = useDialogFocus(open, busy ? undefined : () => setOpen(false));
 
   async function start() {
     if (!selected) return;
@@ -1142,11 +1364,11 @@ function StartDMButton({ onStarted }) {
         <Plus size={16} /> New
       </button>
       {open && (
-        <div className="cf-modal" role="dialog" aria-modal="true">
-          <div className="cf-modal-card">
+        <div className="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-start-dm-title">
+          <div ref={dialogRef} className="cf-modal-card" tabIndex={-1}>
             <div className="cf-modal-head">
-              <div className="cf-modal-title">Start a DM</div>
-              <button className="cf-ghost-btn" onClick={() => setOpen(false)}>
+              <div id="cf-start-dm-title" className="cf-modal-title">Start a DM</div>
+              <button className="cf-ghost-btn" onClick={() => setOpen(false)} aria-label="Close start direct message dialog">
                 ✕
               </button>
             </div>
@@ -1168,18 +1390,21 @@ function StartDMButton({ onStarted }) {
 
 /* ======================= Groups ======================= */
 function GroupsTab({ socket }) {
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   const [list, setList] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
   const [nameCache, setNameCache] = useState({});
-  const [typing, setTyping] = useState(false);
+  const [typing, updateTyping] = useTypingIndicator();
   const [showSettings, setShowSettings] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [memberInfo, setMemberInfo] = useState({});
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState("");
   const scrollRef = useRef(null);
+  const [deepLinkParams, setDeepLinkParams] = useSearchParams();
+  const settingsDialogRef = useDialogFocus(showSettings, () => setShowSettings(false));
 
   const { id: meId, roles: meRoles } = useMemo(() => myIdentity(), []);
 
@@ -1191,11 +1416,17 @@ function GroupsTab({ socket }) {
       if (!res.ok) {
         throw new Error(apiErrorMessage(data, "Unable to load groups."));
       }
-      setList(
-        (data?.items || [])
-          .map((conversation) => normalizeConversationEntity(conversation))
-          .filter((conversation) => conversation?.type === "group")
-      );
+      const groups = (data?.items || [])
+        .map((conversation) => normalizeConversationEntity(conversation))
+        .filter((conversation) => conversation?.type === "group");
+      const participantNames = {};
+      for (const group of groups) {
+        for (const participant of group.participants || []) {
+          participantNames[participant.userId] = participant.name || "Member";
+        }
+      }
+      setNameCache((previous) => ({ ...previous, ...participantNames }));
+      setList(groups);
     } catch (error) {
       setList([]);
       setActionError(String(error?.message || "Unable to load groups."));
@@ -1234,6 +1465,23 @@ function GroupsTab({ socket }) {
   useEffect(() => {
     loadList();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (active?._id) socket.emit("leave", `conversation:${active._id}`);
+    };
+  }, [socket, active?._id]);
+
+  useEffect(() => {
+    const conversationId = normalizeEntityId(deepLinkParams.get("conversation"));
+    if (!isObjectIdLike(conversationId) || !list.length) return;
+    const conversation = list.find((item) => normalizeEntityId(item?._id || item?.id) === conversationId);
+    if (!conversation) return;
+    const nextParams = new URLSearchParams(deepLinkParams);
+    nextParams.delete("conversation");
+    setDeepLinkParams(nextParams, { replace: true });
+    void openGroup(conversation);
+  }, [list, deepLinkParams]);
 
   async function loadMessages(id, cursor) {
     const convoId = normalizeEntityId(id);
@@ -1313,10 +1561,10 @@ function GroupsTab({ socket }) {
     }
   }
 
-  async function onSend({ kind, text, media }) {
+  async function onSend({ kind, text, media, clientRequestId }) {
     const activeId = normalizeEntityId(active?._id || active?.id);
     if (!isObjectIdLike(activeId)) return;
-    const clientMessageId = createClientMessageId();
+    const clientMessageId = clientRequestId || createClientMessageId();
 
     const optimistic = {
       _id: `tmp_${Date.now()}`,
@@ -1334,7 +1582,7 @@ function GroupsTab({ socket }) {
     try {
       let saved = null;
 
-      if (socket?.connected) {
+      if (socket?.connected && kind === "text") {
         try {
           const ack = await sendConversationViaSocket({
             socket,
@@ -1374,9 +1622,10 @@ function GroupsTab({ socket }) {
 
       await markRead(activeId, saved?.createdAt || new Date().toISOString(), active?.lastMessageAt);
       queueMicrotask(() => forceScrollToBottom(scrollRef));
-    } catch {
-      setActionError("Unable to send message.");
+    } catch (sendError) {
+      setActionError(String(sendError?.message || "Unable to send message."));
       setMessages((m) => m.filter((x) => x._id !== optimistic._id));
+      throw sendError;
     }
   }
 
@@ -1443,6 +1692,14 @@ function GroupsTab({ socket }) {
       setActionError(apiErrorMessage(payload, "Unable to remove member."));
       return;
     }
+    if (String(targetId) === String(meId)) {
+      socket.emit("leave", `conversation:${activeId}`);
+      setActive(null);
+      setShowSettings(false);
+      setActionError("");
+      await loadList();
+      return;
+    }
     const freshRes = await fetch(`${API_BASE}/conversations/${activeId}`, { headers: authHeaders() });
     const fresh = await readJsonSafe(freshRes);
     if (!freshRes.ok) {
@@ -1465,9 +1722,18 @@ function GroupsTab({ socket }) {
   function openSettings() {
     if (!active) return;
     setRenameValue(active.name || "");
+    const participantInfo = Object.fromEntries(
+      (active.participants || []).map((participant) => [
+        String(participant.userId),
+        { name: participant.name || "Member", avatar: participant.avatarUrl || "" }
+      ])
+    );
+    if (Object.keys(participantInfo).length) {
+      setMemberInfo((previous) => ({ ...previous, ...participantInfo }));
+    }
     const ids = getGroupMemberIds(active).map(String);
     ids.forEach(async (id) => {
-      if (memberInfo[id]) return;
+      if (participantInfo[id] || memberInfo[id]) return;
       try {
         const u = await fetchUser(id);
         setMemberInfo((prev) => ({ ...prev, [id]: { name: displayName(u), avatar: avatarUrl(u) } }));
@@ -1511,11 +1777,39 @@ function GroupsTab({ socket }) {
     setShowSettings(false);
   }
 
+  async function leaveGroup() {
+    if (!active) return;
+    const accepted = await confirm({
+      title: "Leave this group chat?",
+      description: "You will stop receiving messages from this group. A member can add you again later.",
+      confirmLabel: "Leave group"
+    });
+    if (!accepted) return;
+    await removeMember(meId);
+  }
+
   useEffect(() => {
     if (!socket) return;
 
     const onNew = (msg) => {
-      if (active && String(msg.conversationId) === String(active._id)) {
+      const isActiveConversation = active && String(msg.conversationId) === String(active._id);
+      setList((previous) =>
+        previous
+          .map((conversation) => {
+            if (String(conversation?._id) !== String(msg?.conversationId)) return conversation;
+            const current = Number(conversation?.unreadCount || conversation?.unread || 0);
+            const unread = isActiveConversation ? 0 : current + 1;
+            return {
+              ...conversation,
+              lastMessage: msg,
+              lastMessageAt: msg?.createdAt || new Date().toISOString(),
+              unreadCount: unread,
+              unread
+            };
+          })
+          .sort((left, right) => toMs(right?.lastMessageAt) - toMs(left?.lastMessageAt))
+      );
+      if (isActiveConversation) {
         setMessages((m) => (hasId(m, msg._id) ? m : [...m, msg]));
         queueMicrotask(() => forceScrollToBottom(scrollRef));
 
@@ -1525,7 +1819,7 @@ function GroupsTab({ socket }) {
 
     const onTyping = ({ room, userId, on }) => {
       if (active && room === `conversation:${active._id}` && String(userId) !== String(meId)) {
-        setTyping(!!on);
+        updateTyping(!!on);
       }
     };
 
@@ -1534,16 +1828,35 @@ function GroupsTab({ socket }) {
       if (active && normalizeEntityId(active?._id || active?.id) === deletedId) setActive(null);
       setList((ls) => ls.filter((c) => normalizeEntityId(c?._id || c?.id) !== deletedId));
     };
+    const onMessageDeleted = ({ id, conversationId }) => {
+      if (normalizeEntityId(active?._id) === normalizeEntityId(conversationId)) {
+        setMessages((items) => items.filter((message) => normalizeEntityId(message?._id || message?.id) !== normalizeEntityId(id)));
+      }
+      void loadList();
+    };
+
+    const onConnect = () => {
+      void loadList();
+      if (!active?._id) return;
+      socket.emit("join", `conversation:${active._id}`);
+      void loadMessages(active._id).catch((error) => {
+        setActionError(String(error?.message || "Unable to resync this group chat."));
+      });
+    };
 
     socket.on("message:new", onNew);
     socket.on("typing", onTyping);
     socket.on("conversation:deleted", onConvoDeleted);
+    socket.on("message:deleted", onMessageDeleted);
+    socket.on("connect", onConnect);
     return () => {
       socket.off("message:new", onNew);
       socket.off("typing", onTyping);
       socket.off("conversation:deleted", onConvoDeleted);
+      socket.off("message:deleted", onMessageDeleted);
+      socket.off("connect", onConnect);
     };
-  }, [socket, active, meId]);
+  }, [socket, active, meId, updateTyping]);
 
   useLayoutEffect(() => {
     if (active?._id) forceScrollToBottom(scrollRef);
@@ -1560,8 +1873,12 @@ function GroupsTab({ socket }) {
       setActionError("Invalid group id.");
       return;
     }
-    const ok = window.confirm("Delete this group chat and all its messages? This cannot be undone.");
-    if (!ok) return;
+    const accepted = await confirm({
+      title: "Delete this group chat?",
+      description: "The group and all of its messages will be removed for every member. This cannot be undone.",
+      confirmLabel: "Delete group chat",
+    });
+    if (!accepted) return;
     const res = await fetch(`${API_BASE}/conversations/${activeId}`, {
       method: "DELETE",
       headers: authHeaders(),
@@ -1581,9 +1898,18 @@ function GroupsTab({ socket }) {
     if (!q) return list;
     return list.filter((g) => String(g.name || "Group Chat").toLowerCase().includes(q));
   }, [list, search]);
+  const canManageGroup = Boolean(
+    active &&
+      (
+        (active.members || []).some(
+          (member) => String(member?.userId || "") === String(meId) && member?.role === "owner"
+        ) || isAdmin(meRoles)
+      )
+  );
 
   return (
-    <section className={`cf-panel ${active ? "is-thread-open" : ""}`}>
+    <>
+      <section className={`cf-panel ${active ? "is-thread-open" : ""}`}>
       <aside className="cf-sidebar">
         <div className="cf-sidebar-head">
           <div className="cf-sidebar-title-wrap">
@@ -1606,7 +1932,7 @@ function GroupsTab({ socket }) {
             placeholder="Search groups..."
           />
         </label>
-        {actionError ? <div className="cf-loading">{actionError}</div> : null}
+        {actionError ? <div className="cf-loading" role="alert">{actionError}</div> : null}
 
         {list.length === 0 ? (
           <EmptyState
@@ -1619,8 +1945,9 @@ function GroupsTab({ socket }) {
           <div className="cf-loading">No matches found.</div>
         ) : (
           <ul className="cf-list">
-            {filteredGroups.map((g) => (
-              <li key={g._id} className={`cf-list-item ${active?._id === g._id ? "is-active" : ""}`}>
+            {filteredGroups.map((g) => {
+              const unread = Number(g.unreadCount ?? g.unread ?? g.unreadMessages ?? g.unseenCount ?? 0) || 0;
+              return <li key={g._id} className={`cf-list-item ${active?._id === g._id ? "is-active" : ""}`}>
                 <button className="cf-li-btn" onClick={() => openGroup(g).catch((e) => setActionError(String(e?.message || "Failed to open group.")))}>
                   <div className="cf-li-row">
                     <div className="cf-group-avatar">
@@ -1635,10 +1962,17 @@ function GroupsTab({ socket }) {
                         {(getGroupMemberIds(g).length || 0)} members · {conversationSnippet(g)}
                       </div>
                     </div>
+                    <NotificationBadge
+                      count={unread}
+                      size="sm"
+                      tone="brand"
+                      className="cf-unread-badge"
+                      ariaLabel={`${unread} unread messages`}
+                    />
                   </div>
                 </button>
               </li>
-            ))}
+            })}
           </ul>
         )}
       </aside>
@@ -1656,11 +1990,11 @@ function GroupsTab({ socket }) {
               right={
                 <>
                   {canDelete({ meId, roles: meRoles, resource: active }) && (
-                    <button className="cf-ghost-btn" onClick={confirmDeleteGroup}>
+                    <button type="button" className="cf-ghost-btn" onClick={confirmDeleteGroup}>
                       Delete
                     </button>
                   )}
-                  <button className="cf-ghost-btn" title="Group settings" onClick={openSettings}>
+                  <button type="button" className="cf-ghost-btn" title="Group details" onClick={openSettings}>
                     <Shield size={16} />
                   </button>
                 </>
@@ -1669,6 +2003,10 @@ function GroupsTab({ socket }) {
             <div
               className="cf-thread-body"
               ref={scrollRef}
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-label={`Messages in ${active.name || "group chat"}`}
               onScroll={(e) => {
                 if (e.currentTarget.scrollTop < 40 && nextCursor) {
                   loadMessages(active._id, nextCursor).catch((error) => {
@@ -1687,18 +2025,20 @@ function GroupsTab({ socket }) {
                   )}
                 />
               ))}
-              {typing && <div className="cf-typing">Someone is typing…</div>}
+              {typing && <div className="cf-typing" role="status">Someone is typing…</div>}
             </div>
 
             <MessageComposer
+              key={active._id}
+              draftKey={`${meId}:${active._id}`}
               onSend={onSend}
-              onPresign={async (file) => {
+              onPresign={async (file, attachment) => {
                 const res = await fetch(`${API_BASE}/conversations/${active._id}/presign`, {
                   method: "POST",
                   headers: authHeaders(),
                   body: JSON.stringify({
                     fileName: file.name,
-                    fileType: file.type,
+                    fileType: attachment?.mime || file.type,
                     fileSize: Number(file.size || 0)
                   }),
                 });
@@ -1709,11 +2049,13 @@ function GroupsTab({ socket }) {
             />
 
             {showSettings && (
-              <div className="cf-modal" role="dialog" aria-modal="true">
-                <div className="cf-modal-card">
+              <div className="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-group-settings-title">
+                <div ref={settingsDialogRef} className="cf-modal-card" tabIndex={-1}>
                   <div className="cf-modal-head">
-                    <div className="cf-modal-title">Group Settings</div>
-                    <button className="cf-ghost-btn" onClick={() => setShowSettings(false)}>
+                    <div id="cf-group-settings-title" className="cf-modal-title">
+                      {canManageGroup ? "Group Settings" : "Group Details"}
+                    </div>
+                    <button type="button" className="cf-ghost-btn" onClick={() => setShowSettings(false)} aria-label="Close group details">
                       ✕
                     </button>
                   </div>
@@ -1726,12 +2068,14 @@ function GroupsTab({ socket }) {
                         value={renameValue}
                         onChange={(e) => setRenameValue(e.target.value)}
                         placeholder="e.g., 2015 Counselors"
+                        maxLength={100}
+                        disabled={!canManageGroup}
                       />
-                      <div>
-                        <button className="cf-btn" onClick={() => saveGroupName().catch((e) => setActionError(String(e?.message || "Failed to save group name.")))}>
+                      {canManageGroup ? <div>
+                        <button type="button" className="cf-btn" onClick={() => saveGroupName().catch((e) => setActionError(String(e?.message || "Failed to save group name.")))}>
                           Save Name
                         </button>
-                      </div>
+                      </div> : null}
                     </div>
 
                     <div className="cf-field">
@@ -1742,7 +2086,7 @@ function GroupsTab({ socket }) {
                           const info = memberInfo[id];
                           const nm = info?.name || "Member";
                           const canKick =
-                            canDelete({ meId, roles: meRoles, resource: active }) && String(uid) !== String(meId);
+                            canManageGroup && String(uid) !== String(meId);
                           return (
                             <li key={id} className="pp-item" style={{ justifyContent: "space-between" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1750,7 +2094,7 @@ function GroupsTab({ socket }) {
                                 <div className="pp-name">{nm}</div>
                               </div>
                               {canKick && (
-                                <button className="cf-ghost-btn" onClick={() => removeMember(id).catch((e) => setActionError(String(e?.message || "Failed to remove member.")))}>
+                                <button type="button" className="cf-ghost-btn" onClick={() => removeMember(id).catch((e) => setActionError(String(e?.message || "Failed to remove member.")))}>
                                   Remove
                                 </button>
                               )}
@@ -1760,15 +2104,18 @@ function GroupsTab({ socket }) {
                       </ul>
                     </div>
 
-                    <div className="cf-field">
+                    {canManageGroup ? <div className="cf-field">
                       <div className="cf-label">Add People</div>
                       <PeoplePicker multi onSelect={(u) => addMember(u).catch((e) => setActionError(String(e?.message || "Failed to add member.")))} />
                       <div className="pp-sub">Selecting a person adds them immediately.</div>
-                    </div>
+                    </div> : null}
                   </div>
 
                   <div className="cf-modal-foot">
-                    <button className="cf-ghost-btn" onClick={() => setShowSettings(false)}>
+                    <button type="button" className="cf-ghost-btn is-danger" onClick={leaveGroup}>
+                      Leave group
+                    </button>
+                    <button type="button" className="cf-ghost-btn" onClick={() => setShowSettings(false)}>
                       Close
                     </button>
                   </div>
@@ -1778,7 +2125,9 @@ function GroupsTab({ socket }) {
           </>
         )}
       </section>
-    </section>
+      </section>
+      <ModalConfirm {...confirmDialogProps} />
+    </>
   );
 }
 
@@ -1788,6 +2137,7 @@ function CreateGroupButton({ onCreated }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dialogRef = useDialogFocus(open, busy ? undefined : () => setOpen(false));
 
   async function create() {
     if (selected.length < 2) return;
@@ -1836,11 +2186,11 @@ function CreateGroupButton({ onCreated }) {
         <Plus size={16} /> New
       </button>
       {open && (
-        <div className="cf-modal" role="dialog" aria-modal="true">
-          <div className="cf-modal-card">
+        <div className="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-create-group-title">
+          <div ref={dialogRef} className="cf-modal-card" tabIndex={-1}>
             <div className="cf-modal-head">
-              <div className="cf-modal-title">New Group</div>
-              <button className="cf-ghost-btn" onClick={() => setOpen(false)}>
+              <div id="cf-create-group-title" className="cf-modal-title">New Group</div>
+              <button className="cf-ghost-btn" onClick={() => setOpen(false)} aria-label="Close new group dialog">
                 ✕
               </button>
             </div>
@@ -1852,6 +2202,7 @@ function CreateGroupButton({ onCreated }) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., Camp NYC"
+                  maxLength={100}
                 />
               </label>
 
@@ -1884,7 +2235,10 @@ function CreateGroupButton({ onCreated }) {
 
 /* ======================= Forums ======================= */
 function ForumsTab({ socket }) {
-  const [mine, setMine] = useState(true);
+  const { slug } = useTenant();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
+  const [forumParams, setForumParams] = useSearchParams();
+  const [mine, setMine] = useState(() => !isObjectIdLike(forumParams.get("forum")));
   const [list, setList] = useState([]);
   const [active, setActive] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -1899,6 +2253,8 @@ function ForumsTab({ socket }) {
   // members modal state/cache
   const [showMembers, setShowMembers] = useState(false);
   const [forumMemberInfo, setForumMemberInfo] = useState({}); // { userId: { name, avatar } }
+  const membersDialogRef = useDialogFocus(showMembers, () => setShowMembers(false));
+  const createDialogRef = useDialogFocus(creating, () => setCreating(false));
 
   const { id: meId, roles: meRoles } = useMemo(() => myIdentity(), []);
   const navigate = useNavigate();
@@ -1939,6 +2295,23 @@ function ForumsTab({ socket }) {
   useEffect(() => {
     loadList();
   }, [mine]);
+
+  useEffect(() => {
+    return () => {
+      if (active?._id) socket.emit("leave", `forum:${active._id}`);
+    };
+  }, [socket, active?._id]);
+
+  useEffect(() => {
+    const forumId = normalizeEntityId(forumParams.get("forum"));
+    if (!isObjectIdLike(forumId) || !list.length) return;
+    const forum = list.find((item) => normalizeEntityId(item?._id || item?.id) === forumId);
+    if (!forum) return;
+    const nextParams = new URLSearchParams(forumParams);
+    nextParams.delete("forum");
+    setForumParams(nextParams, { replace: true });
+    void openForum(forum);
+  }, [list, forumParams]);
 
   async function openForum(f) {
     const forumId = normalizeEntityId(f?._id || f?.id);
@@ -2112,29 +2485,32 @@ function ForumsTab({ socket }) {
     openForum(normalizedForum).catch((e) => setActionError(String(e?.message || "Failed to open forum.")));
   }
 
-  async function onSend({ kind, text, media }) {
+  async function onSend({ kind, text, media, clientRequestId }) {
     if (!active) return;
     const activeId = normalizeEntityId(active?._id || active?.id);
     if (!isObjectIdLike(activeId)) {
-      setActionError("Invalid forum id.");
-      return;
+      const error = new Error("Invalid forum id.");
+      setActionError(error.message);
+      throw error;
     }
     const res = await fetch(`${API_BASE}/forums/${activeId}/posts`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ kind, text, media }),
+      body: JSON.stringify({ kind, text, media, clientPostId: clientRequestId }),
     });
     const saved = await readJsonSafe(res);
     if (!res.ok) {
-      setActionError(apiErrorMessage(saved, "Unable to post message."));
-      return;
+      const error = new Error(apiErrorMessage(saved, "Unable to post message."));
+      setActionError(error.message);
+      throw error;
     }
     setActionError("");
 
     // Immediately cache author (fixes "Unknown" on first paint)
     if (!normalizeEntityId(saved?._id || saved?.id)) {
-      setActionError("Unable to post message.");
-      return;
+      const error = new Error("Unable to post message.");
+      setActionError(error.message);
+      throw error;
     }
     primeAuthorCache([saved]);
 
@@ -2161,9 +2537,21 @@ function ForumsTab({ socket }) {
   useEffect(() => {
     if (!socket) return;
     const onForumPost = (post) => {
+      const postForumId = normalizeEntityId(post?.forumId);
+      setList((previous) =>
+        previous.map((forum) =>
+          normalizeEntityId(forum?._id || forum?.id) === postForumId
+            ? {
+                ...forum,
+                postsCount: Number(forum?.postsCount || 0) + 1,
+                lastActivityAt: post?.createdAt || new Date().toISOString()
+              }
+            : forum
+        )
+      );
       if (
         active &&
-        normalizeEntityId(post?.forumId) === normalizeEntityId(active?._id) &&
+        postForumId === normalizeEntityId(active?._id) &&
         normalizeEntityId(post?._id || post?.id)
       ) {
         primeAuthorCache([post]);
@@ -2176,11 +2564,29 @@ function ForumsTab({ socket }) {
       if (active && normalizeEntityId(active?._id) === deletedId) setActive(null);
       setList((ls) => ls.filter((f) => normalizeEntityId(f?._id || f?.id) !== deletedId));
     };
+    const onForumPostDeleted = ({ id, forumId }) => {
+      if (normalizeEntityId(active?._id) === normalizeEntityId(forumId)) {
+        setPosts((items) => items.filter((post) => normalizeEntityId(post?._id || post?.id) !== normalizeEntityId(id)));
+      }
+      void loadList();
+    };
+    const onConnect = () => {
+      void loadList();
+      if (!active?._id) return;
+      socket.emit("join", `forum:${active._id}`);
+      void loadPosts(active._id).catch((error) => {
+        setActionError(String(error?.message || "Unable to resync this forum."));
+      });
+    };
     socket.on("forum:post:new", onForumPost);
     socket.on("forum:deleted", onForumDeleted);
+    socket.on("forum:post:deleted", onForumPostDeleted);
+    socket.on("connect", onConnect);
     return () => {
       socket.off("forum:post:new", onForumPost);
       socket.off("forum:deleted", onForumDeleted);
+      socket.off("forum:post:deleted", onForumPostDeleted);
+      socket.off("connect", onConnect);
     };
   }, [socket, active]); // keep tight deps to avoid re-binding constantly
 
@@ -2199,7 +2605,12 @@ function ForumsTab({ socket }) {
       setActionError("Invalid forum id.");
       return;
     }
-    if (!window.confirm(`Delete the forum "${active.name}" and all its posts? This cannot be undone.`)) return;
+    const accepted = await confirm({
+      title: `Delete “${active.name}”?`,
+      description: "The forum and all of its posts will be permanently removed.",
+      confirmLabel: "Delete forum",
+    });
+    if (!accepted) return;
     const res = await fetch(`${API_BASE}/forums/${activeId}`, {
       method: "DELETE",
       headers: authHeaders(),
@@ -2223,7 +2634,8 @@ function ForumsTab({ socket }) {
   }, [list, search]);
 
   return (
-    <section className={`cf-panel ${active ? "is-thread-open" : ""}`}>
+    <>
+      <section className={`cf-panel ${active ? "is-thread-open" : ""}`}>
       <aside className="cf-sidebar">
         <div className="cf-sidebar-head">
           <div className="cf-sidebar-title-wrap">
@@ -2252,7 +2664,7 @@ function ForumsTab({ socket }) {
             placeholder="Search forums..."
           />
         </label>
-        {actionError ? <div className="cf-loading">{actionError}</div> : null}
+        {actionError ? <div className="cf-loading" role="alert">{actionError}</div> : null}
 
         {list.length === 0 ? (
           <EmptyState
@@ -2330,6 +2742,10 @@ function ForumsTab({ socket }) {
             <div
               className="cf-thread-body feed"
               ref={scrollRef}
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-label={`Posts in ${active.name || "forum"}`}
               onScroll={(e) => {
                 if (e.currentTarget.scrollTop < 40 && nextCursor) {
                   loadPosts(active._id, nextCursor).catch((error) => {
@@ -2358,22 +2774,35 @@ function ForumsTab({ socket }) {
                           <div className="cf-post-time">{fmtDateTime(p.createdAt)}</div>
                         </div>
                       </div>
+                      {authorId !== String(meId) && isObjectIdLike(p?._id || p?.id) ? (
+                        <ContentReportAction
+                          targetType="forum_post"
+                          targetId={normalizeEntityId(p?._id || p?.id)}
+                        />
+                      ) : null}
                     </div>
 
                     {p.kind === "text" && <div className="cf-post-body">{p.text}</div>}
 
                     {p.kind === "image" && (
                       <div className="cf-post-media">
-                        <img src={p.media?.url} alt={p.media?.name || "image"} />
+                        <AuthenticatedAttachment
+                          media={p.media}
+                          kind="image"
+                          scope="forum"
+                          resourceId={p.forumId || active._id}
+                        />
                       </div>
                     )}
 
                     {p.kind === "file" && (
                       <div className="cf-post-file">
-                        <Paperclip size={16} />
-                        <a href={p.media?.url} target="_blank" rel="noreferrer">
-                          {p.media?.name || "file"}
-                        </a>
+                        <AuthenticatedAttachment
+                          media={p.media}
+                          kind="file"
+                          scope="forum"
+                          resourceId={p.forumId || active._id}
+                        />
                       </div>
                     )}
                   </div>
@@ -2383,14 +2812,17 @@ function ForumsTab({ socket }) {
 
             {isMember(active) ? (
               <MessageComposer
+                key={active._id}
+                draftKey={`${meId}:${active._id}`}
+                maxLength={8000}
                 onSend={onSend}
-                onPresign={async (file) => {
+                onPresign={async (file, attachment) => {
                   const res = await fetch(`${API_BASE}/forums/${active._id}/presign`, {
                     method: "POST",
                     headers: authHeaders(),
                     body: JSON.stringify({
                       fileName: file.name,
-                      fileType: file.type,
+                      fileType: attachment?.mime || file.type,
                       fileSize: Number(file.size || 0)
                     }),
                   });
@@ -2404,11 +2836,11 @@ function ForumsTab({ socket }) {
 
             {/* Members modal */}
             {showMembers && (
-              <div className="cf-modal" role="dialog" aria-modal="true">
-                <div className="cf-modal-card">
+              <div className="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-forum-members-title">
+                <div ref={membersDialogRef} className="cf-modal-card" tabIndex={-1}>
                   <div className="cf-modal-head">
-                    <div className="cf-modal-title">Forum Members</div>
-                    <button className="cf-ghost-btn" onClick={() => setShowMembers(false)}>
+                    <div id="cf-forum-members-title" className="cf-modal-title">Forum Members</div>
+                    <button className="cf-ghost-btn" onClick={() => setShowMembers(false)} aria-label="Close forum members">
                       ✕
                     </button>
                   </div>
@@ -2425,7 +2857,7 @@ function ForumsTab({ socket }) {
                             onClick={() => {
                               const safeId = normalizeEntityId(id);
                               if (!safeId) return;
-                              navigate(profilePath(safeId));
+                              navigate(tenantRoute(slug, profilePath(safeId)));
                             }}
                             title="View profile"
                             style={{ cursor: "pointer" }}
@@ -2449,11 +2881,11 @@ function ForumsTab({ socket }) {
         )}
 
         {creating && (
-          <div className="cf-modal" role="dialog" aria-modal="true">
-            <div className="cf-modal-card">
+          <div className="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-create-forum-title">
+            <div ref={createDialogRef} className="cf-modal-card" tabIndex={-1}>
               <div className="cf-modal-head">
-                <div className="cf-modal-title">Create Forum</div>
-                <button className="cf-ghost-btn" onClick={() => setCreating(false)}>
+                <div id="cf-create-forum-title" className="cf-modal-title">Create Forum</div>
+                <button className="cf-ghost-btn" onClick={() => setCreating(false)} aria-label="Close create forum dialog">
                   ✕
                 </button>
               </div>
@@ -2465,6 +2897,7 @@ function ForumsTab({ socket }) {
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="e.g., Boston Camp"
+                    maxLength={100}
                   />
                 </label>
               </div>
@@ -2478,7 +2911,9 @@ function ForumsTab({ socket }) {
           </div>
         )}
       </section>
-    </section>
+      </section>
+      <ModalConfirm {...confirmDialogProps} />
+    </>
   );
 }
 

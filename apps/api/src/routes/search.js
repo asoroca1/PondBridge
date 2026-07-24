@@ -1,10 +1,28 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
+import { requireFeature as requireRolloutFeature } from "../middleware/featureFlag.js";
+import { requireTenantModule } from "../middleware/requireFeature.js";
 import { ProfileModel, UserModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
+import { evaluateFeatureRollout } from "../services/featureRollouts.js";
+import { logLine } from "../services/logger.js";
+import {
+  CAMP_AI_SEARCH_FLAG,
+  getCampAiSearchProviderStatus,
+  getCampAiSearchUsage,
+  normalizeCampAiSearchQuery,
+  resolveCampAiSearchPlan,
+  runCampAiSearchPlanner
+} from "../services/campAiSearch.js";
 import { isValidObjectId } from "../utils/objectId.js";
 import { createTtlCache } from "../utils/ttlCache.js";
+import { canViewProfileContact, filterProfileContactFields } from "../services/profilePrivacy.js";
+import {
+  findMemberBlockBetween,
+  getMutuallyBlockedUserIds,
+  isSafetyModerator
+} from "../services/memberSafety.js";
 
 const router = Router({ mergeParams: true });
 const SEARCH_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
@@ -24,20 +42,30 @@ const searchRateLimiter = rateLimit({
     }
   }
 });
-
-router.use(...requireTenantAuthScope, searchRateLimiter);
-
-function ensureSearchEnabled(req, res) {
-  if (req.tenant?.modules?.search === false) {
-    return res.status(403).json({
-      error: {
-        code: "MODULE_DISABLED",
-        message: "Search is disabled for this camp."
-      }
-    });
+const aiSearchRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => [
+    "camp-ai-search",
+    String(req.tenant?._id || req.params?.slug || ""),
+    String(req.user?.id || ""),
+    String(req.ip || "")
+  ].join(":"),
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many smart search requests. Please wait before trying again."
+    }
   }
-  return null;
-}
+});
+
+router.use(
+  ...requireTenantAuthScope,
+  requireTenantModule("search", { message: "Search is disabled for this camp." }),
+  searchRateLimiter
+);
 
 function clampLimit(value, fallback = 30, max = 100) {
   const parsed = Number(value);
@@ -317,30 +345,35 @@ function filterAndRankSearchItems(items = [], filters = {}) {
     .filter(Boolean);
 }
 
-function parseSearchInput(req) {
-  const q = normalizeSearchText(req.query.q, 140);
-  const cedarRoleTerms = parseSearchList(req.query.roleAtCamp || req.query.cedarRoles, 80);
+function parseSearchInput(reqOrQuery) {
+  const query = reqOrQuery?.query && typeof reqOrQuery.query === "object"
+    ? reqOrQuery.query
+    : reqOrQuery && typeof reqOrQuery === "object"
+      ? reqOrQuery
+      : {};
+  const q = normalizeSearchText(query.q, 140);
+  const cedarRoleTerms = parseSearchList(query.roleAtCamp || query.cedarRoles, 80);
   const roleAtCamp = cedarRoleTerms.join(", ");
-  const industryTerms = parseSearchList(req.query.industry || req.query.industries, 80);
+  const industryTerms = parseSearchList(query.industry || query.industries, 80);
   const industry = industryTerms.join(", ");
-  const city = normalizeSearchText(req.query.city, 80);
-  const state = normalizeSearchText(req.query.state, 40);
-  const cityState = normalizeSearchText(req.query.cityState || [city, state].filter(Boolean).join(" "), 120);
-  const roleTitle = normalizeSearchText(req.query.role, 120);
-  const company = normalizeSearchText(req.query.company, 120);
-  const college = normalizeSearchText(req.query.college, 120);
+  const city = normalizeSearchText(query.city, 80);
+  const state = normalizeSearchText(query.state, 40);
+  const cityState = normalizeSearchText(query.cityState || [city, state].filter(Boolean).join(", "), 120);
+  const roleTitle = normalizeSearchText(query.role, 120);
+  const company = normalizeSearchText(query.company, 120);
+  const college = normalizeSearchText(query.college, 120);
   const { minYear: gradMinYear, maxYear: gradMaxYear } = normalizeYearBounds(
-    req.query.gradMin,
-    req.query.gradMax
+    query.gradMin,
+    query.gradMax
   );
   const { minYear: camperMinYear, maxYear: camperMaxYear } = normalizeYearBounds(
-    req.query.camperMin,
-    req.query.camperMax
+    query.camperMin,
+    query.camperMax
   );
-  const sort = String(req.query.sort || "name").trim().toLowerCase() === "recent" ? "recent" : "name";
-  const limit = clampLimit(req.query.limit, 24, 100);
-  const offset = clampOffset(req.query.offset, 0);
-  const fetchLimit = clampLimit(req.query.fetchLimit, 300, 1000);
+  const sort = String(query.sort || "name").trim().toLowerCase() === "recent" ? "recent" : "name";
+  const limit = clampLimit(query.limit, 24, 100);
+  const offset = clampOffset(query.offset, 0);
+  const fetchLimit = clampLimit(query.fetchLimit, 300, 1000);
   return {
     q,
     cedarRoleTerms,
@@ -420,10 +453,12 @@ function normalizeEntityId(value = "") {
   return id;
 }
 
-function buildSearchNamesCacheKey(req, { q, roleAtCamp, industry, cityState, limit }) {
+function buildSearchNamesCacheKey(req, { q, roleAtCamp, industry, cityState, limit, safetySignature = "" }) {
   return [
     "search-names",
     String(req.tenant?._id || ""),
+    String(req.user?.id || ""),
+    safetySignature,
     q,
     roleAtCamp,
     industry,
@@ -432,10 +467,13 @@ function buildSearchNamesCacheKey(req, { q, roleAtCamp, industry, cityState, lim
   ].join(":");
 }
 
-function buildSearchUserCacheKey(req, id = "") {
+function buildSearchUserCacheKey(req, id = "", safetySignature = "") {
   return [
     "search-user",
     String(req.tenant?._id || ""),
+    String(req.user?.id || ""),
+    [...(req.user?.roles || [])].sort().join(","),
+    safetySignature,
     normalizeEntityId(id)
   ].join(":");
 }
@@ -457,7 +495,7 @@ function compareProfiles(left, right, sort = "name") {
   return rightTs - leftTs;
 }
 
-async function runSearch(req) {
+async function runSearch(req, { query = req.query, analytics = {} } = {}) {
   const {
     q,
     cedarRoleTerms,
@@ -476,11 +514,17 @@ async function runSearch(req) {
     limit,
     offset,
     fetchLimit
-  } = parseSearchInput(req);
+  } = parseSearchInput(query);
+  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+    user: req.user
+  });
+  const blockedUserIdSet = new Set(blockedUserIds);
+  const safetySignature = blockedUserIds.join(",");
   const cacheKey = [
     "search",
     String(req.tenant?._id || ""),
     String(req.user?.id || ""),
+    safetySignature,
     q,
     roleAtCamp,
     industry,
@@ -510,7 +554,9 @@ async function runSearch(req) {
     maxLimit: 1000
   });
   const rankedItems = filterAndRankSearchItems(
-    rawItems.map((profile) => withNickname(profile)),
+    rawItems
+      .filter((profile) => !blockedUserIdSet.has(String(profile?.userId || "")))
+      .map((profile) => withNickname(profile)),
     {
       cedarRoleTerms,
       industryTerms,
@@ -533,14 +579,15 @@ async function runSearch(req) {
     .slice(offset, offset + limit)
     .map((entry) => mapSearchSummary(entry.profile));
 
-  if (q) {
+  if (q || analytics.recordWhenEmpty) {
     await logTenantEvent({
       tenantId: req.tenant._id,
       userId: req.user.id,
       eventType: "directory_search",
       metadata: {
-        term: q,
-        resultCount: total
+        term: analytics.term === undefined ? q : analytics.term,
+        resultCount: total,
+        ...(analytics.metadata && typeof analytics.metadata === "object" ? analytics.metadata : {})
       }
     }).catch(() => {});
   }
@@ -567,71 +614,202 @@ async function runSearch(req) {
   return payload;
 }
 
-router.get("/", async (req, res) => {
-  const disabled = ensureSearchEnabled(req, res);
-  if (disabled) return disabled;
+function mapPublicSearchQuery(result = {}) {
+  return {
+    q: result.q,
+    roleAtCamp: result.roleAtCamp,
+    industry: result.industry,
+    cityState: result.cityState,
+    role: result.roleTitle,
+    company: result.company,
+    college: result.college,
+    gradMin: result.gradMinYear,
+    gradMax: result.gradMaxYear,
+    camperMin: result.camperMinYear,
+    camperMax: result.camperMaxYear,
+    sort: result.sort,
+    offset: result.offset,
+    limit: result.limit
+  };
+}
 
+function resolveCampSearchContext(tenant = {}) {
+  const content = tenant?.content && typeof tenant.content === "object" ? tenant.content : {};
+  const campRoles = Array.isArray(content.staffRoles) && content.staffRoles.length
+    ? content.staffRoles
+    : ["Camper", "Counselor", "JC", "CIT", "Admin"];
+  return {
+    campRoles,
+    campType: String(content.campType || tenant?.settings?.campType || "camp").trim()
+  };
+}
+
+function planToSearchQuery(plan = {}, input = {}) {
+  return {
+    q: plan.q || "",
+    cedarRoles: Array.isArray(plan.cedarRoles) ? plan.cedarRoles.join(", ") : "",
+    industries: Array.isArray(plan.industries) ? plan.industries.join(", ") : "",
+    city: plan.city || "",
+    state: plan.state || "",
+    role: plan.role || "",
+    company: plan.company || "",
+    college: plan.college || "",
+    gradMin: plan.gradMin ?? "",
+    gradMax: plan.gradMax ?? "",
+    camperMin: plan.camperMin ?? "",
+    camperMax: plan.camperMax ?? "",
+    sort: String(input?.sort || "name"),
+    limit: clampLimit(input?.limit, 24, 48),
+    offset: clampOffset(input?.offset, 0),
+    fetchLimit: 1000
+  };
+}
+
+router.get("/ai/capabilities", async (req, res, next) => {
+  try {
+    const [rollout, provider] = await Promise.all([
+      evaluateFeatureRollout(CAMP_AI_SEARCH_FLAG, req.tenant),
+      Promise.resolve(getCampAiSearchProviderStatus())
+    ]);
+    let usage = null;
+    let usageLedgerAvailable = false;
+    try {
+      usage = await getCampAiSearchUsage(String(req.tenant?._id || ""));
+      usageLedgerAvailable = true;
+    } catch {
+      usage = null;
+    }
+    return res.json({
+      available: Boolean(rollout.enabled && provider.configured && usageLedgerAvailable),
+      guidedFallbackAvailable: Boolean(rollout.enabled),
+      featureEnabled: Boolean(rollout.enabled),
+      rolloutReason: rollout.reason,
+      rolloutControlAvailable: Boolean(rollout.controlAvailable),
+      providerConfigured: provider.providerConfigured,
+      pricingConfigured: provider.pricingConfigured,
+      usageLedgerAvailable,
+      provider: provider.provider,
+      mode: "query_planning_only",
+      dataUse: "OpenAI receives only the search sentence and generic camp role labels. PondBridge never sends member profiles, directory results, email addresses, or phone numbers to the model. The AI ledger stores hashes and usage metadata, not the raw sentence.",
+      usage,
+      promptVersion: provider.promptVersion
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post(
+  "/ai/query",
+  aiSearchRateLimiter,
+  requireRolloutFeature(CAMP_AI_SEARCH_FLAG),
+  async (req, res, next) => {
+    const query = normalizeCampAiSearchQuery(req.body?.query || "");
+    if (!query) {
+      return res.status(400).json({
+        error: { code: "AI_SEARCH_QUERY_REQUIRED", message: "Describe who you want to find." }
+      });
+    }
+    const searchContext = resolveCampSearchContext(req.tenant);
+    const context = {
+      tenantId: String(req.tenant?._id || ""),
+      actorUserId: String(req.user?.id || ""),
+      requestId: String(req.requestId || ""),
+      ...searchContext
+    };
+    const planned = await resolveCampAiSearchPlan({
+      query,
+      context,
+      planner: runCampAiSearchPlanner
+    });
+    const { mode, planner } = planned;
+    if (mode === "guided_fallback") {
+      logLine("warn", "camp_ai_search.fallback", {
+        requestId: context.requestId,
+        tenantId: context.tenantId,
+        actorUserId: context.actorUserId,
+        errorCode: planned.errorCode
+      });
+    }
+
+    try {
+      const searchQuery = planToSearchQuery(planner.plan, req.body || {});
+      const result = await runSearch(req, {
+        query: searchQuery,
+        analytics: {
+          recordWhenEmpty: true,
+          term: "",
+          metadata: {
+            searchMode: mode,
+            aiEnhanced: mode === "ai",
+            intent: planner.plan.intent,
+            appliedFilterCount: Object.entries(planner.plan)
+              .filter(([key, value]) => key !== "intent" && (Array.isArray(value) ? value.length : value !== "" && value !== null))
+              .length
+          }
+        }
+      });
+      res.set("Cache-Control", "private, no-store");
+      return res.json({
+        mode,
+        degraded: mode !== "ai",
+        total: result.total,
+        items: result.items,
+        results: result.items,
+        query: mapPublicSearchQuery(result),
+        plan: planner.plan,
+        ai: mode === "ai"
+          ? {
+              generationId: planner.generationId,
+              provider: planner.provider,
+              generatedAt: planner.generatedAt,
+              usage: planner.usage
+            }
+          : null
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+router.get("/", async (req, res) => {
   const result = await runSearch(req);
   res.set("Cache-Control", SEARCH_CACHE_CONTROL);
 
   return res.json({
     total: result.total,
     items: result.items,
-    query: {
-      q: result.q,
-      roleAtCamp: result.roleAtCamp,
-      industry: result.industry,
-      cityState: result.cityState,
-      role: result.roleTitle,
-      company: result.company,
-      college: result.college,
-      gradMin: result.gradMinYear,
-      gradMax: result.gradMaxYear,
-      camperMin: result.camperMinYear,
-      camperMax: result.camperMaxYear,
-      sort: result.sort,
-      offset: result.offset,
-      limit: result.limit
-    }
+    query: mapPublicSearchQuery(result)
   });
 });
 
 router.get("/users", async (req, res) => {
-  const disabled = ensureSearchEnabled(req, res);
-  if (disabled) return disabled;
-
   const result = await runSearch(req);
   res.set("Cache-Control", SEARCH_CACHE_CONTROL);
   return res.json({
     total: result.total,
     items: result.items,
     results: result.items,
-    query: {
-      q: result.q,
-      roleAtCamp: result.roleAtCamp,
-      industry: result.industry,
-      cityState: result.cityState,
-      role: result.roleTitle,
-      company: result.company,
-      college: result.college,
-      gradMin: result.gradMinYear,
-      gradMax: result.gradMaxYear,
-      camperMin: result.camperMinYear,
-      camperMax: result.camperMaxYear,
-      sort: result.sort,
-      offset: result.offset,
-      limit: result.limit
-    }
+    query: mapPublicSearchQuery(result)
   });
 });
 
 router.get("/names", async (req, res) => {
-  const disabled = ensureSearchEnabled(req, res);
-  if (disabled) return disabled;
-
   const { q, cedarRoleTerms, roleAtCamp, industryTerms, industry, cityState } = parseSearchInput(req);
   const limit = clampLimit(req.query.limit, 10, 25);
-  const cacheKey = buildSearchNamesCacheKey(req, { q, roleAtCamp, industry, cityState, limit });
+  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+    user: req.user
+  });
+  const blockedUserIdSet = new Set(blockedUserIds);
+  const cacheKey = buildSearchNamesCacheKey(req, {
+    q,
+    roleAtCamp,
+    industry,
+    cityState,
+    limit,
+    safetySignature: blockedUserIds.join(",")
+  });
   const cached = searchNamesResponseCache.get(cacheKey);
   if (cached) {
     res.set("Cache-Control", SEARCH_CACHE_CONTROL);
@@ -643,7 +821,9 @@ router.get("/names", async (req, res) => {
     cityState: cityState || null,
     limit
   });
-  const mapped = items.map((profile) => mapNameResult(profile));
+  const mapped = items
+    .filter((profile) => !blockedUserIdSet.has(String(profile?.userId || "")))
+    .map((profile) => mapNameResult(profile));
   res.set("Cache-Control", SEARCH_CACHE_CONTROL);
 
   const payload = {
@@ -663,7 +843,11 @@ router.get("/user/:id", async (req, res) => {
     });
   }
 
-  const cacheKey = buildSearchUserCacheKey(req, id);
+  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+    user: req.user
+  });
+  const safetySignature = blockedUserIds.join(",");
+  const cacheKey = buildSearchUserCacheKey(req, id, safetySignature);
   const cached = searchUserResponseCache.get(cacheKey);
   if (cached) {
     res.set("Cache-Control", SEARCH_CACHE_CONTROL);
@@ -689,19 +873,30 @@ router.get("/user/:id", async (req, res) => {
     user = await UserModel.findOne(req.tenant._id, { _id: profile.userId });
   }
 
+  if (
+    !isSafetyModerator(req.user) &&
+    profile?.userId &&
+    (await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId))
+  ) {
+    return res.status(404).json({
+      error: { code: "NOT_FOUND", message: "Profile not found" }
+    });
+  }
+
   if (!profile) {
     return res.status(404).json({
       error: { code: "NOT_FOUND", message: "Profile not found" }
     });
   }
 
-  const mapped = withNickname(profile);
+  const emailVisible = canViewProfileContact(profile, "email", req.user);
+  const mapped = withNickname(filterProfileContactFields(profile, req.user));
   const payload = {
     user: {
       ...mapped,
       _id: String(mapped._id || mapped.id || ""),
       id: String(mapped._id || mapped.id || ""),
-      email: String(user?.email || mapped.email || mapped.emails?.[0] || "").trim().toLowerCase(),
+      email: String(emailVisible ? user?.email || mapped.email || mapped.emails?.[0] || "" : "").trim().toLowerCase(),
       phone: String(mapped.phone || mapped.phones?.[0] || "").trim(),
       uploads: {
         photoUrl: String(mapped?.uploads?.photoUrl || mapped.photoUrl || mapped.avatarUrl || "").trim()
@@ -713,11 +908,11 @@ router.get("/user/:id", async (req, res) => {
   searchUserResponseCache.set(cacheKey, payload);
   const canonicalProfileId = normalizeEntityId(mapped?._id || mapped?.id);
   if (canonicalProfileId && canonicalProfileId !== id) {
-    searchUserResponseCache.set(buildSearchUserCacheKey(req, canonicalProfileId), payload);
+    searchUserResponseCache.set(buildSearchUserCacheKey(req, canonicalProfileId, safetySignature), payload);
   }
   const canonicalUserId = normalizeEntityId(mapped?.userId || user?._id);
   if (canonicalUserId && canonicalUserId !== id && canonicalUserId !== canonicalProfileId) {
-    searchUserResponseCache.set(buildSearchUserCacheKey(req, canonicalUserId), payload);
+    searchUserResponseCache.set(buildSearchUserCacheKey(req, canonicalUserId, safetySignature), payload);
   }
 
   res.set("Cache-Control", SEARCH_CACHE_CONTROL);

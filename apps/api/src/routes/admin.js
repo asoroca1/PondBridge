@@ -9,9 +9,11 @@ import {
   alumniPluralForCampType,
   hasFeature,
   MEMBER_EVENTS_PAGES_ENABLED,
+  TENANT_MODULE_CATALOG as MODULE_CATALOG,
   listFeaturesForPlan,
   normalizeCampType,
-  replaceAlumniForCampType
+  replaceAlumniForCampType,
+  resolveTenantModules
 } from "@pondbridge/shared";
 import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
 import { requireFeature } from "../middleware/requireFeature.js";
@@ -20,6 +22,7 @@ import {
   TenantModel,
   UserModel,
   InviteModel,
+  AlumniContactModel,
   AccessRequestModel,
   AnalyticsEventModel,
   EmailBroadcastModel,
@@ -33,15 +36,19 @@ import {
   PhotoModel,
   FamilyTreeModel,
   TenantAdminAuditLogModel,
+  ContentReportModel,
   ResumeParseResultModel,
   ActivityItemModel,
   MobileNotificationTemplateModel,
-  MobileNotificationScheduleModel
+  MobileNotificationScheduleModel,
+  AiGenerationModel
 } from "../db/models/index.js";
 import { findImportReportForTenant } from "../services/csvImport.js";
 import { env } from "../config/env.js";
 import {
   buildTenantEmailBranding,
+  cancelScheduledTransactionalEmail,
+  getEmailSchedulingStatus,
   sendBulkTransactionalEmail,
   sendInviteEmail,
   sendTransactionalEmail,
@@ -56,7 +63,9 @@ import {
   resolveContent,
   resolveModules,
   normalizeSignupMode,
-  resolveSettings
+  resolveSettings,
+  getReadinessChecklist,
+  getBillingReadiness
 } from "../services/onboarding.js";
 import {
   buildBillingPublicSnapshot,
@@ -89,11 +98,38 @@ import {
   sendMobileNotificationBatch
 } from "../services/mobileNotifications.js";
 import {
+  normalizeReportReviewInput,
+  reportPreview,
+  resolveReportTarget
+} from "../services/memberSafety.js";
+import {
+  buildEmailPreferenceUrls,
+  COMMUNITY_UPDATES_TOPIC,
+  resolveEmailRecipientEligibility
+} from "../services/emailPreferences.js";
+import {
+  assertEmailDraftReady
+} from "../services/emailCompliance.js";
+import {
   canonicalizeCityName,
   canonicalizeCountryName,
   composeCityState,
   parseCityStateDetailed
 } from "../utils/location.js";
+import { emitRealtime } from "../services/socketServer.js";
+import { buildTenantFeatureInventory } from "../services/tenantFeatureInventory.js";
+import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js";
+import {
+  GROWTH_EMAIL_SEGMENTS,
+  buildAlumniGrowthSnapshot,
+  filterHeldAlumniRecipients,
+  hasRequiredEmailTargetingSelection,
+  isAlumniGrowthStorageUnavailable,
+  normalizeAlumniContactInput,
+  resolveGrowthEmailSegment,
+  trackInvitedAlumniContact,
+  upsertAlumniContact
+} from "../services/alumniGrowth.js";
 
 const router = Router({ mergeParams: true });
 const csvUpload = multer({
@@ -510,10 +546,20 @@ function toPlainTextFromHtml(html = "") {
   return sanitizeText(withLineBreaks).replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "", footer = {} }) {
+function buildDirectorBroadcastEmailContent({
+  tenant,
+  subject = "",
+  preheader = "",
+  bodyHtml = "",
+  footer = {},
+  campaignType = "marketing",
+  postalAddress = "",
+  unsubscribeUrl = "{{unsubscribeUrl}}"
+}) {
   const theme = resolveTheme(tenant);
   const content = resolveContent(tenant);
   const safeSubject = sanitizeText(String(subject || "").trim()).slice(0, 160) || "Update from your network";
+  const safePreheader = sanitizeText(String(preheader || "").trim()).slice(0, 160);
   const safeBodyHtml = sanitizeHtmlContent(String(bodyHtml || "").trim());
   const normalizedFooter = normalizeEmailFooterData(footer, {
     signOff: "Warmly,",
@@ -545,10 +591,20 @@ function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:52px;height:52px;border-radius:10px;overflow:hidden;border:1px solid #dbe6f3;background:#ffffff;"><tr><td align="center" valign="middle" style="width:52px;height:52px;line-height:0;"><img src="${escapeEmailHtml(footerLogoUrl)}" alt="" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
     : "";
   const safeBodyForEmail = safeBodyHtml || "<p style=\"margin:0;\">&nbsp;</p>";
+  const isMarketing = campaignType !== "transactional";
+  const safePostalAddress = escapeEmailHtml(String(postalAddress || "").trim());
+  const safeUnsubscribeUrl = escapeEmailHtml(String(unsubscribeUrl || "{{unsubscribeUrl}}").trim());
+  const preheaderMarkup = safePreheader
+    ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">${escapeEmailHtml(safePreheader)}</div>`
+    : "";
+  const preferenceMarkup = isMarketing
+    ? `<tr><td style="padding:16px 22px 22px 22px;border-top:1px solid #e3ebf6;font-family:Arial,sans-serif;color:#6b7f93;font-size:11px;line-height:1.6;text-align:center;">${safePostalAddress ? `<div>${safePostalAddress}</div>` : ""}<div style="margin-top:4px;"><a href="${safeUnsubscribeUrl}" style="color:#456b91;text-decoration:underline;">Manage email preferences</a></div></td></tr>`
+    : "";
 
   const html = `<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#eef3fa;">
+    ${preheaderMarkup}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef3fa;padding:24px 12px;">
       <tr>
         <td align="center">
@@ -587,6 +643,7 @@ function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "
                 </table>
               </td>
             </tr>
+            ${preferenceMarkup}
           </table>
         </td>
       </tr>
@@ -600,12 +657,19 @@ function buildDirectorBroadcastEmailContent({ tenant, subject = "", bodyHtml = "
     normalizedFooter.senderRole,
     footerContactParts.join(" • ")
   ].filter(Boolean);
-  const text = [bodyText, footerTextLines.join("\n")].filter(Boolean).join("\n\n");
+  const complianceText = isMarketing
+    ? [String(postalAddress || "").trim(), `Manage email preferences: ${String(unsubscribeUrl || "{{unsubscribeUrl}}").trim()}`]
+        .filter(Boolean)
+        .join("\n")
+    : "";
+  const text = [bodyText, footerTextLines.join("\n"), complianceText].filter(Boolean).join("\n\n");
 
   return {
     html,
     text: text || " ",
-    footer: normalizedFooter
+    footer: normalizedFooter,
+    preheader: safePreheader,
+    campaignType: isMarketing ? "marketing" : "transactional"
   };
 }
 
@@ -674,8 +738,8 @@ function parseInviteRowsFromRecipientsPayload(rawValue) {
     .filter((row) => Boolean(row.email));
 }
 
-function parseInviteRowsFromCsv(csvBuffer) {
-  if (!csvBuffer) return [];
+function analyzeInviteRowsFromCsv(csvBuffer) {
+  if (!csvBuffer) return { rows: [], errors: [], rowsRead: 0 };
   const csvText = Buffer.isBuffer(csvBuffer) ? csvBuffer.toString("utf8") : String(csvBuffer);
   const rows = parseCsv(csvText, {
     columns: true,
@@ -686,7 +750,9 @@ function parseInviteRowsFromCsv(csvBuffer) {
   });
 
   const inviteRows = [];
-  for (const row of rows) {
+  const errors = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
     const fromEmailHeader = normalizeEmail(
       row.email || row.Email || row["Email Address"] || row["email address"]
     );
@@ -697,20 +763,40 @@ function parseInviteRowsFromCsv(csvBuffer) {
       row.lastName || row["last name"] || row["Last Name"] || row.last_name || ""
     );
     if (fromEmailHeader) {
-      inviteRows.push({ firstName, lastName, email: fromEmailHeader });
+      if (isEmail(fromEmailHeader)) {
+        inviteRows.push({ firstName, lastName, email: fromEmailHeader });
+      } else {
+        errors.push({
+          rowNumber: index + 2,
+          email: fromEmailHeader,
+          code: "INVALID_EMAIL",
+          message: "Email address is invalid."
+        });
+      }
       continue;
     }
 
+    let fallbackEmail = "";
     for (const value of Object.values(row || {})) {
       const candidate = normalizeEmail(value);
       if (candidate && isEmail(candidate)) {
-        inviteRows.push({ firstName, lastName, email: candidate });
+        fallbackEmail = candidate;
         break;
       }
     }
+    if (fallbackEmail) {
+      inviteRows.push({ firstName, lastName, email: fallbackEmail });
+    } else {
+      errors.push({
+        rowNumber: index + 2,
+        email: "",
+        code: "EMAIL_REQUIRED",
+        message: "No valid email address was found in this row."
+      });
+    }
   }
 
-  return inviteRows;
+  return { rows: inviteRows, errors, rowsRead: rows.length };
 }
 
 function mergeInviteRows(...groups) {
@@ -734,6 +820,51 @@ function mergeInviteRows(...groups) {
     }
   }
   return [...merged.values()];
+}
+
+function invitePreviewFingerprint({ tenantId, actorUserId, roleToAssign, recipients, customSubject, customMessage }) {
+  const normalizedRecipients = [...(recipients || [])]
+    .map((row) => ({
+      email: normalizeEmail(row?.email || ""),
+      firstName: normalizeInviteName(row?.firstName || ""),
+      lastName: normalizeInviteName(row?.lastName || "")
+    }))
+    .sort((left, right) => left.email.localeCompare(right.email));
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify({
+      tenantId: String(tenantId || ""),
+      actorUserId: String(actorUserId || ""),
+      roleToAssign: String(roleToAssign || "user"),
+      recipients: normalizedRecipients,
+      customSubject: normalizeInviteEmailSubject(customSubject || ""),
+      customMessage: normalizeInviteEmailMessage(customMessage || "")
+    }))
+    .digest("hex");
+}
+
+function createInvitePreviewToken(payload) {
+  const expiresAt = Date.now() + 15 * 60 * 1000;
+  const fingerprint = invitePreviewFingerprint(payload);
+  const signature = crypto
+    .createHmac("sha256", env.JWT_SECRET)
+    .update(`${expiresAt}.${fingerprint}`)
+    .digest("base64url");
+  return `${expiresAt}.${signature}`;
+}
+
+function verifyInvitePreviewToken(token, payload) {
+  const [expiresRaw, providedSignature] = String(token || "").trim().split(".", 2);
+  const expiresAt = Number(expiresRaw);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() || !providedSignature) return false;
+  const fingerprint = invitePreviewFingerprint(payload);
+  const expectedSignature = crypto
+    .createHmac("sha256", env.JWT_SECRET)
+    .update(`${expiresAt}.${fingerprint}`)
+    .digest("base64url");
+  const provided = Buffer.from(providedSignature);
+  const expected = Buffer.from(expectedSignature);
+  return provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -782,59 +913,6 @@ function clearAdminReadCaches() {
   clearAdminMembersCache();
   clearAdminDashboardCache();
 }
-const MODULE_CATALOG = [
-  {
-    key: "directory",
-    label: "Directory",
-    description: "Member directory and profile browsing."
-  },
-  {
-    key: "search",
-    label: "Advanced Search",
-    description: "Search members by name, role, location, and industry."
-  },
-  {
-    key: "events",
-    label: "Events",
-    description: "Member-facing events, RSVP collection, and invite campaigns."
-  },
-  {
-    key: "photoStream",
-    label: "Photo Stream",
-    description: "Shared gallery for community photos."
-  },
-  {
-    key: "chat",
-    label: "Messaging",
-    description: "Direct messages and forums."
-  },
-  {
-    key: "map",
-    label: "Location Map",
-    description: "Location map for member profiles."
-  },
-  {
-    key: "familyTrees",
-    label: "Family Trees",
-    description: "Multi-generational camp family trees.",
-    requiredFeature: "familyTrees"
-  },
-  {
-    key: "relatedProfiles",
-    label: "Related Profiles",
-    description: "Recommended member connections."
-  },
-  {
-    key: "newsletter",
-    label: "Newsletter",
-    description: "Camp announcements and newsletter archive."
-  },
-  {
-    key: "merchShop",
-    label: "Merch Shop",
-    description: "External camp merch storefront."
-  }
-];
 const MEMBER_EXPORT_FIELDS = [
   {
     key: "profileId",
@@ -1402,9 +1480,10 @@ async function writeAdminAudit(req, event, metadata = {}) {
       actorUserId: req.user?.id || null,
       event,
       metadata: {
+        ...metadata,
+        requestId: String(req.requestId || ""),
         route: String(req.originalUrl || req.path || ""),
-        method: String(req.method || "").toUpperCase(),
-        ...metadata
+        method: String(req.method || "").toUpperCase()
       }
     });
   } catch {
@@ -1895,9 +1974,12 @@ async function deleteMemberFromTenant({
     analyticsEventsDeleted: 0,
     magicLinkTokensDeleted: 0,
     invitesDeleted: 0,
+    alumniContactsDeleted: 0,
     accessRequestsDeleted: 0,
     adminAuditLogsDeleted: 0,
-    resumeParseResultsDeleted: 0
+    resumeParseResultsDeleted: 0,
+    tenantMembershipDeleted: 0,
+    globalIdentityDeleted: 0
   };
 
   const safeUserId = String(userId || "").trim();
@@ -2149,6 +2231,18 @@ async function deleteMemberFromTenant({
     summary.invitesDeleted += inviteIds.length;
   }
 
+  if (safeEmail) {
+    try {
+      const alumniContactCount = await AlumniContactModel.count(tenantId, { email: safeEmail });
+      if (alumniContactCount > 0) {
+        await AlumniContactModel.deleteMany(tenantId, { email: safeEmail });
+        summary.alumniContactsDeleted += alumniContactCount;
+      }
+    } catch (error) {
+      if (!isAlumniGrowthStorageUnavailable(error)) throw error;
+    }
+  }
+
   const accessRequestIds = await collectIdsForFilters(AccessRequestModel, tenantId, [
     { reviewedByUserId: safeUserId },
     { approvedUserId: safeUserId },
@@ -2176,6 +2270,13 @@ async function deleteMemberFromTenant({
   // 9) Delete profile + tenant membership row.
   await ProfileModel.delete(safeProfileId);
   summary.profileDeleted = 1;
+  const identityCleanup = await removeTenantMembershipIdentityLink({
+    tenantId,
+    legacyUserId: safeUserId,
+    tenantMembershipId: null
+  });
+  summary.tenantMembershipDeleted = identityCleanup.membershipDeleted;
+  summary.globalIdentityDeleted = identityCleanup.identityDeleted;
   await UserModel.delete(safeUserId);
   summary.userDeleted = 1;
 
@@ -2266,21 +2367,43 @@ function asArray(value) {
 
 function normalizeTargeting(input = {}) {
   const mode = String(input.mode || "all").trim().toLowerCase();
-  const safeMode = ["all", "role", "year", "custom"].includes(mode) ? mode : "all";
+  const safeMode = ["all", "role", "year", "custom", "segment"].includes(mode) ? mode : "all";
+  const requestedSegment = String(input.segment || "").trim().toLowerCase();
   return {
     mode: safeMode,
     roles: asArray(input.roles).map((item) => String(item || "").trim()).filter(Boolean),
     years: asArray(input.years).map((item) => String(item || "").trim()).filter(Boolean),
     profileIds: parseIds(input.profileIds || []),
+    segment: GROWTH_EMAIL_SEGMENTS.has(requestedSegment) ? requestedSegment : "",
     label: String(input.label || "").trim()
   };
 }
 
 function serializeEmailBroadcast(item) {
+  const rawStats = item?.stats && typeof item.stats === "object" ? item.stats : {};
+  const rawProviderSchedule = rawStats?.providerSchedule && typeof rawStats.providerSchedule === "object"
+    ? rawStats.providerSchedule
+    : null;
+  const stats = rawProviderSchedule
+    ? {
+        ...rawStats,
+        providerSchedule: {
+          ...rawProviderSchedule,
+          messageCount: Array.isArray(rawProviderSchedule.messageIds)
+            ? rawProviderSchedule.messageIds.length
+            : Number(rawProviderSchedule.messageCount || 0),
+          messageIds: undefined
+        }
+      }
+    : rawStats;
   return {
     id: toObjectIdString(item?._id),
     subject: item?.subject || "",
+    preheader: item?.preheader || "",
     body: item?.body || "",
+    campaignType: item?.campaignType || "marketing",
+    aiGenerationId: item?.aiGenerationId || null,
+    complianceSnapshot: item?.complianceSnapshot || {},
     status: item?.status || "draft",
     recipientCount: Number(item?.recipientCount || 0),
     excludedCount: Number(item?.excludedCount || 0),
@@ -2288,12 +2411,15 @@ function serializeEmailBroadcast(item) {
     scheduledFor: toIso(item?.scheduledFor),
     sentAt: toIso(item?.sentAt),
     createdAt: toIso(item?.createdAt),
-    stats: item?.stats || {}
+    stats
   };
 }
 
 async function resolveRecipientsForTargeting(tenantId, targeting) {
   const normalized = normalizeTargeting(targeting);
+  if (!hasRequiredEmailTargetingSelection(normalized)) {
+    return { profiles: [], recipients: [], heldRecipients: [], matchedRecipientCount: 0 };
+  }
   const filter = { status: { $ne: "removed" } };
 
   if (normalized.mode === "year" && normalized.years.length > 0) {
@@ -2306,6 +2432,34 @@ async function resolveRecipientsForTargeting(tenantId, targeting) {
 
   let profiles = await ProfileModel.find(tenantId, filter);
 
+  if (normalized.mode === "segment" && normalized.segment) {
+    const userIds = [...new Set(
+      profiles.map((profile) => String(profile?.userId || "").trim()).filter(Boolean)
+    )];
+    const [users, analyticsEvents] = userIds.length
+      ? await Promise.all([
+          UserModel.find(tenantId, { _id: { $in: userIds } }, {
+            select: ["id", "createdAt", "lastLoginAt"]
+          }),
+          normalized.segment.startsWith("inactive_")
+            ? AnalyticsEventModel.find(tenantId, {
+                userId: { $in: userIds },
+                createdAt: { $gte: new Date(Date.now() - 90 * DAY_MS) }
+              }, {
+                select: ["userId", "createdAt"],
+                limit: 10000
+              })
+            : Promise.resolve([])
+        ])
+      : [[], []];
+    profiles = resolveGrowthEmailSegment({
+      segment: normalized.segment,
+      profiles,
+      users,
+      analyticsEvents
+    });
+  }
+
   // Role filtering with case-insensitive matching (done JS-side)
   if (normalized.mode === "role" && normalized.roles.length > 0) {
     const lowerRoles = normalized.roles.map((r) => r.toLowerCase());
@@ -2314,15 +2468,37 @@ async function resolveRecipientsForTargeting(tenantId, targeting) {
     );
   }
 
-  const recipients = [...new Set(
+  const matchedRecipients = [...new Set(
     profiles
       .map((profile) => String(profile?.emails?.[0] || "").trim().toLowerCase())
       .filter((email) => isEmail(email))
   )];
+  let heldRecipients = [];
+  if (matchedRecipients.length) {
+    try {
+      const heldContacts = await AlumniContactModel.find(tenantId, {
+        email: { $in: matchedRecipients },
+        contactStatus: "do_not_contact"
+      }, { select: ["email"] });
+      heldRecipients = [...new Set(
+        heldContacts.map((item) => normalizeEmail(item.email)).filter(Boolean)
+      )];
+    } catch (error) {
+      if (!isAlumniGrowthStorageUnavailable(error)) throw error;
+    }
+  }
+  const filteredRecipients = filterHeldAlumniRecipients(matchedRecipients, heldRecipients.map((email) => ({
+    email,
+    contactStatus: "do_not_contact"
+  })));
+  heldRecipients = filteredRecipients.heldRecipients;
+  const recipients = filteredRecipients.deliverableRecipients;
 
   return {
     profiles,
-    recipients
+    recipients,
+    heldRecipients,
+    matchedRecipientCount: matchedRecipients.length
   };
 }
 
@@ -2414,7 +2590,10 @@ router.get("/dashboard", async (req, res, next) => {
       lastBroadcast,
       activity,
       recentNewUsers,
-      recentSignIns
+      recentSignIns,
+      failedBroadcasts,
+      scheduledBroadcasts,
+      openSafetyReports
     ] =
       await Promise.all([
         ProfileModel.count(tenantId, { status: "active" }),
@@ -2458,7 +2637,10 @@ router.get("/dashboard", async (req, res, next) => {
             eventType: { $in: DASHBOARD_SIGNIN_EVENT_TYPES }
           },
           { select: ["createdAt", "userId"] }
-        )
+        ),
+        EmailBroadcastModel.count(tenantId, { status: "failed" }),
+        EmailBroadcastModel.count(tenantId, { status: "scheduled" }),
+        ContentReportModel.count(tenantId, { status: { $in: ["open", "reviewing"] } })
       ]);
 
     const completionAverage = profiles.length
@@ -2527,6 +2709,83 @@ router.get("/dashboard", async (req, res, next) => {
       })
       .slice(0, 5);
 
+    const readiness = getReadinessChecklist(req.tenant, { importedCount: activeMembers });
+    const billingReadiness = getBillingReadiness(req.tenant);
+    const actionQueue = [];
+    const tenantAdminBase = `/t/${encodeURIComponent(String(req.tenant.slug || ""))}/admin`;
+
+    if (openSafetyReports > 0) {
+      actionQueue.push({
+        id: "community-safety-reports",
+        priority: "high",
+        title: `${openSafetyReports} community safety ${openSafetyReports === 1 ? "report" : "reports"} waiting`,
+        detail: "Review member reports before lower-priority operational work.",
+        actionLabel: "Review reports",
+        href: `${tenantAdminBase}/safety`
+      });
+    }
+    if (pendingApprovals > 0) {
+      actionQueue.push({
+        id: "pending-approvals",
+        priority: "high",
+        title: `${pendingApprovals} access ${pendingApprovals === 1 ? "request" : "requests"} waiting`,
+        detail: "Review member access before applicants are left waiting.",
+        actionLabel: "Review requests",
+        href: `${tenantAdminBase}/approvals`
+      });
+    }
+    if (failedBroadcasts > 0) {
+      actionQueue.push({
+        id: "failed-communications",
+        priority: "high",
+        title: `${failedBroadcasts} failed ${failedBroadcasts === 1 ? "email" : "emails"}`,
+        detail: "Inspect delivery details and resend only after correcting the cause.",
+        actionLabel: "Open email history",
+        href: `${tenantAdminBase}/email/history`
+      });
+    }
+    if (!billingReadiness.ok) {
+      actionQueue.push({
+        id: "billing-readiness",
+        priority: "high",
+        title: "Billing needs attention",
+        detail: "Resolve billing or onboarding-fee requirements to protect network access.",
+        actionLabel: "Review billing",
+        href: `${tenantAdminBase}/billing`
+      });
+    }
+    if (req.tenant.onboardingStatus !== "live" && !readiness.isReady) {
+      const remaining = readiness.checks.filter((item) => !item.ok);
+      actionQueue.push({
+        id: "launch-readiness",
+        priority: "medium",
+        title: `${remaining.length} required launch ${remaining.length === 1 ? "step" : "steps"} left`,
+        detail: remaining.map((item) => item.label).join(" · "),
+        actionLabel: "Finish setup",
+        href: `/t/${encodeURIComponent(String(req.tenant.slug || ""))}/onboarding`
+      });
+    }
+    if (scheduledBroadcasts > 0) {
+      actionQueue.push({
+        id: "scheduled-communications",
+        priority: "medium",
+        title: `${scheduledBroadcasts} scheduled ${scheduledBroadcasts === 1 ? "email" : "emails"}`,
+        detail: "Confirm timing and recipient choices before the provider sends them.",
+        actionLabel: "Review schedule",
+        href: `${tenantAdminBase}/email/history`
+      });
+    }
+    if (activeMembers > 0 && completionAverage < 70) {
+      actionQueue.push({
+        id: "profile-completion",
+        priority: "low",
+        title: `Member profiles average ${completionAverage}% complete`,
+        detail: "Consider a focused reminder to help members finish useful directory details.",
+        actionLabel: "Review members",
+        href: `${tenantAdminBase}/members`
+      });
+    }
+
     const payload = {
       tenant: {
         id: toObjectIdString(req.tenant._id),
@@ -2548,6 +2807,7 @@ router.get("/dashboard", async (req, res, next) => {
             : 0,
         newThisWeek,
         pendingApprovals,
+        openSafetyReports,
         profileCompletion: completionAverage
       },
       mobileApp: {
@@ -2572,11 +2832,258 @@ router.get("/dashboard", async (req, res, next) => {
             status: lastBroadcast[0].status
           }
         : null,
+      actionQueue,
       recentActivity: activity
     };
     adminDashboardResponseCache.set(cacheKey, payload);
     res.set("Cache-Control", ADMIN_DASHBOARD_CACHE_CONTROL);
     return res.json(payload);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/safety/reports", async (req, res, next) => {
+  try {
+    const requestedStatus = String(req.query.status || "active").trim().toLowerCase();
+    const where = requestedStatus === "all"
+      ? {}
+      : requestedStatus === "active"
+      ? { status: { $in: ["open", "reviewing"] } }
+      : { status: requestedStatus };
+    const reports = await ContentReportModel.find(req.tenant._id, where, {
+      sort: { createdAt: -1 },
+      limit: 250
+    });
+    const userIds = [
+      ...new Set(
+        reports
+          .flatMap((report) => [
+            report.reporterUserId,
+            report.targetAuthorUserId,
+            report.reviewedByUserId
+          ])
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      )
+    ];
+    const profiles = userIds.length
+      ? await ProfileModel.find(req.tenant._id, { userId: { $in: userIds } }, {
+          select: ["id", "userId", "firstName", "lastName", "avatarUrl"],
+          limit: userIds.length
+        })
+      : [];
+    const profileByUserId = new Map(
+      profiles.map((profile) => [String(profile.userId || ""), profile])
+    );
+    const displayUser = (userId) => {
+      const profile = profileByUserId.get(String(userId || ""));
+      return {
+        userId: String(userId || ""),
+        profileId: String(profile?._id || profile?.id || ""),
+        name: [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || "Member"
+      };
+    };
+
+    const items = await Promise.all(
+      reports.map(async (report) => {
+        const target = await resolveReportTarget(req.tenant._id, report).catch(() => null);
+        return {
+          id: String(report._id || report.id || ""),
+          targetType: String(report.targetType || ""),
+          targetId: String(report.targetId || ""),
+          targetContextId: String(target?.contextId || ""),
+          targetAvailable: Boolean(target),
+          targetPreview: target ? reportPreview(target.preview) : "Reported item is no longer available.",
+          reason: String(report.reason || "other"),
+          details: String(report.details || ""),
+          status: String(report.status || "open"),
+          resolutionNote: String(report.resolutionNote || ""),
+          reporter: displayUser(report.reporterUserId),
+          targetAuthor: report.targetAuthorUserId ? displayUser(report.targetAuthorUserId) : null,
+          reviewer: report.reviewedByUserId ? displayUser(report.reviewedByUserId) : null,
+          reviewedAt: toIso(report.reviewedAt),
+          createdAt: toIso(report.createdAt),
+          updatedAt: toIso(report.updatedAt)
+        };
+      })
+    );
+    return res.json({ items, status: requestedStatus });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/safety/reports/:reportId", async (req, res, next) => {
+  try {
+    const reportId = String(req.params.reportId || "").trim();
+    const report = await ContentReportModel.findOne(req.tenant._id, { _id: reportId });
+    if (!report) {
+      return res.status(404).json({
+        error: { code: "REPORT_NOT_FOUND", message: "Safety report not found." }
+      });
+    }
+
+    const review = normalizeReportReviewInput(req.body);
+    const isClosed = review.status === "resolved" || review.status === "dismissed";
+    const updated = await ContentReportModel.update(report._id, {
+      status: review.status,
+      resolutionNote: isClosed ? review.resolutionNote : "",
+      reviewedByUserId: review.status === "open" ? null : req.user.id,
+      reviewedAt: review.status === "open" ? null : new Date()
+    });
+    adminDashboardResponseCache.clear();
+    await writeAdminAudit(req, "safety_report_status_changed", {
+      reportId,
+      targetType: report.targetType,
+      targetId: report.targetId,
+      before: { status: report.status, resolutionNote: report.resolutionNote || "" },
+      after: { status: updated.status, resolutionNote: updated.resolutionNote || "" }
+    });
+    return res.json({
+      report: {
+        id: String(updated._id || updated.id || ""),
+        status: updated.status,
+        resolutionNote: updated.resolutionNote || "",
+        reviewedAt: toIso(updated.reviewedAt)
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
+  try {
+    const reportId = String(req.params.reportId || "").trim();
+    const report = await ContentReportModel.findOne(req.tenant._id, { _id: reportId });
+    if (!report) {
+      return res.status(404).json({
+        error: { code: "REPORT_NOT_FOUND", message: "Safety report not found." }
+      });
+    }
+
+    const targetType = String(report.targetType || "").trim();
+    if (!new Set(["message", "forum_post"]).has(targetType)) {
+      return res.status(400).json({
+        error: {
+          code: "UNSUPPORTED_MODERATION_TARGET",
+          message: "This content type cannot be removed from the messaging moderation flow."
+        }
+      });
+    }
+
+    const resolutionNote = sanitizeText(String(req.body?.resolutionNote || "").trim()).slice(0, 1200);
+    if (!resolutionNote) {
+      return res.status(400).json({
+        error: { code: "RESOLUTION_NOTE_REQUIRED", message: "Document why this content is being removed." }
+      });
+    }
+
+    const deletedAt = new Date();
+    let realtimeEvent = null;
+    if (targetType === "message") {
+      const message = await MessageModel.findOne(req.tenant._id, {
+        _id: report.targetId,
+        deletedAt: null
+      });
+      if (!message) {
+        return res.status(404).json({
+          error: { code: "REPORT_TARGET_NOT_FOUND", message: "The reported message is no longer available." }
+        });
+      }
+      await MessageModel.update(message._id, { deletedAt });
+
+      const conversation = await ConversationModel.findOne(req.tenant._id, {
+        _id: message.conversationId
+      });
+      if (conversation) {
+        const latest = await MessageModel.find(
+          req.tenant._id,
+          { conversationId: conversation._id, deletedAt: null },
+          { sort: { createdAt: -1 }, limit: 1 }
+        );
+        const latestMessage = latest[0] || null;
+        const lastMessageAt = latestMessage?.createdAt || conversation.createdAt || deletedAt;
+        await ConversationModel.update(conversation._id, {
+          lastMessageAt,
+          lastMessage: latestMessage
+            ? {
+                senderId: latestMessage.senderId,
+                kind: latestMessage.kind,
+                text:
+                  latestMessage.kind === "text"
+                    ? latestMessage.text || ""
+                    : latestMessage.kind === "image"
+                      ? "Photo"
+                      : "File attachment",
+                media: latestMessage.kind !== "text" ? latestMessage.media || null : null,
+                createdAt: latestMessage.createdAt || lastMessageAt
+              }
+            : null
+        });
+      }
+      realtimeEvent = {
+        room: `conversation:${String(message.conversationId)}`,
+        name: "message:deleted",
+        payload: { id: String(message._id), conversationId: String(message.conversationId) }
+      };
+    } else {
+      const post = await ForumPostModel.findOne(req.tenant._id, {
+        _id: report.targetId,
+        deletedAt: null
+      });
+      if (!post) {
+        return res.status(404).json({
+          error: { code: "REPORT_TARGET_NOT_FOUND", message: "The reported forum post is no longer available." }
+        });
+      }
+      await ForumPostModel.update(post._id, { deletedAt });
+      const forum = await ForumModel.findOne(req.tenant._id, { _id: post.forumId });
+      if (forum) {
+        const latestPosts = await ForumPostModel.find(
+          req.tenant._id,
+          { forumId: forum._id, deletedAt: null },
+          { sort: { createdAt: -1 }, limit: 1 }
+        );
+        await ForumModel.update(forum._id, {
+          postsCount: Math.max(0, Number(forum.postsCount || 0) - 1),
+          lastActivityAt: latestPosts[0]?.createdAt || forum.createdAt || deletedAt
+        });
+      }
+      realtimeEvent = {
+        room: `forum:${String(post.forumId)}`,
+        name: "forum:post:deleted",
+        payload: { id: String(post._id), forumId: String(post.forumId) }
+      };
+    }
+
+    const updatedReport = await ContentReportModel.update(report._id, {
+      status: "resolved",
+      resolutionNote,
+      reviewedByUserId: req.user.id,
+      reviewedAt: deletedAt
+    });
+    if (realtimeEvent) {
+      emitRealtime(realtimeEvent.room, realtimeEvent.name, realtimeEvent.payload);
+    }
+    adminDashboardResponseCache.clear();
+    await writeAdminAudit(req, "reported_messaging_content_removed", {
+      reportId,
+      targetType,
+      targetId: report.targetId,
+      resolutionNote
+    });
+
+    return res.json({
+      ok: true,
+      report: {
+        id: String(updatedReport._id || updatedReport.id || ""),
+        status: updatedReport.status,
+        resolutionNote: updatedReport.resolutionNote || "",
+        reviewedAt: toIso(updatedReport.reviewedAt)
+      }
+    });
   } catch (error) {
     return next(error);
   }
@@ -3221,11 +3728,21 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
 
     const user = await UserModel.findOne(req.tenant._id, { _id: userId });
     if (!user) {
+      const identityCleanup = await removeTenantMembershipIdentityLink({
+        tenantId: req.tenant._id,
+        legacyUserId: userId,
+        tenantMembershipId: profile.tenantMembershipId
+      });
       await ProfileModel.delete(profile._id);
       await writeAdminAudit(req, "admin_member_hard_deleted", {
         profileId: toObjectIdString(profile._id),
         userId,
-        summary: { profileDeleted: 1, userDeleted: 0 }
+        summary: {
+          profileDeleted: 1,
+          userDeleted: 0,
+          tenantMembershipDeleted: identityCleanup.membershipDeleted,
+          globalIdentityDeleted: identityCleanup.identityDeleted
+        }
       });
       clearAdminReadCaches();
       return res.json({
@@ -3234,7 +3751,9 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
         deletedUserId: userId,
         summary: {
           profileDeleted: 1,
-          userDeleted: 0
+          userDeleted: 0,
+          tenantMembershipDeleted: identityCleanup.membershipDeleted,
+          globalIdentityDeleted: identityCleanup.identityDeleted
         }
       });
     }
@@ -3668,13 +4187,16 @@ router.get("/email/drafts", async (req, res) => {
 
 router.post("/email/draft", async (req, res) => {
   const subject = sanitizeText(String(req.body?.subject || "").trim()).slice(0, 160);
+  const preheader = sanitizeText(String(req.body?.preheader || "").trim()).slice(0, 160);
   const body = sanitizeHtmlContent(String(req.body?.body || "").trim());
   const targeting = normalizeTargeting(req.body?.targeting || {});
 
   const draft = await EmailBroadcastModel.create({
     tenantId: req.tenant._id,
     subject,
+    preheader,
     body,
+    campaignType: "marketing",
     targeting,
     status: "draft",
     recipientCount: 0,
@@ -3695,6 +4217,7 @@ router.patch("/email/draft/:id", async (req, res) => {
 
   const updates = { updatedAt: new Date() };
   if (req.body?.subject !== undefined) updates.subject = sanitizeText(String(req.body.subject || "").trim()).slice(0, 160);
+  if (req.body?.preheader !== undefined) updates.preheader = sanitizeText(String(req.body.preheader || "").trim()).slice(0, 160);
   if (req.body?.body !== undefined) updates.body = sanitizeHtmlContent(String(req.body.body || "").trim());
   if (req.body?.targeting !== undefined) updates.targeting = normalizeTargeting(req.body.targeting);
 
@@ -3723,7 +4246,87 @@ router.delete("/email/scheduled/:broadcastId", async (req, res) => {
   if (!item) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scheduled email not found." } });
   }
-  await EmailBroadcastModel.update(item._id, { status: "canceled", updatedAt: new Date() });
+  const currentStats = item?.stats && typeof item.stats === "object" ? item.stats : {};
+  const providerSchedule = currentStats?.providerSchedule && typeof currentStats.providerSchedule === "object"
+    ? currentStats.providerSchedule
+    : {};
+  const messageIds = Array.isArray(providerSchedule.messageIds)
+    ? [...new Set(providerSchedule.messageIds.map((id) => String(id || "").trim()).filter(Boolean))]
+    : [];
+
+  // Broadcasts created before provider-backed scheduling never left PondBridge,
+  // so they can be canceled locally without a provider call.
+  if (messageIds.length === 0 && !providerSchedule.provider) {
+    await EmailBroadcastModel.update(item._id, {
+      status: "canceled",
+      updatedAt: new Date(),
+      stats: {
+        ...currentStats,
+        cancellation: {
+          canceledAt: new Date().toISOString(),
+          legacyLocalOnly: true
+        }
+      }
+    });
+    await writeAdminAudit(req, "admin_email_schedule_canceled", {
+      broadcastId,
+      legacyLocalOnly: true
+    });
+    return res.json({ ok: true });
+  }
+
+  if (messageIds.length === 0) {
+    return res.status(409).json({
+      error: {
+        code: "EMAIL_SCHEDULE_PROVIDER_IDS_MISSING",
+        message: "This scheduled email is missing its provider references. Contact PondBridge support before changing it."
+      }
+    });
+  }
+
+  const results = await Promise.allSettled(
+    messageIds.map((messageId) => cancelScheduledTransactionalEmail(messageId))
+  );
+  const failedMessageIds = results
+    .map((result, index) => (result.status === "rejected" ? messageIds[index] : ""))
+    .filter(Boolean);
+  const cancellation = {
+    attemptedAt: new Date().toISOString(),
+    attemptedCount: messageIds.length,
+    canceledCount: messageIds.length - failedMessageIds.length,
+    failedCount: failedMessageIds.length,
+    failedMessageIds
+  };
+
+  if (failedMessageIds.length > 0) {
+    await EmailBroadcastModel.update(item._id, {
+      updatedAt: new Date(),
+      stats: { ...currentStats, cancellation }
+    });
+    return res.status(502).json({
+      error: {
+        code: "EMAIL_SCHEDULE_CANCEL_INCOMPLETE",
+        message: "The email provider did not confirm every cancellation. The broadcast is still marked scheduled; retry or contact PondBridge support."
+      }
+    });
+  }
+
+  await EmailBroadcastModel.update(item._id, {
+    status: "canceled",
+    updatedAt: new Date(),
+    stats: {
+      ...currentStats,
+      cancellation: {
+        ...cancellation,
+        canceledAt: new Date().toISOString()
+      }
+    }
+  });
+  await writeAdminAudit(req, "admin_email_schedule_canceled", {
+    broadcastId,
+    provider: providerSchedule.provider || "resend",
+    canceledCount: messageIds.length
+  });
   return res.json({ ok: true });
 });
 
@@ -3734,17 +4337,12 @@ router.patch("/email/scheduled/:broadcastId", async (req, res) => {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Scheduled email not found." } });
   }
 
-  const updates = { updatedAt: new Date() };
-  if (req.body?.subject) updates.subject = sanitizeText(String(req.body.subject).trim()).slice(0, 160);
-  if (req.body?.body) updates.body = sanitizeHtmlContent(String(req.body.body).trim());
-  if (req.body?.scheduledFor) {
-    const next = new Date(req.body.scheduledFor);
-    if (!Number.isNaN(next.getTime()) && next > new Date()) updates.scheduledFor = next;
-  }
-
-  await EmailBroadcastModel.update(item._id, updates);
-  const fresh = await EmailBroadcastModel.findOne(req.tenant._id, { _id: item._id });
-  return res.json({ ok: true, item: serializeEmailBroadcast(fresh) });
+  return res.status(409).json({
+    error: {
+      code: "EMAIL_SCHEDULE_RECREATE_REQUIRED",
+      message: "To change a scheduled email, cancel it first and create a replacement. This prevents the provider copy from diverging from PondBridge."
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -3859,12 +4457,29 @@ router.patch("/email/footer-presets", async (req, res) => {
 
 router.post("/email/recipients-preview", async (req, res) => {
   const targeting = normalizeTargeting(req.body?.targeting || {});
-  const { profiles, recipients } = await resolveRecipientsForTargeting(req.tenant._id, targeting);
+  const { profiles, recipients, heldRecipients } = await resolveRecipientsForTargeting(
+    req.tenant._id,
+    targeting
+  );
+  const eligibility = await resolveEmailRecipientEligibility({
+    tenantId: req.tenant._id,
+    recipients,
+    topicKey: COMMUNITY_UPDATES_TOPIC
+  });
+  const deliverableSet = new Set(eligibility.deliverableRecipients);
+  const previewProfiles = profiles.filter((profile) =>
+    deliverableSet.has(String(profile?.emails?.[0] || "").trim().toLowerCase())
+  );
 
   return res.json({
-    count: recipients.length,
-    excludedCount: 0,
-    preview: profiles.slice(0, 5).map((profile) => ({
+    count: eligibility.deliverableRecipients.length,
+    excludedCount: eligibility.excludedRecipients.length + heldRecipients.length,
+    exclusionBreakdown: {
+      suppressed: eligibility.suppressedRecipients.length,
+      unsubscribed: eligibility.unsubscribedRecipients.length,
+      onHold: heldRecipients.length
+    },
+    preview: previewProfiles.slice(0, 5).map((profile) => ({
       id: toObjectIdString(profile._id),
       name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Member",
       email: String(profile?.emails?.[0] || "").trim().toLowerCase()
@@ -3874,6 +4489,7 @@ router.post("/email/recipients-preview", async (req, res) => {
 
 router.post("/email/test", async (req, res) => {
   const subject = sanitizeText(String(req.body?.subject || "").trim());
+  const preheader = sanitizeText(String(req.body?.preheader || "").trim()).slice(0, 160);
   const body = sanitizeHtmlContent(String(req.body?.body || "").trim());
   const user = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   const to = normalizeEmail(user?.email || req.user.email || "");
@@ -3903,11 +4519,28 @@ router.post("/email/test", async (req, res) => {
   });
   const emailBranding = buildTenantEmailBranding(req.tenant);
   const resolvedReplyTo = isEmail(replyTo) ? replyTo : emailBranding.replyTo;
+  const readiness = assertEmailDraftReady({
+    tenant: req.tenant,
+    subject,
+    preheader,
+    body,
+    campaignType: "marketing",
+    recipientCount: 1
+  });
+  const preferenceUrls = buildEmailPreferenceUrls({
+    tenantId: req.tenant._id,
+    email: to,
+    topicKey: COMMUNITY_UPDATES_TOPIC
+  });
   const composed = buildDirectorBroadcastEmailContent({
     tenant: req.tenant,
     subject,
+    preheader,
     bodyHtml: body,
-    footer: normalizeEmailFooterData(req.body?.footer || {}, footerSettings.activeFooter)
+    footer: normalizeEmailFooterData(req.body?.footer || {}, footerSettings.activeFooter),
+    campaignType: "marketing",
+    postalAddress: readiness.compliance.postalAddress,
+    unsubscribeUrl: preferenceUrls.manageUrl
   });
 
   await sendTransactionalEmail({
@@ -3916,6 +4549,10 @@ router.post("/email/test", async (req, res) => {
     subject: `[Test] ${subject}`,
     text: composed.text,
     html: composed.html,
+    headers: {
+      "List-Unsubscribe": `<${preferenceUrls.oneClickUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+    },
     ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {})
   });
 
@@ -3924,11 +4561,55 @@ router.post("/email/test", async (req, res) => {
 
 router.post("/email/send", emailSendLimiter, async (req, res) => {
   const subject = sanitizeText(String(req.body?.subject || "").trim());
+  const preheader = sanitizeText(String(req.body?.preheader || "").trim()).slice(0, 160);
   const body = sanitizeHtmlContent(String(req.body?.body || "").trim());
   const targeting = normalizeTargeting(req.body?.targeting || {});
   const scheduledForRaw = String(req.body?.scheduledFor || "").trim();
   const scheduledFor = scheduledForRaw ? new Date(scheduledForRaw) : null;
   const actorReplyTo = normalizeEmail(req.user.email || "");
+  const requestedAiGenerationId = String(req.body?.aiGenerationId || "").trim();
+
+  if (scheduledForRaw && (!scheduledFor || Number.isNaN(scheduledFor.getTime()))) {
+    return res.status(400).json({
+      error: {
+        code: "EMAIL_SCHEDULE_INVALID",
+        message: "Choose a valid date and time for the scheduled email."
+      }
+    });
+  }
+
+  const now = new Date();
+  const isScheduled = Boolean(scheduledForRaw);
+  if (isScheduled && scheduledFor <= now) {
+    return res.status(400).json({
+      error: {
+        code: "EMAIL_SCHEDULE_IN_PAST",
+        message: "Scheduled email time must be in the future."
+      }
+    });
+  }
+
+  const maxScheduledAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  if (isScheduled && scheduledFor > maxScheduledAt) {
+    return res.status(400).json({
+      error: {
+        code: "EMAIL_SCHEDULE_TOO_FAR",
+        message: "Scheduled emails can be created up to 30 days in advance."
+      }
+    });
+  }
+
+  if (isScheduled) {
+    const scheduling = getEmailSchedulingStatus();
+    if (!scheduling.available) {
+      return res.status(503).json({
+        error: {
+          code: "EMAIL_SCHEDULING_UNAVAILABLE",
+          message: "Scheduled email requires the configured Resend delivery service. Send now or contact PondBridge support."
+        }
+      });
+    }
+  }
 
   if (!subject || !body) {
     return res.status(400).json({
@@ -3945,19 +4626,20 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
   });
   const emailBranding = buildTenantEmailBranding(req.tenant);
   const resolvedReplyTo = isEmail(actorReplyTo) ? actorReplyTo : emailBranding.replyTo;
-  const composed = buildDirectorBroadcastEmailContent({
-    tenant: req.tenant,
-    subject,
-    bodyHtml: body,
-    footer: normalizeEmailFooterData(req.body?.footer || {}, footerSettings.activeFooter)
-  });
 
-  const { profiles, recipients } = await resolveRecipientsForTargeting(req.tenant._id, targeting);
+  const {
+    profiles,
+    recipients,
+    heldRecipients,
+    matchedRecipientCount
+  } = await resolveRecipientsForTargeting(req.tenant._id, targeting);
   if (recipients.length === 0) {
     return res.status(400).json({
       error: {
-        code: "NO_RECIPIENTS",
-        message: "No recipients match the selected targeting."
+        code: matchedRecipientCount > 0 ? "NO_ELIGIBLE_RECIPIENTS" : "NO_RECIPIENTS",
+        message: matchedRecipientCount > 0
+          ? "Every matching recipient is on hold."
+          : "No recipients match the selected targeting."
       }
     });
   }
@@ -3969,6 +4651,59 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
         message: `Recipient list exceeds max size of ${env.EMAIL_BROADCAST_MAX_RECIPIENTS}. Narrow your targeting and try again.`
       }
     });
+  }
+
+  const eligibility = await resolveEmailRecipientEligibility({
+    tenantId: req.tenant._id,
+    recipients,
+    topicKey: COMMUNITY_UPDATES_TOPIC
+  });
+  const eligibleRecipients = eligibility.deliverableRecipients;
+  const initiallyExcludedCount = eligibility.excludedRecipients.length + heldRecipients.length;
+  if (eligibleRecipients.length === 0) {
+    return res.status(400).json({
+      error: {
+        code: "NO_ELIGIBLE_RECIPIENTS",
+        message: "Every matching recipient is suppressed, unsubscribed, or on hold."
+      }
+    });
+  }
+
+  const readiness = assertEmailDraftReady({
+    tenant: req.tenant,
+    subject,
+    preheader,
+    body,
+    campaignType: "marketing",
+    recipientCount: eligibleRecipients.length
+  });
+  const composed = buildDirectorBroadcastEmailContent({
+    tenant: req.tenant,
+    subject,
+    preheader,
+    bodyHtml: body,
+    footer: normalizeEmailFooterData(req.body?.footer || {}, footerSettings.activeFooter),
+    campaignType: "marketing",
+    postalAddress: readiness.compliance.postalAddress,
+    unsubscribeUrl: "{{unsubscribeUrl}}"
+  });
+
+  let linkedAiGenerationId = null;
+  if (requestedAiGenerationId) {
+    const linkedGeneration = await AiGenerationModel.findOne(req.tenant._id, {
+      _id: requestedAiGenerationId,
+      status: "succeeded",
+      resourceType: "email_draft"
+    });
+    if (!linkedGeneration) {
+      return res.status(400).json({
+        error: {
+          code: "EMAIL_AI_GENERATION_INVALID",
+          message: "The linked AI draft could not be verified for this camp. Generate a new draft or remove the link."
+        }
+      });
+    }
+    linkedAiGenerationId = linkedGeneration._id;
   }
 
   // Duplicate broadcast warning
@@ -3990,83 +4725,215 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
     }
   }
 
-  // Merge tag personalization
-  const MERGE_TAG_REGEX = /\{\{(firstName|lastName)\}\}/g;
-  const hasMergeTags = MERGE_TAG_REGEX.test(body);
-  let personalizer = null;
-  if (hasMergeTags) {
-    const emailToProfile = new Map();
-    for (const profile of profiles) {
-      const profileEmail = String(profile?.emails?.[0] || "").trim().toLowerCase();
-      if (profileEmail) emailToProfile.set(profileEmail, profile);
-    }
-    personalizer = (recipientEmail) => {
-      const profile = emailToProfile.get(recipientEmail) || {};
-      const firstName = String(profile?.firstName || "").trim() || "there";
-      const lastName = String(profile?.lastName || "").trim();
-      const personalizedHtml = composed.html
-        .replace(/\{\{firstName\}\}/g, escapeEmailHtml(firstName))
-        .replace(/\{\{lastName\}\}/g, escapeEmailHtml(lastName));
-      const personalizedText = composed.text
-        .replace(/\{\{firstName\}\}/g, firstName)
-        .replace(/\{\{lastName\}\}/g, lastName);
-      return { html: personalizedHtml, text: personalizedText };
-    };
+  // Every marketing recipient gets a unique preference URL and one-click
+  // unsubscribe header. Merge tags are resolved in the same per-recipient pass.
+  const emailToProfile = new Map();
+  for (const profile of profiles) {
+    const profileEmail = String(profile?.emails?.[0] || "").trim().toLowerCase();
+    if (profileEmail) emailToProfile.set(profileEmail, profile);
   }
+  const personalizer = (recipientEmail) => {
+    const profile = emailToProfile.get(recipientEmail) || {};
+    const firstName = String(profile?.firstName || "").trim() || "there";
+    const lastName = String(profile?.lastName || "").trim();
+    const preferenceUrls = buildEmailPreferenceUrls({
+      tenantId: req.tenant._id,
+      email: recipientEmail,
+      topicKey: COMMUNITY_UPDATES_TOPIC
+    });
+    const personalizedHtml = composed.html
+      .replace(/\{\{firstName\}\}/g, escapeEmailHtml(firstName))
+      .replace(/\{\{lastName\}\}/g, escapeEmailHtml(lastName))
+      .replace(/\{\{unsubscribeUrl\}\}/g, escapeEmailHtml(preferenceUrls.manageUrl));
+    const personalizedText = composed.text
+      .replace(/\{\{firstName\}\}/g, firstName)
+      .replace(/\{\{lastName\}\}/g, lastName)
+      .replace(/\{\{unsubscribeUrl\}\}/g, preferenceUrls.manageUrl);
+    return {
+      html: personalizedHtml,
+      text: personalizedText,
+      headers: {
+        "List-Unsubscribe": `<${preferenceUrls.oneClickUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+      }
+    };
+  };
 
-  const now = new Date();
-  const isScheduled = scheduledFor && !Number.isNaN(scheduledFor.getTime()) && scheduledFor > now;
   const basePayload = {
     subject,
+    preheader,
     body,
+    campaignType: "marketing",
+    aiGenerationId: linkedAiGenerationId,
+    complianceSnapshot: readiness.compliance,
     targeting,
-    recipientCount: recipients.length,
-    excludedCount: 0,
-    recipientsPreview: recipients.slice(0, 8),
+    recipientCount: eligibleRecipients.length,
+    excludedCount: initiallyExcludedCount,
+    recipientsPreview: eligibleRecipients.slice(0, 8),
     createdByUserId: req.user.id,
-    status: isScheduled ? "scheduled" : "sent",
+    // Keep this truthful until the provider accepts the delivery request.
+    status: "draft",
     scheduledFor: isScheduled ? scheduledFor : null,
-    sentAt: isScheduled ? null : now
+    sentAt: null
   };
 
   const broadcast = await EmailBroadcastModel.create({ ...basePayload, tenantId: req.tenant._id });
 
-  if (!isScheduled) {
-    const delivery = await sendBulkTransactionalEmail({
+  let delivery;
+  try {
+    delivery = await sendBulkTransactionalEmail({
       from: emailBranding.from,
-      recipients,
+      recipients: eligibleRecipients,
       subject,
       text: composed.text,
       html: composed.html,
       ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {}),
       tags: [
         { name: "category", value: "director_broadcast" },
-        { name: "tenant", value: req.tenant.slug || "tenant" }
+        { name: "tenant", value: req.tenant.slug || "tenant" },
+        { name: "pondbridge_broadcast", value: String(broadcast._id) }
       ],
       idempotencyKey: `director-broadcast/${req.tenant.slug || "tenant"}/${broadcast._id}`,
       batchSize: env.EMAIL_BROADCAST_BATCH_SIZE,
       maxRecipients: env.EMAIL_BROADCAST_MAX_RECIPIENTS,
-      ...(personalizer ? { personalizer } : {})
+      ...(isScheduled ? { scheduledAt: scheduledFor.toISOString() } : {}),
+      personalizer
     });
-    const deliveryStats = {
-      attemptedCount: delivery.attemptedCount,
-      sentCount: delivery.sentCount,
-      failedCount: delivery.failedCount,
-      batchesAttempted: delivery.batchesAttempted,
-      batchesSucceeded: delivery.batchesSucceeded,
-      batchesFailed: delivery.batchesFailed,
-      messageIds: delivery.messageIds.slice(0, 20),
-      failures: delivery.failures.slice(0, 10)
-    };
+  } catch (error) {
     await EmailBroadcastModel.update(broadcast._id, {
-      status: delivery.sentCount > 0 ? "sent" : "failed",
-      sentAt: delivery.sentCount > 0 ? new Date() : null,
+      status: "failed",
+      sentAt: null,
       stats: {
         ...(broadcast.stats || {}),
-        delivery: deliveryStats
+        delivery: {
+          attemptedCount: eligibleRecipients.length,
+          sentCount: 0,
+          failedCount: eligibleRecipients.length,
+          failures: [{
+            code: String(error?.code || "EMAIL_SEND_FAILED"),
+            message: String(error?.message || "Email provider request failed.")
+          }]
+        }
+      }
+    });
+    return res.status(Math.min(599, Math.max(400, Number(error?.statusCode || 502)))).json({
+      error: {
+        code: String(error?.code || "EMAIL_SEND_FAILED"),
+        message: "The email provider did not accept this broadcast. No successful send was recorded."
       }
     });
   }
+
+  const commonDeliveryStats = {
+      attemptedCount: delivery.attemptedCount,
+      failedCount: delivery.failedCount,
+      suppressedCount: delivery.suppressedCount,
+      preflightExcludedCount: initiallyExcludedCount,
+      preferenceExcludedCount: eligibility.unsubscribedRecipients.length,
+      preflightSuppressedCount: eligibility.suppressedRecipients.length,
+      contactOnHoldCount: heldRecipients.length,
+      batchesAttempted: delivery.batchesAttempted,
+      batchesSucceeded: delivery.batchesSucceeded,
+      batchesFailed: delivery.batchesFailed,
+      failures: delivery.failures.slice(0, 10)
+  };
+
+  if (isScheduled) {
+    const deliverableCount = Math.max(0, eligibleRecipients.length - Number(delivery.suppressedCount || 0));
+    const acceptedMessageIds = [...new Set(
+      (delivery.messageIds || []).map((id) => String(id || "").trim()).filter(Boolean)
+    )];
+    const scheduleComplete =
+      deliverableCount > 0 &&
+      delivery.sentCount === deliverableCount &&
+      acceptedMessageIds.length === deliverableCount &&
+      delivery.failures.length === 0;
+
+    if (!scheduleComplete) {
+      const compensation = await Promise.allSettled(
+        acceptedMessageIds.map((messageId) => cancelScheduledTransactionalEmail(messageId))
+      );
+      const uncanceledMessageIds = compensation
+        .map((result, index) => (result.status === "rejected" ? acceptedMessageIds[index] : ""))
+        .filter(Boolean);
+      await EmailBroadcastModel.update(broadcast._id, {
+        status: "failed",
+        sentAt: null,
+        excludedCount: initiallyExcludedCount + Number(delivery.suppressedCount || 0),
+        stats: {
+          ...(broadcast.stats || {}),
+          delivery: {
+            ...commonDeliveryStats,
+            acceptedCount: delivery.sentCount,
+            sentCount: 0
+          },
+          providerSchedule: {
+            provider: "resend",
+            scheduledAt: scheduledFor.toISOString(),
+            messageIds: uncanceledMessageIds,
+            compensatedCount: acceptedMessageIds.length - uncanceledMessageIds.length,
+            compensationFailedCount: uncanceledMessageIds.length
+          }
+        }
+      });
+      return res.status(502).json({
+        error: {
+          code: uncanceledMessageIds.length > 0
+            ? "EMAIL_SCHEDULE_COMPENSATION_INCOMPLETE"
+            : "EMAIL_SCHEDULE_REJECTED",
+          message: uncanceledMessageIds.length > 0
+            ? "The provider accepted only part of the schedule and could not cancel every accepted email. Contact PondBridge support immediately."
+            : "The provider did not accept the complete schedule. Any accepted emails were canceled; review recipients and try again."
+        }
+      });
+    }
+
+    await EmailBroadcastModel.update(broadcast._id, {
+      status: "scheduled",
+      scheduledFor,
+      sentAt: null,
+      excludedCount: initiallyExcludedCount + Number(delivery.suppressedCount || 0),
+      stats: {
+        ...(broadcast.stats || {}),
+        delivery: {
+          ...commonDeliveryStats,
+          acceptedCount: delivery.sentCount,
+          sentCount: 0
+        },
+        providerSchedule: {
+          provider: "resend",
+          scheduledAt: scheduledFor.toISOString(),
+          messageIds: acceptedMessageIds,
+          acceptedCount: delivery.sentCount
+        }
+      }
+    });
+  } else {
+    await EmailBroadcastModel.update(broadcast._id, {
+      status: delivery.sentCount > 0 ? "sent" : "failed",
+      sentAt: delivery.sentCount > 0 ? new Date() : null,
+      excludedCount: initiallyExcludedCount + Number(delivery.suppressedCount || 0),
+      stats: {
+        ...(broadcast.stats || {}),
+        delivery: {
+          ...commonDeliveryStats,
+          sentCount: delivery.sentCount,
+          messageIds: delivery.messageIds.slice(0, 20)
+        }
+      }
+    });
+  }
+
+  await writeAdminAudit(req, isScheduled ? "admin_email_scheduled" : "admin_email_sent", {
+    broadcastId: String(broadcast._id),
+    recipientCount: eligibleRecipients.length,
+    targetedCount: matchedRecipientCount,
+    excludedCount: initiallyExcludedCount + Number(delivery.suppressedCount || 0),
+    unsubscribeExcludedCount: eligibility.unsubscribedRecipients.length,
+    contactOnHoldCount: heldRecipients.length,
+    scheduledFor: isScheduled ? scheduledFor.toISOString() : null,
+    status: isScheduled ? "scheduled" : delivery.sentCount > 0 ? "sent" : "failed"
+  });
 
   const fresh = await EmailBroadcastModel.findOne(req.tenant._id, { _id: broadcast._id });
   return res.status(201).json({ ok: true, item: serializeEmailBroadcast(fresh) });
@@ -4234,24 +5101,8 @@ router.get("/features", async (req, res) => {
   const planTier = resolveTenantFeatureTier(req.tenant);
   const theme = resolveTheme(req.tenant);
   const content = resolveContent(req.tenant);
-  const modules = resolveModules(req.tenant, { applyPlanGating: false });
   const features = listFeaturesForPlan(planTier, req.tenant.addOns || []);
-  const campType = content.campType || "coed";
-  const items = MODULE_CATALOG.map((module) => {
-    const locked = module.requiredFeature
-      ? !hasFeature(planTier, module.requiredFeature, req.tenant.addOns || [])
-      : false;
-    const platformDisabled = module.key === "events" && !MEMBER_EVENTS_PAGES_ENABLED;
-    return {
-      ...module,
-      label: replaceAlumniForCampType(module.label, campType),
-      description: replaceAlumniForCampType(module.description, campType),
-      enabled: locked || platformDisabled ? false : Boolean(modules[module.key]),
-      locked,
-      platformDisabled,
-      disabledReason: platformDisabled ? "Temporarily hidden from members across all networks." : ""
-    };
-  });
+  const inventory = await buildTenantFeatureInventory(req.tenant);
 
   return res.json({
     tenant: {
@@ -4265,9 +5116,14 @@ router.get("/features", async (req, res) => {
       brandPrimary: theme.brandPrimary,
       logoUrl: theme.logoUrl
     },
-    modules: items,
+    modules: inventory.modules,
+    capabilities: inventory.capabilities,
+    summary: inventory.summary,
     moduleDisplayNames: {
       newsletter: content.newsletterName || "Newsletter"
+    },
+    moduleSettings: {
+      merchShopUrl: content.merchShopUrl || ""
     }
   });
 });
@@ -4279,6 +5135,9 @@ router.patch("/features", async (req, res) => {
     : {};
   const incomingNames = req.body?.moduleDisplayNames && typeof req.body.moduleDisplayNames === "object"
     ? req.body.moduleDisplayNames
+    : {};
+  const incomingSettings = req.body?.moduleSettings && typeof req.body.moduleSettings === "object"
+    ? req.body.moduleSettings
     : {};
 
   const current = resolveModules(req.tenant, { applyPlanGating: false });
@@ -4294,25 +5153,83 @@ router.patch("/features", async (req, res) => {
     nextModules[module.key] = Boolean(incomingModules[module.key]);
   }
 
-  const update = {
-    modules: nextModules
-  };
+  Object.assign(
+    nextModules,
+    resolveTenantModules(nextModules, { applyPlatformAvailability: false })
+  );
+
+  const draft = resolveDraft(req.tenant);
+  const currentContent = resolveContent(req.tenant);
+  const nextContent = { ...currentContent };
+  let contentChanged = false;
 
   if (Object.prototype.hasOwnProperty.call(incomingNames, "newsletter")) {
-    const currentContent = resolveContent(req.tenant);
-    update.content = {
-      ...currentContent,
-      newsletterName: sanitizeText(String(incomingNames.newsletter || "").trim()) || "Newsletter"
-    };
+    nextContent.newsletterName = sanitizeText(String(incomingNames.newsletter || "").trim()) || "Newsletter";
+    contentChanged = true;
   }
 
+  if (Object.prototype.hasOwnProperty.call(incomingSettings, "merchShopUrl")) {
+    const rawMerchShopUrl = String(incomingSettings.merchShopUrl || "").trim();
+    const merchShopUrl = normalizeHttpUrl(rawMerchShopUrl);
+    if (rawMerchShopUrl && !merchShopUrl) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_MERCH_SHOP_URL",
+          message: "Provide a valid merch shop URL beginning with http:// or https://."
+        }
+      });
+    }
+    nextContent.merchShopUrl = merchShopUrl;
+    contentChanged = true;
+  }
+
+  const update = {
+    modules: nextModules,
+    ...(contentChanged ? { content: nextContent } : {}),
+    onboardingDraft: {
+      ...draft,
+      modules: nextModules,
+      content: contentChanged ? { ...draft.content, ...nextContent } : draft.content,
+      updatedAt: new Date(),
+      updatedByUserId: req.user.id
+    }
+  };
+
   const tenant = await TenantModel.update(req.tenant._id, update);
+  const moduleChanges = MODULE_CATALOG
+    .map((module) => ({
+      key: module.key,
+      before: Boolean(current[module.key]),
+      after: Boolean(nextModules[module.key])
+    }))
+    .filter((change) => change.before !== change.after);
+  const previousNewsletterName = currentContent.newsletterName || "Newsletter";
+  const nextNewsletterName = resolveContent(tenant).newsletterName || "Newsletter";
+
+  await writeAdminAudit(req, "admin_features_updated", {
+    moduleChanges,
+    moduleDisplayNameChanges:
+      previousNewsletterName === nextNewsletterName
+        ? []
+        : [{ key: "newsletter", before: previousNewsletterName, after: nextNewsletterName }],
+    moduleSettingChanges:
+      String(currentContent.merchShopUrl || "") === String(resolveContent(tenant).merchShopUrl || "")
+        ? []
+        : [{ key: "merchShopUrl", configured: Boolean(resolveContent(tenant).merchShopUrl) }]
+  });
+
+  const inventory = await buildTenantFeatureInventory(tenant);
 
   return res.json({
     ok: true,
-    modules: resolveModules(tenant, { applyPlanGating: false }),
+    modules: inventory.modules,
+    capabilities: inventory.capabilities,
+    summary: inventory.summary,
     moduleDisplayNames: {
       newsletter: resolveContent(tenant).newsletterName
+    },
+    moduleSettings: {
+      merchShopUrl: resolveContent(tenant).merchShopUrl || ""
     }
   });
 });
@@ -5002,6 +5919,17 @@ router.get("/notifications/history", async (req, res) => {
   return res.json({ items });
 });
 
+router.post("/notifications/recipients-preview", async (req, res) => {
+  const audience = normalizeMobileNotificationAudience(req.body?.audience);
+  const userIds = normalizeMobileNotificationUserIds(req.body?.userIds);
+  const resolvedUserIds = await resolveAudienceUserIds(req.tenant._id, audience, { userIds });
+
+  return res.json({
+    audience,
+    totalRecipients: resolvedUserIds.length
+  });
+});
+
 router.post("/notifications/send", async (req, res) => {
   const tenantPrefs = normalizeTenantMobileNotificationPrefs(req.tenant.notificationPrefs || {});
   if (!tenantPrefs.mobileEnabled || !tenantPrefs.customBroadcasts) {
@@ -5020,8 +5948,8 @@ router.post("/notifications/send", async (req, res) => {
   const audience = normalizeMobileNotificationAudience(req.body?.audience);
   const userIds = normalizeMobileNotificationUserIds(req.body?.userIds);
   const pushRequested = req.body?.pushRequested !== false;
-  const scheduleAtRaw = req.body?.scheduleAt ? new Date(req.body.scheduleAt) : null;
-  const scheduleAt = scheduleAtRaw && !Number.isNaN(scheduleAtRaw.getTime()) ? scheduleAtRaw : null;
+  const scheduleAtProvided = Boolean(String(req.body?.scheduleAt || "").trim());
+  const scheduleAt = scheduleAtProvided ? new Date(req.body.scheduleAt) : null;
 
   if (!title || !body) {
     return res.status(400).json({
@@ -5041,7 +5969,26 @@ router.post("/notifications/send", async (req, res) => {
     });
   }
 
-  if (scheduleAt && scheduleAt.getTime() > Date.now() + 30 * 1000) {
+  if (scheduleAtProvided) {
+    const scheduleTime = scheduleAt?.getTime?.() || 0;
+    if (!scheduleTime || Number.isNaN(scheduleTime)) {
+      return res.status(400).json({
+        error: { code: "INVALID_SCHEDULE_TIME", message: "Choose a valid date and time." }
+      });
+    }
+    if (scheduleTime < Date.now() + 60 * 1000) {
+      return res.status(400).json({
+        error: { code: "SCHEDULE_TIME_TOO_SOON", message: "Scheduled notifications must be at least one minute in the future." }
+      });
+    }
+    if (scheduleTime > Date.now() + 30 * 24 * 60 * 60 * 1000) {
+      return res.status(400).json({
+        error: { code: "SCHEDULE_TIME_TOO_FAR", message: "Notifications can be scheduled up to 30 days ahead." }
+      });
+    }
+  }
+
+  if (scheduleAtProvided) {
     const created = await MobileNotificationScheduleModel.create({
       tenantId: req.tenant._id,
       runAt: scheduleAt,
@@ -5386,6 +6333,252 @@ router.get("/analytics", async (req, res, next) => {
   }
 });
 
+async function loadAlumniContactsForGrowth(tenantId) {
+  try {
+    const contacts = await AlumniContactModel.find(tenantId, {
+      contactStatus: { $ne: "archived" }
+    }, {
+      sort: { updatedAt: -1 },
+      limit: 5000
+    });
+    return { contacts, storage: { available: true } };
+  } catch (error) {
+    if (isAlumniGrowthStorageUnavailable(error)) {
+      return {
+        contacts: [],
+        storage: {
+          available: false,
+          reason: "schema_required",
+          message: "Apply the communications system schema before storing pre-member alumni records."
+        }
+      };
+    }
+    throw error;
+  }
+}
+
+router.get("/growth", async (req, res, next) => {
+  try {
+    const tenantId = req.tenant._id;
+    const ninetyDaysAgo = new Date(Date.now() - 90 * DAY_MS);
+    const [contactResult, invites, users, profiles, analyticsEvents, broadcasts] = await Promise.all([
+      loadAlumniContactsForGrowth(tenantId),
+      InviteModel.find(tenantId, { roleToAssign: "user" }, {
+        sort: { createdAt: -1 },
+        limit: 5000
+      }),
+      UserModel.find(tenantId, { status: { $ne: "removed" } }, {
+        select: ["id", "email", "status", "createdAt", "updatedAt", "lastLoginAt"]
+      }),
+      ProfileModel.find(tenantId, { status: { $ne: "removed" } }, {
+        select: [
+          "id",
+          "userId",
+          "firstName",
+          "lastName",
+          "emails",
+          "avatarUrl",
+          "bio",
+          "cityState",
+          "industry",
+          "roleAtCamp",
+          "createdAt"
+        ]
+      }),
+      AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
+        select: ["userId", "eventType", "createdAt"],
+        limit: 10000
+      }),
+      EmailBroadcastModel.find(tenantId, { campaignType: "marketing" }, {
+        sort: { createdAt: -1 },
+        limit: 100
+      })
+    ]);
+    const snapshot = buildAlumniGrowthSnapshot({
+      contacts: contactResult.contacts,
+      invites,
+      users,
+      profiles,
+      analyticsEvents,
+      broadcasts
+    });
+    const query = String(req.query.q || "").trim().toLowerCase();
+    const requestedLifecycle = String(req.query.lifecycle || "all").trim().toLowerCase();
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit || 200) || 200));
+    const filteredContacts = snapshot.contacts.filter((contact) => {
+      if (requestedLifecycle !== "all" && contact.lifecycle !== requestedLifecycle) return false;
+      if (!query) return true;
+      return [contact.firstName, contact.lastName, contact.email, ...(contact.tags || [])]
+        .some((value) => String(value || "").toLowerCase().includes(query));
+    });
+
+    return res.json({
+      tenant: {
+        id: toObjectIdString(req.tenant._id),
+        slug: req.tenant.slug,
+        name: req.tenant.name
+      },
+      generatedAt: snapshot.generatedAt,
+      storage: contactResult.storage,
+      metrics: snapshot.metrics,
+      funnel: snapshot.funnel,
+      opportunities: snapshot.opportunities,
+      marketing: snapshot.marketing,
+      contacts: {
+        total: filteredContacts.length,
+        items: filteredContacts.slice(0, limit)
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/growth/contacts", async (req, res, next) => {
+  try {
+    const rawContacts = Array.isArray(req.body?.contacts)
+      ? req.body.contacts
+      : req.body?.contact
+        ? [req.body.contact]
+        : [];
+    if (!rawContacts.length) {
+      return res.status(400).json({
+        error: { code: "ALUMNI_CONTACTS_REQUIRED", message: "Add at least one alumni contact." }
+      });
+    }
+    if (rawContacts.length > 500) {
+      return res.status(400).json({
+        error: { code: "ALUMNI_CONTACT_LIMIT", message: "Add up to 500 alumni contacts at a time." }
+      });
+    }
+
+    const normalizedByEmail = new Map();
+    let invalidCount = 0;
+    for (const rawContact of rawContacts) {
+      const normalized = normalizeAlumniContactInput(rawContact);
+      if (!normalized) {
+        invalidCount += 1;
+        continue;
+      }
+      normalizedByEmail.set(normalized.email, normalized);
+    }
+    if (!normalizedByEmail.size) {
+      return res.status(400).json({
+        error: { code: "ALUMNI_CONTACT_EMAIL_INVALID", message: "No valid alumni email addresses were found." }
+      });
+    }
+
+    const emails = [...normalizedByEmail.keys()];
+    const existingUsers = await UserModel.find(req.tenant._id, { email: { $in: emails } }, {
+      select: ["id", "email"]
+    });
+    const memberEmails = new Set(existingUsers.map((user) => normalizeEmail(user.email)));
+    let createdCount = 0;
+    let updatedCount = 0;
+    let existingMemberCount = 0;
+    for (const contact of normalizedByEmail.values()) {
+      if (memberEmails.has(contact.email)) {
+        existingMemberCount += 1;
+        continue;
+      }
+      const result = await upsertAlumniContact({
+        tenantId: req.tenant._id,
+        contact,
+        actorUserId: req.user.id
+      });
+      if (result.status === "created") createdCount += 1;
+      if (result.status === "updated") updatedCount += 1;
+    }
+
+    await writeAdminAudit(req, "admin_alumni_contacts_saved", {
+      submittedCount: rawContacts.length,
+      uniqueValidCount: normalizedByEmail.size,
+      createdCount,
+      updatedCount,
+      existingMemberCount,
+      invalidCount
+    });
+    clearAdminReadCaches();
+    return res.status(201).json({
+      ok: true,
+      submittedCount: rawContacts.length,
+      uniqueValidCount: normalizedByEmail.size,
+      createdCount,
+      updatedCount,
+      existingMemberCount,
+      invalidCount
+    });
+  } catch (error) {
+    if (isAlumniGrowthStorageUnavailable(error)) {
+      return res.status(503).json({
+        error: {
+          code: "ALUMNI_CONTACT_STORAGE_UNAVAILABLE",
+          message: "Pre-member alumni storage is not ready. Apply the communications system schema in staging first."
+        }
+      });
+    }
+    return next(error);
+  }
+});
+
+router.patch("/growth/contacts/:contactId", async (req, res, next) => {
+  try {
+    const contact = await AlumniContactModel.findOne(req.tenant._id, {
+      _id: String(req.params.contactId || "").trim()
+    });
+    if (!contact) {
+      return res.status(404).json({
+        error: { code: "ALUMNI_CONTACT_NOT_FOUND", message: "Alumni contact not found." }
+      });
+    }
+    const normalized = normalizeAlumniContactInput({
+      ...contact,
+      ...req.body,
+      email: contact.email
+    });
+    const updated = await AlumniContactModel.update(contact._id, {
+      firstName: normalized.firstName,
+      lastName: normalized.lastName,
+      contactStatus: normalized.contactStatus,
+      tags: normalized.tags,
+      campYears: normalized.campYears,
+      notes: normalized.notes,
+      updatedAt: new Date()
+    });
+    await writeAdminAudit(req, "admin_alumni_contact_updated", {
+      contactId: toObjectIdString(contact._id),
+      contactStatus: normalized.contactStatus,
+      tagCount: normalized.tags.length,
+      campYearCount: normalized.campYears.length,
+      noteLength: normalized.notes.length
+    });
+    clearAdminReadCaches();
+    return res.json({
+      ok: true,
+      contact: {
+        id: toObjectIdString(updated._id),
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        email: updated.email,
+        contactStatus: updated.contactStatus,
+        tags: updated.tags || [],
+        campYears: updated.campYears || [],
+        notes: updated.notes || ""
+      }
+    });
+  } catch (error) {
+    if (isAlumniGrowthStorageUnavailable(error)) {
+      return res.status(503).json({
+        error: {
+          code: "ALUMNI_CONTACT_STORAGE_UNAVAILABLE",
+          message: "Pre-member alumni storage is not ready."
+        }
+      });
+    }
+    return next(error);
+  }
+});
+
 router.get("/invites", async (req, res) => {
   const status = String(req.query.status || "pending").trim().toLowerCase();
   const now = new Date();
@@ -5416,6 +6609,110 @@ router.get("/invites", async (req, res) => {
       usedAt: invite.usedAt,
       createdAt: invite.createdAt
     }))
+  });
+});
+
+router.post("/invites/preview", inviteUpload.single("file"), async (req, res) => {
+  const roleToAssign = String(req.body.roleToAssign || "user").trim();
+  if (!["user", "tenant_admin"].includes(roleToAssign)) {
+    return res.status(400).json({
+      error: { code: "INVALID_ROLE", message: "roleToAssign must be 'user' or 'tenant_admin'." }
+    });
+  }
+
+  let recipientsFromPayload = [];
+  try {
+    recipientsFromPayload = parseInviteRowsFromRecipientsPayload(req.body.recipients);
+  } catch (parseError) {
+    return res.status(400).json({
+      error: { code: "INVALID_RECIPIENTS", message: parseError.message || "Invalid recipients payload." }
+    });
+  }
+
+  let csvAnalysis;
+  try {
+    csvAnalysis = analyzeInviteRowsFromCsv(req.file?.buffer || null);
+  } catch (parseError) {
+    return res.status(400).json({
+      error: { code: "CSV_INVALID_FORMAT", message: parseError.message || "Invalid CSV format." }
+    });
+  }
+  const textRows = parseInviteRowsFromText(req.body.emails || "");
+  const validInputCount = recipientsFromPayload.length + textRows.length + csvAnalysis.rows.length;
+  const recipients = mergeInviteRows(recipientsFromPayload, textRows, csvAnalysis.rows);
+  if (recipients.length === 0) {
+    return res.status(400).json({
+      error: { code: "RECIPIENTS_REQUIRED", message: "No valid invite recipients were found." }
+    });
+  }
+  if (recipients.length > env.EMAIL_BROADCAST_MAX_RECIPIENTS) {
+    return res.status(400).json({
+      error: {
+        code: "TOO_MANY_RECIPIENTS",
+        message: `Invite list exceeds the ${env.EMAIL_BROADCAST_MAX_RECIPIENTS}-recipient limit.`
+      }
+    });
+  }
+
+  const emails = recipients.map((row) => row.email);
+  const now = new Date();
+  const [existingUsers, pendingInvites, heldContacts] = await Promise.all([
+    UserModel.find(req.tenant._id, { email: { $in: emails } }, { select: ["id", "email"] }),
+    InviteModel.find(req.tenant._id, {
+      email: { $in: emails },
+      usedAt: null,
+      expiresAt: { $gt: now }
+    }, { select: ["id", "email", "expiresAt"] }),
+    AlumniContactModel.find(req.tenant._id, {
+      email: { $in: emails },
+      contactStatus: "do_not_contact"
+    }, { select: ["id", "email"] }).catch((error) => {
+      if (isAlumniGrowthStorageUnavailable(error)) return [];
+      throw error;
+    })
+  ]);
+  const existingEmails = new Set((existingUsers || []).map((item) => normalizeEmail(item.email)));
+  const pendingEmails = new Set((pendingInvites || []).map((item) => normalizeEmail(item.email)));
+  const heldEmails = new Set((heldContacts || []).map((item) => normalizeEmail(item.email)));
+  const items = recipients.map((row) => ({
+    ...row,
+    status: existingEmails.has(row.email)
+      ? "existing_member"
+      : heldEmails.has(row.email)
+      ? "contact_on_hold"
+      : pendingEmails.has(row.email)
+      ? "pending_invite"
+      : "ready"
+  }));
+  const readyCount = items.filter((item) => item.status === "ready").length;
+  const customSubject = normalizeInviteEmailSubject(req.body?.customSubject || "");
+  const customMessage = normalizeInviteEmailMessage(req.body?.customMessage || "");
+  const previewToken = createInvitePreviewToken({
+    tenantId: req.tenant._id,
+    actorUserId: req.user.id,
+    roleToAssign,
+    recipients,
+    customSubject,
+    customMessage
+  });
+
+  return res.json({
+    ok: true,
+    previewToken,
+    expiresInSeconds: 15 * 60,
+    summary: {
+      rowsRead: recipientsFromPayload.length + textRows.length + csvAnalysis.rowsRead,
+      validInputCount,
+      uniqueCount: recipients.length,
+      duplicateInputCount: Math.max(0, validInputCount - recipients.length),
+      readyCount,
+      existingMemberCount: existingEmails.size,
+      pendingInviteCount: pendingEmails.size,
+      contactOnHoldCount: heldEmails.size,
+      invalidCount: csvAnalysis.errors.length
+    },
+    items: items.slice(0, 100),
+    excludedRows: csvAnalysis.errors.slice(0, 100)
   });
 });
 
@@ -5451,10 +6748,18 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
       });
     }
 
+    let csvAnalysis;
+    try {
+      csvAnalysis = analyzeInviteRowsFromCsv(req.file?.buffer || null);
+    } catch (parseError) {
+      return res.status(400).json({
+        error: { code: "CSV_INVALID_FORMAT", message: parseError.message || "Invalid CSV format." }
+      });
+    }
     const recipients = mergeInviteRows(
       recipientsFromPayload,
       parseInviteRowsFromText(req.body.emails || ""),
-      parseInviteRowsFromCsv(req.file?.buffer || null)
+      csvAnalysis.rows
     );
 
     if (recipients.length === 0) {
@@ -5466,15 +6771,65 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
       });
     }
 
+    if (recipients.length > env.EMAIL_BROADCAST_MAX_RECIPIENTS) {
+      return res.status(400).json({
+        error: {
+          code: "TOO_MANY_RECIPIENTS",
+          message: `Invite list exceeds the ${env.EMAIL_BROADCAST_MAX_RECIPIENTS}-recipient limit.`
+        }
+      });
+    }
+
+    const previewValid = verifyInvitePreviewToken(req.body?.previewToken, {
+      tenantId: req.tenant._id,
+      actorUserId: req.user.id,
+      roleToAssign,
+      recipients,
+      customSubject,
+      customMessage
+    });
+    if (!previewValid) {
+      return res.status(428).json({
+        error: {
+          code: "INVITE_PREVIEW_REQUIRED",
+          message: "Review the current recipient preview before sending invitations."
+        }
+      });
+    }
+
     let createdCount = 0;
     let sentCount = 0;
-    const skipped = [];
+    const skipped = csvAnalysis.errors.map((error) => ({
+      email: error.email || "",
+      rowNumber: error.rowNumber,
+      reason: error.code
+    }));
 
     for (const recipient of recipients) {
       const email = recipient.email;
+      let trackedContact = null;
+      try {
+        trackedContact = await AlumniContactModel.findOne(req.tenant._id, { email });
+      } catch (error) {
+        if (!isAlumniGrowthStorageUnavailable(error)) throw error;
+      }
+      if (trackedContact?.contactStatus === "do_not_contact") {
+        skipped.push({ email, reason: "CONTACT_ON_HOLD" });
+        continue;
+      }
       const existingUser = await UserModel.findOne(req.tenant._id, { email });
       if (existingUser) {
         skipped.push({ email, reason: "USER_EXISTS" });
+        continue;
+      }
+
+      const pendingInvite = await InviteModel.findOne(req.tenant._id, {
+        email,
+        usedAt: null,
+        expiresAt: { $gt: new Date() }
+      });
+      if (pendingInvite) {
+        skipped.push({ email, reason: "INVITE_ALREADY_PENDING" });
         continue;
       }
 
@@ -5501,6 +6856,22 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
           lastName: recipient.lastName || ""
         });
         sentCount += 1;
+        await trackInvitedAlumniContact({
+          tenantId: req.tenant._id,
+          actorUserId: req.user.id,
+          contact: {
+            email,
+            firstName: recipient.firstName || "",
+            lastName: recipient.lastName || "",
+            source: "invitation"
+          },
+          invitedAt: new Date()
+        }).catch((trackingError) => {
+          console.warn("[growth] invite contact tracking failed", {
+            tenantId: String(req.tenant._id || ""),
+            code: String(trackingError?.code || "GROWTH_TRACKING_FAILED")
+          });
+        });
       } catch (error) {
         skipped.push({ email, reason: `EMAIL_SEND_FAILED: ${error.message}` });
       }

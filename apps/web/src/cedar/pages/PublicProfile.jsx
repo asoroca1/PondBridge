@@ -10,6 +10,9 @@ import { authHeaders, displayName, initialsOf, avatarUrl, getToken } from "../li
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
+import { ModalConfirm, ModalDialog } from "../../components/admin/AdminUi.jsx";
+import { readAuthFromStorage } from "../../lib/storage.js";
 
 function safeUrl(u) { if (!u) return ""; return /^https?:\/\//i.test(u) ? u : `https://${u}`; }
 function telHref(s = "") { return `tel:${String(s).replace(/[^\d+]/g, "")}`; }
@@ -246,6 +249,7 @@ function normalizeProfile(src = {}) {
 
 /** === Photos mosaic === */
 function PhotosMosaic({ userId }) {
+  const { slug } = useTenant();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -285,7 +289,7 @@ function PhotosMosaic({ userId }) {
           {items.map((p) => (
             <Link
               key={p._id || p.id}
-              to="/photo-stream"
+              to={tenantRoute(slug, "/photo-stream")}
               className="p1-mosaic-link"
               title={p.caption || "View in Photo Stream"}
             >
@@ -305,6 +309,7 @@ function PhotosMosaic({ userId }) {
 
 /* ===== Related Profiles ===== */
 function RelatedProfilesCard({ targetUserId }) {
+  const { slug } = useTenant();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [avatarErrorIds, setAvatarErrorIds] = useState(() => new Set());
@@ -355,7 +360,7 @@ function RelatedProfilesCard({ targetUserId }) {
             const showImage = Boolean(url) && !avatarErrorIds.has(id);
             return (
               <li key={id} className="p1-suggest-item">
-                <Link to={`/profile/${id}`} className="p1-suggest-avatar" aria-label={`Open ${name}'s profile`}>
+                <Link to={tenantRoute(slug, `/profile/${id}`)} className="p1-suggest-avatar" aria-label={`Open ${name}'s profile`}>
                   {showImage ? (
                     <img
                       className="p1-suggest-img"
@@ -375,7 +380,7 @@ function RelatedProfilesCard({ targetUserId }) {
                   )}
                 </Link>
                 <div className="p1-suggest-main">
-                  <Link to={`/profile/${id}`} className="p1-suggest-name">{name}</Link>
+                  <Link to={tenantRoute(slug, `/profile/${id}`)} className="p1-suggest-name">{name}</Link>
                   <div className="p1-suggest-sub">{job}</div>
                 </div>
               </li>
@@ -391,7 +396,7 @@ export default function PublicProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const preload = location.state?.preload || null;
 
   const [profile, setProfile] = useState(preload ? normalizeProfile(preload) : null);
@@ -399,9 +404,32 @@ export default function PublicProfile() {
   const [error, setError] = useState("");
   const [avatarErrored, setAvatarErrored] = useState(false);
   const [coverErrored, setCoverErrored] = useState(false);
+  const [safetyStatus, setSafetyStatus] = useState({
+    loaded: false,
+    blocked: false,
+    blockedByMe: false,
+    directContactAllowed: true
+  });
+  const [safetyError, setSafetyError] = useState("");
+  const [safetyMessage, setSafetyMessage] = useState("");
+  const [safetyBusy, setSafetyBusy] = useState(false);
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("harassment");
+  const [reportDetails, setReportDetails] = useState("");
   const profileId = String(id || "").trim();
   const hasValidProfileId = Boolean(
     profileId && profileId !== "undefined" && profileId !== "null"
+  );
+  const viewerUserId = String(
+    readAuthFromStorage()?.user?.id ||
+      readAuthFromStorage()?.user?._id ||
+      readAuthFromStorage()?.user?.userId ||
+      ""
+  ).trim();
+  const safetyTargetId = String(profile?.userId || profile?.id || profile?._id || profileId || "").trim();
+  const isOwnProfile = Boolean(
+    viewerUserId && profile?.userId && viewerUserId === String(profile.userId)
   );
 
   useEffect(() => {
@@ -432,6 +460,95 @@ export default function PublicProfile() {
     })();
     return () => { cancelled = true; };
   }, [hasValidProfileId, profileId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!safetyTargetId || isOwnProfile || !profile) {
+      setSafetyStatus({ loaded: true, blocked: false, blockedByMe: false, directContactAllowed: true });
+      return () => { cancelled = true; };
+    }
+    (async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE}/safety/blocks/status/${encodeURIComponent(safetyTargetId)}`,
+          { headers: authHeaders() }
+        );
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error?.message || "Unable to load safety settings.");
+        if (!cancelled) setSafetyStatus({ loaded: true, ...payload });
+      } catch (requestError) {
+        if (!cancelled) {
+          setSafetyError(requestError.message || "Unable to load safety settings.");
+          setSafetyStatus((current) => ({ ...current, loaded: true }));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOwnProfile, profile, safetyTargetId]);
+
+  async function submitBlockChange() {
+    setSafetyBusy(true);
+    setSafetyError("");
+    setSafetyMessage("");
+    try {
+      const unblock = safetyStatus.blockedByMe;
+      const response = await fetch(
+        unblock
+          ? `${API_BASE}/safety/blocks/${encodeURIComponent(safetyTargetId)}`
+          : `${API_BASE}/safety/blocks`,
+        {
+          method: unblock ? "DELETE" : "POST",
+          headers: authHeaders(),
+          ...(unblock ? {} : { body: JSON.stringify({ targetId: safetyTargetId }) })
+        }
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error?.message || "Unable to update this block.");
+      setSafetyStatus({
+        loaded: true,
+        blocked: !unblock,
+        blockedByMe: !unblock,
+        directContactAllowed: unblock
+      });
+      setSafetyMessage(
+        unblock
+          ? "Member unblocked. One-to-one contact is available again."
+          : "Member blocked. Direct messages are disabled and your profiles are hidden from each other."
+      );
+      setBlockDialogOpen(false);
+    } catch (requestError) {
+      setSafetyError(requestError.message || "Unable to update this block.");
+    } finally {
+      setSafetyBusy(false);
+    }
+  }
+
+  async function submitReport() {
+    setSafetyBusy(true);
+    setSafetyError("");
+    setSafetyMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/safety/reports`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          targetType: "member",
+          targetId: safetyTargetId,
+          reason: reportReason,
+          details: reportDetails
+        })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error?.message || "Unable to submit this report.");
+      setSafetyMessage(payload?.message || "Report submitted to the camp's moderation team.");
+      setReportDialogOpen(false);
+      setReportDetails("");
+    } catch (requestError) {
+      setSafetyError(requestError.message || "Unable to submit this report.");
+    } finally {
+      setSafetyBusy(false);
+    }
+  }
 
   const fullName = useMemo(() => {
     if (!profile) return "";
@@ -486,7 +603,7 @@ export default function PublicProfile() {
             <div className="profile1-container">
               <div className="profile1-empty">
                 {error || "Profile not found."}
-                <button className="profile1-btn" onClick={() => navigate("/")}>Go home</button>
+                <button className="profile1-btn" onClick={() => navigate(tenantRoute(slug, "/home"))}>Go home</button>
               </div>
             </div>
           </main>
@@ -576,13 +693,36 @@ export default function PublicProfile() {
                   ) : null}
 
                   <div className="p1-actions">
-                    <button
-                      className="profile1-btn"
-                      onClick={() => navigate(`/chat-rooms?to=${encodeURIComponent(targetId)}`)}
-                    >
-                      Message
-                    </button>
+                    {!isOwnProfile ? (
+                      <button
+                        className="profile1-btn"
+                        disabled={!safetyStatus.directContactAllowed}
+                        onClick={() => navigate(tenantRoute(slug, `/chat-rooms?to=${encodeURIComponent(targetId)}`))}
+                      >
+                        {safetyStatus.directContactAllowed ? "Message" : "Messaging unavailable"}
+                      </button>
+                    ) : null}
+                    {!isOwnProfile ? (
+                      <button
+                        type="button"
+                        className="profile1-btn is-secondary"
+                        onClick={() => setReportDialogOpen(true)}
+                      >
+                        Report
+                      </button>
+                    ) : null}
+                    {!isOwnProfile && (!safetyStatus.blocked || safetyStatus.blockedByMe) ? (
+                      <button
+                        type="button"
+                        className="profile1-btn is-secondary"
+                        onClick={() => setBlockDialogOpen(true)}
+                      >
+                        {safetyStatus.blockedByMe ? "Unblock" : "Block"}
+                      </button>
+                    ) : null}
                   </div>
+                  {safetyError ? <p className="p1-safety-note is-error" role="alert">{safetyError}</p> : null}
+                  {safetyMessage ? <p className="p1-safety-note" role="status">{safetyMessage}</p> : null}
                 </aside>
 
                 <RelatedProfilesCard targetUserId={targetId} />
@@ -706,6 +846,64 @@ export default function PublicProfile() {
           </div>
         </main>
       </div>
+
+      <ModalConfirm
+        open={blockDialogOpen}
+        title={safetyStatus.blockedByMe ? "Unblock this member?" : "Block this member?"}
+        description={
+          safetyStatus.blockedByMe
+            ? "One-to-one messaging and profile visibility will be restored."
+            : "You will no longer be able to message each other or find each other's profiles. You may still share group chats, forums, or camp events."
+        }
+        confirmLabel={safetyStatus.blockedByMe ? "Unblock member" : "Block member"}
+        tone={safetyStatus.blockedByMe ? "neutral" : "danger"}
+        busy={safetyBusy}
+        onCancel={() => setBlockDialogOpen(false)}
+        onConfirm={submitBlockChange}
+      />
+
+      <ModalDialog
+        open={reportDialogOpen}
+        title="Report this member"
+        description="Your report goes to this camp's directors. The member will not be told who submitted it."
+        onClose={safetyBusy ? undefined : () => setReportDialogOpen(false)}
+        footer={
+          <>
+            <button type="button" className="link-button secondary" onClick={() => setReportDialogOpen(false)} disabled={safetyBusy}>
+              Cancel
+            </button>
+            <button type="button" className="link-button is-danger" onClick={submitReport} disabled={safetyBusy}>
+              {safetyBusy ? "Submitting..." : "Submit report"}
+            </button>
+          </>
+        }
+      >
+        <div className="p1-safety-form">
+          <label>
+            Reason
+            <select value={reportReason} onChange={(event) => setReportReason(event.target.value)}>
+              <option value="harassment">Harassment or bullying</option>
+              <option value="spam">Spam or scams</option>
+              <option value="privacy">Privacy concern</option>
+              <option value="impersonation">Impersonation</option>
+              <option value="inappropriate">Inappropriate content</option>
+              <option value="safety">Immediate safety concern</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>
+            Details (optional)
+            <textarea
+              rows={5}
+              maxLength={1200}
+              value={reportDetails}
+              onChange={(event) => setReportDetails(event.target.value)}
+              placeholder="Describe what happened and where a director should look."
+            />
+          </label>
+          <p className="muted">If anyone is in immediate danger, contact local emergency services.</p>
+        </div>
+      </ModalDialog>
     </div>
   );
 }

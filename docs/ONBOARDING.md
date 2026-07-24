@@ -1,62 +1,65 @@
-# Tenant Admin Onboarding Wizard
+# Director and Member Onboarding
 
-The onboarding wizard guides a tenant admin from initial setup to launch.
+Last reviewed: 2026-07-14
 
-## Route
-- UI: `/t/:slug/admin/onboarding`
-- Access: tenant admin (or super admin acting on tenant context)
+## Canonical director flow
 
-## Wizard Steps
-1. Branding
-- Upload logo (stored as `theme.logoUrl`)
-- Set brand colors and typography
-- Persists via `PATCH /api/tenants/me/theme`
+The active workspace is `/t/:slug/onboarding`. Legacy wizard and admin onboarding
+paths redirect there.
 
-2. Signup Settings
-- Select `open` or `code` mode (`invite_only` reserved for v2)
-- Set access code if mode is `code`
-- Persists via `PATCH /api/tenants/me/settings`
+1. A global super admin creates the camp and receives its claim link.
+2. The first verified director claims or creates the director membership.
+3. Until launch, directors are routed to the guided launch workspace and ordinary member
+   access remains blocked.
+4. The director follows the live plan into the existing branding, welcome
+   content, access, module, billing, and legal evidence screens.
+5. The server returns readiness blockers after every saved change.
+6. The director previews invitation recipients and explicitly sends invitations.
+7. `POST /api/tenants/me/launch` succeeds only when the server-owned launch
+   contract passes.
 
-3. Data Import
-- Upload CSV of initial alumni list
-- Supports skip mode to continue without importing
-- Persists via `POST /api/tenants/me/import-csv`
+The saved onboarding draft and progress make the flow resumable after the
+browser closes. The API, not the conversation or a client checklist, determines
+launch readiness. The former dense Command Center remains at
+`/t/:slug/onboarding/details`.
 
-4. Preview
-- Displays theme preview and sample page cards
-- Uses saved tenant theme and settings
+## Member acquisition
 
-5. Launch
-- Marks tenant live
-- Persists via `POST /api/tenants/me/launch`
+Direct member CSV activation and generated passwords are retired. The supported
+bulk workflow is invitation-first:
 
-## Resume / Interruption Recovery
-Wizard state persists on the Tenant document in `onboardingProgress`:
-- `currentStep`
-- `completedSteps[]`
-- `lastSavedAt`
-- `launchedAt`
-- `lastImportStats`
+1. Upload or paste recipient rows in Director Admin.
+2. `POST /api/t/:slug/admin/invites/preview` validates the current recipients.
+3. The response identifies invalid, duplicate, existing-user, and pending-invite
+   rows and issues a short-lived signed preview token.
+4. The director reviews the final audience.
+5. `POST /api/t/:slug/admin/invites/send` requires that matching preview token
+   before sending.
+6. Each recipient creates and owns their account through the configured access
+   policy.
 
-The UI restores progress using:
+Never upload a member export to Git or use a production database for onboarding
+tests.
+
+## Access policies
+
+The server enforces `open`, access-code, approval, invite-only, and allowed-domain
+rules. New camps should default to invitation or approval until the director has
+reviewed their privacy requirements. UI visibility is not an access boundary.
+
+## Canonical APIs
+
 - `GET /api/tenants/me/onboarding`
-
-If the browser closes mid-flow, reopening `/t/:slug/admin/onboarding` resumes from persisted step.
-
-## Backend Endpoints
-- `GET /api/tenants/me/onboarding`
+- `PATCH /api/tenants/me/onboarding/draft`
 - `PATCH /api/tenants/me/theme`
+- `PATCH /api/tenants/me/content`
 - `PATCH /api/tenants/me/settings`
-- `POST /api/tenants/me/import-csv`
+- `PATCH /api/tenants/me/modules`
+- `GET /api/tenants/me/billing`
+- `POST /api/tenants/me/billing/checkout`
 - `POST /api/tenants/me/launch`
+- `POST /api/t/:slug/admin/invites/preview`
+- `POST /api/t/:slug/admin/invites/send`
 
-## CSV Import Notes
-Expected columns (case-insensitive variants supported):
-- `firstName`, `lastName`, or `name`
-- `email` (required)
-- optional: `phone`, `cityState`, `roleAtCamp`, `industry`, `highSchool`, `bio`
-
-Behavior:
-- Duplicate emails inside tenant are skipped.
-- New users are created with generated passwords and `user` role.
-- Profiles are created with tenant-scoped `tenantId`.
+For the operational walkthrough and staging validation, see
+`docs/DIRECTOR_ONBOARDING.md`.

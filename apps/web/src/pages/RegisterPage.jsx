@@ -8,6 +8,7 @@ import { tenantHasFeature } from "../lib/features.js";
 import {
   LEGAL_PRIVACY_VERSION,
   LEGAL_TERMS_VERSION,
+  MINIMUM_MEMBER_AGE,
   buildAcceptedLegalAgreementPayload
 } from "../lib/legalAgreement.js";
 
@@ -31,11 +32,10 @@ export default function RegisterPage() {
   const [form, setForm] = useState(initialForm);
   const [inviteToken, setInviteToken] = useState("");
   const [inviteMeta, setInviteMeta] = useState(null);
-  const [resumeData, setResumeData] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [resumeUploading, setResumeUploading] = useState(false);
   const [legalAgreementAccepted, setLegalAgreementAccepted] = useState(false);
+  const [ageEligibilityConfirmed, setAgeEligibilityConfirmed] = useState(false);
   const canUseResumeParsing = tenantHasFeature(tenant, "resumeParsing");
   const signupEnabled = tenant?.accessSettings?.signupEnabled !== false;
 
@@ -68,64 +68,24 @@ export default function RegisterPage() {
       });
   }, [searchParams, slug]);
 
-  async function onResumeUpload(event) {
-    if (!canUseResumeParsing) return;
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setError("");
-    setResumeUploading(true);
-
-    try {
-      const data = new FormData();
-      data.append("resume", file);
-
-      const payload = await requestJson(`/api/t/${slug}/resume/parse`, {
-        method: "POST",
-        body: data
-      });
-
-      const profile = payload.profile;
-      setResumeData(profile);
-      setForm((prev) => ({
-        ...prev,
-        firstName: profile.firstName || prev.firstName,
-        lastName: profile.lastName || prev.lastName,
-        email: profile.email || prev.email,
-        cityState: profile.cityState || prev.cityState,
-        highSchool: profile.highSchool || prev.highSchool,
-        colleges: profile.colleges || prev.colleges,
-        collegeYears: profile.collegeYears || prev.collegeYears,
-        currentJobs: profile.currentJobs || prev.currentJobs,
-        pastJobs: profile.pastJobs || prev.pastJobs,
-        industry: profile.industry || prev.industry,
-        socials: profile.socials || prev.socials
-      }));
-    } catch (uploadError) {
-      setError(uploadError.message);
-    } finally {
-      setResumeUploading(false);
-    }
-  }
-
   async function onSubmit(event) {
     event.preventDefault();
     setError("");
-    if (!legalAgreementAccepted) {
-      setError("You must agree to Terms and Privacy to create your account.");
+    if (!legalAgreementAccepted || !ageEligibilityConfirmed) {
+      setError(`You must confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy.`);
       return;
     }
     setSaving(true);
 
     try {
-      const legalAgreement = buildAcceptedLegalAgreementPayload();
+      const legalAgreement = buildAcceptedLegalAgreementPayload({ ageEligibilityConfirmed });
       const payload = await requestJson(`/api/t/${slug}/auth/register`, {
         method: "POST",
         body: {
           ...form,
-          ...resumeData,
           inviteToken,
           legalAgreementAccepted: true,
+          ageEligibilityConfirmed: true,
           termsVersion: LEGAL_TERMS_VERSION,
           privacyVersion: LEGAL_PRIVACY_VERSION,
           legalAgreement
@@ -154,13 +114,9 @@ export default function RegisterPage() {
           </p>
         ) : null}
         {canUseResumeParsing ? (
-          <>
-            <p className="muted">Optional: upload a resume PDF to autofill profile fields.</p>
-            <div className="file-upload-row">
-              <Input type="file" accept="application/pdf" onChange={onResumeUpload} />
-              {resumeUploading ? <span className="muted">Parsing resume...</span> : null}
-            </div>
-          </>
+          <p className="muted">
+            After creating your account, you can use the consent-gated resume assistant in Edit Profile and review every suggested field before saving.
+          </p>
         ) : (
           <p className="muted">Resume autofill is available on the Premium plan.</p>
         )}
@@ -237,6 +193,15 @@ export default function RegisterPage() {
               </a>
               .
             </span>
+          </label>
+
+          <label className="wizard1-legal-check">
+            <input
+              type="checkbox"
+              checked={ageEligibilityConfirmed}
+              onChange={(event) => setAgeEligibilityConfirmed(event.target.checked)}
+            />
+            <span>I confirm that I am at least {MINIMUM_MEMBER_AGE} years old.</span>
           </label>
 
           {error ? <p className="error-text">{error}</p> : null}

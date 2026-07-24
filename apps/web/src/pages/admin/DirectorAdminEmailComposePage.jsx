@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Input, Select } from "@pondbridge/ui";
-import { ModalConfirm, PageHeader } from "../../components/admin/AdminUi.jsx";
+import { ModalConfirm, ModalDialog, PageHeader } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
+import DirectorEmailAgentPanel from "../../components/admin/DirectorEmailAgentPanel.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import useAdminApi from "./useAdminApi.js";
@@ -34,6 +36,13 @@ const EMAIL_RECIPIENT_GROUPS_STORAGE_PREFIX = "pb_admin_email_recipient_groups";
 const EMAIL_DRAFT_STORAGE_PREFIX = "pb_admin_email_draft";
 const EMAIL_TEMPLATE_STORAGE_PREFIX = "pb_admin_email_templates";
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
+const GROWTH_SEGMENT_OPTIONS = [
+  { value: "new_30", label: "New members · last 30 days" },
+  { value: "inactive_30", label: "Inactive · 30+ days" },
+  { value: "inactive_60", label: "Inactive · 60+ days" },
+  { value: "inactive_90", label: "Inactive · 90+ days" },
+  { value: "profile_incomplete", label: "Profiles under 75% complete" }
+];
 
 // ---------------------------------------------------------------------------
 // Recipient group localStorage helpers (unchanged)
@@ -120,8 +129,11 @@ function readSavedEmailDraft(slug = "") {
     if (!parsed || typeof parsed !== "object") return null;
     return {
       subject: String(parsed.subject || ""),
+      preheader: String(parsed.preheader || ""),
       body: String(parsed.body || ""),
+      aiGenerationId: String(parsed.aiGenerationId || ""),
       mode: String(parsed.mode || "all"),
+      segment: String(parsed.segment || ""),
       profileIds: Array.isArray(parsed.profileIds) ? parsed.profileIds : [],
       selectedRoles: Array.isArray(parsed.selectedRoles) ? parsed.selectedRoles : [],
       selectedYears: Array.isArray(parsed.selectedYears) ? parsed.selectedYears : [],
@@ -168,6 +180,7 @@ function readSavedEmailTemplates(slug = "") {
         id: String(item.id).trim(),
         name: String(item.name).trim().slice(0, 72),
         subject: String(item.subject || ""),
+        preheader: String(item.preheader || ""),
         body: String(item.body || ""),
         updatedAt: String(item.updatedAt || "")
       }))
@@ -268,12 +281,16 @@ function createFallbackEmailFooter({ tenant = null, user = null } = {}) {
 
 function RichTextEditor({ value = "", onChange, placeholder = "Write your message here..." }) {
   const editorRef = useRef(null);
-  const isInitialized = useRef(false);
+  const linkSelectionRef = useRef(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkError, setLinkError] = useState("");
 
   useEffect(() => {
-    if (editorRef.current && !isInitialized.current) {
+    if (!editorRef.current) return;
+    if (document.activeElement === editorRef.current) return;
+    if (editorRef.current.innerHTML !== (value || "")) {
       editorRef.current.innerHTML = value || "";
-      isInitialized.current = true;
     }
   }, [value]);
 
@@ -292,8 +309,46 @@ function RichTextEditor({ value = "", onChange, placeholder = "Write your messag
   function handleItalic() { exec("italic"); }
   function handleList() { exec("insertUnorderedList"); }
   function handleLink() {
-    const url = window.prompt("Enter link URL:");
-    if (url) exec("createLink", url);
+    const selection = window.getSelection?.();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    linkSelectionRef.current = range && editorRef.current?.contains(range.commonAncestorContainer)
+      ? range.cloneRange()
+      : null;
+    setLinkUrl("");
+    setLinkError("");
+    setLinkDialogOpen(true);
+  }
+  function closeLinkDialog() {
+    setLinkDialogOpen(false);
+    setLinkError("");
+    linkSelectionRef.current = null;
+  }
+  function applyLink() {
+    const rawUrl = String(linkUrl || "").trim();
+    if (!rawUrl) {
+      setLinkError("Enter a link URL.");
+      return;
+    }
+    const candidate = /^[a-z][a-z\d+.-]*:/i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    let parsed;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      setLinkError("Enter a valid URL.");
+      return;
+    }
+    if (!new Set(["http:", "https:", "mailto:"]).has(parsed.protocol)) {
+      setLinkError("Use an http, https, or mailto link.");
+      return;
+    }
+    editorRef.current?.focus();
+    if (linkSelectionRef.current) {
+      const selection = window.getSelection?.();
+      selection?.removeAllRanges();
+      selection?.addRange(linkSelectionRef.current);
+    }
+    exec("createLink", parsed.href);
+    closeLinkDialog();
   }
   function insertMergeTag(tag) {
     editorRef.current?.focus();
@@ -304,7 +359,8 @@ function RichTextEditor({ value = "", onChange, placeholder = "Write your messag
   const isEmpty = !value || value === "<br>" || value === "<div><br></div>";
 
   return (
-    <div className="director-admin-email-richtext-wrap">
+    <>
+      <div className="director-admin-email-richtext-wrap">
       <div className="director-admin-email-richtext-toolbar">
         <button type="button" title="Bold" onClick={handleBold}><strong>B</strong></button>
         <button type="button" title="Italic" onClick={handleItalic}><em>I</em></button>
@@ -323,7 +379,35 @@ function RichTextEditor({ value = "", onChange, placeholder = "Write your messag
         data-placeholder={placeholder}
         data-empty={isEmpty ? "true" : undefined}
       />
-    </div>
+      </div>
+      <ModalDialog
+        open={linkDialogOpen}
+        title="Insert Link"
+        description="Add the destination for the selected text."
+        onClose={closeLinkDialog}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeLinkDialog}>Cancel</Button>
+            <Button type="button" onClick={applyLink}>Insert Link</Button>
+          </>
+        }
+      >
+        <label className="director-admin-dialog-field">
+          Link URL
+          <Input
+            type="url"
+            value={linkUrl}
+            onChange={(event) => {
+              setLinkUrl(event.target.value);
+              setLinkError("");
+            }}
+            placeholder="https://example.org"
+            aria-invalid={Boolean(linkError)}
+          />
+        </label>
+        {linkError ? <p className="error-text" role="alert">{linkError}</p> : null}
+      </ModalDialog>
+    </>
   );
 }
 
@@ -350,8 +434,13 @@ export default function DirectorAdminEmailComposePage() {
   const { slug, request } = useAdminApi();
   const { tenant } = useTenant();
   const { user } = useAuth();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   const initialSelectedIds = parseIdsParam(searchParams.get("selected") || "");
-  const hasUrlParams = Boolean(searchParams.get("subject") || searchParams.get("body"));
+  const requestedAudience = String(searchParams.get("audience") || "").trim().toLowerCase();
+  const initialSegment = GROWTH_SEGMENT_OPTIONS.some((item) => item.value === requestedAudience)
+    ? requestedAudience
+    : "";
+  const hasUrlParams = Boolean(searchParams.get("subject") || searchParams.get("body") || initialSegment);
 
   // Core form state
   const [sending, setSending] = useState(false);
@@ -359,6 +448,7 @@ export default function DirectorAdminEmailComposePage() {
   const [status, setStatus] = useState("");
   const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
+  const [emailReadiness, setEmailReadiness] = useState(null);
 
   // Recipient preview
   const [recipientPreview, setRecipientPreview] = useState({ count: 0, excludedCount: 0, preview: [] });
@@ -402,15 +492,18 @@ export default function DirectorAdminEmailComposePage() {
   const [form, setForm] = useState(() => {
     if (hasUrlParams || initialSelectedIds.length > 0) {
       return {
-        mode: initialSelectedIds.length > 0 ? "individual" : "all",
+        mode: initialSelectedIds.length > 0 ? "individual" : initialSegment ? "segment" : "all",
+        segment: initialSegment,
         profileIds: initialSelectedIds,
         subject: String(searchParams.get("subject") || ""),
+        preheader: String(searchParams.get("preheader") || ""),
         body: String(searchParams.get("body") || ""),
+        aiGenerationId: "",
         scheduleType: "now",
         scheduledFor: ""
       };
     }
-    return { mode: "all", profileIds: [], subject: "", body: "", scheduleType: "now", scheduledFor: "" };
+    return { mode: "all", segment: "", profileIds: [], subject: "", preheader: "", body: "", aiGenerationId: "", scheduleType: "now", scheduledFor: "" };
   });
 
   // ---------------------------------------------------------------------------
@@ -424,9 +517,12 @@ export default function DirectorAdminEmailComposePage() {
     if (draft && (draft.subject || draft.body)) {
       setForm({
         mode: draft.mode || "all",
+        segment: draft.segment || "",
         profileIds: draft.profileIds || [],
         subject: draft.subject || "",
+        preheader: draft.preheader || "",
         body: draft.body || "",
+        aiGenerationId: draft.aiGenerationId || "",
         scheduleType: draft.scheduleType || "now",
         scheduledFor: draft.scheduledFor || ""
       });
@@ -513,6 +609,10 @@ export default function DirectorAdminEmailComposePage() {
     if (form.mode === "all") return { mode: "all", roles: [], years: [], profileIds: [], label: "All Members" };
     if (form.mode === "role") return { mode: "role", roles: selectedRoles, years: [], profileIds: [], label: selectedRoles.length ? `Roles: ${selectedRoles.join(", ")}` : "By Role (none selected)" };
     if (form.mode === "year") return { mode: "year", roles: [], years: selectedYears, profileIds: [], label: selectedYears.length ? `Years: ${selectedYears.join(", ")}` : "By Year (none selected)" };
+    if (form.mode === "segment") {
+      const segmentOption = GROWTH_SEGMENT_OPTIONS.find((item) => item.value === form.segment);
+      return { mode: "segment", segment: form.segment, roles: [], years: [], profileIds: [], label: segmentOption?.label || "Engagement segment" };
+    }
     const activePreset = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId);
     return {
       mode: "custom",
@@ -521,7 +621,7 @@ export default function DirectorAdminEmailComposePage() {
       profileIds: form.mode === "individual" || form.mode === "custom_group" ? normalizeProfileIdList(form.profileIds) : [],
       label: form.mode === "all" ? "All Members" : form.mode === "individual" ? "Specific People" : normalizeEmailRecipientGroupName(recipientGroupName) || activePreset?.name || "Custom Group"
     };
-  }, [form.mode, form.profileIds, recipientGroupName, savedRecipientGroups, selectedRecipientGroupId, selectedRoles, selectedYears]);
+  }, [form.mode, form.profileIds, form.segment, recipientGroupName, savedRecipientGroups, selectedRecipientGroupId, selectedRoles, selectedYears]);
 
   // ---------------------------------------------------------------------------
   // Member search & selection
@@ -584,6 +684,30 @@ export default function DirectorAdminEmailComposePage() {
       .catch(() => { if (active) setRecipientPreview({ count: 0, excludedCount: 0, preview: [] }); });
     return () => { active = false; };
   }, [request, targeting]);
+
+  // Deterministic preflight runs independently of provider AI. It checks the
+  // physical-address and unsubscribe requirements the server will enforce.
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      request("/email-agent/quality", {
+        method: "POST",
+        body: {
+          subject: form.subject,
+          preheader: form.preheader,
+          body: form.body,
+          campaignType: "marketing",
+          recipientCount: recipientPreview.count
+        }
+      })
+        .then((payload) => { if (active) setEmailReadiness(payload); })
+        .catch(() => { if (active) setEmailReadiness(null); });
+    }, 260);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [form.body, form.preheader, form.subject, recipientPreview.count, request]);
 
   // ---------------------------------------------------------------------------
   // Derived values
@@ -670,11 +794,15 @@ export default function DirectorAdminEmailComposePage() {
     setError("");
   }
 
-  function deleteRecipientGroup() {
+  async function deleteRecipientGroup() {
     if (!selectedRecipientGroupId) return;
     const group = savedRecipientGroups.find((item) => item.id === selectedRecipientGroupId);
     if (!group) return;
-    const confirmed = window.confirm(`Delete recipient group "${group.name}"?`);
+    const confirmed = await confirm({
+      title: `Delete “${group.name}”?`,
+      description: "The saved recipient group will be removed. Members and their profiles are not affected.",
+      confirmLabel: "Delete group",
+    });
     if (!confirmed) return;
     const nextGroups = savedRecipientGroups.filter((item) => item.id !== selectedRecipientGroupId);
     writeSavedEmailRecipientGroups(slug, nextGroups);
@@ -694,7 +822,7 @@ export default function DirectorAdminEmailComposePage() {
     const existing = savedTemplates.find((t) => t.id === selectedTemplateId && t.name.toLowerCase() === name.toLowerCase())
       || savedTemplates.find((t) => t.name.toLowerCase() === name.toLowerCase());
     const id = existing?.id || `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const entry = { id, name, subject: form.subject, body: form.body, updatedAt: now };
+    const entry = { id, name, subject: form.subject, preheader: form.preheader, body: form.body, updatedAt: now };
     const nextTemplates = existing
       ? savedTemplates.map((t) => t.id === existing.id ? entry : t)
       : [entry, ...savedTemplates].slice(0, 40);
@@ -708,16 +836,20 @@ export default function DirectorAdminEmailComposePage() {
   function loadTemplate() {
     const tpl = savedTemplates.find((t) => t.id === selectedTemplateId);
     if (!tpl) return;
-    setForm((prev) => ({ ...prev, subject: tpl.subject || "", body: tpl.body || "" }));
+    setForm((prev) => ({ ...prev, subject: tpl.subject || "", preheader: tpl.preheader || "", body: tpl.body || "", aiGenerationId: "" }));
     setTemplateName(tpl.name || "");
     setStatus(`Loaded template "${tpl.name}".`);
     setError("");
   }
 
-  function deleteTemplate() {
+  async function deleteTemplate() {
     const tpl = savedTemplates.find((t) => t.id === selectedTemplateId);
     if (!tpl) return;
-    const confirmed = window.confirm(`Delete template "${tpl.name}"?`);
+    const confirmed = await confirm({
+      title: `Delete “${tpl.name}”?`,
+      description: "The saved email template will be permanently removed.",
+      confirmLabel: "Delete template",
+    });
     if (!confirmed) return;
     const next = savedTemplates.filter((t) => t.id !== selectedTemplateId);
     writeSavedEmailTemplates(slug, next);
@@ -780,7 +912,11 @@ export default function DirectorAdminEmailComposePage() {
     if (!selectedFooterPresetId) return;
     const preset = footerPresets.find((item) => item.id === selectedFooterPresetId);
     if (!preset) return;
-    const confirmed = window.confirm(`Delete footer "${preset.name}"?`);
+    const confirmed = await confirm({
+      title: `Delete “${preset.name}”?`,
+      description: "The footer preset will be permanently removed. Existing email history is not affected.",
+      confirmLabel: "Delete footer",
+    });
     if (!confirmed) return;
     const remaining = footerPresets.filter((item) => item.id !== selectedFooterPresetId);
     const nextPresets = remaining.length
@@ -804,7 +940,7 @@ export default function DirectorAdminEmailComposePage() {
     setError("");
     setStatus("");
     try {
-      await request("/email/test", { method: "POST", body: { subject: form.subject, body: form.body, footer: activeFooter } });
+      await request("/email/test", { method: "POST", body: { subject: form.subject, preheader: form.preheader, body: form.body, footer: activeFooter } });
       setStatus("Test email sent to your admin inbox.");
     } catch (requestError) {
       setError(requestError.message || "Failed to send test email.");
@@ -816,6 +952,25 @@ export default function DirectorAdminEmailComposePage() {
     if (!form.subject.trim() || !form.body.trim() || recipientPreview.count <= 0) {
       setError("Subject, body, and at least one recipient are required.");
       return;
+    }
+    if (emailReadiness && !emailReadiness.ready) {
+      setError(emailReadiness.blockers?.[0]?.message || "Resolve the campaign readiness blockers before sending.");
+      return;
+    }
+    if (form.scheduleType === "later") {
+      const scheduledAt = new Date(form.scheduledFor);
+      if (!form.scheduledFor || Number.isNaN(scheduledAt.getTime())) {
+        setError("Choose a valid date and time for the scheduled email.");
+        return;
+      }
+      if (scheduledAt <= new Date()) {
+        setError("Scheduled email time must be in the future.");
+        return;
+      }
+      if (scheduledAt.getTime() > Date.now() + 30 * 24 * 60 * 60 * 1000) {
+        setError("Scheduled emails can be created up to 30 days in advance.");
+        return;
+      }
     }
     setError("");
     setShowSendConfirm(true);
@@ -832,14 +987,18 @@ export default function DirectorAdminEmailComposePage() {
         method: "POST",
         body: {
           subject: form.subject,
+          preheader: form.preheader,
           body: form.body,
+          aiGenerationId: form.aiGenerationId,
           targeting,
-          scheduledFor: form.scheduleType === "later" ? form.scheduledFor : "",
+          scheduledFor: form.scheduleType === "later"
+            ? new Date(form.scheduledFor).toISOString()
+            : "",
           footer: activeFooter,
           confirmDuplicate
         }
       });
-      setStatus("Email queued successfully.");
+      setStatus(form.scheduleType === "later" ? "Email scheduled successfully." : "Email sent successfully.");
       clearSavedEmailDraft(slug);
       navigate(`/t/${slug}/admin/email/history`);
     } catch (requestError) {
@@ -855,10 +1014,21 @@ export default function DirectorAdminEmailComposePage() {
 
   function handleClearDraft() {
     clearSavedEmailDraft(slug);
-    setForm({ mode: "all", profileIds: [], subject: "", body: "", scheduleType: "now", scheduledFor: "" });
+    setForm({ mode: "all", segment: "", profileIds: [], subject: "", preheader: "", body: "", aiGenerationId: "", scheduleType: "now", scheduledFor: "" });
     setSelectedRoles([]);
     setSelectedYears([]);
     setStatus("Draft cleared.");
+    setError("");
+  }
+
+  function applyAgentDraft(draft = {}) {
+    setForm((prev) => ({
+      ...prev,
+      subject: String(draft.subject || ""),
+      preheader: String(draft.preheader || ""),
+      body: String(draft.body || ""),
+      aiGenerationId: String(draft.aiGenerationId || "")
+    }));
     setError("");
   }
 
@@ -869,13 +1039,20 @@ export default function DirectorAdminEmailComposePage() {
   return (
     <Card>
       <PageHeader
-        title="Send Email"
-        subtitle="Compose and send a branded email to your network."
+        title="Communications Studio"
+        subtitle="Plan, draft, verify, and deliver a branded camp campaign from one workspace."
         actions={
           <Link className="link-button secondary" to={`/t/${slug}/admin/email/history`}>
             Sent History
           </Link>
         }
+      />
+      <DirectorEmailAgentPanel
+        request={request}
+        form={form}
+        targeting={targeting}
+        recipientPreview={recipientPreview}
+        onApplyDraft={applyAgentDraft}
       />
       <form className="director-admin-email-layout" onSubmit={handleFormSubmit}>
         <section className="director-admin-email-composer director-admin-email-composer-full">
@@ -885,15 +1062,35 @@ export default function DirectorAdminEmailComposePage() {
             To
             <Select
               value={form.mode}
-              onChange={(event) => setForm((prev) => ({ ...prev, mode: event.target.value }))}
+              onChange={(event) => setForm((prev) => ({
+                ...prev,
+                mode: event.target.value,
+                segment: event.target.value === "segment" ? prev.segment || "inactive_30" : prev.segment
+              }))}
             >
               <option value="all">All Members</option>
               <option value="role">By Role</option>
               <option value="year">By Class Year</option>
+              <option value="segment">By Engagement</option>
               <option value="individual">Specific People</option>
               <option value="custom_group">Custom Group</option>
             </Select>
           </label>
+
+          {form.mode === "segment" ? (
+            <label>
+              Engagement audience
+              <Select
+                value={form.segment || "inactive_30"}
+                onChange={(event) => setForm((prev) => ({ ...prev, segment: event.target.value }))}
+              >
+                {GROWTH_SEGMENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </Select>
+              <small className="muted">Audience membership is recalculated from current server activity before preview and send.</small>
+            </label>
+          ) : null}
 
           {/* Role picker */}
           {form.mode === "role" ? (
@@ -1059,6 +1256,17 @@ export default function DirectorAdminEmailComposePage() {
             />
           </label>
 
+          <label>
+            Inbox preview text
+            <Input
+              value={form.preheader}
+              maxLength={160}
+              onChange={(event) => setForm((prev) => ({ ...prev, preheader: event.target.value }))}
+              placeholder="A short line that appears beside the subject in the inbox"
+            />
+            <small className="muted">{form.preheader.length}/160 characters</small>
+          </label>
+
           {/* Body — Rich Text Editor */}
           <label>
             Body
@@ -1128,6 +1336,42 @@ export default function DirectorAdminEmailComposePage() {
             )}
           </section>
 
+          <section className={`director-email-readiness ${emailReadiness?.ready ? "is-ready" : ""}`} aria-labelledby="email-readiness-title">
+            <div className="director-email-readiness-head">
+              <div>
+                <span className="director-email-readiness-icon" aria-hidden="true">
+                  {emailReadiness?.ready ? "✓" : "!"}
+                </span>
+                <div>
+                  <strong id="email-readiness-title">Campaign readiness</strong>
+                  <small>
+                    {emailReadiness === null
+                      ? "Checking recipients, compliance, and inbox quality…"
+                      : emailReadiness.ready
+                        ? "Required send checks pass. Review any suggestions below."
+                        : `${emailReadiness.blockers?.length || 0} blocker${emailReadiness.blockers?.length === 1 ? "" : "s"} must be resolved.`}
+                  </small>
+                </div>
+              </div>
+              <span className="director-email-readiness-state">
+                {emailReadiness?.ready ? "Ready for review" : "Not ready"}
+              </span>
+            </div>
+            {emailReadiness?.blockers?.length ? (
+              <ul className="director-email-readiness-list is-blocked">
+                {emailReadiness.blockers.map((item) => <li key={item.code}>{item.message}</li>)}
+              </ul>
+            ) : null}
+            {emailReadiness?.warnings?.length ? (
+              <ul className="director-email-readiness-list is-warning">
+                {emailReadiness.warnings.map((item) => <li key={item.code}>{item.message}</li>)}
+              </ul>
+            ) : null}
+            {emailReadiness?.blockers?.some((item) => item.code === "postal_address_required") ? (
+              <Link className="director-admin-inline-link" to={`/t/${slug}/admin/billing`}>Complete mailing address in Billing</Link>
+            ) : null}
+          </section>
+
           {/* Scheduling */}
           <label>
             Send timing
@@ -1148,7 +1392,7 @@ export default function DirectorAdminEmailComposePage() {
           <div className="inline-actions">
             <Button type="button" variant="secondary" onClick={handleClearDraft}>Clear Draft</Button>
             <Button type="button" variant="secondary" onClick={sendTestEmail}>Send Test Email</Button>
-            <Button type="submit" disabled={sending || recipientPreview.count <= 0}>
+            <Button type="submit" disabled={sending || recipientPreview.count <= 0 || !emailReadiness?.ready}>
               {sending ? "Sending..." : form.scheduleType === "later" ? "Schedule Email" : "Send Email"}
             </Button>
           </div>
@@ -1171,6 +1415,9 @@ export default function DirectorAdminEmailComposePage() {
             </div>
             <div className="director-admin-email-frame-body">
               <h4>{form.subject.trim() || "Subject line preview"}</h4>
+              <p className="director-admin-email-preheader-preview">
+                {form.preheader.trim() || "Inbox preview text will appear here."}
+              </p>
               <div
                 className="director-admin-email-frame-body-html"
                 dangerouslySetInnerHTML={{ __html: form.body || "<p>Write your message here and the preview updates in real time.</p>" }}
@@ -1216,6 +1463,7 @@ export default function DirectorAdminEmailComposePage() {
         onConfirm={() => confirmSendEmail(true)}
         onCancel={() => setShowDuplicateConfirm(false)}
       />
+      <ModalConfirm {...confirmDialogProps} />
     </Card>
   );
 }

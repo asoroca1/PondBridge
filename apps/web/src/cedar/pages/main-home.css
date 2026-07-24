@@ -537,7 +537,8 @@
   padding: 22px 20px;
 }
 
-.profile-prompt-card h2 {
+.profile-prompt-card h2,
+.profile-prompt-card h3 {
   margin: 0 0 8px;
   color: var(--brand-primary);
   font-size: 28px;
@@ -551,7 +552,8 @@
   line-height: 1.45;
 }
 
-.profile-prompt-actions {
+.profile-prompt-actions,
+.profile-prompt-card .pb-admin-ui-modal-actions {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
@@ -590,11 +592,13 @@
 }
 
 @media (max-width: 576px) {
-  .profile-prompt-card h2 {
+  .profile-prompt-card h2,
+  .profile-prompt-card h3 {
     font-size: 24px;
   }
 
-  .profile-prompt-actions {
+  .profile-prompt-actions,
+  .profile-prompt-card .pb-admin-ui-modal-actions {
     flex-direction: column;
   }
 

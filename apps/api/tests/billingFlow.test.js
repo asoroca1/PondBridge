@@ -252,12 +252,12 @@ describe("Stripe billing system", () => {
 
     const stored = await Tenant.findById(tenant._id);
     expect(stored.planTier).toBe("premium");
-    expect(Number(stored.onboardingFeeAmount)).toBe(450);
+    expect(Number(stored.onboardingFeeAmount)).toBe(200);
     expect(stored.settings?.billing?.planCode).toBe("institutional");
     expect(stored.settings?.billing?.lifecycleStatus).toBe("checkout_started");
   });
 
-  test("institutional onboarding fee is waived after the initial completed checkout", async () => {
+  test("institutional onboarding fee remains paid after the initial completed checkout", async () => {
     const tenant = await createTenant({
       slug: "billing-institutional-repeat-checkout",
       onboardingStatus: "live",
@@ -274,10 +274,9 @@ describe("Stripe billing system", () => {
         }
       }
     });
-    await Tenant.update(tenant._id, {
-      stripeSubscriptionId: "sub_existing_001",
-      stripePriceId: "price_institutional_annual"
-    });
+    tenant.stripeSubscriptionId = "sub_existing_001";
+    tenant.stripePriceId = "price_institutional_annual";
+    await tenant.save();
     await createTenantAdmin(tenant._id, "director@institutional-repeat.test");
     const token = await loginTenant(tenant.slug, "director@institutional-repeat.test");
 
@@ -289,7 +288,7 @@ describe("Stripe billing system", () => {
     expect(response.status).toBe(201);
     expect(response.body.billing.billingPlan).toBe("institutional");
     expect(response.body.billing.onboardingFeeAmount).toBe(200);
-    expect(response.body.billing.onboardingFeeStatus).toBe("waived");
+    expect(response.body.billing.onboardingFeeStatus).toBe("paid");
   });
 
   test("founders plan is capped at first 5 camps and maps to premium tier", async () => {

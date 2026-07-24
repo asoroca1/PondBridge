@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   alumniPluralForCampType,
+  DEFAULT_TENANT_MODULES,
   defaultNetworkDisplayNameForCamp,
   heroImagePositionPresets,
   normalizeCampType,
   heroImageSizePresets,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
-  replaceAlumniForCampType
+  replaceAlumniForCampType,
+  TENANT_MODULE_CATALOG
 } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
 import { defaultTenantDomain } from "../lib/domain.js";
@@ -19,6 +21,7 @@ import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/stor
 import HeroImageEditor from "../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
+import { MINIMUM_MEMBER_AGE } from "../lib/legalAgreement.js";
 
 const STEP_ACCOUNT = "account";
 const STEP_DESIGN = "design";
@@ -76,17 +79,7 @@ function resolveServerResumeStep(
   );
 }
 
-const DEFAULT_FEATURE_MODULES = {
-  directory: true,
-  search: true,
-  photoStream: true,
-  chat: true,
-  map: true,
-  familyTrees: true,
-  relatedProfiles: true,
-  newsletter: true,
-  merchShop: true
-};
+const DEFAULT_FEATURE_MODULES = { ...DEFAULT_TENANT_MODULES };
 const DEFAULT_AGE_GROUPS = [
   "Super Warrior",
   "Warrior",
@@ -217,48 +210,11 @@ function billingPlanLabel(code = "") {
   return match ? match.title : "Legacy Plan";
 }
 
-const FEATURE_OPTIONS = [
-  {
-    key: "search",
-    title: "Advanced Search",
-    description: "Search members by name, camp role, location, industry, and more."
-  },
-  {
-    key: "photoStream",
-    title: "Photo Stream",
-    description: "Shared photo gallery where members upload and browse camp photos."
-  },
-  {
-    key: "chat",
-    title: "Chats and Forums",
-    description: "Direct messages and community discussion spaces."
-  },
-  {
-    key: "map",
-    title: "Location Map",
-    description: "Interactive map showing where your members live and work."
-  },
-  {
-    key: "familyTrees",
-    title: "Family Trees",
-    description: "Visualize multi-generational camp family connections."
-  },
-  {
-    key: "relatedProfiles",
-    title: "Related Profiles",
-    description: "Show connections between members across profile pages sitewide."
-  },
-  {
-    key: "merchShop",
-    title: "Merch Shop",
-    description: "Link to your camp's merchandise store."
-  },
-  {
-    key: "newsletter",
-    title: "Newsletter",
-    description: "Newsletter archive and announcements section for your camp."
-  }
-];
+const FEATURE_OPTIONS = TENANT_MODULE_CATALOG.map((module) => ({
+  key: module.key,
+  title: module.key === "chat" ? "Chats and Forums" : module.label,
+  description: module.description
+}));
 
 const PREMIUM_ONLY_MODULE_KEYS = ["familyTrees"];
 const BASE_FEATURE_SET_KEYS = Object.keys(DEFAULT_FEATURE_MODULES).filter(
@@ -568,7 +524,7 @@ function DirectorCreateAccountWizardPage() {
   const { slug: paramSlug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, token: authToken, user } = useAuth();
+  const { isAuthenticated, isReady, login, token: authToken, user } = useAuth();
   const { tenant } = useTenant();
   const slug = String(paramSlug || tenant?.slug || "").trim().toLowerCase();
   const isDirectorUser = user?.roles?.includes("tenant_admin");
@@ -636,6 +592,7 @@ function DirectorCreateAccountWizardPage() {
   });
   const [, setBillingErrors] = useState({});
   const [legalAgreementAccepted, setLegalAgreementAccepted] = useState(false);
+  const [ageEligibilityConfirmed, setAgeEligibilityConfirmed] = useState(false);
   const [legalAgreementError, setLegalAgreementError] = useState("");
   const [specificsErrors, setSpecificsErrors] = useState({});
   const [showNewsletterSettings, setShowNewsletterSettings] = useState(false);
@@ -685,8 +642,29 @@ function DirectorCreateAccountWizardPage() {
 
   useEffect(() => {
     if (!setupRequested || !accountStepRequired || !slug) return;
-    navigate(resumeLoginPath, { replace: true });
-  }, [accountStepRequired, navigate, resumeLoginPath, setupRequested, slug]);
+    // A successful login can render this route before the scoped user record
+    // finishes hydrating. Wait for that decision instead of letting a transient
+    // anonymous render synchronously win and bounce the director back to login.
+    if (!isReady || authToken || (isAuthenticated && !user?.id)) return undefined;
+    if (isAuthenticated && user?.id) {
+      navigate(`/t/${slug}/home`, { replace: true });
+      return undefined;
+    }
+    const redirectTimer = window.setTimeout(() => {
+      navigate(resumeLoginPath, { replace: true });
+    }, 750);
+    return () => window.clearTimeout(redirectTimer);
+  }, [
+    accountStepRequired,
+    authToken,
+    isAuthenticated,
+    isReady,
+    navigate,
+    resumeLoginPath,
+    setupRequested,
+    slug,
+    user?.id
+  ]);
 
   useEffect(() => {
     if (checkoutQueryState !== "cancel") return;
@@ -841,6 +819,7 @@ function DirectorCreateAccountWizardPage() {
       body: {
         mode: "director_wizard",
         legalAgreementAccepted: true,
+        ageEligibilityConfirmed: true,
         termsVersion: DIRECTOR_CLIENT_TERMS_VERSION,
         privacyVersion: DIRECTOR_CLIENT_PRIVACY_VERSION,
         directorAgreementVersion: DIRECTOR_SERVICE_AGREEMENT_VERSION
@@ -1694,6 +1673,9 @@ function DirectorCreateAccountWizardPage() {
     if (!campTypeValid) {
       next.campType = "Please choose your camp type.";
     }
+    if (!ageEligibilityConfirmed) {
+      next.ageEligibility = `Confirm that you are at least ${MINIMUM_MEMBER_AGE} years old.`;
+    }
     if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
       next.billingPlanCode = "Please choose a plan.";
     }
@@ -1728,7 +1710,9 @@ function DirectorCreateAccountWizardPage() {
     if (!homepageQuote) {
       next.homepageQuote = "Add the quote shown on your pre-login homepage.";
     }
-    if (planScopedModulesDraft.merchShop && merchShopUrl && !urlLooksValid(merchShopUrl)) {
+    if (planScopedModulesDraft.merchShop && !merchShopUrl) {
+      next.merchShopUrl = "Add the camp merch shop URL or turn off the Merch Shop module.";
+    } else if (planScopedModulesDraft.merchShop && !urlLooksValid(merchShopUrl)) {
       next.merchShopUrl = "Enter a valid URL starting with http:// or https://";
     }
 
@@ -1997,7 +1981,17 @@ function DirectorCreateAccountWizardPage() {
     if (!isPremiumCamp && PREMIUM_ONLY_MODULE_KEYS.includes(moduleKey)) {
       return;
     }
-    setModulesDraft((prev) => ({ ...prev, [moduleKey]: enabled }));
+    setModulesDraft((prev) => {
+      const next = { ...prev, [moduleKey]: enabled };
+      if (moduleKey === "directory" && !enabled) {
+        next.search = false;
+        next.relatedProfiles = false;
+      }
+      if ((moduleKey === "search" || moduleKey === "relatedProfiles") && enabled) {
+        next.directory = true;
+      }
+      return next;
+    });
     if (moduleKey === "newsletter" && !enabled) {
       setShowNewsletterSettings(false);
     }
@@ -2137,8 +2131,8 @@ function DirectorCreateAccountWizardPage() {
       setBillingErrors({});
     }
 
-    if (!legalAgreementAccepted) {
-      setLegalAgreementError("You must accept PondBridge client legal agreements before launch.");
+    if (!legalAgreementAccepted || !ageEligibilityConfirmed) {
+      setLegalAgreementError("Confirm age eligibility and accept PondBridge client legal agreements before launch.");
       setStep(STEP_REVIEW_LAUNCH);
       setSubmitError("Accept legal agreements before launching your network.");
       return;
@@ -2161,13 +2155,15 @@ function DirectorCreateAccountWizardPage() {
             campName: String(form.campName || "").trim(),
             directorSignup: true,
             legalAgreementAccepted: true,
+            ageEligibilityConfirmed: true,
             termsVersion: MEMBER_TERMS_VERSION,
             privacyVersion: MEMBER_PRIVACY_VERSION,
             legalAgreement: {
               accepted: true,
               acceptedAt: new Date().toISOString(),
               termsVersion: MEMBER_TERMS_VERSION,
-              privacyVersion: MEMBER_PRIVACY_VERSION
+              privacyVersion: MEMBER_PRIVACY_VERSION,
+              ageEligibilityConfirmed: true
             }
           }
         });
@@ -2256,7 +2252,7 @@ function DirectorCreateAccountWizardPage() {
             heroImageSizeMember: normalizeHeroImageSize(
               themeDraft.heroImageSizeMember || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
             ),
-            fontFamily: String(baseTheme.fontFamily || "Inter"),
+            fontFamily: String(baseTheme.fontFamily || "DM Sans"),
             fontToken: String(baseTheme.fontToken || "cedar_default")
           }
         }
@@ -2269,6 +2265,7 @@ function DirectorCreateAccountWizardPage() {
           modules: {
             directory: Boolean(planScopedModulesDraft.directory),
             search: Boolean(planScopedModulesDraft.search),
+            events: Boolean(planScopedModulesDraft.events),
             photoStream: Boolean(planScopedModulesDraft.photoStream),
             chat: Boolean(planScopedModulesDraft.chat),
             map: Boolean(planScopedModulesDraft.map),
@@ -2416,15 +2413,20 @@ function DirectorCreateAccountWizardPage() {
 
   return (
     <section className="product-claim-page product-director-create-page">
-      <div className="product-claim-wrap product-director-create-wrap">
+      <div
+        className={`product-claim-wrap product-director-create-wrap ${
+          step === STEP_DESIGN ? "is-design-studio" : ""
+        }`}
+      >
         <article ref={cardRef} className="product-claim-card product-director-create-card pb-cedar-page">
           <div className="director-create-stepper" aria-label="Onboarding progress">
             {accountStepRequired ? (
-              <button
-                type="button"
-                className={`director-step-pill ${stepClass(STEP_ACCOUNT)}`}
-                onClick={() => goToStep(STEP_ACCOUNT)}
-              >
+            <button
+              type="button"
+              className={`director-step-pill ${stepClass(STEP_ACCOUNT)}`}
+              onClick={() => goToStep(STEP_ACCOUNT)}
+              aria-current={step === STEP_ACCOUNT ? "step" : undefined}
+            >
                 1. Account
               </button>
             ) : null}
@@ -2432,6 +2434,7 @@ function DirectorCreateAccountWizardPage() {
               type="button"
               className={`director-step-pill ${stepClass(STEP_DESIGN)}`}
               onClick={() => goToStep(STEP_DESIGN)}
+              aria-current={step === STEP_DESIGN ? "step" : undefined}
             >
               {accountStepRequired ? "2. Design" : "1. Design"}
             </button>
@@ -2439,6 +2442,7 @@ function DirectorCreateAccountWizardPage() {
               type="button"
               className={`director-step-pill ${stepClass(STEP_FEATURES)}`}
               onClick={() => goToStep(STEP_FEATURES)}
+              aria-current={step === STEP_FEATURES ? "step" : undefined}
             >
               {accountStepRequired ? "3. Features" : "2. Features"}
             </button>
@@ -2446,6 +2450,7 @@ function DirectorCreateAccountWizardPage() {
               type="button"
               className={`director-step-pill ${stepClass(STEP_CAMP_SPECIFICS)}`}
               onClick={() => goToStep(STEP_CAMP_SPECIFICS)}
+              aria-current={step === STEP_CAMP_SPECIFICS ? "step" : undefined}
             >
               {accountStepRequired ? "4. Camp specifics" : "3. Camp specifics"}
             </button>
@@ -2453,6 +2458,7 @@ function DirectorCreateAccountWizardPage() {
               type="button"
               className={`director-step-pill ${stepClass(STEP_BILLING_PLAN)}`}
               onClick={() => goToStep(STEP_BILLING_PLAN)}
+              aria-current={step === STEP_BILLING_PLAN ? "step" : undefined}
             >
               {accountStepRequired ? "5. Billing and plan" : "4. Billing and plan"}
             </button>
@@ -2460,6 +2466,7 @@ function DirectorCreateAccountWizardPage() {
               type="button"
               className={`director-step-pill ${stepClass(STEP_REVIEW_LAUNCH)}`}
               onClick={() => goToStep(STEP_REVIEW_LAUNCH)}
+              aria-current={step === STEP_REVIEW_LAUNCH ? "step" : undefined}
             >
               {accountStepRequired ? "6. Review and launch" : "5. Review and launch"}
             </button>
@@ -2603,6 +2610,30 @@ function DirectorCreateAccountWizardPage() {
                   </div>
 
                   <div className="wizard1-field wizard1-span-12">
+                    <label className={`director-inline-checkbox ${errors.ageEligibility ? "has-error" : ""}`} htmlFor="director-age-eligibility">
+                      <input
+                        id="director-age-eligibility"
+                        type="checkbox"
+                        checked={ageEligibilityConfirmed}
+                        aria-invalid={Boolean(errors.ageEligibility)}
+                        aria-describedby={errors.ageEligibility ? "director-age-eligibility-error" : undefined}
+                        onChange={(event) => {
+                          setAgeEligibilityConfirmed(event.target.checked);
+                          setErrors((current) => ({ ...current, ageEligibility: "" }));
+                          setLegalAgreementError("");
+                          setSubmitError("");
+                        }}
+                      />
+                      <span>I confirm that I am at least {MINIMUM_MEMBER_AGE} years old.</span>
+                    </label>
+                    {errors.ageEligibility ? (
+                      <p id="director-age-eligibility-error" className="wizard1-error" role="alert">
+                        {errors.ageEligibility}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="wizard1-field wizard1-span-12">
                     <label className="wizard1-label">
                       Choose {alumniWord} network plan<span className="req" aria-hidden="true"> *</span>
                     </label>
@@ -2684,7 +2715,7 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Design your network</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    {`Choose your camp colors and logo. This styling will be applied across your ${alumniWord} network.`}
+                    {`Choose your camp colors, logo, and main photo. The live site simulation updates immediately so you can review the public landing page and the signed-in ${alumniWord} experience before saving.`}
                   </p>
                 </div>
               </div>
@@ -2730,6 +2761,7 @@ function DirectorCreateAccountWizardPage() {
                         value={themeDraft.brandPrimary}
                         onChange={(event) => updateThemeField("brandPrimary", event.target.value)}
                         placeholder={initialBrandColor.toUpperCase()}
+                        aria-label="Main color hex value"
                       />
                     </div>
                     <BrandImageColorPicker
@@ -2792,9 +2824,9 @@ function DirectorCreateAccountWizardPage() {
                     />
                   </div>
 
-                  <div className="wizard1-span-12">
+                  <aside className="wizard1-span-12 director-design-simulator" aria-label="Live site simulation">
                     <HeroImageEditor
-                      label="Live preview"
+                      label="Live site simulation"
                       variant="onboarding"
                       heroImageUrl={themeDraft.heroImageUrl}
                       landingImagePosition={themeDraft.heroImagePositionLanding}
@@ -2842,7 +2874,7 @@ function DirectorCreateAccountWizardPage() {
                         }))
                       }
                     />
-                  </div>
+                  </aside>
                 </div>
 
                 {submitError ? <p className="wizard1-error director-create-submit-error">{submitError}</p> : null}
@@ -3432,10 +3464,17 @@ function DirectorCreateAccountWizardPage() {
 
                   <article className="director-review-legal-card">
                     <h3>Legal confirmation required</h3>
-                    <label className={`director-inline-checkbox ${legalAgreementError ? "has-error" : ""}`}>
+                    <label className={`director-inline-checkbox ${legalAgreementError ? "has-error" : ""}`} htmlFor="director-legal-agreement">
                       <input
+                        id="director-legal-agreement"
                         type="checkbox"
                         checked={legalAgreementAccepted}
+                        aria-invalid={Boolean(legalAgreementError)}
+                        aria-describedby={
+                          legalAgreementError
+                            ? "director-legal-agreement-hint director-legal-agreement-error"
+                            : "director-legal-agreement-hint"
+                        }
                         onChange={(event) => {
                           setLegalAgreementAccepted(event.target.checked);
                           setLegalAgreementError("");
@@ -3446,13 +3485,17 @@ function DirectorCreateAccountWizardPage() {
                         I agree to PondBridge Terms, Director Agreement, and Privacy Policy for launching this network.
                       </span>
                     </label>
-                    <p className="director-field-hint">
+                    <p id="director-legal-agreement-hint" className="director-field-hint">
                       Required before launch. Review{" "}
                       <Link to={`/t/${slug}/director-legal`} target="_blank" rel="noopener noreferrer">
                         PondBridge Client Terms &amp; Privacy
                       </Link>.
                     </p>
-                    {legalAgreementError ? <p className="wizard1-error">{legalAgreementError}</p> : null}
+                    {legalAgreementError ? (
+                      <p id="director-legal-agreement-error" className="wizard1-error" role="alert">
+                        {legalAgreementError}
+                      </p>
+                    ) : null}
                   </article>
                 </div>
 

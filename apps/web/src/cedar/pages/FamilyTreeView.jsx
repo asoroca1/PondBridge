@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
 import InitialsMark from "../../components/InitialsMark.jsx";
+import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
 import { requestFamilyTrees } from "../lib/familyTreesApi";
@@ -209,7 +212,7 @@ function buildTreeLayout(members = [], edges = []) {
 }
 
 export default function FamilyTreeView() {
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -227,6 +230,7 @@ export default function FamilyTreeView() {
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const debounceRef = useRef(null);
+  const { confirm, confirmDialogProps } = useConfirmDialog();
 
   const [draft, setDraft] = useState({
     name: "",
@@ -418,15 +422,18 @@ export default function FamilyTreeView() {
     });
   }
 
-  function removeMember(memberId) {
+  async function removeMember(memberId) {
     const involved = draft.edges.filter(
       (edge) => edge.fromProfileId === memberId || edge.toProfileId === memberId
     ).length;
-    if (
-      involved > 0 &&
-      !window.confirm("Removing this member will also remove related edges. Continue?")
-    ) {
-      return;
+    if (involved > 0) {
+      const member = draft.members.find((candidate) => candidate.id === memberId);
+      const accepted = await confirm({
+        title: `Remove ${displayName(member) || "this member"}?`,
+        description: `${involved} related relationship${involved === 1 ? "" : "s"} will also be removed from this draft.`,
+        confirmLabel: "Remove member",
+      });
+      if (!accepted) return;
     }
     setDraft((prev) => ({
       ...prev,
@@ -537,7 +544,12 @@ export default function FamilyTreeView() {
 
   async function onDelete() {
     if (!tree?.permissions?.canDelete) return;
-    if (!window.confirm("Delete this family tree? This cannot be undone.")) return;
+    const accepted = await confirm({
+      title: "Delete this family tree?",
+      description: `“${tree.name}” and all of its relationships will be permanently removed.`,
+      confirmLabel: "Delete family tree",
+    });
+    if (!accepted) return;
 
     setSaving(true);
     try {
@@ -548,7 +560,7 @@ export default function FamilyTreeView() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `Delete failed (${res.status})`);
-      navigate("/family-trees");
+      navigate(tenantRoute(slug, "/family-trees"));
     } catch (err) {
       setError(err?.message || "Unable to delete family tree.");
     } finally {
@@ -573,7 +585,7 @@ export default function FamilyTreeView() {
                 </p>
               </div>
               <div className="ft-head-actions">
-                <Link className="ft-head-btn" to="/family-trees">
+                <Link className="ft-head-btn" to={tenantRoute(slug, "/family-trees")}>
                   Back
                 </Link>
                 {!isEditing && tree.permissions?.canEdit && (
@@ -647,7 +659,7 @@ export default function FamilyTreeView() {
                             <Link
                               key={memberId}
                               ref={bindNodeRef(memberId)}
-                              to={`/profile/${memberId}`}
+                              to={tenantRoute(slug, `/profile/${memberId}`)}
                               aria-label={`Open ${displayName(member)} profile`}
                               className={`ft-tree-node ${memberId === currentUserId ? "is-you" : ""}`}
                             >
@@ -831,6 +843,7 @@ export default function FamilyTreeView() {
           </>
         )}
       </main>
+      <ModalConfirm {...confirmDialogProps} />
     </>
   );
 }

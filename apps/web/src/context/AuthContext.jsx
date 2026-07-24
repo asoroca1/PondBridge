@@ -354,8 +354,8 @@ function LegacyAuthProvider({ children }) {
     });
     setToken(nextToken || "");
     setUser(normalized);
-    writeAuthToStorage(nextToken || "", normalized);
     markTabSessionAuthenticated();
+    writeAuthToStorage(nextToken || "", normalized);
     clearTabLoginIntent();
     setSessionReady(true);
   }, []);
@@ -394,8 +394,8 @@ function LegacyAuthProvider({ children }) {
           { tenantSlug: resolvedTenantSlug }
         );
         setUser(normalizedUser);
-        writeAuthToStorage(token || "", normalizedUser);
         markTabSessionAuthenticated();
+        writeAuthToStorage(token || "", normalizedUser);
         return {
           ok: Boolean(normalizedUser),
           authProvider: payload?.authProvider || "legacy",
@@ -651,8 +651,8 @@ function ClerkBackedAuthProvider({ children }) {
         setUser(normalizedUser);
         setToken(persistedSessionToken);
         writeSessionToken(persistedSessionToken);
-        writeAuthToStorage(persistedSessionToken, normalizedUser);
         markTabSessionAuthenticated();
+        writeAuthToStorage(persistedSessionToken, normalizedUser);
         clearTabLoginIntent();
         setBootstrapError("");
         return payload;
@@ -773,8 +773,8 @@ function ClerkBackedAuthProvider({ children }) {
         });
         legacySessionOverrideRef.current = false;
         setUser(normalizedUser);
-        writeAuthToStorage(clerkToken, normalizedUser);
         markTabSessionAuthenticated();
+        writeAuthToStorage(clerkToken, normalizedUser);
         clearTabLoginIntent();
         setBootstrapError("");
         return payload;
@@ -793,8 +793,8 @@ function ClerkBackedAuthProvider({ children }) {
             !strictTenantSync &&
             (!isTenantScopedRefresh || currentUserStillMatchesTenant);
           if (preserveCachedSession) {
-            writeAuthToStorage(clerkToken, currentScopedUser || userRef.current);
             markTabSessionAuthenticated();
+            writeAuthToStorage(clerkToken, currentScopedUser || userRef.current);
             return null;
           }
           // Record the error so login pages can detect this failure and
@@ -820,8 +820,8 @@ function ClerkBackedAuthProvider({ children }) {
         // successful bootstrap), keep the cached auth instead of clearing
         // everything and bouncing the user to the login screen.
         if (hasExistingUser) {
-          writeAuthToStorage(clerkToken, userRef.current);
           markTabSessionAuthenticated();
+          writeAuthToStorage(clerkToken, userRef.current);
           return null;
         }
         setBootstrapError(
@@ -1060,8 +1060,8 @@ function ClerkBackedAuthProvider({ children }) {
         setToken(nextToken);
         writeSessionToken(nextToken);
         setUser(normalized);
-        writeAuthToStorage(nextToken, normalized);
         markTabSessionAuthenticated();
+        writeAuthToStorage(nextToken, normalized);
         clearTabLoginIntent();
         return;
       }

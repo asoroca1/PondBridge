@@ -2,6 +2,9 @@
   "name": "pondbridge-platform",
   "private": true,
   "version": "0.1.0",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -14,6 +17,9 @@
     "ios:sync": "npm --workspace @pondbridge/ios run sync",
     "ios:open": "npm --workspace @pondbridge/ios run open",
     "ios:doctor": "npm --workspace @pondbridge/ios run doctor",
+    "android:build": "npm --workspace @pondbridge/ios run build:android",
+    "android:sync": "npm --workspace @pondbridge/ios run sync:android",
+    "android:open": "npm --workspace @pondbridge/ios run open:android",
     "cloudflare:setup": "node scripts/cloudflareSetup.mjs",
     "cloudflare:setup:dry": "node scripts/cloudflareSetup.mjs --dry-run",
     "lint": "npm run lint --workspaces --if-present",
@@ -22,6 +28,14 @@
     "perf:check-web": "node scripts/checkWebBuildBudget.mjs",
     "smoke:spa-routing": "node scripts/smokeSpaRouting.mjs",
     "db:preflight": "npm --workspace @pondbridge/api run db:preflight",
+    "staging:local:start": "node scripts/localStaging.mjs start",
+    "staging:local:reset": "node scripts/localStaging.mjs reset",
+    "staging:local:verify": "node scripts/localStaging.mjs verify",
+    "staging:local:rehearse": "node scripts/localStaging.mjs rehearse",
+    "staging:local:test": "node scripts/localStaging.mjs test",
+    "staging:local:dev": "node scripts/localStaging.mjs dev",
+    "staging:local:status": "node scripts/localStaging.mjs status",
+    "staging:local:stop": "node scripts/localStaging.mjs stop",
     "format": "prettier --write .",
     "security:check-env": "node scripts/checkTrackedEnv.mjs"
   },
@@ -30,7 +44,8 @@
     "eslint": "^9.23.0",
     "eslint-plugin-react": "^7.37.4",
     "globals": "^16.0.0",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "supabase": "2.109.1"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.1",
@@ -41,5 +56,12 @@
     "lucide-react": "^0.575.0",
     "react-hook-form": "^7.71.2",
     "zod": "^4.3.6"
+  },
+  "overrides": {
+    "@babel/core": "7.29.7",
+    "esbuild": "0.28.1",
+    "form-data": "4.0.6",
+    "js-yaml": "5.2.1",
+    "shell-quote": "1.10.0"
   }
 }

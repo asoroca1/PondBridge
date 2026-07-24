@@ -17,6 +17,7 @@ import {
   TreePine,
   User,
   Pencil,
+  Repeat2,
   Scale
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
@@ -24,6 +25,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useMobileNotifications } from "../context/MobileNotificationsContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
+import { openExternalUrl } from "../lib/externalLinks.js";
 import { readAuthFromStorage } from "../lib/storage.js";
 import { avatarUrl, initialsOf } from "../cedar/lib/helpers.js";
 import InitialsMark from "./InitialsMark.jsx";
@@ -40,13 +42,6 @@ import cedarLogo from "../assets/cedar-logo.png";
 import NotificationBadge from "./NotificationBadge.jsx";
 
 const MIN_SEARCH_CHARS = 1;
-const DIRECTOR_ADMIN_DESKTOP_MEDIA = "(max-width: 1020px)";
-
-function shouldHideDirectorAdminToolsOnCurrentDevice() {
-  if (isNativeApp()) return true;
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia(DIRECTOR_ADMIN_DESKTOP_MEDIA).matches;
-}
 
 function getPhotoUrl(user = {}) {
   return avatarUrl(user);
@@ -205,7 +200,6 @@ export default function NavBar() {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [active, setActive] = useState(-1);
-  const [hideDirectorAdminTools, setHideDirectorAdminTools] = useState(() => shouldHideDirectorAdminToolsOnCurrentDevice());
 
   const menuRef = useRef(null);
   const toggleRef = useRef(null);
@@ -230,16 +224,23 @@ export default function NavBar() {
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const content = resolveTenantContent(tenant);
-  const merchShopUrl = String(content.merchShopUrl || "").trim() || "https://thecampspot.com/camphome.aspx";
+  const merchShopUrl =
+    String(content.merchShopUrl || "").trim() ||
+    (slug === "camp-cedar" || slug === "cedar" ? "https://thecampspot.com/camphome.aspx" : "");
   const nativeApp = isNativeApp();
   const cedarFallback = slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "";
   const resolvedLogoUrl = branding.logoUrl || cedarFallback;
   const logoUrl = logoError ? cedarFallback : resolvedLogoUrl;
   const fallbackLogoInitial = initialsFrom(title || tenant?.name || "Camp");
   const avatarSrc = getPhotoUrl(user);
-  const profileInitials =
-    initialsOf(firstNameFrom(user), lastNameFrom(user), user?.nickname || user?.profile?.nickname || "") ||
-    initialsFrom(fullNameFrom(user) || String(user?.email || "").split("@")[0] || "Member");
+  const explicitProfileInitials = initialsOf(
+    firstNameFrom(user),
+    lastNameFrom(user),
+    user?.nickname || user?.profile?.nickname || ""
+  );
+  const profileInitials = explicitProfileInitials !== "?"
+    ? explicitProfileInitials
+    : initialsFrom(fullNameFrom(user) || String(user?.email || "").split("@")[0] || "Member");
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
   const canFamilyTrees = Boolean(modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees"));
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
@@ -273,28 +274,59 @@ export default function NavBar() {
   const showPrivateTools = isAuthenticated && !usePublicNav;
   const useNativeMemberRoute = nativeApp && showPrivateTools && !onAdminModeRoute;
   const showSearch = canSearch && !usePublicNav && !onAdminModeRoute && !useNativeMemberRoute;
+  const showPrimaryNav = showPrivateTools && !onAdminModeRoute && !useNativeMemberRoute;
   const navTitle = useNativeMemberRoute
     ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle })
     : title;
 
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      setHideDirectorAdminTools(isNativeApp());
-      return undefined;
+  const primaryNavItems = useMemo(() => {
+    const items = [
+      {
+        id: "home",
+        label: "Home",
+        icon: Home,
+        to: pathWithCamp(slug, "/home"),
+        active: currentTenantPath === "/home" || currentTenantPath === "/"
+      }
+    ];
+    if (canSearch) {
+      items.push({
+        id: "people",
+        label: "People",
+        icon: Search,
+        to: pathWithCamp(slug, "/search"),
+        active: currentTenantPath === "/search" || currentTenantPath === "/search-results" || currentTenantPath.startsWith("/profile/")
+      });
     }
-
-    const mediaQuery = window.matchMedia(DIRECTOR_ADMIN_DESKTOP_MEDIA);
-    const syncHiddenState = () => setHideDirectorAdminTools(shouldHideDirectorAdminToolsOnCurrentDevice());
-
-    syncHiddenState();
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", syncHiddenState);
-      return () => mediaQuery.removeEventListener("change", syncHiddenState);
+    if (modules.chat !== false) {
+      items.push({
+        id: "messages",
+        label: "Messages",
+        icon: MessageSquare,
+        to: pathWithCamp(slug, "/chat-rooms?tab=personal"),
+        active: /^\/chat(?:-rooms)?(?:\/|$)/.test(currentTenantPath)
+      });
     }
-
-    mediaQuery.addListener(syncHiddenState);
-    return () => mediaQuery.removeListener(syncHiddenState);
-  }, []);
+    if (modules.events !== false) {
+      items.push({
+        id: "events",
+        label: "Events",
+        icon: CalendarDays,
+        to: pathWithCamp(slug, "/events"),
+        active: currentTenantPath === "/events" || currentTenantPath.startsWith("/events/")
+      });
+    }
+    if (modules.photoStream !== false) {
+      items.push({
+        id: "photos",
+        label: "Photos",
+        icon: Image,
+        to: pathWithCamp(slug, "/photo-stream"),
+        active: currentTenantPath === "/photo-stream"
+      });
+    }
+    return items;
+  }, [canSearch, currentTenantPath, modules.chat, modules.events, modules.photoStream, slug]);
 
   const menuSections = useMemo(() => {
     if (!isAuthenticated) return [];
@@ -362,12 +394,12 @@ export default function NavBar() {
         to: pathWithCamp(slug, "/cedar-chest")
       });
     }
-    if (modules.merchShop !== false) {
+    if (modules.merchShop !== false && merchShopUrl) {
       communityItems.push({ id: "merch", icon: Shirt, label: "Merch Shop", href: merchShopUrl });
     }
 
     const adminItems = [];
-    if (isCampDirector && !hideDirectorAdminTools) {
+    if (isCampDirector) {
       if (needsOnboarding) {
         adminItems.push({
           id: "setup",
@@ -418,8 +450,7 @@ export default function NavBar() {
     merchShopUrl,
     nativeApp,
     isCampDirector,
-    needsOnboarding,
-    hideDirectorAdminTools
+    needsOnboarding
   ]);
 
   function closeMenus() {
@@ -611,7 +642,7 @@ export default function NavBar() {
     }
   }
 
-  async function handleLogout() {
+  async function endSession({ forgetCamp = false } = {}) {
     const raceTimeout = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
     try {
       // Race against a timeout so logout doesn't hang when the API is
@@ -625,8 +656,23 @@ export default function NavBar() {
     } finally {
       closeMenus();
       logout();
-      navigate(loggedOutLandingPath, { replace: true });
+      if (forgetCamp && typeof window !== "undefined") {
+        try {
+          window.localStorage.removeItem("pondbridgeTenantSlug");
+        } catch {
+          // Ignore storage failures and still return to the app entry route.
+        }
+      }
+      navigate(forgetCamp ? "/" : loggedOutLandingPath, { replace: true });
     }
+  }
+
+  async function handleLogout() {
+    return endSession();
+  }
+
+  async function handleSwitchCamp() {
+    return endSession({ forgetCamp: true });
   }
 
   return (
@@ -660,6 +706,22 @@ export default function NavBar() {
         <span className={`navbar2-title ${useNativeMemberRoute ? "is-native-page-title" : ""}`.trim()}>{navTitle}</span>
       </div>
 
+      {showPrimaryNav ? (
+        <div className="navbar2-primary-links" aria-label="Primary navigation">
+          {primaryNavItems.map((item) => (
+            <Link
+              key={item.id}
+              to={item.to}
+              className={`navbar2-primary-link ${item.active ? "is-active" : ""}`.trim()}
+              aria-current={item.active ? "page" : undefined}
+            >
+              <item.icon size={17} aria-hidden="true" />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
       <div className="navbar2-right">
         {showSearch ? (
           <div className="navbar2-search">
@@ -672,14 +734,17 @@ export default function NavBar() {
                 onKeyDown={onKeyDown}
                 placeholder="Search names..."
                 className="navbar2-search-input"
+                aria-label="Search members"
                 aria-autocomplete="list"
+                aria-expanded={acOpen}
+                aria-controls="member-search-suggestions"
               />
               <button className="navbar2-search-cta" onClick={goToResults} aria-label="Search">
                 <Search size={16} />
               </button>
 
               {acOpen && q.trim().length >= MIN_SEARCH_CHARS ? (
-                <ul className="nav2-ac-list" role="listbox">
+                <ul id="member-search-suggestions" className="nav2-ac-list" role="listbox">
                   {loading ? <li className="nav2-ac-item muted">Searching...</li> : null}
                   {!loading
                     ? items.map((item, index) => (
@@ -779,7 +844,7 @@ export default function NavBar() {
               <button
                 ref={toggleRef}
                 className={`navbar2-burger ${menuOpen ? "is-open" : ""}`}
-                aria-label="Open menu"
+                aria-label={menuOpen ? "Close menu" : "Open menu"}
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((prev) => !prev)}
               >
@@ -800,7 +865,7 @@ export default function NavBar() {
                             onClick={() => {
                               closeMenus();
                               if (item.href) {
-                                window.open(item.href, "_blank", "noopener,noreferrer");
+                                openExternalUrl(item.href).catch(() => {});
                                 return;
                               }
                               navigate(item.to);
@@ -814,6 +879,11 @@ export default function NavBar() {
                     ))}
                     <div className="dropdown-section">
                       <p className="dropdown-section-title">Session</p>
+                      {nativeApp ? (
+                        <button onClick={handleSwitchCamp} role="menuitem">
+                          <Repeat2 size={16} /> Switch Camp
+                        </button>
+                      ) : null}
                       <button onClick={handleLogout} role="menuitem">
                         <LogOut size={16} /> Log Out
                       </button>

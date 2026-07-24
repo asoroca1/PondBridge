@@ -10,6 +10,11 @@ import {
   clearPendingLegalAgreement,
   readPendingLegalAgreement
 } from "../lib/legalAgreement.js";
+import {
+  clearPendingAccessGrant,
+  readPendingAccessGrant,
+  storePendingAccessGrant
+} from "../lib/pendingAccessGrant.js";
 
 function truthy(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -88,6 +93,13 @@ function isLegalAgreementRequiredError(err) {
     .trim()
     .toUpperCase();
   return code === "LEGAL_AGREEMENT_REQUIRED";
+}
+
+function isAccessCodeError(err) {
+  const code = String(err?.payload?.error?.code || err?.code || "")
+    .trim()
+    .toUpperCase();
+  return code === "ACCESS_CODE_INVALID" || code === "ACCESS_CODE_REQUIRED";
 }
 
 function isAuthTokenPendingError(err) {
@@ -223,6 +235,11 @@ function ClerkAuthCallbackPage() {
     "We are syncing your account and loading your network access."
   );
   const [working, setWorking] = useState(true);
+  const [awaitingAccessCode, setAwaitingAccessCode] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState("");
+  const [verifyingAccessCode, setVerifyingAccessCode] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   async function recoverMembership({
     tenantSlug = "",
@@ -254,9 +271,11 @@ function ClerkAuthCallbackPage() {
         method: "POST",
         token,
         body: {
-          legalAgreement
+          legalAgreement,
+          accessGrant: readPendingAccessGrant(safeSlug)
         }
       });
+      clearPendingAccessGrant(safeSlug);
     }
   }
 
@@ -362,15 +381,48 @@ function ClerkAuthCallbackPage() {
             }
           });
         } else if (decision.action === "join_network") {
+          const accessGrant = readPendingAccessGrant(slug);
+          if (decision.requiresAccessCode && !accessGrant) {
+            setAwaitingAccessCode(true);
+            setWorking(false);
+            return;
+          }
           clearDirectorBootstrapIntent(slug);
           setPhaseMessage("Creating your network membership...");
           await requestJson(`/api/t/${slug}/access/join`, {
             method: "POST",
             token,
             body: {
+              legalAgreement: pendingLegalAgreement,
+              accessGrant
+            }
+          });
+          clearPendingAccessGrant(slug);
+        } else if (decision.action === "request_access") {
+          clearDirectorBootstrapIntent(slug);
+          setPhaseMessage("Submitting your request to the camp director...");
+          await requestJson(`/api/t/${slug}/access/request-access`, {
+            method: "POST",
+            token,
+            body: {
               legalAgreement: pendingLegalAgreement
             }
           });
+          clearPendingLegalAgreement(slug);
+          redirected = true;
+          navigate(routeWithSlug(slug, "/request-access"), { replace: true });
+          return;
+        } else if (decision.action === "wait_for_approval") {
+          clearPendingLegalAgreement(slug);
+          redirected = true;
+          navigate(routeWithSlug(slug, "/request-access"), { replace: true });
+          return;
+        } else if (decision.action === "invite_required") {
+          setError("This camp network is invite-only.");
+          setGuidance("Open the personal invitation from your camp director to finish creating your account.");
+          setRetryPath(buildLoginPath(slug, { returnTo }));
+          setWorking(false);
+          return;
         }
 
         setPhaseMessage("Finalizing sign-in...");
@@ -391,6 +443,13 @@ function ClerkAuthCallbackPage() {
         navigate(next, { replace: true });
       } catch (err) {
         if (cancelled) return;
+        if (isAccessCodeError(err)) {
+          clearPendingAccessGrant(slug);
+          setAccessCodeError("That join code is no longer valid. Enter the current code from your camp director.");
+          setAwaitingAccessCode(true);
+          setWorking(false);
+          return;
+        }
         if (isLegalAgreementRequiredError(err)) {
           const params = new URLSearchParams();
           if (inviteToken) params.set("inviteToken", inviteToken);
@@ -443,12 +502,58 @@ function ClerkAuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [directorBootstrap, getToken, inviteToken, isLoaded, isSignedIn, logout, navigate, refreshSession, slug]);
+  }, [directorBootstrap, getToken, inviteToken, isLoaded, isSignedIn, logout, navigate, refreshSession, retryNonce, slug]);
+
+  async function verifyAccessCode(event) {
+    event.preventDefault();
+    setVerifyingAccessCode(true);
+    setAccessCodeError("");
+    try {
+      const payload = await requestJson(`/api/t/${slug}/auth/access-code/verify`, {
+        method: "POST",
+        body: { accessCode }
+      });
+      if (!payload?.accessGrant) throw new Error("The server did not return a join authorization.");
+      storePendingAccessGrant(slug, payload.accessGrant);
+      setAwaitingAccessCode(false);
+      setWorking(true);
+      setPhaseMessage("Creating your network membership...");
+      setRetryNonce((value) => value + 1);
+    } catch (err) {
+      setAccessCodeError(String(err?.message || "That join code could not be verified."));
+    } finally {
+      setVerifyingAccessCode(false);
+    }
+  }
 
   return (
     <section className="app-status-shell">
       <div className="app-status-card">
-        <h1>{working ? "Finishing sign in..." : "Sign in issue"}</h1>
+        <h1>{awaitingAccessCode ? "Enter your join code" : working ? "Finishing sign in..." : "Sign in issue"}</h1>
+        {awaitingAccessCode ? (
+          <form onSubmit={verifyAccessCode}>
+            <p>Enter the current code from your camp director to join this network.</p>
+            <label htmlFor="callback-join-code">Join code</label>
+            <input
+              id="callback-join-code"
+              className="login1-input"
+              value={accessCode}
+              onChange={(event) => setAccessCode(event.target.value)}
+              autoComplete="one-time-code"
+              autoCapitalize="none"
+              aria-invalid={Boolean(accessCodeError)}
+              aria-describedby={accessCodeError ? "callback-join-code-error" : undefined}
+              required
+            />
+            {accessCodeError ? (
+              <p id="callback-join-code-error" className="error-text">{accessCodeError}</p>
+            ) : null}
+            <button type="submit" className="login1-btn" disabled={verifyingAccessCode || !accessCode.trim()}>
+              {verifyingAccessCode ? "Checking code..." : "Continue"}
+            </button>
+          </form>
+        ) : (
+          <>
         <p>
           {working
             ? phaseMessage
@@ -460,6 +565,8 @@ function ClerkAuthCallbackPage() {
             <Link to={retryPath || routeWithSlug(slug, "/login")}>Retry sign-in</Link>
           </p>
         ) : null}
+          </>
+        )}
       </div>
     </section>
   );

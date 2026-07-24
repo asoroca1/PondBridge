@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { isMemberEventsModuleEnabled, normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
+import { normalizeHeroImagePosition, normalizeHeroImageSize, resolveTenantModules } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
 
 const TenantContext = createContext(null);
@@ -9,16 +9,16 @@ const TENANT_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const FONT_TOKEN_MAP = {
   cedar_default: {
-    display: "\"Roboto Slab\", \"Avenir Next\", serif",
-    body: "\"Inter\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+    display: "\"Instrument Serif\", Georgia, serif",
+    body: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
   },
   modern_clean: {
-    display: "\"Inter\", \"Avenir Next\", \"Segoe UI\", sans-serif",
-    body: "\"Inter\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+    display: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif",
+    body: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
   },
   classic_serif: {
-    display: "\"Lora\", \"Roboto Slab\", serif",
-    body: "\"Lora\", \"Inter\", serif"
+    display: "\"Instrument Serif\", Georgia, serif",
+    body: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
   }
 };
 
@@ -186,16 +186,14 @@ function tenantConfigCacheKey({ slug = "", host = "" } = {}) {
 function normalizeTenantPayload(tenant = null, fallbackSlug = "") {
   if (!tenant || typeof tenant !== "object") return null;
   const rawConfig = tenant?.config && typeof tenant.config === "object" ? tenant.config : {};
-  const modules = {
-    ...(tenant?.modules && typeof tenant.modules === "object" ? tenant.modules : {}),
-    events: isMemberEventsModuleEnabled(tenant?.modules?.events)
-  };
+  const modules = resolveTenantModules(
+    tenant?.modules && typeof tenant.modules === "object" ? tenant.modules : {}
+  );
   const config = {
     ...rawConfig,
-    modules: {
-      ...(rawConfig?.modules && typeof rawConfig.modules === "object" ? rawConfig.modules : {}),
-      events: isMemberEventsModuleEnabled(rawConfig?.modules?.events)
-    }
+    modules: resolveTenantModules(
+      rawConfig?.modules && typeof rawConfig.modules === "object" ? rawConfig.modules : {}
+    )
   };
   const resolvedSlug = String(tenant?.slug || fallbackSlug || "").trim().toLowerCase();
   return {

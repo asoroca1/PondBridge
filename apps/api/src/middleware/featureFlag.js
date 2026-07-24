@@ -1,46 +1,17 @@
 
 /**
- * Lightweight feature-flag middleware.
- *
- * Feature flags are tenant-scoped.  The mapping is read from the
- * FEATURE_FLAGS environment variable, which should be a JSON string:
- *
- *   FEATURE_FLAGS='{"new_search_v2":["demo","test1"],"ai_profiles":["*"]}'
- *
- * A tenant slug of "*" means the feature is enabled for all tenants.
- *
- * Usage in a route file:
- *
- *   import { requireFeature } from "../middleware/featureFlag.js";
- *   router.get("/beta-feature", requireFeature("new_search_v2"), handler);
+ * Durable, fail-closed feature rollout middleware.
+ * Server-owned rollout records use stable tenant IDs and an immediate kill
+ * switch. Missing schema/config never enables a feature.
  */
-
-let parsedFlags = null;
-
-function getFlags() {
-  if (parsedFlags !== null) return parsedFlags;
-  const raw = String(process.env.FEATURE_FLAGS || "").trim();
-  if (!raw) {
-    parsedFlags = {};
-    return parsedFlags;
-  }
-  try {
-    parsedFlags = JSON.parse(raw);
-  } catch {
-    parsedFlags = {};
-  }
-  return parsedFlags;
-}
+import { evaluateFeatureRollout } from "../services/featureRollouts.js";
 
 /**
  * Check whether a feature is enabled for a given tenant slug.
  */
-export function isFeatureEnabled(featureName, tenantSlug = "") {
-  const flags = getFlags();
-  const allowed = flags[featureName];
-  if (!Array.isArray(allowed)) return false;
-  if (allowed.includes("*")) return true;
-  return allowed.includes(String(tenantSlug || "").trim().toLowerCase());
+export async function isFeatureEnabled(featureName, tenant = {}) {
+  const result = await evaluateFeatureRollout(featureName, tenant);
+  return result.enabled;
 }
 
 /**
@@ -48,20 +19,16 @@ export function isFeatureEnabled(featureName, tenantSlug = "") {
  * Returns 404 if the feature is not enabled for the current tenant.
  */
 export function requireFeature(featureName) {
-  return (req, res, next) => {
-    const tenantSlug = String(
-      req.tenant?.slug || req.headers?.["x-tenant-slug"] || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    if (isFeatureEnabled(featureName, tenantSlug)) {
-      return next();
+  return async (req, res, next) => {
+    try {
+      const result = await evaluateFeatureRollout(featureName, req.tenant);
+      if (result.enabled) return next();
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Resource not found" }
+      });
+    } catch (error) {
+      return next(error);
     }
-
-    return res.status(404).json({
-      error: { code: "NOT_FOUND", message: "Resource not found" }
-    });
   };
 }
 
@@ -70,5 +37,5 @@ export function requireFeature(featureName) {
  * Useful in tests or after a config change.
  */
 export function reloadFeatureFlags() {
-  parsedFlags = null;
+  // Retained as a no-op compatibility export for older tests/callers.
 }

@@ -151,7 +151,7 @@ afterEach(async () => {
 afterAll(() => {});
 
 describe("Tenant CSV import", () => {
-  test("imports with create/update/duplicate/error reporting and failure CSV download", async () => {
+  test("previews invitation CSVs and stores invited alumni as pre-member contacts", async () => {
     await createFixtures();
     const tokenA = await loginTenant("tenant-a", {
       email: "admin-a@example.com",
@@ -159,51 +159,45 @@ describe("Tenant CSV import", () => {
     });
 
     const csvContent = [
-      "firstName,lastName,email,phone,cityState,roleAtCamp,gradYear",
-      "Sam,New,sam.new@example.com,5551110000,Denver CO,Camper,2022",
-      "Jordan,Existing,existing-a@example.com,5552220000,Denver CO,Staff,2018",
-      "Sam,New,someone.else@example.com,5553330000,Denver CO,Camper,2022",
-      "No,Email,not-an-email,5554440000,Denver CO,Camper,2024"
+      "firstName,lastName,email",
+      "Sam,New,sam.new@example.com",
+      "Jordan,Existing,existing-a@example.com",
+      "Sam,Duplicate,sam.new@example.com",
+      "No,Email,not-an-email"
     ].join("\n");
 
-    const importResponse = await request(app)
-      .post("/api/tenants/me/import-csv")
+    const previewResponse = await request(app)
+      .post("/api/t/tenant-a/admin/invites/preview")
       .set("Authorization", `Bearer ${tokenA}`)
-      .set("X-Tenant-Slug", "tenant-a")
-      .field("enableFuzzyMatch", "false")
+      .field("roleToAssign", "user")
       .attach("file", Buffer.from(csvContent, "utf8"), "tenant-a-import.csv");
 
-    expect(importResponse.status).toBe(200);
-    expect(importResponse.body.importSummary.createdCount).toBe(1);
-    expect(importResponse.body.importSummary.updatedCount).toBe(1);
-    expect(importResponse.body.importSummary.skippedDuplicates).toBe(1);
-    expect(importResponse.body.importSummary.errorCount).toBe(1);
-    expect(importResponse.body.importSummary.failureCsvDownloadPath).toContain("/failures.csv");
+    expect(previewResponse.status).toBe(200);
+    expect(previewResponse.body.summary.readyCount).toBe(1);
+    expect(previewResponse.body.summary.existingMemberCount).toBe(1);
+    expect(previewResponse.body.summary.duplicateInputCount).toBe(1);
+    expect(previewResponse.body.summary.invalidCount).toBe(1);
+    expect(previewResponse.body.previewToken).toBeTruthy();
 
-    const tenantAProfiles = await request(app)
-      .get("/api/t/tenant-a/profiles")
+    const sendResponse = await request(app)
+      .post("/api/t/tenant-a/admin/invites/send")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .field("roleToAssign", "user")
+      .field("previewToken", previewResponse.body.previewToken)
+      .attach("file", Buffer.from(csvContent, "utf8"), "tenant-a-import.csv");
+
+    expect(sendResponse.status).toBe(201);
+    expect(sendResponse.body.createdCount).toBe(1);
+    expect(sendResponse.body.sentCount).toBe(1);
+
+    const growthResponse = await request(app)
+      .get("/api/t/tenant-a/admin/growth")
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(tenantAProfiles.status).toBe(200);
-    const tenantAEmails = tenantAProfiles.body.items.flatMap((item) => item.emails || []);
-    expect(tenantAEmails).toContain("sam.new@example.com");
-    expect(tenantAEmails).not.toContain("member-b@example.com");
-
-    const existingProfile = tenantAProfiles.body.items.find(
-      (item) => (item.emails || []).includes("existing-a@example.com")
+    expect(growthResponse.status).toBe(200);
+    expect(growthResponse.body.contacts.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ email: "sam.new@example.com" })])
     );
-    expect(existingProfile).toBeTruthy();
-    expect(existingProfile.phones).toContain("5552220000");
-
-    const reportId = importResponse.body.importSummary.reportId;
-    const failuresResponse = await request(app)
-      .get(`/api/t/tenant-a/admin/imports/${reportId}/failures.csv`)
-      .set("Authorization", `Bearer ${tokenA}`);
-
-    expect(failuresResponse.status).toBe(200);
-    expect(failuresResponse.headers["content-type"]).toContain("text/csv");
-    expect(failuresResponse.text).toContain("rowNumber,code,message");
-    expect(failuresResponse.text).toContain("VALIDATION_ERROR");
   });
 
   test("tenant admin cannot import into another tenant", async () => {
@@ -238,5 +232,22 @@ describe("Tenant CSV import", () => {
 
     expect(response.status).toBe(410);
     expect(response.body.error?.code).toBe("MEMBER_IMPORT_DISABLED");
+  });
+
+  test("tenant onboarding import aliases are also retired", async () => {
+    await createFixtures();
+    const tokenA = await loginTenant("tenant-a", {
+      email: "admin-a@example.com",
+      password: "AdminPass123!"
+    });
+
+    for (const path of ["/api/tenants/me/import-csv", "/api/tenants/me/import/csv"]) {
+      const response = await request(app)
+        .post(path)
+        .set("Authorization", `Bearer ${tokenA}`);
+
+      expect(response.status).toBe(410);
+      expect(response.body.error?.code).toBe("MEMBER_IMPORT_DISABLED");
+    }
   });
 });

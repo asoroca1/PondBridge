@@ -8,10 +8,15 @@ import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import {
+  MINIMUM_MEMBER_AGE,
   clearPendingLegalAgreement,
   readPendingLegalAgreement,
   setPendingLegalAgreementAccepted
 } from "../../lib/legalAgreement.js";
+import {
+  readPendingAccessGrant,
+  storePendingAccessGrant
+} from "../../lib/pendingAccessGrant.js";
 
 function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
@@ -20,7 +25,7 @@ function routeWithSlug(slug, path) {
 export default function ClerkCreateAccountFlow() {
   const navigate = useNavigate();
   const params = useParams();
-  const { slug: contextSlug, tenant } = useTenant();
+  const { slug: contextSlug, tenant, loading: tenantLoading } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const networkName = resolveNetworkDisplayName(tenant);
   const [searchParams] = useSearchParams();
@@ -30,8 +35,18 @@ export default function ClerkCreateAccountFlow() {
   const { bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [ageEligibilityConfirmed, setAgeEligibilityConfirmed] = useState(false);
   const [legalError, setLegalError] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState("");
+  const [verifyingAccessCode, setVerifyingAccessCode] = useState(false);
+  const [accessGrantReady, setAccessGrantReady] = useState(() => Boolean(readPendingAccessGrant(slug)));
   const nativeApp = isNativeApp();
+  const signupMode = String(
+    tenant?.accessSettings?.signupMode || tenant?.config?.accessRules?.signupMode || "open"
+  ).trim().toLowerCase();
+  const inviteOnlyWithoutInvite = signupMode === "invite_only" && !inviteToken;
+  const accessCodeRequired = signupMode === "code" && !inviteToken;
 
   useEffect(() => {
     noteTabLoginIntent();
@@ -40,20 +55,21 @@ export default function ClerkCreateAccountFlow() {
   useEffect(() => {
     const pending = readPendingLegalAgreement(slug);
     setLegalAccepted(Boolean(pending?.accepted));
+    setAgeEligibilityConfirmed(Boolean(pending?.ageEligibilityConfirmed));
   }, [slug]);
 
   useEffect(() => {
     if (!legalRequired) return;
-    setLegalError("You must agree to Terms and Privacy to create your account.");
+    setLegalError(`Confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy to create your account.`);
   }, [legalRequired]);
 
   useEffect(() => {
-    if (legalAccepted) {
-      setPendingLegalAgreementAccepted(slug);
+    if (legalAccepted && ageEligibilityConfirmed) {
+      setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
       return;
     }
     clearPendingLegalAgreement(slug);
-  }, [legalAccepted, slug]);
+  }, [ageEligibilityConfirmed, legalAccepted, slug]);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -70,13 +86,14 @@ export default function ClerkCreateAccountFlow() {
   }, [inviteToken, slug]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !slug) return;
+    if (!isLoaded || !isSignedIn || !slug || tenantLoading || !tenant) return;
+    if (inviteOnlyWithoutInvite || (accessCodeRequired && !readPendingAccessGrant(slug))) return;
     const callbackPath = routeWithSlug(
       slug,
       `/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
     );
     navigate(callbackPath, { replace: true });
-  }, [inviteToken, isLoaded, isSignedIn, navigate, slug]);
+  }, [accessCodeRequired, accessGrantReady, inviteOnlyWithoutInvite, inviteToken, isLoaded, isSignedIn, navigate, slug, tenant, tenantLoading]);
 
   const path = routeWithSlug(slug, "/create-account");
   const callbackPath = routeWithSlug(
@@ -86,15 +103,35 @@ export default function ClerkCreateAccountFlow() {
   const signInUrl = routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
   const legalPath = routeWithSlug(slug, "/legal");
   const onSignUpSubmitCapture = (event) => {
-    if (legalAccepted) {
+    if (legalAccepted && ageEligibilityConfirmed) {
       setLegalError("");
-      setPendingLegalAgreementAccepted(slug);
+      setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    setLegalError("You must agree to Terms and Privacy to create your account.");
+    setLegalError(`Confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy to create your account.`);
   };
+
+  async function verifyAccessCode(event) {
+    event.preventDefault();
+    setVerifyingAccessCode(true);
+    setAccessCodeError("");
+    try {
+      const payload = await requestJson(`/api/t/${slug}/auth/access-code/verify`, {
+        method: "POST",
+        body: { accessCode }
+      });
+      if (!payload?.accessGrant) throw new Error("The server did not return a join authorization.");
+      storePendingAccessGrant(slug, payload.accessGrant);
+      setAccessGrantReady(true);
+      if (isSignedIn) navigate(callbackPath, { replace: true });
+    } catch (error) {
+      setAccessCodeError(String(error?.message || "That join code could not be verified."));
+    } finally {
+      setVerifyingAccessCode(false);
+    }
+  }
 
   if (bootstrapError && (clerkLoadTimedOut || (isLoaded && isSignedIn))) {
     return (
@@ -150,6 +187,72 @@ export default function ClerkCreateAccountFlow() {
     );
   }
 
+  if (!tenantLoading && inviteOnlyWithoutInvite) {
+    return (
+      <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
+        <section className="login1-main login1-main-modern login1-main-create-bg">
+          <div className="login1-wrap">
+            <article className="login1-card login1-card-modern">
+              <div className="login1-intro">
+                <p className="login1-kicker">Camp Access</p>
+                <h1 className="login1-title auth-entry-title">Invite required</h1>
+                <p className="login1-clerk-panel-subtitle">
+                  {networkName} is invite-only. Open the personal invite from your camp director to create an account.
+                </p>
+              </div>
+              <Link to={signInUrl} className="auth-create-account-link" style={{ textAlign: "center" }}>
+                Back to login
+              </Link>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (!tenantLoading && accessCodeRequired && !accessGrantReady) {
+    return (
+      <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
+        <section className="login1-main login1-main-modern login1-main-create-bg">
+          <div className="login1-wrap">
+            <article className="login1-card login1-card-modern">
+              <div className="login1-intro">
+                <p className="login1-kicker">Camp Access</p>
+                <h1 className="login1-title auth-entry-title">Enter your join code</h1>
+                <p className="login1-clerk-panel-subtitle">
+                  Enter the code provided by {networkName} before creating your account.
+                </p>
+              </div>
+              <form onSubmit={verifyAccessCode}>
+                <label className="wizard1-label" htmlFor="member-join-code">Join code</label>
+                <input
+                  id="member-join-code"
+                  className="login1-input"
+                  value={accessCode}
+                  onChange={(event) => setAccessCode(event.target.value)}
+                  autoComplete="one-time-code"
+                  autoCapitalize="none"
+                  aria-invalid={Boolean(accessCodeError)}
+                  aria-describedby={accessCodeError ? "member-join-code-error" : undefined}
+                  required
+                />
+                {accessCodeError ? (
+                  <p id="member-join-code-error" className="login1-error">{accessCodeError}</p>
+                ) : null}
+                <button type="submit" className="login1-btn" disabled={verifyingAccessCode || !accessCode.trim()}>
+                  {verifyingAccessCode ? "Checking code..." : "Continue"}
+                </button>
+              </form>
+              <Link to={signInUrl} className="auth-create-account-link" style={{ textAlign: "center" }}>
+                Back to login
+              </Link>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
       <section className="login1-main login1-main-modern login1-main-create-bg">
@@ -188,6 +291,17 @@ export default function ClerkCreateAccountFlow() {
                   </a>
                   .
                 </span>
+              </label>
+              <label className="alumni-create-legal-check">
+                <input
+                  type="checkbox"
+                  checked={ageEligibilityConfirmed}
+                  onChange={(event) => {
+                    setAgeEligibilityConfirmed(event.target.checked);
+                    setLegalError("");
+                  }}
+                />
+                <span>I confirm that I am at least {MINIMUM_MEMBER_AGE} years old.</span>
               </label>
               {legalError ? <p className="error-text alumni-create-legal-error">{legalError}</p> : null}
             </div>

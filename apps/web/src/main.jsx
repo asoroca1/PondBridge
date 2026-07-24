@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { AssetUpdateNotice } from "./components/AssetUpdateNotice.jsx";
 import { clerkSdkEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
 import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
 import { API_BASE } from "./lib/http.js";
@@ -90,11 +91,14 @@ const clerkNoSocialAppearance = {
 };
 
 const baseTree = (
-  <BrowserRouter>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
-  </BrowserRouter>
+  <>
+    <AssetUpdateNotice />
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
+  </>
 );
 
 const appTree = clerkSdkEnabled() ? (

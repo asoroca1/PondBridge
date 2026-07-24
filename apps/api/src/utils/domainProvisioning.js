@@ -15,6 +15,23 @@ function sanitizeDomain(value = "") {
   return stripPathAndPort(stripProtocol(value)).trim().toLowerCase();
 }
 
+export function normalizeTenantDomain(value = "") {
+  return sanitizeDomain(value);
+}
+
+export function isValidTenantDomain(value = "") {
+  const domain = normalizeTenantDomain(value);
+  if (!domain || domain.length > 253) return false;
+  if (domain === "localhost" || domain.endsWith(".localhost")) return true;
+  if (!domain.includes(".")) return false;
+  return domain.split(".").every(
+    (label) =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+  );
+}
+
 function sanitizeSlug(value = "") {
   return String(value || "")
     .trim()

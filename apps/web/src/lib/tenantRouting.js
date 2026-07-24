@@ -35,10 +35,7 @@ export function tenantRoute(slug = "", path = "/", options = {}) {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path || "")
     : `/${String(path || "")}`;
-  const safeSlug = String(slug || "").trim().toLowerCase();
-  if (!safeSlug) return normalizedPath;
-  if (!shouldUseTenantSlugPrefix(safeSlug, options)) return normalizedPath;
-  return `/t/${safeSlug}${normalizedPath}`;
+  return normalizeTenantRouteForHost(slug, normalizedPath, options);
 }
 
 export function normalizeTenantRouteForHost(slug = "", route = "", options = {}) {

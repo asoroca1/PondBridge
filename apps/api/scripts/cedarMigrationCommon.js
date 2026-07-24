@@ -32,7 +32,7 @@ import {
 } from "../src/db/models/index.js";
 import { env } from "../src/config/env.js";
 import { composeCityState } from "../src/utils/location.js";
-import { generateObjectId, isValidObjectId } from "../src/utils/objectId.js";
+import { isValidObjectId } from "../src/utils/objectId.js";
 import { uploadBufferToR2 } from "../src/services/objectStorage.js";
 
 const __filename = fileURLToPath(import.meta.url);

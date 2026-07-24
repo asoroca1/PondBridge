@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { CalendarDays, MapPin, Users, Filter, ChevronRight } from "lucide-react";
+import { CalendarDays, MapPin, Users, ChevronRight } from "lucide-react";
 import { Input, Textarea } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { uploadTenantImage } from "../lib/imageUploads.js";
@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import CedarPageHeader from "../cedar/components/CedarPageHeader.jsx";
+import { useDialogFocus } from "../components/admin/AdminUi.jsx";
 
 const DEFAULT_EVENT_FORM = {
   title: "",
@@ -192,6 +193,7 @@ export default function EventsPage() {
   const [coverUploadError, setCoverUploadError] = useState("");
   const [coverInputKey, setCoverInputKey] = useState(0);
   const [eventForm, setEventForm] = useState({ ...DEFAULT_EVENT_FORM });
+  const createDialogRef = useDialogFocus(createModalOpen, closeCreateModal);
   const roleSet = useMemo(() => normalizeRoleSet(user), [user]);
   const canManageEvents =
     roleSet.has("tenant_admin") || roleSet.has("admin") || roleSet.has("super_admin");
@@ -476,10 +478,10 @@ export default function EventsPage() {
       ) : null}
 
       {createModalOpen ? (
-        <div className="pb-admin-ui-modal-backdrop ev-create-modal-backdrop" role="dialog" aria-modal="true" onClick={closeCreateModal}>
-          <div className="pb-admin-ui-modal director-admin-event-modal ev-create-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="pb-admin-ui-modal-backdrop ev-create-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ev-create-title" onClick={closeCreateModal}>
+          <div ref={createDialogRef} className="pb-admin-ui-modal director-admin-event-modal ev-create-modal" onClick={(event) => event.stopPropagation()} tabIndex={-1}>
             <div className="ev-create-modal-head">
-              <h3>Create Event</h3>
+              <h3 id="ev-create-title">Create Event</h3>
               <p>Create a draft event right here, then publish it when you're ready.</p>
             </div>
             <form className="director-events-form-grid director-admin-event-modal-form ev-create-modal-form" onSubmit={createEvent}>

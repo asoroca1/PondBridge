@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireTenant } from "../middleware/tenantContext.js";
 import { enforceTenantScope } from "../middleware/enforceTenantScope.js";
+import { requireTenantModule } from "../middleware/requireFeature.js";
 import {
   ActivityItemModel,
   PhotoModel,
@@ -42,6 +43,38 @@ import {
   sendMobileNotificationBatch
 } from "../services/mobileNotifications.js";
 import { createTtlCache } from "../utils/ttlCache.js";
+import {
+  canViewProfileContact,
+  filterProfileContactFields,
+  normalizeProfilePrivacy
+} from "../services/profilePrivacy.js";
+import {
+  assertConversationDirectContactAllowed,
+  assertDirectContactAllowed,
+  getMutuallyBlockedUserIds
+} from "../services/memberSafety.js";
+import {
+  MESSAGE_ATTACHMENT_MIME_TYPES,
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  advanceReadBy,
+  clampReadAt,
+  hasConversationMessage,
+  normalizeStoredMessageMedia,
+  notifyConversationParticipants
+} from "../services/messaging.js";
+import {
+  closeRealtimeRoom,
+  emitRealtime,
+  evictUserFromRealtimeRoom,
+  joinUserSocketsToRealtimeRoom,
+  listRealtimeRoomUserIds
+} from "../services/socketServer.js";
+import {
+  clearConversationCaches,
+  conversationDetailResponseCache,
+  conversationListResponseCache,
+  conversationMessagesResponseCache
+} from "../services/chatRuntimeCache.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
@@ -136,9 +169,6 @@ const homeStatsResponseCache = createTtlCache({ ttlMs: 20_000, maxEntries: 250 }
 const locationsStatsResponseCache = createTtlCache({ ttlMs: 20_000, maxEntries: 250 });
 const activityResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 500 });
 const photoFeedResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 900 });
-const conversationListResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1200 });
-const conversationDetailResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1800 });
-const conversationMessagesResponseCache = createTtlCache({ ttlMs: 6_000, maxEntries: 2200 });
 const forumsListResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1000 });
 const forumDetailResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1200 });
 const forumPostsResponseCache = createTtlCache({ ttlMs: 6_000, maxEntries: 1800 });
@@ -158,12 +188,6 @@ function clearHomeActivityCache() {
 
 function clearPhotoFeedCache() {
   photoFeedResponseCache.clear();
-}
-
-function clearConversationCaches() {
-  conversationListResponseCache.clear();
-  conversationDetailResponseCache.clear();
-  conversationMessagesResponseCache.clear();
 }
 
 function clearForumCaches() {
@@ -336,6 +360,14 @@ function normalizeAttachmentFileName(fileName = "newsletter.pdf") {
 
 function buildTenantObjectProxyBaseUrl(req) {
   return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/uploads/object`;
+}
+
+function buildConversationAttachmentAccessUrl(req, conversationId) {
+  return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/conversations/${conversationId}/attachments/object`;
+}
+
+function buildForumAttachmentAccessUrl(req, forumId) {
+  return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/forums/${forumId}/attachments/object`;
 }
 
 function encodeR2Pointer({ key = "", objectUrl = "" } = {}) {
@@ -938,8 +970,10 @@ function extractEducationRows(value = []) {
     .filter((row) => row.college || row.major || row.year);
 }
 
-function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
+function profileToLegacy(profile, { identity = {}, fallbackEmail = "", viewer = {} } = {}) {
   if (!profile) return null;
+  const emailVisible = canViewProfileContact(profile, "email", viewer);
+  profile = filterProfileContactFields(profile, viewer);
   const { city: cityPart, state: statePart } = parseCityState(profile.cityState || "");
   const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
   const collegeMajors = normalizeCollegeMajors(
@@ -957,7 +991,7 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "" } = {}) {
   const firstName = String(profile.firstName || fallbackNames.firstName || "").trim();
   const lastName = String(profile.lastName || fallbackNames.lastName || "").trim();
   const email = String(
-    profile?.emails?.find(Boolean) || fallbackEmail || identity?.email || ""
+    profile?.emails?.find(Boolean) || (emailVisible ? fallbackEmail : "") || ""
   )
     .trim()
     .toLowerCase();
@@ -1238,7 +1272,9 @@ function conversationToClient(conversation = {}, userId = "") {
   const lastMessage = conversation?.lastMessage || null;
   const lastMessageAt = conversation?.lastMessageAt || lastMessage?.createdAt || conversation?.updatedAt || new Date();
   const readAt = readAtFor(conversation, userId);
-  const unread = readAt && lastMessageAt ? new Date(lastMessageAt).getTime() > readAt.getTime() : Boolean(lastMessageAt);
+  const unread =
+    hasConversationMessage(conversation) &&
+    (readAt && lastMessageAt ? new Date(lastMessageAt).getTime() > readAt.getTime() : true);
   const previewText = String(
     lastMessage?.text ||
       (lastMessage?.kind === "image" ? "Photo" : lastMessage?.kind === "file" ? "File attachment" : "")
@@ -1260,6 +1296,7 @@ function conversationToClient(conversation = {}, userId = "") {
     name: String(conversation.name || ""),
     createdBy: normalizeEntityId(conversation.createdBy || ""),
     lastMessageAt: new Date(lastMessageAt).toISOString(),
+    lastReadAt: readAt ? readAt.toISOString() : null,
     lastMessage: lastMessage
       ? {
           senderId: String(lastMessage.senderId || ""),
@@ -1482,6 +1519,25 @@ router.get("/prelaunch/status", (req, res) => {
 });
 
 router.use(requireAuth, enforceTenantScope);
+router.use("/search", requireTenantModule("search", { message: "Search is disabled for this camp." }));
+router.use("/suggestions", requireTenantModule("relatedProfiles", {
+  message: "Related profile suggestions are disabled for this camp."
+}));
+router.use("/photos", requireTenantModule("photoStream", {
+  message: "The photo stream is disabled for this camp."
+}));
+router.use("/conversations", requireTenantModule("chat", {
+  message: "Messaging is disabled for this camp."
+}));
+router.use("/forums", requireTenantModule("chat", {
+  message: "Forums are disabled for this camp."
+}));
+router.use("/newsletters", requireTenantModule("newsletter", {
+  message: "The newsletter archive is disabled for this camp."
+}));
+router.use("/map", requireTenantModule("map", {
+  message: "The location map is disabled for this camp."
+}));
 
 router.post("/uploads/presign", privateUploadPresignLimiter, async (req, res, next) => {
   try {
@@ -1511,7 +1567,8 @@ router.get("/me", async (req, res) => {
   return res.json(
     profileToLegacy(profile, {
       identity: req.identity || {},
-      fallbackEmail: user?.email || req.user?.email || ""
+      fallbackEmail: user?.email || "",
+      viewer: req.user
     })
   );
 });
@@ -1618,6 +1675,7 @@ router.put("/me", async (req, res) => {
     bio: req.body.bio !== undefined ? sanitizeText(String(req.body.bio || "").trim()) : undefined,
     avatarUrl: String(req.body.uploads?.photoUrl || req.body.photoUrl || profile.avatarUrl || "").trim(),
     socials: nextSocials,
+    privacy: req.body?.privacy !== undefined ? normalizeProfilePrivacy(req.body.privacy) : undefined,
     colleges: Array.isArray(req.body.education)
       ? incomingEducationRows.map((row) => row.college)
       : undefined,
@@ -1660,7 +1718,8 @@ router.put("/me", async (req, res) => {
     user: {
       ...(profileToLegacy(updatedProfile, {
         identity: req.identity || {},
-        fallbackEmail: user?.email || req.user?.email || ""
+        fallbackEmail: user?.email || req.user?.email || "",
+        viewer: req.user
       }) || {}),
       _id: String(user?._id || req.user.id),
       email: user?.email || updatedProfile.emails?.[0] || ""
@@ -1685,7 +1744,7 @@ router.get("/search/users", async (req, res) => {
     limit
   });
 
-  const mapped = items.map((item) => profileToLegacy(item));
+  const mapped = items.map((item) => profileToLegacy(item, { viewer: req.user }));
   return res.json({ total: mapped.length, items: mapped, results: mapped });
 });
 
@@ -1718,8 +1777,8 @@ router.get("/search/user/:id", async (req, res) => {
 
   return res.json({
     user: profileToLegacy(item, {
-      identity: req.identity || {},
-      fallbackEmail: user?.email || req.user?.email || ""
+      fallbackEmail: user?.email || "",
+      viewer: req.user
     })
   });
 });
@@ -1775,12 +1834,19 @@ router.get("/suggestions", async (req, res) => {
     return res.status(404).json({ items: [], error: "Target profile not found" });
   }
 
+  const blockedUserIds = new Set(
+    await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
+  );
+
   const candidates = await ProfileModel.find(req.tenant._id, { _id: { $ne: targetProfile._id } }, {
-    select: ["id", "firstName", "lastName", "avatarUrl", "currentJobs", "roleAtCamp", "industry", "cityState", "colleges", "highSchool", "createdAt"],
+    select: ["id", "userId", "firstName", "lastName", "avatarUrl", "currentJobs", "roleAtCamp", "industry", "cityState", "colleges", "highSchool", "createdAt"],
     limit: 800
   });
+  const visibleCandidates = candidates.filter(
+    (candidate) => !blockedUserIds.has(String(candidate?.userId || ""))
+  );
 
-  const scored = candidates
+  const scored = visibleCandidates
     .map((candidate) => {
       const similarity = scoreSimilarity(targetProfile, candidate);
       return {
@@ -1797,7 +1863,7 @@ router.get("/suggestions", async (req, res) => {
 
   const items = buildSuggestionResults({
     primaryProfiles: scored.slice(0, limit).map((item) => item.profile),
-    fallbackProfiles: candidates,
+    fallbackProfiles: visibleCandidates,
     limit
   });
 
@@ -2261,6 +2327,8 @@ router.post("/conversations/dm", async (req, res) => {
     return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "User not found in this camp" } });
   }
 
+  await assertDirectContactAllowed(req.tenant._id, meId, otherId);
+
   const pair = [String(meId), String(otherId)].sort();
   let convo = await ConversationModel.findDm(req.tenant._id, pair);
 
@@ -2281,12 +2349,14 @@ router.post("/conversations/dm", async (req, res) => {
       ]
     });
     clearConversationCaches();
+    await joinUserSocketsToRealtimeRoom(pair, `conversation:${String(convo._id)}`);
     const payload = conversationToClient(convo, req.user.id);
     if (!payload) {
       return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create DM" } });
     }
     return res.status(201).json(payload);
   }
+  await joinUserSocketsToRealtimeRoom(pair, `conversation:${String(convo._id)}`);
   const payload = conversationToClient(convo, req.user.id);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to load DM" } });
@@ -2316,7 +2386,13 @@ router.post("/conversations/group", async (req, res) => {
     });
   }
 
-  const name = sanitizeText(String(req.body?.name || "").trim());
+  await Promise.all(
+    unique
+      .filter((userId) => String(userId) !== String(meId))
+      .map((userId) => assertDirectContactAllowed(req.tenant._id, meId, userId))
+  );
+
+  const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 100);
   const now = new Date();
   const convo = await ConversationModel.create({
     tenantId: req.tenant._id,
@@ -2330,6 +2406,7 @@ router.post("/conversations/group", async (req, res) => {
   });
 
   clearConversationCaches();
+  await joinUserSocketsToRealtimeRoom(unique, `conversation:${String(convo._id)}`);
   const payload = conversationToClient(convo, req.user.id);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create group" } });
@@ -2340,10 +2417,18 @@ router.post("/conversations/group", async (req, res) => {
 router.get("/conversations", async (req, res) => {
   const meId = asObjectId(req.user.id);
   if (!meId) return res.json({ items: [] });
+  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+    user: req.user
+  });
+  const blockedSet = new Set(blockedUserIds);
   const cacheKey = tenantReadCacheKey(
     "conversations-list",
     req.tenant?._id,
-    [String(req.user?.id || ""), String(req.originalUrl || req.url || "")].join(":")
+    [
+      String(req.user?.id || ""),
+      blockedUserIds.join(","),
+      String(req.originalUrl || req.url || "")
+    ].join(":")
   );
   const cached = conversationListResponseCache.get(cacheKey);
   if (cached) {
@@ -2353,7 +2438,52 @@ router.get("/conversations", async (req, res) => {
   }
 
   const items = await ConversationModel.findByParticipant(req.tenant._id, meId, { limit: 200 });
-  const payload = { items: items.map((item) => conversationToClient(item, req.user.id)).filter(Boolean) };
+  const contactChecks = items.filter((item) => {
+    if (String(item?.type || "") !== "dm") return true;
+    return !(item?.participantIds || []).some(
+      (participantId) => blockedSet.has(String(participantId || ""))
+    );
+  });
+  const participantUserIds = [
+    ...new Set(
+      contactChecks
+        .flatMap((item) => item?.participantIds || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  ];
+  const participantProfiles = participantUserIds.length
+    ? await ProfileModel.find(
+        req.tenant._id,
+        { userId: { $in: participantUserIds } },
+        { select: ["id", "userId", "firstName", "lastName", "avatarUrl"], limit: participantUserIds.length }
+      )
+    : [];
+  const participantProfileByUserId = new Map(
+    participantProfiles.map((profile) => [String(profile.userId || ""), profile])
+  );
+  const payload = {
+    items: contactChecks
+      .map((item) => {
+        const conversation = conversationToClient(item, req.user.id);
+        if (!conversation) return null;
+        return {
+          ...conversation,
+          participants: conversation.participantIds.map((userId) => {
+            const profile = participantProfileByUserId.get(String(userId));
+            return {
+              userId: String(userId),
+              profileId: String(profile?._id || profile?.id || ""),
+              name:
+                [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+                "Member",
+              avatarUrl: String(profile?.avatarUrl || "")
+            };
+          })
+        };
+      })
+      .filter(Boolean)
+  };
   conversationListResponseCache.set(cacheKey, payload);
   res.set("Cache-Control", CHAT_CONVERSATIONS_CACHE_CONTROL);
   res.set("Vary", "Authorization");
@@ -2382,10 +2512,31 @@ router.get("/conversations/:id", async (req, res) => {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found" } });
   }
 
+  await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
+
   const payload = conversationToClient(convo, req.user.id);
   if (!payload) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found" } });
   }
+  const participantProfiles = payload.participantIds.length
+    ? await ProfileModel.find(
+        req.tenant._id,
+        { userId: { $in: payload.participantIds } },
+        { select: ["id", "userId", "firstName", "lastName", "avatarUrl"], limit: payload.participantIds.length }
+      )
+    : [];
+  const participantProfileByUserId = new Map(
+    participantProfiles.map((profile) => [String(profile.userId || ""), profile])
+  );
+  payload.participants = payload.participantIds.map((userId) => {
+    const profile = participantProfileByUserId.get(String(userId));
+    return {
+      userId: String(userId),
+      profileId: String(profile?._id || profile?.id || ""),
+      name: [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || "Member",
+      avatarUrl: String(profile?.avatarUrl || "")
+    };
+  });
   conversationDetailResponseCache.set(cacheKey, payload);
   res.set("Cache-Control", CHAT_CONVERSATIONS_CACHE_CONTROL);
   res.set("Vary", "Authorization");
@@ -2411,7 +2562,7 @@ router.patch("/conversations/:id", async (req, res) => {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Only group owner can rename" } });
   }
 
-  const name = sanitizeText(String(req.body?.name || "").trim());
+  const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 100);
   const updated = await ConversationModel.update(convo._id, { name: name || convo.name });
 
   clearConversationCaches();
@@ -2436,10 +2587,19 @@ router.post("/conversations/:id/members", async (req, res) => {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Only groups have members" } });
   }
 
+  const isOwner = (convo.members || []).some(
+    (member) => String(member.userId || "") === String(req.user.id) && member.role === "owner"
+  );
+  if (!isOwner && !isCampAdmin(req.user)) {
+    return res.status(403).json({ error: { code: "FORBIDDEN", message: "Only group owner can add members" } });
+  }
+
   const targetUser = await UserModel.findOne(req.tenant._id, { _id: targetId });
   if (!targetUser) {
     return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "User not found in this camp" } });
   }
+
+  await assertDirectContactAllowed(req.tenant._id, req.user.id, targetId);
 
   const alreadyInGroup = (convo.participantIds || []).some((entry) => String(entry) === String(targetId));
   if (!alreadyInGroup) {
@@ -2450,6 +2610,7 @@ router.post("/conversations/:id/members", async (req, res) => {
       readBy.push({ userId: targetId, lastReadAt: new Date(0) });
     }
     const updated = await ConversationModel.update(convo._id, { participantIds, members, readBy });
+    await joinUserSocketsToRealtimeRoom([targetId], `conversation:${id}`);
     const payload = conversationToClient(updated, req.user.id);
     if (!payload) {
       return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to add member" } });
@@ -2487,9 +2648,40 @@ router.delete("/conversations/:id/members", async (req, res) => {
   }
 
   const participantIds = (convo.participantIds || []).filter((entry) => String(entry) !== String(targetId));
-  const members = (convo.members || []).filter((entry) => String(entry.userId || "") !== String(targetId));
+  let members = (convo.members || []).filter((entry) => String(entry.userId || "") !== String(targetId));
   const readBy = (convo.readBy || []).filter((entry) => String(entry.userId || "") !== String(targetId));
-  const updated = await ConversationModel.update(convo._id, { participantIds, members, readBy });
+  if (participantIds.length === 0) {
+    return res.status(400).json({
+      error: { code: "LAST_GROUP_MEMBER", message: "Delete the group instead of removing its final member" }
+    });
+  }
+
+  const removedOwner = (convo.members || []).some(
+    (member) => String(member.userId || "") === String(targetId) && member.role === "owner"
+  );
+  let createdBy = convo.createdBy;
+  if (removedOwner) {
+    const promotedUserId = String(members[0]?.userId || participantIds[0] || "");
+    if (members.length === 0) {
+      members = participantIds.map((userId, index) => ({
+        userId,
+        role: index === 0 ? "owner" : "member"
+      }));
+    }
+    members = members.map((member, index) => ({
+      ...member,
+      role: index === 0 ? "owner" : member.role === "owner" ? "member" : member.role
+    }));
+    createdBy = promotedUserId;
+  }
+
+  const updated = await ConversationModel.update(convo._id, {
+    participantIds,
+    members,
+    readBy,
+    createdBy
+  });
+  evictUserFromRealtimeRoom(targetId, `conversation:${id}`);
 
   clearConversationCaches();
   const payload = conversationToClient(updated, req.user.id);
@@ -2507,6 +2699,7 @@ router.get("/conversations/:id/messages", async (req, res) => {
 
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
+  await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
 
   const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 100);
   const cacheKey = tenantReadCacheKey(
@@ -2543,10 +2736,20 @@ router.post("/conversations/:id/messages", async (req, res) => {
 
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
+  await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
 
   const kind = normalizeMessageKind(req.body?.kind);
   const text = sanitizeText(String(req.body?.text || "").trim());
-  const media = asMedia(req.body?.media);
+  const media =
+    kind === "text"
+      ? null
+      : normalizeStoredMessageMedia(asMedia(req.body?.media), {
+          tenantSlug: req.tenant.slug,
+          scope: "chat",
+          entityId: id,
+          objectProxyBaseUrl: buildConversationAttachmentAccessUrl(req, id),
+          kind
+        });
   if (kind === "text" && !text) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Text required" } });
   }
@@ -2584,6 +2787,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
   const lastMessageAt = created.createdAt || new Date();
   await ConversationModel.update(convo._id, {
     lastMessageAt,
+    readBy: advanceReadBy(convo.readBy, req.user.id, lastMessageAt),
     lastMessage: {
       senderId: req.user.id,
       kind,
@@ -2598,6 +2802,16 @@ router.post("/conversations/:id/messages", async (req, res) => {
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create message" } });
   }
+  emitRealtime(`conversation:${id}`, "message:new", payload);
+  void notifyConversationParticipants({
+    tenant: req.tenant,
+    conversation: convo,
+    message: created,
+    senderId: req.user.id,
+    excludeUserIds: listRealtimeRoomUserIds(`conversation:${id}`)
+  }).catch((error) => {
+    console.error("[messaging] mobile notification error:", error);
+  });
   return res.status(201).json(payload);
 });
 
@@ -2610,22 +2824,45 @@ router.post("/conversations/:id/read", async (req, res) => {
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
 
-  const requestIso = req.body?.iso ? new Date(req.body.iso) : new Date();
-  const nextReadAt = Number.isFinite(requestIso.getTime()) ? requestIso : new Date();
-  const readBy = [...(convo.readBy || [])];
-  const existingIdx = readBy.findIndex((entry) => String(entry.userId || "") === String(req.user.id));
-  if (existingIdx >= 0) {
-    const existing = readBy[existingIdx];
-    if (!existing.lastReadAt || nextReadAt.getTime() > new Date(existing.lastReadAt).getTime()) {
-      readBy[existingIdx] = { ...existing, lastReadAt: nextReadAt };
-    }
-  } else {
-    readBy.push({ userId: req.user.id, lastReadAt: nextReadAt });
-  }
+  const nextReadAt = clampReadAt(req.body?.iso, new Date());
+  const readBy = advanceReadBy(convo.readBy, req.user.id, nextReadAt);
   await ConversationModel.update(convo._id, { readBy });
 
   clearConversationCaches();
   return res.json({ ok: true, id, iso: nextReadAt.toISOString() });
+});
+
+router.get("/conversations/:id/attachments/object", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    const key = String(req.query?.key || "").trim();
+    if (!isValidObjectId(id) || !key) {
+      return res.status(400).json({
+        error: { code: "INVALID_ATTACHMENT", message: "Valid conversation and attachment key required" }
+      });
+    }
+    const conversation = await ConversationModel.findOne(req.tenant._id, {
+      _id: id,
+      participantIds: { $contains: [req.user.id] }
+    });
+    if (!conversation) {
+      return res.status(403).json({
+        error: { code: "FORBIDDEN", message: "Not a conversation member" }
+      });
+    }
+    await assertConversationDirectContactAllowed(req.tenant._id, conversation, req.user.id);
+    const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/chat/${id.toLowerCase()}/`;
+    if (!key.toLowerCase().startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: { code: "ATTACHMENT_SCOPE_DENIED", message: "Attachment is outside this conversation" }
+      });
+    }
+    const signed = await createPresignedDownloadUrl({ key, expiresInSeconds: 600 });
+    res.set("Cache-Control", "private, no-store");
+    return res.json(signed);
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.post("/conversations/:id/presign", async (req, res, next) => {
@@ -2652,7 +2889,9 @@ router.post("/conversations/:id/presign", async (req, res, next) => {
       fileName,
       fileType: fileType || undefined,
       objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
-      fileSizeBytes: req.body?.fileSize || req.body?.size || 0
+      fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
+      maxBytes: MAX_MESSAGE_ATTACHMENT_BYTES,
+      allowedContentTypes: [...MESSAGE_ATTACHMENT_MIME_TYPES]
     });
 
     return res.json(presigned);
@@ -2677,12 +2916,14 @@ router.delete("/conversations/:id", async (req, res) => {
 
   await MessageModel.deleteMany(req.tenant._id, { conversationId: convo._id });
   await ConversationModel.delete(convo._id);
+  emitRealtime(`conversation:${id}`, "conversation:deleted", { id: String(id) });
+  closeRealtimeRoom(`conversation:${id}`);
   clearConversationCaches();
   return res.json({ ok: true, id: String(id) });
 });
 
 router.post("/forums", async (req, res) => {
-  const name = sanitizeText(String(req.body?.name || "").trim());
+  const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 100);
   if (!name) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Name required" } });
   }
@@ -2802,6 +3043,7 @@ router.post("/forums/:id/leave", async (req, res) => {
 
   await ForumModel.removeMember(existing._id, req.user.id);
   const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
+  evictUserFromRealtimeRoom(req.user.id, `forum:${id}`);
   clearForumCaches();
   const payload = forumToClient(forum);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
@@ -2859,7 +3101,16 @@ router.post("/forums/:id/posts", async (req, res) => {
 
   const kind = normalizeMessageKind(req.body?.kind);
   const text = sanitizeText(String(req.body?.text || "").trim());
-  const media = asMedia(req.body?.media);
+  const media =
+    kind === "text"
+      ? null
+      : normalizeStoredMessageMedia(asMedia(req.body?.media), {
+          tenantSlug: req.tenant.slug,
+          scope: "forums",
+          entityId: id,
+          objectProxyBaseUrl: buildForumAttachmentAccessUrl(req, id),
+          kind
+        });
   if (kind === "text" && !text) {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Text required" } });
   }
@@ -2867,15 +3118,52 @@ router.post("/forums/:id/posts", async (req, res) => {
     return res.status(400).json({ error: { code: "INVALID_INPUT", message: "media.url is required" } });
   }
 
-  const created = await ForumPostModel.create({
-    tenantId: req.tenant._id,
-    forumId: id,
-    authorId: req.user.id,
-    kind,
-    text: kind === "text" ? text.slice(0, 8000) : "",
-    media: kind !== "text" ? media : null,
-    createdAt: new Date()
-  });
+  const rawClientPostId = String(req.body?.clientPostId || "").trim();
+  const clientPostId = rawClientPostId ? asObjectId(rawClientPostId) : null;
+  if (rawClientPostId && !clientPostId) {
+    return res.status(400).json({
+      error: { code: "INVALID_INPUT", message: "clientPostId must be a valid client-generated id" }
+    });
+  }
+  if (clientPostId) {
+    const existing = await ForumPostModel.findOne(req.tenant._id, {
+      _id: clientPostId,
+      forumId: id,
+      authorId: req.user.id
+    });
+    if (existing) {
+      const existingPayload = forumPostToClient(existing);
+      if (!existingPayload) {
+        return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to load post" } });
+      }
+      return res.json(existingPayload);
+    }
+  }
+
+  let created;
+  try {
+    created = await ForumPostModel.create({
+      ...(clientPostId ? { _id: clientPostId } : {}),
+      tenantId: req.tenant._id,
+      forumId: id,
+      authorId: req.user.id,
+      kind,
+      text: kind === "text" ? text.slice(0, 8000) : "",
+      media: kind !== "text" ? media : null,
+      createdAt: new Date()
+    });
+  } catch (error) {
+    if ((error?.code === "23505" || error?.code === 11000) && clientPostId) {
+      const existing = await ForumPostModel.findOne(req.tenant._id, {
+        _id: clientPostId,
+        forumId: id,
+        authorId: req.user.id
+      });
+      const existingPayload = forumPostToClient(existing);
+      if (existingPayload) return res.json(existingPayload);
+    }
+    throw error;
+  }
 
   await ForumModel.update(forum._id, {
     postsCount: Number(forum.postsCount || 0) + 1,
@@ -2887,6 +3175,7 @@ router.post("/forums/:id/posts", async (req, res) => {
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create post" } });
   }
+  emitRealtime(`forum:${id}`, "forum:post:new", payload);
   return res.status(201).json(payload);
 });
 
@@ -2912,10 +3201,39 @@ router.post("/forums/:id/presign", async (req, res, next) => {
       fileName,
       fileType: fileType || undefined,
       objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
-      fileSizeBytes: req.body?.fileSize || req.body?.size || 0
+      fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
+      maxBytes: MAX_MESSAGE_ATTACHMENT_BYTES,
+      allowedContentTypes: [...MESSAGE_ATTACHMENT_MIME_TYPES]
     });
 
     return res.json(presigned);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/forums/:id/attachments/object", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    const key = String(req.query?.key || "").trim();
+    if (!isValidObjectId(id) || !key) {
+      return res.status(400).json({
+        error: { code: "INVALID_ATTACHMENT", message: "Valid forum and attachment key required" }
+      });
+    }
+    const forum = await ForumModel.findOne(req.tenant._id, { _id: id });
+    if (!forum) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+    }
+    const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/forums/${id.toLowerCase()}/`;
+    if (!key.toLowerCase().startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: { code: "ATTACHMENT_SCOPE_DENIED", message: "Attachment is outside this forum" }
+      });
+    }
+    const signed = await createPresignedDownloadUrl({ key, expiresInSeconds: 600 });
+    res.set("Cache-Control", "private, no-store");
+    return res.json(signed);
   } catch (error) {
     return next(error);
   }
@@ -2937,6 +3255,8 @@ router.delete("/forums/:id", async (req, res) => {
 
   await ForumPostModel.deleteMany(req.tenant._id, { forumId: forum._id });
   await ForumModel.delete(forum._id);
+  emitRealtime(`forum:${id}`, "forum:deleted", { id: String(id) });
+  closeRealtimeRoom(`forum:${id}`);
   clearForumCaches();
   return res.json({ ok: true, id: String(id) });
 });

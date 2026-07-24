@@ -1,12 +1,12 @@
 import {
   defaultNetworkDisplayNameForCamp,
   hasFeature,
-  isMemberEventsModuleEnabled,
   normalizeCampType,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
   onboardingPatchSchema,
   replaceAlumniForCampType,
+  resolveTenantModules,
   tenantContentSchema,
   tenantModulesSchema,
   tenantSettingsSchema,
@@ -15,6 +15,13 @@ import {
 import { hashPassword } from "../utils/auth.js";
 import { TenantAdminAuditLogModel } from "../db/models/index.js";
 import { isBillingReadyForLaunch, resolveTenantFeatureTier } from "./billingState.js";
+import {
+  normalizeAllowedEmailDomains,
+  normalizeSignupMode,
+  resolveTenantAccessPolicy
+} from "./accessPolicy.js";
+
+export { normalizeSignupMode } from "./accessPolicy.js";
 
 const CHECKLIST_ORDER = [
   {
@@ -31,7 +38,7 @@ const CHECKLIST_ORDER = [
   },
   {
     id: "import_alumni",
-    label: "Import your alumni list"
+    label: "Invite your first members"
   },
   {
     id: "modules",
@@ -45,9 +52,9 @@ const CHECKLIST_ORDER = [
 
 const STEP_TO_CHECKLIST_MAP = new Map(CHECKLIST_ORDER.map((item) => [item.id, item.id]));
 const FONT_TOKEN_TO_FAMILY = {
-  cedar_default: '"Inter", "Avenir Next", "Segoe UI", sans-serif',
-  modern_clean: '"Inter", "Avenir Next", "Segoe UI", sans-serif',
-  classic_serif: '"Lora", "Roboto Slab", serif'
+  cedar_default: '"DM Sans", "Avenir Next", "Segoe UI", sans-serif',
+  modern_clean: '"DM Sans", "Avenir Next", "Segoe UI", sans-serif',
+  classic_serif: '"Instrument Serif", Georgia, serif'
 };
 const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
@@ -146,12 +153,7 @@ function normalizeEmailFooterPresets(value = [], { fallbackFooter = null } = {})
 }
 
 function normalizeDomains(value = []) {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(
-    value
-      .map((domain) => String(domain || "").trim().toLowerCase().replace(/^@/, ""))
-      .filter(Boolean)
-  )].slice(0, 20);
+  return normalizeAllowedEmailDomains(value);
 }
 
 function normalizeLabelList(value = [], fallback = []) {
@@ -174,13 +176,6 @@ function normalizeAddress(value = {}) {
     postalCode: String(source.postalCode || "").trim(),
     country: String(source.country || "United States").trim() || "United States"
   };
-}
-
-export function normalizeSignupMode(value = "") {
-  const mode = String(value || "").trim().toLowerCase();
-  if (mode === "invite") return "invite_only";
-  if (["open", "code", "invite_only", "approval_queue"].includes(mode)) return mode;
-  return "open";
 }
 
 function normalizeFontToken(value = "") {
@@ -293,7 +288,7 @@ export function resolveTheme(tenant) {
       live.heroImageSizeMember || live.heroImageSize || ""
     ),
     fontFamily: String(live.fontFamily || FONT_TOKEN_TO_FAMILY[fontToken]),
-    typography: String(live.typography || live.fontFamily || "Inter"),
+    typography: String(live.typography || live.fontFamily || "DM Sans"),
     fontToken
   };
 }
@@ -365,41 +360,29 @@ export function resolveContent(tenant) {
 
 export function resolveSettings(tenant) {
   const settings = tenant?.settings || {};
+  const policy = resolveTenantAccessPolicy(tenant);
 
   return {
-    // Access policy is retired: all networks use open join.
-    signupMode: "open",
-    accessCodeHash: "",
-    accessCodeHint: "",
+    signupMode: policy.signupMode,
+    accessCodeHash: policy.accessCodeHash,
+    accessCodeHint: policy.accessCodeHint,
     mobileAppCodeLookup: String(settings.mobileAppCodeLookup || "").trim().toUpperCase(),
     mobileAppCodeHint: String(settings.mobileAppCodeHint || "").trim(),
-    allowedEmailDomains: [],
+    allowedEmailDomains: policy.allowedEmailDomains,
     allowSearchByDefault: Boolean(
       settings.allowSearchByDefault !== undefined ? settings.allowSearchByDefault : true
     ),
     allowDirectoryBrowse: Boolean(
       settings.allowDirectoryBrowse !== undefined ? settings.allowDirectoryBrowse : true
     ),
-    requireProfileCompletion: false,
-    hasAccessCode: false,
+    requireProfileCompletion: policy.requireProfileCompletion,
+    hasAccessCode: policy.hasAccessCode,
     hasMobileAppCode: Boolean(String(settings.mobileAppCodeLookup || "").trim())
   };
 }
 
 export function resolveModules(tenant, { applyPlanGating = true } = {}) {
-  const live = deepClone(tenant?.modules || {});
-  const modules = {
-    directory: live.directory !== false,
-    search: live.search !== false,
-    events: isMemberEventsModuleEnabled(live.events),
-    photoStream: live.photoStream !== false,
-    chat: live.chat !== false,
-    map: live.map !== false,
-    familyTrees: live.familyTrees !== false,
-    relatedProfiles: live.relatedProfiles !== false,
-    newsletter: live.newsletter !== false,
-    merchShop: live.merchShop !== false
-  };
+  const modules = resolveTenantModules(deepClone(tenant?.modules || {}));
 
   if (applyPlanGating) {
     const plan = resolveTenantFeatureTier(tenant);
@@ -536,10 +519,11 @@ export function resolveDraft(tenant) {
         String(draftSettings.mobileAppCodeLookup || baseSettings.mobileAppCodeLookup || "").trim()
       )
     },
-    modules: {
+    modules: resolveTenantModules({
       directory:
         draftModules.directory !== undefined ? Boolean(draftModules.directory) : baseModules.directory,
       search: draftModules.search !== undefined ? Boolean(draftModules.search) : baseModules.search,
+      events: draftModules.events !== undefined ? Boolean(draftModules.events) : baseModules.events,
       photoStream:
         draftModules.photoStream !== undefined
           ? Boolean(draftModules.photoStream)
@@ -562,7 +546,7 @@ export function resolveDraft(tenant) {
         draftModules.merchShop !== undefined
           ? Boolean(draftModules.merchShop)
           : baseModules.merchShop
-    },
+    }),
     billingDetails: {
       sameAsMailing:
         draftBillingDetails.sameAsMailing !== undefined
@@ -667,11 +651,6 @@ export function getReadinessChecklist(tenant, { importedCount = 0 } = {}) {
   const campType = normalizeCampType(draft?.content?.campType || resolveChecklistCampType(tenant));
   const checks = [
     {
-      id: "logo",
-      label: "Logo uploaded",
-      ok: Boolean(draft.theme.logoUrl)
-    },
-    {
       id: "headline",
       label: "Network name and welcome message configured",
       ok: Boolean(draft.content.networkDisplayName && draft.content.welcomeHeadline && draft.content.welcomeBody)
@@ -684,14 +663,14 @@ export function getReadinessChecklist(tenant, { importedCount = 0 } = {}) {
       )
     },
     {
-      id: "import",
-      label: replaceAlumniForCampType("At least 5 alumni imported", campType),
-      ok: Number(importedCount || 0) >= 5
-    },
-    {
       id: "modules",
       label: "Core modules enabled",
       ok: Boolean(draft.modules.directory && draft.modules.search)
+    },
+    {
+      id: "module_setup",
+      label: "Selected modules have required setup",
+      ok: Boolean(!draft.modules.merchShop || String(draft.content.merchShopUrl || "").trim())
     },
     {
       id: "billing",
@@ -704,9 +683,22 @@ export function getReadinessChecklist(tenant, { importedCount = 0 } = {}) {
       ok: Boolean(draft?.directorLegalAgreement?.accepted)
     }
   ];
+  const optionalChecks = [
+    {
+      id: "logo",
+      label: "Logo uploaded",
+      ok: Boolean(draft.theme.logoUrl)
+    },
+    {
+      id: "initial_members",
+      label: replaceAlumniForCampType("At least 5 alumni added", campType),
+      ok: Number(importedCount || 0) >= 5
+    }
+  ];
 
   return {
     checks,
+    optionalChecks,
     isReady: checks.every((item) => item.ok)
   };
 }

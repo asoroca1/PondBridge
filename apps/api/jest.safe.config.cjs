@@ -1,0 +1,37 @@
+const base = require("./jest.config.cjs");
+
+module.exports = {
+  ...base,
+  testMatch: [
+    "**/tests/clerkVerificationEmail.test.js",
+    "**/tests/campAiSearch.test.js",
+    "**/tests/copilotAudit.test.js",
+    "**/tests/copilotEvals.test.js",
+    "**/tests/copilotTelemetry.test.js",
+    "**/tests/communicationsSystem.test.js",
+    "**/tests/domainProvisioning.test.js",
+    "**/tests/directorCopilot.test.js",
+    "**/tests/featureRollouts.test.js",
+    "**/tests/fcmHttpV1.test.js",
+    "**/tests/accessPolicy.test.js",
+    "**/tests/alumniGrowth.test.js",
+    "**/tests/emailScheduling.test.js",
+    "**/tests/memberSafety.test.js",
+    "**/tests/messaging.test.js",
+    "**/tests/memberEligibility.test.js",
+    "**/tests/mobileNotifications.test.js",
+    "**/tests/multiCampIdentityMigration.test.js",
+    "**/tests/newsletterEmailing.test.js",
+    "**/tests/operationalTelemetry.test.js",
+    "**/tests/profilePrivacy.test.js",
+    "**/tests/profilePdfImport.test.js",
+    "**/tests/platformAuditMigrationSafety.test.js",
+    "**/tests/requireTenantModule.test.js",
+    "**/tests/suggestions.test.js",
+    "**/tests/superCopilot.test.js",
+    "**/tests/superSearchRole.test.js",
+    "**/tests/supabaseConfig.test.js",
+    "**/tests/tenantFeatureInventory.test.js",
+    "**/tests/tenantSchemaHardening.test.js"
+  ]
+};

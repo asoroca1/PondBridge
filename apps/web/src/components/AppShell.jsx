@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import NavBar from "./NavBar.jsx";
 import NativeMemberTabBar from "./NativeMemberTabBar.jsx";
@@ -20,6 +20,7 @@ export default function AppShell({ children }) {
 
   const onboardingIncomplete = tenant?.onboardingStatus !== "live";
   const currentPath = location.pathname || "/";
+  const previousPathRef = useRef(currentPath);
   const isTenantRoot = currentPath === "/" || /^\/t\/[^/]+\/?$/.test(currentPath);
   const useNativeAuthLayout = useMemo(
     () =>
@@ -60,12 +61,22 @@ export default function AppShell({ children }) {
     [currentPath, isAuthenticated, nativeApp, useNativeAuthLayout, useProductLayout]
   );
 
+  useEffect(() => {
+    if (previousPathRef.current === currentPath) return undefined;
+    previousPathRef.current = currentPath;
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById("main-content")?.focus({ preventScroll: true });
+    }, 60);
+    return () => window.clearTimeout(timeoutId);
+  }, [currentPath]);
+
   if (useProductLayout) {
     return (
       <div className="app-shell product-app-shell">
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <SessionWarningBanner />
         <ProductHeader />
-        <main className="product-app-main">{children}</main>
+        <main id="main-content" className="product-app-main" tabIndex={-1}>{children}</main>
       </div>
     );
   }
@@ -74,11 +85,14 @@ export default function AppShell({ children }) {
     <div
       className={`app-shell alumni-app-shell ${useNativeAuthLayout ? "app-shell-native-auth" : ""} ${useNativeMemberShell ? "is-native-member-shell" : ""}`.trim()}
     >
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <SessionWarningBanner />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <div className={`app-shell-content ${useNativeAuthLayout ? "app-shell-content-native-auth" : ""}`.trim()}>
         {useNativeAuthLayout ? null : <NavBar />}
         <main
+          id="main-content"
+          tabIndex={-1}
           className={`app-shell-main ${needsOffset ? "page-container" : ""} ${useNativeAuthLayout ? "app-shell-main-native-auth" : ""} ${useNativeMemberShell ? "app-shell-main-native-member" : ""}`.trim()}
         >
           {children}

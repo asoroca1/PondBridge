@@ -106,6 +106,10 @@ export async function ensureProfileForUser({ tenantId, user, identity = {} }) {
     ? await ProfileModel.findOne(tenantId, { _id: user.profileId })
     : null;
   if (direct) {
+    if (user.tenantMembershipId && !direct.tenantMembershipId) {
+      await ProfileModel.update(direct._id, { tenantMembershipId: user.tenantMembershipId });
+      direct.tenantMembershipId = user.tenantMembershipId;
+    }
     return syncProfileIdentityFields({ tenantId, profile: direct, identity, user });
   }
 
@@ -115,6 +119,10 @@ export async function ensureProfileForUser({ tenantId, user, identity = {} }) {
       await UserModel.update(user._id, { profileId: existing._id });
       user.profileId = existing._id;
     }
+    if (user.tenantMembershipId && !existing.tenantMembershipId) {
+      await ProfileModel.update(existing._id, { tenantMembershipId: user.tenantMembershipId });
+      existing.tenantMembershipId = user.tenantMembershipId;
+    }
     return syncProfileIdentityFields({ tenantId, profile: existing, identity, user });
   }
 
@@ -123,6 +131,7 @@ export async function ensureProfileForUser({ tenantId, user, identity = {} }) {
   const profile = await ProfileModel.create({
     tenantId,
     userId: user._id,
+    tenantMembershipId: user.tenantMembershipId || null,
     firstName: names.firstName || "Member",
     lastName: names.lastName || "",
     emails: email ? [email] : [],

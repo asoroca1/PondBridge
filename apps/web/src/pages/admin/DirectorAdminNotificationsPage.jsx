@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
+import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import useAdminApi from "./useAdminApi.js";
 
 const CATEGORY_OPTIONS = [
@@ -33,8 +35,7 @@ const AUTOMATIC_TOGGLES = [
   ["memberFlagged", "Member flagged — notify admins"],
   ["eventPublished", "Event published — notify members"],
   ["eventCanceled", "Event canceled — notify members"],
-  ["newsletterPublished", "Newsletter published — notify members"],
-  ["weeklySummary", "Reserve weekly summary slot"]
+  ["newsletterPublished", "Newsletter published — notify members"]
 ];
 
 const DEFAULT_PREFS = {
@@ -80,8 +81,13 @@ function formatScheduleStatus(status) {
   return status || "—";
 }
 
+function audienceLabel(value = "") {
+  return AUDIENCE_OPTIONS.find((option) => option.value === value)?.label || "Selected audience";
+}
+
 export default function DirectorAdminNotificationsPage() {
   const { request } = useAdminApi();
+  const { confirm, confirmDialogProps } = useConfirmDialog();
   const [settings, setSettings] = useState(DEFAULT_PREFS);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -90,6 +96,7 @@ export default function DirectorAdminNotificationsPage() {
 
   const [compose, setCompose] = useState(DEFAULT_COMPOSE);
   const [sending, setSending] = useState(false);
+  const [recipientPreview, setRecipientPreview] = useState({ totalRecipients: 0, loading: true });
 
   const [history, setHistory] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -181,6 +188,35 @@ export default function DirectorAdminNotificationsPage() {
 
   const selectedMemberIds = useMemo(() => new Set(compose.userIds || []), [compose.userIds]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setRecipientPreview((current) => ({ ...current, loading: true }));
+      request("/notifications/recipients-preview", {
+        method: "POST",
+        body: {
+          audience: compose.audience,
+          userIds: compose.audience === "specific_members" ? compose.userIds : []
+        }
+      })
+        .then((payload) => {
+          if (cancelled) return;
+          setRecipientPreview({
+            totalRecipients: Number(payload?.totalRecipients || 0),
+            loading: false
+          });
+        })
+        .catch(() => {
+          if (!cancelled) setRecipientPreview({ totalRecipients: 0, loading: false });
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [compose.audience, compose.userIds, request]);
+
   function flashStatus(message) {
     setStatus(message);
     setError("");
@@ -234,6 +270,39 @@ export default function DirectorAdminNotificationsPage() {
       flashError("Pick at least one member to send to.");
       return;
     }
+    if (recipientPreview.loading) {
+      flashError("Wait for the recipient preview to finish before continuing.");
+      return;
+    }
+    if (recipientPreview.totalRecipients <= 0) {
+      flashError("This audience currently has no eligible recipients.");
+      return;
+    }
+    if (compose.scheduleAt) {
+      const scheduleTime = new Date(compose.scheduleAt).getTime();
+      if (!scheduleTime || Number.isNaN(scheduleTime)) {
+        flashError("Choose a valid schedule date and time.");
+        return;
+      }
+      if (scheduleTime < Date.now() + 60 * 1000) {
+        flashError("Scheduled notifications must be at least one minute in the future.");
+        return;
+      }
+      if (scheduleTime > Date.now() + 30 * 24 * 60 * 60 * 1000) {
+        flashError("Notifications can be scheduled up to 30 days ahead.");
+        return;
+      }
+    }
+
+    const actionLabel = compose.scheduleAt ? "Schedule notification" : "Send notification";
+    const confirmed = await confirm({
+      title: `${actionLabel} to ${recipientPreview.totalRecipients} ${recipientPreview.totalRecipients === 1 ? "person" : "people"}?`,
+      description: `${audienceLabel(compose.audience)} will receive “${compose.title.trim()}” ${compose.pushRequested ? "as a push and in-app message" : "in the in-app inbox only"}.`,
+      confirmLabel: compose.scheduleAt ? "Confirm schedule" : "Confirm send",
+      tone: compose.scheduleAt ? "default" : "danger"
+    });
+    if (!confirmed) return;
+
     setSending(true);
     setError("");
     try {
@@ -319,6 +388,12 @@ export default function DirectorAdminNotificationsPage() {
   async function deleteTemplate(template) {
     if (!template?.id && !template?._id) return;
     const id = template.id || template._id;
+    const confirmed = await confirm({
+      title: `Delete “${template.name || "this template"}”?`,
+      description: "This removes the reusable mobile notification template. Sent notifications are not affected.",
+      confirmLabel: "Delete template"
+    });
+    if (!confirmed) return;
     setError("");
     try {
       await request(`/notifications/templates/${id}`, { method: "DELETE" });
@@ -332,6 +407,12 @@ export default function DirectorAdminNotificationsPage() {
   async function cancelSchedule(schedule) {
     if (!schedule?.id && !schedule?._id) return;
     const id = schedule.id || schedule._id;
+    const confirmed = await confirm({
+      title: `Cancel “${schedule.title || "this notification"}”?`,
+      description: `It is currently scheduled for ${formatDateTime(schedule.runAt)} and will not be sent.`,
+      confirmLabel: "Cancel notification"
+    });
+    if (!confirmed) return;
     setError("");
     try {
       await request(`/notifications/schedules/${id}`, { method: "DELETE" });
@@ -547,6 +628,11 @@ export default function DirectorAdminNotificationsPage() {
             </Select>
           </label>
 
+          <div className="director-admin-mobile-recipient-preview" role="status" aria-live="polite">
+            <span>Eligible recipients</span>
+            <strong>{recipientPreview.loading ? "Checking…" : recipientPreview.totalRecipients.toLocaleString()}</strong>
+          </div>
+
           <label>
             Schedule For (optional)
             <Input
@@ -608,7 +694,7 @@ export default function DirectorAdminNotificationsPage() {
           </div>
 
           <div className="director-admin-form-actions full-width">
-            <Button type="submit" disabled={sending}>
+            <Button type="submit" disabled={sending || recipientPreview.loading || recipientPreview.totalRecipients <= 0}>
               {sending
                 ? compose.scheduleAt ? "Scheduling…" : "Sending…"
                 : compose.scheduleAt ? "Schedule Push" : "Send Push Now"}
@@ -712,6 +798,7 @@ export default function DirectorAdminNotificationsPage() {
           </div>
         )}
       </Card>
+      <ModalConfirm {...confirmDialogProps} />
     </div>
   );
 }

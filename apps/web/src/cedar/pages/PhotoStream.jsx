@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
@@ -9,6 +10,8 @@ import "./photo-stream.css";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
 import InitialsMark from "../../components/InitialsMark.jsx";
+import { ModalConfirm, useDialogFocus } from "../../components/admin/AdminUi.jsx";
+import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import { Images, Heart, MessageCircle, Trash2, X, Upload } from "lucide-react";
 
 const API = API_BASE;
@@ -124,6 +127,7 @@ async function fetchUser(id) {
 
 /** Tiny component to render a clickable avatar that links to /profile/:id */
 function AvatarLink({ userId, name, url, size = 34 }) {
+  const { slug } = useTenant();
   const initials = initialsOf(name);
   const style = { width: size, height: size, fontSize: size * 0.4 };
   const classBase = "ps-avatar";
@@ -145,7 +149,7 @@ function AvatarLink({ userId, name, url, size = 34 }) {
   }
 
   return (
-    <Link to={`/profile/${userId}`} className="ps-avatar-link" title={name}>
+    <Link to={tenantRoute(slug, `/profile/${userId}`)} className="ps-avatar-link" title={name}>
       {avatarNode}
     </Link>
   );
@@ -153,6 +157,7 @@ function AvatarLink({ userId, name, url, size = 34 }) {
 
 /* mention-aware render */
 function MentionText({ text, mentions = [] }) {
+  const { slug } = useTenant();
   if (!text) return null;
   if (!mentions.length) return <span>{text}</span>;
   const segs = []; let cur = 0;
@@ -168,7 +173,7 @@ function MentionText({ text, mentions = [] }) {
     <>
       {segs.map((g, i) =>
         g.t === "m" && g.id
-          ? <Link key={i} to={`/profile/${g.id}`} className="mention-link">@{g.d || g.v}</Link>
+          ? <Link key={i} to={tenantRoute(slug, `/profile/${g.id}`)} className="mention-link">@{g.d || g.v}</Link>
           : <span key={i}>{g.v}</span>
       )}
     </>
@@ -207,6 +212,7 @@ function UploadModal({ open, onClose, onPosted }) {
   const [file, setFile] = useState(null);
   const [caption, setCaption] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [imageMeta, setImageMeta] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
@@ -215,12 +221,14 @@ function UploadModal({ open, onClose, onPosted }) {
   const [stageSize, setStageSize] = useState({ width: PHOTO_PREVIEW_WIDTH, height: PHOTO_PREVIEW_HEIGHT });
   const fileInputRef = useRef(null);
   const stageRef = useRef(null);
+  const dialogRef = useDialogFocus(open, busy ? undefined : onClose);
 
   useEffect(() => {
     if (!open) {
       setFile(null);
       setCaption("");
       setBusy(false);
+      setError("");
       setPreviewUrl("");
       setImageMeta({ width: 0, height: 0 });
       setZoom(1);
@@ -354,6 +362,7 @@ function UploadModal({ open, onClose, onPosted }) {
     if (!file) return;
     try {
       setBusy(true);
+      setError("");
       const uploadFile = (await buildUploadFile()) || file;
       const p = await fetch(`${API}/photos/presign`, {
         method: "POST",
@@ -383,7 +392,7 @@ function UploadModal({ open, onClose, onPosted }) {
       onPosted?.(newPost);
       onClose?.();
     } catch (err) {
-      alert(err.message || "Upload failed");
+      setError(err.message || "Upload failed");
     } finally {
       setBusy(false);
     }
@@ -391,10 +400,10 @@ function UploadModal({ open, onClose, onPosted }) {
 
   if (!open || typeof document === "undefined") return null;
   return createPortal(
-    <div className="ps-modal" onClick={() => !busy && onClose?.()}>
-      <div className="ps-modal-card" onClick={(e) => e.stopPropagation()}>
+    <div className="ps-modal" onClick={() => !busy && onClose?.()} role="dialog" aria-modal="true" aria-labelledby="ps-upload-title">
+      <div ref={dialogRef} className="ps-modal-card" onClick={(e) => e.stopPropagation()} tabIndex={-1}>
         <div className="ps-modal-head">
-          <h2 className="ps-modal-title">Add a Photo</h2>
+          <h2 id="ps-upload-title" className="ps-modal-title">Add a Photo</h2>
           <button type="button" className="ps-modal-close-btn" onClick={onClose} disabled={busy} aria-label="Close">
             <X size={16} />
           </button>
@@ -494,6 +503,7 @@ function UploadModal({ open, onClose, onPosted }) {
         )}
 
         <textarea value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Write a caption (use @Name to tag)" maxLength={500} className="ps-textarea" />
+        {error ? <div className="ps-inline-error" role="alert">{error}</div> : null}
         <div className="ps-modal-actions">
           <button className="ps-btn secondary" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="ps-btn primary" onClick={handlePost} disabled={!file || busy}>{busy ? "Posting…" : "Post"}</button>
@@ -510,7 +520,9 @@ function CommentsPanel({ photoId, canModerate }) {
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState("");
+  const [actionError, setActionError] = useState("");
   const loaderRef = useRef(null);
+  const { confirm, confirmDialogProps } = useConfirmDialog();
 
   const myId = getCurrentUserId();
   const myAvatar = getCurrentUserAvatar();
@@ -590,6 +602,7 @@ function CommentsPanel({ photoId, canModerate }) {
     setText("");
 
     try {
+      setActionError("");
       const r = await fetch(`${API}/photos/${photoId}/comments`, {
         method: "POST",
         headers: authHeaders(),
@@ -605,15 +618,20 @@ function CommentsPanel({ photoId, canModerate }) {
     } catch (e) {
       // revert on failure
       setItems((prev) => prev.filter((i) => i._id !== optimistic._id));
-      alert(e.message || "Could not post comment");
+      setActionError(e.message || "Could not post comment");
     }
   }
 
   async function deleteComment(id) {
-    const ok = confirm("Delete this comment?");
-    if (!ok) return;
+    const accepted = await confirm({
+      title: "Delete this comment?",
+      description: "The comment will be permanently removed from this photo.",
+      confirmLabel: "Delete comment",
+    });
+    if (!accepted) return;
 
     const prev = items;
+    setActionError("");
     setItems((p) => p.filter((c) => c._id !== id));
     try {
       const r = await fetch(`${API}/photos/${photoId}/comments/${id}`, {
@@ -623,7 +641,7 @@ function CommentsPanel({ photoId, canModerate }) {
       if (!r.ok) throw new Error("Delete failed");
     } catch (e) {
       setItems(prev); // revert
-      alert(e.message || "Could not delete comment");
+      setActionError(e.message || "Could not delete comment");
     }
   }
 
@@ -682,37 +700,36 @@ function CommentsPanel({ photoId, canModerate }) {
           Post
         </button>
       </div>
+      {actionError ? <div className="ps-inline-error" role="alert">{actionError}</div> : null}
+      <ModalConfirm {...confirmDialogProps} backdropClassName="ps-dialog-over-lightbox" />
     </div>
   );
 }
 
 /* lightbox */
 function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
+  const { slug } = useTenant();
   const ownerId = post ? String(post.ownerId ?? post.userId ?? post.createdBy ?? "") : "";
   const info = post ? (authorInfo?.[ownerId] || { name: post.ownerName, avatar: "" }) : { name: "", avatar: "" };
   const likesCount = Number(post?.likes || 0);
   const commentsCount = Number(post?.commentsCount || 0);
+  const dialogRef = useDialogFocus(Boolean(post), onClose);
 
   useEffect(() => {
     if (!post) return undefined;
 
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") onClose?.();
-    };
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = prevOverflow;
-      document.removeEventListener("keydown", onKeyDown);
     };
   }, [post, onClose]);
 
   if (!post || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="ps-lightbox" onClick={onClose} aria-modal="true" role="dialog">
-      <div className="ps-lightbox-card" onClick={(e) => e.stopPropagation()}>
+    <div className="ps-lightbox" onClick={onClose} aria-modal="true" role="dialog" aria-label="Photo details">
+      <div ref={dialogRef} className="ps-lightbox-card" onClick={(e) => e.stopPropagation()} tabIndex={-1}>
         {/* MEDIA */}
         <div className="ps-lightbox-media">
           <img
@@ -730,7 +747,7 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
               <AvatarLink userId={ownerId} name={info.name || post.ownerName} url={info.avatar} size={34} />
               <div className="ps-owner-meta">
                 {ownerId ? (
-                  <Link to={`/profile/${ownerId}`} className="ps-name">
+                  <Link to={tenantRoute(slug, `/profile/${ownerId}`)} className="ps-name">
                     {info.name || post.ownerName}
                   </Link>
                 ) : (
@@ -771,7 +788,7 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
 
 /* ========= page ========= */
 export default function PhotoStream() {
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const navigate = useNavigate();
   const [sort, setSort] = useState("new");
   const [items, setItems] = useState([]);
@@ -780,7 +797,9 @@ export default function PhotoStream() {
   const [loading, setLoading] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [viewerPost, setViewerPost] = useState(null);
+  const [actionError, setActionError] = useState("");
   const loaderRef = useRef(null);
+  const { confirm, confirmDialogProps } = useConfirmDialog();
 
   // cache of poster info: { userId: { name, avatar } }
   const [authorInfo, setAuthorInfo] = useState({});
@@ -791,9 +810,9 @@ export default function PhotoStream() {
 
   const ensureAuthed = useCallback(() => {
     const t = getToken();
-    if (!t) navigate("/login");
+    if (!t) navigate(tenantRoute(slug, "/login"));
     return !!t;
-  }, [navigate]);
+  }, [navigate, slug]);
 
   // prime author cache for an array of posts
   const primeAuthors = useCallback(async (posts = []) => {
@@ -890,14 +909,20 @@ export default function PhotoStream() {
   }
 
   async function deletePhoto(id) {
-    const ok = confirm("Delete this photo?"); if (!ok) return;
+    const accepted = await confirm({
+      title: "Delete this photo?",
+      description: "The photo and its comments will be permanently removed from the stream.",
+      confirmLabel: "Delete photo",
+    });
+    if (!accepted) return;
     try {
+      setActionError("");
       const r = await fetch(`${API}/photos/${id}`, { method: "DELETE", headers: authHeaders() });
       if (!r.ok) throw new Error("Delete failed");
       setItems(p => p.filter(x => x._id !== id));
       setViewerPost(v => v && v._id === id ? null : v);
     } catch (e) {
-      alert(e.message || "Delete failed");
+      setActionError(e.message || "Delete failed");
     }
   }
 
@@ -947,7 +972,7 @@ export default function PhotoStream() {
                       <AvatarLink userId={ownerId} name={info.name || p.ownerName || "Unknown"} url={info.avatar} />
                       <div className="ps-owner-stack">
                         {ownerId ? (
-                          <Link to={`/profile/${ownerId}`} className="ps-name">
+                          <Link to={tenantRoute(slug, `/profile/${ownerId}`)} className="ps-name">
                             {info.name || p.ownerName || "Unknown"}
                           </Link>
                         ) : (
@@ -988,6 +1013,7 @@ export default function PhotoStream() {
 
         <div ref={loaderRef} style={{ height: 1 }} />
         {loading && <CedarSkeleton.Lines lines={2} />}
+        {actionError ? <div className="ps-inline-error" role="alert">{actionError}</div> : null}
         {!loading && items.length === 0 && (
           <div className="ps-empty">{`📷 No photos yet - be the first to share a ${campName} memory.`}</div>
         )}
@@ -996,6 +1022,7 @@ export default function PhotoStream() {
 
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onPosted={handlePosted} />
       <Lightbox post={viewerPost} onClose={() => setViewerPost(null)} onToggleLike={toggleLike} authorInfo={authorInfo} />
+      <ModalConfirm {...confirmDialogProps} />
     </div>
   );
 }

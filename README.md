@@ -3,6 +3,7 @@
 Multi-tenant alumni network SaaS platform for camps.
 
 See:
+- `docs/LOCAL_STAGING.md` (zero-cost isolated Supabase staging workflow)
 - `docs/LOCAL_DEV.md`
 - `docs/ARCHITECTURE.md`
 - `docs/extraction-map.md`

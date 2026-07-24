@@ -51,9 +51,13 @@ export default function CityCombobox({
   placeholder = "City, State (US) or City, Country",
   hasError = false,
   className = "",
-  inputClassName = "wizard1-input"
+  inputClassName = "wizard1-input",
+  inputId = "",
+  ariaDescribedBy = ""
 }) {
   const listId = useId();
+  const errorId = useId();
+  const resolvedInputId = inputId || `${listId}-input`;
   const containerRef = useRef(null);
   const [input, setInput] = useState(value || "");
   const [results, setResults] = useState([]);
@@ -164,6 +168,7 @@ export default function CityCombobox({
   return (
     <div ref={containerRef} className={`city-combobox ${className}`} style={{ position: "relative" }}>
       <input
+        id={resolvedInputId}
         className={`${inputClassName} ${hasError ? "has-error" : ""}`}
         value={input}
         placeholder={placeholder}
@@ -180,6 +185,8 @@ export default function CityCombobox({
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-invalid={hasError || Boolean(errorMessage)}
+        aria-describedby={[ariaDescribedBy, errorMessage ? errorId : ""].filter(Boolean).join(" ") || undefined}
         autoComplete="off"
       />
       {open && (results.length > 0 || showAddOption || loading) && (
@@ -251,7 +258,7 @@ export default function CityCombobox({
         </ul>
       )}
       {errorMessage && (
-        <p className="wizard1-error" style={{ marginTop: 6 }}>{errorMessage}</p>
+        <p id={errorId} className="wizard1-error" style={{ marginTop: 6 }}>{errorMessage}</p>
       )}
     </div>
   );

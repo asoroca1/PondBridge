@@ -2,6 +2,10 @@ import { env } from "../config/env.js";
 import { findTenantMembershipsForIdentity } from "../services/identityUsers.js";
 import { extractTenantScopeFromIdentity } from "../services/clerkIdentity.js";
 import { logTenantSecurityEvent } from "../services/securityEvents.js";
+import {
+  evaluateFeatureRollout,
+  MULTI_CAMP_IDENTITY_FLAG
+} from "../services/featureRollouts.js";
 
 function hasRole(user = {}, role = "") {
   return Array.isArray(user?.roles) && user.roles.includes(role);
@@ -40,6 +44,11 @@ export async function enforceTenantScope(req, res, next) {
     return next();
   }
 
+  const identityRollout = await evaluateFeatureRollout(
+    MULTI_CAMP_IDENTITY_FLAG,
+    req.tenant
+  );
+
   const scope = extractTenantScopeFromIdentity(req.identity || {});
   const claimedTenantId = String(scope?.tenantId || "").trim();
   const source =
@@ -49,7 +58,7 @@ export async function enforceTenantScope(req, res, next) {
       ? "app_user"
       : "identity_membership";
 
-  if (claimedTenantId && claimedTenantId !== resolvedTenantId) {
+  if (!identityRollout.enabled && claimedTenantId && claimedTenantId !== resolvedTenantId) {
     return deny(req, res, "TENANT_SCOPE_DENIED", "Token tenant scope does not match request tenant.", {
       tokenTenantId: claimedTenantId,
       claimedTenantId,
@@ -71,6 +80,7 @@ export async function enforceTenantScope(req, res, next) {
     }
 
     if (
+      !identityRollout.enabled &&
       env.CLERK_REQUIRE_TENANT_CLAIM &&
       String(req.identity?.provider || "").trim().toLowerCase() === "clerk" &&
       !claimedTenantId
@@ -111,6 +121,7 @@ export async function enforceTenantScope(req, res, next) {
   }
 
   if (
+    !identityRollout.enabled &&
     env.CLERK_REQUIRE_TENANT_CLAIM &&
     String(req.identity?.provider || "").trim().toLowerCase() === "clerk" &&
     scopedMemberships.length === 1 &&

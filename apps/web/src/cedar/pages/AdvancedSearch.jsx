@@ -10,7 +10,9 @@ import {
   MapPin,
   Search,
   SearchX,
+  ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   Tag,
   Users,
   X,
@@ -20,6 +22,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { requestJson } from "../../lib/http.js";
 import { resolveAlumniWord, resolveStaffRoleOptions } from "../../lib/campLabels.js";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import { avatarUrl } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
@@ -59,6 +62,12 @@ function pickCurrentJob(profile = {}) {
 }
 
 const DEBOUNCE = 400;
+const AI_SEARCH_PROMPTS = Object.freeze([
+  "Former counselors in Boston who work in healthcare",
+  "People from camp who work in technology",
+  "Members who attended the same college as me"
+]);
+
 function useDebounced(value, delay = DEBOUNCE) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -73,6 +82,24 @@ const parseList = (value) =>
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
+
+function planToFormFields(plan = {}) {
+  return {
+    q: String(plan.q || ""),
+    cedarRoles: Array.isArray(plan.cedarRoles) ? plan.cedarRoles.join(", ") : "",
+    industries: Array.isArray(plan.industries) ? plan.industries.join(", ") : "",
+    city: String(plan.city || ""),
+    state: String(plan.state || ""),
+    role: String(plan.role || ""),
+    company: String(plan.company || ""),
+    college: String(plan.college || ""),
+    gradMin: plan.gradMin == null ? "" : String(plan.gradMin),
+    gradMax: plan.gradMax == null ? "" : String(plan.gradMax),
+    camperMin: plan.camperMin == null ? "" : String(plan.camperMin),
+    camperMax: plan.camperMax == null ? "" : String(plan.camperMax),
+    offset: 0
+  };
+}
 
 function initials(first = "", last = "") {
   const f = first?.trim()[0] || "";
@@ -95,7 +122,7 @@ function buildPageItems(page, pages) {
   return items;
 }
 
-function RolesMultiSelect({ options, value, onChange }) {
+export function RolesMultiSelect({ options, value, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const selected = parseList(value);
@@ -116,45 +143,28 @@ function RolesMultiSelect({ options, value, onChange }) {
 
   return (
     <div className="as2-mwrap" ref={ref}>
-      <div
+      <button
+        type="button"
         className={`as2-mselect ${open ? "is-open" : ""}`}
-        role="button"
-        tabIndex={0}
         onClick={() => setOpen((v) => !v)}
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget) return;
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setOpen((v) => !v);
-          }
-        }}
-        aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls="camp-role-options"
+        aria-label="Former or current role at camp"
       >
         {selected.length ? (
           <div className="as2-tags">
             {selected.map((tag) => (
-              <span
-                key={tag}
-                className="as2-tag"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggle(tag);
-                }}
-              >
-                {tag}
-                <span className="x">×</span>
-              </span>
+              <span key={tag} className="as2-tag">{tag}</span>
             ))}
           </div>
         ) : (
           <span className="as2-placeholder">Select roles...</span>
         )}
-        <ChevronDown size={14} className="as2-caret" />
-      </div>
+        <ChevronDown size={14} className="as2-caret" aria-hidden="true" />
+      </button>
 
       {open && (
-        <div className="as2-menu" role="listbox">
+        <div id="camp-role-options" className="as2-menu" role="group" aria-label="Camp roles">
           {options.map((option) => (
             <label key={option} className="as2-option">
               <input
@@ -176,7 +186,7 @@ function RolesMultiSelect({ options, value, onChange }) {
   );
 }
 
-function SectionHead({
+export function SectionHead({
   icon: Icon,
   label,
   active = false,
@@ -184,20 +194,27 @@ function SectionHead({
   open = false,
   nonCollapsible = false,
 }) {
-  return (
-    <button
-      className={`as2-sec-head${nonCollapsible ? " static" : ""}`}
-      onClick={onClick}
-      type="button"
-      aria-expanded={nonCollapsible ? true : open}
-      style={nonCollapsible ? { cursor: "default" } : undefined}
-    >
+  const content = (
+    <>
       <span className="as2-head-label">
         <Icon size={15} aria-hidden="true" />
         <span>{label}</span>
         {active && <span className="as2-active-dot" aria-hidden="true" />}
       </span>
       {!nonCollapsible && <ChevronDown size={15} className="chev" aria-hidden="true" />}
+    </>
+  );
+  if (nonCollapsible) {
+    return <div className="as2-sec-head static">{content}</div>;
+  }
+  return (
+    <button
+      className="as2-sec-head"
+      onClick={onClick}
+      type="button"
+      aria-expanded={open}
+    >
+      {content}
     </button>
   );
 }
@@ -250,6 +267,11 @@ export default function AdvancedSearch() {
     total: 0,
     error: null,
   });
+  const [aiCapability, setAiCapability] = useState(null);
+  const [aiQuery, setAiQuery] = useState("");
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiMeta, setAiMeta] = useState(null);
 
   const nameInputRef = useRef(null);
   const resultsRef = useRef(null);
@@ -265,6 +287,38 @@ export default function AdvancedSearch() {
   useEffect(() => {
     getAuthTokenRef.current = getAuthToken;
   }, [getAuthToken]);
+
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+    if (!authReady || !slug) {
+      setAiCapability(null);
+      return () => {
+        alive = false;
+        controller.abort();
+      };
+    }
+    requestJson(`/api/t/${slug}/search/ai/capabilities`, {
+      token: authTokenRef.current,
+      getToken: async ({ forceRefresh = false } = {}) => {
+        if (typeof getAuthTokenRef.current === "function") {
+          return (await getAuthTokenRef.current({ forceRefresh })) || authTokenRef.current;
+        }
+        return authTokenRef.current;
+      },
+      signal: controller.signal
+    })
+      .then((payload) => {
+        if (alive) setAiCapability(payload || null);
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError" && alive) setAiCapability(null);
+      });
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [authReady, slug]);
 
   const hasActiveFilters = useMemo(() => {
     const {
@@ -403,10 +457,12 @@ export default function AdvancedSearch() {
 
   const onField = (key) => (event) => {
     const value = event?.target?.value ?? event;
+    setAiMeta(null);
     setForm((curr) => ({ ...curr, [key]: value, offset: 0 }));
   };
 
   const setFields = (updates = {}) => {
+    setAiMeta(null);
     setForm((curr) => ({ ...curr, ...updates, offset: 0 }));
   };
 
@@ -429,6 +485,48 @@ export default function AdvancedSearch() {
       limit: 24,
     });
     setState({ loading: false, items: [], total: 0, error: null });
+    setAiMeta(null);
+    setAiError("");
+  };
+
+  const runAiSearch = async (event, suggestedQuery = "") => {
+    event?.preventDefault?.();
+    const requestedQuery = String(suggestedQuery || aiQuery || "").trim();
+    if (!requestedQuery || !aiCapability?.featureEnabled || aiSearching) return;
+    setAiQuery(requestedQuery);
+    setAiSearching(true);
+    setAiError("");
+    try {
+      const data = await requestJson(`/api/t/${slug}/search/ai/query`, {
+        method: "POST",
+        token: authTokenRef.current,
+        getToken: async ({ forceRefresh = false } = {}) => {
+          if (typeof getAuthTokenRef.current === "function") {
+            return (await getAuthTokenRef.current({ forceRefresh })) || authTokenRef.current;
+          }
+          return authTokenRef.current;
+        },
+        body: JSON.stringify({ query: requestedQuery, limit: form.limit, sort: form.sort })
+      });
+      const plan = data?.plan && typeof data.plan === "object" ? data.plan : {};
+      setForm((current) => ({ ...current, ...planToFormFields(plan) }));
+      setState({
+        loading: false,
+        items: Array.isArray(data?.items) ? data.items : [],
+        total: Number.isFinite(data?.total) ? data.total : data?.items?.length || 0,
+        error: null
+      });
+      setAiMeta({
+        mode: data?.mode === "ai" ? "ai" : "guided_fallback",
+        plan,
+        query: requestedQuery
+      });
+      requestAnimationFrame(scrollToResults);
+    } catch (error) {
+      setAiError(error?.message || "Smart search could not interpret that request. Try the filters instead.");
+    } finally {
+      setAiSearching(false);
+    }
   };
 
   const removeIndustry = (value) => {
@@ -501,7 +599,10 @@ export default function AdvancedSearch() {
     return setFields({ [key]: "" });
   };
 
-  const header = useMemo(() => (!form.q ? "Advanced Search" : `Results for "${form.q}"`), [form.q]);
+  const header = useMemo(
+    () => aiMeta ? "Smart search matches" : !form.q ? "Advanced Search" : `Results for "${form.q}"`,
+    [aiMeta, form.q]
+  );
   const skeletonCount = Math.min(Math.max(Number(form.limit || 8), 1), 12);
   const closeDrawer = () => setUi((curr) => ({ ...curr, drawerOpen: false }));
 
@@ -572,6 +673,7 @@ export default function AdvancedSearch() {
                     value={form.q}
                     onChange={onField("q")}
                     placeholder="e.g., Henry"
+                    aria-label="Member name"
                   />
                 </div>
               </div>
@@ -608,8 +710,9 @@ export default function AdvancedSearch() {
                 <div className="as2-sec-inner">
                   <div className="as2-row">
                     <div className="as2-col">
-                      <label className="as2-label">Min</label>
+                      <label className="as2-label" htmlFor="advanced-search-camper-min">Min</label>
                       <input
+                        id="advanced-search-camper-min"
                         className="as2-input"
                         type="number"
                         inputMode="numeric"
@@ -621,8 +724,9 @@ export default function AdvancedSearch() {
                       />
                     </div>
                     <div className="as2-col">
-                      <label className="as2-label">Max</label>
+                      <label className="as2-label" htmlFor="advanced-search-camper-max">Max</label>
                       <input
+                        id="advanced-search-camper-max"
                         className="as2-input"
                         type="number"
                         inputMode="numeric"
@@ -653,6 +757,7 @@ export default function AdvancedSearch() {
                     value={form.industries}
                     onChange={onField("industries")}
                     placeholder="e.g., Finance, Law"
+                    aria-label="Industries"
                   />
                   <p className="as2-help">Separate multiple industries with commas.</p>
 
@@ -662,6 +767,7 @@ export default function AdvancedSearch() {
                         <span key={tag} className="as2-chip">
                           {tag}
                           <button
+                            type="button"
                             className="x"
                             onClick={() => removeIndustry(tag)}
                             aria-label={`Remove ${tag}`}
@@ -691,6 +797,7 @@ export default function AdvancedSearch() {
                     value={form.role}
                     onChange={onField("role")}
                     placeholder="e.g., Software Engineer"
+                    aria-label="Professional role or title"
                   />
                 </div>
               </div>
@@ -711,6 +818,7 @@ export default function AdvancedSearch() {
                     value={form.company}
                     onChange={onField("company")}
                     placeholder="e.g., KX Bank"
+                    aria-label="Company"
                   />
                 </div>
               </div>
@@ -731,12 +839,14 @@ export default function AdvancedSearch() {
                     value={form.college}
                     onChange={onField("college")}
                     placeholder="e.g., UCLA"
+                    aria-label="College"
                   />
 
                   <div className="as2-row">
                     <div className="as2-col">
-                      <label className="as2-label">Min</label>
+                      <label className="as2-label" htmlFor="advanced-search-grad-min">Min</label>
                       <input
+                        id="advanced-search-grad-min"
                         className="as2-input"
                         type="number"
                         inputMode="numeric"
@@ -748,8 +858,9 @@ export default function AdvancedSearch() {
                       />
                     </div>
                     <div className="as2-col">
-                      <label className="as2-label">Max</label>
+                      <label className="as2-label" htmlFor="advanced-search-grad-max">Max</label>
                       <input
+                        id="advanced-search-grad-max"
                         className="as2-input"
                         type="number"
                         inputMode="numeric"
@@ -781,6 +892,7 @@ export default function AdvancedSearch() {
                       value={form.city}
                       onChange={onField("city")}
                       placeholder="City"
+                      aria-label="City"
                     />
                     <input
                       className="as2-input"
@@ -805,15 +917,16 @@ export default function AdvancedSearch() {
                 <div className="as2-sec-inner">
                   <div className="as2-row">
                     <div className="as2-col">
-                      <label className="as2-label">Sort</label>
-                      <select className="as2-input" value={form.sort} onChange={onField("sort")}>
+                      <label className="as2-label" htmlFor="advanced-search-sort">Sort</label>
+                      <select id="advanced-search-sort" className="as2-input" value={form.sort} onChange={onField("sort")}>
                         <option value="name">Name (A-Z)</option>
                         <option value="recent">Recently Added</option>
                       </select>
                     </div>
                     <div className="as2-col">
-                      <label className="as2-label">Per Page</label>
+                      <label className="as2-label" htmlFor="advanced-search-page-size">Per Page</label>
                       <select
+                        id="advanced-search-page-size"
                         className="as2-input"
                         value={form.limit}
                         onChange={(event) =>
@@ -842,6 +955,65 @@ export default function AdvancedSearch() {
           </aside>
 
           <section className="as2-results" ref={resultsRef}>
+            {aiCapability?.featureEnabled ? (
+              <section className="as2-ai-card" aria-labelledby="camp-search-ai-title">
+                <div className="as2-ai-card-head">
+                  <span className="as2-ai-icon" aria-hidden="true"><Sparkles size={19} /></span>
+                  <div>
+                    <div className="as2-ai-eyebrow">Camp Search AI</div>
+                    <h2 id="camp-search-ai-title">Ask your camp directory</h2>
+                    <p>Describe who you want to reconnect with. We’ll turn it into private, camp-only search filters.</p>
+                  </div>
+                </div>
+                <form className="as2-ai-form" onSubmit={runAiSearch}>
+                  <label className="sr-only" htmlFor="camp-ai-search-query">Describe who you want to find</label>
+                  <div className="as2-ai-input-wrap">
+                    <Sparkles size={18} aria-hidden="true" />
+                    <input
+                      id="camp-ai-search-query"
+                      value={aiQuery}
+                      onChange={(event) => setAiQuery(event.target.value)}
+                      placeholder="e.g., Former counselors in Boston who work in healthcare"
+                      maxLength={320}
+                      autoComplete="off"
+                      aria-invalid={Boolean(aiError)}
+                      aria-describedby={aiError ? "camp-ai-search-privacy camp-ai-search-error" : "camp-ai-search-privacy"}
+                    />
+                    <button type="submit" disabled={aiSearching || !aiQuery.trim()}>
+                      {aiSearching ? "Searching…" : "Find people"}
+                    </button>
+                  </div>
+                </form>
+                <div className="as2-ai-prompts" role="group" aria-label="Suggested searches">
+                  {AI_SEARCH_PROMPTS.map((prompt) => (
+                    <button key={prompt} type="button" onClick={(event) => runAiSearch(event, prompt)} disabled={aiSearching}>
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+                <div className="as2-ai-privacy" id="camp-ai-search-privacy">
+                  <ShieldCheck size={15} aria-hidden="true" />
+                  <span>
+                    {aiCapability.available
+                      ? "AI sees only your search sentence—not member profiles or results."
+                      : "Guided search is available while the AI provider is offline; member data stays inside PondBridge."}
+                  </span>
+                </div>
+                {aiError ? <p className="as2-ai-error" id="camp-ai-search-error" role="alert">{aiError}</p> : null}
+              </section>
+            ) : null}
+
+            {aiMeta ? (
+              <div className={`as2-ai-applied ${aiMeta.mode === "ai" ? "is-ai" : "is-guided"}`} role="status">
+                <Sparkles size={16} aria-hidden="true" />
+                <span>
+                  {aiMeta.mode === "ai"
+                    ? "AI interpreted your request and applied the filters below. Results still come from this camp’s permission-checked directory."
+                    : "AI was temporarily unavailable, so PondBridge applied a local guided-search plan. You can adjust any filter."}
+                </span>
+              </div>
+            ) : null}
+
             {hasActiveFilters && (
               <div className="as2-results-head">
                 <div className="lhs">
@@ -864,6 +1036,7 @@ export default function AdvancedSearch() {
                     className="as2-filter-chip"
                     onClick={() => removeFilterChip(chip.key)}
                     title="Remove filter"
+                    aria-label={`Remove ${chip.label} filter`}
                   >
                     <span>{chip.label}</span>
                     <X size={12} aria-hidden="true" />
@@ -1003,7 +1176,7 @@ export default function AdvancedSearch() {
                                 .filter(Boolean)
                                 .join(", ");
 
-                            const profilePath = `/profile/${id}`;
+                            const profilePath = tenantRoute(slug, `/profile/${id}`);
                             const profileWithName = `${profilePath}?name=${encodeURIComponent(
                               `${first} ${last}`
                             )}`;
@@ -1070,7 +1243,7 @@ export default function AdvancedSearch() {
                                     type="button"
                                     className="as2-btn as2-btn-outline"
                                     onClick={() =>
-                                      navigate(`/chat-rooms?to=${encodeURIComponent(id)}`)
+                                      navigate(tenantRoute(slug, `/chat-rooms?to=${encodeURIComponent(id)}`))
                                     }
                                   >
                                     Message

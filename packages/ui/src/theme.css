@@ -19,6 +19,9 @@
   --bg-warm: #f6f5f2;
   --card: #ffffff;
   --card-border: #e6e8eb;
+  --surface-subtle: #f8fafc;
+  --surface-raised: #ffffff;
+  --border-strong: #cbd5e1;
 
   /* ===== Text colors ===== */
   --text: #0f172a;
@@ -37,10 +40,15 @@
   --warning-bg: #fef3c7;
   --warning-text: #92400e;
   --info: #0284c7;
+  --info-bg: #e8f4fb;
+  --info-text: #075f8d;
+  --purple: #7552a8;
+  --purple-bg: #f0eafb;
+  --purple-text: #5a3c86;
 
   /* ===== Typography ===== */
-  --font-display: "Roboto Slab", "Avenir Next", "Segoe UI", serif;
-  --font-body: "Inter", "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-body: "DM Sans", "Avenir Next", "Segoe UI", sans-serif;
 
   /* Type scale */
   --text-xs: 12px;
@@ -78,6 +86,7 @@
   --radius-md: 12px;
   --radius-lg: 14px;
   --radius-xl: 16px;
+  --radius-2xl: 22px;
   --radius-pill: 999px;
 
   /* ===== Shadows (elevation levels) ===== */
@@ -85,6 +94,7 @@
   --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 24px rgba(13, 34, 66, 0.08);
   --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-focus: 0 0 0 4px color-mix(in srgb, var(--brand-primary) 16%, transparent);
 
   /* Legacy alias */
   --pb-shadow: var(--shadow-sm);
@@ -110,6 +120,14 @@ body {
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand-primary) 22%, #ffffff);
+  color: var(--brand-primary-strong);
 }
 
 a {
@@ -126,8 +144,8 @@ a {
 .pb-card {
   background: var(--card);
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  border-radius: var(--radius-xl);
+  padding: clamp(var(--space-4), 1.7vw, var(--space-6));
   box-shadow: var(--shadow-sm);
 }
 
@@ -143,12 +161,15 @@ a {
 }
 
 .pb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   appearance: none;
   -webkit-appearance: none;
   border: 0;
   outline: none;
   border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
   font-family: inherit;
   font-weight: var(--weight-extrabold);
   font-size: var(--text-sm);
@@ -162,6 +183,23 @@ a {
     color var(--ui-fast) var(--ui-ease);
 }
 
+.pb-btn-sm {
+  min-height: 34px;
+  padding: 8px 12px;
+  font-size: var(--text-xs);
+}
+
+.pb-btn-md {
+  min-height: 40px;
+  padding: var(--space-3) var(--space-4);
+}
+
+.pb-btn-lg {
+  min-height: 48px;
+  padding: 14px 20px;
+  font-size: var(--text-base);
+}
+
 .pb-btn-primary {
   background: var(--brand-primary);
   color: var(--brand-on-primary);
@@ -172,6 +210,10 @@ a {
   transform: translateY(-1px);
   background: var(--brand-primary-hover);
   box-shadow: var(--shadow-md);
+}
+
+.pb-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
 }
 
 .pb-btn-secondary {
@@ -193,24 +235,80 @@ a {
   color: #fff;
 }
 
+.pb-btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 88%, #000000);
+}
+
+.pb-btn-ghost {
+  color: var(--brand-primary);
+  background: transparent;
+  box-shadow: none;
+}
+
+.pb-btn-ghost:hover {
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+}
+
+.pb-btn:focus-visible {
+  outline: 3px solid var(--brand-primary-focus);
+  outline-offset: 2px;
+}
+
 .pb-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.52;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.pb-btn-spinner {
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: pb-button-spin 700ms linear infinite;
+}
+
+@keyframes pb-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-btn-spinner {
+    animation: none;
+  }
 }
 
 .pb-input {
   width: 100%;
-  border: 1px solid var(--card-border);
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   padding: 10px var(--space-3);
   font: inherit;
   color: var(--text);
-  background: var(--card);
+  background: var(--surface-raised);
+  transition: border-color var(--ui-fast) var(--ui-ease), box-shadow var(--ui-fast) var(--ui-ease), background-color var(--ui-fast) var(--ui-ease);
 }
 
 .pb-input:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--brand-primary) 25%, transparent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: color-mix(in srgb, var(--brand-primary) 62%, var(--border-strong));
+  box-shadow: var(--shadow-focus);
+}
+
+.pb-input[aria-invalid="true"] {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-bg) 48%, #ffffff);
+}
+
+.pb-input:disabled {
+  color: var(--text-muted);
+  background: #f1f5f9;
+  cursor: not-allowed;
 }
 
 .pb-textarea {
@@ -246,4 +344,14 @@ a {
 .pb-badge-warning {
   background: var(--warning-bg);
   color: var(--warning-text);
+}
+
+.pb-badge-info {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
+.pb-badge-purple {
+  background: var(--purple-bg);
+  color: var(--purple-text);
 }

@@ -1,112 +1,101 @@
-# PondBridge Architecture (MVP)
+# PondBridge Architecture
 
-## Monorepo Layout
+Last reviewed: 2026-07-14
+
+## Runtime overview
+
+PondBridge is a multi-tenant camp-community platform in one npm monorepo:
+
 ```text
 pondbridge-platform/
-├── _import/cedar-original/    # read-only Cedar reference
 ├── apps/
-│   ├── api/                   # Express + MongoDB tenant-first backend
-│   └── web/                   # React + Vite tenant-first frontend
+│   ├── api/       # Node.js + Express API
+│   ├── web/       # React + Vite web application
+│   └── ios/       # Capacitor wrapper
 ├── packages/
-│   ├── shared/                # Zod schemas + plan feature flags
-│   └── ui/                    # Shared UI primitives + theme tokens
+│   ├── shared/    # schemas, plan features, shared domain rules
+│   └── ui/        # shared UI primitives and theme tokens
 └── docs/
 ```
 
-## Data Model
-- `Tenant`
-  - `name`, `slug`, `status`
-  - `planTier` (`base` | `premium`)
-  - `onboardingStatus` (`not_started` | `in_progress` | `live`)
-  - `onboardingFeeAmount`
-  - `theme` (brand colors/logo/typography)
-  - `accessSettings` (`signupMode`, `accessCode`)
-  - billing fields (`stripeCustomerId`, `stripeSubscriptionId`, `stripePriceId`, `billingStatus`)
-  - onboarding billing (`onboardingFeePaid`, `onboardingFeeInvoiceId`)
-- `User`
-  - `tenantId`
-  - `email`, `passwordHash`
-  - `roles` (`user`, `tenant_admin`, `super_admin`)
-  - `profileId`
-- `Profile`
-  - `tenantId`, `userId`
-  - profile fields (name, emails, phones, cityState, camp role, education/jobs/social/bio)
-- `FamilyTree` (premium)
-  - `tenantId`, `name`, `createdByUserId`
-  - `members[]` with relationship edges
+The API persists native relational tables in Supabase PostgreSQL. MongoDB and
+the historical `pb_mongo_mirror` document table are not the current runtime
+architecture.
 
-## Tenancy Strategy
-- Tenant context is derived by `getTenantContext(req)` in priority order:
-  1. Path param `/t/:slug`
-  2. URL prefix parsing fallback
-  3. Subdomain (`camp-slug.pondbridge.co`)
-  4. Header fallback `x-tenant-slug` (local/testing)
-- `requireTenant` resolves tenant and attaches:
-  - `req.tenant`
-  - `req.tenantContext = { tenantId, slug, source }`
-- Non-super users are denied if JWT tenant does not match route tenant.
+Primary integrations are Clerk or legacy/hybrid authentication, Stripe billing,
+Resend transactional email and webhooks, Cloudflare R2 media storage, and
+optional Cloudflare domain provisioning.
 
-## RBAC
-- `user`
-  - can read directory (tenant scoped)
-  - can read/write own profile
-- `tenant_admin`
-  - all `user` permissions
-  - admin dashboard, export, access settings, onboarding publish
-  - manage profiles only within own tenant
-- `super_admin`
-  - cross-tenant controls (create/disable tenants, global counts)
+## Tenant boundary
 
-## API Surface (MVP)
-- Public:
-  - `GET /api/public/tenant-config?slug=...`
-- Tenant Auth:
-  - `POST /api/t/:slug/auth/register`
-  - `POST /api/t/:slug/auth/login`
-- Profiles:
-  - `GET /api/t/:slug/profiles/me`
-  - `PUT /api/t/:slug/profiles/me`
-  - `GET /api/t/:slug/profiles`
-  - `GET /api/t/:slug/profiles/:profileId`
-- Tenant Admin:
-  - `GET /api/t/:slug/admin/overview`
-  - `GET /api/t/:slug/admin/profiles`
-  - `DELETE /api/t/:slug/admin/profiles/:profileId`
-  - `GET /api/t/:slug/admin/export/csv`
-  - `GET /api/t/:slug/admin/export/pdf` (premium)
-  - `PUT /api/t/:slug/admin/access-settings`
-  - `PUT /api/t/:slug/admin/branding`
-  - `PUT /api/t/:slug/admin/onboarding/publish`
-- Resume Parsing:
-  - `POST /api/t/:slug/resume/parse` (premium)
-- Super Admin:
-  - `POST /api/auth/super/login`
-  - `GET /api/super/dashboard`
-  - `GET /api/super/tenants`
-  - `POST /api/super/tenants`
-  - `PATCH /api/super/tenants/:tenantId`
-  - `POST /api/super/tenants/:id/create-checkout`
-- Billing:
-  - `GET /api/tenants/me/billing`
-  - `POST /api/webhooks/stripe`
+Tenant context is resolved in this order:
 
-## Frontend Structure
-- Tenant-scoped app routes under `/t/:slug/*`.
-- `TenantProvider` fetches tenant config and applies CSS variables globally.
-- Auth storage keys are standardized:
-  - `pondbridgeToken`
-  - `pondbridgeUser`
-- Core pages:
-  - tenant landing/login/create-account
-  - my profile
-  - profile view (read-only)
-  - directory search
-  - tenant admin dashboard
-  - super admin login/dashboard
+1. `/api/t/:slug/*` path slug.
+2. `X-Tenant-Slug` header for controlled local/testing use.
+3. Subdomain or normalized custom-domain mapping.
+4. Authenticated membership fallback for `/api/tenants/me/*`.
 
-## Security Baseline
-- JWT auth with expiry (`JWT_EXPIRES_IN`).
-- Password hashing via bcrypt algorithm (`bcryptjs`).
-- Rate limit on auth routes.
-- Standardized API error envelope.
-- Tenant scope checks in middleware + query filters.
+Tenant middleware attaches the resolved tenant and denies a non-global identity
+whose membership does not match it. Data access must also include `tenant_id`,
+and RLS policies provide a second boundary in PostgreSQL. Server module guards
+enforce disabled features even when a caller bypasses navigation.
+
+The current user schema still permits only one active camp membership per
+identity. The backward-compatible multi-membership migration is specified in
+`docs/adr/0001-multi-camp-identity-memberships.md` and must be rehearsed before
+production use.
+
+## Core records
+
+- `tenants`: branding, content, access policy, modules, launch state, billing,
+  custom domain, and onboarding draft.
+- `users`: tenant membership, identity-provider ID, email, roles, and status.
+- `profiles`: tenant-scoped member profile and per-field contact privacy.
+- `invites` and `access_requests`: invite-first and approval-based onboarding.
+- Community records: conversations, messages, forums, photos, family trees,
+  newsletters, events, and RSVPs.
+- Operational records: analytics events, import reports, audit logs, Resend and
+  Stripe webhook events, email broadcasts, suppressions, and notification data.
+
+## Authentication and authorization
+
+- Tenant roles: `user` and `tenant_admin`.
+- Global console roles: `support_admin`, `finance_admin`, and `super_admin`.
+- Global mutations require an unscoped `super_admin` membership.
+- `AUTH_PROVIDER` supports the configured legacy, Clerk, or hybrid transition.
+- Browser sessions can use bearer, HTTP-only cookie, or hybrid token mode.
+- Consequential admin changes are server-authorized and audit logged.
+
+## Director launch contract
+
+The conversation-led launch workspace at `/t/:slug/onboarding` is the canonical
+director flow. It renders a deterministic live plan from the server readiness
+contract and links to existing action screens. The former dense Command Center
+is preserved at `/t/:slug/onboarding/details`. Branding, content, access policy,
+modules, billing, legal acceptance, and launch state are saved server-side. The
+API owns readiness evaluation; the conversation cannot bypass it. A launch
+override is limited to an explicit, audited global super-admin action.
+
+Member CSV activation is retired. Directors preview a recipient CSV, review
+invalid/duplicate/existing rows, and explicitly send invitations. Invitees create
+their own accounts.
+
+## Integration truth rules
+
+- Stripe webhooks are authoritative for subscription lifecycle state.
+- Resend webhooks are authoritative for delivery, bounce, and complaint health.
+- Scheduled email is accepted only when provider-backed scheduling is available.
+- R2 stores media; the database stores object metadata and URLs.
+- Unsupported global jobs, retries, lifecycle automation, and feature-flag
+  controls return `OPERATION_NOT_AVAILABLE` instead of simulating success.
+
+## Safety and recovery
+
+- API errors and audit metadata carry request IDs.
+- Webhook signatures and idempotency records protect provider updates.
+- Hard tenant deletion is disabled by default and requires explicit switches,
+  a tenant request, a waiting period, and typed confirmation.
+- Database schema/RLS preflight is documented in
+  `docs/DB_GOVERNANCE_AND_PREFLIGHT.md`.
+- Git-history remediation for historical member exports is documented in
+  `docs/SECURITY_GIT_HISTORY_REMEDIATION.md`.

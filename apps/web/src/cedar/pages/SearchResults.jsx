@@ -4,6 +4,7 @@ import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { requestJson } from "../../lib/http.js";
+import { tenantRoute } from "../../lib/tenantRouting.js";
 import { avatarUrl } from "../lib/helpers.js";
 
 /* ------------ helpers (keep OUTSIDE the component) ------------ */
@@ -156,7 +157,7 @@ export default function SearchResults() {
   }, [authReady, getAuthToken, q, slug, token]);
 
   const header = useMemo(() => (!q ? "Search" : `Results for “${q}”`), [q]);
-  const goMessage = (id) => navigate(`/chat/${id}`);
+  const goMessage = (id) => navigate(tenantRoute(slug, `/chat/${id}`));
 
   return (
     <>
@@ -233,14 +234,14 @@ export default function SearchResults() {
                   return (
                     <div className="sr-card" key={id}>
                       <Link
-                        to={`/profile/${id}`}
+                        to={tenantRoute(slug, `/profile/${id}`)}
                         className="sr-card-link"
                         aria-label={`${first} ${last} profile`}
                       >
                         <ResultAvatar photo={photo} first={first} last={last} name={`${first} ${last}`.trim()} />
                       </Link>
 
-                      <Link to={`/profile/${id}`} className="sr-name">
+                      <Link to={tenantRoute(slug, `/profile/${id}`)} className="sr-name">
                         {first} {last}
                       </Link>
 
@@ -253,7 +254,7 @@ export default function SearchResults() {
                       )}
 
                       <div className="sr-cta-row">
-                        <Link to={`/profile/${id}`} className="btn btn-primary">
+                        <Link to={tenantRoute(slug, `/profile/${id}`)} className="btn btn-primary">
                           View Profile
                         </Link>
                         <button

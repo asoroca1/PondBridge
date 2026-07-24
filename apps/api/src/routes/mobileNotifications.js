@@ -52,12 +52,18 @@ router.post("/devices/register", async (req, res) => {
       error: { code: "TOKEN_REQUIRED", message: "Push token is required." }
     });
   }
+  const platform = String(req.body?.platform || "ios").trim().toLowerCase() || "ios";
+  if (!new Set(["ios", "android"]).has(platform)) {
+    return res.status(400).json({
+      error: { code: "PLATFORM_INVALID", message: "Push platform must be ios or android." }
+    });
+  }
 
   const device = await registerMobileDevice({
     tenantId: req.tenant._id,
     userId: req.user.id,
     token,
-    platform: String(req.body?.platform || "ios").trim().toLowerCase() || "ios",
+    platform,
     appId: String(req.body?.appId || "").trim(),
     environment: String(req.body?.environment || "").trim().toLowerCase() || "sandbox",
     permissionState: String(req.body?.permissionState || "granted").trim().toLowerCase() || "granted"

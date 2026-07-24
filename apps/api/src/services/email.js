@@ -474,6 +474,7 @@ async function sendResendRequest(payload) {
   const timeoutMs = toBoundedInt(env.RESEND_REQUEST_TIMEOUT_MS, 12_000, 1000, 60_000);
   const resendUserAgent = normalizeString(env.RESEND_USER_AGENT || "pondbridge-api/1.0");
   const endpointPath = normalizeString(payload?.endpointPath || "/emails") || "/emails";
+  const method = normalizeString(payload?.method || "POST").toUpperCase();
   const idempotencyKey = normalizeIdempotencyKey(payload?.idempotencyKey || "");
   const requestHeaders = normalizeResendHeaders(payload?.headers || {});
   const requestPayload = payload?.body;
@@ -484,7 +485,7 @@ async function sendResendRequest(payload) {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(`${env.RESEND_API_BASE_URL}${endpointPath}`, {
-        method: "POST",
+        method,
         headers: {
           Authorization: `Bearer ${env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
@@ -492,7 +493,7 @@ async function sendResendRequest(payload) {
           ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
           ...requestHeaders
         },
-        body: JSON.stringify(requestPayload),
+        ...(requestPayload === undefined ? {} : { body: JSON.stringify(requestPayload) }),
         signal: controller.signal
       });
 
@@ -518,7 +519,7 @@ async function sendResendRequest(payload) {
       const retryable = shouldRetryResend(response.status, code);
 
       const error = createEmailError(
-        `Resend email send failed (${response.status}): ${message || "Unknown API error."}`,
+        `Resend request failed (${response.status}): ${message || "Unknown API error."}`,
         retryable ? "EMAIL_PROVIDER_TEMPORARY" : "EMAIL_PROVIDER_REJECTED",
         retryable ? 503 : 502,
         { status: response.status, code, retryable, endpointPath }
@@ -615,6 +616,38 @@ export function getEmailServiceStatus() {
     warnings,
     from,
     fromDomain
+  };
+}
+
+export function getEmailSchedulingStatus() {
+  const service = getEmailServiceStatus();
+  return {
+    available: service.mode === "resend" && service.configured,
+    mode: service.mode,
+    configured: service.configured,
+    missing: service.missing
+  };
+}
+
+export async function cancelScheduledTransactionalEmail(messageId) {
+  const normalizedMessageId = normalizeString(messageId);
+  if (!normalizedMessageId) {
+    throw createEmailError(
+      "Scheduled email provider ID is required.",
+      "SCHEDULED_EMAIL_ID_REQUIRED",
+      400
+    );
+  }
+  ensureConfiguredForMode("resend");
+  const result = await sendResendRequest({
+    endpointPath: `/emails/${encodeURIComponent(normalizedMessageId)}/cancel`,
+    method: "POST"
+  });
+  return {
+    ok: true,
+    mode: "resend",
+    messageId: normalizedMessageId,
+    responseBody: result.responseBody
   };
 }
 
@@ -1085,7 +1118,9 @@ export async function sendBulkTransactionalEmail({
             text: personalized?.text || text,
             html: personalized?.html || html,
             attachments: normalizedAttachments,
-            headers: normalizedHeaders,
+            headers: personalized?.headers
+              ? normalizeResendHeaders({ ...normalizedHeaders, ...personalized.headers })
+              : normalizedHeaders,
             tags: normalizedTags,
             topicId: normalizedTopicId,
             scheduledAt: normalizedScheduledAt,

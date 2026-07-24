@@ -24,6 +24,24 @@ const PHASES = [
   }
 ];
 
+const READINESS_PHASES = [
+  {
+    id: "readiness_identity",
+    label: "Identity + Message",
+    steps: ["headline"]
+  },
+  {
+    id: "readiness_access",
+    label: "Access + Agreements",
+    steps: ["signup", "legal"]
+  },
+  {
+    id: "readiness_operations",
+    label: "Modules + Billing",
+    steps: ["modules", "module_setup", "billing"]
+  }
+];
+
 function progressPercent(items = []) {
   if (!items.length) return 0;
   const completed = items.filter((item) => item.status === "completed").length;
@@ -161,6 +179,7 @@ export default function DirectorOnboardingCommandCenterPage() {
   const [status, setStatus] = useState("");
   const [payload, setPayload] = useState(null);
   const [billing, setBilling] = useState(null);
+  const [featureInventory, setFeatureInventory] = useState(null);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [syncingBilling, setSyncingBilling] = useState(false);
@@ -199,12 +218,14 @@ export default function DirectorOnboardingCommandCenterPage() {
       setError("");
     }
     try {
-      const [onboardingPayload, billingPayload] = await Promise.all([
+      const [onboardingPayload, billingPayload, featurePayload] = await Promise.all([
         requestJson("/api/tenants/me/onboarding", { token }),
-        requestJson("/api/tenants/me/billing", { token })
+        requestJson("/api/tenants/me/billing", { token }),
+        requestJson(`/api/t/${slug}/admin/features`, { token }).catch(() => null)
       ]);
       setPayload(onboardingPayload);
       setBilling(billingPayload);
+      setFeatureInventory(featurePayload);
       const livePlanCode = String(
         billingPayload?.tenant?.billingPlan || billingPayload?.billing?.billingPlan || "legacy"
       )
@@ -224,7 +245,7 @@ export default function DirectorOnboardingCommandCenterPage() {
         setLoading(false);
       }
     }
-  }, [token]);
+  }, [slug, token]);
 
   useEffect(() => {
     loadCommandCenter();
@@ -349,16 +370,24 @@ export default function DirectorOnboardingCommandCenterPage() {
     }
   }
 
-  const checklist = payload?.tenant?.onboardingChecklist || [];
+  const legacyChecklist = payload?.tenant?.onboardingChecklist || [];
+  const readinessChecklist = (payload?.readiness?.checks || []).map((item) => ({
+    ...item,
+    status: item.ok ? "completed" : "not_started"
+  }));
+  const checklist = readinessChecklist.length ? readinessChecklist : legacyChecklist;
   const completion = progressPercent(checklist);
   const completedCount = checklist.filter((item) => item.status === "completed").length;
+  const usesServerReadiness = readinessChecklist.length > 0;
+  const isLive = payload?.tenant?.onboardingStatus === "live";
 
   const phaseGroups = useMemo(() => {
-    return PHASES.map((phase) => ({
+    const phases = usesServerReadiness ? READINESS_PHASES : PHASES;
+    return phases.map((phase) => ({
       ...phase,
       items: checklist.filter((item) => phase.steps.includes(item.id))
     }));
-  }, [checklist]);
+  }, [checklist, usesServerReadiness]);
 
   const isPremium =
     billingPlanIsPremium(billing?.tenant?.billingPlan || "") || payload?.tenant?.planTier === "premium";
@@ -452,9 +481,9 @@ export default function DirectorOnboardingCommandCenterPage() {
           <SectionTitle>Your network is live. Here&apos;s what to do next.</SectionTitle>
           <ol className="launch-guide-list">
             <li>
-              {`Import your ${alumniWord} list.`}
-              <Link className="link-button secondary" to={`/t/${slug}/settings/imports`}>
-                Go to Imports
+              {`Review your ${alumniWord} invitation list before sending.`}
+              <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+                Review Invitations
               </Link>
             </li>
             <li>
@@ -465,7 +494,7 @@ export default function DirectorOnboardingCommandCenterPage() {
             </li>
             <li>
               Finalize your welcome message and content.
-              <Link className="link-button secondary" to={`/t/${slug}/settings/content`}>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/settings/network`}>
                 Edit Content
               </Link>
             </li>
@@ -480,11 +509,15 @@ export default function DirectorOnboardingCommandCenterPage() {
       <Card>
         <h1>Welcome, {payload?.tenant?.name || tenant?.name || "Your Camp"} Director</h1>
         <p className="muted">
-          Keep setup moving with this checklist, then launch when all items are ready.
+          {isLive
+            ? "Review the server-confirmed launch evidence, then use the post-launch tools to grow your community."
+            : "Keep setup moving with these server-confirmed checks, then launch when every required item is ready."}
         </p>
         <div className="progress-wrap">
           <div className="progress-head">
-            <strong>{completedCount} of {checklist.length} complete</strong>
+            <strong>
+              {completedCount} of {checklist.length} {usesServerReadiness ? "launch checks ready" : "complete"}
+            </strong>
             <span>{completion}%</span>
           </div>
           <div className="progress-track">
@@ -529,11 +562,11 @@ export default function DirectorOnboardingCommandCenterPage() {
             <article className="post-launch-step">
               <div className="post-launch-step-number">1</div>
               <div className="post-launch-step-content">
-                <h4>{`Import your ${alumniWord}`}</h4>
-                <p>{`Upload a CSV of ${alumniWord} to populate your network directory.`}</p>
+                <h4>{`Prepare your ${alumniWord} invitations`}</h4>
+                <p>Upload a CSV or add recipients, review every row, then explicitly send invitations.</p>
               </div>
-              <Link className="link-button secondary" to={`/t/${slug}/settings/imports`}>
-                Go to Imports
+              <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+                Review Invitations
               </Link>
             </article>
             <article className="post-launch-step">
@@ -542,7 +575,7 @@ export default function DirectorOnboardingCommandCenterPage() {
                 <h4>Send first invitations</h4>
                 <p>{`Invite ${alumniWord} by email so they can create accounts and join.`}</p>
               </div>
-              <Link className="link-button secondary" to={`/t/${slug}/admin`}>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
                 Manage Invites
               </Link>
             </article>
@@ -552,7 +585,7 @@ export default function DirectorOnboardingCommandCenterPage() {
                 <h4>Fine-tune your settings</h4>
                 <p>Adjust branding, signup controls, and content for your network.</p>
               </div>
-              <Link className="link-button secondary" to={`/t/${slug}/admin`}>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/settings/network`}>
                 Open Settings
               </Link>
             </article>
@@ -562,7 +595,7 @@ export default function DirectorOnboardingCommandCenterPage() {
 
       <div className="command-center-grid">
         <Card>
-          <SectionTitle>Checklist by Phase</SectionTitle>
+          <SectionTitle>{usesServerReadiness ? "Launch Readiness Evidence" : "Checklist by Phase"}</SectionTitle>
           <div className="phase-stack">
             {phaseGroups.map((phase) => (
               <article key={phase.id} className="phase-card">
@@ -640,6 +673,8 @@ export default function DirectorOnboardingCommandCenterPage() {
             <Button onClick={startStripeCheckout} disabled={startingCheckout}>
               {startingCheckout
                 ? "Redirecting..."
+                : billingReady && selectedPlanCode === activePlanCode
+                ? "Manage Active Subscription"
                 : selectedPlanCode === activePlanCode
                 ? "Start Stripe Checkout"
                 : "Switch Plan & Checkout"}
@@ -648,17 +683,64 @@ export default function DirectorOnboardingCommandCenterPage() {
               <a className="link-button" href={billing.manageSubscriptionUrl} target="_blank" rel="noreferrer">
                 Open Billing Portal
               </a>
-            ) : (
+            ) : !billingReady ? (
               <Button variant="secondary" disabled>
                 Billing Portal Unavailable
               </Button>
-            )}
+            ) : null}
             <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>
               Billing Details
             </Link>
           </div>
         </Card>
       </div>
+
+      <Card>
+        <SectionTitle>Features &amp; Services</SectionTitle>
+        {featureInventory ? (
+          <>
+            <p className="muted">
+              This is the same server-confirmed inventory used by Director Settings. It includes member modules, plan capabilities, provider readiness, and controlled AI pilots.
+            </p>
+            <div className="inline-actions">
+              <Badge tone="success">{featureInventory.summary?.activeModules || 0}/{featureInventory.summary?.totalModules || 0} modules ready</Badge>
+              <Badge tone="success">{featureInventory.summary?.ready || 0} director tools ready</Badge>
+              {(featureInventory.summary?.moduleAttention || featureInventory.summary?.attention) ? (
+                <Badge tone="warning">{(featureInventory.summary?.moduleAttention || 0) + (featureInventory.summary?.attention || 0)} need setup</Badge>
+              ) : null}
+            </div>
+            <div className="director-onboarding-feature-grid">
+              <section>
+                <h3>Community modules</h3>
+                <ul className="checklist-list">
+                  {(featureInventory.modules || []).map((item) => (
+                    <li key={item.key} className={item.status === "active" ? "done" : ""}>
+                      {item.status === "active" ? "✓" : "○"} {item.label} — {item.statusLabel}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <section>
+                <h3>Director toolkit</h3>
+                <ul className="checklist-list">
+                  {(featureInventory.capabilities || []).map((item) => (
+                    <li key={item.key} className={item.status === "active" ? "done" : ""}>
+                      {item.status === "active" ? "✓" : "○"} {item.label} — {item.statusLabel}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+          </>
+        ) : (
+          <p className="muted">Live feature status could not be loaded. Open Director Settings to retry.</p>
+        )}
+        <div className="inline-actions">
+          <Link className="link-button secondary" to={`/t/${slug}/admin/features`}>
+            Configure Features &amp; Services
+          </Link>
+        </div>
+      </Card>
 
       <Card>
         <SectionTitle>Live Preview Tile</SectionTitle>
@@ -671,8 +753,8 @@ export default function DirectorOnboardingCommandCenterPage() {
             "--bg": previewTheme.bg || "#f5f7fa",
             "--text": previewTheme.text || "#0f172a",
             "--card": previewTheme.card || "#ffffff",
-            "--font-display": "\"Roboto Slab\", \"Avenir Next\", serif",
-            "--font-body": "\"Inter\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+            "--font-display": "\"Instrument Serif\", Georgia, serif",
+            "--font-body": "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
           }}
         >
           <div className="wizard-preview-nav">
@@ -698,20 +780,17 @@ export default function DirectorOnboardingCommandCenterPage() {
         <Card>
           <SectionTitle>Post-Launch Settings</SectionTitle>
           <div className="inline-actions">
-            <Link className="link-button secondary" to={`/t/${slug}/settings/branding`}>
+            <Link className="link-button secondary" to={`/t/${slug}/admin/settings/branding`}>
               Branding
             </Link>
-            <Link className="link-button secondary" to={`/t/${slug}/settings/network`}>
-              Network
+            <Link className="link-button secondary" to={`/t/${slug}/admin/settings/network`}>
+              Network &amp; content
             </Link>
-            <Link className="link-button secondary" to={`/t/${slug}/settings/content`}>
-              Content
-            </Link>
-            <Link className="link-button secondary" to={`/t/${slug}/settings/admins`}>
+            <Link className="link-button secondary" to={`/t/${slug}/admin/settings/admins`}>
               Admins
             </Link>
-            <Link className="link-button secondary" to={`/t/${slug}/settings/imports`}>
-              Imports
+            <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+              Invitations
             </Link>
           </div>
         </Card>
@@ -720,7 +799,7 @@ export default function DirectorOnboardingCommandCenterPage() {
       <Card>
         <SectionTitle>Need Help?</SectionTitle>
         <p className="muted">
-          You can finish setup quickly. If needed, our onboarding team can help with branding and imports.
+          You can finish setup quickly. If needed, our onboarding team can help with branding and invitation preparation.
         </p>
         <div className="inline-actions">
           {payload?.tenant?.content?.contactEmail ? (

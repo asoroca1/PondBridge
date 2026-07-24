@@ -2,6 +2,27 @@ function safeString(value = "") {
   return String(value || "").trim();
 }
 
+const SENSITIVE_QUERY_PARAM = /(?:token|code|secret|key|password|signature|credential)/i;
+
+export function redactRouteUrl(value = "") {
+  const raw = safeString(value);
+  if (!raw || !raw.includes("?")) return raw;
+  try {
+    const parsed = new URL(raw, "http://pondbridge.local");
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (!SENSITIVE_QUERY_PARAM.test(key)) continue;
+      parsed.searchParams.set(key, "[REDACTED]");
+    }
+    const query = parsed.searchParams.toString();
+    return `${parsed.pathname}${query ? `?${query}` : ""}`;
+  } catch {
+    return raw.replace(
+      /([?&][^=&]*(?:token|code|secret|key|password|signature|credential)[^=]*)=[^&]*/gi,
+      "$1=[REDACTED]"
+    );
+  }
+}
+
 function toJsonLine(payload = {}) {
   try {
     return JSON.stringify(payload);
@@ -44,7 +65,7 @@ export function logRequestSummary(req, {
     tenantId: safeString(req?.tenant?._id || req?.tenantContext?.tenantId || req?.user?.tenantId || ""),
     actorUserId: safeString(req?.user?.id || req?.user?._id || ""),
     method: safeString(req?.method),
-    route: safeString(req?.originalUrl || req?.url || ""),
+    route: redactRouteUrl(req?.originalUrl || req?.url || ""),
     status: Number(status || 0),
     durationMs: Number(durationMs || 0),
     errorCode: safeString(errorCode)

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { SignIn, useAuth as useClerkAuth } from "@clerk/clerk-react";
-import { Button } from "@pondbridge/ui";
+import { Button, Input } from "@pondbridge/ui";
 import { noteTabLoginIntent, useAuth } from "../context/AuthContext.jsx";
-import { clerkConfigError, clerkUiEnabled } from "../lib/authMode.js";
+import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
+import { requestJson } from "../lib/http.js";
 
 function roleSetFromUser(user) {
   return new Set(user?.roles || []);
@@ -15,10 +16,116 @@ function hasSuperConsoleRole(user) {
 }
 
 function superDestinationFromUser(user) {
-  const roles = roleSetFromUser(user);
-  return roles.has("finance_admin") && !roles.has("super_admin")
-    ? "/super/billing/tenants"
-    : "/super/tenants";
+  return hasSuperConsoleRole(user) ? "/super/dashboard" : "/super/login";
+}
+
+function LegacySuperLoginPage() {
+  const { token, user, login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [invalidField, setInvalidField] = useState("");
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem("pondbridgeTenantSlug");
+    } catch {
+      // no-op
+    }
+    noteTabLoginIntent();
+  }, []);
+
+  if (token && hasSuperConsoleRole(user)) {
+    return <Navigate to={superDestinationFromUser(user)} replace />;
+  }
+
+  function showValidationError(field, message) {
+    setError(message);
+    setInvalidField(field);
+    const id = field === "email" ? "super-admin-email" : "super-admin-password";
+    window.requestAnimationFrame(() => document.getElementById(id)?.focus());
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setInvalidField("");
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      showValidationError("email", "Enter a valid administrator email address.");
+      return;
+    }
+    if (password.length < 8) {
+      showValidationError("password", "Password must be at least 8 characters.");
+      return;
+    }
+
+    setSubmitting(true);
+    noteTabLoginIntent();
+    try {
+      const payload = await requestJson("/api/auth/super/login", {
+        method: "POST",
+        body: { email: normalizedEmail, password }
+      });
+      if (!payload?.token || !hasSuperConsoleRole(payload?.user)) {
+        throw new Error("This account is not authorized for platform administration.");
+      }
+      login(payload.token, payload.user);
+    } catch (requestError) {
+      setError(requestError?.message || "Could not sign in to the Super Admin Console.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="super-login-shell">
+      <div className="super-login-backdrop" />
+      <div className="super-login-content">
+        <div className="super-login-panel">
+          <div className="super-login-panel-header">
+            <p className="super-login-kicker">PondBridge</p>
+            <h1>Super Admin Console</h1>
+            <p className="super-login-subtitle">Secure local sign-in for platform administration.</p>
+          </div>
+          <form className="super-login-card super-login-form" onSubmit={handleSubmit} noValidate>
+            <label htmlFor="super-admin-email">
+              Administrator email
+              <Input
+                id="super-admin-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="username"
+                inputMode="email"
+                disabled={submitting}
+                aria-invalid={invalidField === "email" || undefined}
+                aria-describedby={invalidField === "email" ? "super-admin-login-error" : undefined}
+              />
+            </label>
+            <label htmlFor="super-admin-password">
+              Password
+              <Input
+                id="super-admin-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                disabled={submitting}
+                aria-invalid={invalidField === "password" || undefined}
+                aria-describedby={invalidField === "password" ? "super-admin-login-error" : undefined}
+              />
+            </label>
+            {error ? <p id="super-admin-login-error" className="error-text" role="alert">{error}</p> : null}
+            <Button type="submit" loading={submitting} disabled={submitting}>
+              {submitting ? "Signing in..." : "Sign in"}
+            </Button>
+          </form>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function ClerkSuperLoginPage() {
@@ -283,6 +390,7 @@ function ClerkConfigErrorPage() {
 }
 
 export default function SuperLoginPage() {
+  if (!clerkModeRequested()) return <LegacySuperLoginPage />;
   if (!clerkUiEnabled()) return <ClerkConfigErrorPage />;
   return <ClerkSuperLoginPage />;
 }

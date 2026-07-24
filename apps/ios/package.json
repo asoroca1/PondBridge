@@ -2,19 +2,27 @@
   "name": "@pondbridge/ios",
   "private": true,
   "version": "0.1.0",
-  "description": "Separate native iOS shell for PondBridge powered by the shared web build.",
+  "description": "Native iOS and Android shells for PondBridge powered by the shared web build.",
   "scripts": {
     "build:web": "npm --workspace @pondbridge/web run build",
     "copy": "npm run build:web && npx cap copy ios",
     "sync": "npm run build:web && npx cap sync ios",
     "open": "npx cap open ios",
+    "copy:android": "npm run build:web && npx cap copy android",
+    "sync:android": "npm run build:web && npx cap sync android",
+    "open:android": "npx cap open android",
+    "build:android": "npm run sync:android && cd android && ./gradlew assembleDebug",
     "doctor": "npx cap doctor"
   },
   "dependencies": {
-    "@capacitor/cli": "^8.3.0",
-    "@capacitor/core": "^8.3.0",
-    "@capacitor/ios": "^8.3.0",
-    "@capacitor/push-notifications": "^8.0.0",
-    "@capacitor/status-bar": "^8.0.0"
+    "@capacitor/android": "8.4.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/ios": "^8.4.2",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/status-bar": "^8.0.3"
   }
 }

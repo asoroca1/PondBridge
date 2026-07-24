@@ -49,10 +49,12 @@ camp-cedar-alumni-network
 
 ## Detected Architecture in Cedar
 - Frontend framework: React + Vite + React Router.
-- Backend framework: Node + Express + Mongoose (route handlers in route files, not controller/service split).
+- Backend framework: Node + Express with native Supabase/PostgreSQL model adapters
+  (route handlers remain primarily in route files, not a controller/service split).
 - Auth method: JWT bearer auth (`Authorization: Bearer ...`) + bcrypt password hash.
 - Environment usage:
-  - Backend: `.env` for `MONGODB_URI`, `JWT_SECRET`, S3/Mailgun/OpenAI keys.
+  - Backend: `.env` for Supabase, authentication, Stripe, Resend, R2, and optional
+    OpenAI integration keys.
   - Frontend: `.env` with `VITE_API_BASE`.
 - Existing core features already implemented:
   - Account create/login

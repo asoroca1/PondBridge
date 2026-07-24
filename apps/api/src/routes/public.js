@@ -1,6 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { TenantModel } from "../db/models/index.js";
+import { EmailPreferenceModel, TenantModel } from "../db/models/index.js";
 import {
   alumniPluralForCampType,
   defaultNetworkDisplayNameForCamp,
@@ -19,6 +19,11 @@ import { buildBillingPublicSnapshot } from "../services/billing.js";
 import { isTenantBillingAccessAllowed, resolveTenantFeatureTier } from "../services/billingState.js";
 import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
 import { env } from "../config/env.js";
+import {
+  maskPreferenceEmail,
+  readEmailPreferenceToken,
+  setEmailPreferenceFromToken
+} from "../services/emailPreferences.js";
 
 const router = Router();
 const AUTO_BOOTSTRAP_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,39}$/;
@@ -169,6 +174,18 @@ const publicLookupLimiter = rateLimit({
     }
   }
 });
+const publicPreferenceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many email preference requests. Please wait and try again."
+    }
+  }
+});
 
 function isSignupEnabled(tenant) {
   if (!(tenant?.status === "active" && tenant?.onboardingStatus === "live")) return false;
@@ -179,6 +196,62 @@ function hasDemoAccessEnabled(tenant = null) {
   const settings = tenant?.settings && typeof tenant.settings === "object" ? tenant.settings : {};
   const demoAccess = settings.demoAccess && typeof settings.demoAccess === "object" ? settings.demoAccess : {};
   return Boolean(demoAccess.enabled && String(demoAccess.codeHash || "").trim());
+}
+
+function normalizePublicTenantLookup(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 100);
+}
+
+function tenantSlugCandidates(value = "") {
+  const normalized = normalizePublicTenantLookup(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (!normalized) return [];
+  const withoutCampPrefix = normalized.replace(/^camp-/, "");
+  return [...new Set([normalized, withoutCampPrefix].filter(Boolean))];
+}
+
+function publicTenantUnavailable(tenant = null) {
+  if (!tenant || tenant.status !== "active" || tenant.onboardingStatus !== "live") return true;
+  return !isTenantBillingAccessAllowed(tenant).allowed;
+}
+
+async function findPublicTenantByIdentifier(value = "") {
+  const query = normalizePublicTenantLookup(value);
+  if (!query) return null;
+
+  const submittedCode = query.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (submittedCode.length >= 4) {
+    const codeMatches = await TenantModel.find(
+      {
+        status: "active",
+        onboardingStatus: "live",
+        "settings.mobileAppCodeLookup": submittedCode
+      },
+      { limit: 2 }
+    );
+    if (codeMatches.length === 1) return codeMatches[0];
+  }
+
+  for (const slug of tenantSlugCandidates(query)) {
+    const match = await TenantModel.findBySlug(slug);
+    if (match) return match;
+  }
+
+  const nameMatches = await TenantModel.find(
+    {
+      status: "active",
+      onboardingStatus: "live",
+      name: { $ilike: query }
+    },
+    { limit: 2 }
+  );
+  return nameMatches.length === 1 ? nameMatches[0] : null;
 }
 
 async function resolveTenantForPublicRequest(req) {
@@ -255,6 +328,7 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
     const config = buildTenantConfig(tenant, { includeSensitive: false });
     const network = buildTenantUrls(tenant);
     const billing = buildBillingPublicSnapshot(tenant);
+    const signupMode = config.accessRules.signupMode;
 
     const planTier = resolveTenantFeatureTier(tenant);
     const payload = {
@@ -275,8 +349,11 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
       theme: resolveTheme(tenant),
       content: resolveContent(tenant),
       accessSettings: {
-        signupMode: "open",
+        signupMode,
         signupEnabled: isSignupEnabled(tenant),
+        selfSignupEnabled: isSignupEnabled(tenant) && signupMode !== "invite_only",
+        requiresAccessCode: signupMode === "code",
+        hasAccessCode: Boolean(config.accessRules.accessCodeHash || tenant?.settings?.accessCodeHash),
         demoAccessEnabled: hasDemoAccessEnabled(tenant)
       },
       modules: config.modules,
@@ -328,6 +405,8 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
     }
 
     const billingAccess = isTenantBillingAccessAllowed(tenant);
+    const config = buildTenantConfig(tenant, { includeSensitive: false });
+    const signupMode = config.accessRules.signupMode;
 
     const payload = {
       slug: tenant.slug,
@@ -339,7 +418,9 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
         reason: billingAccess.reason,
         inGrace: billingAccess.inGrace
       },
-      signupMode: "open",
+      signupMode,
+      selfSignupEnabled: isSignupEnabled(tenant) && signupMode !== "invite_only",
+      requiresAccessCode: signupMode === "code",
       demoAccessEnabled: hasDemoAccessEnabled(tenant)
     };
 
@@ -347,6 +428,56 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
       writePublicResponseCache(cacheKey, payload);
     }
     return res.json(payload);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/tenant-lookup", publicLookupLimiter, async (req, res, next) => {
+  try {
+    const query = normalizePublicTenantLookup(req.query.query || req.query.q || "");
+    if (query.length < 2) {
+      return res.status(400).json({
+        error: {
+          code: "TENANT_LOOKUP_REQUIRED",
+          message: "Enter a camp name or code."
+        }
+      });
+    }
+
+    const tenant = await findPublicTenantByIdentifier(query);
+    if (!tenant) {
+      return res.status(404).json({
+        error: {
+          code: "TENANT_NOT_FOUND",
+          message: "We could not find that camp. Check the name or code and try again."
+        }
+      });
+    }
+
+    if (publicTenantUnavailable(tenant)) {
+      return res.status(403).json({
+        error: {
+          code: "TENANT_UNAVAILABLE",
+          message: "That camp network is not accepting member access right now."
+        }
+      });
+    }
+
+    const network = buildTenantUrls(tenant);
+    res.set("Cache-Control", "private, max-age=60");
+    return res.json({
+      id: String(tenant._id || tenant.id || ""),
+      slug: String(tenant.slug || "").trim().toLowerCase(),
+      name: String(tenant.name || "").trim(),
+      networkDisplayName:
+        String(tenant?.content?.networkDisplayName || "").trim() ||
+        String(tenant.name || "").trim(),
+      network: {
+        appUrl: network.appUrl,
+        loginUrl: network.loginUrl
+      }
+    });
   } catch (error) {
     return next(error);
   }
@@ -404,6 +535,83 @@ router.post("/mobile-app-code/resolve", publicLookupLimiter, async (req, res, ne
         String(matchedTenant?.content?.networkDisplayName || "").trim() ||
         String(matchedTenant.name || "").trim()
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/email-preferences", publicPreferenceLimiter, async (req, res, next) => {
+  try {
+    const payload = readEmailPreferenceToken(req.query?.token || "");
+    const [tenant, preference] = await Promise.all([
+      TenantModel.findById(payload.tenantId),
+      EmailPreferenceModel.findForRecipient(payload)
+    ]);
+    if (!tenant) {
+      return res.status(404).json({
+        error: {
+          code: "EMAIL_PREFERENCE_TENANT_NOT_FOUND",
+          message: "This email preference link is no longer available."
+        }
+      });
+    }
+    return res.json({
+      campName: String(
+        tenant?.content?.networkDisplayName || tenant?.name || "Camp community"
+      ).trim(),
+      email: maskPreferenceEmail(payload.email),
+      topicKey: payload.topicKey,
+      topicLabel: "Community updates",
+      status: preference?.status === "unsubscribed" ? "unsubscribed" : "subscribed"
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/email-preferences", publicPreferenceLimiter, async (req, res, next) => {
+  const requestedStatus = String(req.body?.status || "unsubscribed").trim().toLowerCase();
+  if (!new Set(["subscribed", "unsubscribed"]).has(requestedStatus)) {
+    return res.status(400).json({
+      error: {
+        code: "EMAIL_PREFERENCE_STATUS_INVALID",
+        message: "Choose subscribed or unsubscribed."
+      }
+    });
+  }
+  try {
+    const result = await setEmailPreferenceFromToken({
+      token: req.body?.token,
+      status: requestedStatus,
+      source: requestedStatus === "subscribed" ? "recipient_resubscribe" : "recipient_manage_page"
+    });
+    const tenant = await TenantModel.findById(result.payload.tenantId);
+    return res.json({
+      ok: true,
+      campName: String(
+        tenant?.content?.networkDisplayName || tenant?.name || "Camp community"
+      ).trim(),
+      email: maskPreferenceEmail(result.payload.email),
+      topicKey: result.payload.topicKey,
+      topicLabel: "Community updates",
+      status: result.preference.status
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// RFC 8058-style one-click endpoint for List-Unsubscribe-Post. GET never
+// mutates preferences, which protects recipients from automated link scanners.
+router.post("/email-preferences/one-click", publicPreferenceLimiter, async (req, res, next) => {
+  try {
+    await setEmailPreferenceFromToken({
+      token: req.query?.token || req.body?.token,
+      status: "unsubscribed",
+      source: "list_unsubscribe_one_click"
+    });
+    res.set("Cache-Control", "no-store");
+    return res.status(204).end();
   } catch (error) {
     return next(error);
   }

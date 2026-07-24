@@ -1,5 +1,4 @@
 import { Router } from "express";
-import multer from "multer";
 import { listFeaturesForPlan } from "@pondbridge/shared";
 import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import {
@@ -19,7 +18,6 @@ import {
   listRecentTenantInvoices,
   syncStripeCustomerContact
 } from "../services/billing.js";
-import { runTenantCsvImport } from "../services/csvImport.js";
 import {
   buildOnboardingResponse,
   buildSettingsStorePayload,
@@ -40,27 +38,13 @@ import {
   validateThemePayload
 } from "../services/onboarding.js";
 import { buildTenantUrls, resolveTenantDomain } from "../utils/domainProvisioning.js";
-import { resolveTenantBilling, resolveTenantFeatureTier } from "../services/billingState.js";
+import {
+  buildTenantSettingsWithBillingPatch,
+  resolveTenantBilling,
+  resolveTenantFeatureTier
+} from "../services/billingState.js";
 
 const router = Router();
-
-const csvUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const isCsv =
-      file.mimetype.includes("csv") || file.originalname.toLowerCase().endsWith(".csv");
-
-    if (!isCsv) {
-      const error = new Error("CSV file required");
-      error.statusCode = 400;
-      error.code = "CSV_REQUIRED";
-      return cb(error);
-    }
-
-    return cb(null, true);
-  }
-});
 
 const stepIndexById = {
   name_branding: 1,
@@ -74,12 +58,6 @@ const stepIndexById = {
 function toBoolean(value) {
   if (typeof value === "boolean") return value;
   return String(value || "").toLowerCase().trim() === "true";
-}
-
-function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
 const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
@@ -739,150 +717,23 @@ router.post("/me/admins", async (req, res) => {
   });
 });
 
-async function runImportCsvHandler(req, res, next) {
-  try {
-    const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
-    if (resolved.error) {
-      return res.status(resolved.error.status).json(resolved.error.payload);
-    }
-
-    const { tenant } = resolved;
-    const skipImport = toBoolean(req.body?.skip);
-
-    if (skipImport) {
-      const { checklist, onboardingStep } = applyChecklistAndStep(tenant, {
-        stepToComplete: "import_alumni",
-        nextStep: "modules"
-      });
-
-      const updated = await saveTenantOnboarding(tenant._id, {
-        onboardingChecklist: checklist,
-        onboardingStep,
-        onboardingStatus: tenant.onboardingStatus === "live" ? "live" : "in_progress",
-        onboardingProgress: buildProgressUpdate(tenant, {
-          checklist,
-          onboardingStep,
-          importStats: {
-            imported: 0,
-            skipped: 0,
-            rowsRead: 0
-          }
-        })
-      });
-
-      await createAuditLog({
-        tenantId: tenant._id,
-        actorUserId: req.user.id,
-        event: "csv_import_skipped",
-        metadata: {}
-      });
-
-      return res.json({
-        ok: true,
-        skippedImport: true,
-        importSummary: { imported: 0, skipped: 0, rowsRead: 0, errors: [] },
-        onboarding: onboardingPayload(updated, null)
-      });
-    }
-
-    if (!req.file?.buffer) {
-      return res.status(400).json({
-        error: {
-          code: "CSV_REQUIRED",
-          message: "Upload CSV file under field name 'file'"
-        }
-      });
-    }
-
-    const enableFuzzyMatch = toBoolean(req.body?.enableFuzzyMatch);
-    const fuzzyDistance = toBoundedInt(req.body?.fuzzyDistance, {
-      min: 0,
-      max: 4,
-      fallback: 1
-    });
-
-    const importResult = await runTenantCsvImport({
-      tenantId: tenant._id,
-      userId: req.user.id,
-      fileName: req.file.originalname || "import.csv",
-      csvBuffer: req.file.buffer,
-      options: { enableFuzzyMatch, fuzzyDistance }
-    });
-
-    const imported = importResult.createdCount + importResult.updatedCount;
-    const skipped = importResult.skippedDuplicates + importResult.errors.length;
-    const errors = importResult.errors.slice(0, 25).map((item) => ({
-      row: item.rowNumber,
-      reason: item.message
-    }));
-
-    const { checklist, onboardingStep } = applyChecklistAndStep(tenant, {
-      stepToComplete: "import_alumni",
-      nextStep: "modules"
-    });
-
-    const updated = await saveTenantOnboarding(tenant._id, {
-      onboardingChecklist: checklist,
-      onboardingStep,
-      onboardingStatus: tenant.onboardingStatus === "live" ? "live" : "in_progress",
-      onboardingProgress: buildProgressUpdate(tenant, {
-        checklist,
-        onboardingStep,
-        importStats: {
-          imported,
-          skipped,
-          rowsRead: importResult.rowsRead
-        }
-      })
-    });
-
-    await createAuditLog({
-      tenantId: tenant._id,
-      actorUserId: req.user.id,
-      event: "csv_import_run",
-      metadata: {
-        reportId: importResult.reportId,
-        createdCount: importResult.createdCount,
-        updatedCount: importResult.updatedCount,
-        skippedDuplicates: importResult.skippedDuplicates,
-        errorCount: importResult.errors.length
-      }
-    });
-
-    return res.json({
-      ok: true,
-      importSummary: {
-        reportId: importResult.reportId,
-        createdCount: importResult.createdCount,
-        updatedCount: importResult.updatedCount,
-        skippedDuplicates: importResult.skippedDuplicates,
-        errorCount: importResult.errors.length,
-        imported,
-        skipped,
-        rowsRead: importResult.rowsRead,
-        errors,
-        failureCsvDownloadPath: importResult.failureCsv
-          ? `/api/t/${tenant.slug}/admin/imports/${importResult.reportId}/failures.csv`
-          : ""
-      },
-      onboarding: onboardingPayload(updated, null)
-    });
-  } catch (error) {
-    if (error?.code === "CSV_INVALID_FORMAT") {
-      return res.status(400).json({
-        error: {
-          code: "CSV_INVALID_FORMAT",
-          message: error.message
-        }
-      });
-    }
-
-    return next(error);
+async function retiredImportCsvHandler(req, res) {
+  const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
+  if (resolved.error) {
+    return res.status(resolved.error.status).json(resolved.error.payload);
   }
+
+  return res.status(410).json({
+    error: {
+      code: "MEMBER_IMPORT_DISABLED",
+      message:
+        "Direct member import is retired. Preview and send invitations so each person creates their own account."
+    }
+  });
 }
 
-router.post("/me/import-csv", csvUpload.single("file"), runImportCsvHandler);
-router.post("/me/import/csv", csvUpload.single("file"), runImportCsvHandler);
+router.post("/me/import-csv", retiredImportCsvHandler);
+router.post("/me/import/csv", retiredImportCsvHandler);
 
 router.get("/me/import/history", async (req, res) => {
   const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
@@ -917,8 +768,6 @@ router.post("/me/launch", async (req, res) => {
 
   const { tenant, isSuperAdmin } = resolved;
   const superAdminOverride = isSuperAdmin && toBoolean(req.body?.superAdminOverride);
-  const launchMode = String(req.body?.mode || "").trim().toLowerCase();
-  const fromDirectorWizard = launchMode === "director_wizard";
   const requestedLegalAgreementAccepted = hasOwn(req.body, "legalAgreementAccepted")
     ? Boolean(req.body.legalAgreementAccepted)
     : undefined;
@@ -942,9 +791,6 @@ router.post("/me/launch", async (req, res) => {
   const profilesCount = await ProfileModel.count(tenant._id);
   const readiness = getReadinessChecklist(tenant, { importedCount: profilesCount });
   const billingReadiness = getBillingReadiness(tenant);
-  const checklistBlockers = readiness.checks.filter(
-    (item) => !item.ok && item.id !== "billing" && item.id !== "legal"
-  );
   const legalAccepted =
     requestedLegalAgreementAccepted !== undefined
       ? requestedLegalAgreementAccepted
@@ -952,26 +798,12 @@ router.post("/me/launch", async (req, res) => {
           tenant?.onboardingDraft?.directorLegalAgreement?.accepted ||
             tenant?.directorLegalAgreement?.accepted
         );
-  const legalBlockers = !fromDirectorWizard || superAdminOverride
+  const launchBlockers = superAdminOverride
     ? []
-    : legalAccepted
-    ? []
-    : [
-        {
-          id: "legal",
-          label: "Director legal agreement must be accepted",
-          ok: false
-        }
-      ];
-  const blockingChecklist = fromDirectorWizard ? [] : checklistBlockers;
-  const billingBlockers = superAdminOverride
-    ? []
-    : readiness.checks.filter((item) => !item.ok && item.id === "billing");
-  const launchBlockers = [
-    ...blockingChecklist,
-    ...legalBlockers,
-    ...billingBlockers
-  ];
+    : readiness.checks.filter((item) => {
+        if (item.id === "legal") return !legalAccepted;
+        return !item.ok;
+      });
 
   if (launchBlockers.length > 0) {
     return res.status(400).json({
@@ -1053,7 +885,7 @@ router.post("/me/launch", async (req, res) => {
       billing: getBillingReadiness(updated),
       launchMeta: {
         superAdminOverride,
-        fromDirectorWizard
+        source: "server_readiness_contract"
       }
     })
   });
@@ -1123,6 +955,18 @@ router.patch("/me/billing", async (req, res) => {
   if (requestedStatus) update.billingStatus = requestedStatus;
   if (requestedFeePaid !== undefined) update.onboardingFeePaid = requestedFeePaid;
   if (requestedInvoiceId) update.onboardingFeeInvoiceId = requestedInvoiceId;
+  if (hasBillingStateUpdate) {
+    const billingPatch = {};
+    if (requestedStatus) {
+      billingPatch.lifecycleStatus = requestedStatus;
+      billingPatch.legacyStatus = requestedStatus;
+    }
+    if (requestedFeePaid !== undefined) {
+      billingPatch.onboardingFeeStatus = requestedFeePaid ? "paid" : "unpaid";
+    }
+    if (requestedInvoiceId) billingPatch.lastInvoiceId = requestedInvoiceId;
+    update.settings = buildTenantSettingsWithBillingPatch(tenant, billingPatch);
+  }
   if (hasBillingDetailsUpdate) {
     const sourceMailingAddress = hasOwn(billingPayload, "mailingAddress")
       ? billingPayload.mailingAddress

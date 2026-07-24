@@ -10,10 +10,14 @@ import {
 } from "../db/models/index.js";
 
 const TRACKED_EMAIL_EVENTS = new Set([
+  "email.sent",
   "email.delivered",
   "email.bounced",
   "email.complained",
-  "email.clicked"
+  "email.clicked",
+  "email.failed",
+  "email.delivery_delayed",
+  "email.suppressed"
 ]);
 
 function createWebhookError(message, statusCode = 400, code = "WEBHOOK_INVALID") {
@@ -220,18 +224,29 @@ async function updateBroadcastStatsFromWebhook({
   tenantId,
   eventType,
   emailId,
+  pondbridgeBroadcastId,
   occurredAt,
   recipientEmail
 }) {
   if (!tenantId || !emailId) return;
-  const broadcasts = await EmailBroadcastModel.find(tenantId, {}, {
-    sort: { createdAt: -1 },
-    limit: 50
-  });
-  const broadcast = (broadcasts || []).find((item) => {
-    const messageIds = item?.stats?.delivery?.messageIds;
-    return Array.isArray(messageIds) && messageIds.includes(emailId);
-  });
+  let broadcast = null;
+  if (pondbridgeBroadcastId) {
+    broadcast = await EmailBroadcastModel.findOne(tenantId, { _id: pondbridgeBroadcastId });
+  }
+  if (!broadcast) {
+    const broadcasts = await EmailBroadcastModel.find(tenantId, {}, {
+      sort: { createdAt: -1 },
+      limit: 200
+    });
+    broadcast = (broadcasts || []).find((item) => {
+      const immediateMessageIds = item?.stats?.delivery?.messageIds;
+      const scheduledMessageIds = item?.stats?.providerSchedule?.messageIds;
+      return (
+        (Array.isArray(immediateMessageIds) && immediateMessageIds.includes(emailId)) ||
+        (Array.isArray(scheduledMessageIds) && scheduledMessageIds.includes(emailId))
+      );
+    });
+  }
   if (!broadcast) return;
 
   const currentStats = broadcast?.stats && typeof broadcast.stats === "object" ? broadcast.stats : {};
@@ -240,29 +255,38 @@ async function updateBroadcastStatsFromWebhook({
     : {};
   const base = {
     totalEvents: Number(currentWebhook.totalEvents || 0),
+    sent: Number(currentWebhook.sent || 0),
     delivered: Number(currentWebhook.delivered || 0),
     bounced: Number(currentWebhook.bounced || 0),
     complained: Number(currentWebhook.complained || 0),
     clicked: Number(currentWebhook.clicked || 0),
+    failed: Number(currentWebhook.failed || 0),
+    deliveryDelayed: Number(currentWebhook.deliveryDelayed || 0),
+    suppressed: Number(currentWebhook.suppressed || 0),
     lastEventAt: currentWebhook.lastEventAt || null,
     lastRecipient: currentWebhook.lastRecipient || ""
   };
   base.totalEvents += 1;
+  if (eventType === "email.sent") base.sent += 1;
   if (eventType === "email.delivered") base.delivered += 1;
   if (eventType === "email.bounced") base.bounced += 1;
   if (eventType === "email.complained") base.complained += 1;
   if (eventType === "email.clicked") base.clicked += 1;
+  if (eventType === "email.failed") base.failed += 1;
+  if (eventType === "email.delivery_delayed") base.deliveryDelayed += 1;
+  if (eventType === "email.suppressed") base.suppressed += 1;
   base.lastEventAt = occurredAt.toISOString();
   base.lastRecipient = recipientEmail || base.lastRecipient;
 
   const sentCount =
+    Number(currentStats?.delivery?.acceptedCount || 0) ||
     Number(currentStats?.delivery?.sentCount || 0) ||
     Number(broadcast?.recipientCount || 0);
   const clickRate = sentCount > 0 ? Math.round((base.clicked / sentCount) * 1000) / 10 : 0;
   const bounceRate = sentCount > 0 ? Math.round((base.bounced / sentCount) * 1000) / 10 : 0;
   const complaintRate = sentCount > 0 ? Math.round((base.complained / sentCount) * 1000) / 10 : 0;
 
-  await EmailBroadcastModel.update(broadcast._id, {
+  const updates = {
     stats: {
       ...currentStats,
       webhook: base,
@@ -270,7 +294,19 @@ async function updateBroadcastStatsFromWebhook({
       bounceRate,
       complaintRate
     }
-  });
+  };
+  if (eventType === "email.sent" && broadcast.status === "scheduled") {
+    updates.status = "sent";
+    updates.sentAt = occurredAt;
+  } else if (
+    eventType === "email.failed" &&
+    broadcast.status === "scheduled" &&
+    base.sent === 0 &&
+    base.failed >= sentCount
+  ) {
+    updates.status = "failed";
+  }
+  await EmailBroadcastModel.update(broadcast._id, updates);
 }
 
 async function writeTenantAnalyticsEvent({
@@ -344,6 +380,7 @@ export async function processResendWebhookRequest(req) {
   const recipients = extractRecipients(eventData);
   const tags = normalizeTags(eventData.tags);
   const tenantTag = findTagValue(tags, "tenant");
+  const pondbridgeBroadcastId = findTagValue(tags, "pondbridge_broadcast");
   const tenant = await resolveTenantFromWebhook({ tenantSlug: tenantTag, recipients });
   const occurredAt = normalizeEventTimestamp(payload?.created_at || eventData?.created_at);
   const emailId = String(eventData?.email_id || "").trim();
@@ -381,6 +418,7 @@ export async function processResendWebhookRequest(req) {
       tenantId: tenant?._id || null,
       eventType,
       emailId,
+      pondbridgeBroadcastId,
       occurredAt,
       recipientEmail: recipient
     });
@@ -405,4 +443,3 @@ export async function processResendWebhookRequest(req) {
     duplicates
   };
 }
-
