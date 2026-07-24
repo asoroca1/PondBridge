@@ -274,59 +274,9 @@ export default function NavBar() {
   const showPrivateTools = isAuthenticated && !usePublicNav;
   const useNativeMemberRoute = nativeApp && showPrivateTools && !onAdminModeRoute;
   const showSearch = canSearch && !usePublicNav && !onAdminModeRoute && !useNativeMemberRoute;
-  const showPrimaryNav = showPrivateTools && !onAdminModeRoute && !useNativeMemberRoute;
   const navTitle = useNativeMemberRoute
     ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle })
     : title;
-
-  const primaryNavItems = useMemo(() => {
-    const items = [
-      {
-        id: "home",
-        label: "Home",
-        icon: Home,
-        to: pathWithCamp(slug, "/home"),
-        active: currentTenantPath === "/home" || currentTenantPath === "/"
-      }
-    ];
-    if (canSearch) {
-      items.push({
-        id: "people",
-        label: "People",
-        icon: Search,
-        to: pathWithCamp(slug, "/search"),
-        active: currentTenantPath === "/search" || currentTenantPath === "/search-results" || currentTenantPath.startsWith("/profile/")
-      });
-    }
-    if (modules.chat !== false) {
-      items.push({
-        id: "messages",
-        label: "Messages",
-        icon: MessageSquare,
-        to: pathWithCamp(slug, "/chat-rooms?tab=personal"),
-        active: /^\/chat(?:-rooms)?(?:\/|$)/.test(currentTenantPath)
-      });
-    }
-    if (modules.events !== false) {
-      items.push({
-        id: "events",
-        label: "Events",
-        icon: CalendarDays,
-        to: pathWithCamp(slug, "/events"),
-        active: currentTenantPath === "/events" || currentTenantPath.startsWith("/events/")
-      });
-    }
-    if (modules.photoStream !== false) {
-      items.push({
-        id: "photos",
-        label: "Photos",
-        icon: Image,
-        to: pathWithCamp(slug, "/photo-stream"),
-        active: currentTenantPath === "/photo-stream"
-      });
-    }
-    return items;
-  }, [canSearch, currentTenantPath, modules.chat, modules.events, modules.photoStream, slug]);
 
   const menuSections = useMemo(() => {
     if (!isAuthenticated) return [];
@@ -705,22 +655,6 @@ export default function NavBar() {
         </Link>
         <span className={`navbar2-title ${useNativeMemberRoute ? "is-native-page-title" : ""}`.trim()}>{navTitle}</span>
       </div>
-
-      {showPrimaryNav ? (
-        <div className="navbar2-primary-links" aria-label="Primary navigation">
-          {primaryNavItems.map((item) => (
-            <Link
-              key={item.id}
-              to={item.to}
-              className={`navbar2-primary-link ${item.active ? "is-active" : ""}`.trim()}
-              aria-current={item.active ? "page" : undefined}
-            >
-              <item.icon size={17} aria-hidden="true" />
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      ) : null}
 
       <div className="navbar2-right">
         {showSearch ? (

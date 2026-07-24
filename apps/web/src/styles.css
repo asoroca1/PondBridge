@@ -2618,46 +2618,6 @@ html.is-native-app textarea{
 .navbar2-right { flex:0 0 auto; display:flex; align-items:center; gap:10px;
                  margin-left:auto; max-width:calc(100% - var(--left-guard)); }
 .navbar2-right > * { flex:0 0 auto; }
-.navbar2-primary-links{
-  flex:1 1 auto;
-  min-width:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:4px;
-}
-.navbar2-primary-link{
-  min-height:40px;
-  padding:0 10px;
-  border:1px solid transparent;
-  border-radius:10px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:6px;
-  color:color-mix(in srgb, var(--brand-on-primary) 78%, transparent);
-  font-family:var(--font-body);
-  font-size:.84rem;
-  font-weight:700;
-  line-height:1;
-  text-decoration:none;
-  white-space:nowrap;
-  transition:background var(--ui-fast) var(--ui-ease), border-color var(--ui-fast) var(--ui-ease), color var(--ui-fast) var(--ui-ease), transform var(--ui-fast) var(--ui-ease);
-}
-.navbar2-primary-link:hover{
-  background:rgba(255,255,255,.1);
-  color:var(--brand-on-primary);
-  text-decoration:none;
-}
-.navbar2-primary-link:active{
-  transform:translateY(1px);
-}
-.navbar2-primary-link.is-active{
-  background:rgba(255,255,255,.16);
-  border-color:rgba(255,255,255,.16);
-  color:var(--brand-on-primary);
-  box-shadow:0 1px 0 rgba(255,255,255,.12) inset;
-}
 .navbar2-logoLink{
   display:flex;
   align-items:center;
@@ -2776,24 +2736,10 @@ html.is-native-app textarea{
   letter-spacing: -0.02em;
 }
 
-@media (max-width: 1230px){
-  .navbar2-primary-link{
-    padding-inline:8px;
-  }
-
-  .navbar2-primary-link span{
-    display:none;
-  }
-}
-
 @media (max-width: 980px){
   .navbar2-left{
     flex:1 1 0%;
     max-width:none;
-  }
-
-  .navbar2-primary-links{
-    display:none;
   }
 }
 
