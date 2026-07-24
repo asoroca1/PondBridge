@@ -1,5 +1,6 @@
 const DEFAULT_APP_BASE_DOMAIN = "pondbridgealumni.com";
 const RESERVED_SUBDOMAINS = new Set(["www", "app", "api", "super"]);
+const DEPLOYMENT_PREVIEW_SUFFIXES = [".pages.dev"];
 
 function browserHost() {
   if (typeof window === "undefined") return "";
@@ -16,6 +17,13 @@ export function getAppBaseDomain() {
 
 function isIpv4Host(host = "") {
   return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+}
+
+export function isDeploymentPreviewHost(host = browserHost()) {
+  const safeHost = normalizeHost(host);
+  return DEPLOYMENT_PREVIEW_SUFFIXES.some(
+    (suffix) => safeHost === suffix.slice(1) || safeHost.endsWith(suffix)
+  );
 }
 
 export function inferCampSlugFromHost(host = browserHost()) {
@@ -35,7 +43,13 @@ export function inferCampSlugFromHost(host = browserHost()) {
 
 export function isPotentialCustomTenantHost(host = browserHost()) {
   const safeHost = normalizeHost(host);
-  if (!safeHost || safeHost === "localhost" || safeHost.endsWith(".localhost") || isIpv4Host(safeHost)) {
+  if (
+    !safeHost ||
+    safeHost === "localhost" ||
+    safeHost.endsWith(".localhost") ||
+    isIpv4Host(safeHost) ||
+    isDeploymentPreviewHost(safeHost)
+  ) {
     return false;
   }
 
