@@ -4539,7 +4539,10 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-scope .pb-admin-ui-main{
   min-width: 0;
-  padding: var(--director-admin-main-top-pad) 24px 30px;
+  padding: var(--director-admin-main-top-pad) clamp(18px, 2.2vw, 32px) 38px;
+  background:
+    radial-gradient(circle at 82% 8%, color-mix(in srgb, var(--brand-primary) 5%, transparent), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--brand-primary) 2.5%, #f8fafc), #f8fafc 54%, #f4f7fb);
 }
 
 .pb-cedar-page .director-admin-sidebar{
@@ -4551,7 +4554,7 @@ html.is-native-app textarea{
   border-right: 1px solid var(--director-admin-soft-border);
   border-radius: 0;
   background: #fff;
-  box-shadow: none;
+  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.035);
   backdrop-filter: blur(1px);
   padding: 16px 12px 20px;
   overflow-y: auto;
@@ -4559,7 +4562,8 @@ html.is-native-app textarea{
   flex-direction: column;
 }
 
-.pb-cedar-page .director-admin-sidebar-title{
+.pb-cedar-page .director-admin-sidebar-title,
+.pb-cedar-page .director-admin-sidebar .pb-admin-ui-sidebar-title{
   margin: 0 0 10px;
   padding: 0 6px;
   color: #5b6270;
@@ -4636,9 +4640,14 @@ html.is-native-app textarea{
 }
 
 .pb-cedar-page .director-admin-sidebar-link.is-active{
-  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
-  border-color: color-mix(in srgb, var(--brand-primary) 34%, #d8e5f5);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--brand-primary) 12%, #ffffff),
+    color-mix(in srgb, var(--brand-primary) 6%, #ffffff)
+  );
+  border-color: color-mix(in srgb, var(--brand-primary) 38%, #d8e5f5);
   color: var(--brand-primary);
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--brand-primary) 9%, transparent);
 }
 
 .pb-cedar-page .director-admin-sidebar-group{
@@ -4735,17 +4744,19 @@ html.is-native-app textarea{
   position:relative;
   isolation:isolate;
   overflow:hidden;
-  padding:clamp(20px, 3.2vw, 34px);
+  padding:clamp(22px, 3vw, 36px);
   border:1px solid color-mix(in srgb, var(--brand-primary) 70%, white);
   border-radius:18px;
   display:grid;
   grid-template-columns:minmax(0, 1fr) auto;
-  gap:18px 24px;
+  gap:22px 28px;
   color:var(--brand-on-primary);
   background:
     radial-gradient(circle at 90% -20%, rgba(255,255,255,.2), transparent 40%),
     linear-gradient(132deg, color-mix(in srgb, var(--brand-primary) 94%, #061c37), color-mix(in srgb, var(--brand-primary) 72%, #16978f));
-  box-shadow:0 18px 42px color-mix(in srgb, var(--brand-primary) 18%, transparent);
+  box-shadow:
+    0 24px 56px color-mix(in srgb, var(--brand-primary) 17%, transparent),
+    inset 0 1px 0 rgba(255,255,255,.12);
 }
 
 .pb-cedar-page .director-command-hero::after{
@@ -4810,9 +4821,9 @@ html.is-native-app textarea{
 .pb-cedar-page .director-command-hero h1{
   margin:10px 0 6px;
   color:#fff;
-  font-size:clamp(1.85rem, 3.3vw, 3rem);
-  line-height:.98;
-  letter-spacing:-.025em;
+  font-size:clamp(1.85rem, 3vw, 2.7rem);
+  line-height:1.04;
+  letter-spacing:-.02em;
 }
 
 .pb-cedar-page .director-command-hero-copy > p:last-child{
@@ -4823,6 +4834,19 @@ html.is-native-app textarea{
   line-height:1.55;
 }
 
+.pb-cedar-page .director-command-refresh-wrap{
+  align-self:start;
+  display:grid;
+  justify-items:end;
+  gap:7px;
+}
+
+.pb-cedar-page .director-command-refresh-wrap > span{
+  color:rgba(255,255,255,.62);
+  font-size:.7rem;
+  font-weight:650;
+}
+
 .pb-cedar-page .director-command-refresh{
   min-height:39px;
   padding:0 14px;
@@ -4831,6 +4855,10 @@ html.is-native-app textarea{
   align-self:start;
   color:#fff;
   background:rgba(255,255,255,.1);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
   font:700 .8rem/1 var(--font-body);
   cursor:pointer;
   transition:background var(--ui-fast) var(--ui-ease), transform var(--ui-fast) var(--ui-ease);
@@ -4849,42 +4877,78 @@ html.is-native-app textarea{
   cursor:wait;
 }
 
+.pb-cedar-page .director-command-refresh .is-spinning{
+  animation:directorAdminSpin .85s linear infinite;
+}
+
+@keyframes directorAdminSpin{
+  to{ transform:rotate(360deg); }
+}
+
 .pb-cedar-page .director-command-actions{
   grid-column:1 / -1;
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:9px;
 }
 
 .pb-cedar-page .director-command-actions a{
-  min-height:38px;
-  padding:0 13px;
+  min-height:58px;
+  padding:10px 12px;
   border:1px solid rgba(255,255,255,.17);
-  border-radius:10px;
-  display:inline-flex;
+  border-radius:12px;
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr) auto;
   align-items:center;
-  justify-content:center;
+  gap:9px;
   color:rgba(255,255,255,.92);
   background:rgba(255,255,255,.085);
-  font-size:.79rem;
-  font-weight:750;
   text-decoration:none;
   transition:background var(--ui-fast) var(--ui-ease), border-color var(--ui-fast) var(--ui-ease), transform var(--ui-fast) var(--ui-ease);
 }
 
-.pb-cedar-page .director-command-actions a:first-child{
+.pb-cedar-page .director-command-actions a > span{
+  min-width:0;
+  display:grid;
+  gap:3px;
+}
+
+.pb-cedar-page .director-command-actions a strong{
+  color:inherit;
+  font-size:.79rem;
+  font-weight:800;
+  line-height:1.15;
+}
+
+.pb-cedar-page .director-command-actions a small{
+  overflow:hidden;
+  color:rgba(255,255,255,.62);
+  font-size:.68rem;
+  font-weight:600;
+  line-height:1.2;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+
+.pb-cedar-page .director-command-actions a.is-primary{
   border-color:#fff;
   color:var(--brand-primary);
   background:#fff;
+  box-shadow:0 10px 24px rgba(4,18,38,.16);
+}
+
+.pb-cedar-page .director-command-actions a.is-primary small{
+  color:color-mix(in srgb, var(--brand-primary) 58%, #64748b);
 }
 
 .pb-cedar-page .director-command-actions a:hover{
   border-color:rgba(255,255,255,.42);
   background:rgba(255,255,255,.16);
   text-decoration:none;
+  transform:translateY(-1px);
 }
 
-.pb-cedar-page .director-command-actions a:first-child:hover{
+.pb-cedar-page .director-command-actions a.is-primary:hover{
   background:rgba(255,255,255,.9);
 }
 
@@ -4893,12 +4957,19 @@ html.is-native-app textarea{
     grid-template-columns:1fr;
   }
 
-  .pb-cedar-page .director-command-refresh{
+  .pb-cedar-page .director-command-refresh-wrap{
     position:absolute;
     top:16px;
     right:16px;
+  }
+
+  .pb-cedar-page .director-command-refresh{
     min-height:34px;
     padding-inline:10px;
+  }
+
+  .pb-cedar-page .director-command-refresh-wrap > span{
+    display:none;
   }
 
   .pb-cedar-page .director-command-hero-kicker-row{
@@ -4976,6 +5047,8 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-action-queue {
   padding: clamp(16px, 2.2vw, 22px);
+  border-color: color-mix(in srgb, var(--brand-primary) 18%, #dce6f1);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .045);
 }
 
 .pb-cedar-page .director-admin-action-queue-head {
@@ -4987,7 +5060,7 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-action-queue-head h2 {
   margin: 2px 0 0;
-  color: #14375d;
+  color: var(--director-admin-ink);
   font-size: 1.15rem;
 }
 
@@ -5031,7 +5104,7 @@ html.is-native-app textarea{
 }
 
 .pb-cedar-page .director-admin-action-queue-list p,
-.pb-cedar-page .director-admin-action-empty {
+.pb-cedar-page .director-admin-action-empty p {
   margin: 3px 0 0;
   color: #637b96;
   font-size: .84rem;
@@ -5040,6 +5113,36 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-action-empty {
   margin-top: 12px;
+  padding:12px 14px;
+  border:1px solid color-mix(in srgb, #27835b 22%, #dce7e1);
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  gap:11px;
+  background:linear-gradient(135deg, #f7fcf9, #fbfefd);
+}
+
+.pb-cedar-page .director-admin-action-empty-icon{
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  flex:0 0 36px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:#23815a;
+  background:#e8f7ef;
+}
+
+.pb-cedar-page .director-admin-action-empty strong{
+  color:var(--director-admin-ink);
+  font-size:.9rem;
+}
+
+.pb-cedar-page .director-admin-action-queue-list .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 @media (max-width: 700px) {
@@ -5055,22 +5158,49 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-stat-grid-hero{
   margin-top: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .pb-cedar-page .director-admin-stat-card{
+  position: relative;
+  overflow: hidden;
+  min-height: 142px;
   border: 1px solid var(--director-admin-soft-border);
-  border-radius: 12px;
+  border-radius: 15px;
   background: #ffffff;
-  padding: 12px 13px;
+  padding: 15px 16px;
   display: grid;
-  gap: 5px;
-  box-shadow: 0 4px 14px rgba(21, 55, 93, 0.04);
+  align-content: start;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(21, 55, 93, 0.055);
+  transition:
+    transform var(--ui-fast) var(--ui-ease),
+    border-color var(--ui-fast) var(--ui-ease),
+    box-shadow var(--ui-fast) var(--ui-ease);
+}
+
+.pb-cedar-page .director-admin-stat-card::after{
+  content:"";
+  position:absolute;
+  right:-32px;
+  bottom:-42px;
+  width:92px;
+  height:92px;
+  border-radius:50%;
+  background:color-mix(in srgb, var(--brand-primary) 5%, transparent);
+}
+
+.pb-cedar-page .director-admin-stat-card:hover{
+  transform:translateY(-2px);
+  border-color:color-mix(in srgb, var(--brand-primary) 32%, #dbe4ef);
+  box-shadow:0 14px 32px rgba(21,55,93,.09);
 }
 
 .pb-cedar-page .director-admin-stat-card-top{
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
 }
 
 .pb-cedar-page .director-admin-stat-icon{
@@ -5095,28 +5225,62 @@ html.is-native-app textarea{
   height: 18px;
 }
 
-.pb-cedar-page .director-admin-stat-card span{
+.pb-cedar-page .director-admin-stat-label{
   color: var(--director-admin-ink-soft);
-  font-size: .78rem;
+  font-size: .72rem;
   text-transform: uppercase;
-  letter-spacing: .03em;
-  font-weight: 700;
+  letter-spacing: .055em;
+  font-weight: 800;
+  line-height:1.25;
 }
 
-.pb-cedar-page .director-admin-stat-card strong{
-  font-size: 1.32rem;
+.pb-cedar-page .director-admin-stat-value{
+  position:relative;
+  z-index:1;
+  font-size: clamp(1.72rem, 2.5vw, 2.05rem);
   color: var(--director-admin-ink);
-  line-height: 1.15;
+  line-height: 1;
+  letter-spacing:-.025em;
 }
 
-.pb-cedar-page .director-admin-stat-card small{
+.pb-cedar-page .director-admin-stat-footer{
+  position:relative;
+  z-index:1;
+  margin-top:auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.pb-cedar-page .director-admin-stat-footer small{
   color: var(--director-admin-ink-soft);
-  font-size: .8rem;
+  font-size: .76rem;
+  line-height:1.35;
+}
+
+.pb-cedar-page .director-admin-stat-footer > span{
+  width:7px;
+  height:7px;
+  flex:0 0 7px;
+  border-radius:50%;
+  background:color-mix(in srgb, var(--brand-primary) 46%, #94a3b8);
 }
 
 .pb-cedar-page .director-admin-stat-card.tone-success{
-  border-color: var(--director-admin-soft-border);
-  background: #ffffff;
+  border-color: color-mix(in srgb, #27835b 28%, var(--director-admin-soft-border));
+  background: linear-gradient(145deg, #ffffff 52%, color-mix(in srgb, #27835b 4%, #ffffff));
+}
+
+.pb-cedar-page .director-admin-stat-card.tone-success .director-admin-stat-icon{
+  border-color:color-mix(in srgb, #27835b 30%, #dbe4ef);
+  color:#1d7850;
+  background:linear-gradient(180deg, #effaf4, #e6f6ee);
+}
+
+.pb-cedar-page .director-admin-stat-card.tone-success .director-admin-stat-footer > span{
+  background:#27a36e;
+  box-shadow:0 0 0 4px rgba(39,163,110,.11);
 }
 
 .pb-cedar-page .director-admin-stat-card.tone-warning{
@@ -5139,7 +5303,75 @@ html.is-native-app textarea{
   align-items: stretch;
 }
 
+.pb-cedar-page .director-admin-dashboard-section{
+  min-width:0;
+  display:grid;
+  gap:12px;
+}
+
+.pb-cedar-page .director-admin-section-head{
+  min-width:0;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:4px 2px 0;
+}
+
+.pb-cedar-page .director-admin-section-head h2{
+  margin:2px 0 4px;
+  color:var(--director-admin-ink);
+  font-size:clamp(1.2rem, 1.7vw, 1.48rem);
+  line-height:1.15;
+}
+
+.pb-cedar-page .director-admin-section-head p:last-child{
+  max-width:690px;
+  margin:0;
+  color:var(--director-admin-ink-soft);
+  font-size:.86rem;
+  line-height:1.45;
+}
+
+.pb-cedar-page .director-admin-section-head > span,
+.pb-cedar-page .director-admin-section-head > a{
+  min-height:32px;
+  padding:0 11px;
+  border:1px solid var(--director-admin-soft-border);
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  flex:0 0 auto;
+  color:var(--brand-primary);
+  background:#fff;
+  font-size:.74rem;
+  font-weight:800;
+  text-decoration:none;
+  box-shadow:0 5px 14px rgba(15,23,42,.04);
+}
+
+.pb-cedar-page .director-admin-section-head > a:hover{
+  border-color:var(--director-admin-surface-border-strong);
+  background:var(--director-admin-soft-bg);
+  text-decoration:none;
+}
+
+.pb-cedar-page .director-admin-eyebrow{
+  margin:0;
+  color:color-mix(in srgb, var(--brand-primary) 72%, #64748b);
+  font-size:.68rem;
+  font-weight:850;
+  letter-spacing:.095em;
+  line-height:1.2;
+  text-transform:uppercase;
+}
+
 .pb-cedar-page .director-admin-dashboard-charts{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:14px;
   align-items: stretch;
 }
 
@@ -5170,16 +5402,48 @@ html.is-native-app textarea{
   flex-direction: column;
   gap: 10px;
   overflow: hidden;
-  min-height: 392px;
-  height: 100%;
+  min-height: 0;
+  height: auto;
+  border-color:var(--director-admin-surface-border);
+  box-shadow:0 10px 28px rgba(21,55,93,.055);
 }
 
 .pb-cedar-page .director-admin-chart-head{
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  flex-wrap: wrap;
+}
+
+.pb-cedar-page .director-admin-chart-head .pb-section-title{
+  margin:3px 0 0;
+}
+
+.pb-cedar-page .director-admin-chart-highlight{
+  min-width:70px;
+  padding:7px 9px;
+  border:1px solid var(--director-admin-soft-border);
+  border-radius:10px;
+  display:grid;
+  justify-items:end;
+  gap:1px;
+  color:var(--director-admin-ink-soft);
+  background:var(--director-admin-soft-bg);
+}
+
+.pb-cedar-page .director-admin-chart-highlight strong{
+  color:var(--director-admin-ink);
+  font-size:1.08rem;
+  line-height:1;
+}
+
+.pb-cedar-page .director-admin-chart-highlight span{
+  max-width:96px;
+  overflow:hidden;
+  font-size:.68rem;
+  font-weight:700;
+  white-space:nowrap;
+  text-overflow:ellipsis;
 }
 
 .pb-cedar-page .director-admin-chart-value{
@@ -5269,15 +5533,16 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-chart-scroll{
   width: 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
-  padding-bottom: 4px;
   margin-top: 2px;
 }
 
 .pb-cedar-page .director-admin-chart-svg{
   display: block;
-  min-width: 560px;
+  width:100%;
+  min-width:0;
+  height:auto;
 }
 
 .pb-cedar-page .director-admin-chart-axis-label{
@@ -5349,6 +5614,17 @@ html.is-native-app textarea{
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.pb-cedar-page .director-admin-breakdown-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+  align-items:stretch;
+}
+
+.pb-cedar-page .director-admin-breakdown-grid > .pb-card{
+  margin-top:0;
+}
+
 .pb-cedar-page .director-admin-breakdown-row > .pb-card{
   margin-top: 0;
 }
@@ -5359,15 +5635,31 @@ html.is-native-app textarea{
   display: flex;
   flex-direction: column;
   min-height: 224px;
+  border-color:var(--director-admin-surface-border);
+  box-shadow:0 9px 24px rgba(21,55,93,.045);
 }
 
 .pb-cedar-page .director-admin-breakdown-head{
   padding: 12px 14px 10px;
   border-bottom: 1px solid #e5edf6;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
 }
 
 .pb-cedar-page .director-admin-breakdown-head .pb-section-title{
   margin: 0;
+}
+
+.pb-cedar-page .director-admin-breakdown-head > span{
+  padding:3px 7px;
+  border-radius:999px;
+  color:var(--director-admin-ink-soft);
+  background:var(--director-admin-soft-bg-strong);
+  font-size:.65rem;
+  font-weight:800;
+  white-space:nowrap;
 }
 
 .pb-cedar-page .director-admin-breakdown-table-head{
@@ -8478,6 +8770,7 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-sidebar-title,
+  .pb-cedar-page .director-admin-sidebar .pb-admin-ui-sidebar-title,
   .pb-cedar-page .director-admin-sidebar-label,
   .pb-cedar-page .director-admin-sidebar > .pb-admin-ui-sidebar-footer{
     display: none;
@@ -8854,6 +9147,10 @@ html.is-native-app textarea{
     display: none;
   }
 
+  .pb-cedar-page .director-admin-sidebar .pb-admin-ui-sidebar-title{
+    display:none;
+  }
+
   .pb-cedar-page .director-admin-sidebar-nav{
     display: flex;
     gap: 8px;
@@ -8941,6 +9238,19 @@ html.is-native-app textarea{
     padding: 12px;
   }
 
+  .pb-cedar-page .director-admin-stat-grid-hero{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .pb-cedar-page .director-admin-dashboard-charts,
+  .pb-cedar-page .director-admin-breakdown-grid{
+    grid-template-columns:1fr;
+  }
+
+  .pb-cedar-page .director-admin-section-head{
+    align-items:flex-start;
+  }
+
   .pb-cedar-page .director-admin-chart-card{
     min-height: 0;
     gap: 8px;
@@ -8951,23 +9261,23 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-chart-week-nav{
-    grid-template-columns: 1fr;
+    grid-template-columns:auto minmax(0, 1fr) auto;
   }
 
   .pb-cedar-page .director-admin-chart-week-btn{
-    width: 100%;
+    width:auto;
   }
 
   .pb-cedar-page .director-admin-chart-current{
     width: 100%;
   }
 
-  .pb-cedar-page .director-admin-chart-svg{
-    min-width: 480px;
-  }
-
   .pb-cedar-page .director-admin-breakdown-card{
     min-height: 0;
+  }
+
+  .pb-cedar-page .director-admin-main .director-admin-breakdown-card{
+    padding:0;
   }
 
   .pb-cedar-page .director-admin-breakdown-head{
@@ -9012,8 +9322,33 @@ html.is-native-app textarea{
     gap: 8px;
   }
 
-  .pb-cedar-page .director-admin-chart-svg{
-    min-width: 420px;
+  .pb-cedar-page .director-admin-stat-grid-hero{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .pb-cedar-page .director-admin-stat-card{
+    min-height:132px;
+    gap:8px;
+  }
+
+  .pb-cedar-page .director-admin-stat-icon{
+    width:30px;
+    height:30px;
+    flex-basis:30px;
+  }
+
+  .pb-cedar-page .director-admin-stat-value{
+    font-size:1.65rem;
+  }
+
+  .pb-cedar-page .director-admin-section-head{
+    display:grid;
+    gap:9px;
+  }
+
+  .pb-cedar-page .director-admin-section-head > span,
+  .pb-cedar-page .director-admin-section-head > a{
+    justify-self:start;
   }
 
   .pb-cedar-page .director-admin-breakdown-label{
@@ -9022,6 +9357,12 @@ html.is-native-app textarea{
 
   .pb-cedar-page .director-admin-breakdown-row-item strong{
     font-size: .9rem;
+  }
+}
+
+@media (max-width: 350px){
+  .pb-cedar-page .director-admin-stat-grid-hero{
+    grid-template-columns:1fr;
   }
 }
 

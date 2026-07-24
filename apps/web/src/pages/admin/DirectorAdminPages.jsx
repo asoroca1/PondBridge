@@ -9,6 +9,15 @@ import {
   replaceAlumniForCampType
 } from "@pondbridge/shared";
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  RefreshCw,
+  Send,
+  Sparkles,
+  UserPlus,
+  Users
+} from "lucide-react";
 import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -737,10 +746,15 @@ function StatCard({ label, value, hint = "", tone = "neutral", icon = "members" 
         <span className="director-admin-stat-icon" aria-hidden="true">
           <StatIcon kind={icon} />
         </span>
-        <strong>{value}</strong>
+        <span className="director-admin-stat-label">{label}</span>
       </div>
-      <span>{label}</span>
-      {hint ? <small>{hint}</small> : null}
+      <strong className="director-admin-stat-value">{value}</strong>
+      {hint ? (
+        <div className="director-admin-stat-footer">
+          <small>{hint}</small>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -858,11 +872,21 @@ function TimeSeriesChartCard({
       })),
     [selectedWeekKey, weekDates, weekValueByDate]
   );
-  const [hoverIndex, setHoverIndex] = useState(weekSeries.length ? weekSeries.length - 1 : null);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const latestObservedIndex = weekSeries.reduce(
+    (latestIndex, point, index) => (point.date <= todayKey ? index : latestIndex),
+    -1
+  );
+  const defaultHoverIndex = latestObservedIndex >= 0
+    ? latestObservedIndex
+    : weekSeries.length
+      ? weekSeries.length - 1
+      : null;
+  const [hoverIndex, setHoverIndex] = useState(defaultHoverIndex);
 
   useEffect(() => {
-    setHoverIndex(weekSeries.length ? weekSeries.length - 1 : null);
-  }, [selectedWeekKey, weekSeries.length]);
+    setHoverIndex(defaultHoverIndex);
+  }, [defaultHoverIndex, selectedWeekKey]);
 
   if (!weekSeries.length) {
     return (
@@ -922,7 +946,8 @@ function TimeSeriesChartCard({
 
   const handleMouseMove = (event) => {
     const bounds = event.currentTarget.getBoundingClientRect();
-    const localX = event.clientX - bounds.left - padding.left;
+    const scaleX = bounds.width > 0 ? chartWidth / bounds.width : 1;
+    const localX = (event.clientX - bounds.left) * scaleX - padding.left;
     const ratio = plotWidth <= 0 ? 0 : Math.max(0, Math.min(1, localX / plotWidth));
     const nextIndex = Math.round(ratio * (weekSeries.length - 1));
     setHoverIndex(nextIndex);
@@ -931,7 +956,16 @@ function TimeSeriesChartCard({
   return (
     <Card className="director-admin-chart-card">
       <div className="director-admin-chart-head">
-        <h2 className="pb-section-title">{title}</h2>
+        <div>
+          <p className="director-admin-eyebrow">Seven-day activity</p>
+          <h2 className="pb-section-title">{title}</h2>
+        </div>
+        {activePoint ? (
+          <div className="director-admin-chart-highlight" aria-live="polite">
+            <strong>{formatChartTickValue(activePoint.value)}</strong>
+            <span>{activePoint.label}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="director-admin-chart-week-nav">
@@ -973,7 +1007,7 @@ function TimeSeriesChartCard({
           role="img"
           aria-label={title}
           onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoverIndex(weekSeries.length ? weekSeries.length - 1 : null)}
+          onMouseLeave={() => setHoverIndex(defaultHoverIndex)}
         >
           <text
             className="director-admin-chart-axis-label y"
@@ -1059,6 +1093,7 @@ function TopProfileBreakdownCard({
     <Card className="director-admin-breakdown-card">
       <div className="director-admin-breakdown-head">
         <h3 className="pb-section-title">{title}</h3>
+        <span>{rows.length ? `Top ${rows.length}` : "No data"}</span>
       </div>
       <div className="director-admin-breakdown-table-head">
         <span>{columnLabel}</span>
@@ -1089,6 +1124,7 @@ export function DirectorAdminDashboardPage() {
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -1096,6 +1132,7 @@ export function DirectorAdminDashboardPage() {
     try {
       const data = await request(`/dashboard?ts=${Date.now()}`);
       setPayload(data);
+      setLastUpdatedAt(new Date());
     } catch (requestError) {
       setError(requestError.message || "Failed to load dashboard.");
     } finally {
@@ -1134,6 +1171,9 @@ export function DirectorAdminDashboardPage() {
   const stats = payload?.stats || {};
   const isLive = tenant?.onboardingStatus === "live";
   const communityName = String(tenant?.name || tenant?.networkName || "Your camp").trim();
+  const lastUpdatedLabel = lastUpdatedAt
+    ? `Updated ${lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+    : "Updating dashboard";
   const actionQueue = Array.isArray(payload?.actionQueue) ? payload.actionQueue : [];
   const totalMembers = Number(stats.totalMembers || 0);
   const activeMembers = Number(stats.activeMembers ?? totalMembers);
@@ -1227,19 +1267,51 @@ export function DirectorAdminDashboardPage() {
             See what needs attention, understand community momentum, and take the next best action from one place.
           </p>
         </div>
-        <button
-          type="button"
-          className="director-command-refresh"
-          onClick={loadDashboard}
-          disabled={loading}
-        >
-          {loading ? "Refreshing…" : "Refresh status"}
-        </button>
+        <div className="director-command-refresh-wrap">
+          <button
+            type="button"
+            className="director-command-refresh"
+            onClick={loadDashboard}
+            disabled={loading}
+          >
+            <RefreshCw className={loading ? "is-spinning" : ""} size={15} aria-hidden="true" />
+            {loading ? "Refreshing…" : "Refresh status"}
+          </button>
+          <span>{lastUpdatedLabel}</span>
+        </div>
         <nav className="director-command-actions" aria-label="Director quick actions">
-          <Link to={`/t/${slug}/onboarding`}>Ask PondBridge</Link>
-          <Link to={`/t/${slug}/admin/invites`}>Invite members</Link>
-          <Link to={`/t/${slug}/admin/email/compose`}>Send an update</Link>
-          <Link to={`/t/${slug}/admin/members`}>Manage people</Link>
+          <Link className="is-primary" to={`/t/${slug}/onboarding`}>
+            <Sparkles size={17} aria-hidden="true" />
+            <span>
+              <strong>Ask PondBridge</strong>
+              <small>Get guided help</small>
+            </span>
+            <ArrowUpRight size={15} aria-hidden="true" />
+          </Link>
+          <Link to={`/t/${slug}/admin/invites`}>
+            <UserPlus size={17} aria-hidden="true" />
+            <span>
+              <strong>Invite members</strong>
+              <small>Grow your network</small>
+            </span>
+            <ArrowUpRight size={15} aria-hidden="true" />
+          </Link>
+          <Link to={`/t/${slug}/admin/email/compose`}>
+            <Send size={17} aria-hidden="true" />
+            <span>
+              <strong>Send an update</strong>
+              <small>Email the community</small>
+            </span>
+            <ArrowUpRight size={15} aria-hidden="true" />
+          </Link>
+          <Link to={`/t/${slug}/admin/members`}>
+            <Users size={17} aria-hidden="true" />
+            <span>
+              <strong>Manage people</strong>
+              <small>Review member records</small>
+            </span>
+            <ArrowUpRight size={15} aria-hidden="true" />
+          </Link>
         </nav>
       </section>
       {error ? <p className="error-text">{error}</p> : null}
@@ -1264,14 +1336,21 @@ export function DirectorAdminDashboardPage() {
                 </div>
                 <Link className="link-button secondary" to={item.href}>
                   {item.actionLabel}
+                  <ArrowUpRight size={14} aria-hidden="true" />
                 </Link>
               </li>
             ))}
           </ol>
         ) : (
-          <p className="director-admin-action-empty">
-            No access, communication, setup, or billing issues need your attention right now.
-          </p>
+          <div className="director-admin-action-empty">
+            <span className="director-admin-action-empty-icon" aria-hidden="true">
+              <CheckCircle2 size={20} />
+            </span>
+            <div>
+              <strong>Everything is in good shape</strong>
+              <p>No access, communication, setup, or billing issues need your attention right now.</p>
+            </div>
+          </div>
         )}
       </Card>
       <div className="director-admin-stat-grid director-admin-stat-grid-hero">
@@ -1287,8 +1366,16 @@ export function DirectorAdminDashboardPage() {
         ))}
       </div>
 
-      <div className="director-admin-two-col director-admin-dashboard-charts">
-        <div className="director-admin-dashboard-left">
+      <section className="director-admin-dashboard-section" aria-labelledby="director-trends-title">
+        <header className="director-admin-section-head">
+          <div>
+            <p className="director-admin-eyebrow">Community analytics</p>
+            <h2 id="director-trends-title">Community trends</h2>
+            <p>Track new registrations and repeat engagement across the selected week.</p>
+          </div>
+          <span>Last 7 days</span>
+        </header>
+        <div className="director-admin-dashboard-charts">
           <TimeSeriesChartCard
             title="New Users"
             yLabel="New users"
@@ -1298,20 +1385,6 @@ export function DirectorAdminDashboardPage() {
             activeWeekKey={activeWeekKey}
             onWeekChange={setActiveWeekKey}
           />
-          <div className="director-admin-breakdown-row">
-            <TopProfileBreakdownCard
-              title="Top Locations"
-              columnLabel="Location"
-              items={topLocations}
-            />
-            <TopProfileBreakdownCard
-              title="Top Roles At Camp"
-              columnLabel="Role"
-              items={topRoles}
-            />
-          </div>
-        </div>
-        <div className="director-admin-dashboard-right">
           <TimeSeriesChartCard
             title="Sign-Ins"
             yLabel="Sign-ins"
@@ -1321,6 +1394,32 @@ export function DirectorAdminDashboardPage() {
             activeWeekKey={activeWeekKey}
             onWeekChange={setActiveWeekKey}
           />
+        </div>
+      </section>
+
+      <section className="director-admin-dashboard-section" aria-labelledby="director-insights-title">
+        <header className="director-admin-section-head">
+          <div>
+            <p className="director-admin-eyebrow">Member insights</p>
+            <h2 id="director-insights-title">Know your community</h2>
+            <p>See where members live, how they participated at camp, and who is returning most often.</p>
+          </div>
+          <Link to={`/t/${slug}/admin/members`}>
+            View all members
+            <ArrowUpRight size={14} aria-hidden="true" />
+          </Link>
+        </header>
+        <div className="director-admin-breakdown-grid">
+          <TopProfileBreakdownCard
+            title="Top Locations"
+            columnLabel="Location"
+            items={topLocations}
+          />
+          <TopProfileBreakdownCard
+            title="Top Roles At Camp"
+            columnLabel="Role"
+            items={topRoles}
+          />
           <TopProfileBreakdownCard
             title="Top Active Members"
             columnLabel="Member"
@@ -1328,8 +1427,7 @@ export function DirectorAdminDashboardPage() {
             items={topActiveMembers}
           />
         </div>
-      </div>
-
+      </section>
     </div>
   );
 }
