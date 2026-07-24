@@ -284,26 +284,24 @@ function BlockedMembersCard() {
     }
   }
 
+  if (loading || !items.length) return null;
+
   return (
     <>
       <aside className="p1-card p1-blocked-card">
         <h2 className="p1-h2">Blocked Members</h2>
         <p className="p1-blocked-help">Blocked members cannot contact you directly or find your profile.</p>
-        {loading ? <CedarSkeleton.Lines lines={2} /> : null}
         {error ? <p className="p1-safety-note is-error" role="alert">{error}</p> : null}
-        {!loading && !items.length ? <div className="p1-empty">No blocked members.</div> : null}
-        {items.length ? (
-          <ul className="p1-blocked-list">
-            {items.map((item) => (
-              <li key={item.id || item.blockedUserId}>
-                <span>{item.name || "Member"}</span>
-                <button type="button" className="profile1-btn is-secondary" onClick={() => setSelected(item)}>
-                  Unblock
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <ul className="p1-blocked-list">
+          {items.map((item) => (
+            <li key={item.id || item.blockedUserId}>
+              <span>{item.name || "Member"}</span>
+              <button type="button" className="profile1-btn is-secondary" onClick={() => setSelected(item)}>
+                Unblock
+              </button>
+            </li>
+          ))}
+        </ul>
       </aside>
       <ModalConfirm
         open={Boolean(selected)}
