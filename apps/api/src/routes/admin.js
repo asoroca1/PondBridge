@@ -895,7 +895,6 @@ const ADMIN_MEMBER_PROFILE_SELECT = [
   "currentJobs",
   "industry",
   "avatarUrl",
-  "bio",
   "status",
   "flaggedReason",
   "createdAt"
@@ -1148,12 +1147,6 @@ const MEMBER_EXPORT_FIELDS = [
     getValue: (profile) => String(profile?.avatarUrl || "")
   },
   {
-    key: "bio",
-    label: "Bio",
-    description: "Profile bio text.",
-    getValue: (profile) => String(profile?.bio || "")
-  },
-  {
     key: "joinDate",
     label: "Join Date",
     description: "Profile creation date (ISO).",
@@ -1174,8 +1167,12 @@ const MEMBER_EXPORT_FIELDS = [
   {
     key: "profileJson",
     label: "Profile JSON",
-    description: "Raw profile object for full fidelity export.",
-    getValue: (profile) => toExportJsonCell(profile || {})
+    description: "Profile object for full fidelity export.",
+    getValue: (profile) => {
+      const visibleProfile = { ...(profile || {}) };
+      delete visibleProfile.bio;
+      return toExportJsonCell(visibleProfile);
+    }
   }
 ];
 const MEMBER_EXPORT_DEFAULT_FIELDS = [
@@ -1503,8 +1500,7 @@ function completionScore(profile = {}, user = null) {
     Boolean(profile?.roleAtCamp),
     Boolean(profile?.highSchool),
     Array.isArray(profile?.colleges) && profile.colleges.some(Boolean),
-    Array.isArray(profile?.currentJobs) && profile.currentJobs.length > 0,
-    Boolean(profile?.bio)
+    Array.isArray(profile?.currentJobs) && profile.currentJobs.length > 0
   ];
 
   const filled = checks.filter(Boolean).length;
@@ -1637,8 +1633,7 @@ function mapMemberRow(profile = {}, user = null, { directorUserId = "" } = {}) {
     lastActiveAt: toIso(user?.lastLoginAt),
     status: profile.status || (user?.status === "inactive" ? "removed" : "active"),
     flaggedReason: profile.flaggedReason || "",
-    phone: profile?.phones?.find(Boolean) || "",
-    bio: profile?.bio || ""
+    phone: profile?.phones?.find(Boolean) || ""
   };
 }
 
@@ -1892,7 +1887,6 @@ function mapAdminMemberProfile(profile = {}, user = null) {
     flaggedReason: profile?.flaggedReason || "",
     highSchool: profile?.highSchool || "",
     industry: profile?.industry || "",
-    bio: profile?.bio || "",
     avatarUrl: profile?.avatarUrl || "",
     camperYears,
     staffYears,
@@ -2613,8 +2607,7 @@ router.get("/dashboard", async (req, res, next) => {
             "roleAtCamp",
             "highSchool",
             "colleges",
-            "currentJobs",
-            "bio"
+            "currentJobs"
           ]
         }),
         EmailBroadcastModel.find(tenantId, {}, {
@@ -4969,7 +4962,6 @@ router.get("/analytics/network", async (req, res, next) => {
           "highSchool",
           "colleges",
           "currentJobs",
-          "bio",
           "createdAt"
         ]
       }),
@@ -6378,7 +6370,6 @@ router.get("/growth", async (req, res, next) => {
           "lastName",
           "emails",
           "avatarUrl",
-          "bio",
           "cityState",
           "industry",
           "roleAtCamp",

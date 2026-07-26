@@ -213,7 +213,6 @@ function mergeParsedProfileIntoForm(currentForm, parsedProfile = {}) {
     email: safeCurrent.email || "",
     phone: String(safeParsed.phone || "").trim() || safeCurrent.phone || "",
     cityState: String(safeParsed.cityState || "").trim() || safeCurrent.cityState || "",
-    bio: String(safeParsed.bio || "").trim() || safeCurrent.bio || "",
     highSchool: String(safeParsed.highSchool || "").trim() || safeCurrent.highSchool || "",
     education:
       parsedEducation.length > 0
@@ -270,7 +269,6 @@ function summarizeResumeChanges(currentForm = {}, suggestedForm = {}) {
     ["lastName", "Last name"],
     ["phone", "Phone"],
     ["cityState", "Location"],
-    ["bio", "About me"],
     ["highSchool", "High school"],
     ["education", "Education"],
     ["industry", "Industry"],
@@ -644,25 +642,26 @@ function MultiSelect({ label, placeholder, options, value, onChange, id }) {
 function Stepper({ activeStep = 0 }) {
   const steps = ["Personal","Education","Experience","Social Media"];
   return (
-    <div className="wizard1-stepper">
+    <nav className="wizard1-stepper" aria-label="Profile editing progress">
       <div className="wizard1-stepper-track" />
-      <div className="wizard1-steps">
+      <ol className="wizard1-steps">
         {steps.map((t,i)=>(
-          <div
+          <li
             key={t}
             className={`wizard1-step ${
               i < activeStep ? "wizard1-done"
               : i === activeStep ? "wizard1-active"
               : "wizard1-todo"
             }`}
+            aria-current={i === activeStep ? "step" : undefined}
           >
             <div className="wizard1-dot" />
             <div className="wizard1-step-title">Step {i+1}</div>
             <div className="wizard1-step-sub">{t}</div>
-          </div>
+          </li>
         ))}
-      </div>
-    </div>
+      </ol>
+    </nav>
   );
 }
 
@@ -707,7 +706,6 @@ export default function EditProfile() {
     privacy: { email: "members", phone: "members" },
 
     cityState: "",
-    bio: "",
 
     roles: [],
 
@@ -958,7 +956,6 @@ export default function EditProfile() {
           },
 
           cityState: normalizedLocation || normalizeCity(fresh.cityState || fallbackLocation),
-          bio: String(fresh.bio || "").trim(),
 
           roles: Array.isArray(fresh.roles) ? fresh.roles : (fresh.roles ? [fresh.roles] : []),
 
@@ -1273,7 +1270,6 @@ export default function EditProfile() {
       privacy: form.privacy,
 
       cityState,
-      bio: String(form.bio || "").trim(),
       city: splitLocation.city,
       state: splitLocation.state,
       country: splitLocation.country,
@@ -1319,56 +1315,78 @@ export default function EditProfile() {
   }
 
   const Step1 = (
-    <section className="wizard1-card">
+    <section className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
-        <div className="wizard1-span-4">
-          <h2 className="wizard1-h2">Profile Photo</h2>
-          <div className="wizard1-dottedbox">
-            {form.uploads.photoUrl ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div
-                  style={{
-                    width: 120,
-                    height: 120,
-                    borderRadius: "50%",
-                    backgroundImage: `url(${form.uploads.photoUrl})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    border: "2px solid #e2e8f0",
-                  }}
-                  aria-label="Saved avatar preview"
-                />
-                <button
-                  type="button"
-                  className="wizard1-btn-text"
-                  onClick={() => {
-                    // Clear in UI
-                    setForm((p) => ({ ...p, uploads: { ...p.uploads, photoUrl: "", photo: null } }));
-                    // ✅ FIX: also clear on server immediately (optional but keeps parity)
-                    savePhotoUrlNow("");
-                  }}
-                >
-                  Replace photo
-                </button>
+        <div className="wizard1-span-12 edit-profile-photo-block">
+          <div className="edit-profile-section-heading">
+            <div>
+              <span className="edit-profile-eyebrow">Your profile</span>
+              <h2 className="wizard1-h2">Profile photo</h2>
+            </div>
+            <p>A clear photo makes it easier for camp friends to recognize you.</p>
+          </div>
+          <div className="wizard1-dottedbox edit-profile-photo-card">
+            <div className="edit-profile-photo-editor">
+              <div className="edit-profile-photo-control">
+                {form.uploads.photoUrl ? (
+                  <div className="edit-profile-saved-photo">
+                    <div
+                      className="edit-profile-saved-photo-preview"
+                      style={{ backgroundImage: `url(${form.uploads.photoUrl})` }}
+                      aria-label="Saved profile photo preview"
+                      role="img"
+                    />
+                    <button
+                      type="button"
+                      className="wizard1-btn-secondary"
+                      onClick={() => {
+                        setForm((p) => ({ ...p, uploads: { ...p.uploads, photoUrl: "", photo: null } }));
+                        savePhotoUrlNow("");
+                      }}
+                    >
+                      Replace photo
+                    </button>
+                  </div>
+                ) : (
+                  <AvatarCropper
+                    imageFile={form.uploads.photo || null}
+                    onPickFile={(f) => setForm((p) => ({ ...p, uploads: { ...p.uploads, photo: f } }))}
+                    onExport={presignAndUploadProfile}
+                    size={220}
+                  />
+                )}
               </div>
-            ) : (
-              <AvatarCropper
-                imageFile={form.uploads.photo || null}
-                onPickFile={(f) => setForm((p) => ({ ...p, uploads: { ...p.uploads, photo: f } }))}
-                onExport={presignAndUploadProfile}
-              />
-            )}
+              <aside className="edit-profile-photo-tips" aria-labelledby="profile-photo-tips-title">
+                <span className="edit-profile-eyebrow">Quick tips</span>
+                <h3 id="profile-photo-tips-title">Choose a photo people will recognize</h3>
+                <ul>
+                  <li>Use a clear, recent photo of yourself.</li>
+                  <li>Center your face inside the circle.</li>
+                  <li>Square JPG or PNG images work best.</li>
+                </ul>
+              </aside>
+            </div>
           </div>
         </div>
 
-        <div className="wizard1-span-8">
-          <h2 className="wizard1-h2">Personal Info</h2>
+        <div className="wizard1-span-12 edit-profile-personal-block">
+          <div className="edit-profile-section-heading">
+            <div>
+              <span className="edit-profile-eyebrow">Step 1</span>
+              <h2 className="wizard1-h2">Personal details</h2>
+            </div>
+            <p>Keep your contact information and camp history accurate.</p>
+          </div>
           <div className="wizard1-grid wizard1-gap">
             <div className="wizard1-span-12">
-              <div className="wizard1-dottedbox">
+              <div className="wizard1-dottedbox edit-profile-import-card">
                 {canUseResumeParsing ? (
                   <>
-                    <label className="inline-check" style={{ alignItems: "flex-start", marginBottom: 10 }}>
+                    <div className="edit-profile-import-heading">
+                      <strong>Fill details from LinkedIn or a résumé</strong>
+                      <span>Optional</span>
+                    </div>
+                    <label className="inline-check edit-profile-import-consent">
                       <input
                         type="checkbox"
                         checked={resumeProcessingConsent}
@@ -1414,8 +1432,8 @@ export default function EditProfile() {
                         />
                       </label>
                     </div>
-                    <p className="wizard1-hint" style={{ marginTop: 8 }}>
-                      On LinkedIn, open your profile, choose More → Save to PDF, then upload that file here. We can suggest your name, location, About section, education, experience, industry, and LinkedIn URL.
+                    <p className="wizard1-hint edit-profile-import-hint">
+                      On LinkedIn, open your profile, choose More → Save to PDF, then upload it here. We can suggest your name, location, education, experience, industry, and LinkedIn URL.
                     </p>
                   </>
                 ) : (
@@ -1538,8 +1556,8 @@ export default function EditProfile() {
               <div className="wizard1-field">
                 <label className="wizard1-label" htmlFor="edit-profile-email">Email</label>
                 <input id="edit-profile-email" className="wizard1-input" value={form.email} disabled />
-                <label className="wizard1-label" htmlFor="edit-profile-email-privacy" style={{ marginTop: 8 }}>
-                  Who can see my email?
+                <label className="wizard1-label edit-profile-privacy-label" htmlFor="edit-profile-email-privacy">
+                  Email visibility
                 </label>
                 <select
                   id="edit-profile-email-privacy"
@@ -1574,8 +1592,8 @@ export default function EditProfile() {
                   }}
                   inputMode="tel"
                 />
-                <label className="wizard1-label" htmlFor="edit-profile-phone-privacy" style={{ marginTop: 8 }}>
-                  Who can see my phone?
+                <label className="wizard1-label edit-profile-privacy-label" htmlFor="edit-profile-phone-privacy">
+                  Phone visibility
                 </label>
                 <select
                   id="edit-profile-phone-privacy"
@@ -1592,7 +1610,7 @@ export default function EditProfile() {
               </div>
             </div>
 
-            <div className="wizard1-span-12">
+            <div className="wizard1-span-6">
               <div className="wizard1-field">
                 <label className="wizard1-label" htmlFor="edit-profile-location">Current Location <span className="req">*</span></label>
                 <CityCombobox
@@ -1616,23 +1634,12 @@ export default function EditProfile() {
               </div>
             </div>
 
-            <div className="wizard1-span-12">
-              <div className="wizard1-field">
-                <label className="wizard1-label" htmlFor="edit-profile-bio">About Me</label>
-                <textarea
-                  id="edit-profile-bio"
-                  className="wizard1-input"
-                  rows={5}
-                  maxLength={1600}
-                  value={form.bio}
-                  onChange={(event) => setField({ bio: event.target.value })}
-                  placeholder="Share a little about what you’re doing now and what you’d enjoy reconnecting around."
-                />
-                <p className="wizard1-hint">LinkedIn PDF imports can suggest this from your About section. {form.bio.length}/1600</p>
-              </div>
+            <div className="wizard1-span-12 edit-profile-subsection-heading">
+              <span className="edit-profile-eyebrow">Camp history</span>
+              <h3>How you’re connected to camp</h3>
+              <p>Add your roles and years so friends can find the people they remember.</p>
             </div>
 
-            {/* ✅ Roles */}
             <div className="wizard1-span-12">
               <MultiSelect
                 id="roles"
@@ -1844,10 +1851,14 @@ export default function EditProfile() {
   );
 
   const Step2 = (
-    <section className="wizard1-card">
+    <section className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
-        <div className="wizard1-span-12">
-          <h2 className="wizard1-h2">Education</h2>
+        <div className="wizard1-span-12 edit-profile-section-heading">
+          <div>
+            <span className="edit-profile-eyebrow">Step 2</span>
+            <h2 className="wizard1-h2">Education</h2>
+          </div>
+          <p>Add only what you’re comfortable sharing with the camp community.</p>
         </div>
 
         <div className="wizard1-span-6">
@@ -1924,10 +1935,14 @@ export default function EditProfile() {
   );
 
   const Step3 = (
-    <section className="wizard1-card">
+    <section className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
-        <div className="wizard1-span-12">
-          <h2 className="wizard1-h2">Experience</h2>
+        <div className="wizard1-span-12 edit-profile-section-heading">
+          <div>
+            <span className="edit-profile-eyebrow">Step 3</span>
+            <h2 className="wizard1-h2">Experience</h2>
+          </div>
+          <p>Help alumni discover professional connections across the network.</p>
         </div>
 
         <div className="wizard1-span-6">
@@ -2080,10 +2095,14 @@ export default function EditProfile() {
   );
 
   const Step4 = (
-    <section className="wizard1-card">
+    <section className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
-        <div className="wizard1-span-12">
-          <h2 className="wizard1-h2">Social Media</h2>
+        <div className="wizard1-span-12 edit-profile-section-heading">
+          <div>
+            <span className="edit-profile-eyebrow">Step 4</span>
+            <h2 className="wizard1-h2">Social links</h2>
+          </div>
+          <p>Make it easy for camp friends to stay in touch elsewhere.</p>
         </div>
 
         <div className="wizard1-span-6">

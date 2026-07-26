@@ -54,7 +54,6 @@ function normalizeMemberEditorForm(profile = null) {
     flaggedReason: String(safe.flaggedReason || "").trim(),
     highSchool: String(safe.highSchool || "").trim(),
     industry: String(safe.industry || "").trim(),
-    bio: String(safe.bio || "").trim(),
     avatarUrl: String(safe.avatarUrl || "").trim(),
     camperYearStints: camperStints,
     staffYearStints: staffStints,
@@ -201,7 +200,6 @@ export default function DirectorAdminMemberEditPage() {
         flaggedReason: String(form.flaggedReason || "").trim(),
         highSchool: String(form.highSchool || "").trim(),
         industry: String(form.industry || "").trim(),
-        bio: String(form.bio || "").trim(),
         avatarUrl: String(form.avatarUrl || "").trim(),
         camperYears: {
           firstYear: camperYearStints[0]?.startYear || "",
@@ -312,11 +310,6 @@ export default function DirectorAdminMemberEditPage() {
             Industry
             <Input value={form.industry} onChange={(event) => setField({ industry: event.target.value })} />
           </label>
-          <label className="full-width">
-            Bio
-            <Textarea value={form.bio} onChange={(event) => setField({ bio: event.target.value })} />
-          </label>
-
           <h3 className="full-width pb-section-title">Camper Years</h3>
           {(Array.isArray(form.camperYearStints) ? form.camperYearStints : []).map((stint, index) => (
             <div key={`camper-${index}`} className="director-admin-member-edit-block full-width">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Button, Card, Input, PageShell, Textarea } from "@pondbridge/ui";
+import { Button, Card, Input, PageShell } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -98,14 +98,6 @@ export default function MyProfilePage() {
               onChange={(event) => setProfile((prev) => ({ ...prev, industry: event.target.value }))}
             />
           </label>
-          <label>
-            Bio
-            <Textarea
-              value={profile?.bio || ""}
-              onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))}
-            />
-          </label>
-
           {status.error ? <p className="error-text">{status.error}</p> : null}
           {status.saved ? <p className="success-text">Profile saved.</p> : null}
 

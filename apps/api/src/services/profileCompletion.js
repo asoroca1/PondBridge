@@ -88,8 +88,7 @@ export function profileCompletionPercent(profile = {}) {
     Boolean(profile?.roleAtCamp),
     Boolean(profile?.highSchool),
     Array.isArray(profile?.colleges) && profile.colleges.some(Boolean),
-    Array.isArray(profile?.currentJobs) && profile.currentJobs.length > 0,
-    Boolean(profile?.bio)
+    Array.isArray(profile?.currentJobs) && profile.currentJobs.length > 0
   ];
 
   const filled = checks.filter(Boolean).length;

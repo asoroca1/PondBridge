@@ -307,7 +307,6 @@ const FALLBACK_MEMBER_EXPORT_FIELDS = [
   { key: "instagram", label: "Instagram", description: "Instagram URL from social links." },
   { key: "facebook", label: "Facebook", description: "Facebook URL from social links." },
   { key: "avatarUrl", label: "Avatar URL", description: "Profile avatar image URL." },
-  { key: "bio", label: "Bio", description: "Profile bio text." },
   { key: "joinDate", label: "Join Date", description: "Profile creation date (ISO)." },
   { key: "updatedAt", label: "Last Updated", description: "Profile last update timestamp (ISO)." },
   { key: "socialsJson", label: "Socials JSON", description: "Raw socials object for full fidelity export." },
@@ -2603,7 +2602,6 @@ function normalizeMemberEditorForm(profile = null) {
     flaggedReason: String(safe.flaggedReason || "").trim(),
     highSchool: String(safe.highSchool || "").trim(),
     industry: String(safe.industry || "").trim(),
-    bio: String(safe.bio || "").trim(),
     avatarUrl: String(safe.avatarUrl || "").trim(),
     camperYearStints: camperStints,
     staffYearStints: staffStints,
@@ -2755,7 +2753,6 @@ export function DirectorAdminMemberEditPage() {
         flaggedReason: String(form.flaggedReason || "").trim(),
         highSchool: String(form.highSchool || "").trim(),
         industry: String(form.industry || "").trim(),
-        bio: String(form.bio || "").trim(),
         avatarUrl: String(form.avatarUrl || "").trim(),
         camperYears: {
           firstYear: camperYearStints[0]?.startYear || "",
@@ -2869,11 +2866,6 @@ export function DirectorAdminMemberEditPage() {
             Industry
             <Input value={form.industry} onChange={(event) => setField({ industry: event.target.value })} />
           </label>
-          <label className="full-width">
-            Bio
-            <Textarea value={form.bio} onChange={(event) => setField({ bio: event.target.value })} />
-          </label>
-
           <h3 className="full-width pb-section-title">Camper Years</h3>
           {(Array.isArray(form.camperYearStints) ? form.camperYearStints : []).map((stint, index) => (
             <div key={`camper-${index}`} className="director-admin-member-edit-block full-width">

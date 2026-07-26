@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Button, Card, Input, PageShell, Textarea } from "@pondbridge/ui";
+import { Button, Card, Input, PageShell } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
@@ -18,8 +18,7 @@ const initialForm = {
   email: "",
   password: "",
   cityState: "",
-  roleAtCamp: "",
-  bio: ""
+  roleAtCamp: ""
 };
 
 export default function RegisterPage() {
@@ -168,14 +167,6 @@ export default function RegisterPage() {
               onChange={(event) => setForm((prev) => ({ ...prev, cityState: event.target.value }))}
             />
           </label>
-          <label>
-            Bio
-            <Textarea
-              value={form.bio}
-              onChange={(event) => setForm((prev) => ({ ...prev, bio: event.target.value }))}
-            />
-          </label>
-
           <label className="wizard1-legal-check">
             <input
               type="checkbox"

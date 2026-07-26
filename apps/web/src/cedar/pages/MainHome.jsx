@@ -97,8 +97,7 @@ function completionPercentForProfile(profile = {}, authUser = null) {
     Boolean(nonEmpty(profile?.roleAtCamp)),
     Boolean(nonEmpty(profile?.highSchool)),
     hasListValue(profile?.colleges || [], ["college", "major", "gradYear", "year"]),
-    hasListValue(profile?.currentJobs || [], ["role", "company", "years"]),
-    Boolean(nonEmpty(profile?.bio))
+    hasListValue(profile?.currentJobs || [], ["role", "company", "years"])
   ];
 
   const filled = checks.filter(Boolean).length;

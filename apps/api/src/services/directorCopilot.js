@@ -211,8 +211,7 @@ function profileCompletionScore(profile = {}) {
     Boolean(profile.roleAtCamp),
     Boolean(profile.highSchool),
     Array.isArray(profile.colleges) && profile.colleges.some(Boolean),
-    Array.isArray(profile.currentJobs) && profile.currentJobs.length > 0,
-    Boolean(profile.bio)
+    Array.isArray(profile.currentJobs) && profile.currentJobs.length > 0
   ];
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
@@ -257,8 +256,7 @@ async function getDirectorActionQueue(context) {
         "roleAtCamp",
         "highSchool",
         "colleges",
-        "currentJobs",
-        "bio"
+        "currentJobs"
       ]
     })
   ]);

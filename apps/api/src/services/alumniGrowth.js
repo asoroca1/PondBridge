@@ -67,7 +67,6 @@ function profileCompletionPercent(profile = {}) {
     profile.lastName,
     profileEmail(profile),
     profile.avatarUrl,
-    profile.bio,
     profile.cityState,
     profile.industry,
     profile.roleAtCamp

@@ -50,9 +50,6 @@ export default function ProfileViewPage() {
         <p>
           <strong>Industry:</strong> {profile.industry || "Not listed"}
         </p>
-        <p>
-          <strong>Bio:</strong> {profile.bio || "No bio available"}
-        </p>
       </Card>
     </PageShell>
   );
