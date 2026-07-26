@@ -2,9 +2,9 @@ const KILOBYTE = 1024;
 
 export const IMAGE_OPTIMIZATION_PRESETS = Object.freeze({
   logo: Object.freeze({
-    maxWidth: 768,
-    maxHeight: 768,
-    maxBytes: 350 * KILOBYTE,
+    maxWidth: 512,
+    maxHeight: 512,
+    maxBytes: 160 * KILOBYTE,
     preferredMime: "image/webp",
     quality: 0.9,
     minQuality: 0.72,
@@ -13,7 +13,7 @@ export const IMAGE_OPTIMIZATION_PRESETS = Object.freeze({
   hero: Object.freeze({
     maxWidth: 2560,
     maxHeight: 1600,
-    maxBytes: 950 * KILOBYTE,
+    maxBytes: 650 * KILOBYTE,
     preferredMime: "image/webp",
     quality: 0.86,
     minQuality: 0.7,

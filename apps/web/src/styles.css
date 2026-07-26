@@ -818,7 +818,7 @@ body{
 
 /* "Welcome to the" pre-line */
 .landing-preline {
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: "DM Sans Variable", system-ui, sans-serif;
   font-weight: 600;
   font-size: clamp(17px, 1.1vw, 21px);
   letter-spacing: 0.18em;
@@ -856,7 +856,7 @@ body{
 
 /* Subtitle */
 .landing-subtitle {
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: "DM Sans Variable", system-ui, sans-serif;
   font-size: clamp(25px, 2vw, 34px);
   line-height: 1.32;
   font-weight: 500;
@@ -888,7 +888,7 @@ body{
   min-width: 224px;
   padding: 0 40px;
   border-radius: 14px;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: "DM Sans Variable", system-ui, sans-serif;
   font-weight: 700;
   font-size: 19px;
   letter-spacing: -0.01em;
@@ -2651,7 +2651,7 @@ html.is-native-app textarea{
   border-radius: 10px;
   height: 40px;
   padding: 0 20px;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: "DM Sans Variable", system-ui, sans-serif;
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
@@ -2691,7 +2691,7 @@ html.is-native-app textarea{
   box-shadow:0 2px 8px rgba(2,33,71,.12);
 }
 .navbar2-title{
-  font-family: "DM Sans", system-ui, sans-serif; font-weight:600; line-height:1.05;
+  font-family: "DM Sans Variable", system-ui, sans-serif; font-weight:600; line-height:1.05;
   font-size:1.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
@@ -3741,7 +3741,7 @@ html.is-native-app textarea{
   --pb-shadow: var(--shadow-sm);
   --pb-text: var(--text, #0f172a);
   --pb-muted: var(--text-muted, #5b6270);
-  font-family: var(--font-body, "DM Sans", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "DM Sans Variable", "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .pb-cedar-page h1,
@@ -3770,7 +3770,7 @@ html.is-native-app textarea{
 .pb-cedar-page .link-button,
 .pb-cedar-page .pb-badge,
 .pb-cedar-page .onboarding-step-link{
-  font-family: var(--font-body, "DM Sans", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "DM Sans Variable", "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .pb-cedar-page .pb-section-title{

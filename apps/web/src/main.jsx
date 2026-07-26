@@ -10,6 +10,8 @@ import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
 import { API_BASE } from "./lib/http.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { loadFullAuthRuntime } from "./lib/authRuntimePreload.js";
+import "@fontsource-variable/dm-sans";
+import "@fontsource/instrument-serif/400.css";
 import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";

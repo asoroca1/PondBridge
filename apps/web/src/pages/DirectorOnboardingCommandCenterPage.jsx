@@ -754,7 +754,7 @@ export default function DirectorOnboardingCommandCenterPage() {
             "--text": previewTheme.text || "#0f172a",
             "--card": previewTheme.card || "#ffffff",
             "--font-display": "\"Instrument Serif\", Georgia, serif",
-            "--font-body": "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+            "--font-body": "\"DM Sans Variable\", \"Avenir Next\", \"Segoe UI\", sans-serif"
           }}
         >
           <div className="wizard-preview-nav">

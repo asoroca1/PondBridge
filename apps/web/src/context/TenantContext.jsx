@@ -10,15 +10,15 @@ const TENANT_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
 const FONT_TOKEN_MAP = {
   cedar_default: {
     display: "\"Instrument Serif\", Georgia, serif",
-    body: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+    body: "\"DM Sans Variable\", \"Avenir Next\", \"Segoe UI\", sans-serif"
   },
   modern_clean: {
-    display: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif",
-    body: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+    display: "\"DM Sans Variable\", \"Avenir Next\", \"Segoe UI\", sans-serif",
+    body: "\"DM Sans Variable\", \"Avenir Next\", \"Segoe UI\", sans-serif"
   },
   classic_serif: {
     display: "\"Instrument Serif\", Georgia, serif",
-    body: "\"DM Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+    body: "\"DM Sans Variable\", \"Avenir Next\", \"Segoe UI\", sans-serif"
   }
 };
 
