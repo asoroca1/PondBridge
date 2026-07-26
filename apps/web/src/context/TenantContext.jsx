@@ -240,6 +240,27 @@ function writeCachedTenantPayload({ slug = "", host = "", payload = null } = {})
   }
 }
 
+function preloadCriticalTenantImage(url = "") {
+  if (typeof document === "undefined") return;
+  const href = String(url || "").trim();
+  if (!href) return;
+  const alreadyPreloaded = [...document.querySelectorAll('link[rel="preload"][as="image"]')]
+    .some((link) => String(link.getAttribute("href") || "").trim() === href);
+  if (alreadyPreloaded) return;
+
+  const preload = document.createElement("link");
+  preload.rel = "preload";
+  preload.as = "image";
+  preload.href = href;
+  preload.setAttribute("fetchpriority", "high");
+  document.head.appendChild(preload);
+}
+
+function preloadTenantHero(tenant = null) {
+  const branding = tenant?.config?.branding || tenant?.theme || {};
+  preloadCriticalTenantImage(branding?.heroImageUrl || "");
+}
+
 export function TenantProvider({ slug = "", children }) {
   const [state, setState] = useState({ loading: true, error: "", tenant: null });
 
@@ -256,6 +277,7 @@ export function TenantProvider({ slug = "", children }) {
     if (cachedPayload) {
       const cachedTenant = normalizeTenantPayload(cachedPayload, normalizedSlug);
       const cachedConfig = cachedTenant?.config || {};
+      preloadTenantHero(cachedTenant);
       applyTheme(cachedConfig);
       setState({ loading: false, error: "", tenant: cachedTenant });
     } else {
@@ -278,6 +300,7 @@ export function TenantProvider({ slug = "", children }) {
       const normalizedTenant = normalizeTenantPayload(tenant, normalizedSlug);
       const config = normalizedTenant?.config || {};
       const resolvedSlug = String(normalizedTenant?.slug || normalizedSlug).trim().toLowerCase();
+      preloadTenantHero(normalizedTenant);
       applyTheme(config);
       writeCachedThemeConfig({ slug: resolvedSlug, config });
       writeCachedThemeConfig({ host, config });

@@ -22,6 +22,11 @@ import HeroImageEditor from "../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
 import { MINIMUM_MEMBER_AGE } from "../lib/legalAgreement.js";
+import {
+  IMAGE_OPTIMIZATION_PRESETS,
+  extensionForImageMime,
+  optimizeImageFile
+} from "../lib/imageOptimization.js";
 
 const STEP_ACCOUNT = "account";
 const STEP_DESIGN = "design";
@@ -339,47 +344,6 @@ function addressHasRequiredFields(address = {}) {
   );
 }
 
-function loadImageFromFile(file) {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(image);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("Unable to process image file."));
-    };
-    image.src = objectUrl;
-  });
-}
-
-function canvasToBlob(canvas, mimeType, quality) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) {
-          reject(new Error("Unable to process image file."));
-          return;
-        }
-        resolve(blob);
-      },
-      mimeType,
-      quality
-    );
-  });
-}
-
-function extensionFromMime(mimeType = "") {
-  const normalized = String(mimeType || "").trim().toLowerCase();
-  if (normalized === "image/png") return "png";
-  if (normalized === "image/webp") return "webp";
-  if (normalized === "image/gif") return "gif";
-  if (normalized === "image/svg+xml") return "svg";
-  return "jpg";
-}
-
 async function dataUrlToBlob(dataUrl = "") {
   const response = await fetch(String(dataUrl || ""));
   if (!response.ok) {
@@ -395,52 +359,6 @@ function blobToDataUrl(blob) {
     reader.onerror = () => reject(new Error("Unable to process image preview."));
     reader.readAsDataURL(blob);
   });
-}
-
-async function optimizeImageFile(
-  file,
-  {
-    maxWidth = 1600,
-    maxHeight = 1200,
-    maxBytes = 2 * 1024 * 1024,
-    preferredMime = "image/jpeg",
-    quality = 0.86,
-    minQuality = 0.55
-  } = {}
-) {
-  const image = await loadImageFromFile(file);
-  const canvas = document.createElement("canvas");
-  const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Unable to process image file.");
-  context.drawImage(image, 0, 0, width, height);
-
-  let mime = preferredMime;
-  let outputQuality = quality;
-  let result = await canvasToBlob(canvas, mime, outputQuality);
-
-  if (result.size <= maxBytes) return result;
-
-  if (mime !== "image/jpeg") {
-    mime = "image/jpeg";
-    outputQuality = Math.min(outputQuality, 0.88);
-    result = await canvasToBlob(canvas, mime, outputQuality);
-  }
-
-  while (result.size > maxBytes && outputQuality > minQuality) {
-    outputQuality = Math.max(minQuality, outputQuality - 0.08);
-    result = await canvasToBlob(canvas, "image/jpeg", outputQuality);
-  }
-
-  if (result.size > maxBytes) {
-    throw new Error("Image is still too large after optimization. Please use a smaller file.");
-  }
-
-  return result;
 }
 
 function DirectorCreateAccountClerkGate() {
@@ -1905,17 +1823,12 @@ function DirectorCreateAccountWizardPage() {
     setLogoFileName(file.name);
     setSubmitError("");
     try {
-      const preferredMime = file.type === "image/png" ? "image/png" : "image/jpeg";
-      const optimizedLogo = await optimizeImageFile(file, {
-        maxWidth: 800,
-        maxHeight: 800,
-        maxBytes: 900 * 1024,
-        preferredMime,
-        quality: 0.9,
-        minQuality: 0.55
-      });
-      const finalMime = optimizedLogo.type || preferredMime;
-      const extension = finalMime === "image/png" ? "png" : "jpg";
+      const optimizedLogo = await optimizeImageFile(
+        file,
+        IMAGE_OPTIMIZATION_PRESETS.logo
+      );
+      const finalMime = optimizedLogo.type || file.type || "image/jpeg";
+      const extension = extensionForImageMime(finalMime);
       const uploadToken = String(authToken || "").trim();
       const logoUrl =
         uploadToken
@@ -1950,16 +1863,12 @@ function DirectorCreateAccountWizardPage() {
     setHeroFileName(file.name);
     setSubmitError("");
     try {
-      const optimizedHero = await optimizeImageFile(file, {
-        maxWidth: 2200,
-        maxHeight: 1400,
-        maxBytes: 2 * 1024 * 1024,
-        preferredMime: "image/jpeg",
-        quality: 0.85,
-        minQuality: 0.52
-      });
-      const finalMime = optimizedHero.type || "image/jpeg";
-      const extension = finalMime === "image/png" ? "png" : "jpg";
+      const optimizedHero = await optimizeImageFile(
+        file,
+        IMAGE_OPTIMIZATION_PRESETS.hero
+      );
+      const finalMime = optimizedHero.type || file.type || "image/jpeg";
+      const extension = extensionForImageMime(finalMime);
       const uploadToken = String(authToken || "").trim();
       const heroImageUrl =
         uploadToken
@@ -2191,7 +2100,7 @@ function DirectorCreateAccountWizardPage() {
         const logoMime = logoBlob.type || "image/jpeg";
         finalLogoUrl = await uploadBrandingAsset({
           blob: logoBlob,
-          fileName: `logo-${Date.now()}.${extensionFromMime(logoMime)}`,
+          fileName: `logo-${Date.now()}.${extensionForImageMime(logoMime)}`,
           fileType: logoMime,
           scope: "branding-logo",
           token
@@ -2203,7 +2112,7 @@ function DirectorCreateAccountWizardPage() {
         const heroMime = heroBlob.type || "image/jpeg";
         finalHeroImageUrl = await uploadBrandingAsset({
           blob: heroBlob,
-          fileName: `hero-${Date.now()}.${extensionFromMime(heroMime)}`,
+          fileName: `hero-${Date.now()}.${extensionForImageMime(heroMime)}`,
           fileType: heroMime,
           scope: "branding-hero",
           token

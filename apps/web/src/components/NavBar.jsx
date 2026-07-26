@@ -40,6 +40,7 @@ import { isNativeApp } from "../lib/nativeApp.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import cedarLogo from "../assets/cedar-logo.png";
 import NotificationBadge from "./NotificationBadge.jsx";
+import { preloadFullAuthRuntime } from "../lib/authRuntimePreload.js";
 
 const MIN_SEARCH_CHARS = 1;
 
@@ -726,6 +727,9 @@ export default function NavBar() {
             {!demoAccessEnabled ? (
               <button
                 className={`navbar2-auth-btn ${onCreateAccountRoute ? "is-current" : ""}`.trim()}
+                onPointerEnter={preloadFullAuthRuntime}
+                onFocus={preloadFullAuthRuntime}
+                onTouchStart={preloadFullAuthRuntime}
                 onClick={() => {
                   if (!onCreateAccountRoute) navigate(createAccountPath);
                 }}
@@ -736,6 +740,9 @@ export default function NavBar() {
             ) : null}
             <button
               className={`navbar2-auth-btn secondary ${onLoginRoute ? "is-current" : ""}`.trim()}
+              onPointerEnter={preloadFullAuthRuntime}
+              onFocus={preloadFullAuthRuntime}
+              onTouchStart={preloadFullAuthRuntime}
               onClick={() => {
                 if (!onLoginRoute) navigate(loginPath);
               }}

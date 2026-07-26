@@ -33,6 +33,10 @@ import {
   PageHeader
 } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
+import {
+  IMAGE_OPTIMIZATION_PRESETS,
+  optimizeImageFile
+} from "../../lib/imageOptimization.js";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -6289,16 +6293,27 @@ export function DirectorAdminSettingsBrandingPage() {
     setUploadingField(field);
 
     try {
-      const previewDataUrl = await fileToDataUrl(file);
+      const preset =
+        field === "logoUrl"
+          ? IMAGE_OPTIMIZATION_PRESETS.logo
+          : IMAGE_OPTIMIZATION_PRESETS.hero;
+      const optimizedFile = await optimizeImageFile(file, preset);
+      const previewDataUrl = await fileToDataUrl(optimizedFile);
       setForm((prev) => ({ ...prev, [field]: previewDataUrl }));
       if (field === "logoUrl") {
-        setPendingLogoFile(file);
+        setPendingLogoFile(optimizedFile);
         setPendingLogoPreviewUrl(previewDataUrl);
       } else {
-        setPendingHeroFile(file);
+        setPendingHeroFile(optimizedFile);
         setPendingHeroPreviewUrl(previewDataUrl);
       }
-      setStatus("Image preview updated. Click Save Branding to publish this change.");
+      const savings =
+        file.size > 0 && optimizedFile.size < file.size
+          ? ` (${Math.round((1 - optimizedFile.size / file.size) * 100)}% smaller)`
+          : "";
+      setStatus(
+        `Image preview optimized for fast loading${savings}. Click Save Branding to publish this change.`
+      );
     } catch (uploadErrorState) {
       setUploadError(uploadErrorState.message || "Unable to process image.");
     } finally {

@@ -6,7 +6,6 @@ import { useAuth } from "./context/AuthContext.jsx";
 import { MobileNotificationsProvider } from "./context/MobileNotificationsContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import NativeAppExperience from "./components/NativeAppExperience.jsx";
 import { resolveCampName } from "./lib/campLabels.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
@@ -51,6 +50,7 @@ const TenantAccessPendingPage = lazyPage(() => import("./pages/TenantAccessPendi
 const SuperLoginPage = lazyPage(() => import("./pages/SuperLoginPage.jsx"));
 const MobileCampCodeEntryPage = lazyPage(() => import("./pages/MobileCampCodeEntryPage.jsx"));
 const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage.jsx"));
+const NativeAppExperience = lazyPage(() => import("./components/NativeAppExperience.jsx"));
 
 const DirectorOnboardingCommandCenterPage = lazyPage(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
 const DirectorOnboardingAgentPage = lazyPage(() => import("./pages/DirectorOnboardingAgentPage.jsx"));
@@ -1048,7 +1048,11 @@ export default function App() {
 
   return (
     <>
-    <NativeAppExperience />
+    {nativeApp ? (
+      <Suspense fallback={null}>
+        <NativeAppExperience />
+      </Suspense>
+    ) : null}
     <div className="app-route-shell">
       <div className="app-route-progress" key={routeKey} aria-hidden="true" />
       <div className="app-route-stage">

@@ -3,6 +3,7 @@ import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord, resolveCampName, resolveTenantContent } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
+import { preloadFullAuthRuntime } from "../../lib/authRuntimePreload.js";
 
 function Home() {
   const navigate = useNavigate();
@@ -45,12 +46,21 @@ function Home() {
           {!demoAccessEnabled ? (
             <button
               className="landing-btn landing-btn-primary"
+              onPointerEnter={preloadFullAuthRuntime}
+              onFocus={preloadFullAuthRuntime}
+              onTouchStart={preloadFullAuthRuntime}
               onClick={() => navigate(tenantRoute(slug, "/create-account"))}
             >
               Create Account
             </button>
           ) : null}
-          <button className="landing-btn landing-btn-secondary" onClick={() => navigate(tenantRoute(slug, "/login"))}>
+          <button
+            className="landing-btn landing-btn-secondary"
+            onPointerEnter={preloadFullAuthRuntime}
+            onFocus={preloadFullAuthRuntime}
+            onTouchStart={preloadFullAuthRuntime}
+            onClick={() => navigate(tenantRoute(slug, "/login"))}
+          >
             Login
           </button>
         </div>

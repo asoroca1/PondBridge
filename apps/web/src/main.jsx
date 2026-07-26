@@ -1,14 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { ClerkProvider } from "@clerk/clerk-react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, useLocation } from "react-router-dom";
 import App from "./App.jsx";
-import { AuthProvider } from "./context/AuthContext.jsx";
+import { PublicAuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { AssetUpdateNotice } from "./components/AssetUpdateNotice.jsx";
-import { clerkSdkEnabled, CLERK_PUBLISHABLE_KEY } from "./lib/authMode.js";
+import { clerkSdkEnabled } from "./lib/authMode.js";
 import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
 import { API_BASE } from "./lib/http.js";
+import { readAuthFromStorage } from "./lib/storage.js";
+import { loadFullAuthRuntime } from "./lib/authRuntimePreload.js";
 import "@pondbridge/ui/theme.css";
 import "./styles.css";
 import "./styles/productOnboarding.css";
@@ -64,55 +65,60 @@ function warmApiConnection() {
 
 warmApiConnection();
 
-const clerkNoSocialAppearance = {
-  elements: {
-    socialButtons: {
-      display: "none"
-    },
-    socialButtonsBlock: {
-      display: "none"
-    },
-    socialButtonsBlockButton: {
-      display: "none"
-    },
-    socialButtonsIconButton: {
-      display: "none"
-    },
-    dividerRow: {
-      display: "none"
-    },
-    dividerLine: {
-      display: "none"
-    },
-    dividerText: {
-      display: "none"
-    }
+const FullAuthRuntime = React.lazy(loadFullAuthRuntime);
+
+function isPublicLandingPath(pathname = "") {
+  const normalizedPath = String(pathname || "/").replace(/\/+$/, "") || "/";
+  return normalizedPath === "/" || /^\/t\/[^/]+$/i.test(normalizedPath);
+}
+
+function AuthRuntimeBoundary() {
+  const location = useLocation();
+  const cachedAuth = readAuthFromStorage();
+  const canDeferClerk =
+    clerkSdkEnabled() &&
+    isPublicLandingPath(location.pathname) &&
+    !cachedAuth.token &&
+    !cachedAuth.user;
+  if (canDeferClerk) {
+    return (
+      <PublicAuthProvider>
+        <App />
+      </PublicAuthProvider>
+    );
   }
-};
+
+  return (
+    <React.Suspense
+      fallback={
+        <section className="app-status-shell">
+          <div className="app-status-card">
+            <h1>Opening PondBridge...</h1>
+            <p>Loading your secure session.</p>
+          </div>
+        </section>
+      }
+    >
+      <FullAuthRuntime>
+        <App />
+      </FullAuthRuntime>
+    </React.Suspense>
+  );
+}
 
 const baseTree = (
   <>
     <AssetUpdateNotice />
     <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <AuthRuntimeBoundary />
     </BrowserRouter>
   </>
-);
-
-const appTree = clerkSdkEnabled() ? (
-  <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} appearance={clerkNoSocialAppearance}>
-    {baseTree}
-  </ClerkProvider>
-) : (
-  baseTree
 );
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ErrorBoundary level="app">
-      {appTree}
+      {baseTree}
     </ErrorBoundary>
   </React.StrictMode>
 );

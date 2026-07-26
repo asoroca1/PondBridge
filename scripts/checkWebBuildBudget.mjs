@@ -4,8 +4,19 @@ import zlib from "node:zlib";
 
 const rootDir = process.cwd();
 const distAssetsDir = path.resolve(rootDir, "apps/web/dist/assets");
+const distIndexPath = path.resolve(rootDir, "apps/web/dist/index.html");
 
-const maxMainJsGzipKb = Number(process.env.PONDBRIDGE_MAX_MAIN_JS_GZIP_KB || 350);
+const maxEntryJsGzipKb = Number(
+  process.env.PONDBRIDGE_MAX_ENTRY_JS_GZIP_KB ||
+    process.env.PONDBRIDGE_MAX_MAIN_JS_GZIP_KB ||
+    125
+);
+const maxInitialCssGzipKb = Number(
+  process.env.PONDBRIDGE_MAX_INITIAL_CSS_GZIP_KB || 60
+);
+const maxRouteJsGzipKb = Number(
+  process.env.PONDBRIDGE_MAX_ROUTE_JS_GZIP_KB || 50
+);
 const maxLargestAssetRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_ASSET_MB || 2.0);
 const maxLargestImageRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_IMAGE_MB || 1.0);
 
@@ -27,6 +38,7 @@ async function gzipSize(buffer) {
 }
 
 async function run() {
+  const indexHtml = await fs.readFile(distIndexPath, "utf8");
   const files = await fs.readdir(distAssetsDir);
   if (!files.length) {
     throw new Error("No web build assets found. Run `npm run build` first.");
@@ -48,28 +60,61 @@ async function run() {
     .sort((a, b) => b.rawBytes - a.rawBytes);
 
   const largestJs = jsAssets[0] || null;
+  const entryScriptName =
+    indexHtml.match(/<script[^>]+src=["'][^"']*\/([^/"']+\.js)["']/i)?.[1] || "";
+  const entryJs = assetRows.find((row) => row.file === entryScriptName) || null;
+  const initialCssNames = [
+    ...indexHtml.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]+href=["'][^"']*\/([^/"']+\.css)["']/gi)
+  ].map((match) => match[1]);
+  const initialCssRows = initialCssNames
+    .map((file) => assetRows.find((row) => row.file === file))
+    .filter(Boolean);
+  const initialCssGzipBytes = initialCssRows.reduce(
+    (total, row) => total + row.gzBytes,
+    0
+  );
+  const largestRouteJs =
+    jsAssets.find(
+      (row) =>
+        row.file !== entryScriptName &&
+        !/^(?:vendor-)?maplibre(?:-gl)?-/i.test(row.file)
+    ) || null;
   const largestAsset = [...assetRows].sort((a, b) => b.rawBytes - a.rawBytes)[0] || null;
   const largestImage = [...assetRows]
     .filter((row) => /\.(png|jpe?g|webp|avif|gif|svg)$/i.test(row.file))
     .sort((a, b) => b.rawBytes - a.rawBytes)[0] || null;
 
-  if (!largestJs || !largestAsset) {
-    throw new Error("Unable to locate JS/assets in web build output.");
+  if (!largestJs || !entryJs || !largestAsset) {
+    throw new Error("Unable to locate the entry JS/assets in web build output.");
   }
 
-  console.log(`[perf:web] largest JS: ${largestJs.file} raw=${formatKb(largestJs.rawBytes)} gzip=${formatKb(largestJs.gzBytes)}`);
+  console.log(`[perf:web] entry JS: ${entryJs.file} raw=${formatKb(entryJs.rawBytes)} gzip=${formatKb(entryJs.gzBytes)}`);
+  if (largestRouteJs) {
+    console.log(`[perf:web] largest route JS: ${largestRouteJs.file} raw=${formatKb(largestRouteJs.rawBytes)} gzip=${formatKb(largestRouteJs.gzBytes)}`);
+  }
+  console.log(`[perf:web] initial CSS: ${initialCssNames.join(", ") || "none"} gzip=${formatKb(initialCssGzipBytes)}`);
   console.log(`[perf:web] largest asset: ${largestAsset.file} raw=${formatMb(largestAsset.rawBytes)} gzip=${formatKb(largestAsset.gzBytes)}`);
   console.log(
-    `[perf:web] budgets: main_js_gzip<=${maxMainJsGzipKb}KB largest_asset_raw<=${maxLargestAssetRawMb}MB largest_image_raw<=${maxLargestImageRawMb}MB`
+    `[perf:web] budgets: entry_js_gzip<=${maxEntryJsGzipKb}KB initial_css_gzip<=${maxInitialCssGzipKb}KB route_js_gzip<=${maxRouteJsGzipKb}KB largest_asset_raw<=${maxLargestAssetRawMb}MB largest_image_raw<=${maxLargestImageRawMb}MB`
   );
   if (largestImage) {
     console.log(`[perf:web] largest image: ${largestImage.file} raw=${formatMb(largestImage.rawBytes)} gzip=${formatKb(largestImage.gzBytes)}`);
   }
 
   const errors = [];
-  if (largestJs.gzBytes > maxMainJsGzipKb * 1024) {
+  if (entryJs.gzBytes > maxEntryJsGzipKb * 1024) {
     errors.push(
-      `Main JS gzip budget exceeded: ${formatKb(largestJs.gzBytes)} > ${maxMainJsGzipKb}KB`
+      `Entry JS gzip budget exceeded: ${formatKb(entryJs.gzBytes)} > ${maxEntryJsGzipKb}KB`
+    );
+  }
+  if (initialCssGzipBytes > maxInitialCssGzipKb * 1024) {
+    errors.push(
+      `Initial CSS gzip budget exceeded: ${formatKb(initialCssGzipBytes)} > ${maxInitialCssGzipKb}KB`
+    );
+  }
+  if (largestRouteJs && largestRouteJs.gzBytes > maxRouteJsGzipKb * 1024) {
+    errors.push(
+      `Route JS gzip budget exceeded: ${formatKb(largestRouteJs.gzBytes)} > ${maxRouteJsGzipKb}KB`
     );
   }
   if (largestAsset.rawBytes > maxLargestAssetRawMb * 1024 * 1024) {
