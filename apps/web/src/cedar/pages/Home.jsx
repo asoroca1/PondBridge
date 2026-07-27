@@ -4,6 +4,12 @@ import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord, resolveCampName, resolveTenantContent } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { preloadFullAuthRuntime } from "../../lib/authRuntimePreload.js";
+import { preloadRouteForPath } from "../../lib/routePreload.js";
+
+function preloadAuthDestination(path = "") {
+  preloadFullAuthRuntime();
+  preloadRouteForPath(path);
+}
 
 function Home() {
   const navigate = useNavigate();
@@ -20,6 +26,8 @@ function Home() {
     heroBranding.heroImageSizeLanding || heroBranding.heroImageSize || ""
   );
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
+  const createAccountPath = tenantRoute(slug, "/create-account");
+  const loginPath = tenantRoute(slug, "/login");
 
   return (
     <section
@@ -46,20 +54,20 @@ function Home() {
           {!demoAccessEnabled ? (
             <button
               className="landing-btn landing-btn-primary"
-              onPointerEnter={preloadFullAuthRuntime}
-              onFocus={preloadFullAuthRuntime}
-              onTouchStart={preloadFullAuthRuntime}
-              onClick={() => navigate(tenantRoute(slug, "/create-account"))}
+              onPointerEnter={() => preloadAuthDestination(createAccountPath)}
+              onFocus={() => preloadAuthDestination(createAccountPath)}
+              onTouchStart={() => preloadAuthDestination(createAccountPath)}
+              onClick={() => navigate(createAccountPath)}
             >
               Create Account
             </button>
           ) : null}
           <button
             className="landing-btn landing-btn-secondary"
-            onPointerEnter={preloadFullAuthRuntime}
-            onFocus={preloadFullAuthRuntime}
-            onTouchStart={preloadFullAuthRuntime}
-            onClick={() => navigate(tenantRoute(slug, "/login"))}
+            onPointerEnter={() => preloadAuthDestination(loginPath)}
+            onFocus={() => preloadAuthDestination(loginPath)}
+            onTouchStart={() => preloadAuthDestination(loginPath)}
+            onClick={() => navigate(loginPath)}
           >
             Login
           </button>

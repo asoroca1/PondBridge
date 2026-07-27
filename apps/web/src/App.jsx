@@ -4,6 +4,7 @@ import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { TenantProvider, useTenant } from "./context/TenantContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import { MobileNotificationsProvider } from "./context/MobileNotificationsContext.jsx";
+import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { resolveCampName } from "./lib/campLabels.js";
@@ -11,6 +12,10 @@ import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDom
 import { isNativeApp } from "./lib/nativeApp.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
+import {
+  installRouteIntentPreloading,
+  preloadAuthenticatedCoreRoutes
+} from "./lib/routePreload.js";
 
 function lazyPage(loader) {
   return lazy(() =>
@@ -137,7 +142,6 @@ const SuperTenantsPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperTenantsPage }))
 );
 
-const warmedRouteChunks = new Set();
 const DEFAULT_TAB_TITLE = "PondBridge";
 const DEFAULT_FAVICON_PATH = "/favicon.svg";
 
@@ -185,37 +189,6 @@ function setIconHref(link, href = "") {
   }
 }
 
-function warmRouteChunk(key, loader) {
-  if (warmedRouteChunks.has(key)) return;
-  warmedRouteChunks.add(key);
-  Promise.resolve()
-    .then(() => loader())
-    .catch(() => {});
-}
-
-function warmAuthenticatedRouteChunks() {
-  const baseWarmers = [
-    ["cedar-main-home", () => import("./cedar/pages/MainHome.jsx")],
-    ["cedar-my-profile", () => import("./cedar/pages/MyProfile.jsx")]
-  ];
-  const nativeWarmers = isNativeApp()
-    ? [
-        ["cedar-edit-profile", () => import("./cedar/pages/EditProfile.jsx")],
-        ["cedar-public-profile", () => import("./cedar/pages/PublicProfile.jsx")],
-        ["cedar-search", () => import("./cedar/pages/AdvancedSearch.jsx")],
-        ["cedar-search-results", () => import("./cedar/pages/SearchResults.jsx")],
-        ["cedar-photo-stream", () => import("./cedar/pages/PhotoStream.jsx")],
-        ["cedar-chat", () => import("./cedar/pages/ChatAndForums.jsx")],
-        ["cedar-map", () => import("./cedar/pages/LocationMap.jsx")],
-        ["cedar-chest", () => import("./cedar/pages/CedarChest.jsx")],
-        ["cedar-family-trees", () => import("./cedar/pages/FamilyTrees.jsx")]
-      ]
-    : [];
-  for (const [key, loader] of [...baseWarmers, ...nativeWarmers]) {
-    warmRouteChunk(key, loader);
-  }
-}
-
 function TenantScopeLayout() {
   const { slug } = useParams();
 
@@ -248,15 +221,8 @@ function CustomDomainCampLayout() {
   );
 }
 
-function RouteLoadingFallback() {
-  return (
-    <section className="app-status-shell">
-      <div className="app-status-card">
-        <h1>Loading page...</h1>
-        <p>Please wait while we load this view.</p>
-      </div>
-    </section>
-  );
+function RouteLoadingFallback({ compact = false }) {
+  return <AppTransitionShell compact={compact} />;
 }
 
 function MemberEventsRoute({ children }) {
@@ -489,7 +455,7 @@ function TenantScopeRoutes() {
     let timeoutHandle = null;
     const scheduleWarmup = () => {
       if (cancelled) return;
-      warmAuthenticatedRouteChunks();
+      preloadAuthenticatedCoreRoutes();
     };
 
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
@@ -547,25 +513,11 @@ function TenantScopeRoutes() {
   }
 
   if (loading) {
-    return (
-      <section className="app-status-shell">
-        <div className="app-status-card">
-          <h1>Loading your camp...</h1>
-          <p>Please wait while we load network settings.</p>
-        </div>
-      </section>
-    );
+    return <AppTransitionShell />;
   }
 
   if (!isReady && !hasNativeCachedSession) {
-    return (
-      <section className="app-status-shell">
-        <div className="app-status-card">
-          <h1>Checking your account...</h1>
-          <p>Please wait while we verify your access.</p>
-        </div>
-      </section>
-    );
+    return <AppTransitionShell />;
   }
 
   if (error) {
@@ -620,14 +572,7 @@ function TenantScopeRoutes() {
   }
 
   if (waitingForTenantScopedUser && !allowAuthCallbackRedirect && !hasNativeCachedSession) {
-    return (
-      <section className="app-status-shell">
-        <div className="app-status-card">
-          <h1>Checking your account...</h1>
-          <p>Please wait while we sync your network session.</p>
-        </div>
-      </section>
-    );
+    return <AppTransitionShell />;
   }
 
   if (waitingForTenantScopedUser && !hasNativeCachedSession) {
@@ -635,7 +580,7 @@ function TenantScopeRoutes() {
     return <Navigate to={callbackPath} replace />;
   }
 
-  const routeFallback = nativeApp ? null : <RouteLoadingFallback />;
+  const routeFallback = nativeApp ? null : <RouteLoadingFallback compact />;
 
   if (isCampDirector && onboardingIncomplete && !onOnboardingRoute) {
     return <Navigate to={directorSetupPath} replace />;
@@ -1040,6 +985,8 @@ export default function App() {
   const nativeApp = isNativeApp();
   const legacyRedirectEnabled = Boolean(!hostCampSlug && !customDomainHost && !rootDomain && !superSubdomain && rememberedSlug);
   const routeFallback = nativeApp ? null : <RouteLoadingFallback />;
+
+  useEffect(() => installRouteIntentPreloading(), []);
 
   // Use a key-based CSS animation for route transitions instead of React state.
   // This avoids re-rendering the entire component tree on every navigation,

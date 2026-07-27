@@ -26,6 +26,15 @@ export function isDeploymentPreviewHost(host = browserHost()) {
   );
 }
 
+export function isNamedDeploymentPreviewHost(host = browserHost()) {
+  const safeHost = normalizeHost(host);
+  if (!isDeploymentPreviewHost(safeHost)) return false;
+
+  const firstLabel = safeHost.split(".")[0] || "";
+  if (!firstLabel || firstLabel === "pondbridge") return false;
+  return !/^[a-f0-9]{8}$/i.test(firstLabel);
+}
+
 export function inferCampSlugFromHost(host = browserHost()) {
   const safeHost = normalizeHost(host);
   if (!safeHost) return "";
@@ -90,4 +99,24 @@ export function defaultTenantDomain(slug = "") {
   const baseDomain = getAppBaseDomain();
   if (!baseDomain) return "";
   return `${safeSlug}.${baseDomain}`;
+}
+
+export function canonicalTenantUrlForPreview({
+  host = browserHost(),
+  pathname = typeof window === "undefined" ? "/" : window.location.pathname,
+  search = typeof window === "undefined" ? "" : window.location.search,
+  hash = typeof window === "undefined" ? "" : window.location.hash
+} = {}) {
+  if (!isNamedDeploymentPreviewHost(host)) return "";
+
+  const params = new URLSearchParams(String(search || "").replace(/^\?/, ""));
+  if (params.get("preview") === "1" || params.get("pondbridgePreview") === "1") return "";
+
+  const pathMatch = String(pathname || "/").match(/^\/t\/([^/]+)(\/.*)?$/i);
+  if (!pathMatch?.[1]) return "";
+
+  const domain = defaultTenantDomain(pathMatch[1]);
+  if (!domain) return "";
+  const tenantPath = pathMatch[2] || "/";
+  return `https://${domain}${tenantPath}${search || ""}${hash || ""}`;
 }

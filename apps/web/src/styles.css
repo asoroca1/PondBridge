@@ -246,6 +246,158 @@ body{
   overflow-wrap: anywhere;
 }
 
+.sr-only{
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.app-transition-shell{
+  width: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(var(--brand-primary-rgb, 0, 43, 92), .08), transparent 34%),
+    var(--bg, #f5f7fa);
+}
+
+.app-transition-shell.is-compact{
+  min-height: min(64vh, 660px);
+  background: transparent;
+}
+
+.app-transition-brand{
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px clamp(20px, 5vw, 72px);
+  border-bottom: 1px solid color-mix(in srgb, var(--brand-primary) 16%, #dbe5ef);
+  background: color-mix(in srgb, var(--card, #fff) 94%, transparent);
+  box-shadow: 0 8px 28px rgba(15, 35, 63, .05);
+}
+
+.app-transition-brand img,
+.app-transition-brand-mark{
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  border-radius: 50%;
+}
+
+.app-transition-brand img{
+  object-fit: contain;
+}
+
+.app-transition-brand-mark{
+  display: grid;
+  place-items: center;
+  color: var(--brand-on-primary, #fff);
+  background: var(--brand-primary, #002b5c);
+  font-family: var(--font-display, "Instrument Serif", Georgia, serif);
+  font-size: 1.75rem;
+}
+
+.app-transition-brand strong{
+  color: var(--brand-primary, #002b5c);
+  font-size: clamp(1rem, 2.2vw, 1.35rem);
+  letter-spacing: -.015em;
+}
+
+.app-transition-content{
+  width: min(1180px, calc(100% - 36px));
+  margin: auto;
+  padding: clamp(32px, 7vw, 82px) 0;
+}
+
+.app-transition-shell.is-compact .app-transition-content{
+  margin: 0 auto;
+  padding: clamp(36px, 6vw, 72px) 0;
+}
+
+.app-transition-line,
+.app-transition-panel{
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--brand-primary) 10%, var(--card, #fff));
+}
+
+.app-transition-line::after,
+.app-transition-panel::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-105%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--card, #fff) 72%, transparent),
+    transparent
+  );
+  animation: appTransitionShimmer 1.15s ease-in-out infinite;
+}
+
+.app-transition-line{
+  height: 14px;
+  border-radius: 999px;
+  margin-bottom: 16px;
+}
+
+.app-transition-line.is-kicker{ width: min(150px, 38%); }
+.app-transition-line.is-title{ width: min(540px, 82%); height: 34px; }
+.app-transition-line.is-copy{ width: min(700px, 94%); }
+
+.app-transition-grid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(14px, 2.4vw, 24px);
+  margin-top: clamp(30px, 5vw, 52px);
+}
+
+.app-transition-panel{
+  min-height: clamp(150px, 22vw, 240px);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 10%, #dce5ef);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(15, 35, 63, .045);
+}
+
+@keyframes appTransitionShimmer{
+  to{ transform: translateX(105%); }
+}
+
+@media (max-width: 700px){
+  .app-transition-brand{
+    min-height: 74px;
+    padding: 10px 18px;
+  }
+
+  .app-transition-brand img,
+  .app-transition-brand-mark{
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+  }
+
+  .app-transition-grid{
+    grid-template-columns: 1fr;
+  }
+
+  .app-transition-panel{
+    min-height: 120px;
+  }
+
+  .app-transition-panel:nth-child(n + 3){
+    display: none;
+  }
+}
+
 .mobile-camp-code-shell{
   padding: max(18px, env(safe-area-inset-top, 0px) + 18px) 18px calc(18px + env(safe-area-inset-bottom, 0px));
   background:
@@ -606,7 +758,9 @@ body{
 @media (prefers-reduced-motion: reduce){
   html{ scroll-behavior: auto; }
   .app-route-stage,
-  .app-route-progress{ animation: none !important; }
+  .app-route-progress,
+  .app-transition-line::after,
+  .app-transition-panel::after{ animation: none !important; }
   :where(button, [type="button"], [type="submit"], [type="reset"], a[href]){
     transition: none !important;
   }

@@ -41,8 +41,14 @@ import { tenantRoute } from "../lib/tenantRouting.js";
 import cedarLogo from "../assets/cedar-logo.png";
 import NotificationBadge from "./NotificationBadge.jsx";
 import { preloadFullAuthRuntime } from "../lib/authRuntimePreload.js";
+import { preloadRouteForPath } from "../lib/routePreload.js";
 
 const MIN_SEARCH_CHARS = 1;
+
+function preloadAuthDestination(path = "") {
+  preloadFullAuthRuntime();
+  preloadRouteForPath(path);
+}
 
 function getPhotoUrl(user = {}) {
   return avatarUrl(user);
@@ -251,6 +257,7 @@ export default function NavBar() {
       : "";
   const loginPath = pathWithCamp(slug, "/login");
   const createAccountPath = pathWithCamp(slug, "/create-account");
+  const homePath = pathWithCamp(slug, isAuthenticated ? "/home" : "/");
   const loggedOutLandingPath = nativeApp
     ? pathWithCamp(rememberedTenantSlug || slug, "/login")
     : pathWithCamp(slug, demoAccessEnabled ? "/" : "/login");
@@ -632,9 +639,12 @@ export default function NavBar() {
     >
       <div className="navbar2-left">
         <Link
-          to={pathWithCamp(slug, isAuthenticated ? "/home" : "/")}
+          to={homePath}
           className="navbar2-logoLink"
           aria-label="Go to Home"
+          onPointerEnter={() => preloadRouteForPath(homePath)}
+          onFocus={() => preloadRouteForPath(homePath)}
+          onTouchStart={() => preloadRouteForPath(homePath)}
         >
           {logoUrl ? (
             <img
@@ -727,9 +737,9 @@ export default function NavBar() {
             {!demoAccessEnabled ? (
               <button
                 className={`navbar2-auth-btn ${onCreateAccountRoute ? "is-current" : ""}`.trim()}
-                onPointerEnter={preloadFullAuthRuntime}
-                onFocus={preloadFullAuthRuntime}
-                onTouchStart={preloadFullAuthRuntime}
+                onPointerEnter={() => preloadAuthDestination(createAccountPath)}
+                onFocus={() => preloadAuthDestination(createAccountPath)}
+                onTouchStart={() => preloadAuthDestination(createAccountPath)}
                 onClick={() => {
                   if (!onCreateAccountRoute) navigate(createAccountPath);
                 }}
@@ -740,9 +750,9 @@ export default function NavBar() {
             ) : null}
             <button
               className={`navbar2-auth-btn secondary ${onLoginRoute ? "is-current" : ""}`.trim()}
-              onPointerEnter={preloadFullAuthRuntime}
-              onFocus={preloadFullAuthRuntime}
-              onTouchStart={preloadFullAuthRuntime}
+              onPointerEnter={() => preloadAuthDestination(loginPath)}
+              onFocus={() => preloadAuthDestination(loginPath)}
+              onTouchStart={() => preloadAuthDestination(loginPath)}
               onClick={() => {
                 if (!onLoginRoute) navigate(loginPath);
               }}
@@ -803,6 +813,15 @@ export default function NavBar() {
                         {section.items.map((item) => (
                           <button
                             key={item.id}
+                            onPointerEnter={() => {
+                              if (!item.href) preloadRouteForPath(item.to);
+                            }}
+                            onFocus={() => {
+                              if (!item.href) preloadRouteForPath(item.to);
+                            }}
+                            onTouchStart={() => {
+                              if (!item.href) preloadRouteForPath(item.to);
+                            }}
                             onClick={() => {
                               closeMenus();
                               if (item.href) {

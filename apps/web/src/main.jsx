@@ -2,11 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import App from "./App.jsx";
-import { PublicAuthProvider } from "./context/AuthContext.jsx";
+import { PublicAuthProvider, SessionSnapshotAuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import { AssetUpdateNotice } from "./components/AssetUpdateNotice.jsx";
 import { clerkSdkEnabled } from "./lib/authMode.js";
 import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
+import { canonicalTenantUrlForPreview } from "./lib/domain.js";
 import { API_BASE } from "./lib/http.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { loadFullAuthRuntime } from "./lib/authRuntimePreload.js";
@@ -77,11 +79,11 @@ function isPublicLandingPath(pathname = "") {
 function AuthRuntimeBoundary() {
   const location = useLocation();
   const cachedAuth = readAuthFromStorage();
+  const hasSessionSnapshot = Boolean(cachedAuth.token && cachedAuth.user);
   const canDeferClerk =
     clerkSdkEnabled() &&
     isPublicLandingPath(location.pathname) &&
-    !cachedAuth.token &&
-    !cachedAuth.user;
+    !hasSessionSnapshot;
   if (canDeferClerk) {
     return (
       <PublicAuthProvider>
@@ -93,12 +95,13 @@ function AuthRuntimeBoundary() {
   return (
     <React.Suspense
       fallback={
-        <section className="app-status-shell">
-          <div className="app-status-card">
-            <h1>Opening PondBridge...</h1>
-            <p>Loading your secure session.</p>
-          </div>
-        </section>
+        hasSessionSnapshot ? (
+          <SessionSnapshotAuthProvider auth={cachedAuth}>
+            <App />
+          </SessionSnapshotAuthProvider>
+        ) : (
+          <AppTransitionShell />
+        )
       }
     >
       <FullAuthRuntime>
@@ -117,10 +120,15 @@ const baseTree = (
   </>
 );
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <ErrorBoundary level="app">
-      {baseTree}
-    </ErrorBoundary>
-  </React.StrictMode>
-);
+const canonicalPreviewUrl = canonicalTenantUrlForPreview();
+if (canonicalPreviewUrl && canonicalPreviewUrl !== window.location.href) {
+  window.location.replace(canonicalPreviewUrl);
+} else {
+  ReactDOM.createRoot(document.getElementById("root")).render(
+    <React.StrictMode>
+      <ErrorBoundary level="app">
+        {baseTree}
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+}

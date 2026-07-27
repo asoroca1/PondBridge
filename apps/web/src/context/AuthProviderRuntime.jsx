@@ -293,9 +293,10 @@ function LegacyAuthProvider({ children }) {
       ? normalizeScopedUserShape(initial.user, { tenantSlug: initialTenantSlug })
       : null
   );
-  const [sessionReady, setSessionReady] = useState(
-    () => !(hydrateLegacySession && !mismatchedCachedSession && Boolean(initial.token))
-  );
+  // A same-tab cached session can render immediately while its server
+  // verification finishes in the background. Invalid sessions are still
+  // cleared by refreshSession and routed to sign-in.
+  const [sessionReady, setSessionReady] = useState(true);
   const bootstrapCompleteRef = useRef(false);
 
   useEffect(() => {
@@ -506,6 +507,12 @@ function ClerkBackedAuthProvider({ children }) {
     shouldHydrate &&
     Boolean(cachedAuth.token) &&
     !cachedSessionMatchesTenant(cachedAuth.user, initialTenantSlug);
+  const hasHydratedSessionSnapshot = Boolean(
+    shouldHydrate &&
+    !mismatchedCachedSession &&
+    cachedAuth.token &&
+    cachedAuth.user
+  );
   const [token, setToken] = useState(() =>
     shouldHydrate && !mismatchedCachedSession ? readSessionToken() : ""
   );
@@ -514,7 +521,7 @@ function ClerkBackedAuthProvider({ children }) {
       ? normalizeScopedUserShape(cachedAuth.user, { tenantSlug: initialTenantSlug })
       : null
   );
-  const [sessionRefreshing, setSessionRefreshing] = useState(true);
+  const [sessionRefreshing, setSessionRefreshing] = useState(() => !hasHydratedSessionSnapshot);
   const [sessionWarningMinutes, setSessionWarningMinutes] = useState(0);
   // Tracks bootstrap-level auth errors (e.g. 401 from /api/auth/session)
   // so login pages can detect the failure and avoid auto-redirect loops.
@@ -1112,7 +1119,9 @@ function ClerkBackedAuthProvider({ children }) {
       token,
       user,
       isAuthenticated: Boolean(token || (isSignedIn && user?.id)),
-      isReady: (Boolean(isLoaded) || clerkLoadTimedOut) && !sessionRefreshing,
+      isReady:
+        hasHydratedSessionSnapshot ||
+        ((Boolean(isLoaded) || clerkLoadTimedOut) && !sessionRefreshing),
       authProvider: AUTH_PROVIDER,
       authConfigError: "",
       bootstrapError,
@@ -1132,7 +1141,7 @@ function ClerkBackedAuthProvider({ children }) {
         writeAuthToStorage(token || "", normalized);
       }
     }),
-    [bootstrapError, clerkLoadTimedOut, dismissSessionWarning, getAuthToken, isLoaded, login, logout, refreshSession, retryBootstrap, sessionRefreshing, sessionWarningMinutes, token, user]
+    [bootstrapError, clerkLoadTimedOut, dismissSessionWarning, getAuthToken, hasHydratedSessionSnapshot, isLoaded, login, logout, refreshSession, retryBootstrap, sessionRefreshing, sessionWarningMinutes, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
