@@ -32,6 +32,54 @@ function memberProfileId(item = {}) {
   return String(item.id || item._id || item.profileId || item.userId || "").trim();
 }
 
+function memberAvatarUrl(item = {}) {
+  return String(item.photoUrl || item.avatarUrl || item?.uploads?.photoUrl || "").trim();
+}
+
+function memberInitials(item = {}) {
+  return memberName(item)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+}
+
+function recommendationDescription(item = {}) {
+  const kind = String(item?.recommendation?.kind || "").trim();
+  const label = String(item?.recommendation?.label || "").trim().toLowerCase();
+  if (kind === "recent_member") return "Recently joined the community";
+  if (kind === "shared_profile" && label.includes("strong")) {
+    return "You have several things in common";
+  }
+  if (kind === "shared_profile") return "You have a few things in common";
+  return "Camp community member";
+}
+
+function searchResultDescription(item = {}) {
+  const currentCompany = String(item?.currentJobs?.[0]?.company || "").trim();
+  const details = [
+    String(item.roleAtCamp || "").trim(),
+    String(item.cityState || "").trim(),
+    currentCompany || String(item.industry || "").trim()
+  ].filter(Boolean);
+  return details.slice(0, 2).join(" · ") || "Camp community member";
+}
+
+function memberResultLink({ item, slug, description }) {
+  const id = memberProfileId(item);
+  if (!id) return null;
+  return {
+    presentation: "profile",
+    label: memberName(item),
+    description,
+    initials: memberInitials(item),
+    imageUrl: memberAvatarUrl(item),
+    href: tenantRoute(slug, `/profile/${id}`)
+  };
+}
+
 export function memberDiscoveryIntent(question = "") {
   const normalized = normalizedQuestion(question);
   if (
@@ -56,15 +104,13 @@ export function buildSuggestionAnswer({ data, slug }) {
     (item) => item?.recommendation?.kind === "shared_profile"
   );
   const links = items
-    .map((item) => {
-      const id = memberProfileId(item);
-      if (!id) return null;
-      const context = String(item?.recommendation?.label || "").trim();
-      return {
-        label: context ? `${memberName(item)} · ${context}` : memberName(item),
-        href: tenantRoute(slug, `/profile/${id}`)
-      };
-    })
+    .map((item) =>
+      memberResultLink({
+        item,
+        slug,
+        description: recommendationDescription(item)
+      })
+    )
     .filter(Boolean)
     .slice(0, 6);
 
@@ -80,13 +126,12 @@ export function buildSuggestionAnswer({ data, slug }) {
 
   return {
     content: mode === "recent"
-      ? "Here are some of the newest active members in your camp community:"
+      ? "These members recently joined the community."
       : hasSharedProfileMatch
-        ? "Here are private, camp-scoped reconnection suggestions ranked from shared profile signals:"
-        : "I couldn’t find strong shared profile signals yet, so here are some of the newest active members you could welcome or get to know:",
+        ? "Here are a few people you may want to reconnect with."
+        : "I couldn’t find close profile matches yet, but these newer members could be good people to welcome.",
     links,
-    disclaimer:
-      "PondBridge ranked active members inside this camp and excluded blocked connections. No member records were sent to an AI provider, and no message was sent."
+    disclaimer: "Private to this camp · Blocked connections excluded · Nothing was sent"
   };
 }
 
@@ -181,10 +226,13 @@ function buildSearchAnswer({ data, slug }) {
   const items = Array.isArray(data?.items) ? data.items : [];
   const total = Number.isFinite(data?.total) ? data.total : items.length;
   const links = items
-    .map((item) => {
-      const id = memberProfileId(item);
-      return id ? { label: memberName(item), href: tenantRoute(slug, `/profile/${id}`) } : null;
-    })
+    .map((item) =>
+      memberResultLink({
+        item,
+        slug,
+        description: searchResultDescription(item)
+      })
+    )
     .filter(Boolean)
     .slice(0, 6);
 
@@ -203,8 +251,8 @@ function buildSearchAnswer({ data, slug }) {
     ],
     disclaimer:
       data?.mode === "ai"
-        ? "AI interpreted the request; PondBridge performed the private, camp-scoped search."
-        : "Guided search interpreted the request without sending member records to an AI provider."
+        ? "AI interpreted your request · Results stayed private to this camp"
+        : "Private camp search · Nothing was sent"
   };
 }
 
@@ -338,6 +386,7 @@ export default function MemberCampAiPage() {
             <strong>Your camp stays private.</strong> For member searches, AI receives only your search sentence and generic camp role labels—never profiles, results, email addresses, or phone numbers. Answers cannot send messages or change anything.
           </>
         }
+        boundaryLabel="Private by design"
         messages={messages}
         responseRef={responseRef}
         busy={asking}
@@ -353,7 +402,7 @@ export default function MemberCampAiPage() {
           onQuestionChange: setQuestion,
           onSubmit: ask,
           onStarterSelect: submitQuestion,
-          starters: MEMBER_STARTERS,
+          starters: messages.length ? [] : MEMBER_STARTERS,
           label: `Message ${aiName}`,
           placeholder: "Ask about people, events, messages, photos, or your profile…",
           privacyNote: "Do not enter passwords, access codes, payment details, or emergency information.",

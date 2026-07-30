@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
+import { AgentConversation } from "../components/agent/AgentWorkspace.jsx";
 import { buildDirectorGuidedAnswer } from "../pages/DirectorOnboardingAgentPage.jsx";
 import {
   buildMemberGuideAnswer,
@@ -171,15 +174,19 @@ describe("member camp AI guided mode", () => {
       }
     });
 
-    expect(answer.content).toContain("reconnection suggestions");
+    expect(answer.content).toContain("people you may want to reconnect with");
     expect(answer.links).toEqual([
       {
-        label: "Jamie Campbell · Shared profile signals",
+        presentation: "profile",
+        label: "Jamie Campbell",
+        description: "You have a few things in common",
+        initials: "JC",
+        imageUrl: "",
         href: "/t/cedar/profile/member-1"
       }
     ]);
-    expect(answer.disclaimer).toContain("excluded blocked connections");
-    expect(answer.disclaimer).toContain("No member records were sent");
+    expect(answer.disclaimer).toContain("Blocked connections excluded");
+    expect(answer.disclaimer).toContain("Nothing was sent");
   });
 
   it("labels fallback reconnection results truthfully when no shared signal exists", () => {
@@ -198,9 +205,60 @@ describe("member camp AI guided mode", () => {
       }
     });
 
-    expect(answer.content).toContain("couldn’t find strong shared profile signals");
-    expect(answer.content).toContain("newest active members");
-    expect(answer.content).not.toContain("ranked from shared profile signals");
+    expect(answer.content).toContain("couldn’t find close profile matches");
+    expect(answer.content).toContain("newer members");
+    expect(answer.content).not.toContain("shared profile signals");
+    expect(answer.links[0].description).toBe("Recently joined the community");
+  });
+
+  it("renders member recommendations as profile cards instead of result pills", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AgentConversation
+          assistantName="Cedar AI"
+          messages={[
+            {
+              id: "answer-1",
+              role: "assistant",
+              author: "Cedar AI",
+              content: "Here are a few people you may want to reconnect with.",
+              links: [
+                {
+                  presentation: "profile",
+                  label: "Jamie Campbell",
+                  description: "You have profile details in common",
+                  initials: "JC",
+                  href: "/t/cedar/profile/member-1"
+                }
+              ],
+              disclaimer: "Private to this camp · Nothing was sent"
+            }
+          ]}
+        />
+      </MemoryRouter>
+    );
+
+    expect(html).toContain("agent-profile-results");
+    expect(html).toContain("agent-profile-result");
+    expect(html).toContain("You have profile details in common");
+    expect(html).toContain("Private to this camp");
+    expect(html).not.toContain("Jamie Campbell ·");
+  });
+
+  it("shows a repeated trust message only on the latest matching answer", () => {
+    const trustMessage = "Private to this camp · Nothing was sent";
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AgentConversation
+          messages={[
+            { id: "answer-1", role: "assistant", content: "First answer", disclaimer: trustMessage },
+            { id: "answer-2", role: "assistant", content: "Second answer", disclaimer: trustMessage }
+          ]}
+        />
+      </MemoryRouter>
+    );
+
+    expect(html.match(/Private to this camp/g)).toHaveLength(1);
   });
 });
 

@@ -1,25 +1,74 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, Textarea } from "@pondbridge/ui";
-import { ArrowDown, ArrowUp, Sparkles } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, ShieldCheck, Sparkles } from "lucide-react";
 import "./agent-workspace.css";
+
+function resultInitials(label = "") {
+  return String(label || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+}
 
 function MessageLinks({ links = [], onEvidenceClick = null }) {
   const safeLinks = Array.isArray(links) ? links.filter((item) => item?.href && item?.label) : [];
   if (!safeLinks.length) return null;
+  const profileLinks = safeLinks.filter((item) => item.presentation === "profile");
+  const actionLinks = safeLinks.filter((item) => item.presentation !== "profile");
 
   return (
-    <div className="agent-message-links" aria-label="Related camp links">
-      {safeLinks.map((item) => (
-        <Link
-          key={`${item.href}:${item.label}`}
-          to={item.href}
-          onClick={() => onEvidenceClick?.(item)}
-        >
-          {item.label}
-        </Link>
-      ))}
-    </div>
+    <>
+      {profileLinks.length ? (
+        <div className="agent-profile-results" aria-label="Member recommendations">
+          {profileLinks.map((item) => (
+            <Link
+              key={`${item.href}:${item.label}`}
+              className="agent-profile-result"
+              to={item.href}
+              onClick={() => onEvidenceClick?.(item)}
+              aria-label={`${item.label}${item.description ? `, ${item.description}` : ""}, view profile`}
+            >
+              <span className="agent-profile-avatar" aria-hidden="true">
+                {item.initials || resultInitials(item.label)}
+                {item.imageUrl ? (
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.hidden = true;
+                    }}
+                  />
+                ) : null}
+              </span>
+              <span className="agent-profile-copy">
+                <strong>{item.label}</strong>
+                {item.description ? <small>{item.description}</small> : null}
+              </span>
+              <ChevronRight className="agent-profile-arrow" size={17} aria-hidden="true" />
+            </Link>
+          ))}
+        </div>
+      ) : null}
+      {actionLinks.length ? (
+        <div className="agent-message-links" aria-label="Related camp links">
+          {actionLinks.map((item) => (
+            <Link
+              key={`${item.href}:${item.label}`}
+              to={item.href}
+              onClick={() => onEvidenceClick?.(item)}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -35,6 +84,10 @@ export function AgentConversation({
   const scrollRef = useRef(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const isBrief = messages.length <= 1 && !busy;
+  const latestDisclaimerIndex = new Map();
+  messages.forEach((message, index) => {
+    if (message?.disclaimer) latestDisclaimerIndex.set(message.disclaimer, index);
+  });
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -76,6 +129,9 @@ export function AgentConversation({
           const isLatestAssistant =
             message.role === "assistant" &&
             !messages.slice(index + 1).some((candidate) => candidate.role === "assistant");
+          const shouldShowDisclaimer =
+            Boolean(message.disclaimer) &&
+            latestDisclaimerIndex.get(message.disclaimer) === index;
           return (
             <article
               key={message.id}
@@ -84,11 +140,17 @@ export function AgentConversation({
               className={`agent-message agent-message-${message.role}`}
             >
               <p className="agent-message-label">
-                {message.role === "user" ? "You" : message.author || assistantName}
+                {message.role === "assistant" ? <Sparkles size={13} aria-hidden="true" /> : null}
+                <span>{message.role === "user" ? "You" : message.author || assistantName}</span>
               </p>
               <div className="agent-message-content">{message.content}</div>
               <MessageLinks links={message.links} onEvidenceClick={onEvidenceClick} />
-              {message.disclaimer ? <small className="agent-message-disclaimer">{message.disclaimer}</small> : null}
+              {shouldShowDisclaimer ? (
+                <small className="agent-message-disclaimer">
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  <span>{message.disclaimer}</span>
+                </small>
+              ) : null}
             </article>
           );
         })}
@@ -214,7 +276,8 @@ export default function AgentWorkspace({
   variant = "workspace",
   assistantName = "Camp AI",
   emptyState = null,
-  thinkingLabel = ""
+  thinkingLabel = "",
+  boundaryLabel = "Safety, privacy & agent limits"
 }) {
   const hasRail = Boolean(rail);
   return (
@@ -232,7 +295,10 @@ export default function AgentWorkspace({
         </header>
         {boundary ? (
           <details className="agent-boundary">
-            <summary>Safety, privacy &amp; agent limits</summary>
+            <summary>
+              <ShieldCheck size={15} aria-hidden="true" />
+              <span>{boundaryLabel}</span>
+            </summary>
             <div className="agent-boundary-copy">{boundary}</div>
           </details>
         ) : null}
