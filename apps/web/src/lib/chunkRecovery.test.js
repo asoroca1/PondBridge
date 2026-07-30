@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  attemptAutomaticChunkRecovery,
   CHUNK_UPDATE_EVENT,
+  cleanChunkRecoveryUrl,
   installChunkRecoveryListeners,
   isLikelyMissingChunkError,
   loadLatestBuild,
@@ -12,6 +14,8 @@ function createWindowStub() {
   const listeners = new Map();
   const storage = new Map();
   const assign = vi.fn();
+  const replace = vi.fn();
+  const replaceState = vi.fn();
 
   return {
     __PONDBRIDGE_BUILD__: "test-build",
@@ -20,7 +24,12 @@ function createWindowStub() {
       pathname: "/t/camp/home",
       search: "?view=feed",
       hash: "#latest",
-      assign
+      assign,
+      replace
+    },
+    history: {
+      state: { source: "test" },
+      replaceState
     },
     sessionStorage: {
       getItem: (key) => storage.get(key) || null,
@@ -50,11 +59,12 @@ function createWindowStub() {
 
 describe("chunk update stability", () => {
   beforeEach(() => {
-    globalThis.window = createWindowStub();
+    vi.stubGlobal("window", createWindowStub());
+    vi.stubGlobal("navigator", { onLine: true });
   });
 
   afterEach(() => {
-    delete globalThis.window;
+    vi.unstubAllGlobals();
   });
 
   it("recognizes lazy asset failures without treating ordinary network errors as chunks", () => {
@@ -82,6 +92,47 @@ describe("chunk update stability", () => {
 
     expect(readChunkUpdateNotice()).toBeTruthy();
     expect(window.assign).not.toHaveBeenCalled();
+    expect(window.location.replace).not.toHaveBeenCalled();
+  });
+
+  it("automatically recovers an actively rendered stale route once", () => {
+    const error = new Error("Importing a module script failed");
+
+    expect(attemptAutomaticChunkRecovery(error)).toBe(true);
+    expect(window.location.replace).toHaveBeenCalledTimes(1);
+    expect(window.location.replace.mock.calls[0][0]).toContain(
+      "/t/camp/home?view=feed&pb_update="
+    );
+    expect(window.location.replace.mock.calls[0][0]).toContain("#latest");
+
+    expect(attemptAutomaticChunkRecovery(error)).toBe(false);
+    expect(window.location.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not automatically reload an offline screen", () => {
+    vi.stubGlobal("navigator", { onLine: false });
+
+    expect(
+      attemptAutomaticChunkRecovery(
+        new Error("Failed to fetch dynamically imported module")
+      )
+    ).toBe(false);
+    expect(readChunkUpdateNotice()).toBeTruthy();
+    expect(window.location.replace).not.toHaveBeenCalled();
+  });
+
+  it("cleans the temporary recovery parameter without navigating", () => {
+    window.location.href =
+      "https://app.pondbridgealumni.com/t/camp/home?view=feed&pb_update=123#latest";
+
+    cleanChunkRecoveryUrl();
+
+    expect(window.history.replaceState).toHaveBeenCalledWith(
+      { source: "test" },
+      "",
+      "/t/camp/home?view=feed#latest"
+    );
+    expect(window.location.replace).not.toHaveBeenCalled();
   });
 
   it("loads the latest build only after an explicit action", () => {

@@ -11,7 +11,7 @@ import { resolveCampName } from "./lib/campLabels.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { readAuthFromStorage } from "./lib/storage.js";
-import { recoverFromMissingChunk } from "./lib/chunkRecovery.js";
+import { attemptAutomaticChunkRecovery } from "./lib/chunkRecovery.js";
 import {
   installRouteIntentPreloading,
   preloadAuthenticatedCoreRoutes
@@ -20,9 +20,11 @@ import {
 function lazyPage(loader) {
   return lazy(() =>
     loader().catch((error) => {
-      // Report the stale asset, but never navigate or reload automatically.
-      // The route boundary and global notice offer a user-controlled update.
-      recoverFromMissingChunk(error);
+      // An actively requested route can recover once from a stale deployment
+      // without turning background prefetch failures into random refreshes.
+      if (attemptAutomaticChunkRecovery(error)) {
+        return new Promise(() => {});
+      }
       throw error;
     })
   );
