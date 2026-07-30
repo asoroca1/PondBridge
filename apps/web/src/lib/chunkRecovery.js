@@ -1,7 +1,10 @@
 const CHUNK_UPDATE_EVENT = "pondbridge:asset-update-required";
 const CHUNK_UPDATE_KEY_PREFIX = "pondbridge_chunk_update_required";
+const CHUNK_AUTO_RECOVERY_KEY_PREFIX = "pondbridge_chunk_auto_recovery";
 const CHUNK_UPDATE_PARAM = "pb_update";
 const LISTENER_FLAG = "__PONDBRIDGE_CHUNK_LISTENERS_INSTALLED__";
+const NAVIGATION_FLAG = "__PONDBRIDGE_CHUNK_RECOVERY_NAVIGATING__";
+const AUTO_RECOVERY_WINDOW_MS = 5 * 60 * 1000;
 
 function getBuildMarker() {
   if (typeof window === "undefined") return "server";
@@ -10,6 +13,10 @@ function getBuildMarker() {
 
 function getUpdateStorageKey() {
   return `${CHUNK_UPDATE_KEY_PREFIX}:${getBuildMarker()}`;
+}
+
+function getAutoRecoveryStorageKey() {
+  return `${CHUNK_AUTO_RECOVERY_KEY_PREFIX}:${getBuildMarker()}`;
 }
 
 function extractErrorMessage(value) {
@@ -31,6 +38,47 @@ function writeUpdateNotice(notice) {
     window.sessionStorage.setItem(getUpdateStorageKey(), JSON.stringify(notice));
   } catch {
     // The in-memory event below still keeps the active screen informed.
+  }
+}
+
+function latestBuildUrl(timestamp = Date.now()) {
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set(CHUNK_UPDATE_PARAM, String(timestamp));
+  return nextUrl;
+}
+
+function hasRecentAutoRecoveryAttempt(now = Date.now()) {
+  try {
+    const attemptedAt = Number(
+      window.sessionStorage.getItem(getAutoRecoveryStorageKey()) || 0
+    );
+    if (
+      Number.isFinite(attemptedAt) &&
+      attemptedAt > 0 &&
+      Math.abs(now - attemptedAt) < AUTO_RECOVERY_WINDOW_MS
+    ) {
+      return true;
+    }
+  } catch {
+    // The URL marker below still prevents a reload loop when storage is blocked.
+  }
+
+  try {
+    return new URL(window.location.href).searchParams.has(CHUNK_UPDATE_PARAM);
+  } catch {
+    return false;
+  }
+}
+
+function markAutoRecoveryAttempt(attemptedAt) {
+  window[NAVIGATION_FLAG] = true;
+  try {
+    window.sessionStorage.setItem(
+      getAutoRecoveryStorageKey(),
+      String(attemptedAt)
+    );
+  } catch {
+    // Best effort; the recovery URL also carries a loop-prevention marker.
   }
 }
 
@@ -89,13 +137,74 @@ export function recoverFromMissingChunk(errorLike) {
   return true;
 }
 
+/**
+ * Recovers once when an actively rendered lazy route is no longer present in
+ * the current deployment. Background listeners deliberately do not call this,
+ * so prefetch failures cannot cause surprise page refreshes.
+ */
+export function attemptAutomaticChunkRecovery(errorLike) {
+  if (
+    typeof window === "undefined" ||
+    !isLikelyMissingChunkError(errorLike)
+  ) {
+    return false;
+  }
+
+  recoverFromMissingChunk(errorLike);
+
+  if (
+    window[NAVIGATION_FLAG] ||
+    globalThis.navigator?.onLine === false
+  ) {
+    return false;
+  }
+
+  const attemptedAt = Date.now();
+  if (hasRecentAutoRecoveryAttempt(attemptedAt)) return false;
+
+  const nextUrl = latestBuildUrl(attemptedAt);
+  markAutoRecoveryAttempt(attemptedAt);
+
+  if (typeof window.location.replace === "function") {
+    window.location.replace(nextUrl.toString());
+    return true;
+  }
+  if (typeof window.location.assign === "function") {
+    window.location.assign(nextUrl.toString());
+    return true;
+  }
+
+  window[NAVIGATION_FLAG] = false;
+  return false;
+}
+
 /** Only call from an explicit user action. */
 export function loadLatestBuild() {
   if (typeof window === "undefined") return;
   dismissChunkUpdateNotice();
-  const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.set(CHUNK_UPDATE_PARAM, String(Date.now()));
+  const nextUrl = latestBuildUrl();
   window.location.assign(nextUrl.toString());
+}
+
+/**
+ * Removes the temporary cache-busting query parameter after the replacement
+ * entry bundle has loaded, without adding another history entry.
+ */
+export function cleanChunkRecoveryUrl() {
+  if (typeof window === "undefined") return;
+
+  let currentUrl;
+  try {
+    currentUrl = new URL(window.location.href);
+  } catch {
+    return;
+  }
+  if (!currentUrl.searchParams.has(CHUNK_UPDATE_PARAM)) return;
+
+  dismissChunkUpdateNotice();
+  currentUrl.searchParams.delete(CHUNK_UPDATE_PARAM);
+  const cleanUrl = `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`;
+  window.history?.replaceState?.(window.history.state, "", cleanUrl);
 }
 
 export function installChunkRecoveryListeners() {

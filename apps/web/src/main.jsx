@@ -7,7 +7,11 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import { AssetUpdateNotice } from "./components/AssetUpdateNotice.jsx";
 import { clerkSdkEnabled } from "./lib/authMode.js";
-import { installChunkRecoveryListeners } from "./lib/chunkRecovery.js";
+import {
+  attemptAutomaticChunkRecovery,
+  cleanChunkRecoveryUrl,
+  installChunkRecoveryListeners
+} from "./lib/chunkRecovery.js";
 import { canonicalTenantUrlForPreview } from "./lib/domain.js";
 import { API_BASE } from "./lib/http.js";
 import { readAuthFromStorage } from "./lib/storage.js";
@@ -32,6 +36,7 @@ const inferredBuildMarker = (() => {
 })();
 window.__PONDBRIDGE_BUILD__ = inferredBuildMarker;
 installChunkRecoveryListeners();
+cleanChunkRecoveryUrl();
 
 function warmApiConnection() {
   if (typeof document === "undefined" || typeof window === "undefined") return;
@@ -69,7 +74,14 @@ function warmApiConnection() {
 
 warmApiConnection();
 
-const FullAuthRuntime = React.lazy(loadFullAuthRuntime);
+const FullAuthRuntime = React.lazy(() =>
+  loadFullAuthRuntime().catch((error) => {
+    if (attemptAutomaticChunkRecovery(error)) {
+      return new Promise(() => {});
+    }
+    throw error;
+  })
+);
 
 function isPublicLandingPath(pathname = "") {
   const normalizedPath = String(pathname || "/").replace(/\/+$/, "") || "/";
