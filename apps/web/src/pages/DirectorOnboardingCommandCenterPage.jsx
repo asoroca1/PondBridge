@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, PageShell, SectionTitle } from "@pondbridge/ui";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -165,9 +165,8 @@ function readableTextColorOnBrand(brandHex = "#002b5c") {
 }
 
 export default function DirectorOnboardingCommandCenterPage() {
-  const { slug } = useParams();
   const { token } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const alumniWord = resolveAlumniWord(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const networkDisplayName = resolveNetworkDisplayName(tenant);

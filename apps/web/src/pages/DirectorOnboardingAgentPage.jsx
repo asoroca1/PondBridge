@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, PageShell, Select } from "@pondbridge/ui";
 import AgentWorkspace from "../components/agent/AgentWorkspace.jsx";
 import { ModalDialog } from "../components/admin/AdminUi.jsx";
@@ -228,11 +228,10 @@ export function buildDirectorGuidedAnswer({ question, payload, billing, dashboar
 }
 
 export default function DirectorOnboardingAgentPage() {
-  const { slug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { token } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, slug } = useTenant();
   const responseRef = useRef(null);
   const workspaceTrackedRef = useRef(false);
 
