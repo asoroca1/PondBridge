@@ -1,11 +1,12 @@
 import { useMemo } from "react";
-import { CalendarDays, Home, Image, MessageSquare, Search, Bell, Shield, TreePine, User } from "lucide-react";
+import { CalendarDays, Home, Image, MessageSquare, Sparkles, Bell, Shield, TreePine, User } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { useMobileNotifications } from "../context/MobileNotificationsContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
+import { resolveCampAiName } from "../lib/campLabels.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 
 function tenantRelativePath(pathname = "") {
@@ -40,7 +41,6 @@ export default function NativeMemberTabBar() {
     }),
     [configModules]
   );
-  const canSearch = modules.search !== false;
   const canChat = modules.chat !== false;
   const canEvents = modules.events !== false;
   const canPhotos = modules.photoStream !== false;
@@ -51,6 +51,7 @@ export default function NativeMemberTabBar() {
       .filter(Boolean)
   );
   const isCampDirector = roles.has("tenant_admin") || roles.has("admin");
+  const aiName = resolveCampAiName(tenant);
 
   const tabs = useMemo(() => {
     const nextTabs = [
@@ -63,15 +64,14 @@ export default function NativeMemberTabBar() {
       }
     ];
 
-    if (canSearch) {
-      nextTabs.push({
-        id: "search",
-        label: "Search",
-        icon: Search,
-        to: tenantRoute(slug, "/search"),
-        matchers: ["/search", "/search-results", /^\/profile\/[^/]+$/]
-      });
-    }
+    nextTabs.push({
+      id: "camp-ai",
+      label: "AI",
+      accessibilityLabel: aiName,
+      icon: Sparkles,
+      to: tenantRoute(slug, "/ai"),
+      matchers: ["/ai"]
+    });
 
     if (canChat) {
       nextTabs.push({
@@ -143,7 +143,7 @@ export default function NativeMemberTabBar() {
     }
 
     return nextTabs;
-  }, [canChat, canEvents, canFamilyTrees, canPhotos, canSearch, isCampDirector, slug, unreadCount]);
+  }, [aiName, canChat, canEvents, canFamilyTrees, canPhotos, isCampDirector, slug, unreadCount]);
 
   return (
     <nav className="native-member-tabbar" aria-label="App navigation">
@@ -157,6 +157,7 @@ export default function NativeMemberTabBar() {
               type="button"
               className={`native-member-tabbar-item ${active ? "is-active" : ""}`.trim()}
               aria-current={active ? "page" : undefined}
+              aria-label={tab.accessibilityLabel}
               onClick={() => navigate(tab.to)}
             >
               <span className="native-member-tabbar-icon-wrap">

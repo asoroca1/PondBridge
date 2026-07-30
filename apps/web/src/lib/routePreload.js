@@ -5,6 +5,7 @@ const ROUTE_PRELOADERS = Object.freeze({
   login: () => import("../cedar/pages/Login.jsx"),
   createAccount: () => import("../cedar/pages/CreateProfileWizard.jsx"),
   home: () => import("../cedar/pages/MainHome.jsx"),
+  campAi: () => import("../pages/MemberCampAiPage.jsx"),
   profile: () => import("../cedar/pages/MyProfile.jsx"),
   publicProfile: () => import("../cedar/pages/PublicProfile.jsx"),
   editProfile: () => import("../cedar/pages/EditProfile.jsx"),
@@ -34,6 +35,7 @@ export function routePreloadKey(pathname = "") {
   if (path === "/login") return "login";
   if (path === "/create-account") return "createAccount";
   if (path === "/home") return "home";
+  if (path === "/ai") return "campAi";
   if (path === "/my-profile") return "profile";
   if (/^\/profile\/[^/]+$/i.test(path)) return "publicProfile";
   if (path === "/edit-profile") return "editProfile";

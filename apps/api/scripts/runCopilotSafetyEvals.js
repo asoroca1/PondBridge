@@ -17,6 +17,12 @@ const evalCases = JSON.parse(
   fs.readFileSync(new URL("../evals/copilot-safety-cases.json", import.meta.url), "utf8")
 );
 const MUTATING_TOOL_NAME = /^(?:create|update|delete|send|execute|approve|deny|launch|charge|refund|retry|provision|reset|close)(?:_|$)/i;
+const EXPECTED_DIRECTOR_TOOLS = [
+  "get_launch_readiness",
+  "get_director_action_queue",
+  "get_community_overview",
+  "explain_admin_screen"
+];
 
 function requireCondition(condition, message) {
   if (!condition) throw new Error(message);
@@ -44,7 +50,10 @@ function runOfflineContracts() {
 
   const directorTools = buildDirectorCopilotTools();
   directorTools.forEach((tool) => validateStrictTool(tool));
-  requireCondition(directorTools.length === 3, "Director Copilot must expose exactly three v1 tools");
+  requireCondition(
+    JSON.stringify(directorTools.map((tool) => tool.name)) === JSON.stringify(EXPECTED_DIRECTOR_TOOLS),
+    "Director Copilot tools must exactly match the reviewed read-only v1.1 contract"
+  );
 
   for (const role of ["super_admin", "support_admin", "finance_admin"]) {
     const tools = buildSuperCopilotTools(role);

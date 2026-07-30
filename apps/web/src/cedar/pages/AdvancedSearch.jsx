@@ -21,7 +21,7 @@ import {
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { requestJson } from "../../lib/http.js";
-import { resolveAlumniWord, resolveStaffRoleOptions } from "../../lib/campLabels.js";
+import { resolveAlumniWord, resolveCampAiName, resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { avatarUrl } from "../lib/helpers.js";
 import CedarBackground from "../components/CedarBackground";
@@ -221,6 +221,7 @@ export function SectionHead({
 
 export default function AdvancedSearch() {
   const { tenant, slug } = useTenant();
+  const aiName = resolveCampAiName(tenant);
   const { token, getAuthToken, isReady: authReady } = useAuth();
   const alumniWord = resolveAlumniWord(tenant);
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
@@ -960,7 +961,7 @@ export default function AdvancedSearch() {
                 <div className="as2-ai-card-head">
                   <span className="as2-ai-icon" aria-hidden="true"><Sparkles size={19} /></span>
                   <div>
-                    <div className="as2-ai-eyebrow">Camp Search AI</div>
+                    <div className="as2-ai-eyebrow">{aiName} search</div>
                     <h2 id="camp-search-ai-title">Ask your camp directory</h2>
                     <p>Describe who you want to reconnect with. We’ll turn it into private, camp-only search filters.</p>
                   </div>

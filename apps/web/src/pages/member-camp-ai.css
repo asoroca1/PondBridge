@@ -1,0 +1,14 @@
+.member-camp-ai-page {
+  width: 100%;
+  padding: calc(var(--page-shell-top, 72px) + clamp(14px, 2vw, 24px)) clamp(18px, 3vw, 34px) clamp(22px, 3vw, 34px);
+}
+
+.member-camp-ai-page .agent-workspace-status .pb-badge {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .member-camp-ai-page {
+    padding: calc(var(--page-shell-top, 68px) + 8px) 0 calc(78px + env(safe-area-inset-bottom, 0px));
+  }
+}

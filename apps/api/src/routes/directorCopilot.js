@@ -53,7 +53,12 @@ router.get("/capabilities", async (req, res, next) => {
       provider: "OpenAI",
       mode: "read_only",
       dataUse: "Requests and minimum aggregate camp context are processed by OpenAI. PondBridge audit records contain hashes and usage metadata, not raw prompts or answers.",
-      tools: ["launch_readiness", "director_action_queue", "admin_screen_guidance"],
+      tools: [
+        "launch_readiness",
+        "director_action_queue",
+        "community_overview",
+        "admin_screen_guidance"
+      ],
       promptVersion: provider.promptVersion,
       toolContractVersion: provider.toolContractVersion
     });

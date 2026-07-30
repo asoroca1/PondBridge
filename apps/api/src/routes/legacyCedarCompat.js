@@ -1157,6 +1157,35 @@ export function buildSuggestionResults({ primaryProfiles = [], fallbackProfiles 
   return items;
 }
 
+export function addSuggestionContext({ items = [], scoredProfiles = [], mode = "personalized" } = {}) {
+  const scoreByProfileId = new Map(
+    (Array.isArray(scoredProfiles) ? scoredProfiles : []).map((item) => [
+      String(item?.profile?._id || item?.profile?.id || ""),
+      Number(item?.score || 0)
+    ])
+  );
+
+  return (Array.isArray(items) ? items : []).map((item) => {
+    const score = Number(scoreByProfileId.get(String(item?.id || item?._id || "")) || 0);
+    if (mode === "recent" || score <= 0) {
+      return {
+        ...item,
+        recommendation: {
+          kind: "recent_member",
+          label: "Recently joined"
+        }
+      };
+    }
+    return {
+      ...item,
+      recommendation: {
+        kind: "shared_profile",
+        label: score >= 8 ? "Strong shared profile signals" : "Shared profile signals"
+      }
+    };
+  });
+}
+
 function activityToClient(item = {}) {
   const ts = item?.ts || item?.createdAt || new Date().toISOString();
   return {
@@ -1817,6 +1846,9 @@ router.get("/search/names", async (req, res) => {
 router.get("/suggestions", async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit || 5), 1), 20);
   const requestedId = String(req.query.forUserId || "").trim();
+  const mode = String(req.query.mode || "").trim().toLowerCase() === "recent"
+    ? "recent"
+    : "personalized";
 
   let targetProfile = null;
 
@@ -1838,7 +1870,10 @@ router.get("/suggestions", async (req, res) => {
     await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
   );
 
-  const candidates = await ProfileModel.find(req.tenant._id, { _id: { $ne: targetProfile._id } }, {
+  const candidates = await ProfileModel.find(req.tenant._id, {
+    _id: { $ne: targetProfile._id },
+    status: "active"
+  }, {
     select: ["id", "userId", "firstName", "lastName", "avatarUrl", "currentJobs", "roleAtCamp", "industry", "cityState", "colleges", "highSchool", "createdAt"],
     limit: 800
   });
@@ -1846,28 +1881,38 @@ router.get("/suggestions", async (req, res) => {
     (candidate) => !blockedUserIds.has(String(candidate?.userId || ""))
   );
 
-  const scored = visibleCandidates
-    .map((candidate) => {
-      const similarity = scoreSimilarity(targetProfile, candidate);
-      return {
-        profile: candidate,
-        score: similarity.score,
-        reasons: similarity.reasons
-      };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return new Date(b.profile.createdAt || 0).getTime() - new Date(a.profile.createdAt || 0).getTime();
-    });
+  const scored = mode === "personalized"
+    ? visibleCandidates
+        .map((candidate) => {
+          const similarity = scoreSimilarity(targetProfile, candidate);
+          return {
+            profile: candidate,
+            score: similarity.score,
+            reasons: similarity.reasons
+          };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return new Date(b.profile.createdAt || 0).getTime() - new Date(a.profile.createdAt || 0).getTime();
+        })
+    : [];
 
-  const items = buildSuggestionResults({
-    primaryProfiles: scored.slice(0, limit).map((item) => item.profile),
+  const rankedItems = buildSuggestionResults({
+    primaryProfiles: mode === "personalized"
+      ? scored.slice(0, limit).map((item) => item.profile)
+      : [],
     fallbackProfiles: visibleCandidates,
     limit
   });
+  const items = addSuggestionContext({ items: rankedItems, scoredProfiles: scored, mode });
 
-  return res.json({ items, forUserId: String(targetProfile._id) });
+  return res.json({
+    items,
+    mode,
+    forUserId: String(targetProfile._id),
+    ranking: mode === "recent" ? "newest_active_profiles" : "private_profile_similarity"
+  });
 });
 
 async function readHomeStatsPayload(tenantId = "") {
