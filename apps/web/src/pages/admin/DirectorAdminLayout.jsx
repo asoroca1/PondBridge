@@ -26,12 +26,13 @@ import {
 } from "lucide-react";
 import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveCampAiName } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 
 const ADMIN_NAV = [
   { type: "label", key: "control-label", label: "Control room" },
   { key: "overview", to: "dashboard", label: "Today", icon: LayoutDashboard },
-  { key: "guide", to: "onboarding", label: "Ask PondBridge", icon: Sparkles },
+  { key: "guide", to: "onboarding", label: "Camp AI", icon: Sparkles },
   { type: "label", key: "people-label", label: "People" },
   { key: "members", to: "members", label: "Members", icon: Users, end: true },
   { key: "growth", to: "growth", label: "Alumni growth", icon: TrendingUp },
@@ -65,6 +66,7 @@ export default function DirectorAdminLayout() {
     location.pathname.includes("/admin/settings/") || location.pathname.endsWith("/admin/features");
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
   const eventsEnabled = isMemberEventsModuleEnabled(tenant?.config?.modules?.events ?? tenant?.modules?.events);
+  const aiName = resolveCampAiName(tenant);
 
   useEffect(() => {
     if (onSettingsRoute) setSettingsOpen(true);
@@ -77,6 +79,7 @@ export default function DirectorAdminLayout() {
       .map((item) => ({
         ...item,
         to: item.key === "guide" && tenant?.slug ? tenantRoute(tenant.slug, "/onboarding") : item.to,
+        label: item.key === "guide" ? aiName : item.label,
         className: item.type === "label" ? "director-admin-sidebar-label" : "director-admin-sidebar-link"
       }));
 
@@ -92,7 +95,7 @@ export default function DirectorAdminLayout() {
     });
 
     return base;
-  }, [demoAccessEnabled, eventsEnabled, onSettingsRoute, settingsOpen, tenant?.slug]);
+  }, [aiName, demoAccessEnabled, eventsEnabled, onSettingsRoute, settingsOpen, tenant?.slug]);
 
   return (
     <section className="pb-cedar-page">

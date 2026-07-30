@@ -24,6 +24,7 @@ describe("director copilot safety contract", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "get_launch_readiness",
       "get_director_action_queue",
+      "get_community_overview",
       "explain_admin_screen"
     ]);
     for (const tool of tools) {

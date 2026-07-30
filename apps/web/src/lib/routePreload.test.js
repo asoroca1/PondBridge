@@ -4,6 +4,7 @@ import { routePreloadKey } from "./routePreload.js";
 describe("route intent preloading", () => {
   it("normalizes tenant-prefixed member destinations", () => {
     expect(routePreloadKey("/t/cedar/home")).toBe("home");
+    expect(routePreloadKey("/t/cedar/ai")).toBe("campAi");
     expect(routePreloadKey("/t/cedar/my-profile")).toBe("profile");
     expect(routePreloadKey("/t/cedar/profile/member-1")).toBe("publicProfile");
   });

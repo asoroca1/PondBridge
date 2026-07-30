@@ -32,6 +32,17 @@ function tenantPath(slug, path) {
   return safeSlug ? `/t/${safeSlug}${path}` : path;
 }
 
+function tenantAiName(tenant = {}) {
+  const content = tenant?.content && typeof tenant.content === "object" ? tenant.content : {};
+  const configured = String(content.aiAssistantName || "").trim().slice(0, 60);
+  if (configured) return configured;
+  const campName = String(tenant?.name || "Camp")
+    .replace(/\s+[—-]\s+local staging\b.*$/i, "")
+    .replace(/^(?:the\s+)?camp\s+/i, "")
+    .trim() || "Camp";
+  return /\bai$/i.test(campName) ? campName : `${campName} AI`;
+}
+
 function planCapability({ tenant, key, label, description, requiredFeature, path }) {
   const planTier = resolveTenantFeatureTier(tenant);
   const included = hasFeature(planTier, requiredFeature, tenant?.addOns || []);
@@ -211,6 +222,7 @@ export async function buildDirectorCapabilityInventory(tenant = {}) {
   const emailAgentProvider = getDirectorEmailAgentProviderStatus();
   const campAiSearchProvider = getCampAiSearchProviderStatus();
   const billing = isBillingReadyForLaunch(tenant);
+  const aiName = tenantAiName(tenant);
   const [
     directorCopilotRollout,
     emailAgentRollout,
@@ -341,7 +353,7 @@ export async function buildDirectorCapabilityInventory(tenant = {}) {
       providerConfigured: directorCopilotProvider.configured,
       value: {
         key: "director_copilot",
-        label: "Director Copilot",
+        label: `${aiName} for directors`,
         description: "Read-only, evidence-linked help for setup and daily camp operations.",
         path: "/onboarding"
       }
@@ -365,9 +377,9 @@ export async function buildDirectorCapabilityInventory(tenant = {}) {
       ledgerAvailable: campAiSearchUsageStatus.available,
       value: {
         key: "camp_ai_search",
-        label: "Camp Search AI",
+        label: `${aiName} for members`,
         description: "Let members and directors search the camp directory in natural language without sending member records to the model.",
-        path: "/search",
+        path: "/ai",
         usage: campAiSearchUsageStatus.usage
       }
     })

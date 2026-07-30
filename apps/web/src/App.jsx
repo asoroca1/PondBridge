@@ -49,6 +49,7 @@ const CedarFamilyTreeViewPage = lazyPage(() => import("./cedar/pages/FamilyTreeV
 const EventsPage = lazyPage(() => import("./pages/EventsPage.jsx"));
 const EventDetailPage = lazyPage(() => import("./pages/EventDetailPage.jsx"));
 const MobileNotificationsPage = lazyPage(() => import("./pages/MobileNotificationsPage.jsx"));
+const MemberCampAiPage = lazyPage(() => import("./pages/MemberCampAiPage.jsx"));
 const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
 const TenantAuthCallbackPage = lazyPage(() => import("./pages/TenantAuthCallbackPage.jsx"));
 const TenantAccessPendingPage = lazyPage(() => import("./pages/TenantAccessPendingPage.jsx"));
@@ -619,6 +620,14 @@ function TenantScopeRoutes() {
           element={
             <ProtectedRoute>
               <CedarMainHomePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="ai"
+          element={
+            <ProtectedRoute>
+              <MemberCampAiPage />
             </ProtectedRoute>
           }
         />

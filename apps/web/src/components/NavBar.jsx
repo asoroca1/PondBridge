@@ -18,7 +18,8 @@ import {
   User,
   Pencil,
   Repeat2,
-  Scale
+  Scale,
+  Sparkles
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -31,6 +32,7 @@ import { avatarUrl, initialsOf } from "../cedar/lib/helpers.js";
 import InitialsMark from "./InitialsMark.jsx";
 import {
   resolveAlumniWord,
+  resolveCampAiName,
   resolveNetworkDisplayName,
   resolveNewsletterLabel,
   resolveTenantContent
@@ -111,8 +113,12 @@ function tenantRelativePath(pathname = "") {
   return normalizedPath;
 }
 
-function nativeMemberNavTitle(pathname = "", { newsletterLabel = "Newsletter", alumniWordTitle = "Alumni" } = {}) {
+function nativeMemberNavTitle(
+  pathname = "",
+  { newsletterLabel = "Newsletter", alumniWordTitle = "Alumni", aiName = "Camp AI" } = {}
+) {
   if (pathname === "/" || pathname === "/home") return "Home";
+  if (pathname === "/ai") return aiName;
   if (pathname === "/my-profile") return "My Profile";
   if (pathname === "/edit-profile") return "Edit Profile";
   if (pathname === "/search" || pathname === "/search-results") return "Search";
@@ -230,6 +236,7 @@ export default function NavBar() {
   const title = resolveNetworkDisplayName(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const newsletterLabel = resolveNewsletterLabel(tenant);
+  const aiName = resolveCampAiName(tenant);
   const content = resolveTenantContent(tenant);
   const merchShopUrl =
     String(content.merchShopUrl || "").trim() ||
@@ -283,7 +290,7 @@ export default function NavBar() {
   const useNativeMemberRoute = nativeApp && showPrivateTools && !onAdminModeRoute;
   const showSearch = canSearch && !usePublicNav && !onAdminModeRoute && !useNativeMemberRoute;
   const navTitle = useNativeMemberRoute
-    ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle })
+    ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle, aiName })
     : title;
 
   const menuSections = useMemo(() => {
@@ -291,6 +298,7 @@ export default function NavBar() {
 
     const accountItems = [
       { id: "home", icon: Home, label: "Home", to: pathWithCamp(slug, "/home") },
+      { id: "camp-ai", icon: Sparkles, label: aiName, to: pathWithCamp(slug, "/ai") },
       { id: "profile", icon: User, label: "My Profile", to: pathWithCamp(slug, "/my-profile") },
       { id: "edit", icon: Pencil, label: "Edit Profile", to: pathWithCamp(slug, "/edit-profile") }
     ];
@@ -396,6 +404,7 @@ export default function NavBar() {
     isAuthenticated,
     slug,
     canSearch,
+    aiName,
     alumniWordTitle,
     modules.chat,
     modules.events,

@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, Textarea } from "@pondbridge/ui";
+import { ArrowDown, ArrowUp, Sparkles } from "lucide-react";
 import "./agent-workspace.css";
 
 function MessageLinks({ links = [], onEvidenceClick = null }) {
@@ -8,7 +9,7 @@ function MessageLinks({ links = [], onEvidenceClick = null }) {
   if (!safeLinks.length) return null;
 
   return (
-    <div className="agent-message-links" aria-label="Verify in PondBridge">
+    <div className="agent-message-links" aria-label="Related camp links">
       {safeLinks.map((item) => (
         <Link
           key={`${item.href}:${item.label}`}
@@ -22,40 +23,100 @@ function MessageLinks({ links = [], onEvidenceClick = null }) {
   );
 }
 
-export function AgentConversation({ messages = [], busy = false, responseRef = null, onEvidenceClick = null }) {
+export function AgentConversation({
+  messages = [],
+  busy = false,
+  responseRef = null,
+  onEvidenceClick = null,
+  assistantName = "Camp AI",
+  emptyState = null,
+  thinkingLabel = ""
+}) {
+  const scrollRef = useRef(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const isBrief = messages.length <= 1 && !busy;
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    setShowScrollButton(false);
+  }, [busy, messages]);
+
+  function scrollToLatest() {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    setShowScrollButton(false);
+  }
+
+  function updateScrollButton(event) {
+    const container = event.currentTarget;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    setShowScrollButton(distanceFromBottom > 72);
+  }
+
   return (
-    <div
-      className={`agent-conversation ${isBrief ? "is-brief" : ""}`.trim()}
-      aria-live="polite"
-      aria-busy={busy || undefined}
-    >
-      {messages.map((message, index) => {
-        const isLatestAssistant =
-          message.role === "assistant" &&
-          !messages.slice(index + 1).some((candidate) => candidate.role === "assistant");
-        return (
-          <article
-            key={message.id}
-            ref={isLatestAssistant ? responseRef : undefined}
-            tabIndex={isLatestAssistant ? -1 : undefined}
-            className={`agent-message agent-message-${message.role}`}
-          >
-            <p className="agent-message-label">{message.role === "user" ? "You" : message.author || "PondBridge Guide"}</p>
-            <div className="agent-message-content">{message.content}</div>
-            <MessageLinks links={message.links} onEvidenceClick={onEvidenceClick} />
-            {message.disclaimer ? <small className="agent-message-disclaimer">{message.disclaimer}</small> : null}
-          </article>
-        );
-      })}
-      {busy ? (
-        <div className="agent-thinking" role="status">
-          <span aria-hidden="true" />
-          Checking live PondBridge data…
-        </div>
+    <div className="agent-conversation-frame">
+      <div
+        ref={scrollRef}
+        className={`agent-conversation ${isBrief ? "is-brief" : ""}`.trim()}
+        aria-live="polite"
+        aria-busy={busy || undefined}
+        onScroll={updateScrollButton}
+      >
+        {!messages.length && emptyState ? (
+          <div className="agent-empty-state">
+            <span className="agent-empty-icon" aria-hidden="true"><Sparkles size={22} /></span>
+            <h2>{emptyState.title}</h2>
+            {emptyState.description ? <p>{emptyState.description}</p> : null}
+          </div>
+        ) : null}
+        {messages.map((message, index) => {
+          const isLatestAssistant =
+            message.role === "assistant" &&
+            !messages.slice(index + 1).some((candidate) => candidate.role === "assistant");
+          return (
+            <article
+              key={message.id}
+              ref={isLatestAssistant ? responseRef : undefined}
+              tabIndex={isLatestAssistant ? -1 : undefined}
+              className={`agent-message agent-message-${message.role}`}
+            >
+              <p className="agent-message-label">
+                {message.role === "user" ? "You" : message.author || assistantName}
+              </p>
+              <div className="agent-message-content">{message.content}</div>
+              <MessageLinks links={message.links} onEvidenceClick={onEvidenceClick} />
+              {message.disclaimer ? <small className="agent-message-disclaimer">{message.disclaimer}</small> : null}
+            </article>
+          );
+        })}
+        {busy ? (
+          <div className="agent-thinking" role="status">
+            <span aria-hidden="true" />
+            {thinkingLabel || `${assistantName} is thinking…`}
+          </div>
+        ) : null}
+      </div>
+      {messages.length > 2 && showScrollButton ? (
+        <button
+          type="button"
+          className="agent-scroll-latest"
+          onClick={scrollToLatest}
+          aria-label="Scroll to the latest message"
+        >
+          <ArrowDown size={16} aria-hidden="true" />
+        </button>
       ) : null}
     </div>
   );
+}
+
+function submitOnEnter(event) {
+  if (event.key !== "Enter" || event.shiftKey || event.nativeEvent?.isComposing) return;
+  event.preventDefault();
+  event.currentTarget.form?.requestSubmit();
 }
 
 export function AgentComposer({
@@ -68,9 +129,9 @@ export function AgentComposer({
   busy = false,
   disabled = false,
   label = "What would you like help with?",
-  placeholder = "Ask a question about the current PondBridge data…",
+  placeholder = "Ask a question about your camp community…",
   privacyNote = "Do not enter passwords, access codes, payment details, or private member information.",
-  submitLabel = "Ask PondBridge"
+  submitLabel = "Send"
 }) {
   const helpId = `${id}-help`;
   const textareaRef = useRef(null);
@@ -103,23 +164,34 @@ export function AgentComposer({
         </div>
       ) : null}
       <form className="agent-composer" onSubmit={onSubmit}>
-        <label htmlFor={id}>{label}</label>
-        <Textarea
-          id={id}
-          ref={textareaRef}
-          rows={3}
-          maxLength={2000}
-          value={question}
-          onChange={(event) => onQuestionChange(event.target.value)}
-          placeholder={placeholder}
-          aria-describedby={helpId}
-          disabled={disabled}
-        />
+        <label className="agent-composer-label" htmlFor={id}>{label}</label>
+        <div className="agent-prompt-input">
+          <Textarea
+            id={id}
+            ref={textareaRef}
+            rows={2}
+            maxLength={2000}
+            value={question}
+            onChange={(event) => onQuestionChange(event.target.value)}
+            onKeyDown={submitOnEnter}
+            placeholder={placeholder}
+            aria-describedby={helpId}
+            disabled={disabled}
+          />
+          <Button
+            type="submit"
+            className="agent-prompt-submit"
+            aria-label={submitLabel}
+            title={submitLabel}
+            disabled={disabled || busy || !question.trim()}
+            loading={busy}
+          >
+            {busy ? null : <ArrowUp size={18} aria-hidden="true" />}
+          </Button>
+        </div>
         <div className="agent-composer-footer">
           <small id={helpId}>{privacyNote}</small>
-          <Button type="submit" disabled={disabled || busy || !question.trim()} loading={busy}>
-            {busy ? "Checking…" : submitLabel}
-          </Button>
+          <span aria-hidden="true">Enter to send · Shift+Enter for a new line</span>
         </div>
       </form>
     </div>
@@ -138,10 +210,17 @@ export default function AgentWorkspace({
   busy,
   composer,
   rail,
-  children
+  children,
+  variant = "workspace",
+  assistantName = "Camp AI",
+  emptyState = null,
+  thinkingLabel = ""
 }) {
+  const hasRail = Boolean(rail);
   return (
-    <div className="agent-workspace">
+    <div
+      className={`agent-workspace agent-workspace-${variant} ${hasRail ? "has-rail" : "is-single-column"}`.trim()}
+    >
       <Card className="agent-workspace-main">
         <header className="agent-workspace-header">
           <div>
@@ -162,13 +241,18 @@ export default function AgentWorkspace({
           busy={busy}
           responseRef={responseRef}
           onEvidenceClick={onEvidenceClick}
+          assistantName={assistantName}
+          emptyState={emptyState}
+          thinkingLabel={thinkingLabel}
         />
         <AgentComposer {...composer} busy={busy} />
         {children}
       </Card>
-      <aside className="agent-workspace-rail" aria-label="Live plan and evidence">
-        {rail}
-      </aside>
+      {hasRail ? (
+        <aside className="agent-workspace-rail" aria-label="Live plan and evidence">
+          {rail}
+        </aside>
+      ) : null}
     </div>
   );
 }

@@ -41,6 +41,19 @@ export function resolveCampName(tenant) {
   return String(tenant?.name || "Your Camp").trim() || "Your Camp";
 }
 
+export function resolveCampAiName(tenant) {
+  const content = resolveTenantContent(tenant);
+  const configuredName = String(content.aiAssistantName || "").trim().slice(0, 60);
+  if (configuredName) return configuredName;
+
+  const campName = resolveCampName(tenant)
+    .replace(/\s+[—-]\s+local staging\b.*$/i, "")
+    .replace(/^(?:the\s+)?camp\s+/i, "")
+    .trim();
+  const baseName = campName || "Camp";
+  return /\bai$/i.test(baseName) ? baseName : `${baseName} AI`;
+}
+
 export function resolveCampType(tenant) {
   const content = resolveTenantContent(tenant);
   return normalizeCampType(

@@ -22,6 +22,7 @@ import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useUnsavedChangesGuard } from "../../lib/useUnsavedChangesGuard.js";
+import { resolveCampAiName } from "../../lib/campLabels.js";
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
@@ -1124,6 +1125,7 @@ function TopProfileBreakdownCard({
 export function DirectorAdminDashboardPage() {
   const { slug, request } = useAdminApi();
   const { tenant } = useTenant();
+  const aiName = resolveCampAiName(tenant);
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1286,7 +1288,7 @@ export function DirectorAdminDashboardPage() {
           <Link className="is-primary" to={`/t/${slug}/onboarding`}>
             <Sparkles size={17} aria-hidden="true" />
             <span>
-              <strong>Ask PondBridge</strong>
+              <strong>{aiName}</strong>
               <small>Get guided help</small>
             </span>
             <ArrowUpRight size={15} aria-hidden="true" />

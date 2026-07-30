@@ -5,6 +5,7 @@ import AgentWorkspace from "../components/agent/AgentWorkspace.jsx";
 import { ModalDialog } from "../components/admin/AdminUi.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { resolveCampAiName } from "../lib/campLabels.js";
 import { requestJson } from "../lib/http.js";
 
 const SETUP_STARTERS = [
@@ -82,7 +83,42 @@ function directorEvidenceTarget(href = "") {
   return "other";
 }
 
-export function buildDirectorGuidedAnswer({ question, payload, billing, slug }) {
+function pluralize(value, singular, plural = `${singular}s`) {
+  return `${Number(value || 0)} ${Number(value || 0) === 1 ? singular : plural}`;
+}
+
+function dashboardBrief(dashboard = {}) {
+  if (!dashboard?.stats) {
+    return {
+      content: "The live dashboard snapshot is temporarily unavailable, so I will not guess at current member or activity numbers.",
+      links: []
+    };
+  }
+  const stats = dashboard?.stats || {};
+  const queue = Array.isArray(dashboard?.actionQueue) ? dashboard.actionQueue : [];
+  const priorityLine = queue.length
+    ? `First priority: ${queue[0].title}.`
+    : "There are no immediate operational items in the action queue.";
+
+  return {
+    content: [
+      "Current director brief:",
+      `• ${pluralize(stats.totalMembers, "active member")}; ${pluralize(stats.newThisWeek, "new member")} in the last 7 days.`,
+      `• Profiles average ${Number(stats.profileCompletion || 0)}% complete.`,
+      `• ${pluralize(stats.pendingApprovals, "access request")} pending; ${pluralize(stats.openSafetyReports, "open safety report")}.`,
+      `• ${priorityLine}`
+    ].join("\n"),
+    links: queue
+      .slice(0, 4)
+      .map((item) => ({
+        label: String(item.actionLabel || item.title || "Review priority"),
+        href: String(item.href || "")
+      }))
+      .filter((item) => item.href.startsWith("/t/"))
+  };
+}
+
+export function buildDirectorGuidedAnswer({ question, payload, billing, dashboard, slug }) {
   const normalized = String(question || "").toLowerCase();
   const isLive = payload?.tenant?.onboardingStatus === "live";
   const checks = payload?.readiness?.checks || [];
@@ -115,12 +151,14 @@ export function buildDirectorGuidedAnswer({ question, payload, billing, slug }) 
     isLive &&
     (normalized.includes("grow") || normalized.includes("participation") || normalized.includes("activity") || normalized.includes("alumni"))
   ) {
+    const metrics = dashboardBrief(dashboard);
     return {
-      content: "Use Alumni Growth as the operating center for participation. Build the complete alumni audience before people join, invite focused cohorts through the reviewed send flow, watch invite-to-signup conversion, then use server-calculated engagement segments for welcome, profile-completion, and re-engagement campaigns. Start with a small cohort, measure the response, and repeat weekly.",
+      content: `${metrics.content}\n\nRecommended next move: use Alumni Growth to build a focused cohort, review the audience, measure invite-to-signup conversion, and repeat weekly. No campaign was created or sent.`,
       links: [
+        ...metrics.links,
         { label: "Open Alumni Growth", href: `/t/${slug}/admin/growth` },
         { label: "Compose an engagement campaign", href: `/t/${slug}/admin/email/compose?audience=inactive_30` }
-      ]
+      ].slice(0, 6)
     };
   }
 
@@ -137,13 +175,13 @@ export function buildDirectorGuidedAnswer({ question, payload, billing, slug }) 
     isLive &&
     (normalized.includes("health") || normalized.includes("prioritize") || normalized.includes("today") || normalized.includes("next"))
   ) {
+    const brief = dashboardBrief(dashboard);
     return {
-      content: "Use the Director action queue as your starting point. Resolve high-priority access or safety items first, then check recent signups and profile completion. If the queue is clear, send one useful update or invite the next focused member cohort—consistent small actions create more momentum than a large one-time push.",
+      content: `${brief.content}\n\nThese are measured dashboard facts. Review the linked source before acting; no action was taken.`,
       links: [
-        { label: "Open today’s action queue", href: `/t/${slug}/admin` },
-        { label: "Review invitations", href: `/t/${slug}/admin/invites` },
-        { label: "Compose an update", href: `/t/${slug}/admin/email/compose` }
-      ]
+        ...brief.links,
+        { label: "Open full Director Dashboard", href: `/t/${slug}/admin/dashboard` }
+      ].slice(0, 6)
     };
   }
 
@@ -202,6 +240,7 @@ export default function DirectorOnboardingAgentPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [payload, setPayload] = useState(null);
   const [billing, setBilling] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
   const [capability, setCapability] = useState(null);
   const [featureInventory, setFeatureInventory] = useState(null);
   const [question, setQuestion] = useState("");
@@ -213,26 +252,29 @@ export default function DirectorOnboardingAgentPage() {
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const aiName = resolveCampAiName(tenant);
 
   const loadWorkspace = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
     else setLoading(true);
     setError("");
     try {
-      const [onboardingPayload, billingPayload, capabilityPayload, featurePayload] = await Promise.all([
+      const [onboardingPayload, billingPayload, dashboardPayload, capabilityPayload, featurePayload] = await Promise.all([
         requestJson("/api/tenants/me/onboarding", { token }),
         requestJson("/api/tenants/me/billing", { token }),
+        requestJson(`/api/t/${slug}/admin/dashboard`, { token }).catch(() => null),
         requestJson(`/api/t/${slug}/admin/copilot/capabilities`, { token }).catch(() => null),
         requestJson(`/api/t/${slug}/admin/features`, { token }).catch(() => null)
       ]);
       setPayload(onboardingPayload);
       setBilling(billingPayload);
+      setDashboard(dashboardPayload);
       setCapability(capabilityPayload);
       setFeatureInventory(featurePayload);
       setSelectedPlan(
         String(billingPayload?.tenant?.billingPlan || billingPayload?.billing?.billingPlan || "legacy").toLowerCase()
       );
-      return { onboardingPayload, billingPayload };
+      return { onboardingPayload, billingPayload, dashboardPayload };
     } catch (requestError) {
       setError(requestError.message || "Could not load the onboarding workspace.");
       return null;
@@ -270,20 +312,20 @@ export default function DirectorOnboardingAgentPage() {
     const blockers = checks.filter((item) => !item.ok);
     const campName = payload?.tenant?.name || tenant?.name || "your camp";
     const content = payload?.tenant?.onboardingStatus === "live"
-      ? `${campName} is live. Ask me about invitations, settings, or any director tool. I will never send or change anything for you.`
+      ? `Hi — I’m ${aiName}. I can help you prioritize work for ${campName}, understand live camp status, find the right director tool, or create an editable draft. I will never send or change anything for you.`
       : blockers.length
-        ? `Hi — I’m your setup guide for ${campName}. I checked the live launch requirements: ${checks.length - blockers.length} of ${checks.length} are ready. The next blocker is ${blockers[0].label.toLowerCase()}.`
-        : `Hi — I’m your setup guide for ${campName}. All required launch checks are passing. I can help you review the plan before you use the confirmed launch control.`;
+        ? `Hi — I’m ${aiName}, your setup guide for ${campName}. I checked the live launch requirements: ${checks.length - blockers.length} of ${checks.length} are ready. The next blocker is ${blockers[0].label.toLowerCase()}.`
+        : `Hi — I’m ${aiName}, your setup guide for ${campName}. All required launch checks are passing. I can help you review the plan before you use the confirmed launch control.`;
     setMessages([
       {
         id: messageId("welcome"),
         role: "assistant",
-        author: capability?.available ? "Director Copilot" : payload?.tenant?.onboardingStatus === "live" ? "Director Guide" : "Setup Guide",
+        author: aiName,
         content,
         links: blockers[0] ? [tenantLink(slug, blockers[0].id)] : []
       }
     ]);
-  }, [capability?.available, messages.length, payload, slug, tenant?.name]);
+  }, [aiName, messages.length, payload, slug, tenant?.name]);
 
   useEffect(() => {
     const checkoutState = String(searchParams.get("checkout") || "").toLowerCase();
@@ -328,14 +370,20 @@ export default function DirectorOnboardingAgentPage() {
           body: { question: nextQuestion }
         });
       } else {
-        result = buildDirectorGuidedAnswer({ question: nextQuestion, payload, billing, slug });
+        result = buildDirectorGuidedAnswer({
+          question: nextQuestion,
+          payload,
+          billing,
+          dashboard,
+          slug
+        });
       }
       setMessages((current) => [
         ...current,
         {
           id: messageId("assistant"),
           role: "assistant",
-          author: capability?.available ? "Director Copilot" : isLive ? "Director Guide" : "Setup Guide",
+          author: aiName,
           content: result.answer || result.content,
           links: result.links || [],
           disclaimer: result.disclaimer || (capability?.available ? "Verify current state in the linked PondBridge screen." : "Guided answer based on the live onboarding checklist. No action was taken.")
@@ -448,11 +496,14 @@ export default function DirectorOnboardingAgentPage() {
   return (
     <PageShell className="pb-cedar-page director-agent-page">
       <AgentWorkspace
-        eyebrow={isLive ? "Director copilot" : "Director onboarding"}
-        title={isLive ? "What do you want to manage today?" : "Launch your camp with PondBridge"}
+        variant={isLive ? "chat" : "workspace"}
+        assistantName={aiName}
+        thinkingLabel={`${aiName} is checking live camp data…`}
+        eyebrow={isLive ? "Director workspace" : "Director onboarding"}
+        title={isLive ? aiName : `Launch with ${aiName}`}
         subtitle={
           isLive
-            ? "Ask about current priorities, members, communications, or settings. Every recommendation links back to a verified PondBridge screen."
+            ? "Ask about priorities, members, communications, settings, or an editable draft."
             : "Ask a question, follow the live plan, and make changes in the linked director tools. Your server-confirmed status updates here."
         }
         status={
@@ -484,9 +535,9 @@ export default function DirectorOnboardingAgentPage() {
           placeholder: isLive
             ? "For example: Help me plan this week's member update."
             : "For example: What should I finish before inviting our first members?",
-          submitLabel: capability?.available ? "Ask Copilot" : isLive ? "Ask Director Guide" : "Ask Setup Guide"
+          submitLabel: `Send to ${aiName}`
         }}
-        rail={
+        rail={isLive ? null : (
           <>
             <Card className="agent-rail-card">
               <h2>{isLive ? "Verified camp status" : "Live launch plan"}</h2>
@@ -611,7 +662,7 @@ export default function DirectorOnboardingAgentPage() {
               </div>
             </Card>
           </>
-        }
+        )}
       >
         {error ? <p className="agent-page-feedback error-text" role="alert">{error}</p> : null}
         {notice ? <p className="agent-page-feedback success-text" role="status">{notice}</p> : null}
@@ -620,7 +671,7 @@ export default function DirectorOnboardingAgentPage() {
       <ModalDialog
         open={launchDialogOpen}
         title="Launch this network?"
-        description="This publishes the saved onboarding configuration and makes the member network live. The Setup Guide cannot undo this action."
+        description={`This publishes the saved onboarding configuration and makes the member network live. ${aiName} cannot undo this action.`}
         onClose={launching ? undefined : () => setLaunchDialogOpen(false)}
         footer={
           <>
