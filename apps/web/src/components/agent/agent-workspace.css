@@ -185,6 +185,9 @@
 
 .agent-message-label {
   margin: 0 0 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: #5f7892;
   font-size: 0.72rem;
   font-weight: 800;
@@ -228,11 +231,115 @@
   background: #e9f2fa;
 }
 
-.agent-message-disclaimer {
+.agent-profile-results {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.agent-profile-result {
+  min-width: 0;
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 11px;
+  border: 1px solid #d7e2eb;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #173f66;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(20, 48, 75, 0.045);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.agent-profile-result:hover {
+  border-color: color-mix(in srgb, var(--brand-primary, #174878) 42%, #d7e2eb);
+  box-shadow: 0 8px 22px rgba(20, 48, 75, 0.09);
+  transform: translateY(-1px);
+}
+
+.agent-profile-result:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-primary, #174878) 20%, transparent);
+  outline-offset: 2px;
+}
+
+.agent-profile-avatar {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--brand-primary, #174878) 11%, #ffffff);
+  color: var(--brand-primary, #174878);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.03em;
+}
+
+.agent-profile-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agent-profile-copy {
+  min-width: 0;
+}
+
+.agent-profile-copy strong,
+.agent-profile-copy small {
   display: block;
-  margin-top: 10px;
-  color: #6a7c8f;
-  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-profile-copy strong {
+  color: #173f66;
+  font-size: 0.88rem;
+  line-height: 1.3;
+}
+
+.agent-profile-copy small {
+  margin-top: 3px;
+  color: #6b7e91;
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.agent-profile-arrow {
+  color: #7890a6;
+  transition: transform 150ms ease;
+}
+
+.agent-profile-result:hover .agent-profile-arrow {
+  color: var(--brand-primary, #174878);
+  transform: translateX(2px);
+}
+
+.agent-message-disclaimer {
+  margin-top: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #708194;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.agent-message-disclaimer svg {
+  flex: 0 0 auto;
+  color: #3b7d70;
 }
 
 .agent-thinking {
@@ -380,6 +487,12 @@
   font-size: 0.82rem;
 }
 
+.agent-workspace-chat .agent-boundary summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .agent-workspace-chat .agent-conversation-frame {
   flex: 1 1 auto;
   display: flex;
@@ -396,7 +509,7 @@
 }
 
 .agent-workspace-chat .agent-message {
-  width: min(720px, 92%);
+  width: min(760px, 94%);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -409,10 +522,20 @@
 
 .agent-workspace-chat .agent-message-user {
   width: auto;
-  max-width: min(620px, 86%);
-  padding: 12px 15px;
+  max-width: min(520px, 82%);
+  padding: 11px 15px;
   border-radius: 18px 18px 5px 18px;
   background: var(--brand-primary, #174878);
+}
+
+.agent-workspace-chat .agent-message-user .agent-message-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .agent-workspace-chat .agent-message-content {
@@ -732,6 +855,14 @@
   .agent-workspace-chat .agent-conversation {
     min-height: 250px;
     padding: 22px 16px 14px;
+  }
+
+  .agent-profile-results {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-profile-result {
+    min-height: 62px;
   }
 
   .agent-workspace-chat .agent-composer-wrap {
