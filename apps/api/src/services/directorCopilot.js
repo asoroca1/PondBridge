@@ -56,8 +56,8 @@ const ADMIN_SCREEN_CATALOG = Object.freeze({
     path: "/admin/invites"
   },
   events: {
-    title: "Events",
-    summary: "Creates and manages camp-community events when the module is enabled.",
+    title: "Events & Seminars",
+    summary: "Creates community events and registered-member online seminars, manages RSVPs, and tracks room access.",
     path: "/admin/events"
   },
   features: {

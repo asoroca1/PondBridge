@@ -1,27 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { CalendarDays, MapPin, Users, ChevronRight } from "lucide-react";
-import { Input, Textarea } from "@pondbridge/ui";
+import { CalendarDays, MapPin, Users, ChevronRight, Video, GraduationCap } from "lucide-react";
 import { requestJson } from "../lib/http.js";
-import { uploadTenantImage } from "../lib/imageUploads.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import CedarPageHeader from "../cedar/components/CedarPageHeader.jsx";
-import { useDialogFocus } from "../components/admin/AdminUi.jsx";
-
-const DEFAULT_EVENT_FORM = {
-  title: "",
-  summary: "",
-  bodyHtml: "",
-  coverImageUrl: "",
-  startsAt: "",
-  endsAt: "",
-  timezone: "America/New_York",
-  locationName: "",
-  locationAddress: "",
-  rsvpDeadlineAt: ""
-};
 
 function normalizeRoleSet(value) {
   const rawRoles = Array.isArray(value?.roles)
@@ -91,6 +75,28 @@ function rsvpToneClass(item = {}) {
   return "is-open";
 }
 
+function isSeminar(item = {}) {
+  return item?.eventType === "seminar";
+}
+
+function eventLocationLabel(item = {}) {
+  if (item?.deliveryMode === "online") {
+    if (item?.meetingProvider === "microsoft_teams") return "Microsoft Teams";
+    if (item?.meetingProvider === "google_meet") return "Google Meet";
+    if (item?.meetingProvider === "zoom") return "Zoom";
+    return "Online";
+  }
+  if (item?.deliveryMode === "hybrid") {
+    return item?.locationName ? `Online + ${item.locationName}` : "Online + in person";
+  }
+  return item?.locationName || "Location TBA";
+}
+
+function EventLocationIcon({ item, size = 14 }) {
+  const Icon = item?.deliveryMode === "online" ? Video : MapPin;
+  return <Icon size={size} aria-hidden="true" />;
+}
+
 function EventCard({ item, slug, featured = false }) {
   const bd = dateBadge(item);
   const toneClass = rsvpToneClass(item);
@@ -107,11 +113,25 @@ function EventCard({ item, slug, featured = false }) {
       aria-label={`Open ${item.title}`}
     >
       <div className="ev-card-cover" style={coverStyle}>
+        {!item.coverImageUrl ? (
+          <div className={`ev-card-cover-fallback ${isSeminar(item) ? "is-seminar" : ""}`} aria-hidden="true">
+            {isSeminar(item) ? <GraduationCap size={30} /> : <CalendarDays size={30} />}
+            <span>{isSeminar(item) ? item.topicTitle || "Alumni seminar" : "Camp community"}</span>
+          </div>
+        ) : null}
         <div className="ev-date-chip" aria-hidden="true">
           <span className="ev-date-chip-month">{bd.month}</span>
           <span className="ev-date-chip-day">{bd.day}</span>
         </div>
-        <span className={`ev-status-chip ${toneClass}`}>{rsvpLabel(item)}</span>
+        <div className="ev-card-cover-chips">
+          {isSeminar(item) ? (
+            <span className="ev-type-chip is-seminar">
+              <GraduationCap size={12} aria-hidden="true" />
+              Seminar
+            </span>
+          ) : null}
+          <span className={`ev-status-chip ${toneClass}`}>{rsvpLabel(item)}</span>
+        </div>
       </div>
       <div className="ev-card-body">
         <p className="ev-card-when">{formatDatePartLong(item)}{formatTimePart(item) ? ` · ${formatTimePart(item)}` : ""}</p>
@@ -119,8 +139,8 @@ function EventCard({ item, slug, featured = false }) {
         {item.summary ? <p className="ev-card-summary">{item.summary}</p> : null}
         <div className="ev-card-meta">
           <span className="ev-meta-item">
-            <MapPin size={14} aria-hidden="true" />
-            <span>{item.locationName || "Location TBA"}</span>
+            <EventLocationIcon item={item} />
+            <span>{eventLocationLabel(item)}</span>
           </span>
           <span className="ev-meta-item">
             <Users size={14} aria-hidden="true" />
@@ -128,7 +148,9 @@ function EventCard({ item, slug, featured = false }) {
           </span>
         </div>
         <span className="ev-card-cta">
-          {featured ? "Open event" : "View details"}
+          {featured
+            ? `Open ${isSeminar(item) ? "seminar" : "event"}`
+            : `View ${isSeminar(item) ? "seminar" : "event"} details`}
           <ChevronRight size={14} aria-hidden="true" />
         </span>
       </div>
@@ -148,12 +170,13 @@ function EventRow({ item, slug }) {
       <div className="ev-row-body">
         <div className="ev-row-head">
           <h3>{item.title}</h3>
+          {isSeminar(item) ? <span className="ev-type-chip is-seminar">Seminar</span> : null}
           <span className={`ev-status-chip ${toneClass}`}>{rsvpLabel(item)}</span>
         </div>
         <div className="ev-row-meta">
           <span>{formatTimePart(item) || "Time TBA"}</span>
           <span className="ev-row-dot" aria-hidden="true" />
-          <span>{item.locationName || "Location TBA"}</span>
+          <span>{eventLocationLabel(item)}</span>
           <span className="ev-row-dot" aria-hidden="true" />
           <span>{item.counts?.attending || 0} going</span>
         </div>
@@ -185,15 +208,7 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("upcoming"); // upcoming | past | going
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [createSaving, setCreateSaving] = useState(false);
-  const [createError, setCreateError] = useState("");
-  const [createStatus, setCreateStatus] = useState("");
-  const [coverUploading, setCoverUploading] = useState(false);
-  const [coverUploadError, setCoverUploadError] = useState("");
-  const [coverInputKey, setCoverInputKey] = useState(0);
-  const [eventForm, setEventForm] = useState({ ...DEFAULT_EVENT_FORM });
-  const createDialogRef = useDialogFocus(createModalOpen, closeCreateModal);
+  const [typeFilter, setTypeFilter] = useState("all"); // all | seminar | community
   const roleSet = useMemo(() => normalizeRoleSet(user), [user]);
   const canManageEvents =
     roleSet.has("tenant_admin") || roleSet.has("admin") || roleSet.has("super_admin");
@@ -219,110 +234,35 @@ export default function EventsPage() {
     loadEvents().catch(() => {});
   }, [slug, token]);
 
-  function openCreateModal() {
-    setEventForm({ ...DEFAULT_EVENT_FORM });
-    setCreateError("");
-    setCreateStatus("");
-    setCoverUploadError("");
-    setCoverInputKey((value) => value + 1);
-    setCreateModalOpen(true);
-  }
-
-  function closeCreateModal() {
-    if (createSaving) return;
-    setCreateModalOpen(false);
-    setCreateError("");
-    setCoverUploadError("");
-  }
-
-  function updateEventField(key, value) {
-    setEventForm((current) => ({ ...current, [key]: value }));
-  }
-
-  async function handleCoverFileChange(event) {
-    const file = event.target.files?.[0] || null;
-    if (!file) return;
-
-    setCoverUploading(true);
-    setCoverUploadError("");
-    try {
-      const objectUrl = await uploadTenantImage({
-        slug,
-        token,
-        file,
-        scope: "event-cover"
-      });
-      setEventForm((current) => ({ ...current, coverImageUrl: objectUrl }));
-    } catch (uploadError) {
-      setCoverUploadError(uploadError.message || "Failed to upload cover image.");
-    } finally {
-      setCoverUploading(false);
-      setCoverInputKey((value) => value + 1);
-    }
-  }
-
-  function clearCoverImage() {
-    setEventForm((current) => ({ ...current, coverImageUrl: "" }));
-    setCoverUploadError("");
-    setCoverInputKey((value) => value + 1);
-  }
-
-  async function createEvent(event) {
-    event.preventDefault();
-    setCreateSaving(true);
-    setCreateError("");
-    setCreateStatus("");
-
-    try {
-      const response = await requestJson(`/api/t/${slug}/admin/events`, {
-        method: "POST",
-        token,
-        body: {
-          title: eventForm.title,
-          summary: eventForm.summary,
-          bodyHtml: eventForm.bodyHtml,
-          coverImageUrl: eventForm.coverImageUrl,
-          startsAt: eventForm.startsAt ? new Date(eventForm.startsAt).toISOString() : null,
-          endsAt: eventForm.endsAt ? new Date(eventForm.endsAt).toISOString() : null,
-          timezone: eventForm.timezone,
-          locationName: eventForm.locationName,
-          locationAddress: eventForm.locationAddress,
-          rsvpDeadlineAt: eventForm.rsvpDeadlineAt ? new Date(eventForm.rsvpDeadlineAt).toISOString() : null
-        }
-      });
-      const createdTitle = String(response?.item?.title || eventForm.title || "Event").trim();
-      setCreateStatus(`Draft event "${createdTitle}" created. Publish it when you're ready.`);
-      setCreateModalOpen(false);
-      setEventForm({ ...DEFAULT_EVENT_FORM });
-      await loadEvents();
-    } catch (requestError) {
-      setCreateError(requestError.message || "Failed to create event.");
-    } finally {
-      setCreateSaving(false);
-    }
-  }
-
-  const featured = payload.featured;
+  const filteredUpcoming = useMemo(
+    () => payload.upcoming.filter((item) => typeFilter === "all" || item?.eventType === typeFilter),
+    [payload.upcoming, typeFilter]
+  );
+  const filteredPast = useMemo(
+    () => payload.past.filter((item) => typeFilter === "all" || item?.eventType === typeFilter),
+    [payload.past, typeFilter]
+  );
+  const featured = filteredUpcoming[0] || null;
   const upcomingCards = useMemo(() => {
-    if (!featured) return payload.upcoming;
-    return payload.upcoming.filter((item) => item.id !== featured.id);
-  }, [featured, payload.upcoming]);
+    if (!featured) return filteredUpcoming;
+    return filteredUpcoming.filter((item) => item.id !== featured.id);
+  }, [featured, filteredUpcoming]);
 
   const goingList = useMemo(() => {
-    const src = [...payload.upcoming, ...payload.past];
+    const src = [...filteredUpcoming, ...filteredPast];
     return src.filter((item) => item?.myRsvp?.status === "attending" || item?.myRsvp?.status === "maybe");
-  }, [payload.upcoming, payload.past]);
+  }, [filteredUpcoming, filteredPast]);
 
   const schemaMissing = /supabase:apply-schema|schema is missing/i.test(error);
 
   const counts = {
-    upcoming: payload.upcoming.length,
-    past: payload.past.length,
+    upcoming: filteredUpcoming.length,
+    past: filteredPast.length,
     going: goingList.length
   };
 
   const activeList =
-    tab === "past" ? payload.past : tab === "going" ? goingList : upcomingCards;
+    tab === "past" ? filteredPast : tab === "going" ? goingList : upcomingCards;
 
   const showFeaturedBanner = !loading && !error && tab === "upcoming" && featured;
 
@@ -330,8 +270,8 @@ export default function EventsPage() {
     <main className="ev-wrap nav2-page-shell">
       <CedarPageHeader
         icon={<CalendarDays size={18} />}
-        title="Events"
-        subtitle="Gatherings, reunions, and community moments from your camp."
+        title="Events & Seminars"
+        subtitle="Gather in person, learn from alumni, and join live online sessions."
       >
         <div className="ev-header-actions">
           <div className="ev-header-tools" role="tablist" aria-label="Filter events">
@@ -367,19 +307,49 @@ export default function EventsPage() {
             </button>
           </div>
           {canManageEvents ? (
-            <button type="button" className="ev-btn ev-btn-primary ev-admin-link" onClick={openCreateModal}>
-              Create Event
-            </button>
+            <Link
+              className="ev-btn ev-btn-primary ev-admin-link"
+              to={tenantRoute(slug, "/admin/events")}
+            >
+              Manage schedule
+            </Link>
           ) : null}
         </div>
       </CedarPageHeader>
 
-      {createStatus ? <div className="ev-message is-success"><p>{createStatus}</p></div> : null}
+      <div className="ev-type-filter" role="group" aria-label="Show schedule type">
+        <button
+          type="button"
+          aria-pressed={typeFilter === "all"}
+          className={typeFilter === "all" ? "is-active" : ""}
+          onClick={() => setTypeFilter("all")}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          aria-pressed={typeFilter === "seminar"}
+          className={typeFilter === "seminar" ? "is-active" : ""}
+          onClick={() => setTypeFilter("seminar")}
+        >
+          <GraduationCap size={14} aria-hidden="true" />
+          Seminars
+        </button>
+        <button
+          type="button"
+          aria-pressed={typeFilter === "community"}
+          className={typeFilter === "community" ? "is-active" : ""}
+          onClick={() => setTypeFilter("community")}
+        >
+          <CalendarDays size={14} aria-hidden="true" />
+          Events
+        </button>
+      </div>
 
       {showFeaturedBanner ? (
         <section className="ev-featured">
           <div
-            className="ev-featured-media"
+            className={`ev-featured-media ${isSeminar(featured) ? "is-seminar" : ""}`.trim()}
             style={
               featured.coverImageUrl
                 ? {
@@ -387,9 +357,23 @@ export default function EventsPage() {
                   }
                 : undefined
             }
-          />
+          >
+            {!featured.coverImageUrl ? (
+              <div className="ev-featured-fallback" aria-hidden="true">
+                <span className="ev-featured-fallback-icon">
+                  {isSeminar(featured) ? <GraduationCap size={42} /> : <CalendarDays size={42} />}
+                </span>
+                <span>{isSeminar(featured) ? "Alumni-led seminar" : "Camp community event"}</span>
+                <strong>
+                  {isSeminar(featured) ? featured.topicTitle || featured.title : featured.title}
+                </strong>
+              </div>
+            ) : null}
+          </div>
           <div className="ev-featured-copy">
-            <span className="ev-featured-eyebrow">Featured · Next up</span>
+            <span className="ev-featured-eyebrow">
+              {isSeminar(featured) ? "Featured seminar · Next up" : "Featured event · Next up"}
+            </span>
             <h2>{featured.title}</h2>
             <p className="ev-featured-when">
               {formatDatePartLong(featured)}
@@ -398,8 +382,8 @@ export default function EventsPage() {
             {featured.summary ? <p className="ev-featured-summary">{featured.summary}</p> : null}
             <div className="ev-featured-meta">
               <span className="ev-meta-item">
-                <MapPin size={14} aria-hidden="true" />
-                <span>{featured.locationName || "Location TBA"}</span>
+                <EventLocationIcon item={featured} />
+                <span>{eventLocationLabel(featured)}</span>
               </span>
               <span className="ev-meta-item">
                 <Users size={14} aria-hidden="true" />
@@ -408,7 +392,7 @@ export default function EventsPage() {
               <span className={`ev-status-chip ${rsvpToneClass(featured)}`}>{rsvpLabel(featured)}</span>
             </div>
             <Link className="ev-btn ev-btn-primary" to={tenantRoute(slug, `/events/${featured.id}`)}>
-              See event details
+              See {isSeminar(featured) ? "seminar" : "event"} details
               <ChevronRight size={16} aria-hidden="true" />
             </Link>
           </div>
@@ -443,17 +427,21 @@ export default function EventsPage() {
               <CalendarDays size={32} className="ev-empty-icon" aria-hidden="true" />
               <h3>
                 {tab === "past"
-                  ? "No past events yet."
+                  ? `No past ${typeFilter === "seminar" ? "seminars" : "events"} yet.`
                   : tab === "going"
                   ? "You haven’t RSVP’d to anything."
-                  : "The calendar is ready for its first event."}
+                  : typeFilter === "seminar"
+                    ? "No upcoming seminars yet."
+                    : "The calendar is ready for its next event."}
               </h3>
               <p>
                 {tab === "past"
                   ? "When events wrap up, they’ll move here so you can revisit the highlights."
                   : tab === "going"
-                  ? "Tap into an upcoming event and let your camp know you’re coming."
-                  : "Check back soon or reach out to your camp directors if you expected an event here."}
+                  ? "Open an upcoming event or seminar and let your camp know you’re coming."
+                  : typeFilter === "seminar"
+                    ? "Career, college, and mentorship sessions will appear here when directors publish them."
+                    : "Check back soon or reach out to your camp directors if you expected something here."}
               </p>
               {tab !== "upcoming" ? (
                 <button type="button" className="ev-btn" onClick={() => setTab("upcoming")}>
@@ -477,131 +465,6 @@ export default function EventsPage() {
         </section>
       ) : null}
 
-      {createModalOpen ? (
-        <div className="pb-admin-ui-modal-backdrop ev-create-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ev-create-title" onClick={closeCreateModal}>
-          <div ref={createDialogRef} className="pb-admin-ui-modal director-admin-event-modal ev-create-modal" onClick={(event) => event.stopPropagation()} tabIndex={-1}>
-            <div className="ev-create-modal-head">
-              <h3 id="ev-create-title">Create Event</h3>
-              <p>Create a draft event right here, then publish it when you're ready.</p>
-            </div>
-            <form className="director-events-form-grid director-admin-event-modal-form ev-create-modal-form" onSubmit={createEvent}>
-              <label className="full-width">
-                Event title
-                <Input
-                  value={eventForm.title}
-                  onChange={(event) => updateEventField("title", event.target.value)}
-                  placeholder="Camp Cedar Alumni Weekend"
-                />
-              </label>
-              <label className="full-width">
-                Summary
-                <Textarea
-                  className="ev-create-modal-summary"
-                  rows={4}
-                  value={eventForm.summary}
-                  onChange={(event) => updateEventField("summary", event.target.value)}
-                  placeholder="A short overview for the event card and hero section."
-                />
-              </label>
-              <label className="full-width">
-                Event details
-                <Textarea
-                  className="ev-create-modal-details"
-                  rows={6}
-                  value={eventForm.bodyHtml}
-                  onChange={(event) => updateEventField("bodyHtml", event.target.value)}
-                  placeholder="Share the schedule, who should attend, and what to expect."
-                />
-              </label>
-              <div className="full-width ev-cover-field">
-                <span>Cover image</span>
-                <div className="ev-cover-upload">
-                  <Input
-                    key={coverInputKey}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                    onChange={handleCoverFileChange}
-                  />
-                  <div className="ev-cover-upload-actions">
-                    <p className="muted">
-                      Upload a PNG, JPG, WebP, GIF, or SVG cover image.
-                      {coverUploading ? " Uploading..." : ""}
-                    </p>
-                    {eventForm.coverImageUrl ? (
-                      <button type="button" className="ev-btn" onClick={clearCoverImage} disabled={coverUploading}>
-                        Remove image
-                      </button>
-                    ) : null}
-                  </div>
-                  {coverUploadError ? <p className="error-text">{coverUploadError}</p> : null}
-                  {eventForm.coverImageUrl ? (
-                    <div className="ev-cover-preview">
-                      <img src={eventForm.coverImageUrl} alt="Event cover preview" />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              <label>
-                Starts at
-                <Input
-                  type="datetime-local"
-                  value={eventForm.startsAt}
-                  onChange={(event) => updateEventField("startsAt", event.target.value)}
-                />
-              </label>
-              <label>
-                Ends at
-                <Input
-                  type="datetime-local"
-                  value={eventForm.endsAt}
-                  onChange={(event) => updateEventField("endsAt", event.target.value)}
-                />
-              </label>
-              <label>
-                Timezone
-                <Input
-                  value={eventForm.timezone}
-                  onChange={(event) => updateEventField("timezone", event.target.value)}
-                  placeholder="America/New_York"
-                />
-              </label>
-              <label>
-                RSVP deadline
-                <Input
-                  type="datetime-local"
-                  value={eventForm.rsvpDeadlineAt}
-                  onChange={(event) => updateEventField("rsvpDeadlineAt", event.target.value)}
-                />
-              </label>
-              <label>
-                Location name
-                <Input
-                  value={eventForm.locationName}
-                  onChange={(event) => updateEventField("locationName", event.target.value)}
-                  placeholder="Camp Cedar waterfront"
-                />
-              </label>
-              <label>
-                Location address
-                <Input
-                  value={eventForm.locationAddress}
-                  onChange={(event) => updateEventField("locationAddress", event.target.value)}
-                  placeholder="123 Camp Road, City, State"
-                />
-              </label>
-              {createError ? <p className="error-text">{createError}</p> : null}
-              <div className="pb-admin-ui-modal-actions ev-create-modal-actions">
-                <button type="button" className="ev-btn" onClick={closeCreateModal} disabled={createSaving}>
-                  Cancel
-                </button>
-                <button type="submit" className="ev-btn ev-btn-primary" disabled={createSaving}>
-                  {createSaving ? "Creating..." : "Create Draft"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

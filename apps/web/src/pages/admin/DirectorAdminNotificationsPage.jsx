@@ -6,7 +6,7 @@ import useAdminApi from "./useAdminApi.js";
 
 const CATEGORY_OPTIONS = [
   { value: "announcements", label: "Announcements" },
-  { value: "events", label: "Events" },
+  { value: "events", label: "Events & seminars" },
   { value: "community", label: "Community" },
   { value: "account", label: "Account" },
   { value: "admin", label: "Admin" }
@@ -33,8 +33,8 @@ const AUTOMATIC_TOGGLES = [
   ["newMemberJoined", "New member joined — notify admins"],
   ["approvalRequests", "Approval requests — notify admins"],
   ["memberFlagged", "Member flagged — notify admins"],
-  ["eventPublished", "Event published — notify members"],
-  ["eventCanceled", "Event canceled — notify members"],
+  ["eventPublished", "Event or seminar published — notify members"],
+  ["eventCanceled", "Event or seminar canceled — notify members"],
   ["newsletterPublished", "Newsletter published — notify members"]
 ];
 

@@ -27,6 +27,7 @@ module.exports = {
     "**/tests/profilePdfImport.test.js",
     "**/tests/platformAuditMigrationSafety.test.js",
     "**/tests/requireTenantModule.test.js",
+    "**/tests/seminarEvents.test.js",
     "**/tests/suggestions.test.js",
     "**/tests/superCopilot.test.js",
     "**/tests/superSearchRole.test.js",

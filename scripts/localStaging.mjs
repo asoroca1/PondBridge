@@ -28,7 +28,8 @@ const EXPECTED_MIGRATIONS = [
   "pondbridge_multi_camp_identity",
   "pondbridge_member_safety",
   "pondbridge_database_performance_hardening",
-  "pondbridge_database_security_hardening"
+  "pondbridge_database_security_hardening",
+  "add_registered_member_seminars"
 ];
 
 const EXPECTED_TABLES = [
@@ -48,6 +49,8 @@ const EXPECTED_TABLES = [
   "events",
   "event_rsvps",
   "event_messages",
+  "event_meeting_details",
+  "event_join_access_logs",
   "ai_generations",
   "email_broadcasts",
   "email_preferences",
@@ -137,9 +140,13 @@ function assertCliInstalled() {
   }
 }
 
+function isCanonicalMigrationFilename(name = "") {
+  return /^\d{14}_[a-z0-9_]+\.sql$/.test(String(name || ""));
+}
+
 function assertLocalSqlReadable() {
   const sqlDir = path.join(repoRoot, "supabase", "migrations");
-  const sqlFiles = fs.readdirSync(sqlDir).filter((name) => name.endsWith(".sql"));
+  const sqlFiles = fs.readdirSync(sqlDir).filter(isCanonicalMigrationFilename);
   for (const name of sqlFiles) {
     const sql = fs.readFileSync(path.join(sqlDir, name), "utf8");
     if (!sql.trim()) throw new Error(`Local migration is empty: ${name}`);
@@ -207,7 +214,17 @@ function ensureCliWorkdir() {
   const sourceMigrations = path.join(repoRoot, "supabase", "migrations");
   const cachedMigrations = path.join(cliSupabaseDir, "migrations");
   fs.rmSync(cachedMigrations, { recursive: true, force: true });
-  fs.cpSync(sourceMigrations, cachedMigrations, { recursive: true });
+  fs.mkdirSync(cachedMigrations, { recursive: true });
+  const canonicalMigrations = fs
+    .readdirSync(sourceMigrations)
+    .filter(isCanonicalMigrationFilename)
+    .sort();
+  for (const migrationName of canonicalMigrations) {
+    fs.copyFileSync(
+      path.join(sourceMigrations, migrationName),
+      path.join(cachedMigrations, migrationName)
+    );
+  }
 }
 
 function runSupabase(args, options = {}) {

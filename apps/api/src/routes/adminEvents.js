@@ -4,6 +4,8 @@ import rateLimit from "express-rate-limit";
 import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
 import {
   EventMessageModel,
+  EventMeetingDetailModel,
+  EventJoinAccessLogModel,
   EventModel,
   EventRsvpModel,
   ProfileModel,
@@ -21,9 +23,11 @@ import {
   normalizeEventMessageKind,
   normalizeEventStatus,
   normalizeEventWritePayload,
+  normalizeSeminarMeetingUrl,
   resolveEventSlug,
   serializeEvent,
-  serializeEventMessage
+  serializeEventMessage,
+  validateEventPublishReadiness
 } from "../services/events.js";
 import {
   normalizeTenantMobileNotificationPrefs,
@@ -78,6 +82,53 @@ function fullName(profile = {}, user = {}) {
   return `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim() || String(user?.email || "Member");
 }
 
+async function validateAssignedHost(tenantId, hostProfileId = "") {
+  const profileId = toId(hostProfileId);
+  if (!profileId) return null;
+
+  const profile = await ProfileModel.findOne(tenantId, {
+    _id: profileId,
+    status: "active"
+  });
+  if (!profile) {
+    throw createEventError(
+      "Select an active registered member from this network as the seminar host.",
+      "SEMINAR_HOST_NOT_REGISTERED"
+    );
+  }
+
+  const user = await UserModel.findOne(tenantId, {
+    _id: toId(profile.userId),
+    status: "active"
+  });
+  if (!user) {
+    throw createEventError(
+      "The selected host no longer has an active network account.",
+      "SEMINAR_HOST_NOT_REGISTERED"
+    );
+  }
+
+  return profile;
+}
+
+async function saveMeetingDetail({ tenantId, eventId, meetingUrl = "" }) {
+  const existing = await EventMeetingDetailModel.findOne(tenantId, { eventId });
+  const patch = {
+    meetingUrl: String(meetingUrl || "").trim(),
+    accessPolicy: "registered_rsvp"
+  };
+
+  if (existing) {
+    return EventMeetingDetailModel.update(existing._id, patch);
+  }
+  if (!patch.meetingUrl) return null;
+  return EventMeetingDetailModel.create({
+    tenantId,
+    eventId,
+    ...patch
+  });
+}
+
 async function resolveUniqueEventSlug(tenantId, title = "", eventId = "") {
   const base = resolveEventSlug(title, "event");
   let attempt = base;
@@ -128,9 +179,14 @@ async function buildAdminEventListPayload(tenantId, filter = {}) {
 
 async function buildEventDetailPayload(tenantId, event) {
   const eventId = toId(event?._id || event?.id);
-  const [rsvps, messages] = await Promise.all([
+  const [rsvps, messages, meetingDetail, joinAccessCount, hostProfile] = await Promise.all([
     EventRsvpModel.find(tenantId, { eventId }, { sort: { respondedAt: -1 } }),
-    EventMessageModel.find(tenantId, { eventId }, { sort: { createdAt: -1 } })
+    EventMessageModel.find(tenantId, { eventId }, { sort: { createdAt: -1 } }),
+    EventMeetingDetailModel.findOne(tenantId, { eventId }),
+    EventJoinAccessLogModel.count(tenantId, { eventId }),
+    event?.hostProfileId
+      ? ProfileModel.findOne(tenantId, { _id: toId(event.hostProfileId) })
+      : null
   ]);
 
   const profileIds = [...new Set(rsvps.map((item) => toId(item?.profileId)).filter(Boolean))];
@@ -151,7 +207,11 @@ async function buildEventDetailPayload(tenantId, event) {
   return {
     item: serializeEvent(event, {
       now: new Date(),
-      rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId)
+      rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
+      hostProfile,
+      includePrivateMeeting: true,
+      meetingUrl: meetingDetail?.meetingUrl || "",
+      joinAccessCount
     }),
     responses: rsvps.slice(0, 80).map((rsvp) => {
       const profile = profileById.get(toId(rsvp?.profileId)) || null;
@@ -199,6 +259,11 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   const payload = normalizeEventWritePayload(req.body || {});
+  const meetingUrl = normalizeSeminarMeetingUrl(
+    req.body?.meetingUrl || "",
+    payload.meetingProvider || ""
+  );
+  const hostProfile = await validateAssignedHost(req.tenant._id, payload.hostProfileId);
   const slug = await resolveUniqueEventSlug(req.tenant._id, payload.title);
   const created = await EventModel.create({
     tenantId: req.tenant._id,
@@ -208,15 +273,26 @@ router.post("/", async (req, res) => {
     createdByUserId: req.user.id,
     updatedByUserId: req.user.id
   });
+  await saveMeetingDetail({
+    tenantId: req.tenant._id,
+    eventId: toId(created?._id || created?.id),
+    meetingUrl
+  });
 
   await writeAdminAudit(req, "admin_event_created", {
     eventId: toId(created?._id || created?.id),
-    title: created.title
+    title: created.title,
+    eventType: created.eventType || "community"
   });
 
   return res.status(201).json({
     ok: true,
-    item: serializeEvent(created, { now: new Date() })
+    item: serializeEvent(created, {
+      now: new Date(),
+      hostProfile,
+      includePrivateMeeting: true,
+      meetingUrl
+    })
   });
 });
 
@@ -229,12 +305,25 @@ router.get("/:eventId", async (req, res) => {
 router.patch("/:eventId", async (req, res) => {
   const event = await loadEventOr404(req, res);
   if (!event) return;
+  const eventId = toId(event?._id || event?.id);
+  const existingMeeting = await EventMeetingDetailModel.findOne(req.tenant._id, { eventId });
 
   const mergedInput = {
     title: Object.prototype.hasOwnProperty.call(req.body || {}, "title") ? req.body.title : event.title,
     summary: Object.prototype.hasOwnProperty.call(req.body || {}, "summary") ? req.body.summary : event.summary,
     bodyHtml: Object.prototype.hasOwnProperty.call(req.body || {}, "bodyHtml") ? req.body.bodyHtml : event.bodyHtml,
     coverImageUrl: Object.prototype.hasOwnProperty.call(req.body || {}, "coverImageUrl") ? req.body.coverImageUrl : event.coverImageUrl,
+    eventType: Object.prototype.hasOwnProperty.call(req.body || {}, "eventType") ? req.body.eventType : event.eventType,
+    deliveryMode: Object.prototype.hasOwnProperty.call(req.body || {}, "deliveryMode") ? req.body.deliveryMode : event.deliveryMode,
+    topicCategory: Object.prototype.hasOwnProperty.call(req.body || {}, "topicCategory") ? req.body.topicCategory : event.topicCategory,
+    topicTitle: Object.prototype.hasOwnProperty.call(req.body || {}, "topicTitle") ? req.body.topicTitle : event.topicTitle,
+    audience: Object.prototype.hasOwnProperty.call(req.body || {}, "audience") ? req.body.audience : event.audience,
+    meetingProvider: Object.prototype.hasOwnProperty.call(req.body || {}, "meetingProvider") ? req.body.meetingProvider : event.meetingProvider,
+    hostProfileId: Object.prototype.hasOwnProperty.call(req.body || {}, "hostProfileId") ? req.body.hostProfileId : event.hostProfileId,
+    capacity: Object.prototype.hasOwnProperty.call(req.body || {}, "capacity") ? req.body.capacity : event.capacity,
+    meetingUrl: Object.prototype.hasOwnProperty.call(req.body || {}, "meetingUrl")
+      ? req.body.meetingUrl
+      : existingMeeting?.meetingUrl || "",
     startsAt: Object.prototype.hasOwnProperty.call(req.body || {}, "startsAt") ? req.body.startsAt : event.startsAt,
     endsAt: Object.prototype.hasOwnProperty.call(req.body || {}, "endsAt") ? req.body.endsAt : event.endsAt,
     timezone: Object.prototype.hasOwnProperty.call(req.body || {}, "timezone") ? req.body.timezone : event.timezone,
@@ -244,6 +333,11 @@ router.patch("/:eventId", async (req, res) => {
   };
 
   const patch = normalizeEventWritePayload(mergedInput);
+  const meetingUrl = normalizeSeminarMeetingUrl(
+    mergedInput.meetingUrl || "",
+    patch.meetingProvider || ""
+  );
+  const hostProfile = await validateAssignedHost(req.tenant._id, patch.hostProfileId);
   const nextSlug = patch.title && patch.title !== event.title
     ? await resolveUniqueEventSlug(req.tenant._id, patch.title, toId(event?._id || event?.id))
     : String(event.slug || "").trim();
@@ -253,24 +347,38 @@ router.patch("/:eventId", async (req, res) => {
     slug: nextSlug,
     updatedByUserId: req.user.id
   });
+  await saveMeetingDetail({
+    tenantId: req.tenant._id,
+    eventId,
+    meetingUrl
+  });
 
   await writeAdminAudit(req, "admin_event_updated", {
     eventId: toId(updated?._id || updated?.id),
-    title: updated.title
+    title: updated.title,
+    eventType: updated.eventType || "community"
   });
 
   return res.json({
     ok: true,
-    item: serializeEvent(updated, { now: new Date() })
+    item: serializeEvent(updated, {
+      now: new Date(),
+      hostProfile,
+      includePrivateMeeting: true,
+      meetingUrl
+    })
   });
 });
 
 router.post("/:eventId/publish", async (req, res) => {
   const event = await loadEventOr404(req, res);
   if (!event) return;
-  if (!String(event.title || "").trim()) {
-    throw createEventError("Add an event title before publishing.", "EVENT_TITLE_REQUIRED");
-  }
+  const eventId = toId(event?._id || event?.id);
+  const meetingDetail = await EventMeetingDetailModel.findOne(req.tenant._id, { eventId });
+  const hostProfile = await validateAssignedHost(req.tenant._id, event.hostProfileId);
+  validateEventPublishReadiness(event, {
+    meetingUrl: meetingDetail?.meetingUrl || ""
+  });
 
   const publishedAt = new Date();
   const updated = await EventModel.update(event._id, {
@@ -280,7 +388,8 @@ router.post("/:eventId/publish", async (req, res) => {
   });
 
   await writeAdminAudit(req, "admin_event_published", {
-    eventId: toId(updated?._id || updated?.id)
+    eventId: toId(updated?._id || updated?.id),
+    eventType: updated.eventType || "community"
   });
 
   const prefs = normalizeTenantMobileNotificationPrefs(req.tenant.notificationPrefs || {});
@@ -292,8 +401,12 @@ router.post("/:eventId/publish", async (req, res) => {
       createdByUserId: req.user.id,
       kind: "event_published",
       category: "events",
-      title: updated.title || "New event published",
-      body: updated.summary || "A new camp event was just published.",
+      title: updated.title || (updated.eventType === "seminar" ? "New seminar published" : "New event published"),
+      body:
+        updated.summary ||
+        (updated.eventType === "seminar"
+          ? "A new camp seminar is open for registration."
+          : "A new camp event was just published."),
       deepLink: `/events/${toId(updated?._id || updated?.id)}`,
       data: {
         eventId: toId(updated?._id || updated?.id)
@@ -303,7 +416,12 @@ router.post("/:eventId/publish", async (req, res) => {
 
   return res.json({
     ok: true,
-    item: serializeEvent(updated, { now: new Date() })
+    item: serializeEvent(updated, {
+      now: new Date(),
+      hostProfile,
+      includePrivateMeeting: true,
+      meetingUrl: meetingDetail?.meetingUrl || ""
+    })
   });
 });
 
