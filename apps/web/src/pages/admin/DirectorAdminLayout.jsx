@@ -40,7 +40,7 @@ const ADMIN_NAV = [
   { key: "invites", to: "invites", label: "Invitations", icon: MailPlus },
   { key: "safety", to: "safety", label: "Safety", icon: ShieldCheck },
   { type: "label", key: "engage-label", label: "Engage" },
-  { key: "events", to: "events", label: "Events", icon: CalendarDays },
+  { key: "events", to: "events", label: "Events & Seminars", icon: CalendarDays },
   { key: "mobile-alerts", to: "settings/notifications", label: "Mobile alerts", icon: Bell },
   { key: "email", to: "email/compose", label: "Compose email", icon: Send },
   { key: "email-history", to: "email/history", label: "Email history", icon: History },

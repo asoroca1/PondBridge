@@ -7,6 +7,19 @@ import { sanitizeHtmlContent, sanitizeText } from "../utils/sanitize.js";
 export const EVENT_STATUSES = ["draft", "published", "canceled"];
 export const EVENT_RSVP_STATUSES = ["attending", "maybe", "not_attending"];
 export const EVENT_MESSAGE_KINDS = ["invite", "reminder", "update", "cancellation"];
+export const EVENT_TYPES = ["community", "seminar"];
+export const EVENT_DELIVERY_MODES = ["in_person", "online", "hybrid"];
+export const EVENT_TOPIC_CATEGORIES = ["", "career", "college", "financial_literacy", "networking", "other"];
+export const EVENT_AUDIENCES = [
+  "all_members",
+  "students",
+  "young_alumni",
+  "parents",
+  "college_applicants",
+  "career_explorers"
+];
+export const EVENT_MEETING_PROVIDERS = ["", "zoom", "microsoft_teams", "google_meet", "other"];
+export const EVENT_MEETING_ACCESS_POLICY = "registered_rsvp";
 
 function escapeHtml(value = "") {
   return String(value || "")
@@ -27,6 +40,98 @@ function normalizeHttpUrl(value = "") {
   } catch {
     return "";
   }
+}
+
+function normalizeEnum(value, allowed, fallback) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return allowed.includes(normalized) ? normalized : fallback;
+}
+
+export function normalizeEventType(value = "", fallback = "community") {
+  return normalizeEnum(value, EVENT_TYPES, fallback);
+}
+
+export function normalizeEventDeliveryMode(value = "", fallback = "in_person") {
+  return normalizeEnum(value, EVENT_DELIVERY_MODES, fallback);
+}
+
+export function normalizeEventTopicCategory(value = "", fallback = "") {
+  return normalizeEnum(value, EVENT_TOPIC_CATEGORIES, fallback);
+}
+
+export function normalizeEventAudience(value = "", fallback = "all_members") {
+  return normalizeEnum(value, EVENT_AUDIENCES, fallback);
+}
+
+export function inferMeetingProvider(meetingUrl = "") {
+  const normalizedUrl = normalizeHttpUrl(meetingUrl);
+  if (!normalizedUrl) return "";
+  const hostname = new URL(normalizedUrl).hostname.toLowerCase();
+  if (hostname === "zoom.us" || hostname.endsWith(".zoom.us")) return "zoom";
+  if (
+    hostname === "teams.microsoft.com" ||
+    hostname.endsWith(".teams.microsoft.com") ||
+    hostname === "teams.live.com"
+  ) {
+    return "microsoft_teams";
+  }
+  if (hostname === "meet.google.com") return "google_meet";
+  return "other";
+}
+
+export function normalizeMeetingProvider(value = "", meetingUrl = "", fallback = "") {
+  const normalized = normalizeEnum(value, EVENT_MEETING_PROVIDERS, "");
+  return normalized || inferMeetingProvider(meetingUrl) || fallback;
+}
+
+export function normalizeSeminarMeetingUrl(value = "", provider = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw createEventError("Enter a valid meeting link.", "SEMINAR_MEETING_URL_INVALID");
+  }
+
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    throw createEventError("Meeting links must use a secure https URL.", "SEMINAR_MEETING_URL_INVALID");
+  }
+
+  const normalizedProvider = normalizeMeetingProvider(provider, parsed.toString(), "");
+  const hostname = parsed.hostname.toLowerCase();
+  const providerMatches =
+    normalizedProvider === "zoom"
+      ? hostname === "zoom.us" || hostname.endsWith(".zoom.us")
+      : normalizedProvider === "microsoft_teams"
+        ? hostname === "teams.microsoft.com" ||
+          hostname.endsWith(".teams.microsoft.com") ||
+          hostname === "teams.live.com"
+        : normalizedProvider === "google_meet"
+          ? hostname === "meet.google.com"
+          : true;
+
+  if (!providerMatches) {
+    throw createEventError(
+      "The meeting link does not match the selected provider.",
+      "SEMINAR_MEETING_PROVIDER_MISMATCH"
+    );
+  }
+
+  return parsed.toString();
+}
+
+function normalizeCapacity(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10000) {
+    throw createEventError(
+      "Capacity must be a whole number between 1 and 10,000.",
+      "EVENT_CAPACITY_INVALID"
+    );
+  }
+  return parsed;
 }
 
 function slugify(value = "") {
@@ -155,6 +260,42 @@ export function normalizeEventWritePayload(input = {}, { partial = false } = {})
     payload.coverImageUrl = normalizeHttpUrl(source.coverImageUrl || "");
   }
 
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "eventType")) {
+    payload.eventType = normalizeEventType(source.eventType || "", "community");
+  }
+
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "deliveryMode")) {
+    payload.deliveryMode = normalizeEventDeliveryMode(source.deliveryMode || "", "in_person");
+  }
+
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "topicCategory")) {
+    payload.topicCategory = normalizeEventTopicCategory(source.topicCategory || "", "");
+  }
+
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "topicTitle")) {
+    payload.topicTitle = sanitizeText(String(source.topicTitle || "").trim()).slice(0, 120);
+  }
+
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "audience")) {
+    payload.audience = normalizeEventAudience(source.audience || "", "all_members");
+  }
+
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "meetingProvider")) {
+    payload.meetingProvider = normalizeMeetingProvider(
+      source.meetingProvider || "",
+      source.meetingUrl || "",
+      ""
+    );
+  }
+
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "hostProfileId")) {
+    payload.hostProfileId = sanitizeText(String(source.hostProfileId || "").trim()).slice(0, 80) || null;
+  }
+
+  if (!partial || Object.prototype.hasOwnProperty.call(source, "capacity")) {
+    payload.capacity = normalizeCapacity(source.capacity);
+  }
+
   if (!partial || Object.prototype.hasOwnProperty.call(source, "timezone")) {
     payload.timezone = sanitizeText(String(source.timezone || "").trim()).slice(0, 80) || "America/New_York";
   }
@@ -182,6 +323,105 @@ export function normalizeEventWritePayload(input = {}, { partial = false } = {})
   }
 
   return payload;
+}
+
+export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = {}) {
+  if (!String(event?.title || "").trim()) {
+    throw createEventError("Add an event title before publishing.", "EVENT_TITLE_REQUIRED");
+  }
+
+  validateEventTimeline({
+    startsAt: event?.startsAt,
+    endsAt: event?.endsAt || null,
+    rsvpDeadlineAt: event?.rsvpDeadlineAt || null
+  });
+
+  if (normalizeEventType(event?.eventType || "") !== "seminar") {
+    return { ready: true };
+  }
+
+  const deliveryMode = normalizeEventDeliveryMode(event?.deliveryMode || "");
+  if (!["online", "hybrid"].includes(deliveryMode)) {
+    throw createEventError(
+      "Seminars must be online or hybrid.",
+      "SEMINAR_DELIVERY_MODE_REQUIRED"
+    );
+  }
+  if (!String(event?.topicTitle || "").trim()) {
+    throw createEventError("Add a seminar topic before publishing.", "SEMINAR_TOPIC_REQUIRED");
+  }
+  if (!String(event?.hostProfileId || "").trim()) {
+    throw createEventError(
+      "Select a registered network member to host this seminar.",
+      "SEMINAR_HOST_REQUIRED"
+    );
+  }
+  const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
+  if (!provider) {
+    throw createEventError(
+      "Select the seminar meeting provider.",
+      "SEMINAR_MEETING_PROVIDER_REQUIRED"
+    );
+  }
+  if (!normalizeSeminarMeetingUrl(meetingUrl, provider)) {
+    throw createEventError("Add the seminar meeting link.", "SEMINAR_MEETING_URL_REQUIRED");
+  }
+  if (deliveryMode === "hybrid" && !String(event?.locationName || "").trim()) {
+    throw createEventError(
+      "Add the in-person location for this hybrid seminar.",
+      "SEMINAR_HYBRID_LOCATION_REQUIRED"
+    );
+  }
+
+  return { ready: true };
+}
+
+export function assertSeminarJoinEligibility({
+  event = {},
+  profile = null,
+  rsvp = null,
+  now = new Date()
+} = {}) {
+  if (
+    normalizeEventType(event?.eventType || "") !== "seminar" ||
+    !["online", "hybrid"].includes(normalizeEventDeliveryMode(event?.deliveryMode || ""))
+  ) {
+    throw createEventError(
+      "This event does not have an online seminar room.",
+      "SEMINAR_JOIN_NOT_AVAILABLE",
+      400
+    );
+  }
+
+  const current = now instanceof Date ? now : new Date(now);
+  const endAt = event?.endsAt || event?.startsAt;
+  if (endAt && new Date(endAt).getTime() + 4 * 60 * 60 * 1000 < current.getTime()) {
+    throw createEventError(
+      "This seminar has ended and its live meeting link is no longer available.",
+      "SEMINAR_ENDED",
+      410
+    );
+  }
+
+  if (!profile || String(profile?.status || "").trim().toLowerCase() !== "active") {
+    throw createEventError(
+      "Only active registered network members can join seminars.",
+      "SEMINAR_REGISTRATION_REQUIRED",
+      403
+    );
+  }
+
+  const profileId = String(profile?._id || profile?.id || "");
+  const isHost = profileId && profileId === String(event?.hostProfileId || "");
+  if (!isHost && String(rsvp?.status || "").trim().toLowerCase() !== "attending") {
+    throw createEventError(
+      "RSVP “Going” before opening the seminar room.",
+      "SEMINAR_ATTENDING_RSVP_REQUIRED",
+      403
+    );
+  }
+
+  return { profileId, isHost };
 }
 
 export function eventPath(eventId = "") {
@@ -264,8 +504,22 @@ export function serializeEvent(event = {}, options = {}) {
       !Number.isNaN(rsvpDeadlineAt.getTime()) &&
       rsvpDeadlineAt < (options.now || new Date())
   );
+  const eventType = normalizeEventType(event?.eventType || "", "community");
+  const deliveryMode = normalizeEventDeliveryMode(event?.deliveryMode || "", "in_person");
+  const isOnlineSeminar =
+    eventType === "seminar" && ["online", "hybrid"].includes(deliveryMode);
+  const hostProfile = options.hostProfile || null;
+  const isHost = Boolean(
+    options.viewerProfileId &&
+      String(options.viewerProfileId) === String(event?.hostProfileId || "")
+  );
+  const canRequestJoinLink = Boolean(
+    isOnlineSeminar &&
+      event?.status === "published" &&
+      (isHost || myRsvp?.status === "attending")
+  );
 
-  return {
+  const serialized = {
     id: String(event?._id || event?.id || ""),
     slug: String(event?.slug || "").trim(),
     status: normalizeEventStatus(event?.status || "", "draft"),
@@ -274,6 +528,28 @@ export function serializeEvent(event = {}, options = {}) {
     summary: String(event?.summary || "").trim(),
     bodyHtml: String(event?.bodyHtml || ""),
     coverImageUrl: String(event?.coverImageUrl || "").trim(),
+    eventType,
+    deliveryMode,
+    topicCategory: normalizeEventTopicCategory(event?.topicCategory || "", ""),
+    topicTitle: String(event?.topicTitle || "").trim(),
+    audience: normalizeEventAudience(event?.audience || "", "all_members"),
+    meetingProvider: normalizeMeetingProvider(event?.meetingProvider || "", "", ""),
+    hostProfileId: String(event?.hostProfileId || "").trim(),
+    host: hostProfile
+      ? {
+          id: String(hostProfile?._id || hostProfile?.id || "").trim(),
+          fullName: `${hostProfile?.firstName || ""} ${hostProfile?.lastName || ""}`.trim() || "Camp member",
+          avatarUrl: String(hostProfile?.avatarUrl || "").trim(),
+          roleAtCamp: String(hostProfile?.roleAtCamp || "").trim(),
+          industry: String(hostProfile?.industry || "").trim()
+        }
+      : null,
+    capacity:
+      event?.capacity !== null &&
+      event?.capacity !== undefined &&
+      Number.isInteger(Number(event.capacity))
+        ? Number(event.capacity)
+        : null,
     startsAt: event?.startsAt ? new Date(event.startsAt).toISOString() : null,
     endsAt: event?.endsAt ? new Date(event.endsAt).toISOString() : null,
     timezone: String(event?.timezone || "America/New_York").trim(),
@@ -294,8 +570,28 @@ export function serializeEvent(event = {}, options = {}) {
         }
       : null,
     path: eventPath(event?._id || event?.id || ""),
-    rsvpClosed
+    rsvpClosed,
+    meetingAccess: isOnlineSeminar
+      ? {
+          accessPolicy: EVENT_MEETING_ACCESS_POLICY,
+          requiresRegistration: true,
+          requiresAttendingRsvp: true,
+          isHost,
+          canRequestJoinLink,
+          joinPath: `${eventPath(event?._id || event?.id || "")}/join`
+        }
+      : null
   };
+
+  if (options.includePrivateMeeting) {
+    serialized.meetingUrl = String(options.meetingUrl || "").trim();
+  }
+
+  if (Number.isFinite(Number(options.joinAccessCount))) {
+    serialized.joinAccessCount = Number(options.joinAccessCount);
+  }
+
+  return serialized;
 }
 
 export function serializeEventMessage(message = {}) {
@@ -332,16 +628,27 @@ function eventMetaHtml(event = {}) {
         timeZone: String(event?.timezone || "America/New_York")
       })
     : "";
+  const eventTypeLabel = normalizeEventType(event?.eventType || "") === "seminar"
+    ? "Seminar"
+    : "Event";
+  const deliveryLabel =
+    event?.deliveryMode === "online"
+      ? "Online"
+      : event?.deliveryMode === "hybrid"
+        ? "Online + in person"
+        : "";
 
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;border-collapse:separate;border-spacing:0;">
       <tr>
         <td style="padding:16px 18px;border:1px solid #d7e2ee;border-radius:18px;background:#f8fbff;">
-          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b6f86;">Event</p>
+          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b6f86;">${eventTypeLabel}</p>
           <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:#10273f;">${escapeHtml(event?.title || "Event")}</h2>
           ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#31465c;">${escapeHtml(event.summary)}</p>` : ""}
           ${startLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>` : ""}
           ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
+          ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
+          ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}
           ${event?.locationName ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Location:</strong> ${escapeHtml(event.locationName)}</p>` : ""}
           ${event?.locationAddress ? `<p style="margin:0;font-size:14px;color:#4b6076;">${escapeHtml(event.locationAddress)}</p>` : ""}
         </td>
@@ -360,19 +667,22 @@ export function buildEventEmailContent({
   const branding = buildTenantEmailBranding(tenant);
   const ctaUrl = buildEventAppUrl(tenant, event?._id || event?.id || "");
   const safeKind = normalizeEventMessageKind(kind || "", "invite");
+  const scheduleNoun = normalizeEventType(event?.eventType || "") === "seminar"
+    ? "seminar"
+    : "event";
   const intro = safeKind === "invite"
-    ? `<p>You are invited to an upcoming event in ${escapeHtml(branding.networkName)}.</p>`
+    ? `<p>You are invited to an upcoming ${scheduleNoun} in ${escapeHtml(branding.networkName)}.</p>`
     : safeKind === "reminder"
-    ? `<p>This is a reminder about an upcoming event in ${escapeHtml(branding.networkName)}.</p>`
+    ? `<p>This is a reminder about an upcoming ${scheduleNoun} in ${escapeHtml(branding.networkName)}.</p>`
     : safeKind === "cancellation"
-    ? `<p>This event has been canceled. Please see the latest details below.</p>`
-    : `<p>There is an update for an upcoming event in ${escapeHtml(branding.networkName)}.</p>`;
+    ? `<p>This ${scheduleNoun} has been canceled. Please see the latest details below.</p>`
+    : `<p>There is an update for an upcoming ${scheduleNoun} in ${escapeHtml(branding.networkName)}.</p>`;
 
   const composedBody = `
     ${intro}
     ${bodyHtml ? String(bodyHtml) : ""}
     ${eventMetaHtml(event)}
-    ${ctaUrl ? `<p><a href="${escapeHtml(ctaUrl)}" target="_blank" rel="noopener noreferrer">View event details and RSVP</a></p>` : ""}
+    ${ctaUrl ? `<p><a href="${escapeHtml(ctaUrl)}" target="_blank" rel="noopener noreferrer">View ${scheduleNoun} details and RSVP</a></p>` : ""}
   `;
 
   return broadcastTemplate({

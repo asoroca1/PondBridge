@@ -26,6 +26,13 @@ describe("native schema tenant hardening", () => {
     expect(sql).toContain("public.lower_immutable(btrim(custom_domain))");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.member_blocks");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.content_reports");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.event_meeting_details");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.event_join_access_logs");
+    expect(sql).toContain("idx_event_join_access_event");
+    expect(sql).toContain("idx_event_join_access_profile");
+    expect(sql).toContain("idx_event_join_access_user");
+    expect(sql).toContain("trigger_enforce_event_host_tenant_consistency");
+    expect(sql).toContain("trigger_enforce_event_join_tenant_consistency");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.platform_admin_audit_logs");
     expect(sql).toContain("idx_platform_audit_logs_created");
     expect(sql).toContain("CREATE TRIGGER trigger_enforce_member_block_tenant_consistency");

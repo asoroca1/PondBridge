@@ -125,6 +125,7 @@ The canonical migration sequence lives in `supabase/migrations/`:
 6. Member safety
 7. Foreign-key performance indexes
 8. Database function and grant hardening
+9. Registered-member seminars and private meeting access
 
 Future changes must be created with the pinned CLI and verified from a clean
 reset:
@@ -141,7 +142,7 @@ as part of the local staging workflow.
 
 `npm run staging:local:verify` requires all of the following:
 
-- All eight migrations appear in authoritative migration history.
+- All nine migrations appear in authoritative migration history.
 - Every PondBridge table exists with RLS enabled and forced.
 - `anon` and `authenticated` have no direct table CRUD privileges.
 - `service_role` has explicit CRUD privileges and RLS policies.

@@ -14,6 +14,8 @@ export { NewsletterModel } from "./NewsletterModel.js";
 export { EventModel } from "./EventModel.js";
 export { EventRsvpModel } from "./EventRsvpModel.js";
 export { EventMessageModel } from "./EventMessageModel.js";
+export { EventMeetingDetailModel } from "./EventMeetingDetailModel.js";
+export { EventJoinAccessLogModel } from "./EventJoinAccessLogModel.js";
 export { EmailBroadcastModel } from "./EmailBroadcastModel.js";
 export { FamilyTreeModel, RELATIONSHIP_TYPES } from "./FamilyTreeModel.js";
 export { AnalyticsEventModel } from "./AnalyticsEventModel.js";

@@ -12,7 +12,7 @@ const MEMBER_STARTERS = [
   "Who should I reconnect with?",
   "Find former counselors in Boston",
   "Who joined recently?",
-  "Show me upcoming events"
+  "Show me upcoming seminars"
 ];
 
 function messageId(prefix = "message") {
@@ -152,15 +152,15 @@ export function buildMemberGuideAnswer({ question, slug, tenant }) {
         };
   }
 
-  if (/\b(event|events|calendar|reunion|rsvp)\b/.test(normalized)) {
+  if (/\b(event|events|calendar|reunion|rsvp|seminar|seminars|webinar|zoom|teams)\b/.test(normalized)) {
     return modules.events === false
       ? {
-          content: "Events are not currently enabled for this camp community.",
+          content: "Events and seminars are not currently enabled for this camp community.",
           links: []
         }
       : {
-          content: "You can browse upcoming camp events, open the details, and RSVP from the Events page.",
-          links: [{ label: "View upcoming events", href: tenantRoute(slug, "/events") }]
+          content: "You can browse upcoming camp events and registered-member seminars, review the host and topic, RSVP, and securely open an online room from the Events & Seminars page.",
+          links: [{ label: "View events & seminars", href: tenantRoute(slug, "/events") }]
         };
   }
 

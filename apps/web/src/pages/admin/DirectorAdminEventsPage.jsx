@@ -7,6 +7,15 @@ import { tenantRoute } from "../../lib/tenantRouting.js";
 import useAdminApi from "./useAdminApi.js";
 
 const DEFAULT_EVENT_FORM = {
+  eventType: "community",
+  deliveryMode: "in_person",
+  topicCategory: "",
+  topicTitle: "",
+  audience: "all_members",
+  meetingProvider: "",
+  meetingUrl: "",
+  hostProfileId: "",
+  capacity: "",
   title: "",
   summary: "",
   bodyHtml: "",
@@ -45,6 +54,15 @@ function toApiDateTimeValue(value = "") {
 function applyEventToForm(item = null) {
   if (!item) return { ...DEFAULT_EVENT_FORM };
   return {
+    eventType: item.eventType || "community",
+    deliveryMode: item.deliveryMode || "in_person",
+    topicCategory: item.topicCategory || "",
+    topicTitle: item.topicTitle || "",
+    audience: item.audience || "all_members",
+    meetingProvider: item.meetingProvider || "",
+    meetingUrl: item.meetingUrl || "",
+    hostProfileId: item.hostProfileId || "",
+    capacity: item.capacity || "",
     title: item.title || "",
     summary: item.summary || "",
     bodyHtml: item.bodyHtml || "",
@@ -94,8 +112,13 @@ export default function DirectorAdminEventsPage() {
   const [memberQuery, setMemberQuery] = useState("");
   const [memberFilters, setMemberFilters] = useState(DEFAULT_MEMBER_FILTERS);
   const [memberResults, setMemberResults] = useState([]);
+  const [hostQuery, setHostQuery] = useState("");
+  const [hostResults, setHostResults] = useState([]);
+  const [hostProfile, setHostProfile] = useState(null);
+  const [searchingHosts, setSearchingHosts] = useState(false);
   const [selectedMembersById, setSelectedMembersById] = useState({});
   const [searchingMembers, setSearchingMembers] = useState(false);
+  const scheduleNoun = eventForm.eventType === "seminar" ? "seminar" : "event";
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
@@ -124,7 +147,7 @@ export default function DirectorAdminEventsPage() {
     }
   }
 
-  async function loadDetail(eventId) {
+  async function loadDetail(eventId, { resetComposer = false } = {}) {
     if (!eventId) {
       setDetail(null);
       return;
@@ -135,6 +158,18 @@ export default function DirectorAdminEventsPage() {
       const payload = await request(`/events/${eventId}`);
       setDetail(payload);
       setEventForm(applyEventToForm(payload?.item || null));
+      setHostProfile(payload?.item?.host || null);
+      if (resetComposer) {
+        setEmailForm({
+          kind: "invite",
+          subject: payload?.item ? suggestedSubject("invite", payload.item.title) : "",
+          bodyHtml: "",
+          recipientProfileIds: []
+        });
+        setSelectedMembersById({});
+        setMemberQuery("");
+        setMemberResults([]);
+      }
     } catch (requestError) {
       setError(requestError.message || "Failed to load event detail.");
     } finally {
@@ -150,20 +185,10 @@ export default function DirectorAdminEventsPage() {
     if (!selectedEventId) {
       setDetail(null);
       setEventForm({ ...DEFAULT_EVENT_FORM });
+      setHostProfile(null);
       return;
     }
-    loadDetail(selectedEventId);
-  }, [selectedEventId]);
-
-  useEffect(() => {
-    setEmailForm({
-      kind: "invite",
-      subject: detail?.item ? suggestedSubject("invite", detail.item.title) : "",
-      bodyHtml: "",
-      recipientProfileIds: []
-    });
-    setMemberQuery("");
-    setMemberResults([]);
+    loadDetail(selectedEventId, { resetComposer: true });
   }, [selectedEventId]);
 
   useEffect(() => {
@@ -218,6 +243,33 @@ export default function DirectorAdminEventsPage() {
     return () => window.clearTimeout(timer);
   }, [memberFilters, memberQuery, emailForm.recipientProfileIds, request]);
 
+  useEffect(() => {
+    const term = hostQuery.trim();
+    if (term.length < 2) {
+      setHostResults([]);
+      return undefined;
+    }
+
+    setSearchingHosts(true);
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({
+        q: term,
+        status: "active",
+        pageSize: "8"
+      });
+      request(`/members?${params.toString()}`)
+        .then((payload) => {
+          setHostResults(Array.isArray(payload?.items) ? payload.items : []);
+        })
+        .catch((requestError) => {
+          setError(requestError.message || "Failed to search registered hosts.");
+        })
+        .finally(() => setSearchingHosts(false));
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [hostQuery, request]);
+
   const selectedMembers = useMemo(
     () =>
       emailForm.recipientProfileIds
@@ -232,6 +284,9 @@ export default function DirectorAdminEventsPage() {
     setSelectedEventId("");
     setDetail(null);
     setEventForm({ ...DEFAULT_EVENT_FORM });
+    setHostProfile(null);
+    setHostQuery("");
+    setHostResults([]);
     setEmailForm({ ...DEFAULT_EMAIL_FORM });
     setCoverUploadError("");
     setCoverInputKey((value) => value + 1);
@@ -241,6 +296,17 @@ export default function DirectorAdminEventsPage() {
 
   function updateEventField(key, value) {
     setEventForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateEventType(value) {
+    setEventForm((current) => ({
+      ...current,
+      eventType: value,
+      deliveryMode:
+        value === "seminar" && current.deliveryMode === "in_person"
+          ? "online"
+          : current.deliveryMode
+    }));
   }
 
   async function handleCoverFileChange(event) {
@@ -273,6 +339,15 @@ export default function DirectorAdminEventsPage() {
 
   function buildEventPayload() {
     return {
+      eventType: eventForm.eventType,
+      deliveryMode: eventForm.deliveryMode,
+      topicCategory: eventForm.topicCategory,
+      topicTitle: eventForm.topicTitle,
+      audience: eventForm.audience,
+      meetingProvider: eventForm.meetingProvider,
+      meetingUrl: eventForm.meetingUrl,
+      hostProfileId: eventForm.hostProfileId,
+      capacity: eventForm.capacity || null,
       title: eventForm.title,
       summary: eventForm.summary,
       bodyHtml: eventForm.bodyHtml,
@@ -284,6 +359,18 @@ export default function DirectorAdminEventsPage() {
       locationAddress: eventForm.locationAddress,
       rsvpDeadlineAt: toApiDateTimeValue(eventForm.rsvpDeadlineAt)
     };
+  }
+
+  function selectHost(member) {
+    setHostProfile(member);
+    setEventForm((current) => ({ ...current, hostProfileId: member.id }));
+    setHostQuery("");
+    setHostResults([]);
+  }
+
+  function clearHost() {
+    setHostProfile(null);
+    setEventForm((current) => ({ ...current, hostProfileId: "" }));
   }
 
   async function saveEvent() {
@@ -302,14 +389,18 @@ export default function DirectorAdminEventsPage() {
             body: payload
           });
       const nextId = response?.item?.id || selectedEventId;
-      setStatus(selectedEventId ? "Event saved." : "Draft event created.");
+      setStatus(
+        selectedEventId
+          ? `${scheduleNoun === "seminar" ? "Seminar" : "Event"} saved.`
+          : `Draft ${scheduleNoun} created.`
+      );
       await loadList(nextId);
       setSelectedEventId(nextId);
       if (nextId) {
         await loadDetail(nextId);
       }
     } catch (requestError) {
-      setError(requestError.message || "Failed to save event.");
+      setError(requestError.message || `Failed to save ${scheduleNoun}.`);
     } finally {
       setSaving(false);
     }
@@ -326,16 +417,16 @@ export default function DirectorAdminEventsPage() {
       });
       setStatus(
         action === "publish"
-          ? "Event published."
+          ? `${scheduleNoun === "seminar" ? "Seminar" : "Event"} published.`
           : action === "unpublish"
-          ? "Event moved back to draft."
-          : "Event canceled."
+          ? `${scheduleNoun === "seminar" ? "Seminar" : "Event"} moved back to draft.`
+          : `${scheduleNoun === "seminar" ? "Seminar" : "Event"} canceled.`
       );
       await loadList(selectedEventId);
       setDetail((current) => ({ ...(current || {}), item: response?.item || current?.item }));
       await loadDetail(selectedEventId);
     } catch (requestError) {
-      setError(requestError.message || "Failed to update event.");
+      setError(requestError.message || `Failed to update ${scheduleNoun}.`);
     } finally {
       setSaving(false);
     }
@@ -399,17 +490,18 @@ export default function DirectorAdminEventsPage() {
     <div className="director-admin-stack">
       <Card>
         <PageHeader
-          title="Events"
-          subtitle="Create polished event pages, collect RSVPs, and send member invites from one workspace."
+          className="director-events-page-header"
+          title="Events & Seminars"
+          subtitle="Run community events and registered-member online seminars from one workspace."
           actions={
-            <div className="director-admin-page-actions">
+            <div className="director-admin-page-actions director-events-toolbar">
               <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="all">All statuses</option>
                 <option value="draft">Drafts</option>
                 <option value="published">Published</option>
                 <option value="canceled">Canceled</option>
               </Select>
-              <Button variant="secondary" onClick={startNewEvent}>New Event</Button>
+              <Button variant="secondary" onClick={startNewEvent}>New Event or Seminar</Button>
             </div>
           }
         />
@@ -427,8 +519,8 @@ export default function DirectorAdminEventsPage() {
       <section className="director-events-layout">
         <Card className="director-events-list-card">
           <div className="director-events-section-head">
-            <h2 className="pb-section-title">Event List</h2>
-            <p className="muted">Pick an event to edit or start a new one.</p>
+            <h2 className="pb-section-title">Schedule</h2>
+            <p className="muted">Pick an event or seminar to edit.</p>
           </div>
           {loading ? (
             <p className="muted">Loading events...</p>
@@ -453,7 +545,12 @@ export default function DirectorAdminEventsPage() {
                   onClick={() => setSelectedEventId(item.id)}
                 >
                   <div className="director-events-list-item-top">
-                    <strong>{item.title}</strong>
+                    <div>
+                      <span className={`director-event-type-label is-${item.eventType || "community"}`}>
+                        {item.eventType === "seminar" ? "Seminar" : "Event"}
+                      </span>
+                      <strong>{item.title}</strong>
+                    </div>
                     <Badge tone={statusTone(item.status)}>{item.status}</Badge>
                   </div>
                   <p>{item.summary || item.bodyExcerpt || "No summary yet."}</p>
@@ -470,7 +567,11 @@ export default function DirectorAdminEventsPage() {
         <div className="director-events-main">
           <Card>
             <div className="director-events-section-head">
-              <h2 className="pb-section-title">{selectedEventId ? "Edit Event" : "Create Event"}</h2>
+              <h2 className="pb-section-title">
+                {selectedEventId
+                  ? `Edit ${eventForm.eventType === "seminar" ? "Seminar" : "Event"}`
+                  : `Create ${eventForm.eventType === "seminar" ? "Seminar" : "Event"}`}
+              </h2>
               {selectedEventId ? (
                 <p className="muted">
                   <Link to={tenantRoute(slug, `/events/${selectedEventId}`)}>Open member-facing page</Link>
@@ -481,10 +582,176 @@ export default function DirectorAdminEventsPage() {
             </div>
             {detailLoading ? <p className="muted">Loading event editor...</p> : null}
             <form className="director-events-form-grid" onSubmit={(event) => event.preventDefault()}>
+              <div className="full-width director-event-type-picker" role="group" aria-label="Schedule type">
+                <button
+                  type="button"
+                  aria-pressed={eventForm.eventType === "community"}
+                  className={eventForm.eventType === "community" ? "is-active" : ""}
+                  onClick={() => updateEventType("community")}
+                >
+                  <strong>Community event</strong>
+                  <span>Reunions, gatherings, and in-person camp moments.</span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={eventForm.eventType === "seminar"}
+                  className={eventForm.eventType === "seminar" ? "is-active" : ""}
+                  onClick={() => updateEventType("seminar")}
+                >
+                  <strong>Online seminar</strong>
+                  <span>Career, college, and mentorship sessions for registered members.</span>
+                </button>
+              </div>
               <label className="full-width">
-                Event title
-                <Input value={eventForm.title} onChange={(event) => updateEventField("title", event.target.value)} placeholder="Camp Cedar Alumni Weekend" />
+                {eventForm.eventType === "seminar" ? "Seminar title" : "Event title"}
+                <Input
+                  value={eventForm.title}
+                  onChange={(event) => updateEventField("title", event.target.value)}
+                  placeholder={
+                    eventForm.eventType === "seminar"
+                      ? "Inside Investment Banking: Alumni Career Seminar"
+                      : "Camp Cedar Alumni Weekend"
+                  }
+                />
               </label>
+              {eventForm.eventType === "seminar" ? (
+                <section className="full-width director-seminar-settings" aria-labelledby="director-seminar-settings-title">
+                  <div className="director-seminar-settings-head">
+                    <div>
+                      <p className="events-message-eyebrow">Registered-member seminar</p>
+                      <h3 id="director-seminar-settings-title">Program & meeting room</h3>
+                    </div>
+                    <span>Meeting links stay private until an attending member opens the room.</span>
+                  </div>
+                  <div className="director-events-form-grid">
+                    <label>
+                      Topic
+                      <Input
+                        value={eventForm.topicTitle}
+                        onChange={(event) => updateEventField("topicTitle", event.target.value)}
+                        placeholder="Investment Banking"
+                      />
+                    </label>
+                    <label>
+                      Program track
+                      <Select
+                        value={eventForm.topicCategory}
+                        onChange={(event) => updateEventField("topicCategory", event.target.value)}
+                      >
+                        <option value="">Select a track</option>
+                        <option value="career">Careers</option>
+                        <option value="college">College</option>
+                        <option value="financial_literacy">Financial literacy</option>
+                        <option value="networking">Networking</option>
+                        <option value="other">Other</option>
+                      </Select>
+                    </label>
+                    <label>
+                      Intended audience
+                      <Select
+                        value={eventForm.audience}
+                        onChange={(event) => updateEventField("audience", event.target.value)}
+                      >
+                        <option value="all_members">All members</option>
+                        <option value="students">Students</option>
+                        <option value="young_alumni">Young alumni</option>
+                        <option value="parents">Parents</option>
+                        <option value="college_applicants">College applicants</option>
+                        <option value="career_explorers">Career explorers</option>
+                      </Select>
+                    </label>
+                    <label>
+                      Format
+                      <Select
+                        value={eventForm.deliveryMode}
+                        onChange={(event) => updateEventField("deliveryMode", event.target.value)}
+                      >
+                        <option value="online">Online</option>
+                        <option value="hybrid">Online + in person</option>
+                      </Select>
+                    </label>
+                    <label>
+                      Meeting provider
+                      <Select
+                        value={eventForm.meetingProvider}
+                        onChange={(event) => updateEventField("meetingProvider", event.target.value)}
+                      >
+                        <option value="">Detect from link</option>
+                        <option value="zoom">Zoom</option>
+                        <option value="microsoft_teams">Microsoft Teams</option>
+                        <option value="google_meet">Google Meet</option>
+                        <option value="other">Other secure link</option>
+                      </Select>
+                    </label>
+                    <label>
+                      Registration capacity
+                      <Input
+                        type="number"
+                        min="1"
+                        max="10000"
+                        value={eventForm.capacity}
+                        onChange={(event) => updateEventField("capacity", event.target.value)}
+                        placeholder="Unlimited"
+                      />
+                    </label>
+                    <label className="full-width">
+                      Private meeting link
+                      <Input
+                        type="url"
+                        value={eventForm.meetingUrl}
+                        onChange={(event) => updateEventField("meetingUrl", event.target.value)}
+                        placeholder="https://zoom.us/j/..."
+                        autoComplete="off"
+                      />
+                      <span className="director-seminar-field-note">
+                        Never shown in event lists or emails. Members must sign in and RSVP Going to open it.
+                      </span>
+                    </label>
+                    <div className="full-width director-seminar-host-picker">
+                      <label>
+                        Registered seminar host
+                        <Input
+                          value={hostQuery}
+                          onChange={(event) => setHostQuery(event.target.value)}
+                          placeholder="Search the network by name or email"
+                        />
+                      </label>
+                      {searchingHosts ? <p className="muted">Searching registered members...</p> : null}
+                      {hostResults.length > 0 ? (
+                        <div className="director-events-member-results">
+                          {hostResults.map((member) => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              className="director-events-member-result"
+                              onClick={() => selectHost(member)}
+                            >
+                              <strong>{member.fullName || member.email}</strong>
+                              <span>{member.role || member.email || "Network member"}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {hostProfile ? (
+                        <div className="director-seminar-selected-host">
+                          <div>
+                            <span>Host</span>
+                            <strong>{hostProfile.fullName || hostProfile.email || "Registered member"}</strong>
+                            <small>{hostProfile.roleAtCamp || hostProfile.role || hostProfile.industry || "Network member"}</small>
+                          </div>
+                          <Button type="button" variant="secondary" size="sm" onClick={clearHost}>
+                            Change
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="director-seminar-field-note">
+                          Only an active member profile in this camp can be assigned as host.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              ) : null}
               <label className="full-width">
                 Summary
                 <Textarea value={eventForm.summary} onChange={(event) => updateEventField("summary", event.target.value)} placeholder="A short overview for event cards and the hero section." />
@@ -537,14 +804,22 @@ export default function DirectorAdminEventsPage() {
                 RSVP deadline
                 <Input type="datetime-local" value={eventForm.rsvpDeadlineAt} onChange={(event) => updateEventField("rsvpDeadlineAt", event.target.value)} />
               </label>
-              <label>
-                Location name
-                <Input value={eventForm.locationName} onChange={(event) => updateEventField("locationName", event.target.value)} placeholder="Camp Cedar waterfront" />
-              </label>
-              <label>
-                Location address
-                <Input value={eventForm.locationAddress} onChange={(event) => updateEventField("locationAddress", event.target.value)} placeholder="123 Camp Road, City, State" />
-              </label>
+              {eventForm.deliveryMode !== "online" ? (
+                <>
+                  <label>
+                    Location name
+                    <Input
+                      value={eventForm.locationName}
+                      onChange={(event) => updateEventField("locationName", event.target.value)}
+                      placeholder="Camp Cedar waterfront"
+                    />
+                  </label>
+                  <label>
+                    Location address
+                    <Input value={eventForm.locationAddress} onChange={(event) => updateEventField("locationAddress", event.target.value)} placeholder="123 Camp Road, City, State" />
+                  </label>
+                </>
+              ) : null}
             </form>
             <div className="director-events-action-row">
               <Button onClick={saveEvent} disabled={saving}>{saving ? "Saving..." : selectedEventId ? "Save Changes" : "Create Draft"}</Button>
@@ -558,20 +833,22 @@ export default function DirectorAdminEventsPage() {
                 </Button>
               )}
               <Button variant="secondary" onClick={() => runEventAction("cancel")} disabled={!selectedEventId || saving}>
-                Cancel Event
+                Cancel {scheduleNoun === "seminar" ? "Seminar" : "Event"}
               </Button>
             </div>
           </Card>
 
           <Card>
             <div className="director-events-section-head">
-              <h2 className="pb-section-title">Event Email</h2>
+              <h2 className="pb-section-title">
+                {scheduleNoun === "seminar" ? "Seminar Email" : "Event Email"}
+              </h2>
               <p className="muted">Select members from the network and send invites, reminders, updates, or cancellations.</p>
             </div>
             {!selectedEventId ? (
-              <p className="muted">Create the event first to unlock member emails.</p>
+              <p className="muted">Create the {scheduleNoun} first to unlock member emails.</p>
             ) : selectedEvent?.status === "draft" ? (
-              <p className="muted">Publish the event before sending event emails.</p>
+              <p className="muted">Publish the {scheduleNoun} before sending member emails.</p>
             ) : (
               <>
                 <div className="director-events-form-grid">
@@ -703,6 +980,12 @@ export default function DirectorAdminEventsPage() {
                   <strong>{detail?.item?.counts?.notAttending || 0}</strong>
                   <span>Not attending</span>
                 </div>
+                {detail?.item?.eventType === "seminar" ? (
+                  <div>
+                    <strong>{detail?.item?.joinAccessCount || 0}</strong>
+                    <span>Room opens</span>
+                  </div>
+                ) : null}
               </div>
 
               {Array.isArray(detail?.responses) && detail.responses.length > 0 ? (

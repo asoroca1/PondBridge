@@ -159,7 +159,7 @@ export default function MobileNotificationsPage() {
             onChange={(value) => saveCategory("announcements", value)}
           />
           <Toggle
-            label="Events"
+            label="Events & seminars"
             checked={categoryPrefs.events}
             disabled={!preferences || saving || preferences?.pushEnabled === false}
             onChange={(value) => saveCategory("events", value)}

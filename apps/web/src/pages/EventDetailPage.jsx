@@ -8,7 +8,12 @@ import {
   Users,
   Check,
   X as XIcon,
-  HelpCircle
+  HelpCircle,
+  Video,
+  ExternalLink,
+  GraduationCap,
+  ShieldCheck,
+  UserRound
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -65,6 +70,35 @@ const RSVP_OPTIONS = [
   { value: "not_attending", label: "Can’t go", Icon: XIcon }
 ];
 
+function isSeminar(item = {}) {
+  return item?.eventType === "seminar";
+}
+
+function meetingProviderLabel(value = "") {
+  if (value === "zoom") return "Zoom";
+  if (value === "microsoft_teams") return "Microsoft Teams";
+  if (value === "google_meet") return "Google Meet";
+  return "Online meeting";
+}
+
+function audienceLabel(value = "") {
+  if (value === "young_alumni") return "Young alumni";
+  if (value === "college_applicants") return "College applicants";
+  if (value === "career_explorers") return "Career explorers";
+  if (value === "students") return "Students";
+  if (value === "parents") return "Parents";
+  return "All members";
+}
+
+function topicCategoryLabel(value = "") {
+  if (value === "career") return "Career";
+  if (value === "college") return "College";
+  if (value === "financial_literacy") return "Financial literacy";
+  if (value === "networking") return "Networking";
+  if (value === "other") return "Community";
+  return "";
+}
+
 export default function EventDetailPage() {
   const params = useParams();
   const eventId = params.eventId;
@@ -74,8 +108,10 @@ export default function EventDetailPage() {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [joinError, setJoinError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +145,7 @@ export default function EventDetailPage() {
       });
       setItem(payload?.item || null);
       setStatus(`Your RSVP is now ${rsvpLabel(nextStatus).toLowerCase()}.`);
+      setJoinError("");
     } catch (saveError) {
       setError(saveError.message || "Could not update your RSVP.");
     } finally {
@@ -116,7 +153,42 @@ export default function EventDetailPage() {
     }
   }
 
+  async function openSeminarRoom() {
+    if (!item?.meetingAccess?.canRequestJoinLink || joining) return;
+    setJoining(true);
+    setJoinError("");
+    const roomWindow = window.open("about:blank", "_blank");
+    if (roomWindow) {
+      roomWindow.opener = null;
+      roomWindow.document.title = `Opening ${meetingProviderLabel(item.meetingProvider)}…`;
+    }
+
+    try {
+      const payload = await requestJson(`/api/t/${slug}/events/${eventId}/join`, {
+        method: "POST",
+        token,
+        body: {}
+      });
+      const meetingUrl = String(payload?.meetingUrl || "").trim();
+      const parsed = new URL(meetingUrl);
+      if (parsed.protocol !== "https:") {
+        throw new Error("The meeting room returned an invalid link.");
+      }
+      if (roomWindow) {
+        roomWindow.location.replace(parsed.toString());
+      } else {
+        window.location.assign(parsed.toString());
+      }
+    } catch (joinRequestError) {
+      if (roomWindow) roomWindow.close();
+      setJoinError(joinRequestError.message || "Could not open the seminar room.");
+    } finally {
+      setJoining(false);
+    }
+  }
+
   const rsvpLocked = Boolean(item?.rsvpClosed || item?.status === "canceled");
+  const seminar = isSeminar(item || {});
   const bd = useMemo(() => dateBadge(item || {}), [item]);
   const coverStyle = item?.coverImageUrl
     ? {
@@ -129,7 +201,7 @@ export default function EventDetailPage() {
       <div className="ev-detail-backlink">
         <Link to={tenantRoute(slug, "/events")}>
           <ChevronLeft size={16} aria-hidden="true" />
-          <span>All events</span>
+          <span>All events & seminars</span>
         </Link>
       </div>
 
@@ -160,6 +232,12 @@ export default function EventDetailPage() {
                 <span className="ev-date-chip-day">{bd.day}</span>
               </div>
               <div className="ev-detail-hero-copy">
+                {seminar ? (
+                  <span className="ev-type-chip is-seminar">
+                    <GraduationCap size={12} aria-hidden="true" />
+                    Registered-member seminar
+                  </span>
+                ) : null}
                 {item.status === "canceled" ? (
                   <span className="ev-status-chip is-danger">Canceled</span>
                 ) : item.myRsvp?.status === "attending" ? (
@@ -181,8 +259,18 @@ export default function EventDetailPage() {
                     </span>
                   ) : null}
                   <span className="ev-meta-item">
-                    <MapPin size={14} aria-hidden="true" />
-                    <span>{item.locationName || "Location coming soon"}</span>
+                    {item.deliveryMode === "online" ? (
+                      <Video size={14} aria-hidden="true" />
+                    ) : (
+                      <MapPin size={14} aria-hidden="true" />
+                    )}
+                    <span>
+                      {item.deliveryMode === "online"
+                        ? meetingProviderLabel(item.meetingProvider)
+                        : item.deliveryMode === "hybrid"
+                          ? `Online + ${item.locationName || "in person"}`
+                          : item.locationName || "Location coming soon"}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -192,7 +280,7 @@ export default function EventDetailPage() {
           <section className="ev-detail-grid">
             <article className="ev-detail-card ev-detail-main">
               <header className="ev-detail-card-head">
-                <h2>About this event</h2>
+                <h2>{seminar ? "About this seminar" : "About this event"}</h2>
                 {item.locationAddress ? (
                   <p className="ev-detail-card-sub">
                     <MapPin size={13} aria-hidden="true" />
@@ -205,12 +293,91 @@ export default function EventDetailPage() {
               ) : (
                 <p className="ev-detail-muted">More details will be shared here soon.</p>
               )}
+              {seminar ? (
+                <div className="ev-seminar-facts">
+                  {item.topicTitle ? (
+                    <div>
+                      <span>Topic</span>
+                      <strong>{item.topicTitle}</strong>
+                    </div>
+                  ) : null}
+                  {item.topicCategory ? (
+                    <div>
+                      <span>Track</span>
+                      <strong>{topicCategoryLabel(item.topicCategory)}</strong>
+                    </div>
+                  ) : null}
+                  <div>
+                    <span>For</span>
+                    <strong>{audienceLabel(item.audience)}</strong>
+                  </div>
+                  {item.capacity ? (
+                    <div>
+                      <span>Capacity</span>
+                      <strong>{item.capacity} members</strong>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {seminar && item.host ? (
+                <div className="ev-seminar-host-card">
+                  <div className="ev-seminar-host-avatar" aria-hidden="true">
+                    {item.host.avatarUrl ? (
+                      <img src={item.host.avatarUrl} alt="" />
+                    ) : (
+                      <UserRound size={20} />
+                    )}
+                  </div>
+                  <div>
+                    <span>Hosted by a registered member</span>
+                    <strong>{item.host.fullName}</strong>
+                    <p>{item.host.industry || item.host.roleAtCamp || "Camp community member"}</p>
+                  </div>
+                </div>
+              ) : null}
             </article>
 
             <aside className="ev-detail-side">
+              {seminar && item.meetingAccess ? (
+                <article className="ev-detail-card ev-seminar-room-card">
+                  <header className="ev-detail-card-head">
+                    <div className="ev-seminar-room-title">
+                      <span className="ev-seminar-room-icon">
+                        <Video size={17} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h2>Seminar room</h2>
+                        <p className="ev-detail-card-sub">{meetingProviderLabel(item.meetingProvider)}</p>
+                      </div>
+                    </div>
+                  </header>
+                  <div className="ev-seminar-access-note" id="seminar-room-access-note">
+                    <ShieldCheck size={16} aria-hidden="true" />
+                    <span>
+                      PondBridge releases this link only to signed-in registered members who RSVP Going.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="ev-btn ev-btn-primary ev-seminar-join-btn"
+                    aria-describedby="seminar-room-access-note"
+                    disabled={!item.meetingAccess.canRequestJoinLink || joining || item.status === "canceled"}
+                    onClick={openSeminarRoom}
+                  >
+                    {joining ? "Opening room…" : item.meetingAccess.isHost ? "Open host room" : "Join seminar"}
+                    <ExternalLink size={15} aria-hidden="true" />
+                  </button>
+                  {!item.meetingAccess.canRequestJoinLink && item.status !== "canceled" ? (
+                    <p className="ev-detail-muted">
+                      RSVP <strong>Going</strong> to unlock the seminar room.
+                    </p>
+                  ) : null}
+                  {joinError ? <p className="ev-detail-error">{joinError}</p> : null}
+                </article>
+              ) : null}
               <article className="ev-detail-card">
                 <header className="ev-detail-card-head">
-                  <h2>Your RSVP</h2>
+                  <h2>{seminar ? "Your registration" : "Your RSVP"}</h2>
                   <p className="ev-detail-card-sub">
                     {item.rsvpDeadlineAt
                       ? `Respond by ${new Date(item.rsvpDeadlineAt).toLocaleString()}`
@@ -224,6 +391,7 @@ export default function EventDetailPage() {
                       <button
                         key={value}
                         type="button"
+                        aria-pressed={isActive}
                         disabled={saving || rsvpLocked}
                         className={`ev-rsvp-btn ${isActive ? `is-active is-${value.replace("_", "-")}` : ""}`}
                         onClick={() => updateRsvp(value)}
