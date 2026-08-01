@@ -52,9 +52,9 @@ const CHECKLIST_ORDER = [
 
 const STEP_TO_CHECKLIST_MAP = new Map(CHECKLIST_ORDER.map((item) => [item.id, item.id]));
 const FONT_TOKEN_TO_FAMILY = {
-  cedar_default: '"DM Sans", "Avenir Next", "Segoe UI", sans-serif',
-  modern_clean: '"DM Sans", "Avenir Next", "Segoe UI", sans-serif',
-  classic_serif: '"Instrument Serif", Georgia, serif'
+  cedar_default: '"Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif',
+  modern_clean: '"Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif',
+  classic_serif: '"Roboto Slab Variable", "Roboto Slab", Georgia, serif'
 };
 const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
@@ -288,7 +288,7 @@ export function resolveTheme(tenant) {
       live.heroImageSizeMember || live.heroImageSize || ""
     ),
     fontFamily: String(live.fontFamily || FONT_TOKEN_TO_FAMILY[fontToken]),
-    typography: String(live.typography || live.fontFamily || "DM Sans"),
+    typography: String(live.typography || live.fontFamily || "Inter Variable"),
     fontToken
   };
 }

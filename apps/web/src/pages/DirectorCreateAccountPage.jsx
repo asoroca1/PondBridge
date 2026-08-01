@@ -2161,7 +2161,7 @@ function DirectorCreateAccountWizardPage() {
             heroImageSizeMember: normalizeHeroImageSize(
               themeDraft.heroImageSizeMember || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
             ),
-            fontFamily: String(baseTheme.fontFamily || "DM Sans Variable"),
+            fontFamily: String(baseTheme.fontFamily || "Inter Variable"),
             fontToken: String(baseTheme.fontToken || "cedar_default")
           }
         }

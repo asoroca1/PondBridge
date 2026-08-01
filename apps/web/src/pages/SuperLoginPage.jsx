@@ -316,7 +316,7 @@ function ClerkSuperLoginPage() {
                   colorInputText: "var(--text)",
                   colorNeutral: "#d4dfec",
                   borderRadius: "12px",
-                  fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
+                  fontFamily: "Inter Variable, Inter, Avenir Next, Segoe UI, sans-serif"
                 },
                 elements: {
                   rootBox: {

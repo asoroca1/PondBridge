@@ -376,7 +376,7 @@ export const tenantThemeSchema = z.object({
     .trim()
     .default("cover")
     .transform((value) => normalizeHeroImageSize(value)),
-  fontFamily: z.string().trim().default("Inter"),
+  fontFamily: z.string().trim().default("Inter Variable"),
   fontToken: z.enum(fontTokens).default("cedar_default")
 });
 

@@ -116,7 +116,7 @@
 .edit-profile-page .edit-profile-section-heading .wizard1-h2 {
   margin: 3px 0 0;
   color: var(--edit-profile-ink);
-  font-family: var(--font-display, "Instrument Serif", Georgia, serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: clamp(1.65rem, 2vw, 2rem);
   font-weight: 700;
   letter-spacing: -0.02em;

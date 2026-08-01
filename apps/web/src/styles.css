@@ -8,7 +8,7 @@
 
 /* ========= GLOBAL FONT ========= */
 body {
-    font-family: var(--font-body, "Inter", sans-serif);
+    font-family: var(--font-body, "Inter Variable", Inter, sans-serif);
     margin: 0;
     padding: 0;
     background-color: var(--bg, #f5f7fa);
@@ -301,7 +301,7 @@ body{
   place-items: center;
   color: var(--brand-on-primary, #fff);
   background: var(--brand-primary, #002b5c);
-  font-family: var(--font-display, "Instrument Serif", Georgia, serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 1.75rem;
 }
 
@@ -795,7 +795,7 @@ body{
   }  
   
   .navbar1-title {
-    font-family: 'Roboto Slab', serif;
+    font-family: "Roboto Slab Variable", "Roboto Slab", serif;
     font-size: 2.5rem; /* adjust freely */
     line-height: 1;    /* keep tight so it doesn’t push navbar taller */
     font-weight: bold;
@@ -972,7 +972,7 @@ body{
 
 /* "Welcome to the" pre-line */
 .landing-preline {
-  font-family: "DM Sans Variable", system-ui, sans-serif;
+  font-family: var(--font-body, "Inter Variable", Inter, system-ui, sans-serif);
   font-weight: 600;
   font-size: clamp(17px, 1.1vw, 21px);
   letter-spacing: 0.18em;
@@ -984,8 +984,8 @@ body{
 
 /* Camp name + "Alumni Network" headline */
 .landing-headline {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-weight: 400;
+  font-family: var(--font-display, "Inter Variable", Inter, system-ui, sans-serif);
+  font-weight: 800;
   font-size: clamp(62px, 7vw, 108px);
   letter-spacing: -0.03em;
   line-height: 0.94;
@@ -1010,7 +1010,7 @@ body{
 
 /* Subtitle */
 .landing-subtitle {
-  font-family: "DM Sans Variable", system-ui, sans-serif;
+  font-family: var(--font-body, "Inter Variable", Inter, system-ui, sans-serif);
   font-size: clamp(25px, 2vw, 34px);
   line-height: 1.32;
   font-weight: 500;
@@ -1042,7 +1042,7 @@ body{
   min-width: 224px;
   padding: 0 40px;
   border-radius: 14px;
-  font-family: "DM Sans Variable", system-ui, sans-serif;
+  font-family: var(--font-body, "Inter Variable", Inter, system-ui, sans-serif);
   font-weight: 700;
   font-size: 19px;
   letter-spacing: -0.01em;
@@ -1405,7 +1405,7 @@ body{
 .login1-title {
   text-align: center;
   color: var(--brand-primary);
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-weight: 800;
   font-size: clamp(1.85rem, 2.7vw, 2.4rem);
   line-height: 1.15;
@@ -1416,7 +1416,7 @@ body{
   margin: 0;
   text-align: center;
   color: var(--brand-primary);
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-weight: 800;
   font-size: clamp(1.75rem, 2.4vw, 2.2rem);
   line-height: 1.18;
@@ -1839,7 +1839,7 @@ body{
   padding:1.25rem 1rem 2.25rem;
 }
 .wizard1-container { max-width:1060px; margin:0 auto; }
-.wizard1-title { font:800 2.15rem/1.1 Inter,sans-serif; color:var(--brand-primary); margin:0 0 .8rem; letter-spacing:-0.01em; }
+.wizard1-title { font:800 2.15rem/1.1 "Inter Variable",Inter,sans-serif; color:var(--brand-primary); margin:0 0 .8rem; letter-spacing:-0.01em; }
 
 /* --- STEPPER --- */
 .wizard1-stepper{
@@ -1917,7 +1917,7 @@ body{
 
 /* Card & grid */
 .wizard1-card { background:#fff; border:1px solid #dfe7f2; border-radius:14px; padding:1.1rem; box-shadow:0 8px 20px rgba(15, 36, 58, 0.04); }
-.wizard1-h2 { font:800 1.35rem/1.2 Inter,sans-serif; color:var(--brand-primary); margin:0 0 .35rem; }
+.wizard1-h2 { font:800 1.35rem/1.2 "Inter Variable",Inter,sans-serif; color:var(--brand-primary); margin:0 0 .35rem; }
 .wizard1-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); }
 .wizard1-gap { gap:.85rem; }
 .wizard1-span-12{grid-column:span 12;} .wizard1-span-8{grid-column:span 8;}
@@ -2805,7 +2805,7 @@ html.is-native-app textarea{
   border-radius: 10px;
   height: 40px;
   padding: 0 20px;
-  font-family: "DM Sans Variable", system-ui, sans-serif;
+  font-family: var(--font-body, "Inter Variable", Inter, system-ui, sans-serif);
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
@@ -2845,7 +2845,7 @@ html.is-native-app textarea{
   box-shadow:0 2px 8px rgba(2,33,71,.12);
 }
 .navbar2-title{
-  font-family: "DM Sans Variable", system-ui, sans-serif; font-weight:600; line-height:1.05;
+  font-family: "Roboto Slab Variable", "Roboto Slab", Georgia, serif; font-weight:700; line-height:1.05;
   font-size:1.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
@@ -3895,7 +3895,7 @@ html.is-native-app textarea{
   --pb-shadow: var(--shadow-sm);
   --pb-text: var(--text, #0f172a);
   --pb-muted: var(--text-muted, #5b6270);
-  font-family: var(--font-body, "DM Sans Variable", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .pb-cedar-page h1,
@@ -3903,7 +3903,7 @@ html.is-native-app textarea{
 .pb-cedar-page h3{
   margin: 0 0 8px;
   color: var(--brand-primary);
-  font-family: var(--font-display, "Instrument Serif", Georgia, serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   letter-spacing: .2px;
 }
 
@@ -3924,7 +3924,7 @@ html.is-native-app textarea{
 .pb-cedar-page .link-button,
 .pb-cedar-page .pb-badge,
 .pb-cedar-page .onboarding-step-link{
-  font-family: var(--font-body, "DM Sans Variable", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .pb-cedar-page .pb-section-title{
@@ -10785,7 +10785,7 @@ html.is-native-app textarea{
   display: block;
   font-size: 1.35rem;
   color: var(--brand-primary);
-  font-family: "Roboto Slab", "Avenir Next", serif;
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .super-claim-link-wrap{
@@ -11176,7 +11176,7 @@ html.is-native-app textarea{
   overflow: hidden;
   background: var(--bg, #f3f7fb);
   color: var(--text, #0f1720);
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .wizard-preview-nav{
@@ -11228,7 +11228,7 @@ html.is-native-app textarea{
   margin-bottom: 6px;
   color: var(--brand-primary);
   font-size: 1rem;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 /* Analytics */
@@ -11758,7 +11758,7 @@ html.is-native-app textarea{
 }
 
 .super-topbar-brand {
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: 0.01em;
@@ -11970,7 +11970,7 @@ html.is-native-app textarea{
 
 .super-sidebar-intro strong {
   color: #173858;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 1.02rem;
 }
 
@@ -12097,7 +12097,7 @@ html.is-native-app textarea{
 .super-shell-boot-card h2 {
   margin: 0;
   color: var(--brand-primary);
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: clamp(1.35rem, 2vw, 1.65rem);
 }
 
@@ -12321,7 +12321,7 @@ html.is-native-app textarea{
 .super-status-hero h1 {
   margin: 0;
   color: inherit;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: clamp(2rem, 4vw, 3rem);
   line-height: 1.05;
 }
@@ -12390,7 +12390,7 @@ html.is-native-app textarea{
 .super-status-metric strong {
   margin-top: 7px;
   color: #173b5b;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: clamp(1.45rem, 2.4vw, 2rem);
   line-height: 1.05;
 }
@@ -12430,7 +12430,7 @@ html.is-native-app textarea{
 .super-agent-rail-heading h2 {
   margin: 0;
   color: #183b5b;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 1.28rem;
 }
 
@@ -12599,7 +12599,7 @@ html.is-native-app textarea{
 .super-status-area-card > strong {
   margin-top: 10px;
   color: #193d5e;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 1.22rem;
 }
 
@@ -12705,7 +12705,7 @@ html.is-native-app textarea{
 .super-panel-header h1 {
   margin: 0;
   color: #153155;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 2rem;
 }
 
@@ -12770,7 +12770,7 @@ button.super-stat-card {
   margin-top: 4px;
   color: #12355e;
   font-size: 2rem;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .super-stat-card small {
@@ -13020,7 +13020,7 @@ button.super-stat-card {
 .super-tenant-metric-card strong {
   color: #143861;
   font-size: 2.1rem;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   line-height: 1;
 }
 
@@ -13055,7 +13055,7 @@ button.super-stat-card {
   margin: 0;
   color: #123d2f;
   font-size: 1.1rem;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .super-create-result-header p {
@@ -13106,7 +13106,7 @@ button.super-stat-card {
   margin: 0;
   color: #153155;
   font-size: 1.45rem;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .super-camp-create-summary-header p {
@@ -13201,7 +13201,7 @@ button.super-stat-card {
   margin: 0;
   color: #153155;
   font-size: 1.15rem;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .super-camp-create-network-preview-body p {
@@ -13621,7 +13621,7 @@ button.super-stat-card {
   margin: 0;
   font-size: 2.1rem;
   color: #15375f;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .super-flag-grid {
@@ -14187,7 +14187,7 @@ button.super-stat-card {
   justify-content:center;
   gap:0.02em;
   font:inherit;
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-weight: 800;
   line-height:.9;
   letter-spacing:0;

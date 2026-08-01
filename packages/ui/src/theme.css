@@ -47,8 +47,8 @@
   --purple-text: #5a3c86;
 
   /* ===== Typography ===== */
-  --font-display: "Instrument Serif", Georgia, serif;
-  --font-body: "DM Sans Variable", "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
 
   /* Type scale */
   --text-xs: 12px;
