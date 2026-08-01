@@ -5055,12 +5055,10 @@ function modulePreviewPath(slug, key) {
 
 const MODULE_LAYOUT_HINTS = {
   newsletter: {
-    row: "bottom",
-    fullWidth: true
+    row: "bottom"
   },
   merchShop: {
-    row: "bottom",
-    fullWidth: true
+    row: "bottom"
   }
 };
 
@@ -5074,6 +5072,7 @@ export function DirectorAdminFeaturesPage() {
   const [status, setStatus] = useState("");
   const [moduleDisplayNames, setModuleDisplayNames] = useState({ newsletter: "Newsletter" });
   const [moduleSettings, setModuleSettings] = useState({ merchShopUrl: "" });
+  const [showAllCapabilities, setShowAllCapabilities] = useState(false);
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   const loadFeatures = useCallback(async () => {
@@ -5144,27 +5143,76 @@ export function DirectorAdminFeaturesPage() {
     );
   }
 
-  function renderModuleCard(module) {
-    const hint = MODULE_LAYOUT_HINTS[String(module?.key || "").trim()] || null;
+  const capabilities = Array.isArray(payload?.capabilities) ? payload.capabilities : [];
+  const attentionCapabilities = capabilities.filter((capability) =>
+    ["setup_required", "limited"].includes(capability.status)
+  );
+  const planTier = String(payload?.tenant?.planTier || "base").trim().toLowerCase();
+  const planLabel = `${planTier.charAt(0).toUpperCase()}${planTier.slice(1)}`;
+  const totalAttention = Number(payload?.summary?.moduleAttention || 0) + Number(payload?.summary?.attention || 0);
+
+  function capabilityTone(capability) {
+    if (capability.status === "active") return "success";
+    if (capability.status === "locked" || capability.status === "pilot") return "neutral";
+    return "warning";
+  }
+
+  function capabilityCategoryLabel(capability) {
+    if (capability.category === "ai") return "AI service";
+    if (capability.category === "plan") return "Plan feature";
+    return "Camp operations";
+  }
+
+  function renderModuleRow(module) {
+    const isUnavailable = Boolean(module.locked || module.platformDisabled);
     return (
       <article
         key={module.key}
-        className={`director-admin-module-card ${module.enabled ? "is-enabled" : ""} ${module.locked ? "is-locked" : ""} ${
-          hint?.fullWidth ? "is-full-width" : ""
+        className={`director-admin-module-row ${module.enabled ? "is-enabled" : ""} ${isUnavailable ? "is-unavailable" : ""} ${
+          module.setupRequired ? "needs-setup" : ""
         }`.trim()}
       >
-        <header>
-          <div>
-            <h3>{module.label}</h3>
+        <div className="director-admin-module-main">
+          <div className="director-admin-module-copy">
+            <div className="director-admin-module-title-row">
+              <h3>{module.label}</h3>
+              <span className={`director-admin-module-state status-${module.status}`}>
+                {module.status === "active" ? "Live" : module.statusLabel}
+              </span>
+            </div>
             <p>{module.description}</p>
+            <div className="director-admin-module-meta">
+              {module.externalHref ? (
+                <a
+                  className="director-admin-inline-link"
+                  href={module.externalHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open storefront <ArrowUpRight size={14} aria-hidden="true" />
+                </a>
+              ) : !module.platformDisabled ? (
+                <Link className="director-admin-inline-link" to={module.href || modulePreviewPath(slug, module.key)}>
+                  Preview in network <ArrowUpRight size={14} aria-hidden="true" />
+                </Link>
+              ) : null}
+              {Array.isArray(module.dependsOn) && module.dependsOn.length ? (
+                <span>
+                  Requires {module.dependsOn.map((key) => payload.modules.find((item) => item.key === key)?.label || key).join(", ")}
+                </span>
+              ) : null}
+            </div>
           </div>
-          {module.locked || module.platformDisabled ? (
-            <span className="director-admin-status-badge tone-warning">{module.statusLabel}</span>
+          {isUnavailable ? (
+            <div className="director-admin-module-availability">
+              <span>{module.locked ? "Available on Premium" : "Not currently available"}</span>
+            </div>
           ) : (
             <label className="director-admin-switch">
               <input
                 type="checkbox"
                 checked={Boolean(module.enabled)}
+                aria-label={`${module.label}: ${module.enabled ? "live" : "hidden"}`}
                 onChange={async (event) => {
                   const nextEnabled = Boolean(event.target.checked);
                   if (!nextEnabled && module.enabled) {
@@ -5196,10 +5244,10 @@ export function DirectorAdminFeaturesPage() {
                 }}
                 disabled={saving}
               />
-              <span>{module.enabled ? "On" : "Off"}</span>
+              <span>{module.enabled ? "Live" : "Hidden"}</span>
             </label>
           )}
-        </header>
+        </div>
         {module.key === "newsletter" && !module.locked ? (
           <div className="director-admin-module-settings">
             <label>
@@ -5222,7 +5270,7 @@ export function DirectorAdminFeaturesPage() {
               }}
               disabled={saving}
             >
-              Save Settings
+              Save name
             </Button>
           </div>
         ) : null}
@@ -5255,103 +5303,163 @@ export function DirectorAdminFeaturesPage() {
               }}
               disabled={saving}
             >
-              Save Storefront
+              Save storefront
             </Button>
           </div>
         ) : null}
-        {Array.isArray(module.dependsOn) && module.dependsOn.length ? (
-          <p className="muted director-admin-module-dependency">
-            Requires {module.dependsOn.map((key) => payload.modules.find((item) => item.key === key)?.label || key).join(", ")}.
-          </p>
-        ) : null}
         {module.locked ? (
-          <p className="muted">This feature requires Premium.</p>
+          <p className="director-admin-module-note">Upgrade to Premium to make this available to members.</p>
         ) : module.platformDisabled ? (
-          <p className="muted">{module.disabledReason || "Temporarily hidden from members across all networks."}</p>
+          <p className="director-admin-module-note">{module.disabledReason || "Temporarily hidden from members across all networks."}</p>
         ) : module.setupRequired ? (
-          <p className="muted">{module.disabledReason}</p>
-        ) : module.externalHref ? (
-          <a
-            className="director-admin-inline-link"
-            href={module.externalHref}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open storefront
-          </a>
-        ) : (
-          <Link className="director-admin-inline-link" to={module.href || modulePreviewPath(slug, module.key)}>
-            Preview in network
-          </Link>
-        )}
+          <p className="director-admin-module-note is-warning">{module.disabledReason}</p>
+        ) : null}
       </article>
     );
   }
 
   return (
     <>
-      <Card>
-      <AdminPageHeader
-        title="Features & Modules"
-        subtitle="Control which features are active in your network. Changes apply immediately."
-        className="director-admin-page-head"
-        actions={
-          <>
-            <Badge tone="neutral">{payload?.tenant?.planTier || "base"} plan</Badge>
-            {payload?.tenant?.planTier === "base" && !demoAccessEnabled ? (
-              <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>
-                Upgrade Plan
-              </Link>
-            ) : null}
-          </>
-        }
-      />
-      {error ? <p className="error-text">{error}</p> : null}
-      {status ? <p className="success-text">{status}</p> : null}
-      <div className="director-admin-modules-grid">
-        {orderedModules.map((module) => renderModuleCard(module))}
-      </div>
-      </Card>
-      <Card className="director-admin-capabilities-card">
+      <Card className="director-admin-features-card">
         <AdminPageHeader
-          title="Director toolkit"
-          subtitle="Every operational, plan, provider, and AI capability available to this camp—including items that need setup or PondBridge rollout approval."
+          title="Features & services"
+          subtitle="Choose what members can use, then finish any services that still need setup."
+          className="director-admin-page-head"
           actions={
-            <>
-              <Badge tone="success">{payload?.summary?.ready || 0} ready</Badge>
-              {payload?.summary?.attention ? <Badge tone="warning">{payload.summary.attention} need setup</Badge> : null}
-            </>
+            planTier === "base" && !demoAccessEnabled ? (
+              <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>
+                View plans
+              </Link>
+            ) : null
           }
         />
-        <div className="director-admin-capability-grid">
-          {(payload?.capabilities || []).map((capability) => {
-            const tone = capability.status === "active"
-              ? "success"
-              : capability.status === "locked" || capability.status === "pilot"
-                ? "neutral"
-                : "warning";
-            return (
-              <article className={`director-admin-capability-card status-${capability.status}`} key={capability.key}>
-                <div className="director-admin-capability-head">
+        <div className="director-admin-feature-overview" aria-label="Feature status overview">
+          <div>
+            <span>Community features</span>
+            <strong>{payload?.summary?.activeModules || 0} of {payload?.summary?.totalModules || 0} live</strong>
+          </div>
+          <div className={totalAttention ? "needs-attention" : "is-ready"}>
+            <span>Needs attention</span>
+            <strong>{totalAttention ? `${totalAttention} item${totalAttention === 1 ? "" : "s"}` : "Nothing"}</strong>
+          </div>
+          <div>
+            <span>Current plan</span>
+            <strong>{planLabel}</strong>
+          </div>
+        </div>
+        <div className="director-admin-feature-feedback" aria-live="polite">
+          {error ? <p className="error-text">{error}</p> : null}
+          {status ? <p className="success-text">{status}</p> : null}
+        </div>
+        <section className="director-admin-feature-section" aria-labelledby="community-features-heading">
+          <div className="director-admin-section-heading">
+            <div>
+              <p className="director-admin-section-kicker">Member experience</p>
+              <h2 id="community-features-heading">Community features</h2>
+              <p>Turn member-facing areas on or off. Existing content is preserved when a feature is hidden.</p>
+            </div>
+            <Badge tone="neutral">Changes are immediate</Badge>
+          </div>
+          <div className="director-admin-module-list">
+            {orderedModules.map((module) => renderModuleRow(module))}
+          </div>
+        </section>
+      </Card>
+      <Card className="director-admin-capabilities-card director-admin-services-card">
+        <AdminPageHeader
+          title="Services & plan"
+          subtitle="Check the systems behind your network. Setup items are surfaced first; the full inventory stays out of the way until you need it."
+        />
+        <div className="director-admin-service-summary" aria-label="Service status">
+          <div className="is-ready">
+            <CheckCircle2 size={19} aria-hidden="true" />
+            <span><strong>{payload?.summary?.ready || 0}</strong> ready</span>
+          </div>
+          <div className={payload?.summary?.attention ? "needs-attention" : "is-ready"}>
+            <span className="director-admin-service-summary-mark" aria-hidden="true">!</span>
+            <span><strong>{payload?.summary?.attention || 0}</strong> need setup</span>
+          </div>
+          <div>
+            <Sparkles size={19} aria-hidden="true" />
+            <span><strong>{payload?.summary?.lockedOrPilot || 0}</strong> plan or pilot</span>
+          </div>
+        </div>
+
+        {attentionCapabilities.length ? (
+          <section className="director-admin-service-attention" aria-labelledby="service-attention-heading">
+            <div className="director-admin-service-attention-head">
+              <div>
+                <p className="director-admin-section-kicker">Action recommended</p>
+                <h2 id="service-attention-heading">Finish setup</h2>
+                <p>These services are available, but one more step will make them fully operational.</p>
+              </div>
+            </div>
+            <div className="director-admin-service-action-list">
+              {attentionCapabilities.map((capability) => (
+                <article key={capability.key}>
                   <div>
-                    <p className="director-admin-capability-category">{capability.category === "ai" ? "AI pilot" : capability.category === "plan" ? "Plan capability" : "Operations"}</p>
                     <h3>{capability.label}</h3>
+                    <p>{capability.description}</p>
                   </div>
-                  <Badge tone={tone}>{capability.statusLabel}</Badge>
+                  <div className="director-admin-service-action">
+                    <Badge tone="warning">{capability.statusLabel}</Badge>
+                    {capability.href ? (
+                      <Link className="director-admin-inline-link" to={capability.href}>
+                        Open setup <ArrowUpRight size={14} aria-hidden="true" />
+                      </Link>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <div className="director-admin-services-ready">
+            <CheckCircle2 size={20} aria-hidden="true" />
+            <div>
+              <strong>All active services are ready</strong>
+              <p>There are no provider or operational setup tasks for this camp.</p>
+            </div>
+          </div>
+        )}
+
+        <div className="director-admin-service-inventory-toggle">
+          <div>
+            <strong>Full service inventory</strong>
+            <span>{capabilities.length} operational, plan, and AI services</span>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => setShowAllCapabilities((current) => !current)}
+            aria-expanded={showAllCapabilities}
+            aria-controls="director-admin-service-inventory"
+          >
+            {showAllCapabilities ? "Hide all services" : "Show all services"}
+          </Button>
+        </div>
+
+        {showAllCapabilities ? (
+          <div className="director-admin-capability-list" id="director-admin-service-inventory">
+            {capabilities.map((capability) => (
+              <article className={`director-admin-capability-row status-${capability.status}`} key={capability.key}>
+                <div>
+                  <p className="director-admin-capability-category">{capabilityCategoryLabel(capability)}</p>
+                  <h3>{capability.label}</h3>
+                  <p>{capability.description}</p>
                 </div>
-                <p>{capability.description}</p>
-                <div className="director-admin-capability-footer">
-                  <small>Managed by {capability.managedBy}</small>
+                <div className="director-admin-capability-row-actions">
+                  <Badge tone={capabilityTone(capability)}>{capability.statusLabel}</Badge>
                   {capability.href ? (
                     <Link className="director-admin-inline-link" to={capability.href}>
                       {capability.status === "locked" || capability.status === "pilot" ? "View details" : "Open"}
+                      <ArrowUpRight size={14} aria-hidden="true" />
                     </Link>
                   ) : null}
                 </div>
               </article>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : null}
       </Card>
       <ModalConfirm {...confirmDialogProps} />
     </>
