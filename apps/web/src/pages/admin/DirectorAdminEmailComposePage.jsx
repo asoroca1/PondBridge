@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Input, Select } from "@pondbridge/ui";
+import {
+  CalendarClock,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  FileText,
+  FlaskConical,
+  LayoutTemplate,
+  Send,
+  Signature,
+  Sparkles,
+  Trash2,
+  Users
+} from "lucide-react";
 import { ModalConfirm, ModalDialog, PageHeader } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import DirectorEmailAgentPanel from "../../components/admin/DirectorEmailAgentPanel.jsx";
@@ -42,6 +56,14 @@ const GROWTH_SEGMENT_OPTIONS = [
   { value: "inactive_60", label: "Inactive · 60+ days" },
   { value: "inactive_90", label: "Inactive · 90+ days" },
   { value: "profile_incomplete", label: "Profiles under 75% complete" }
+];
+const AUDIENCE_OPTIONS = [
+  { value: "all", label: "All members", description: "Everyone eligible" },
+  { value: "role", label: "By role", description: "Campers, staff, or admins" },
+  { value: "year", label: "By class year", description: "One or more summers" },
+  { value: "segment", label: "By engagement", description: "Activity-based groups" },
+  { value: "individual", label: "Specific people", description: "Choose members" },
+  { value: "custom_group", label: "Saved group", description: "Reuse a recipient list" }
 ];
 
 // ---------------------------------------------------------------------------
@@ -375,6 +397,9 @@ function RichTextEditor({ value = "", onChange, placeholder = "Write your messag
         className="director-admin-email-richtext-body"
         contentEditable
         suppressContentEditableWarning
+        role="textbox"
+        aria-label="Email message"
+        aria-multiline="true"
         onInput={handleInput}
         data-placeholder={placeholder}
         data-empty={isEmpty ? "true" : undefined}
@@ -449,6 +474,8 @@ export default function DirectorAdminEmailComposePage() {
   const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [emailReadiness, setEmailReadiness] = useState(null);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [templatePanelOpen, setTemplatePanelOpen] = useState(false);
 
   // Recipient preview
   const [recipientPreview, setRecipientPreview] = useState({ count: 0, excludedCount: 0, preview: [] });
@@ -736,10 +763,27 @@ export default function DirectorAdminEmailComposePage() {
   const previewFooterLogoUrl = activeFooter.showLogo ? String(tenant?.theme?.logoUrl || activeFooter.logoUrl || "").trim() : "";
   const previewInitials = (networkName || "PondBridge").split(/\s+/).filter(Boolean).slice(0, 2).map((item) => item[0]?.toUpperCase() || "").join("") || "PB";
   const footerContact = [activeFooter.senderEmail, activeFooter.senderPhone].filter(Boolean).join(" \u2022 ");
+  const activeAudienceOption = AUDIENCE_OPTIONS.find((item) => item.value === form.mode) || AUDIENCE_OPTIONS[0];
+  const hasMessage = Boolean(form.subject.trim() && form.body.trim());
+  const hasRecipients = recipientPreview.count > 0;
+  const checksReady = Boolean(emailReadiness?.ready);
+  const reviewStepsComplete = [hasRecipients, hasMessage, checksReady].filter(Boolean).length;
+  const sendDisabled = sending || !hasRecipients || !hasMessage || !checksReady;
+  const deliverySummary = form.scheduleType === "later" && form.scheduledFor
+    ? new Date(form.scheduledFor).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
+    : "Send immediately";
 
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
+
+  function selectAudienceMode(mode) {
+    setForm((prev) => ({
+      ...prev,
+      mode,
+      segment: mode === "segment" ? prev.segment || "inactive_30" : prev.segment
+    }));
+  }
 
   function addRecipient(member) {
     const profileId = String(member?.id || "").trim();
@@ -1037,404 +1081,569 @@ export default function DirectorAdminEmailComposePage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <Card>
+    <Card className="director-email-compose-page">
       <PageHeader
-        title="Communications Studio"
-        subtitle="Plan, draft, verify, and deliver a branded camp campaign from one workspace."
+        title="Compose email"
+        subtitle="Write your message, choose an audience, and review everything before it goes out."
         actions={
           <Link className="link-button secondary" to={`/t/${slug}/admin/email/history`}>
-            Sent History
+            Sent history
           </Link>
         }
       />
-      <DirectorEmailAgentPanel
-        request={request}
-        form={form}
-        targeting={targeting}
-        recipientPreview={recipientPreview}
-        onApplyDraft={applyAgentDraft}
-      />
-      <form className="director-admin-email-layout" onSubmit={handleFormSubmit}>
-        <section className="director-admin-email-composer director-admin-email-composer-full">
 
-          {/* Targeting */}
-          <label>
-            To
-            <Select
-              value={form.mode}
-              onChange={(event) => setForm((prev) => ({
-                ...prev,
-                mode: event.target.value,
-                segment: event.target.value === "segment" ? prev.segment || "inactive_30" : prev.segment
-              }))}
-            >
-              <option value="all">All Members</option>
-              <option value="role">By Role</option>
-              <option value="year">By Class Year</option>
-              <option value="segment">By Engagement</option>
-              <option value="individual">Specific People</option>
-              <option value="custom_group">Custom Group</option>
-            </Select>
-          </label>
+      <div className="director-email-compose-toolbar">
+        <div className="director-email-compose-save-state">
+          <span aria-hidden="true" />
+          Drafts save automatically on this device
+        </div>
+        <div className="director-email-compose-toolbar-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleClearDraft}
+            disabled={!form.subject && !form.body}
+          >
+            <Trash2 aria-hidden="true" />
+            Clear draft
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setAgentPanelOpen((prev) => !prev)}
+            aria-expanded={agentPanelOpen}
+          >
+            <Sparkles aria-hidden="true" />
+            {agentPanelOpen ? "Hide AI helper" : "Draft with AI"}
+          </Button>
+        </div>
+      </div>
 
-          {form.mode === "segment" ? (
-            <label>
-              Engagement audience
-              <Select
-                value={form.segment || "inactive_30"}
-                onChange={(event) => setForm((prev) => ({ ...prev, segment: event.target.value }))}
-              >
-                {GROWTH_SEGMENT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </Select>
-              <small className="muted">Audience membership is recalculated from current server activity before preview and send.</small>
-            </label>
-          ) : null}
+      {agentPanelOpen ? (
+        <div className="director-email-compose-ai-panel">
+          <DirectorEmailAgentPanel
+            request={request}
+            form={form}
+            targeting={targeting}
+            recipientPreview={recipientPreview}
+            onApplyDraft={applyAgentDraft}
+          />
+        </div>
+      ) : null}
 
-          {/* Role picker */}
-          {form.mode === "role" ? (
-            <div className="director-admin-email-role-picker">
-              <small className="muted">Select one or more roles:</small>
-              <div className="director-admin-email-checkbox-grid">
-                {availableRoles.map((role) => (
-                  <label key={role} className="inline-check">
-                    <input
-                      type="checkbox"
-                      checked={selectedRoles.includes(role)}
-                      onChange={() => setSelectedRoles((prev) => prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role])}
-                    />
-                    {role}
-                  </label>
-                ))}
+      <form className="director-admin-email-layout director-email-compose-layout" onSubmit={handleFormSubmit}>
+        <main className="director-admin-email-composer director-email-compose-main">
+          <section className="director-email-compose-step" aria-labelledby="compose-audience-title">
+            <header className="director-email-compose-step-head">
+              <span className="director-email-compose-step-icon" aria-hidden="true"><Users /></span>
+              <div>
+                <span className="director-email-compose-eyebrow">Step 1</span>
+                <h2 id="compose-audience-title">Choose your audience</h2>
+                <p>Select who should receive this email.</p>
               </div>
-            </div>
-          ) : null}
+              <span className={`director-email-compose-step-state ${hasRecipients ? "is-complete" : ""}`}>
+                {hasRecipients ? `${recipientPreview.count} selected` : "Needs recipients"}
+              </span>
+            </header>
 
-          {/* Year picker */}
-          {form.mode === "year" ? (
-            <div className="director-admin-email-year-picker">
-              <small className="muted">Select one or more class years:</small>
-              <div className="director-admin-email-checkbox-grid director-admin-email-year-grid">
-                {allYears.slice(0, 20).map((year) => (
-                  <label key={year} className="inline-check">
-                    <input
-                      type="checkbox"
-                      checked={selectedYears.includes(year)}
-                      onChange={() => setSelectedYears((prev) => prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year])}
-                    />
-                    {year}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Individual / Custom Group member selection */}
-          {form.mode === "individual" || form.mode === "custom_group" ? (
-            <section className="director-admin-recipient-builder">
-              {form.mode === "custom_group" ? (
-                <div className="director-admin-email-group-bar">
-                  <Input value={recipientGroupName} onChange={(event) => setRecipientGroupName(event.target.value)} placeholder="Group name (e.g., Reunion Outreach)" />
-                  <Button type="button" variant="secondary" onClick={saveRecipientGroup}>Save Group</Button>
-                  <Select
-                    value={selectedRecipientGroupId}
-                    onChange={(event) => {
-                      const nextId = event.target.value;
-                      setSelectedRecipientGroupId(nextId);
-                      const group = savedRecipientGroups.find((item) => item.id === nextId);
-                      if (group) setRecipientGroupName(group.name || "");
-                    }}
-                    disabled={!savedRecipientGroups.length}
+            <div className="director-email-compose-step-body">
+              <div className="director-email-audience-options" role="radiogroup" aria-label="Email audience">
+                {AUDIENCE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={form.mode === option.value ? "is-selected" : ""}
+                    role="radio"
+                    aria-checked={form.mode === option.value}
+                    onClick={() => selectAudienceMode(option.value)}
                   >
-                    <option value="">Saved groups</option>
-                    {savedRecipientGroups.map((group) => (
-                      <option key={group.id} value={group.id}>{group.name}</option>
+                    <span>{option.label}</span>
+                    <small>{option.description}</small>
+                  </button>
+                ))}
+              </div>
+
+              {form.mode === "segment" ? (
+                <label className="director-email-compose-field">
+                  <span>Engagement group</span>
+                  <Select
+                    value={form.segment || "inactive_30"}
+                    onChange={(event) => setForm((prev) => ({ ...prev, segment: event.target.value }))}
+                  >
+                    {GROWTH_SEGMENT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </Select>
-                  <Button type="button" variant="secondary" onClick={applyRecipientGroup} disabled={!selectedRecipientGroupId}>Use Group</Button>
-                  <Button type="button" variant="secondary" onClick={deleteRecipientGroup} disabled={!selectedRecipientGroupId}>Delete Group</Button>
+                  <small>Membership updates automatically using the latest activity.</small>
+                </label>
+              ) : null}
+
+              {form.mode === "role" ? (
+                <div className="director-admin-email-role-picker">
+                  <strong>Which roles?</strong>
+                  <div className="director-admin-email-checkbox-grid">
+                    {availableRoles.map((role) => (
+                      <label key={role} className="inline-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedRoles.includes(role)}
+                          onChange={() => setSelectedRoles((prev) => prev.includes(role) ? prev.filter((item) => item !== role) : [...prev, role])}
+                        />
+                        {role}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               ) : null}
 
-              <label>
-                Find members
-                <Input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search by name or email..." />
-              </label>
-              <div className="director-admin-member-search-results">
-                {memberSearchLoading ? (
-                  <p className="muted">Searching members...</p>
-                ) : memberSearchResults.length ? (
-                  memberSearchResults.map((member) => (
-                    <div key={member.id} className="director-admin-member-search-item">
-                      <div>
-                        <strong>{member.fullName || "Member"}</strong>
-                        <small>{member.email || "No email"}</small>
-                      </div>
-                      <Button type="button" variant="secondary" size="sm" onClick={() => addRecipient(member)}>Add</Button>
-                    </div>
-                  ))
-                ) : (
-                  <p className="muted">No matching members found.</p>
-                )}
-              </div>
-              <div className="director-admin-selected-recipient-head">
-                <strong>Selected recipients ({selectedRecipients.length})</strong>
-                {selectedRecipients.length ? (
-                  <Button type="button" variant="secondary" size="sm" onClick={() => setForm((prev) => ({ ...prev, profileIds: [] }))}>Clear Selected</Button>
-                ) : null}
-              </div>
-              {selectedRecipients.length ? (
-                <div className="director-admin-selected-recipient-list">
-                  {selectedRecipients.map((member) => (
-                    <div key={member.id} className="director-admin-selected-chip">
-                      <div>
-                        <strong>{member.fullName || "Member"}</strong>
-                        <small>{member.email || member.id}</small>
-                      </div>
-                      <button type="button" className="director-admin-inline-link" onClick={() => removeRecipient(member.id)}>Remove</button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted">No members selected yet.</p>
-              )}
-            </section>
-          ) : null}
-
-          {/* Recipient preview */}
-          <div className="director-admin-email-recipient-preview">
-            <p className="muted">
-              {recipientPreview.count || 0} members will receive this email.
-              {recipientPreview.excludedCount ? ` ${recipientPreview.excludedCount} excluded.` : ""}
-            </p>
-            {recipientPreview.preview?.length > 0 ? (
-              <div className="director-admin-email-recipient-sample">
-                <small className="muted">Sample recipients:</small>
-                <ul>
-                  {recipientPreview.preview.map((p, i) => (
-                    <li key={p.id || i}>{p.name || p.email} {p.email ? `(${p.email})` : ""}</li>
-                  ))}
-                </ul>
-                {recipientPreview.count > recipientPreview.preview.length ? (
-                  <small className="muted">...and {recipientPreview.count - recipientPreview.preview.length} more</small>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
-          {/* Templates */}
-          <div className="director-admin-email-template-bar">
-            <Input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Template name" />
-            <Select
-              value={selectedTemplateId}
-              onChange={(event) => {
-                const nextId = event.target.value;
-                setSelectedTemplateId(nextId);
-                const tpl = savedTemplates.find((t) => t.id === nextId);
-                if (tpl) setTemplateName(tpl.name || "");
-              }}
-            >
-              <option value="">Saved templates</option>
-              {savedTemplates.map((tpl) => (
-                <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
-              ))}
-            </Select>
-            <Button type="button" variant="secondary" onClick={saveTemplate}>Save</Button>
-            <Button type="button" variant="secondary" onClick={loadTemplate} disabled={!selectedTemplateId}>Use</Button>
-            <Button type="button" variant="secondary" onClick={deleteTemplate} disabled={!selectedTemplateId}>Delete</Button>
-          </div>
-
-          {/* Subject */}
-          <label>
-            Subject
-            <Input
-              value={form.subject}
-              maxLength={120}
-              onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))}
-              placeholder="Subject line"
-            />
-          </label>
-
-          <label>
-            Inbox preview text
-            <Input
-              value={form.preheader}
-              maxLength={160}
-              onChange={(event) => setForm((prev) => ({ ...prev, preheader: event.target.value }))}
-              placeholder="A short line that appears beside the subject in the inbox"
-            />
-            <small className="muted">{form.preheader.length}/160 characters</small>
-          </label>
-
-          {/* Body — Rich Text Editor */}
-          <label>
-            Body
-          </label>
-          <RichTextEditor
-            value={form.body}
-            onChange={(html) => setForm((prev) => ({ ...prev, body: html }))}
-            placeholder="Write your message here..."
-          />
-
-          {/* Footer builder */}
-          <section className="director-admin-email-footer-builder">
-            <div className="director-admin-email-footer-head">
-              <div>
-                <strong>Saved Footers</strong>
-                <small>Personalize signature details and reuse footer presets anytime.</small>
-              </div>
-              <div className="director-admin-email-footer-head-actions">
-                <span className="director-admin-email-footer-count">{footerPresets.length} saved</span>
-                <Button type="button" variant="secondary" size="sm" onClick={() => setFooterPanelOpen((prev) => !prev)} aria-expanded={footerPanelOpen}>
-                  {footerPanelOpen ? "Hide" : "Edit"}
-                </Button>
-              </div>
-            </div>
-
-            {footerPanelOpen ? (
-              <>
-                <div className="director-admin-email-footer-preset-bar">
-                  <Input value={footerPresetName} onChange={(event) => setFooterPresetName(event.target.value)} placeholder="Footer preset name (e.g., Director Update)" />
-                  <Select
-                    value={selectedFooterPresetId}
-                    onChange={(event) => {
-                      const nextId = event.target.value;
-                      setSelectedFooterPresetId(nextId);
-                      const preset = footerPresets.find((item) => item.id === nextId);
-                      if (preset) setFooterPresetName(preset.name || "");
-                    }}
-                    disabled={!footerPresets.length}
-                  >
-                    <option value="">Saved footers</option>
-                    {footerPresets.map((preset) => (
-                      <option key={preset.id} value={preset.id}>{preset.name}</option>
+              {form.mode === "year" ? (
+                <div className="director-admin-email-year-picker">
+                  <strong>Which class years?</strong>
+                  <div className="director-admin-email-checkbox-grid director-admin-email-year-grid">
+                    {allYears.slice(0, 20).map((year) => (
+                      <label key={year} className="inline-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedYears.includes(year)}
+                          onChange={() => setSelectedYears((prev) => prev.includes(year) ? prev.filter((item) => item !== year) : [...prev, year])}
+                        />
+                        {year}
+                      </label>
                     ))}
-                  </Select>
-                  <Button type="button" variant="secondary" onClick={applyFooterPreset} disabled={!selectedFooterPresetId || loadingFooterPresets}>Use Footer</Button>
-                  <Button type="button" variant="secondary" onClick={saveFooterPreset} disabled={footerSaving}>Save Footer</Button>
-                  <Button type="button" variant="secondary" onClick={deleteFooterPreset} disabled={!selectedFooterPresetId || footerSaving}>Delete Footer</Button>
-                  <Button type="button" variant="secondary" onClick={makeFooterDefault} disabled={!selectedFooterPresetId || footerSaving}>Set Default</Button>
+                  </div>
                 </div>
+              ) : null}
 
-                <div className="director-admin-email-footer-grid">
-                  <label>Header label<Input value={activeFooter.headerTagline} onChange={(event) => setFooterDraft((prev) => normalizeEmailFooter({ ...prev, headerTagline: event.target.value }, fallbackFooter))} placeholder="Community update" /></label>
-                  <label>Sign-off<Input value={activeFooter.signOff} onChange={(event) => setFooterDraft((prev) => normalizeEmailFooter({ ...prev, signOff: event.target.value }, fallbackFooter))} placeholder="Warmly," /></label>
-                  <label>Name<Input value={activeFooter.senderName} onChange={(event) => setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderName: event.target.value }, fallbackFooter))} placeholder="Director name" /></label>
-                  <label>Role<Input value={activeFooter.senderRole} onChange={(event) => setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderRole: event.target.value }, fallbackFooter))} placeholder="Director" /></label>
-                  <label>Email<Input value={activeFooter.senderEmail} onChange={(event) => setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderEmail: event.target.value }, fallbackFooter))} placeholder="name@camp.org" /></label>
-                  <label>Phone<Input value={activeFooter.senderPhone} onChange={(event) => setFooterDraft((prev) => normalizeEmailFooter({ ...prev, senderPhone: event.target.value }, fallbackFooter))} placeholder="(555) 555-5555" /></label>
-                  <label className="inline-check director-admin-email-footer-toggle">
-                    <input type="checkbox" checked={Boolean(activeFooter.showLogo)} onChange={(event) => setFooterDraft((prev) => normalizeEmailFooter({ ...prev, showLogo: event.target.checked }, fallbackFooter))} />
-                    Include camp logo in footer
+              {form.mode === "individual" || form.mode === "custom_group" ? (
+                <section className="director-admin-recipient-builder">
+                  {form.mode === "custom_group" ? (
+                    <div className="director-email-group-tools">
+                      <label className="director-email-compose-field">
+                        <span>Saved group</span>
+                        <Select
+                          value={selectedRecipientGroupId}
+                          onChange={(event) => {
+                            const nextId = event.target.value;
+                            setSelectedRecipientGroupId(nextId);
+                            const group = savedRecipientGroups.find((item) => item.id === nextId);
+                            if (group) setRecipientGroupName(group.name || "");
+                          }}
+                          disabled={!savedRecipientGroups.length}
+                        >
+                          <option value="">Choose a saved group</option>
+                          {savedRecipientGroups.map((group) => (
+                            <option key={group.id} value={group.id}>{group.name}</option>
+                          ))}
+                        </Select>
+                      </label>
+                      <Button type="button" variant="secondary" onClick={applyRecipientGroup} disabled={!selectedRecipientGroupId}>Use group</Button>
+                      <Button type="button" variant="ghost" onClick={deleteRecipientGroup} disabled={!selectedRecipientGroupId}>Delete</Button>
+                      <div className="director-email-group-save">
+                        <Input value={recipientGroupName} onChange={(event) => setRecipientGroupName(event.target.value)} placeholder="Name this group" aria-label="Group name" />
+                        <Button type="button" variant="secondary" onClick={saveRecipientGroup}>Save current list</Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <label className="director-email-compose-field">
+                    <span>Find members</span>
+                    <Input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search by name or email" />
                   </label>
-                  <p className="muted director-admin-email-footer-note">Footer logo uses your active camp branding logo automatically.</p>
-                </div>
-              </>
-            ) : (
-              <p className="muted director-admin-email-footer-collapsed-note">Footer details hidden. Click Edit to expand.</p>
-            )}
-          </section>
+                  <div className="director-admin-member-search-results">
+                    {memberSearchLoading ? (
+                      <p className="muted">Searching members…</p>
+                    ) : memberSearchResults.length ? (
+                      memberSearchResults.map((member) => (
+                        <div key={member.id} className="director-admin-member-search-item">
+                          <div>
+                            <strong>{member.fullName || "Member"}</strong>
+                            <small>{member.email || "No email"}</small>
+                          </div>
+                          <Button type="button" variant="secondary" size="sm" onClick={() => addRecipient(member)}>Add</Button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="muted">No matching members found.</p>
+                    )}
+                  </div>
+                  <div className="director-admin-selected-recipient-head">
+                    <strong>Selected people ({selectedRecipients.length})</strong>
+                    {selectedRecipients.length ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setForm((prev) => ({ ...prev, profileIds: [] }))}>Clear</Button>
+                    ) : null}
+                  </div>
+                  {selectedRecipients.length ? (
+                    <div className="director-admin-selected-recipient-list">
+                      {selectedRecipients.map((member) => (
+                        <div key={member.id} className="director-admin-selected-chip">
+                          <div>
+                            <strong>{member.fullName || "Member"}</strong>
+                            <small>{member.email || member.id}</small>
+                          </div>
+                          <button type="button" className="director-admin-inline-link" onClick={() => removeRecipient(member.id)}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">Add at least one person to continue.</p>
+                  )}
+                </section>
+              ) : null}
 
-          <section className={`director-email-readiness ${emailReadiness?.ready ? "is-ready" : ""}`} aria-labelledby="email-readiness-title">
-            <div className="director-email-readiness-head">
-              <div>
-                <span className="director-email-readiness-icon" aria-hidden="true">
-                  {emailReadiness?.ready ? "✓" : "!"}
-                </span>
-                <div>
-                  <strong id="email-readiness-title">Campaign readiness</strong>
+              <div className={`director-email-audience-summary ${hasRecipients ? "is-ready" : ""}`}>
+                <div className="director-email-audience-count">
+                  <strong>{recipientPreview.count || 0}</strong>
+                  <span>eligible recipient{recipientPreview.count === 1 ? "" : "s"}</span>
+                </div>
+                <div className="director-email-audience-summary-copy">
+                  <strong>{targeting.label || activeAudienceOption.label}</strong>
                   <small>
-                    {emailReadiness === null
-                      ? "Checking recipients, compliance, and inbox quality…"
-                      : emailReadiness.ready
-                        ? "Required send checks pass. Review any suggestions below."
-                        : `${emailReadiness.blockers?.length || 0} blocker${emailReadiness.blockers?.length === 1 ? "" : "s"} must be resolved.`}
+                    {recipientPreview.excludedCount
+                      ? `${recipientPreview.excludedCount} member${recipientPreview.excludedCount === 1 ? "" : "s"} excluded by email preferences.`
+                      : "Email preferences are applied automatically."}
                   </small>
                 </div>
+                {recipientPreview.preview?.length > 0 ? (
+                  <details className="director-email-recipient-sample-details">
+                    <summary>View sample</summary>
+                    <ul>
+                      {recipientPreview.preview.map((person, index) => (
+                        <li key={person.id || index}>
+                          <span>{person.name || person.email}</span>
+                          {person.email ? <small>{person.email}</small> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
               </div>
-              <span className="director-email-readiness-state">
-                {emailReadiness?.ready ? "Ready for review" : "Not ready"}
-              </span>
             </div>
-            {emailReadiness?.blockers?.length ? (
-              <ul className="director-email-readiness-list is-blocked">
-                {emailReadiness.blockers.map((item) => <li key={item.code}>{item.message}</li>)}
-              </ul>
-            ) : null}
-            {emailReadiness?.warnings?.length ? (
-              <ul className="director-email-readiness-list is-warning">
-                {emailReadiness.warnings.map((item) => <li key={item.code}>{item.message}</li>)}
-              </ul>
-            ) : null}
-            {emailReadiness?.blockers?.some((item) => item.code === "postal_address_required") ? (
-              <Link className="director-admin-inline-link" to={`/t/${slug}/admin/billing`}>Complete mailing address in Billing</Link>
-            ) : null}
           </section>
 
-          {/* Scheduling */}
-          <label>
-            Send timing
-            <Select value={form.scheduleType} onChange={(event) => setForm((prev) => ({ ...prev, scheduleType: event.target.value }))}>
-              <option value="now">Send now</option>
-              <option value="later">Schedule for later</option>
-            </Select>
-          </label>
-          {form.scheduleType === "later" ? (
-            <label>
-              Scheduled date/time
-              <Input type="datetime-local" value={form.scheduledFor} onChange={(event) => setForm((prev) => ({ ...prev, scheduledFor: event.target.value }))} />
-            </label>
-          ) : null}
-
-          {error ? <p className="error-text">{error}</p> : null}
-          {status ? <p className="success-text">{status}</p> : null}
-          <div className="inline-actions">
-            <Button type="button" variant="secondary" onClick={handleClearDraft}>Clear Draft</Button>
-            <Button type="button" variant="secondary" onClick={sendTestEmail}>Send Test Email</Button>
-            <Button type="submit" disabled={sending || recipientPreview.count <= 0 || !emailReadiness?.ready}>
-              {sending ? "Sending..." : form.scheduleType === "later" ? "Schedule Email" : "Send Email"}
-            </Button>
-          </div>
-        </section>
-
-        {/* Live preview */}
-        <aside className="director-admin-email-preview">
-          <h3>Live Preview</h3>
-          <div className="director-admin-email-frame">
-            <div className="director-admin-email-frame-head" style={{ background: "var(--brand-primary)" }}>
-              {previewHeaderLogoUrl ? (
-                <img src={previewHeaderLogoUrl} alt="" />
-              ) : (
-                <span className="director-admin-logo-fallback">{previewInitials}</span>
-              )}
+          <section className="director-email-compose-step" aria-labelledby="compose-message-title">
+            <header className="director-email-compose-step-head">
+              <span className="director-email-compose-step-icon" aria-hidden="true"><FileText /></span>
               <div>
-                <strong>{networkName || "Your Camp Network"}</strong>
-                <small>{activeFooter.headerTagline || "Community update"}</small>
+                <span className="director-email-compose-eyebrow">Step 2</span>
+                <h2 id="compose-message-title">Write your message</h2>
+                <p>Keep the subject clear and the body focused.</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setTemplatePanelOpen((prev) => !prev)}
+                aria-expanded={templatePanelOpen}
+              >
+                <LayoutTemplate aria-hidden="true" />
+                Templates
+                <ChevronDown className={templatePanelOpen ? "is-open" : ""} aria-hidden="true" />
+              </Button>
+            </header>
+
+            <div className="director-email-compose-step-body">
+              {templatePanelOpen ? (
+                <div className="director-email-template-panel">
+                  <div className="director-email-template-row">
+                    <label className="director-email-compose-field">
+                      <span>Saved templates</span>
+                      <Select
+                        value={selectedTemplateId}
+                        onChange={(event) => {
+                          const nextId = event.target.value;
+                          setSelectedTemplateId(nextId);
+                          const template = savedTemplates.find((item) => item.id === nextId);
+                          if (template) setTemplateName(template.name || "");
+                        }}
+                      >
+                        <option value="">Choose a template</option>
+                        {savedTemplates.map((template) => (
+                          <option key={template.id} value={template.id}>{template.name}</option>
+                        ))}
+                      </Select>
+                    </label>
+                    <Button type="button" variant="secondary" onClick={loadTemplate} disabled={!selectedTemplateId}>Use template</Button>
+                    <Button type="button" variant="ghost" onClick={deleteTemplate} disabled={!selectedTemplateId} aria-label="Delete selected template">
+                      <Trash2 aria-hidden="true" />
+                      Delete
+                    </Button>
+                  </div>
+                  <div className="director-email-template-row is-save-row">
+                    <label className="director-email-compose-field">
+                      <span>Save this draft as a template</span>
+                      <Input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Template name" />
+                    </label>
+                    <Button type="button" variant="secondary" onClick={saveTemplate}>Save template</Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <label className="director-email-compose-field">
+                <span className="director-email-compose-field-head">
+                  <strong>Subject</strong>
+                  <small>{form.subject.length}/120</small>
+                </span>
+                <Input
+                  value={form.subject}
+                  maxLength={120}
+                  onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))}
+                  placeholder="What should people know?"
+                />
+              </label>
+
+              <label className="director-email-compose-field">
+                <span className="director-email-compose-field-head">
+                  <strong>Inbox preview</strong>
+                  <small>{form.preheader.length}/160</small>
+                </span>
+                <Input
+                  value={form.preheader}
+                  maxLength={160}
+                  onChange={(event) => setForm((prev) => ({ ...prev, preheader: event.target.value }))}
+                  placeholder="A short supporting line shown in the inbox"
+                />
+              </label>
+
+              <div className="director-email-compose-field">
+                <span className="director-email-compose-field-head"><strong>Message</strong></span>
+                <RichTextEditor
+                  value={form.body}
+                  onChange={(html) => setForm((prev) => ({ ...prev, body: html }))}
+                  placeholder="Write your message here…"
+                />
               </div>
             </div>
-            <div className="director-admin-email-frame-body">
-              <h4>{form.subject.trim() || "Subject line preview"}</h4>
-              <p className="director-admin-email-preheader-preview">
-                {form.preheader.trim() || "Inbox preview text will appear here."}
-              </p>
-              <div
-                className="director-admin-email-frame-body-html"
-                dangerouslySetInnerHTML={{ __html: form.body || "<p>Write your message here and the preview updates in real time.</p>" }}
-              />
-            </div>
-            <div className="director-admin-email-frame-foot">
-              <div className="director-admin-email-signature-preview">
-                <p>{activeFooter.signOff || "Warmly,"}</p>
-                {activeFooter.senderName ? <p><strong>{activeFooter.senderName}</strong></p> : null}
-                {activeFooter.senderRole ? <p>{activeFooter.senderRole}</p> : null}
-                {footerContact ? <p>{footerContact}</p> : null}
+          </section>
+
+          <section className="director-email-compose-step" aria-labelledby="compose-sender-title">
+            <header className="director-email-compose-step-head">
+              <span className="director-email-compose-step-icon" aria-hidden="true"><Signature /></span>
+              <div>
+                <span className="director-email-compose-eyebrow">Step 3</span>
+                <h2 id="compose-sender-title">Sender details</h2>
+                <p>Your saved signature and camp branding are included.</p>
               </div>
-              {previewFooterLogoUrl ? (
-                <img className="director-admin-email-signature-logo" src={previewFooterLogoUrl} alt="" />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setFooterPanelOpen((prev) => !prev)} aria-expanded={footerPanelOpen}>
+                {footerPanelOpen ? "Done" : "Edit"}
+              </Button>
+            </header>
+
+            <div className="director-email-compose-step-body">
+              <div className="director-email-sender-summary">
+                <span className="director-email-sender-avatar" aria-hidden="true">{(activeFooter.senderName || networkName || "P").trim().charAt(0).toUpperCase()}</span>
+                <div>
+                  <strong>{activeFooter.senderName || "Sender name not set"}</strong>
+                  <span>{activeFooter.senderRole || "Director"}{footerContact ? ` · ${footerContact}` : ""}</span>
+                  <small>{selectedFooterPreset?.name || "Default footer"}{activeFooter.showLogo ? " · Camp logo included" : ""}</small>
+                </div>
+              </div>
+
+              {footerPanelOpen ? (
+                <div className="director-email-footer-panel">
+                  <div className="director-email-footer-toolbar">
+                    <label className="director-email-compose-field">
+                      <span>Saved footer</span>
+                      <Select
+                        value={selectedFooterPresetId}
+                        onChange={(event) => {
+                          const nextId = event.target.value;
+                          setSelectedFooterPresetId(nextId);
+                          const preset = footerPresets.find((item) => item.id === nextId);
+                          if (preset) setFooterPresetName(preset.name || "");
+                        }}
+                        disabled={!footerPresets.length}
+                      >
+                        <option value="">Choose a footer</option>
+                        {footerPresets.map((preset) => (
+                          <option key={preset.id} value={preset.id}>{preset.name}</option>
+                        ))}
+                      </Select>
+                    </label>
+                    <Button type="button" variant="secondary" onClick={applyFooterPreset} disabled={!selectedFooterPresetId || loadingFooterPresets}>Use footer</Button>
+                    <Button type="button" variant="ghost" onClick={makeFooterDefault} disabled={!selectedFooterPresetId || footerSaving}>Make default</Button>
+                  </div>
+                  <div className="director-email-footer-toolbar">
+                    <label className="director-email-compose-field">
+                      <span>Save as</span>
+                      <Input value={footerPresetName} onChange={(event) => setFooterPresetName(event.target.value)} placeholder="Footer name" />
+                    </label>
+                    <Button type="button" variant="secondary" onClick={saveFooterPreset} disabled={footerSaving}>Save footer</Button>
+                    <Button type="button" variant="ghost" onClick={deleteFooterPreset} disabled={!selectedFooterPresetId || footerSaving}>Delete</Button>
+                  </div>
+                  <div className="director-admin-email-footer-grid">
+                    <label>Header label<Input value={activeFooter.headerTagline} onChange={(event) => setFooterDraft((prev) => ({ ...prev, headerTagline: event.target.value }))} placeholder="Community update" /></label>
+                    <label>Sign-off<Input value={activeFooter.signOff} onChange={(event) => setFooterDraft((prev) => ({ ...prev, signOff: event.target.value }))} placeholder="Warmly," /></label>
+                    <label>Name<Input value={activeFooter.senderName} onChange={(event) => setFooterDraft((prev) => ({ ...prev, senderName: event.target.value }))} placeholder="Director name" /></label>
+                    <label>Role<Input value={activeFooter.senderRole} onChange={(event) => setFooterDraft((prev) => ({ ...prev, senderRole: event.target.value }))} placeholder="Director" /></label>
+                    <label>Email<Input value={footerDraft.senderEmail || ""} onChange={(event) => setFooterDraft((prev) => ({ ...prev, senderEmail: event.target.value }))} placeholder="name@camp.org" /></label>
+                    <label>Phone<Input value={activeFooter.senderPhone} onChange={(event) => setFooterDraft((prev) => ({ ...prev, senderPhone: event.target.value }))} placeholder="(555) 555-5555" /></label>
+                    <label className="inline-check director-admin-email-footer-toggle">
+                      <input type="checkbox" checked={Boolean(activeFooter.showLogo)} onChange={(event) => setFooterDraft((prev) => ({ ...prev, showLogo: event.target.checked }))} />
+                      Include camp logo
+                    </label>
+                  </div>
+                </div>
               ) : null}
             </div>
-          </div>
+          </section>
+
+          <section className="director-email-compose-step" aria-labelledby="compose-delivery-title">
+            <header className="director-email-compose-step-head">
+              <span className="director-email-compose-step-icon" aria-hidden="true"><CalendarClock /></span>
+              <div>
+                <span className="director-email-compose-eyebrow">Step 4</span>
+                <h2 id="compose-delivery-title">Delivery</h2>
+                <p>Choose when to send and resolve any final checks.</p>
+              </div>
+            </header>
+
+            <div className="director-email-compose-step-body">
+              <div className="director-email-timing-options" role="radiogroup" aria-label="Send timing">
+                <button type="button" role="radio" aria-checked={form.scheduleType === "now"} className={form.scheduleType === "now" ? "is-selected" : ""} onClick={() => setForm((prev) => ({ ...prev, scheduleType: "now" }))}>
+                  <Send aria-hidden="true" />
+                  <span><strong>Send now</strong><small>After your confirmation</small></span>
+                </button>
+                <button type="button" role="radio" aria-checked={form.scheduleType === "later"} className={form.scheduleType === "later" ? "is-selected" : ""} onClick={() => setForm((prev) => ({ ...prev, scheduleType: "later" }))}>
+                  <CalendarClock aria-hidden="true" />
+                  <span><strong>Schedule</strong><small>Pick a future time</small></span>
+                </button>
+              </div>
+              {form.scheduleType === "later" ? (
+                <label className="director-email-compose-field director-email-schedule-field">
+                  <span>Date and time</span>
+                  <Input type="datetime-local" value={form.scheduledFor} onChange={(event) => setForm((prev) => ({ ...prev, scheduledFor: event.target.value }))} />
+                  <small>Scheduling is available up to 30 days ahead.</small>
+                </label>
+              ) : null}
+
+              <section className={`director-email-readiness ${emailReadiness?.ready ? "is-ready" : ""}`} aria-labelledby="email-readiness-title">
+                <div className="director-email-readiness-head">
+                  <div>
+                    <span className="director-email-readiness-icon" aria-hidden="true">
+                      {emailReadiness?.ready ? <Check /> : <CircleAlert />}
+                    </span>
+                    <div>
+                      <strong id="email-readiness-title">Send checks</strong>
+                      <small>
+                        {emailReadiness === null
+                          ? "Checking recipients, compliance, and inbox quality…"
+                          : emailReadiness.ready
+                            ? "Everything required to send is in place."
+                            : `${emailReadiness.blockers?.length || 0} item${emailReadiness.blockers?.length === 1 ? "" : "s"} need attention.`}
+                      </small>
+                    </div>
+                  </div>
+                  <span className="director-email-readiness-state">
+                    {emailReadiness?.ready ? "Ready" : emailReadiness === null ? "Checking" : "Needs attention"}
+                  </span>
+                </div>
+                {emailReadiness?.blockers?.length ? (
+                  <ul className="director-email-readiness-list is-blocked">
+                    {emailReadiness.blockers.map((item) => <li key={item.code}>{item.message}</li>)}
+                  </ul>
+                ) : null}
+                {emailReadiness?.warnings?.length ? (
+                  <ul className="director-email-readiness-list is-warning">
+                    {emailReadiness.warnings.map((item) => <li key={item.code}>{item.message}</li>)}
+                  </ul>
+                ) : null}
+                {emailReadiness?.blockers?.some((item) => item.code === "postal_address_required") ? (
+                  <Link className="director-admin-inline-link" to={`/t/${slug}/admin/billing`}>Add the mailing address in Billing</Link>
+                ) : null}
+              </section>
+
+              {error ? <p className="error-text" role="alert">{error}</p> : null}
+              {status ? <p className="success-text" role="status">{status}</p> : null}
+            </div>
+          </section>
+        </main>
+
+        <aside className="director-email-compose-rail" aria-label="Email preview and send controls">
+          <section className="director-admin-email-preview">
+            <div className="director-email-preview-head">
+              <div>
+                <span className="director-email-compose-eyebrow">Preview</span>
+                <h2>Email preview</h2>
+              </div>
+              <span>Updates live</span>
+            </div>
+            <div className="director-admin-email-frame">
+              <div className="director-admin-email-frame-head" style={{ background: "var(--brand-primary)" }}>
+                {previewHeaderLogoUrl ? (
+                  <img src={previewHeaderLogoUrl} alt="" />
+                ) : (
+                  <span className="director-admin-logo-fallback">{previewInitials}</span>
+                )}
+                <div>
+                  <strong>{networkName || "Your Camp Network"}</strong>
+                  <small>{activeFooter.headerTagline || "Community update"}</small>
+                </div>
+              </div>
+              <div className="director-admin-email-frame-body">
+                <h4>{form.subject.trim() || "Your subject will appear here"}</h4>
+                <p className="director-admin-email-preheader-preview">
+                  {form.preheader.trim() || "Inbox preview text will appear here."}
+                </p>
+                <div
+                  className="director-admin-email-frame-body-html"
+                  dangerouslySetInnerHTML={{ __html: form.body || "<p>Start writing to preview your message.</p>" }}
+                />
+              </div>
+              <div className="director-admin-email-frame-foot">
+                <div className="director-admin-email-signature-preview">
+                  <p>{activeFooter.signOff || "Warmly,"}</p>
+                  {activeFooter.senderName ? <p><strong>{activeFooter.senderName}</strong></p> : null}
+                  {activeFooter.senderRole ? <p>{activeFooter.senderRole}</p> : null}
+                  {footerContact ? <p>{footerContact}</p> : null}
+                </div>
+                {previewFooterLogoUrl ? <img className="director-admin-email-signature-logo" src={previewFooterLogoUrl} alt="" /> : null}
+              </div>
+            </div>
+          </section>
+
+          <section className="director-email-review-card" aria-labelledby="email-review-title">
+            <div className="director-email-review-head">
+              <div>
+                <span className="director-email-compose-eyebrow">Final review</span>
+                <h2 id="email-review-title">Ready to send?</h2>
+              </div>
+              <strong>{reviewStepsComplete}/3</strong>
+            </div>
+            <div className="director-email-review-progress" aria-label={`${reviewStepsComplete} of 3 send requirements complete`}>
+              <span style={{ width: `${(reviewStepsComplete / 3) * 100}%` }} />
+            </div>
+            <dl className="director-email-review-list">
+              <div className={hasRecipients ? "is-complete" : ""}>
+                <dt><Users aria-hidden="true" />Audience</dt>
+                <dd>{hasRecipients ? `${recipientPreview.count} · ${targeting.label}` : "Choose at least one recipient"}</dd>
+              </div>
+              <div className={hasMessage ? "is-complete" : ""}>
+                <dt><FileText aria-hidden="true" />Message</dt>
+                <dd>{hasMessage ? form.subject : "Add a subject and message"}</dd>
+              </div>
+              <div>
+                <dt><CalendarClock aria-hidden="true" />Delivery</dt>
+                <dd>{deliverySummary}</dd>
+              </div>
+              <div className={checksReady ? "is-complete" : ""}>
+                <dt>{checksReady ? <Check aria-hidden="true" /> : <CircleAlert aria-hidden="true" />}Send checks</dt>
+                <dd>{checksReady ? "All required checks pass" : emailReadiness === null ? "Checking…" : "Review the items in Step 4"}</dd>
+              </div>
+            </dl>
+            <div className="director-email-review-actions">
+              <Button type="button" variant="secondary" onClick={sendTestEmail} disabled={!hasMessage}>
+                <FlaskConical aria-hidden="true" />
+                Send a test
+              </Button>
+              <Button type="submit" size="lg" disabled={sendDisabled} loading={sending}>
+                <Send aria-hidden="true" />
+                {form.scheduleType === "later" ? "Review schedule" : "Review & send"}
+              </Button>
+            </div>
+            <p>Nothing is sent until you confirm the final details.</p>
+          </section>
         </aside>
       </form>
 

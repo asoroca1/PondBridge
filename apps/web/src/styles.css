@@ -7349,6 +7349,829 @@ html.is-native-app textarea{
   text-decoration: underline;
 }
 
+/* ---- Director email compose: focused four-step workspace ---- */
+
+.pb-cedar-page .director-email-compose-page{
+  --email-compose-border: color-mix(in srgb, var(--brand-primary) 14%, #dce4eb);
+  --email-compose-soft: color-mix(in srgb, var(--brand-primary) 4%, #f7f8f6);
+  --email-compose-tint: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  --email-compose-ink: var(--director-admin-ink, #17324d);
+  --email-compose-muted: var(--director-admin-ink-soft, #617184);
+}
+
+.pb-cedar-page .director-email-compose-toolbar{
+  min-height:48px;
+  margin-top:16px;
+  padding:12px 0 16px;
+  border-bottom:1px solid var(--email-compose-border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.pb-cedar-page .director-email-compose-save-state{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:var(--email-compose-muted);
+  font-size:.76rem;
+  font-weight:650;
+}
+
+.pb-cedar-page .director-email-compose-save-state > span{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#2b8b63;
+  box-shadow:0 0 0 4px rgba(43,139,99,.1);
+}
+
+.pb-cedar-page .director-email-compose-toolbar-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.pb-cedar-page .director-email-compose-page .pb-btn svg,
+.pb-cedar-page .director-email-compose-page .link-button svg{
+  width:16px;
+  height:16px;
+  flex:0 0 auto;
+}
+
+.pb-cedar-page .director-email-compose-ai-panel{
+  margin-top:18px;
+}
+
+.pb-cedar-page .director-email-compose-ai-panel .director-email-agent{
+  margin:0;
+  border-radius:16px;
+  box-shadow:none;
+}
+
+.pb-cedar-page .director-admin-email-layout.director-email-compose-layout{
+  grid-template-columns:minmax(0, 1fr) minmax(320px, 370px);
+  gap:24px;
+  margin-top:24px;
+}
+
+.pb-cedar-page .director-email-compose-main{
+  gap:18px;
+}
+
+.pb-cedar-page .director-email-compose-step{
+  border:1px solid var(--email-compose-border);
+  border-radius:18px;
+  overflow:hidden;
+  background:#fff;
+  box-shadow:0 1px 2px rgba(19,45,68,.035);
+}
+
+.pb-cedar-page .director-email-compose-step-head{
+  min-height:88px;
+  padding:18px 20px;
+  border-bottom:1px solid var(--email-compose-border);
+  display:grid;
+  grid-template-columns:42px minmax(0, 1fr) auto;
+  align-items:center;
+  gap:13px;
+  background:color-mix(in srgb, var(--email-compose-soft) 70%, #fff);
+}
+
+.pb-cedar-page .director-email-compose-step-icon{
+  width:42px;
+  height:42px;
+  border-radius:13px;
+  display:grid;
+  place-items:center;
+  color:var(--brand-primary);
+  background:var(--email-compose-tint);
+  border:1px solid color-mix(in srgb, var(--brand-primary) 13%, transparent);
+}
+
+.pb-cedar-page .director-email-compose-step-icon svg{
+  width:20px;
+  height:20px;
+  stroke-width:1.9;
+}
+
+.pb-cedar-page .director-email-compose-eyebrow{
+  display:block;
+  margin-bottom:2px;
+  color:var(--email-compose-muted);
+  font-size:.64rem;
+  line-height:1.2;
+  font-weight:800;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+
+.pb-cedar-page .director-email-compose-step-head h2,
+.pb-cedar-page .director-email-preview-head h2,
+.pb-cedar-page .director-email-review-head h2{
+  margin:0;
+  color:var(--email-compose-ink);
+  font-size:1.06rem;
+  line-height:1.25;
+  letter-spacing:-.01em;
+}
+
+.pb-cedar-page .director-email-compose-step-head p{
+  margin:3px 0 0;
+  color:var(--email-compose-muted);
+  font-size:.78rem;
+  line-height:1.4;
+}
+
+.pb-cedar-page .director-email-compose-step-head > .pb-btn .is-open{
+  transform:rotate(180deg);
+}
+
+.pb-cedar-page .director-email-compose-step-state{
+  padding:6px 10px;
+  border:1px solid #e0d1b5;
+  border-radius:999px;
+  background:#fffaf0;
+  color:#745b2a;
+  font-size:.7rem;
+  font-weight:780;
+  white-space:nowrap;
+}
+
+.pb-cedar-page .director-email-compose-step-state.is-complete{
+  border-color:#bddccb;
+  background:#f0faf4;
+  color:#236347;
+}
+
+.pb-cedar-page .director-email-compose-step-body{
+  padding:20px;
+  display:grid;
+  gap:18px;
+}
+
+.pb-cedar-page .director-email-audience-options{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
+}
+
+.pb-cedar-page .director-email-audience-options button{
+  min-height:64px;
+  padding:11px 12px;
+  border:1px solid var(--email-compose-border);
+  border-radius:12px;
+  display:grid;
+  align-content:center;
+  gap:3px;
+  color:var(--email-compose-ink);
+  background:#fff;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.pb-cedar-page .director-email-audience-options button:hover{
+  border-color:color-mix(in srgb, var(--brand-primary) 36%, var(--email-compose-border));
+  transform:translateY(-1px);
+}
+
+.pb-cedar-page .director-email-audience-options button:focus-visible,
+.pb-cedar-page .director-email-timing-options button:focus-visible{
+  outline:3px solid color-mix(in srgb, var(--brand-primary) 22%, transparent);
+  outline-offset:2px;
+}
+
+.pb-cedar-page .director-email-audience-options button.is-selected{
+  border-color:var(--brand-primary);
+  background:var(--email-compose-tint);
+  box-shadow:0 0 0 1px var(--brand-primary);
+}
+
+.pb-cedar-page .director-email-audience-options button > span{
+  font-size:.82rem;
+  font-weight:780;
+}
+
+.pb-cedar-page .director-email-audience-options button > small{
+  color:var(--email-compose-muted);
+  font-size:.68rem;
+  line-height:1.35;
+}
+
+.pb-cedar-page .director-email-compose-field{
+  min-width:0;
+  display:grid;
+  gap:7px;
+  color:var(--email-compose-ink);
+}
+
+.pb-cedar-page .director-email-compose-field > span,
+.pb-cedar-page .director-email-compose-field > strong{
+  font-size:.78rem;
+  font-weight:760;
+}
+
+.pb-cedar-page .director-email-compose-field > small{
+  color:var(--email-compose-muted);
+  font-size:.7rem;
+  line-height:1.4;
+}
+
+.pb-cedar-page .director-email-compose-field-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.pb-cedar-page .director-email-compose-field-head small{
+  color:var(--email-compose-muted);
+  font-size:.68rem;
+  font-weight:650;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-role-picker,
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-year-picker{
+  padding:14px;
+  border:1px solid var(--email-compose-border);
+  border-radius:12px;
+  background:var(--email-compose-soft);
+  gap:10px;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-role-picker > strong,
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-year-picker > strong{
+  color:var(--email-compose-ink);
+  font-size:.78rem;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-checkbox-grid{
+  gap:8px;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-checkbox-grid .inline-check{
+  min-height:34px;
+  padding:6px 10px;
+  border:1px solid var(--email-compose-border);
+  border-radius:999px;
+  background:#fff;
+  font-size:.75rem;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-recipient-builder{
+  padding:14px;
+  gap:12px;
+  border-radius:14px;
+  background:var(--email-compose-soft);
+}
+
+.pb-cedar-page .director-email-group-tools{
+  padding-bottom:14px;
+  border-bottom:1px solid var(--email-compose-border);
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto auto;
+  align-items:end;
+  gap:8px;
+}
+
+.pb-cedar-page .director-email-group-save{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:8px;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-member-search-results{
+  max-height:190px;
+  border-color:var(--email-compose-border);
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-member-search-results > .muted{
+  margin:0;
+  padding:16px;
+  text-align:center;
+}
+
+.pb-cedar-page .director-email-audience-summary{
+  padding:14px;
+  border:1px solid var(--email-compose-border);
+  border-radius:14px;
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr) auto;
+  align-items:center;
+  gap:14px;
+  background:#fafbfb;
+}
+
+.pb-cedar-page .director-email-audience-summary.is-ready{
+  border-color:#bddccb;
+  background:#f4fbf7;
+}
+
+.pb-cedar-page .director-email-audience-count{
+  min-width:74px;
+  padding-right:14px;
+  border-right:1px solid var(--email-compose-border);
+  display:grid;
+}
+
+.pb-cedar-page .director-email-audience-count strong{
+  color:var(--email-compose-ink);
+  font-size:1.45rem;
+  line-height:1;
+  letter-spacing:-.04em;
+}
+
+.pb-cedar-page .director-email-audience-count span,
+.pb-cedar-page .director-email-audience-summary-copy small{
+  color:var(--email-compose-muted);
+  font-size:.67rem;
+  line-height:1.35;
+}
+
+.pb-cedar-page .director-email-audience-summary-copy{
+  min-width:0;
+  display:grid;
+  gap:2px;
+}
+
+.pb-cedar-page .director-email-audience-summary-copy strong{
+  overflow:hidden;
+  color:var(--email-compose-ink);
+  font-size:.8rem;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pb-cedar-page .director-email-recipient-sample-details summary{
+  color:var(--brand-primary);
+  font-size:.72rem;
+  font-weight:760;
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+.pb-cedar-page .director-email-recipient-sample-details[open]{
+  grid-column:1 / -1;
+  padding-top:10px;
+  border-top:1px solid var(--email-compose-border);
+}
+
+.pb-cedar-page .director-email-recipient-sample-details ul{
+  margin:10px 0 0;
+  padding:0;
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:6px;
+  list-style:none;
+}
+
+.pb-cedar-page .director-email-recipient-sample-details li{
+  min-width:0;
+  padding:8px 10px;
+  border:1px solid var(--email-compose-border);
+  border-radius:9px;
+  display:grid;
+  background:#fff;
+}
+
+.pb-cedar-page .director-email-recipient-sample-details li span,
+.pb-cedar-page .director-email-recipient-sample-details li small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pb-cedar-page .director-email-recipient-sample-details li span{
+  color:var(--email-compose-ink);
+  font-size:.73rem;
+  font-weight:720;
+}
+
+.pb-cedar-page .director-email-recipient-sample-details li small{
+  color:var(--email-compose-muted);
+  font-size:.65rem;
+}
+
+.pb-cedar-page .director-email-template-panel,
+.pb-cedar-page .director-email-footer-panel{
+  padding:14px;
+  border:1px solid var(--email-compose-border);
+  border-radius:14px;
+  display:grid;
+  gap:12px;
+  background:var(--email-compose-soft);
+}
+
+.pb-cedar-page .director-email-template-row,
+.pb-cedar-page .director-email-footer-toolbar{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto auto;
+  align-items:end;
+  gap:8px;
+}
+
+.pb-cedar-page .director-email-template-row.is-save-row{
+  padding-top:12px;
+  border-top:1px solid var(--email-compose-border);
+  grid-template-columns:minmax(0, 1fr) auto;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-richtext-wrap{
+  border-color:var(--email-compose-border);
+  border-radius:12px;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-richtext-toolbar{
+  min-height:42px;
+  padding:6px 10px;
+  background:var(--email-compose-soft);
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-admin-email-richtext-body{
+  min-height:260px;
+  padding:18px;
+  color:var(--email-compose-ink);
+  font-size:.92rem;
+  line-height:1.7;
+}
+
+.pb-cedar-page .director-email-sender-summary{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.pb-cedar-page .director-email-sender-avatar{
+  width:42px;
+  height:42px;
+  border-radius:50%;
+  display:grid;
+  flex:0 0 auto;
+  place-items:center;
+  color:var(--brand-on-primary, #fff);
+  background:var(--brand-primary);
+  font-size:.9rem;
+  font-weight:820;
+}
+
+.pb-cedar-page .director-email-sender-summary > div{
+  min-width:0;
+  display:grid;
+  gap:1px;
+}
+
+.pb-cedar-page .director-email-sender-summary strong,
+.pb-cedar-page .director-email-sender-summary span,
+.pb-cedar-page .director-email-sender-summary small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pb-cedar-page .director-email-sender-summary strong{
+  color:var(--email-compose-ink);
+  font-size:.84rem;
+}
+
+.pb-cedar-page .director-email-sender-summary span,
+.pb-cedar-page .director-email-sender-summary small{
+  color:var(--email-compose-muted);
+  font-size:.7rem;
+}
+
+.pb-cedar-page .director-email-footer-panel{
+  margin-top:2px;
+}
+
+.pb-cedar-page .director-email-footer-panel .director-admin-email-footer-grid{
+  padding-top:12px;
+  border-top:1px solid var(--email-compose-border);
+}
+
+.pb-cedar-page .director-email-footer-panel .director-admin-email-footer-grid label{
+  display:grid;
+  gap:6px;
+  color:var(--email-compose-ink);
+  font-size:.75rem;
+  font-weight:720;
+}
+
+.pb-cedar-page .director-email-timing-options{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+
+.pb-cedar-page .director-email-timing-options button{
+  min-height:68px;
+  padding:12px;
+  border:1px solid var(--email-compose-border);
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:var(--email-compose-ink);
+  background:#fff;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+
+.pb-cedar-page .director-email-timing-options button > svg{
+  width:19px;
+  height:19px;
+  color:var(--email-compose-muted);
+}
+
+.pb-cedar-page .director-email-timing-options button > span{
+  display:grid;
+  gap:2px;
+}
+
+.pb-cedar-page .director-email-timing-options button strong{
+  font-size:.8rem;
+}
+
+.pb-cedar-page .director-email-timing-options button small{
+  color:var(--email-compose-muted);
+  font-size:.68rem;
+}
+
+.pb-cedar-page .director-email-timing-options button.is-selected{
+  border-color:var(--brand-primary);
+  background:var(--email-compose-tint);
+  box-shadow:0 0 0 1px var(--brand-primary);
+}
+
+.pb-cedar-page .director-email-timing-options button.is-selected > svg{
+  color:var(--brand-primary);
+}
+
+.pb-cedar-page .director-email-schedule-field{
+  max-width:360px;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-email-readiness{
+  padding:14px;
+  border-radius:14px;
+}
+
+.pb-cedar-page .director-email-compose-step-body .director-email-readiness-icon svg{
+  width:17px;
+  height:17px;
+}
+
+.pb-cedar-page .director-email-compose-rail{
+  position:sticky;
+  top:calc(var(--nav-h) + env(safe-area-inset-top, 0px) + var(--director-admin-main-top-pad, 12px));
+  display:grid;
+  gap:14px;
+  align-self:start;
+}
+
+.pb-cedar-page .director-email-compose-rail .director-admin-email-preview{
+  position:static;
+  top:auto;
+  padding:14px;
+  border-radius:18px;
+  gap:12px;
+  background:var(--email-compose-soft);
+}
+
+.pb-cedar-page .director-email-preview-head,
+.pb-cedar-page .director-email-review-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.pb-cedar-page .director-email-preview-head > span{
+  padding:5px 8px;
+  border:1px solid var(--email-compose-border);
+  border-radius:999px;
+  color:var(--email-compose-muted);
+  background:#fff;
+  font-size:.64rem;
+  font-weight:720;
+}
+
+.pb-cedar-page .director-email-compose-rail .director-admin-email-frame{
+  border-radius:13px;
+  box-shadow:0 8px 24px rgba(20,45,68,.08);
+}
+
+.pb-cedar-page .director-email-compose-rail .director-admin-email-frame-body{
+  min-height:150px;
+  padding:16px;
+}
+
+.pb-cedar-page .director-email-compose-rail .director-admin-email-frame-body-html{
+  max-height:250px;
+  overflow:auto;
+}
+
+.pb-cedar-page .director-email-review-card{
+  padding:17px;
+  border:1px solid var(--email-compose-border);
+  border-radius:18px;
+  display:grid;
+  gap:14px;
+  background:#fff;
+  box-shadow:0 10px 28px rgba(20,45,68,.07);
+}
+
+.pb-cedar-page .director-email-review-head > strong{
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  color:var(--brand-primary);
+  background:var(--email-compose-tint);
+  font-size:.75rem;
+}
+
+.pb-cedar-page .director-email-review-progress{
+  height:5px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#e8ecef;
+}
+
+.pb-cedar-page .director-email-review-progress span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:var(--brand-primary);
+  transition:width .2s ease;
+}
+
+.pb-cedar-page .director-email-review-list{
+  margin:0;
+  display:grid;
+}
+
+.pb-cedar-page .director-email-review-list > div{
+  padding:10px 0;
+  border-bottom:1px solid var(--email-compose-border);
+  display:grid;
+  grid-template-columns:110px minmax(0, 1fr);
+  gap:10px;
+}
+
+.pb-cedar-page .director-email-review-list > div:last-child{
+  border-bottom:0;
+}
+
+.pb-cedar-page .director-email-review-list dt{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  color:var(--email-compose-muted);
+  font-size:.7rem;
+  font-weight:720;
+}
+
+.pb-cedar-page .director-email-review-list dt svg{
+  width:15px;
+  height:15px;
+}
+
+.pb-cedar-page .director-email-review-list dd{
+  min-width:0;
+  margin:0;
+  overflow:hidden;
+  color:var(--email-compose-ink);
+  font-size:.71rem;
+  font-weight:650;
+  text-align:right;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pb-cedar-page .director-email-review-list .is-complete dt svg{
+  color:#2b8b63;
+}
+
+.pb-cedar-page .director-email-review-actions{
+  display:grid;
+  grid-template-columns:minmax(0, .78fr) minmax(0, 1.22fr);
+  gap:8px;
+}
+
+.pb-cedar-page .director-email-review-actions .pb-btn{
+  width:100%;
+  min-width:0;
+}
+
+.pb-cedar-page .director-email-review-card > p{
+  margin:-2px 0 0;
+  color:var(--email-compose-muted);
+  font-size:.65rem;
+  line-height:1.4;
+  text-align:center;
+}
+
+@media (max-width: 1180px){
+  .pb-cedar-page .director-admin-email-layout.director-email-compose-layout{
+    grid-template-columns:minmax(0, 1fr) minmax(300px, 330px);
+    gap:18px;
+  }
+
+  .pb-cedar-page .director-email-audience-options{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1020px){
+  .pb-cedar-page .director-admin-email-layout.director-email-compose-layout{
+    grid-template-columns:1fr;
+  }
+
+  .pb-cedar-page .director-email-compose-rail{
+    position:static;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px){
+  .pb-cedar-page .director-email-compose-toolbar{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .pb-cedar-page .director-email-compose-toolbar-actions{
+    width:100%;
+  }
+
+  .pb-cedar-page .director-email-compose-toolbar-actions .pb-btn:last-child{
+    margin-left:auto;
+  }
+
+  .pb-cedar-page .director-email-compose-step-head{
+    grid-template-columns:40px minmax(0, 1fr);
+    padding:16px;
+  }
+
+  .pb-cedar-page .director-email-compose-step-head > :last-child{
+    grid-column:2;
+    justify-self:start;
+  }
+
+  .pb-cedar-page .director-email-compose-step-body{
+    padding:16px;
+  }
+
+  .pb-cedar-page .director-email-template-row,
+  .pb-cedar-page .director-email-template-row.is-save-row,
+  .pb-cedar-page .director-email-footer-toolbar,
+  .pb-cedar-page .director-email-group-tools{
+    grid-template-columns:1fr;
+    align-items:stretch;
+  }
+
+  .pb-cedar-page .director-email-group-save{
+    grid-column:auto;
+    grid-template-columns:1fr;
+  }
+
+  .pb-cedar-page .director-email-template-row .pb-btn,
+  .pb-cedar-page .director-email-footer-toolbar .pb-btn,
+  .pb-cedar-page .director-email-group-tools .pb-btn{
+    width:100%;
+  }
+
+  .pb-cedar-page .director-email-compose-rail{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width: 520px){
+  .pb-cedar-page .director-email-audience-options,
+  .pb-cedar-page .director-email-timing-options,
+  .pb-cedar-page .director-email-recipient-sample-details ul{
+    grid-template-columns:1fr;
+  }
+
+  .pb-cedar-page .director-email-audience-summary{
+    grid-template-columns:auto minmax(0, 1fr);
+  }
+
+  .pb-cedar-page .director-email-recipient-sample-details{
+    grid-column:1 / -1;
+  }
+
+  .pb-cedar-page .director-email-review-actions{
+    grid-template-columns:1fr;
+  }
+}
+
 /* ---- Role & Year pickers ---- */
 
 .pb-cedar-page .director-admin-email-role-picker,
