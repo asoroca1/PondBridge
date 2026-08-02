@@ -1,7 +1,9 @@
 import { readTransitionBranding } from "../lib/appTransitionState.js";
+import cedarLogo from "../assets/cedar-logo.png";
 
 export function AppTransitionShell({ compact = false }) {
   const branding = readTransitionBranding();
+  const logoUrl = branding.logoUrl || (["cedar", "camp-cedar"].includes(branding.slug) ? cedarLogo : "");
   const fallbackInitial = String(branding.networkName || "P").trim().charAt(0).toUpperCase() || "P";
 
   return (
@@ -12,8 +14,8 @@ export function AppTransitionShell({ compact = false }) {
     >
       {!compact ? (
         <header className="app-transition-brand">
-          {branding.logoUrl ? (
-            <img src={branding.logoUrl} alt="" decoding="async" />
+          {logoUrl ? (
+            <img src={logoUrl} alt="" decoding="async" />
           ) : (
             <span className="app-transition-brand-mark" aria-hidden="true">
               {fallbackInitial}

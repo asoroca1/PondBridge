@@ -35,6 +35,7 @@ import {
   resolveCampAiName,
   resolveNetworkDisplayName,
   resolveNewsletterLabel,
+  resolveTenantLogoUrl,
   resolveTenantContent
 } from "../lib/campLabels.js";
 import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "../lib/domain.js";
@@ -222,8 +223,8 @@ export default function NavBar() {
   const searchAbortRef = useRef(null);
 
   const config = tenant?.config || {};
-  const branding = config.branding || tenant?.theme || {};
-  useEffect(() => setLogoError(false), [slug, branding.logoUrl]);
+  const configuredLogoUrl = resolveTenantLogoUrl(tenant);
+  useEffect(() => setLogoError(false), [slug, configuredLogoUrl]);
   const modules = {
     ...(config.modules || tenant?.modules || {}),
     events: isMemberEventsModuleEnabled(config?.modules?.events ?? tenant?.modules?.events)
@@ -243,7 +244,7 @@ export default function NavBar() {
     (slug === "camp-cedar" || slug === "cedar" ? "https://thecampspot.com/camphome.aspx" : "");
   const nativeApp = isNativeApp();
   const cedarFallback = slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "";
-  const resolvedLogoUrl = branding.logoUrl || cedarFallback;
+  const resolvedLogoUrl = configuredLogoUrl || cedarFallback;
   const logoUrl = logoError ? cedarFallback : resolvedLogoUrl;
   const fallbackLogoInitial = initialsFrom(title || tenant?.name || "Camp");
   const avatarSrc = getPhotoUrl(user);

@@ -7,11 +7,12 @@ import { MobileNotificationsProvider } from "./context/MobileNotificationsContex
 import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import { resolveCampName } from "./lib/campLabels.js";
+import { resolveCampName, resolveTenantLogoUrl } from "./lib/campLabels.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { attemptAutomaticChunkRecovery } from "./lib/chunkRecovery.js";
+import cedarLogo from "./assets/cedar-logo.png";
 import {
   installRouteIntentPreloading,
   preloadAuthenticatedCoreRoutes
@@ -277,8 +278,8 @@ function TenantScopeRoutes() {
   const [wrongNetwork, setWrongNetwork] = useState(null);
   const [allowAuthCallbackRedirect, setAllowAuthCallbackRedirect] = useState(false);
   const isCampDirectorSession = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
-  const tenantBranding = tenant?.config?.branding || tenant?.theme || {};
-  const tenantLogoUrl = String(tenantBranding.logoUrl || "").trim();
+  const configuredTenantLogoUrl = resolveTenantLogoUrl(tenant);
+  const tenantLogoUrl = configuredTenantLogoUrl || (["cedar", "camp-cedar"].includes(normalizeTenantKey(slug)) ? cedarLogo : "");
   const tenantTabTitle = resolveTenantTabTitle(tenant);
   const isCampDirector = isCampDirectorSession;
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
