@@ -66,6 +66,19 @@ describe("alumni growth contact safety", () => {
     expect(hasRequiredEmailTargetingSelection({ mode: "segment", segment: "unknown" })).toBe(false);
     expect(hasRequiredEmailTargetingSelection({ mode: "segment", segment: "inactive_30" })).toBe(true);
   });
+
+  test("accepts a composite audience only when one of its rules is usable", () => {
+    expect(hasRequiredEmailTargetingSelection({ mode: "composite", groups: [] })).toBe(false);
+    expect(hasRequiredEmailTargetingSelection({ mode: "composite" })).toBe(false);
+    expect(hasRequiredEmailTargetingSelection({
+      mode: "composite",
+      groups: [{ mode: "role", roles: [] }, { mode: "custom", profileIds: [] }]
+    })).toBe(false);
+    expect(hasRequiredEmailTargetingSelection({
+      mode: "composite",
+      groups: [{ mode: "role", roles: [] }, { mode: "year", years: ["2019"] }]
+    })).toBe(true);
+  });
 });
 
 describe("server-owned engagement segments", () => {

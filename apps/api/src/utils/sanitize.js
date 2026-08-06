@@ -36,7 +36,10 @@ export function sanitizeHtmlContent(input) {
     },
     allowedSchemes: ["http", "https", "mailto"],
     transformTags: {
-      a: sanitizeHtml.simpleTransform("a", { rel: "noopener noreferrer" })
+      a: sanitizeHtml.simpleTransform("a", { rel: "noopener noreferrer" }),
+      // Browsers wrap contentEditable lines in <div>. Without this the tag is
+      // discarded and every paragraph collapses onto one line.
+      div: sanitizeHtml.simpleTransform("p", {}, false)
     }
   }).trim();
 }

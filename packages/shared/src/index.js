@@ -402,6 +402,35 @@ export const tenantEmailFooterPresetSchema = z.object({
   updatedAt: z.string().trim().max(80).default("")
 });
 
+// A single audience rule. Recipient groups are saved rules, not frozen member
+// lists, so a "Counselors" group keeps matching new counselors over time.
+export const tenantEmailAudienceRuleSchema = z.object({
+  mode: z.enum(["all", "role", "year", "segment", "custom"]).default("all"),
+  roles: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
+  years: z.array(z.string().trim().min(1).max(10)).max(80).default([]),
+  profileIds: z.array(z.string().trim().min(1).max(90)).max(2000).default([]),
+  segment: z.string().trim().max(40).default("")
+});
+
+// A group is a list of rules unioned together, so "Counselors plus these three
+// people" is one saveable group rather than two things to remember.
+export const tenantEmailRecipientGroupSchema = z.object({
+  id: z.string().trim().min(1).max(90),
+  name: z.string().trim().min(1).max(72),
+  description: z.string().trim().max(180).default(""),
+  rules: z.array(tenantEmailAudienceRuleSchema).max(25).default([]),
+  updatedAt: z.string().trim().max(80).default("")
+});
+
+export const tenantEmailTemplateSchema = z.object({
+  id: z.string().trim().min(1).max(90),
+  name: z.string().trim().min(1).max(72),
+  subject: z.string().trim().max(160).default(""),
+  preheader: z.string().trim().max(160).default(""),
+  body: z.string().max(20000).default(""),
+  updatedAt: z.string().trim().max(80).default("")
+});
+
 export const tenantContentSchema = z.object({
   campType: z.enum(campTypes).default("coed"),
   networkDisplayName: z.string().trim().max(120).default("Your Camp Alumni Network"),
@@ -416,7 +445,9 @@ export const tenantContentSchema = z.object({
   supportUrl: z.string().trim().url().or(z.literal("")).default(""),
   footerLinks: z.array(tenantFooterLinkSchema).max(8).default([]),
   emailFooterPresets: z.array(tenantEmailFooterPresetSchema).max(20).default([]),
-  defaultEmailFooterPresetId: z.string().trim().max(90).default("")
+  defaultEmailFooterPresetId: z.string().trim().max(90).default(""),
+  emailRecipientGroups: z.array(tenantEmailRecipientGroupSchema).max(60).default([]),
+  emailTemplates: z.array(tenantEmailTemplateSchema).max(40).default([])
 });
 
 export const tenantSettingsSchema = z.object({

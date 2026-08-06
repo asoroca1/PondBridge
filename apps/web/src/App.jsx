@@ -72,11 +72,8 @@ const DirectorAdminBillingPage = lazyPage(() => import("./pages/admin/DirectorAd
 const DirectorAdminDashboardPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminDashboardPage }))
 );
-const DirectorAdminEmailComposePage = lazyPage(() => import("./pages/admin/DirectorAdminEmailComposePage.jsx"));
+const DirectorAdminMailPage = lazyPage(() => import("./pages/admin/DirectorAdminMailPage.jsx"));
 const DirectorAdminGrowthPage = lazyPage(() => import("./pages/admin/DirectorAdminGrowthPage.jsx"));
-const DirectorAdminEmailHistoryPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailHistoryPage }))
-);
 const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdminEventsPage.jsx"));
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
@@ -819,8 +816,10 @@ function TenantScopeRoutes() {
             }
           />
           <Route path="communications" element={<Navigate to="../email/compose" replace />} />
-          <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
-          <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
+          <Route path="email" element={<Navigate to="compose" replace />} />
+          {/* The old history route is bookmarked in older invites and emails. */}
+          <Route path="email/history" element={<Navigate to="../email/sent" replace />} />
+          <Route path="email/:folder" element={<DirectorAdminMailPage />} />
           <Route path="analytics" element={<Navigate to="../dashboard" replace />} />
           <Route path="features" element={<DirectorAdminFeaturesPage />} />
           <Route

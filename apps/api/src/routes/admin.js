@@ -63,6 +63,8 @@ import {
   resolveContent,
   resolveModules,
   normalizeSignupMode,
+  normalizeEmailRecipientGroups,
+  normalizeEmailTemplates,
   resolveSettings,
   getReadinessChecklist,
   getBillingReadiness
@@ -248,6 +250,11 @@ const SUPPORT_REQUEST_TOPICS = new Set([
   "bug"
 ]);
 const SUPPORT_REQUEST_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
+// A composite audience is the union of individual rules ("To:" chips in the
+// director mail composer). Bounded so one request cannot fan out unboundedly.
+const MAX_TARGETING_GROUPS = 25;
+const MAX_EMAIL_RECIPIENT_GROUPS = 60;
+const MAX_EMAIL_TEMPLATES = 40;
 
 function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
   const parsed = Number(value);
@@ -2359,17 +2366,27 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeTargeting(input = {}) {
+function normalizeTargeting(input = {}, { allowComposite = true } = {}) {
   const mode = String(input.mode || "all").trim().toLowerCase();
-  const safeMode = ["all", "role", "year", "custom", "segment"].includes(mode) ? mode : "all";
+  const allowedModes = allowComposite
+    ? ["all", "role", "year", "custom", "segment", "composite"]
+    : ["all", "role", "year", "custom", "segment"];
+  const safeMode = allowedModes.includes(mode) ? mode : "all";
   const requestedSegment = String(input.segment || "").trim().toLowerCase();
+  const groups = safeMode === "composite"
+    ? asArray(input.groups)
+        .slice(0, MAX_TARGETING_GROUPS)
+        .map((group) => normalizeTargeting(group, { allowComposite: false }))
+        .filter((group) => hasRequiredEmailTargetingSelection(group))
+    : [];
   return {
     mode: safeMode,
     roles: asArray(input.roles).map((item) => String(item || "").trim()).filter(Boolean),
     years: asArray(input.years).map((item) => String(item || "").trim()).filter(Boolean),
     profileIds: parseIds(input.profileIds || []),
     segment: GROWTH_EMAIL_SEGMENTS.has(requestedSegment) ? requestedSegment : "",
-    label: String(input.label || "").trim()
+    groups,
+    label: sanitizeText(String(input.label || "").trim()).slice(0, 240)
   };
 }
 
@@ -2405,15 +2422,27 @@ function serializeEmailBroadcast(item) {
     scheduledFor: toIso(item?.scheduledFor),
     sentAt: toIso(item?.sentAt),
     createdAt: toIso(item?.createdAt),
+    updatedAt: toIso(item?.updatedAt),
     stats
   };
 }
 
-async function resolveRecipientsForTargeting(tenantId, targeting) {
-  const normalized = normalizeTargeting(targeting);
-  if (!hasRequiredEmailTargetingSelection(normalized)) {
-    return { profiles: [], recipients: [], heldRecipients: [], matchedRecipientCount: 0 };
+async function resolveProfilesForTargeting(tenantId, normalized) {
+  if (!hasRequiredEmailTargetingSelection(normalized)) return [];
+
+  if (normalized.mode === "composite") {
+    const resolved = await Promise.all(
+      normalized.groups.map((group) => resolveProfilesForTargeting(tenantId, group))
+    );
+    const byId = new Map();
+    for (const group of resolved) {
+      for (const profile of group) {
+        byId.set(toObjectIdString(profile._id), profile);
+      }
+    }
+    return [...byId.values()];
   }
+
   const filter = { status: { $ne: "removed" } };
 
   if (normalized.mode === "year" && normalized.years.length > 0) {
@@ -2460,6 +2489,16 @@ async function resolveRecipientsForTargeting(tenantId, targeting) {
     profiles = profiles.filter((p) =>
       lowerRoles.includes((p.roleAtCamp || "").toLowerCase())
     );
+  }
+
+  return profiles;
+}
+
+async function resolveRecipientsForTargeting(tenantId, targeting) {
+  const normalized = normalizeTargeting(targeting);
+  const profiles = await resolveProfilesForTargeting(tenantId, normalized);
+  if (profiles.length === 0) {
+    return { profiles: [], recipients: [], heldRecipients: [], matchedRecipientCount: 0 };
   }
 
   const matchedRecipients = [...new Set(
@@ -4386,6 +4425,114 @@ router.get("/email/available-roles", async (req, res) => {
   return res.json({ roles });
 });
 
+// Writes a partial patch onto both live content and the onboarding draft so a
+// tenant still in setup keeps the same values once it goes live.
+async function saveTenantContentFields(req, fields = {}) {
+  const draft = resolveDraft(req.tenant);
+  const content = draft.content || resolveContent(req.tenant);
+  return TenantModel.update(req.tenant._id, {
+    content: { ...content, ...fields },
+    onboardingDraft: {
+      ...draft,
+      content: { ...draft.content, ...fields },
+      updatedAt: new Date(),
+      updatedByUserId: req.user.id
+    }
+  });
+}
+
+// Saved groups only ever carry leaf rules; the composer unions them at send time.
+function toAudienceRule(value = {}) {
+  const { mode, roles, years, profileIds, segment } = normalizeTargeting(value, { allowComposite: false });
+  return { mode, roles, years, profileIds, segment };
+}
+
+function serializeRecipientGroup(group = {}) {
+  return {
+    id: String(group.id || ""),
+    name: String(group.name || ""),
+    description: String(group.description || ""),
+    rules: (Array.isArray(group.rules) ? group.rules : [])
+      .map(toAudienceRule)
+      .filter((rule) => hasRequiredEmailTargetingSelection(rule)),
+    updatedAt: String(group.updatedAt || "")
+  };
+}
+
+router.get("/email/groups", async (req, res) => {
+  const content = resolveContent(req.tenant);
+  return res.json({
+    groups: normalizeEmailRecipientGroups(content.emailRecipientGroups || []).map(serializeRecipientGroup)
+  });
+});
+
+router.put("/email/groups", async (req, res) => {
+  const incoming = Array.isArray(req.body?.groups) ? req.body.groups : [];
+  if (incoming.length > MAX_EMAIL_RECIPIENT_GROUPS) {
+    return res.status(400).json({
+      error: {
+        code: "TOO_MANY_RECIPIENT_GROUPS",
+        message: `You can save up to ${MAX_EMAIL_RECIPIENT_GROUPS} recipient groups.`
+      }
+    });
+  }
+
+  const groups = normalizeEmailRecipientGroups(
+    incoming.map((group) => ({
+      ...group,
+      name: sanitizeText(String(group?.name || "")),
+      description: sanitizeText(String(group?.description || "")),
+      // Reuse the send-path normalizer so a saved group can never describe an
+      // audience the composer is not allowed to target.
+      rules: (Array.isArray(group?.rules) ? group.rules : [])
+        .map(toAudienceRule)
+        .filter((rule) => hasRequiredEmailTargetingSelection(rule))
+    }))
+  );
+
+  const tenant = await saveTenantContentFields(req, { emailRecipientGroups: groups });
+  await writeAdminAudit(req, "admin_email_groups_updated", { groupCount: groups.length });
+  return res.json({
+    ok: true,
+    groups: normalizeEmailRecipientGroups(resolveContent(tenant).emailRecipientGroups || [])
+      .map(serializeRecipientGroup)
+  });
+});
+
+router.get("/email/templates", async (req, res) => {
+  const content = resolveContent(req.tenant);
+  return res.json({ templates: normalizeEmailTemplates(content.emailTemplates || []) });
+});
+
+router.put("/email/templates", async (req, res) => {
+  const incoming = Array.isArray(req.body?.templates) ? req.body.templates : [];
+  if (incoming.length > MAX_EMAIL_TEMPLATES) {
+    return res.status(400).json({
+      error: {
+        code: "TOO_MANY_EMAIL_TEMPLATES",
+        message: `You can save up to ${MAX_EMAIL_TEMPLATES} templates.`
+      }
+    });
+  }
+
+  const templates = normalizeEmailTemplates(
+    incoming.map((template) => ({
+      ...template,
+      name: sanitizeText(String(template?.name || "")),
+      subject: sanitizeText(String(template?.subject || "")),
+      preheader: sanitizeText(String(template?.preheader || "")),
+      body: sanitizeHtmlContent(String(template?.body || ""))
+    }))
+  );
+
+  const tenant = await saveTenantContentFields(req, { emailTemplates: templates });
+  await writeAdminAudit(req, "admin_email_templates_updated", { templateCount: templates.length });
+  return res.json({
+    ok: true,
+    templates: normalizeEmailTemplates(resolveContent(tenant).emailTemplates || [])
+  });
+});
+
 router.get("/email/footer-presets", async (req, res) => {
   const footerSettings = await resolveDirectorEmailFooterSettings({
     tenant: req.tenant,
@@ -4413,26 +4560,9 @@ router.patch("/email/footer-presets", async (req, res) => {
     ? requestedDefaultId
     : String(presets[0]?.id || "");
 
-  const draft = resolveDraft(req.tenant);
-  const content = draft.content || resolveContent(req.tenant);
-  const nextContent = {
-    ...content,
+  const tenant = await saveTenantContentFields(req, {
     emailFooterPresets: presets,
     defaultEmailFooterPresetId: defaultPresetId
-  };
-
-  const tenant = await TenantModel.update(req.tenant._id, {
-    content: nextContent,
-    onboardingDraft: {
-      ...draft,
-      content: {
-        ...draft.content,
-        emailFooterPresets: presets,
-        defaultEmailFooterPresetId: defaultPresetId
-      },
-      updatedAt: new Date(),
-      updatedByUserId: req.user.id
-    }
   });
 
   const resolved = await resolveDirectorEmailFooterSettings({

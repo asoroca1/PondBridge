@@ -80,6 +80,82 @@ function normalizeEmailFooterPresetName(value = "") {
   return String(value || "").trim().slice(0, 72);
 }
 
+const EMAIL_AUDIENCE_RULE_MODES = new Set(["all", "role", "year", "segment", "custom"]);
+
+function normalizeStringList(value = [], { maxItems = 30, maxLength = 60 } = {}) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const output = [];
+  for (const item of value) {
+    const normalized = String(item || "").trim().slice(0, maxLength);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(normalized);
+    if (output.length >= maxItems) break;
+  }
+  return output;
+}
+
+function normalizeEmailAudienceRule(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const mode = String(source.mode || "all").trim().toLowerCase();
+  return {
+    mode: EMAIL_AUDIENCE_RULE_MODES.has(mode) ? mode : "all",
+    roles: normalizeStringList(source.roles, { maxItems: 30, maxLength: 60 }),
+    years: normalizeStringList(source.years, { maxItems: 80, maxLength: 10 }),
+    profileIds: normalizeStringList(source.profileIds, { maxItems: 2000, maxLength: 90 }),
+    segment: String(source.segment || "").trim().toLowerCase().slice(0, 40)
+  };
+}
+
+function normalizeEmailRecipientGroups(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const output = [];
+  const seen = new Set();
+  for (let index = 0; index < source.length; index += 1) {
+    const item = source[index] || {};
+    const id = String(item?.id || "").trim().slice(0, 90) || `group_${index + 1}`;
+    const name = String(item?.name || "").trim().slice(0, 72);
+    const rules = (Array.isArray(item?.rules) ? item.rules : [])
+      .slice(0, 25)
+      .map((rule) => normalizeEmailAudienceRule(rule));
+    if (!name || !rules.length || seen.has(id)) continue;
+    seen.add(id);
+    output.push({
+      id,
+      name,
+      description: String(item?.description || "").trim().slice(0, 180),
+      rules,
+      updatedAt: String(item?.updatedAt || "")
+    });
+    if (output.length >= 60) break;
+  }
+  return output;
+}
+
+function normalizeEmailTemplates(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const output = [];
+  const seen = new Set();
+  for (let index = 0; index < source.length; index += 1) {
+    const item = source[index] || {};
+    const id = String(item?.id || "").trim().slice(0, 90) || `template_${index + 1}`;
+    const name = String(item?.name || "").trim().slice(0, 72);
+    if (!name || seen.has(id)) continue;
+    seen.add(id);
+    output.push({
+      id,
+      name,
+      subject: String(item?.subject || "").trim().slice(0, 160),
+      preheader: String(item?.preheader || "").trim().slice(0, 160),
+      body: String(item?.body || "").slice(0, 20000),
+      updatedAt: String(item?.updatedAt || "")
+    });
+    if (output.length >= 40) break;
+  }
+  return output;
+}
+
 function normalizeEmailFooterField(value = "", max = 140) {
   return String(value || "").trim().slice(0, max);
 }
@@ -354,9 +430,13 @@ export function resolveContent(tenant) {
     supportUrl: String(live.supportUrl || ""),
     footerLinks: normalizeFooterLinks(live.footerLinks || []),
     emailFooterPresets,
-    defaultEmailFooterPresetId
+    defaultEmailFooterPresetId,
+    emailRecipientGroups: normalizeEmailRecipientGroups(live.emailRecipientGroups || []),
+    emailTemplates: normalizeEmailTemplates(live.emailTemplates || [])
   };
 }
+
+export { normalizeEmailAudienceRule, normalizeEmailRecipientGroups, normalizeEmailTemplates };
 
 export function resolveSettings(tenant) {
   const settings = tenant?.settings || {};

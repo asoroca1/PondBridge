@@ -118,6 +118,11 @@ export function hasRequiredEmailTargetingSelection(targeting = {}) {
   if (mode === "year") return Array.isArray(targeting.years) && targeting.years.length > 0;
   if (mode === "custom") return Array.isArray(targeting.profileIds) && targeting.profileIds.length > 0;
   if (mode === "segment") return GROWTH_EMAIL_SEGMENTS.has(String(targeting.segment || ""));
+  // A composite audience is the union of its rules, so one usable rule is enough.
+  if (mode === "composite") {
+    return Array.isArray(targeting.groups)
+      && targeting.groups.some((group) => hasRequiredEmailTargetingSelection(group));
+  }
   return mode === "all";
 }
 
