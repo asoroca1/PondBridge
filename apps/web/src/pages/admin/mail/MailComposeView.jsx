@@ -56,7 +56,7 @@ export default function MailComposeView({
   const [readiness, setReadiness] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
+  const [previewMode, setPreviewMode] = useState(false);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -366,7 +366,7 @@ export default function MailComposeView({
     : "Sends as soon as you confirm";
 
   return (
-    <div className={`pb-mail-compose ${showPreview ? "has-preview" : ""}`}>
+    <div className="pb-mail-compose">
       <div className="pb-mail-compose-main">
         <div className="pb-mail-toolbar">
           <div className="pb-mail-toolbar-primary">
@@ -429,11 +429,11 @@ export default function MailComposeView({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => setShowPreview((open) => !open)}
-              aria-pressed={showPreview}
+              onClick={() => setPreviewMode((open) => !open)}
+              aria-pressed={previewMode}
             >
-              {showPreview ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-              Preview
+              {previewMode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+              {previewMode ? "Back to editing" : "Preview"}
             </Button>
             <Button
               type="button"
@@ -514,7 +514,7 @@ export default function MailComposeView({
           </label>
 
           <label className="pb-mail-header-row is-optional">
-            <span className="pb-mail-recipients-label">Preview</span>
+            <span className="pb-mail-recipients-label">Preview text</span>
             <Input
               value={compose.preheader}
               maxLength={160}
@@ -524,7 +524,58 @@ export default function MailComposeView({
           </label>
         </div>
 
-        <MailRichTextEditor value={compose.body} onChange={(html) => patch({ body: html })} />
+        {previewMode ? (
+          <div className="pb-mail-preview-pane">
+            <p className="pb-mail-preview-note">
+              This is how the email arrives, including your camp header and signature.
+            </p>
+            <div className="pb-mail-preview-frame">
+              <div className="pb-mail-preview-head" style={{ background: "var(--brand-primary)" }}>
+                {logoUrl ? <img src={logoUrl} alt="" /> : <span className="pb-mail-preview-logo">{previewInitials}</span>}
+                <div>
+                  <strong>{networkName || "Your Camp Network"}</strong>
+                  <small>{footer.headerTagline || "Community update"}</small>
+                </div>
+              </div>
+              <div className="pb-mail-preview-body">
+                <h4>{compose.subject.trim() || "Your subject will appear here"}</h4>
+                <p className="pb-mail-preview-preheader">
+                  {compose.preheader.trim() || "Inbox preview text will appear here."}
+                </p>
+                <div
+                  className="pb-mail-preview-html"
+                  dangerouslySetInnerHTML={{ __html: compose.body || "<p>Start writing to preview your message.</p>" }}
+                />
+              </div>
+              <div className="pb-mail-preview-foot">
+                <div>
+                  <p>{footer.signOff || "Warmly,"}</p>
+                  {footer.senderName ? <p><strong>{footer.senderName}</strong></p> : null}
+                  {footer.senderRole ? <p>{footer.senderRole}</p> : null}
+                  {footerContact ? <p>{footerContact}</p> : null}
+                </div>
+                {footer.showLogo && (logoUrl || footer.logoUrl) ? (
+                  <img className="pb-mail-preview-foot-logo" src={logoUrl || footer.logoUrl} alt="" />
+                ) : null}
+              </div>
+            </div>
+            {recipientPreview.preview?.length ? (
+              <details className="pb-mail-preview-recipients">
+                <summary>Sample recipients</summary>
+                <ul>
+                  {recipientPreview.preview.map((person, index) => (
+                    <li key={person.id || index}>
+                      <span>{person.name || person.email}</span>
+                      {person.email ? <small>{person.email}</small> : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : (
+          <MailRichTextEditor value={compose.body} onChange={(html) => patch({ body: html })} />
+        )}
 
         <div className="pb-mail-signature-strip">
           <span className="pb-mail-signature-avatar" aria-hidden="true">
@@ -595,59 +646,6 @@ export default function MailComposeView({
           {status ? <span className="success-text" role="status">{status}</span> : null}
         </div>
       </div>
-
-      {showPreview ? (
-        <aside className="pb-mail-preview" aria-label="Email preview">
-          <header>
-            <strong>Preview</strong>
-            <small>Updates as you type</small>
-          </header>
-          <div className="pb-mail-preview-frame">
-            <div className="pb-mail-preview-head" style={{ background: "var(--brand-primary)" }}>
-              {logoUrl ? <img src={logoUrl} alt="" /> : <span className="pb-mail-preview-logo">{previewInitials}</span>}
-              <div>
-                <strong>{networkName || "Your Camp Network"}</strong>
-                <small>{footer.headerTagline || "Community update"}</small>
-              </div>
-            </div>
-            <div className="pb-mail-preview-body">
-              <h4>{compose.subject.trim() || "Your subject will appear here"}</h4>
-              <p className="pb-mail-preview-preheader">
-                {compose.preheader.trim() || "Inbox preview text will appear here."}
-              </p>
-              <div
-                className="pb-mail-preview-html"
-                dangerouslySetInnerHTML={{ __html: compose.body || "<p>Start writing to preview your message.</p>" }}
-              />
-            </div>
-            <div className="pb-mail-preview-foot">
-              <div>
-                <p>{footer.signOff || "Warmly,"}</p>
-                {footer.senderName ? <p><strong>{footer.senderName}</strong></p> : null}
-                {footer.senderRole ? <p>{footer.senderRole}</p> : null}
-                {footerContact ? <p>{footerContact}</p> : null}
-              </div>
-              {footer.showLogo && (logoUrl || footer.logoUrl) ? (
-                <img className="pb-mail-preview-foot-logo" src={logoUrl || footer.logoUrl} alt="" />
-              ) : null}
-            </div>
-          </div>
-
-          {recipientPreview.preview?.length ? (
-            <details className="pb-mail-preview-recipients">
-              <summary>Sample recipients</summary>
-              <ul>
-                {recipientPreview.preview.map((person, index) => (
-                  <li key={person.id || index}>
-                    <span>{person.name || person.email}</span>
-                    {person.email ? <small>{person.email}</small> : null}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </aside>
-      ) : null}
 
       <ModalDialog
         open={groupDialogOpen}

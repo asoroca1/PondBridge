@@ -162,13 +162,8 @@
    -------------------------------------------------------------------------- */
 
 .pb-mail-compose {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-}
-
-.pb-mail-compose.has-preview {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  display: block;
+  min-width: 0;
 }
 
 .pb-mail-compose-main {
@@ -264,7 +259,7 @@
 
 .pb-mail-recipients-label {
   flex: none;
-  width: 62px;
+  width: 92px;
   padding-top: 7px;
   color: var(--pb-mail-ink-soft);
   font-size: 0.86rem;
@@ -365,7 +360,7 @@
   position: absolute;
   z-index: 40;
   top: calc(100% - 4px);
-  left: 62px;
+  left: 92px;
   right: 0;
   max-height: 320px;
   overflow-y: auto;
@@ -445,7 +440,7 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 7px 0 9px 62px;
+  padding: 7px 0 9px 92px;
   border-bottom: 1px solid var(--pb-mail-border-soft);
   color: var(--pb-mail-ink-soft);
   font-size: 0.84rem;
@@ -685,28 +680,25 @@
 .pb-mail-statusbar .error-text,
 .pb-mail-statusbar .success-text { margin: 0; }
 
-/* --- Live preview --- */
+/* --- Preview mode (replaces the editor inside the same box) --- */
 
-.pb-mail-preview {
-  border-left: 1px solid var(--pb-mail-border-soft);
-  background: var(--pb-mail-surface-alt);
-  padding: 14px;
+.pb-mail-preview-pane {
   display: grid;
   gap: 12px;
   align-content: start;
+  padding: 16px;
+  background: var(--pb-mail-surface-alt);
+  border-bottom: 1px solid var(--pb-mail-border-soft);
 }
 
-.pb-mail-preview > header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+.pb-mail-preview-note {
+  margin: 0;
+  color: var(--pb-mail-ink-soft);
+  font-size: 0.84rem;
 }
-
-.pb-mail-preview > header strong { font-size: 0.92rem; color: var(--pb-mail-ink); }
-.pb-mail-preview > header small { font-size: 0.78rem; color: var(--pb-mail-ink-soft); }
 
 .pb-mail-preview-frame {
+  max-width: 640px;
   border: 1px solid var(--pb-mail-border);
   border-radius: 12px;
   background: #fff;
@@ -1186,15 +1178,6 @@
 /* --------------------------------------------------------------------------
    Responsive
    -------------------------------------------------------------------------- */
-
-@media (max-width: 1180px) {
-  .pb-mail-compose.has-preview { grid-template-columns: minmax(0, 1fr); }
-
-  .pb-mail-preview {
-    border-left: 0;
-    border-top: 1px solid var(--pb-mail-border-soft);
-  }
-}
 
 @media (max-width: 960px) {
   .pb-mail { grid-template-columns: minmax(0, 1fr); }
