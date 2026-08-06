@@ -16,7 +16,7 @@
   display: flex;
   flex-direction: column;
   background: var(--po-bg);
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .product-app-main {
@@ -36,7 +36,7 @@
   align-items: center;
   background: var(--po-brand);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .product-header-inner {
@@ -48,7 +48,7 @@
 .product-header-brand {
   color: var(--brand-on-primary, #ffffff);
   margin: 0;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-weight: 700;
   font-size: clamp(1.6rem, 2.3vw, 2rem);
   letter-spacing: 0.01em;
@@ -67,7 +67,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .product-claim-page::before {
@@ -113,7 +113,7 @@
 .product-claim-card h1 {
   margin: 0;
   color: var(--po-text);
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: clamp(1.9rem, 2.8vw, 2.45rem);
   line-height: 1.18;
   letter-spacing: -0.01em;
@@ -148,7 +148,7 @@
   min-height: 48px;
   padding: 0 20px;
   border-radius: var(--po-radius-btn);
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -1560,7 +1560,7 @@
 .product-footer {
   border-top: 1px solid var(--po-border);
   background: #f5f7fa;
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .product-footer-inner {
@@ -1576,7 +1576,7 @@
 .product-footer-col h4 {
   margin: 0 0 8px;
   color: var(--po-text);
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -1627,7 +1627,7 @@
   transform-origin: top left;
   width: 182%;
   pointer-events: none;
-  font-family: var(--font-body, "Inter", "Avenir Next", "Segoe UI", sans-serif);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   background: #f5f7fa;
 }
 
@@ -1680,7 +1680,7 @@
 
 .director-live-preview-welcome-left h3 {
   margin: 0;
-  font-family: var(--font-display, "Roboto Slab", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, sans-serif);
   font-size: 18px;
   color: #13233b;
   line-height: 1.3;
@@ -1832,7 +1832,7 @@
   margin: 0;
   font-size: clamp(1.6rem, 3vw, 2.2rem);
   color: var(--po-brand, var(--brand-primary));
-  font-family: var(--font-display, "Roboto Slab", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, sans-serif);
   font-weight: 700;
   position: relative;
 }

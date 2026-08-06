@@ -343,7 +343,7 @@ export default function ClerkCreateAccountFlow() {
                     colorInputText: "var(--text)",
                     colorNeutral: "var(--card-border)",
                     borderRadius: "12px",
-                    fontFamily: "Inter, Avenir Next, Segoe UI, sans-serif"
+                    fontFamily: "Inter Variable, Inter, Avenir Next, Segoe UI, sans-serif"
                   },
                   elements: {
                     rootBox: {

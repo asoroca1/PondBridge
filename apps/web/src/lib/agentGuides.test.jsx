@@ -137,7 +137,7 @@ describe("member camp AI guided mode", () => {
 
   it("honors disabled member modules", () => {
     const answer = buildMemberGuideAnswer({
-      question: "Show me upcoming events",
+      question: "Show me upcoming info sessions",
       slug: "cedar",
       tenant: {
         ...tenant,

@@ -752,8 +752,8 @@ export default function DirectorOnboardingCommandCenterPage() {
             "--bg": previewTheme.bg || "#f5f7fa",
             "--text": previewTheme.text || "#0f172a",
             "--card": previewTheme.card || "#ffffff",
-            "--font-display": "\"Instrument Serif\", Georgia, serif",
-            "--font-body": "\"DM Sans Variable\", \"Avenir Next\", \"Segoe UI\", sans-serif"
+            "--font-display": "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif",
+            "--font-body": "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif"
           }}
         >
           <div className="wizard-preview-nav">

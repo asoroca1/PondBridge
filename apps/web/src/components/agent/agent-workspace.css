@@ -37,7 +37,7 @@
 .agent-workspace-header h1 {
   margin: 0;
   color: inherit;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   font-size: clamp(1.75rem, 3vw, 2.45rem);
   line-height: 1.08;
 }
@@ -615,7 +615,7 @@
 .agent-rail-card h3 {
   margin: 0;
   color: #173b60;
-  font-family: var(--font-display, "Roboto Slab", "Avenir Next", serif);
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
 }
 
 .agent-rail-card > p {

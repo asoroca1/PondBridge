@@ -5,7 +5,6 @@ import {
   CalendarDays,
   CreditCard,
   ExternalLink,
-  History,
   Image,
   LayoutDashboard,
   MailPlus,
@@ -42,8 +41,8 @@ const ADMIN_NAV = [
   { type: "label", key: "engage-label", label: "Engage" },
   { key: "events", to: "events", label: "Events & Seminars", icon: CalendarDays },
   { key: "mobile-alerts", to: "settings/notifications", label: "Mobile alerts", icon: Bell },
-  { key: "email", to: "email/compose", label: "Compose email", icon: Send },
-  { key: "email-history", to: "email/history", label: "Email history", icon: History },
+  // Points at the workspace root so every mail folder keeps the item highlighted.
+  { key: "email", to: "email", label: "Email", icon: Send },
   { type: "label", key: "manage-label", label: "Manage" },
   { key: "billing", to: "billing", label: "Plan & billing", icon: CreditCard }
 ];

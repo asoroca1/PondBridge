@@ -7,11 +7,12 @@ import { MobileNotificationsProvider } from "./context/MobileNotificationsContex
 import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import { resolveCampName } from "./lib/campLabels.js";
+import { resolveCampName, resolveTenantLogoUrl } from "./lib/campLabels.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { attemptAutomaticChunkRecovery } from "./lib/chunkRecovery.js";
+import cedarLogo from "./assets/cedar-logo.png";
 import {
   installRouteIntentPreloading,
   preloadAuthenticatedCoreRoutes
@@ -71,11 +72,8 @@ const DirectorAdminBillingPage = lazyPage(() => import("./pages/admin/DirectorAd
 const DirectorAdminDashboardPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminDashboardPage }))
 );
-const DirectorAdminEmailComposePage = lazyPage(() => import("./pages/admin/DirectorAdminEmailComposePage.jsx"));
+const DirectorAdminMailPage = lazyPage(() => import("./pages/admin/DirectorAdminMailPage.jsx"));
 const DirectorAdminGrowthPage = lazyPage(() => import("./pages/admin/DirectorAdminGrowthPage.jsx"));
-const DirectorAdminEmailHistoryPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminEmailHistoryPage }))
-);
 const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdminEventsPage.jsx"));
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
@@ -277,8 +275,8 @@ function TenantScopeRoutes() {
   const [wrongNetwork, setWrongNetwork] = useState(null);
   const [allowAuthCallbackRedirect, setAllowAuthCallbackRedirect] = useState(false);
   const isCampDirectorSession = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
-  const tenantBranding = tenant?.config?.branding || tenant?.theme || {};
-  const tenantLogoUrl = String(tenantBranding.logoUrl || "").trim();
+  const configuredTenantLogoUrl = resolveTenantLogoUrl(tenant);
+  const tenantLogoUrl = configuredTenantLogoUrl || (["cedar", "camp-cedar"].includes(normalizeTenantKey(slug)) ? cedarLogo : "");
   const tenantTabTitle = resolveTenantTabTitle(tenant);
   const isCampDirector = isCampDirectorSession;
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -818,8 +816,10 @@ function TenantScopeRoutes() {
             }
           />
           <Route path="communications" element={<Navigate to="../email/compose" replace />} />
-          <Route path="email/compose" element={<DirectorAdminEmailComposePage />} />
-          <Route path="email/history" element={<DirectorAdminEmailHistoryPage />} />
+          <Route path="email" element={<Navigate to="compose" replace />} />
+          {/* The old history route is bookmarked in older invites and emails. */}
+          <Route path="email/history" element={<Navigate to="../email/sent" replace />} />
+          <Route path="email/:folder" element={<DirectorAdminMailPage />} />
           <Route path="analytics" element={<Navigate to="../dashboard" replace />} />
           <Route path="features" element={<DirectorAdminFeaturesPage />} />
           <Route

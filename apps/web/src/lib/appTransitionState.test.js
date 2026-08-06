@@ -65,4 +65,27 @@ describe("app transition branding", () => {
       }).networkName
     ).toBe("PondBridge");
   });
+
+  it("uses the camp theme logo when cached config branding is empty", () => {
+    const storage = createStorage({
+      "pondbridgeTenantConfig:cedar": JSON.stringify({
+        cachedAt: Date.now(),
+        payload: {
+          name: "Camp Cedar",
+          config: { branding: { logoUrl: "" } },
+          theme: { logoUrl: "https://assets.example/cedar-theme.webp" }
+        }
+      })
+    });
+
+    expect(
+      readTransitionBranding({
+        locationLike: {
+          hostname: "cedar.pondbridgealumni.com",
+          pathname: "/home"
+        },
+        storage
+      }).logoUrl
+    ).toBe("https://assets.example/cedar-theme.webp");
+  });
 });

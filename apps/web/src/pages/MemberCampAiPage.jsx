@@ -152,7 +152,7 @@ export function buildMemberGuideAnswer({ question, slug, tenant }) {
         };
   }
 
-  if (/\b(event|events|calendar|reunion|rsvp|seminar|seminars|webinar|zoom|teams)\b/.test(normalized)) {
+  if (/\b(event|events|calendar|reunion|rsvp|seminar|seminars|info sessions?|information sessions?|zoom|teams)\b/.test(normalized)) {
     return modules.events === false
       ? {
           content: "Events and seminars are not currently enabled for this camp community.",

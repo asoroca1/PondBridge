@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveCampAiName } from "./campLabels.js";
+import { resolveCampAiName, resolveTenantLogoUrl } from "./campLabels.js";
 
 describe("camp-specific AI naming", () => {
   it("turns Camp Cedar into Cedar AI", () => {
@@ -20,5 +20,24 @@ describe("camp-specific AI naming", () => {
   it("does not duplicate an existing AI suffix", () => {
     expect(resolveCampAiName({ name: "Matoaka AI" })).toBe("Matoaka AI");
     expect(resolveCampAiName({ name: "Camp Matoaka" })).toBe("Matoaka AI");
+  });
+});
+
+describe("camp logo resolution", () => {
+  it("uses the configured branding logo", () => {
+    expect(
+      resolveTenantLogoUrl({
+        config: { branding: { logoUrl: "https://assets.example/camp-logo.webp" } }
+      })
+    ).toBe("https://assets.example/camp-logo.webp");
+  });
+
+  it("does not let an empty branding object hide the camp theme logo", () => {
+    expect(
+      resolveTenantLogoUrl({
+        config: { branding: { logoUrl: "" } },
+        theme: { logoUrl: "https://assets.example/theme-logo.png" }
+      })
+    ).toBe("https://assets.example/theme-logo.png");
   });
 });

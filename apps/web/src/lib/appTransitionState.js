@@ -64,7 +64,6 @@ export function readTransitionBranding({
   }
 
   const config = tenant?.config || {};
-  const branding = config?.branding || tenant?.theme || cachedTheme?.branding || cachedTheme?.theme || cachedTheme || {};
   const content = config?.content || tenant?.content || {};
   const tenantName = normalizeValue(tenant?.name);
   const tenantNetworkName = tenantName
@@ -78,6 +77,14 @@ export function readTransitionBranding({
   return {
     slug,
     networkName,
-    logoUrl: normalizeValue(branding?.logoUrl)
+    logoUrl: [
+      config?.branding?.logoUrl,
+      config?.theme?.logoUrl,
+      tenant?.theme?.logoUrl,
+      tenant?.branding?.logoUrl,
+      cachedTheme?.branding?.logoUrl,
+      cachedTheme?.theme?.logoUrl,
+      cachedTheme?.logoUrl
+    ].map((value) => normalizeValue(value)).find(Boolean) || ""
   };
 }

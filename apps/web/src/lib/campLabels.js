@@ -37,6 +37,22 @@ export function resolveTenantContent(tenant) {
   return tenant?.config?.content || tenant?.content || {};
 }
 
+export function resolveTenantLogoUrl(tenant) {
+  const candidates = [
+    tenant?.config?.branding?.logoUrl,
+    tenant?.config?.theme?.logoUrl,
+    tenant?.theme?.logoUrl,
+    tenant?.branding?.logoUrl
+  ];
+
+  for (const candidate of candidates) {
+    const logoUrl = String(candidate || "").trim();
+    if (logoUrl) return logoUrl;
+  }
+
+  return "";
+}
+
 export function resolveCampName(tenant) {
   return String(tenant?.name || "Your Camp").trim() || "Your Camp";
 }
