@@ -78,13 +78,7 @@ const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdm
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
 );
-const DirectorAdminInvitesPage = lazyPage(() => import("./pages/admin/DirectorAdminInvitesPage.jsx"));
-const DirectorAdminMembersPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminMembersPage }))
-);
-const DirectorAdminApprovalsPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminApprovalsPage }))
-);
+const DirectorAdminPeoplePage = lazyPage(() => import("./pages/admin/DirectorAdminPeoplePage.jsx"));
 const DirectorAdminSafetyPage = lazyPage(() => import("./pages/admin/DirectorAdminSafetyPage.jsx"));
 const DirectorAdminMemberEditPage = lazyPage(() => import("./pages/admin/DirectorAdminMemberEditPage.jsx"));
 const DirectorAdminSettingsAdminsPage = lazyPage(() =>
@@ -798,14 +792,18 @@ function TenantScopeRoutes() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DirectorAdminDashboardPage />} />
           <Route path="copilot" element={<DirectorAdminCopilotPage />} />
-          <Route path="members" element={<DirectorAdminMembersPage />} />
+          <Route path="people" element={<Navigate to="all" replace />} />
+          <Route path="people/:view" element={<DirectorAdminPeoplePage />} />
           <Route path="growth" element={<DirectorAdminGrowthPage />} />
           <Route path="members/:profileId/edit" element={<DirectorAdminMemberEditPage />} />
-          <Route path="members/approvals" element={<DirectorAdminApprovalsPage />} />
           <Route path="safety" element={<DirectorAdminSafetyPage />} />
-          <Route path="members/import" element={<Navigate to="../invites" replace />} />
-          <Route path="invites" element={<DirectorAdminInvitesPage />} />
-          <Route path="directory" element={<Navigate to="../members" replace />} />
+          {/* Members, approvals, and invitations merged into the People workspace;
+              these paths stay live for bookmarks and older emails. */}
+          <Route path="members" element={<Navigate to="../people/member" replace />} />
+          <Route path="members/approvals" element={<Navigate to="../people/request" replace />} />
+          <Route path="members/import" element={<Navigate to="../people/add" replace />} />
+          <Route path="invites" element={<Navigate to="../people/add" replace />} />
+          <Route path="directory" element={<Navigate to="../people/member" replace />} />
           <Route path="family-trees" element={<Navigate to="../features" replace />} />
           <Route
             path="events"
@@ -883,7 +881,7 @@ function TenantScopeRoutes() {
         />
         <Route
           path="settings/imports"
-          element={<Navigate to={slug ? `/t/${slug}/admin/invites` : "/admin/invites"} replace />}
+          element={<Navigate to={slug ? `/t/${slug}/admin/people/add` : "/admin/people/add"} replace />}
         />
 
         <Route path="main-home" element={<Navigate to={slug ? `/t/${slug}/home` : "/home"} replace />} />
@@ -891,7 +889,7 @@ function TenantScopeRoutes() {
         <Route path="directory" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
         <Route path="search-old" element={<Navigate to={slug ? `/t/${slug}/search` : "/search"} replace />} />
         <Route path="admin/onboarding" element={<Navigate to={slug ? `/t/${slug}/onboarding` : "/onboarding"} replace />} />
-        <Route path="admin/import" element={<Navigate to={slug ? `/t/${slug}/admin/invites` : "/admin/invites"} replace />} />
+        <Route path="admin/import" element={<Navigate to={slug ? `/t/${slug}/admin/people/add` : "/admin/people/add"} replace />} />
         <Route path="admin/analytics" element={<Navigate to={slug ? `/t/${slug}/admin/dashboard` : "/admin/dashboard"} replace />} />
         <Route
           path="admin/billing"

@@ -65,6 +65,7 @@ import {
   normalizeSignupMode,
   normalizeEmailRecipientGroups,
   normalizeEmailTemplates,
+  normalizeMemberExportPresets,
   resolveSettings,
   getReadinessChecklist,
   getBillingReadiness
@@ -124,6 +125,7 @@ import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js
 import {
   GROWTH_EMAIL_SEGMENTS,
   buildAlumniGrowthSnapshot,
+  buildPeopleDirectory,
   filterHeldAlumniRecipients,
   hasRequiredEmailTargetingSelection,
   isAlumniGrowthStorageUnavailable,
@@ -255,6 +257,7 @@ const SUPPORT_REQUEST_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
 const MAX_TARGETING_GROUPS = 25;
 const MAX_EMAIL_RECIPIENT_GROUPS = 60;
 const MAX_EMAIL_TEMPLATES = 40;
+const MAX_MEMBER_EXPORT_PRESETS = 30;
 
 function toBoundedInt(value, { min = 0, max = 4, fallback = 1 } = {}) {
   const parsed = Number(value);
@@ -4499,6 +4502,32 @@ router.put("/email/groups", async (req, res) => {
   });
 });
 
+router.get("/export/presets", async (req, res) => {
+  const content = resolveContent(req.tenant);
+  return res.json({ presets: normalizeMemberExportPresets(content.memberExportPresets || []) });
+});
+
+router.put("/export/presets", async (req, res) => {
+  const incoming = Array.isArray(req.body?.presets) ? req.body.presets : [];
+  if (incoming.length > MAX_MEMBER_EXPORT_PRESETS) {
+    return res.status(400).json({
+      error: {
+        code: "TOO_MANY_EXPORT_PRESETS",
+        message: `You can save up to ${MAX_MEMBER_EXPORT_PRESETS} export presets.`
+      }
+    });
+  }
+
+  const presets = normalizeMemberExportPresets(
+    incoming.map((preset) => ({ ...preset, name: sanitizeText(String(preset?.name || "")) }))
+  );
+  const tenant = await saveTenantContentFields(req, { memberExportPresets: presets });
+  return res.json({
+    ok: true,
+    presets: normalizeMemberExportPresets(resolveContent(tenant).memberExportPresets || [])
+  });
+});
+
 router.get("/email/templates", async (req, res) => {
   const content = resolveContent(req.tenant);
   return res.json({ templates: normalizeEmailTemplates(content.emailTemplates || []) });
@@ -6478,6 +6507,95 @@ async function loadAlumniContactsForGrowth(tenantId) {
     throw error;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Unified people directory (members, requests, invitations, prospects)
+// ---------------------------------------------------------------------------
+
+function personSortComparator(sort = "recent") {
+  const name = (person) => (person.fullName || person.email || "").toLowerCase();
+  const activity = (person) => new Date(
+    person.lastActiveAt || person.joinedAt || person.requestedAt || person.lastInvitedAt || 0
+  ).getTime();
+  if (sort === "name_asc") return (a, b) => name(a).localeCompare(name(b));
+  if (sort === "name_desc") return (a, b) => name(b).localeCompare(name(a));
+  if (sort === "completion_desc") return (a, b) => b.completionScore - a.completionScore;
+  if (sort === "completion_asc") return (a, b) => a.completionScore - b.completionScore;
+  if (sort === "oldest") return (a, b) => activity(a) - activity(b);
+  // "recent" keeps the row a director most likely wants to act on at the top.
+  return (a, b) => activity(b) - activity(a);
+}
+
+router.get("/people", async (req, res, next) => {
+  try {
+    const tenantId = req.tenant._id;
+    const directorUserId = await resolveDirectorUserId(req.tenant);
+    const ninetyDaysAgo = new Date(Date.now() - 90 * DAY_MS);
+
+    const [contactResult, invites, users, profiles, accessRequests, analyticsEvents] = await Promise.all([
+      loadAlumniContactsForGrowth(tenantId),
+      InviteModel.find(tenantId, { roleToAssign: "user" }, { sort: { createdAt: -1 }, limit: 5000 }),
+      UserModel.find(tenantId, { status: { $ne: "removed" } }, {
+        select: ["id", "email", "status", "roles", "createdAt", "updatedAt", "lastLoginAt"]
+      }),
+      ProfileModel.find(tenantId, { status: { $ne: "removed" } }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
+      AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 500 }),
+      AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
+        select: ["userId", "eventType", "createdAt"],
+        limit: 10000
+      })
+    ]);
+
+    const { people, counts } = buildPeopleDirectory({
+      contacts: contactResult.contacts,
+      invites,
+      users,
+      profiles,
+      accessRequests,
+      analyticsEvents,
+      mapMember: (profile, user) => mapMemberRow(profile, user, { directorUserId })
+    });
+
+    const stage = String(req.query.stage || "all").trim().toLowerCase();
+    const q = String(req.query.q || "").trim().toLowerCase();
+    const role = String(req.query.role || "all").trim().toLowerCase();
+    const year = String(req.query.year || "all").trim();
+    const completionRange = parseCompletionRange(req.query);
+    const sort = String(req.query.sort || "recent").trim().toLowerCase();
+    const page = Math.max(1, Number(req.query.page || 1) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 25) || 25));
+
+    const filtered = people.filter((person) => {
+      if (stage !== "all" && person.stage !== stage) return false;
+      if (role !== "all" && String(person.role || "").toLowerCase() !== role) return false;
+      if (year !== "all" && !person.yearsAtCamp.includes(year)) return false;
+      // Completion only means something once someone has a profile.
+      if (completionRange && person.stage === "member"
+        && !matchesCompletionRange(person.completionScore, completionRange)) return false;
+      if (!q) return true;
+      return [person.fullName, person.email, person.role, person.location, ...person.tags]
+        .some((value) => String(value || "").toLowerCase().includes(q));
+    });
+
+    filtered.sort(personSortComparator(sort));
+    const skip = (page - 1) * pageSize;
+
+    return res.json({
+      total: filtered.length,
+      page,
+      pageSize,
+      counts,
+      items: filtered.slice(skip, skip + pageSize),
+      filters: {
+        roleOptions: [...new Set(people.map((item) => item.role).filter(Boolean))].sort(),
+        yearOptions: [...new Set(people.flatMap((item) => item.yearsAtCamp))].filter(Boolean).sort()
+      },
+      storage: contactResult.storage
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get("/growth", async (req, res, next) => {
   try {

@@ -276,6 +276,173 @@ export function resolveGrowthEmailSegment({
   });
 }
 
+export const PEOPLE_STAGES = [
+  "member",
+  "request",
+  "invited",
+  "expired",
+  "prospect",
+  "on_hold"
+];
+
+/**
+ * Indexes every source of "a person connected to this camp" by email and works
+ * out which stage of the join pipeline each one is in. Members, pending access
+ * requests, invitations, and pre-member contacts all resolve against the same
+ * email key, so one person never appears twice.
+ */
+function indexPeopleSources({
+  contacts = [],
+  invites = [],
+  users = [],
+  profiles = [],
+  accessRequests = [],
+  now = new Date()
+} = {}) {
+  const nowMs = new Date(now).getTime();
+  const memberMap = membersByEmail({ users, profiles });
+
+  const contactMap = new Map();
+  for (const contact of contacts) {
+    const email = normalizeEmail(contact?.email);
+    if (email) contactMap.set(email, contact);
+  }
+
+  const requestMap = new Map();
+  for (const request of accessRequests) {
+    if (String(request?.status || "").toLowerCase() !== "pending") continue;
+    const email = normalizeEmail(request?.email || request?.profilePayload?.emails?.[0]);
+    if (!email || requestMap.has(email)) continue;
+    requestMap.set(email, request);
+  }
+
+  const invitesByEmail = new Map();
+  for (const invite of invites) {
+    const email = normalizeEmail(invite?.email);
+    if (!email || String(invite?.roleToAssign || "user") !== "user") continue;
+    const entries = invitesByEmail.get(email) || [];
+    entries.push(invite);
+    invitesByEmail.set(email, entries);
+  }
+  for (const entries of invitesByEmail.values()) {
+    entries.sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0));
+  }
+
+  function stageFor(email) {
+    const contact = contactMap.get(email);
+    // An explicit hold outranks everything: it means "do not contact this person".
+    if (String(contact?.contactStatus || "") === "do_not_contact") return "on_hold";
+    if (memberMap.has(email)) return "member";
+    if (requestMap.has(email)) return "request";
+    const latestInvite = invitesByEmail.get(email)?.[0] || null;
+    if (latestInvite && !latestInvite.usedAt) {
+      const expiresAt = asDate(latestInvite.expiresAt)?.getTime();
+      return expiresAt && expiresAt > nowMs ? "invited" : "expired";
+    }
+    return "prospect";
+  }
+
+  const emails = new Set([
+    ...memberMap.keys(),
+    ...requestMap.keys(),
+    ...contactMap.keys(),
+    ...invitesByEmail.keys()
+  ]);
+
+  return { emails, memberMap, contactMap, requestMap, invitesByEmail, stageFor };
+}
+
+/**
+ * The unified people list behind the director People workspace. Every row
+ * carries whichever identifiers its stage supports, so the UI can offer
+ * stage-appropriate actions without a second lookup.
+ */
+export function buildPeopleDirectory({
+  contacts = [],
+  invites = [],
+  users = [],
+  profiles = [],
+  accessRequests = [],
+  analyticsEvents = [],
+  now = new Date(),
+  mapMember = null
+} = {}) {
+  const index = indexPeopleSources({ contacts, invites, users, profiles, accessRequests, now });
+
+  const activityByUserId = new Map();
+  for (const user of users) {
+    const userId = String(user?._id || user?.id || "");
+    const last = mostRecentDate([user?.lastLoginAt]);
+    if (userId && last) activityByUserId.set(userId, last);
+  }
+  for (const event of analyticsEvents) {
+    const userId = String(event?.userId || "");
+    const eventAt = asDate(event?.createdAt);
+    if (!userId || !eventAt) continue;
+    const current = activityByUserId.get(userId);
+    if (!current || eventAt > current) activityByUserId.set(userId, eventAt);
+  }
+
+  const people = [...index.emails].map((email) => {
+    const contact = index.contactMap.get(email) || null;
+    const member = index.memberMap.get(email) || null;
+    const request = index.requestMap.get(email) || null;
+    const latestInvite = index.invitesByEmail.get(email)?.[0] || null;
+    const stage = index.stageFor(email);
+    const profile = member?.profile || null;
+    const user = member?.user || null;
+    const userId = String(user?._id || user?.id || profile?.userId || "");
+    const memberRow = profile && typeof mapMember === "function" ? mapMember(profile, user) : null;
+
+    const firstName = String(
+      contact?.firstName || profile?.firstName || request?.firstName || request?.profilePayload?.firstName || ""
+    );
+    const lastName = String(
+      contact?.lastName || profile?.lastName || request?.lastName || request?.profilePayload?.lastName || ""
+    );
+
+    return {
+      key: email,
+      email,
+      firstName,
+      lastName,
+      fullName: [firstName, lastName].filter(Boolean).join(" ").trim(),
+      stage,
+      profileId: memberRow?.id || "",
+      userId,
+      contactId: String(contact?._id || contact?.id || ""),
+      requestId: String(request?._id || request?.id || ""),
+      avatarUrl: memberRow?.avatarUrl || String(profile?.avatarUrl || ""),
+      role: memberRow?.role || String(request?.selfReportedRole || contact?.roleAtCamp || ""),
+      location: memberRow?.location || String(profile?.cityState || ""),
+      yearsAtCamp: memberRow?.yearsAtCamp
+        || (Array.isArray(profile?.collegeYears) ? profile.collegeYears : []),
+      completionScore: Number(memberRow?.completionScore || 0),
+      memberStatus: memberRow?.status || "",
+      joinedAt: iso(profile?.createdAt || user?.createdAt),
+      lastActiveAt: iso(activityByUserId.get(userId)),
+      inviteCount: Math.max(
+        Number(contact?.inviteCount || 0),
+        index.invitesByEmail.get(email)?.length || 0
+      ),
+      lastInvitedAt: iso(contact?.lastInvitedAt || latestInvite?.createdAt),
+      inviteExpiresAt: iso(latestInvite?.expiresAt),
+      requestMessage: String(request?.requestMessage || ""),
+      requestedAt: iso(request?.requestedAt || request?.createdAt),
+      tags: Array.isArray(contact?.tags) ? contact.tags : [],
+      campYears: Array.isArray(contact?.campYears) ? contact.campYears : [],
+      notes: String(contact?.notes || ""),
+      source: String(contact?.source || (latestInvite ? "invitation" : ""))
+    };
+  });
+
+  const counts = { all: people.length };
+  for (const stage of PEOPLE_STAGES) counts[stage] = 0;
+  for (const person of people) counts[person.stage] = (counts[person.stage] || 0) + 1;
+
+  return { people, counts };
+}
+
 export function buildAlumniGrowthSnapshot({
   contacts = [],
   invites = [],

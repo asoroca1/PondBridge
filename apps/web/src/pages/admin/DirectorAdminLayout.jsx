@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Image,
   LayoutDashboard,
-  MailPlus,
   Send,
   Settings,
   ShieldCheck,
@@ -18,7 +17,6 @@ import {
   KeyRound,
   LifeBuoy,
   ShieldAlert,
-  UserCheck,
   Users,
   UserCog,
   TrendingUp
@@ -33,10 +31,9 @@ const ADMIN_NAV = [
   { key: "overview", to: "dashboard", label: "Today", icon: LayoutDashboard },
   { key: "guide", to: "onboarding", label: "Camp AI", icon: Sparkles },
   { type: "label", key: "people-label", label: "People" },
-  { key: "members", to: "members", label: "Members", icon: Users, end: true },
+  // Members, approvals, and invitations are stages of one workspace now.
+  { key: "people", to: "people", label: "People", icon: Users },
   { key: "growth", to: "growth", label: "Alumni growth", icon: TrendingUp },
-  { key: "approvals", to: "members/approvals", label: "Approvals", icon: UserCheck },
-  { key: "invites", to: "invites", label: "Invitations", icon: MailPlus },
   { key: "safety", to: "safety", label: "Safety", icon: ShieldCheck },
   { type: "label", key: "engage-label", label: "Engage" },
   { key: "events", to: "events", label: "Events & Seminars", icon: CalendarDays },

@@ -53,7 +53,7 @@ export default function AdminsSettingsPage() {
           {status ? <p className="success-text">{status}</p> : null}
           <div className="inline-actions">
             <Button disabled={saving}>{saving ? "Adding..." : "Add Admin"}</Button>
-            <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+            <Link className="link-button secondary" to={`/t/${slug}/admin/people/add`}>
               Manage Invites
             </Link>
             <Link className="link-button secondary" to={`/t/${slug}/onboarding`}>

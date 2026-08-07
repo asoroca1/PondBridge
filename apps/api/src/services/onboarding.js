@@ -133,6 +133,23 @@ function normalizeEmailRecipientGroups(value = []) {
   return output;
 }
 
+function normalizeMemberExportPresets(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const output = [];
+  const seen = new Set();
+  for (let index = 0; index < source.length; index += 1) {
+    const item = source[index] || {};
+    const id = String(item?.id || "").trim().slice(0, 90) || `export_${index + 1}`;
+    const name = String(item?.name || "").trim().slice(0, 72);
+    const fields = normalizeStringList(item?.fields, { maxItems: 80, maxLength: 60 });
+    if (!name || !fields.length || seen.has(id)) continue;
+    seen.add(id);
+    output.push({ id, name, fields, updatedAt: String(item?.updatedAt || "") });
+    if (output.length >= 30) break;
+  }
+  return output;
+}
+
 function normalizeEmailTemplates(value = []) {
   const source = Array.isArray(value) ? value : [];
   const output = [];
@@ -432,11 +449,17 @@ export function resolveContent(tenant) {
     emailFooterPresets,
     defaultEmailFooterPresetId,
     emailRecipientGroups: normalizeEmailRecipientGroups(live.emailRecipientGroups || []),
-    emailTemplates: normalizeEmailTemplates(live.emailTemplates || [])
+    emailTemplates: normalizeEmailTemplates(live.emailTemplates || []),
+    memberExportPresets: normalizeMemberExportPresets(live.memberExportPresets || [])
   };
 }
 
-export { normalizeEmailAudienceRule, normalizeEmailRecipientGroups, normalizeEmailTemplates };
+export {
+  normalizeEmailAudienceRule,
+  normalizeEmailRecipientGroups,
+  normalizeEmailTemplates,
+  normalizeMemberExportPresets
+};
 
 export function resolveSettings(tenant) {
   const settings = tenant?.settings || {};
