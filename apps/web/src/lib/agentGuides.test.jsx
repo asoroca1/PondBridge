@@ -61,10 +61,10 @@ describe("director onboarding guided mode", () => {
       slug: "pine"
     });
 
-    expect(answer.content).toContain("Alumni Growth");
+    expect(answer.content).toContain("People workspace");
     expect(answer.links[0]).toEqual({
-      label: "Open Alumni Growth",
-      href: "/t/pine/admin/growth"
+      label: "Open the People workspace",
+      href: "/t/pine/admin/people/prospect"
     });
   });
 

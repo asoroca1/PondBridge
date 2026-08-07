@@ -78,7 +78,13 @@ export default function PeopleExportDialog({ open, onClose, request, download, s
     try {
       const params = new URLSearchParams({ fields: fields.join(","), limit: "5" });
       const response = await request(`/export/csv/preview?${params.toString()}`);
-      setPreviewColumns(Array.isArray(response?.columns) ? response.columns : []);
+      // Accept either { key, label } objects or bare keys so a shape change
+      // cannot take the dialog down again.
+      setPreviewColumns((Array.isArray(response?.columns) ? response.columns : []).map((column) => (
+        typeof column === "string"
+          ? { key: column, label: column }
+          : { key: String(column?.key || ""), label: String(column?.label || column?.key || "") }
+      )));
       setPreviewRows(Array.isArray(response?.rows) ? response.rows : []);
     } catch {
       setPreviewColumns([]);
@@ -278,12 +284,15 @@ export default function PeopleExportDialog({ open, onClose, request, download, s
             <div className="director-admin-table-wrap">
               <table className="director-admin-table">
                 <thead>
-                  <tr>{previewColumns.map((column) => <th key={column}>{column}</th>)}</tr>
+                  {/* The preview endpoint returns columns as { key, label } objects. */}
+                  <tr>{previewColumns.map((column) => <th key={column.key}>{column.label}</th>)}</tr>
                 </thead>
                 <tbody>
                   {previewRows.map((row, index) => (
                     <tr key={index}>
-                      {previewColumns.map((column) => <td key={column}>{String(row?.[column] ?? "")}</td>)}
+                      {previewColumns.map((column) => (
+                        <td key={column.key}>{String(row?.[column.key] ?? "")}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
