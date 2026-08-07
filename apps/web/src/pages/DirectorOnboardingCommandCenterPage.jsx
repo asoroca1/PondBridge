@@ -481,7 +481,7 @@ export default function DirectorOnboardingCommandCenterPage() {
           <ol className="launch-guide-list">
             <li>
               {`Review your ${alumniWord} invitation list before sending.`}
-              <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/people/add`}>
                 Review Invitations
               </Link>
             </li>
@@ -564,7 +564,7 @@ export default function DirectorOnboardingCommandCenterPage() {
                 <h4>{`Prepare your ${alumniWord} invitations`}</h4>
                 <p>Upload a CSV or add recipients, review every row, then explicitly send invitations.</p>
               </div>
-              <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/people/add`}>
                 Review Invitations
               </Link>
             </article>
@@ -574,7 +574,7 @@ export default function DirectorOnboardingCommandCenterPage() {
                 <h4>Send first invitations</h4>
                 <p>{`Invite ${alumniWord} by email so they can create accounts and join.`}</p>
               </div>
-              <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/people/add`}>
                 Manage Invites
               </Link>
             </article>
@@ -788,7 +788,7 @@ export default function DirectorOnboardingCommandCenterPage() {
             <Link className="link-button secondary" to={`/t/${slug}/admin/settings/admins`}>
               Admins
             </Link>
-            <Link className="link-button secondary" to={`/t/${slug}/admin/invites`}>
+            <Link className="link-button secondary" to={`/t/${slug}/admin/people/add`}>
               Invitations
             </Link>
           </div>

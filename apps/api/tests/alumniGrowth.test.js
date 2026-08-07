@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import {
   buildAlumniGrowthSnapshot,
   filterHeldAlumniRecipients,
+  buildPeopleDirectory,
   hasRequiredEmailTargetingSelection,
+  PEOPLE_STAGES,
   normalizeAlumniContactInput,
   resolveGrowthEmailSegment
 } from "../src/services/alumniGrowth.js";
@@ -206,5 +208,70 @@ describe("alumni contact schema isolation", () => {
     expect(sql).toMatch(/idx_alumni_contacts_tenant_email/);
     expect(sql).toMatch(/alumni_contacts_service_role_all/);
     expect(sql).not.toMatch(/alumni_contacts_authenticated_tenant/);
+  });
+});
+
+describe("unified people directory", () => {
+  const past = new Date(Date.now() - 7 * 864e5).toISOString();
+  const future = new Date(Date.now() + 7 * 864e5).toISOString();
+
+  function build(overrides = {}) {
+    return buildPeopleDirectory({
+      users: [{ _id: "u1", email: "Joined@Example.org", createdAt: past, lastLoginAt: past }],
+      profiles: [{
+        _id: "p1",
+        userId: "u1",
+        firstName: "Jo",
+        lastName: "Ned",
+        emails: ["joined@example.org"],
+        collegeYears: ["2019"],
+        createdAt: past
+      }],
+      accessRequests: [{ _id: "r1", status: "pending", email: "waiting@example.org", requestMessage: "Let me in" }],
+      invites: [
+        { _id: "i1", email: "pending@example.org", roleToAssign: "user", createdAt: past, expiresAt: future },
+        { _id: "i2", email: "stale@example.org", roleToAssign: "user", createdAt: past, expiresAt: past }
+      ],
+      contacts: [
+        { _id: "c1", email: "prospect@example.org", contactStatus: "active" },
+        { _id: "c2", email: "held@example.org", contactStatus: "do_not_contact" },
+        { _id: "c3", email: "joined@example.org", contactStatus: "active", notes: "met at reunion" }
+      ],
+      mapMember: (profile) => ({ id: String(profile._id), role: "Counselor", completionScore: 82, status: "active" }),
+      ...overrides
+    });
+  }
+
+  test("places every known person in exactly one pipeline stage", () => {
+    const { people, counts } = build();
+    const byEmail = Object.fromEntries(people.map((person) => [person.email, person]));
+
+    expect(byEmail["joined@example.org"].stage).toBe("member");
+    expect(byEmail["waiting@example.org"].stage).toBe("request");
+    expect(byEmail["pending@example.org"].stage).toBe("invited");
+    expect(byEmail["stale@example.org"].stage).toBe("expired");
+    expect(byEmail["prospect@example.org"].stage).toBe("prospect");
+    expect(byEmail["held@example.org"].stage).toBe("on_hold");
+    expect(PEOPLE_STAGES.reduce((sum, stage) => sum + counts[stage], 0)).toBe(counts.all);
+  });
+
+  test("merges a contact and the member it became into one row", () => {
+    const { people, counts } = build();
+    const joined = people.filter((person) => person.email === "joined@example.org");
+    expect(joined).toHaveLength(1);
+    expect(joined[0].profileId).toBe("p1");
+    expect(joined[0].completionScore).toBe(82);
+    // Contact-only detail survives the merge.
+    expect(joined[0].notes).toBe("met at reunion");
+    expect(counts.all).toBe(6);
+  });
+
+  test("keeps a held contact on hold even after they join", () => {
+    const { people } = buildPeopleDirectory({
+      users: [{ _id: "u9", email: "both@example.org" }],
+      profiles: [{ _id: "p9", userId: "u9", emails: ["both@example.org"] }],
+      contacts: [{ _id: "c9", email: "both@example.org", contactStatus: "do_not_contact" }]
+    });
+    expect(people[0].stage).toBe("on_hold");
   });
 });

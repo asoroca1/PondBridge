@@ -30,7 +30,7 @@ const CHECK_LINKS = {
   billing: { label: "Open billing", path: "/admin/billing" },
   legal: { label: "Review and accept agreements", path: "/director-legal" },
   logo: { label: "Add camp branding", path: "/admin/settings/branding" },
-  initial_members: { label: "Prepare invitations", path: "/admin/invites" }
+  initial_members: { label: "Prepare invitations", path: "/admin/people/add" }
 };
 
 function messageId(prefix = "message") {
@@ -75,7 +75,7 @@ function directorEvidenceTarget(href = "") {
   if (value.includes("/settings/branding")) return "branding";
   if (value.includes("/onboarding/details")) return "detailed_setup";
   if (value.includes("/admin/features")) return "features";
-  if (value.includes("/admin/invites")) return "invites";
+  if (value.includes("/admin/people/add")) return "invites";
   if (value.includes("/admin/growth")) return "growth";
   if (value.includes("/director-legal")) return "legal";
   if (value.includes("/settings/network")) return "network";
@@ -167,7 +167,7 @@ export function buildDirectorGuidedAnswer({ question, payload, billing, dashboar
       content: isLive
         ? "Start with the people most likely to participate: recent staff, engaged alumni, and a few trusted community champions. Import or add a small first group, personalize the invitation, then watch signups and profile completion before expanding the next wave. Invitations are always reviewed and sent from the dedicated screen."
         : "Prepare a small, representative invitation list before launch so your community does not open empty. Add trusted camp champions first, verify the access policy, and review every recipient in the invitation workspace. The guide cannot send invitations.",
-      links: [tenantLink(slug, "initial_members"), { label: "Review members", href: `/t/${slug}/admin/members` }]
+      links: [tenantLink(slug, "initial_members"), { label: "Review members", href: `/t/${slug}/admin/people/member` }]
     };
   }
 
@@ -211,7 +211,7 @@ export function buildDirectorGuidedAnswer({ question, payload, billing, dashboar
       content: "Your camp community is live. I can help you interpret the current director status, plan an invitation wave, draft a member update, or find the right setting. Open the control room for live priorities and verified metrics.",
       links: [
         { label: "Open camp control room", href: `/t/${slug}/admin` },
-        { label: "Invite members", href: `/t/${slug}/admin/invites` }
+        { label: "Invite members", href: `/t/${slug}/admin/people/add` }
       ]
     };
   }

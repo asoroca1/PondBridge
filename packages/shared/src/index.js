@@ -422,6 +422,13 @@ export const tenantEmailRecipientGroupSchema = z.object({
   updatedAt: z.string().trim().max(80).default("")
 });
 
+export const tenantMemberExportPresetSchema = z.object({
+  id: z.string().trim().min(1).max(90),
+  name: z.string().trim().min(1).max(72),
+  fields: z.array(z.string().trim().min(1).max(60)).max(80).default([]),
+  updatedAt: z.string().trim().max(80).default("")
+});
+
 export const tenantEmailTemplateSchema = z.object({
   id: z.string().trim().min(1).max(90),
   name: z.string().trim().min(1).max(72),
@@ -447,7 +454,8 @@ export const tenantContentSchema = z.object({
   emailFooterPresets: z.array(tenantEmailFooterPresetSchema).max(20).default([]),
   defaultEmailFooterPresetId: z.string().trim().max(90).default(""),
   emailRecipientGroups: z.array(tenantEmailRecipientGroupSchema).max(60).default([]),
-  emailTemplates: z.array(tenantEmailTemplateSchema).max(40).default([])
+  emailTemplates: z.array(tenantEmailTemplateSchema).max(40).default([]),
+  memberExportPresets: z.array(tenantMemberExportPresetSchema).max(30).default([])
 });
 
 export const tenantSettingsSchema = z.object({
