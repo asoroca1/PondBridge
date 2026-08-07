@@ -19,7 +19,6 @@ import {
   ShieldAlert,
   Users,
   UserCog,
-  TrendingUp
 } from "lucide-react";
 import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -33,7 +32,6 @@ const ADMIN_NAV = [
   { type: "label", key: "people-label", label: "People" },
   // Members, approvals, and invitations are stages of one workspace now.
   { key: "people", to: "people", label: "People", icon: Users },
-  { key: "growth", to: "growth", label: "Alumni growth", icon: TrendingUp },
   { key: "safety", to: "safety", label: "Safety", icon: ShieldCheck },
   { type: "label", key: "engage-label", label: "Engage" },
   { key: "events", to: "events", label: "Events & Seminars", icon: CalendarDays },

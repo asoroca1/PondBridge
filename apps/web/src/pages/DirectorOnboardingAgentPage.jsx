@@ -76,7 +76,7 @@ function directorEvidenceTarget(href = "") {
   if (value.includes("/onboarding/details")) return "detailed_setup";
   if (value.includes("/admin/features")) return "features";
   if (value.includes("/admin/people/add")) return "invites";
-  if (value.includes("/admin/growth")) return "growth";
+  if (value.includes("/admin/people")) return "growth";
   if (value.includes("/director-legal")) return "legal";
   if (value.includes("/settings/network")) return "network";
   if (value.includes("/admin")) return "dashboard";
@@ -153,10 +153,10 @@ export function buildDirectorGuidedAnswer({ question, payload, billing, dashboar
   ) {
     const metrics = dashboardBrief(dashboard);
     return {
-      content: `${metrics.content}\n\nRecommended next move: use Alumni Growth to build a focused cohort, review the audience, measure invite-to-signup conversion, and repeat weekly. No campaign was created or sent.`,
+      content: `${metrics.content}\n\nRecommended next move: use the People workspace to build a focused cohort, review the audience, send invitations, and repeat weekly. No campaign was created or sent.`,
       links: [
         ...metrics.links,
-        { label: "Open Alumni Growth", href: `/t/${slug}/admin/growth` },
+        { label: "Open the People workspace", href: `/t/${slug}/admin/people/prospect` },
         { label: "Compose an engagement campaign", href: `/t/${slug}/admin/email/compose?audience=inactive_30` }
       ].slice(0, 6)
     };

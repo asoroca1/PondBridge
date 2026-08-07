@@ -73,7 +73,6 @@ const DirectorAdminDashboardPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminDashboardPage }))
 );
 const DirectorAdminMailPage = lazyPage(() => import("./pages/admin/DirectorAdminMailPage.jsx"));
-const DirectorAdminGrowthPage = lazyPage(() => import("./pages/admin/DirectorAdminGrowthPage.jsx"));
 const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdminEventsPage.jsx"));
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
@@ -794,7 +793,7 @@ function TenantScopeRoutes() {
           <Route path="copilot" element={<DirectorAdminCopilotPage />} />
           <Route path="people" element={<Navigate to="all" replace />} />
           <Route path="people/:view" element={<DirectorAdminPeoplePage />} />
-          <Route path="growth" element={<DirectorAdminGrowthPage />} />
+          <Route path="growth" element={<Navigate to="../people/all" replace />} />
           <Route path="members/:profileId/edit" element={<DirectorAdminMemberEditPage />} />
           <Route path="safety" element={<DirectorAdminSafetyPage />} />
           {/* Members, approvals, and invitations merged into the People workspace;
