@@ -2,7 +2,7 @@
 
 export const EVENT_TYPES = [
   { value: "community", label: "Event" },
-  { value: "seminar", label: "Seminar" }
+  { value: "seminar", label: "Info session" }
 ];
 
 export const DELIVERY_MODES = [

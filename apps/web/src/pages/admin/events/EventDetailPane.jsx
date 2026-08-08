@@ -65,7 +65,7 @@ export default function EventDetailPane({
       <header className="pb-events-detail-head">
         <div>
           <span className={`pb-events-tag is-${eventAccent(event)}`}>
-            {event.eventType === "seminar" ? "Seminar" : "Event"}
+            {event.eventType === "seminar" ? "Info session" : "Event"}
           </span>
           <span className={`pb-events-status tone-${statusTone(event.status)}`}>{event.status}</span>
           {event.phase ? <span className="pb-events-phase">{event.phase}</span> : null}

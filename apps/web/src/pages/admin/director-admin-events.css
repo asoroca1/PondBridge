@@ -545,3 +545,86 @@
   .pb-events-chip-time { display: none; }
   .pb-events-field-row .is-wide { grid-column: auto; }
 }
+
+/* --- Type picker --- */
+
+.pb-cedar-page .pb-events-picker-modal { width: min(620px, 100%); }
+
+.pb-events-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.pb-events-picker button {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--director-admin-surface-border, #dde5ef);
+  border-radius: 14px;
+  background: var(--director-admin-surface-bg, #fff);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pb-events-picker button:hover {
+  border-color: var(--brand-primary, #1e5cb3);
+  background: color-mix(in srgb, var(--brand-primary, #1e5cb3) 5%, transparent);
+}
+
+.pb-events-picker-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #1e5cb3 13%, transparent);
+  color: #1e5cb3;
+}
+
+.pb-events-picker-icon.is-seminar {
+  background: color-mix(in srgb, #6b4bb8 13%, transparent);
+  color: #6b4bb8;
+}
+
+.pb-events-picker-icon svg { width: 19px; height: 19px; }
+
+.pb-events-picker strong {
+  font-size: 1.02rem;
+  color: var(--director-admin-ink, #16283d);
+}
+
+.pb-events-picker small {
+  color: var(--director-admin-ink-soft, #5d7186);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.pb-events-picker ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.pb-events-picker li {
+  position: relative;
+  padding-left: 15px;
+  color: var(--director-admin-ink-soft, #5d7186);
+  font-size: 0.81rem;
+}
+
+.pb-events-picker li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
