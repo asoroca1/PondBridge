@@ -124,7 +124,7 @@ export default function PeopleListView({
               ))}
             </Select>
             <Button type="button" variant="ghost" size="sm" onClick={directory.resetFilters}>Reset</Button>
-            <Button type="button" variant="ghost" size="sm" onClick={onExport}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => onExport(selectedKeys)}>
               <Download aria-hidden="true" />
               Export
             </Button>

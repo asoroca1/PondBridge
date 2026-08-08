@@ -1,72 +1,126 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Input, Select } from "@pondbridge/ui";
-import { ChevronDown, ChevronUp, Download } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Search } from "lucide-react";
 import { ModalDialog } from "../../../components/admin/AdminUi.jsx";
+import { stageMeta } from "./peopleStages.js";
 
-const FALLBACK_FIELDS = [
-  { key: "firstName", label: "First name" },
-  { key: "lastName", label: "Last name" },
-  { key: "email", label: "Email" },
-  { key: "roleAtCamp", label: "Role at camp" },
-  { key: "cityState", label: "Location" },
-  { key: "completionScore", label: "Profile completion" }
-];
+// Two genuinely different exports: the list you are looking at (every stage,
+// pipeline columns) and the full member profile record (joined members only,
+// the rich profile fields).
+const SOURCES = {
+  list: {
+    key: "list",
+    label: "This list",
+    fieldsPath: "/people/export/fields",
+    previewPath: "/people/export/preview",
+    downloadPath: "/people/export.csv",
+    suffix: "people"
+  },
+  profiles: {
+    key: "profiles",
+    label: "Member profiles",
+    fieldsPath: "/export/csv/fields",
+    previewPath: "/export/csv/preview",
+    downloadPath: "/export/csv",
+    suffix: "members"
+  }
+};
 
 function normalizeSelection(keys = [], allowed = [], fallback = []) {
   const allowedSet = new Set(allowed);
   const seen = new Set();
-  const picked = (Array.isArray(keys) ? keys : [])
-    .map((key) => String(key || "").trim())
-    .filter((key) => key && allowedSet.has(key) && !seen.has(key) && seen.add(key) !== false);
+  const picked = [];
+  for (const raw of Array.isArray(keys) ? keys : []) {
+    const key = String(raw || "").trim();
+    if (!key || !allowedSet.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    picked.push(key);
+  }
   return picked.length ? picked : fallback.filter((key) => allowedSet.has(key));
 }
 
-/**
- * Field picking, ordering, and a live preview of the first rows — carried over
- * from the members table, with named presets now stored on the tenant so they
- * follow a director between devices instead of living in one browser.
- */
-export default function PeopleExportDialog({ open, onClose, request, download, slug }) {
-  const [catalog, setCatalog] = useState(FALLBACK_FIELDS);
-  const [defaults, setDefaults] = useState(FALLBACK_FIELDS.map((field) => field.key));
-  const [selected, setSelected] = useState(FALLBACK_FIELDS.map((field) => field.key));
+function normalizeColumns(value = []) {
+  return (Array.isArray(value) ? value : []).map((column) => (
+    typeof column === "string"
+      ? { key: column, label: column }
+      : { key: String(column?.key || ""), label: String(column?.label || column?.key || "") }
+  ));
+}
+
+export default function PeopleExportDialog({
+  open,
+  onClose,
+  request,
+  download,
+  slug,
+  stage = "all",
+  filters = {},
+  selected = [],
+  listTotal = 0
+}) {
+  const [source, setSource] = useState("list");
+  const [catalog, setCatalog] = useState([]);
+  const [defaults, setDefaults] = useState([]);
+  const [selectedFields, setSelectedFields] = useState([]);
+  const [fieldQuery, setFieldQuery] = useState("");
   const [presets, setPresets] = useState([]);
   const [presetId, setPresetId] = useState("");
   const [presetName, setPresetName] = useState("");
   const [previewColumns, setPreviewColumns] = useState([]);
   const [previewRows, setPreviewRows] = useState([]);
+  const [previewTotal, setPreviewTotal] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
+  const useSelection = selected.length > 0;
+  const config = SOURCES[source];
+
+  // The query that decides which rows are in scope — filters, or the explicit
+  // selection when the director has picked people.
+  const scopeParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (source !== "list") return params;
+    if (useSelection) {
+      params.set("keys", selected.join(","));
+      return params;
+    }
+    params.set("stage", stage);
+    if (filters.q) params.set("q", filters.q);
+    if (filters.role && filters.role !== "all") params.set("role", filters.role);
+    if (filters.year && filters.year !== "all") params.set("year", filters.year);
+    return params;
+  }, [filters.q, filters.role, filters.year, selected, source, stage, useSelection]);
+
   useEffect(() => {
     if (!open) return undefined;
     let active = true;
-    Promise.allSettled([request("/export/csv/fields"), request("/export/presets")])
+    setError("");
+    setStatus("");
+    Promise.allSettled([request(config.fieldsPath), request("/export/presets")])
       .then(([fieldsResult, presetsResult]) => {
         if (!active) return;
         const fields = fieldsResult.status === "fulfilled" && Array.isArray(fieldsResult.value?.fields)
-          && fieldsResult.value.fields.length
           ? fieldsResult.value.fields
-          : FALLBACK_FIELDS;
-        const allowed = fields.map((field) => String(field.key || "").trim()).filter(Boolean);
+          : [];
+        const allowed = fields.map((field) => String(field.key || "")).filter(Boolean);
         const nextDefaults = normalizeSelection(
           fieldsResult.status === "fulfilled" ? fieldsResult.value?.defaultFields : [],
           allowed,
-          FALLBACK_FIELDS.map((field) => field.key)
+          allowed.slice(0, 5)
         );
         setCatalog(fields);
         setDefaults(nextDefaults);
-        setSelected(nextDefaults);
-        const savedPresets = presetsResult.status === "fulfilled" && Array.isArray(presetsResult.value?.presets)
+        setSelectedFields(nextDefaults);
+        const saved = presetsResult.status === "fulfilled" && Array.isArray(presetsResult.value?.presets)
           ? presetsResult.value.presets
           : [];
-        setPresets(savedPresets);
-        setPresetId(savedPresets[0]?.id || "");
+        setPresets(saved);
+        setPresetId("");
       });
     return () => { active = false; };
-  }, [open, request]);
+  }, [config.fieldsPath, open, request]);
 
   const loadPreview = useCallback(async (fields) => {
     if (!fields.length) {
@@ -76,38 +130,45 @@ export default function PeopleExportDialog({ open, onClose, request, download, s
     }
     setPreviewLoading(true);
     try {
-      const params = new URLSearchParams({ fields: fields.join(","), limit: "5" });
-      const response = await request(`/export/csv/preview?${params.toString()}`);
-      // Accept either { key, label } objects or bare keys so a shape change
-      // cannot take the dialog down again.
-      setPreviewColumns((Array.isArray(response?.columns) ? response.columns : []).map((column) => (
-        typeof column === "string"
-          ? { key: column, label: column }
-          : { key: String(column?.key || ""), label: String(column?.label || column?.key || "") }
-      )));
+      const params = new URLSearchParams(scopeParams);
+      params.set("fields", fields.join(","));
+      params.set("limit", "5");
+      const response = await request(`${config.previewPath}?${params.toString()}`);
+      setPreviewColumns(normalizeColumns(response?.columns));
       setPreviewRows(Array.isArray(response?.rows) ? response.rows : []);
+      setPreviewTotal(response?.total ?? null);
     } catch {
       setPreviewColumns([]);
       setPreviewRows([]);
+      setPreviewTotal(null);
     } finally {
       setPreviewLoading(false);
     }
-  }, [request]);
+  }, [config.previewPath, request, scopeParams]);
 
   useEffect(() => {
     if (!open) return;
-    loadPreview(selected);
-  }, [loadPreview, open, selected]);
+    loadPreview(selectedFields);
+  }, [loadPreview, open, selectedFields]);
+
+  const visibleCatalog = useMemo(() => {
+    const needle = fieldQuery.trim().toLowerCase();
+    if (!needle) return catalog;
+    return catalog.filter((field) => (
+      String(field.label || "").toLowerCase().includes(needle)
+      || String(field.key || "").toLowerCase().includes(needle)
+    ));
+  }, [catalog, fieldQuery]);
 
   function toggleField(key) {
-    setSelected((prev) => {
+    setSelectedFields((prev) => {
       if (prev.includes(key)) return prev.length <= 1 ? prev : prev.filter((item) => item !== key);
       return [...prev, key];
     });
   }
 
   function moveField(key, delta) {
-    setSelected((prev) => {
+    setSelectedFields((prev) => {
       const index = prev.indexOf(key);
       const next = index + delta;
       if (index < 0 || next < 0 || next >= prev.length) return prev;
@@ -116,6 +177,22 @@ export default function PeopleExportDialog({ open, onClose, request, download, s
       copy.splice(next, 0, moved);
       return copy;
     });
+  }
+
+  async function savePresets(nextPresets, message) {
+    setBusy(true);
+    try {
+      const response = await request("/export/presets", { method: "PUT", body: { presets: nextPresets } });
+      setPresets(Array.isArray(response?.presets) ? response.presets : nextPresets);
+      setError("");
+      setStatus(message);
+      return true;
+    } catch (requestError) {
+      setError(requestError.message || "Could not save presets.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function savePreset() {
@@ -128,58 +205,41 @@ export default function PeopleExportDialog({ open, onClose, request, download, s
     const entry = {
       id: existing?.id || `export_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name,
-      fields: selected,
+      fields: selectedFields,
       updatedAt: new Date().toISOString()
     };
     const next = existing
       ? presets.map((item) => (item.id === existing.id ? entry : item))
       : [entry, ...presets].slice(0, 30);
-    setBusy(true);
-    try {
-      const response = await request("/export/presets", { method: "PUT", body: { presets: next } });
-      setPresets(Array.isArray(response?.presets) ? response.presets : next);
+    if (await savePresets(next, `Saved “${name}”.`)) {
       setPresetId(entry.id);
       setPresetName("");
-      setError("");
-      setStatus(`Saved “${name}”.`);
-    } catch (requestError) {
-      setError(requestError.message || "Could not save the preset.");
-    } finally {
-      setBusy(false);
     }
   }
 
   async function deletePreset() {
     const preset = presets.find((item) => item.id === presetId);
     if (!preset) return;
-    setBusy(true);
-    try {
-      const next = presets.filter((item) => item.id !== presetId);
-      const response = await request("/export/presets", { method: "PUT", body: { presets: next } });
-      const saved = Array.isArray(response?.presets) ? response.presets : next;
-      setPresets(saved);
-      setPresetId(saved[0]?.id || "");
-      setStatus(`Deleted “${preset.name}”.`);
-    } catch (requestError) {
-      setError(requestError.message || "Could not delete the preset.");
-    } finally {
-      setBusy(false);
+    if (await savePresets(presets.filter((item) => item.id !== presetId), `Deleted “${preset.name}”.`)) {
+      setPresetId("");
     }
   }
 
   async function downloadCsv() {
-    if (!selected.length) {
-      setError("Pick at least one field.");
+    if (!selectedFields.length) {
+      setError("Pick at least one column.");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      const blob = await download(`/export/csv?fields=${encodeURIComponent(selected.join(","))}`);
+      const params = new URLSearchParams(scopeParams);
+      params.set("fields", selectedFields.join(","));
+      const blob = await download(`${config.downloadPath}?${params.toString()}`);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${slug}-members.csv`;
+      anchor.download = `${slug}-${config.suffix}-${new Date().toISOString().slice(0, 10)}.csv`;
       anchor.click();
       URL.revokeObjectURL(url);
       setStatus("CSV downloaded.");
@@ -190,115 +250,176 @@ export default function PeopleExportDialog({ open, onClose, request, download, s
     }
   }
 
+  const scopeLabel = source === "profiles"
+    ? "Every member profile"
+    : useSelection
+      ? `${selected.length} selected ${selected.length === 1 ? "person" : "people"}`
+      : `${stageMeta(stage).label}${filters.q || (filters.role && filters.role !== "all") || (filters.year && filters.year !== "all") ? " (filtered)" : ""}`;
+  const rowCount = previewTotal ?? (source === "list" ? listTotal : null);
+
   return (
     <ModalDialog
       open={open}
-      title="Export members"
-      description="Choose the columns and their order, then download."
+      title="Export"
+      description="Pick what to export and which columns to include."
       onClose={busy ? undefined : onClose}
-      className="director-admin-modal director-admin-modal-wide"
+      className="director-admin-modal pb-people-export-modal"
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="button" onClick={downloadCsv} loading={busy} disabled={!selected.length}>
+          <Button type="button" onClick={downloadCsv} loading={busy} disabled={!selectedFields.length}>
             <Download aria-hidden="true" />
-            Download CSV
+            Download {rowCount != null ? `${rowCount.toLocaleString()} ${rowCount === 1 ? "row" : "rows"}` : "CSV"}
           </Button>
         </>
       }
     >
       <div className="pb-people-export">
-        <div className="pb-people-export-presets">
-          <label className="director-admin-dialog-field">
-            Saved presets
-            <Select
-              value={presetId}
-              onChange={(event) => {
-                const id = event.target.value;
-                setPresetId(id);
-                const preset = presets.find((item) => item.id === id);
-                if (preset) {
-                  const allowed = catalog.map((field) => field.key);
-                  setSelected(normalizeSelection(preset.fields, allowed, defaults));
-                }
-              }}
-              disabled={!presets.length}
+        <div className="pb-people-export-scope" role="radiogroup" aria-label="What to export">
+          {Object.values(SOURCES).map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="radio"
+              aria-checked={source === item.key}
+              className={source === item.key ? "is-selected" : ""}
+              onClick={() => setSource(item.key)}
             >
-              {presets.length ? null : <option value="">No presets yet</option>}
-              {presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-            </Select>
-          </label>
-          <Button type="button" variant="ghost" size="sm" onClick={deletePreset} disabled={!presetId || busy}>
-            Delete
-          </Button>
-          <label className="director-admin-dialog-field">
-            Save current as
-            <Input
-              value={presetName}
-              onChange={(event) => setPresetName(event.target.value)}
-              placeholder="Reunion mailing list"
-              maxLength={72}
-            />
-          </label>
-          <Button type="button" variant="secondary" size="sm" onClick={savePreset} disabled={busy}>Save</Button>
+              <strong>{item.label}</strong>
+              <small>
+                {item.key === "list"
+                  ? "Everyone in view, any stage — pipeline columns"
+                  : "Joined members only — full profile fields"}
+              </small>
+            </button>
+          ))}
         </div>
 
-        <div className="pb-people-export-fields">
-          <strong>Columns</strong>
-          <ul>
-            {catalog.map((field) => {
-              const index = selected.indexOf(field.key);
-              const isOn = index >= 0;
-              return (
-                <li key={field.key} className={isOn ? "is-on" : ""}>
-                  <label>
-                    <input type="checkbox" checked={isOn} onChange={() => toggleField(field.key)} />
-                    <span>
-                      {field.label || field.key}
-                      {field.description ? <small>{field.description}</small> : null}
-                    </span>
-                  </label>
-                  {isOn ? (
-                    <span className="pb-people-export-order">
-                      <button type="button" onClick={() => moveField(field.key, -1)} disabled={index === 0} aria-label={`Move ${field.label} earlier`}>
-                        <ChevronUp aria-hidden="true" />
-                      </button>
-                      <button type="button" onClick={() => moveField(field.key, 1)} disabled={index === selected.length - 1} aria-label={`Move ${field.label} later`}>
-                        <ChevronDown aria-hidden="true" />
-                      </button>
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+        <p className="pb-people-export-scope-note">
+          Exporting <strong>{scopeLabel}</strong>
+          {rowCount != null ? ` · ${rowCount.toLocaleString()} ${rowCount === 1 ? "row" : "rows"}` : ""}
+        </p>
 
-        <div className="pb-people-export-preview">
-          <strong>Preview</strong>
-          {previewLoading ? (
-            <p className="muted">Loading preview…</p>
-          ) : !previewRows.length ? (
-            <p className="muted">No rows to preview.</p>
-          ) : (
-            <div className="director-admin-table-wrap">
-              <table className="director-admin-table">
-                <thead>
-                  {/* The preview endpoint returns columns as { key, label } objects. */}
-                  <tr>{previewColumns.map((column) => <th key={column.key}>{column.label}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {previewRows.map((row, index) => (
-                    <tr key={index}>
-                      {previewColumns.map((column) => (
-                        <td key={column.key}>{String(row?.[column.key] ?? "")}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="pb-people-export-body">
+          <section className="pb-people-export-fields" aria-label="Columns">
+            <header>
+              <strong>Columns ({selectedFields.length})</strong>
+              <div>
+                <button type="button" onClick={() => setSelectedFields(catalog.map((field) => field.key))}>All</button>
+                <button type="button" onClick={() => setSelectedFields(defaults)}>Reset</button>
+              </div>
+            </header>
+            <label className="pb-people-export-search">
+              <Search aria-hidden="true" />
+              <Input
+                value={fieldQuery}
+                onChange={(event) => setFieldQuery(event.target.value)}
+                placeholder="Find a column"
+                aria-label="Find a column"
+              />
+            </label>
+            <ul>
+              {visibleCatalog.map((field) => {
+                const index = selectedFields.indexOf(field.key);
+                const isOn = index >= 0;
+                return (
+                  <li key={field.key} className={isOn ? "is-on" : ""}>
+                    <label>
+                      <input type="checkbox" checked={isOn} onChange={() => toggleField(field.key)} />
+                      <span>
+                        {field.label || field.key}
+                        {isOn ? <em>#{index + 1}</em> : null}
+                      </span>
+                    </label>
+                    {isOn ? (
+                      <span className="pb-people-export-order">
+                        <button
+                          type="button"
+                          onClick={() => moveField(field.key, -1)}
+                          disabled={index === 0}
+                          aria-label={`Move ${field.label} earlier`}
+                        >
+                          <ChevronUp aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveField(field.key, 1)}
+                          disabled={index === selectedFields.length - 1}
+                          aria-label={`Move ${field.label} later`}
+                        >
+                          <ChevronDown aria-hidden="true" />
+                        </button>
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+              {!visibleCatalog.length ? <li className="pb-people-export-none">No matching columns.</li> : null}
+            </ul>
+          </section>
+
+          <section className="pb-people-export-preview" aria-label="Preview">
+            <header><strong>Preview</strong><small>First rows</small></header>
+            {previewLoading ? (
+              <p className="muted">Loading preview…</p>
+            ) : !previewRows.length ? (
+              <p className="muted">Nothing matches this scope.</p>
+            ) : (
+              <div className="pb-people-export-table">
+                <table className="director-admin-table">
+                  <thead>
+                    <tr>{previewColumns.map((column) => <th key={column.key}>{column.label}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row, index) => (
+                      <tr key={index}>
+                        {previewColumns.map((column) => (
+                          <td key={column.key}>{String(row?.[column.key] ?? "")}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="pb-people-export-presets">
+              <label>
+                <span>Saved presets</span>
+                <Select
+                  value={presetId}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    setPresetId(id);
+                    const preset = presets.find((item) => item.id === id);
+                    if (preset) {
+                      setSelectedFields(normalizeSelection(
+                        preset.fields,
+                        catalog.map((field) => field.key),
+                        defaults
+                      ));
+                    }
+                  }}
+                >
+                  <option value="">{presets.length ? "Choose a preset" : "No presets yet"}</option>
+                  {presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+                </Select>
+              </label>
+              <div className="pb-people-export-preset-actions">
+                <Input
+                  value={presetName}
+                  onChange={(event) => setPresetName(event.target.value)}
+                  placeholder="Save these columns as…"
+                  maxLength={72}
+                  aria-label="Preset name"
+                />
+                <Button type="button" variant="secondary" size="sm" onClick={savePreset} disabled={busy}>Save</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={deletePreset} disabled={!presetId || busy}>
+                  Delete
+                </Button>
+              </div>
             </div>
-          )}
+          </section>
         </div>
 
         {error ? <p className="error-text" role="alert">{error}</p> : null}
