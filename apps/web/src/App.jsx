@@ -88,11 +88,7 @@ const DirectorAdminSettingsBrandingPage = lazyPage(() =>
     default: module.DirectorAdminSettingsBrandingPage
   }))
 );
-const DirectorAdminSettingsAccessPage = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
-    default: module.DirectorAdminSettingsAccessPage
-  }))
-);
+const DirectorAdminSettingsAccessPage = lazyPage(() => import("./pages/admin/DirectorAdminSettingsAccessPage.jsx"));
 const DirectorAdminSettingsDangerPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsDangerPage
