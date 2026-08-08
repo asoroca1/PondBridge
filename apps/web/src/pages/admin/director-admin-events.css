@@ -456,35 +456,72 @@
 
 /* --- Composer --- */
 
-.pb-cedar-page .pb-events-composer-modal { width: min(760px, 100%); }
+.pb-cedar-page .pb-events-composer-modal { width: min(720px, 100%); }
 
-.pb-events-composer { display: grid; gap: 11px; }
-
-.pb-events-field { display: grid; gap: 4px; min-width: 0; }
-
-.pb-events-field > span {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--director-admin-ink, #16283d);
+/* The form scrolls inside the dialog so the title and the save button stay
+   put instead of the whole modal growing past the viewport. */
+.pb-events-composer {
+  display: grid;
+  gap: 10px;
+  max-height: min(56vh, 460px);
+  overflow-y: auto;
+  padding: 2px 4px 2px 2px;
 }
 
-.pb-events-field > span small { font-weight: 500; color: var(--director-admin-ink-soft, #5d7186); }
-.pb-events-field > small { font-size: 0.78rem; color: var(--director-admin-ink-soft, #5d7186); }
-
-.pb-events-field-row {
+.pb-events-form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
   align-items: start;
 }
 
-.pb-events-field-row .is-wide { grid-column: span 2; }
+.pb-events-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pb-events-field.is-full { grid-column: 1 / -1; }
+
+.pb-events-field > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--director-admin-ink, #16283d);
+}
+
+.pb-events-field > span small {
+  margin-left: 4px;
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--director-admin-ink-soft, #5d7186);
+  text-transform: none;
+}
+
+.pb-events-field > small {
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--director-admin-ink-soft, #5d7186);
+}
+
+/* Admin inputs are sized for full-page forms; a dense dialog needs less. */
+.pb-events-composer .pb-input {
+  min-height: 36px;
+  padding: 6px 9px;
+  font-size: 0.88rem;
+}
+
+.pb-events-composer .pb-textarea {
+  min-height: 0;
+  line-height: 1.5;
+}
 
 .pb-events-host {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 7px 10px;
+  min-height: 36px;
+  padding: 6px 10px;
   border-radius: 8px;
   background: var(--director-admin-surface-bg-strong, #f6f8fb);
   font-size: 0.88rem;
@@ -495,8 +532,8 @@
   background: transparent;
   color: var(--brand-primary, #1e5cb3);
   font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -506,7 +543,7 @@
   padding: 0;
   display: grid;
   gap: 2px;
-  max-height: 150px;
+  max-height: 132px;
   overflow-y: auto;
 }
 
@@ -524,8 +561,8 @@
 }
 
 .pb-events-host-results button:hover { background: var(--director-admin-surface-bg-strong, #f6f8fb); }
-.pb-events-host-results strong { font-size: 0.86rem; }
-.pb-events-host-results small { font-size: 0.76rem; color: var(--director-admin-ink-soft, #5d7186); }
+.pb-events-host-results strong { font-size: 0.85rem; }
+.pb-events-host-results small { font-size: 0.75rem; color: var(--director-admin-ink-soft, #5d7186); }
 
 /* --- Responsive --- */
 
@@ -543,7 +580,7 @@
   }
   .pb-events-grid { grid-auto-rows: minmax(76px, auto); }
   .pb-events-chip-time { display: none; }
-  .pb-events-field-row .is-wide { grid-column: auto; }
+  .pb-events-form-grid { grid-template-columns: 1fr; }
 }
 
 /* --- Type picker --- */
