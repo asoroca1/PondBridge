@@ -1,0 +1,123 @@
+/* Director settings workspace — grouped rail + titled surface. */
+
+.pb-settings {
+  --pb-set-border: var(--director-admin-surface-border, #dde5ef);
+  --pb-set-border-soft: var(--director-admin-surface-border-soft, #e9eef5);
+  --pb-set-surface: var(--director-admin-surface-bg, #fff);
+  --pb-set-surface-alt: var(--director-admin-surface-bg-strong, #f6f8fb);
+  --pb-set-ink: var(--director-admin-ink, #16283d);
+  --pb-set-ink-soft: var(--director-admin-ink-soft, #5d7186);
+  --pb-set-accent: var(--brand-primary, #1e5cb3);
+
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* --- Rail --- */
+
+.pb-settings-rail {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--pb-set-border);
+  border-radius: 16px;
+  background: var(--pb-set-surface);
+}
+
+.pb-settings-rail h2 {
+  margin: 0 0 5px;
+  padding: 0 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--pb-set-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pb-settings-rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.pb-settings-rail a {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--pb-set-ink);
+  text-decoration: none;
+}
+
+.pb-settings-rail a svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
+.pb-settings-rail a span { display: grid; gap: 1px; min-width: 0; }
+.pb-settings-rail a strong { font-size: 0.9rem; font-weight: 600; }
+
+.pb-settings-rail a small {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--pb-set-ink-soft);
+}
+
+.pb-settings-rail a:hover { background: var(--pb-set-surface-alt); }
+
+.pb-settings-rail a.is-active {
+  background: color-mix(in srgb, var(--pb-set-accent) 12%, transparent);
+  color: var(--pb-set-accent);
+}
+
+.pb-settings-rail a.is-active svg { opacity: 1; }
+.pb-settings-rail a.is-active small { color: color-mix(in srgb, var(--pb-set-accent) 78%, var(--pb-set-ink-soft)); }
+
+.pb-settings-rail a.is-danger.is-active {
+  background: #fbeae8;
+  color: #8d362f;
+}
+
+.pb-settings-rail a.is-danger.is-active small { color: #a3564d; }
+
+/* --- Surface --- */
+
+.pb-settings-surface { min-width: 0; display: grid; gap: 12px; align-content: start; }
+
+.pb-settings-head {
+  padding: 2px 2px 0;
+}
+
+.pb-settings-head h1 {
+  margin: 0;
+  font-size: 1.32rem;
+  color: var(--pb-set-ink);
+}
+
+.pb-settings-head p {
+  margin: 3px 0 0;
+  color: var(--pb-set-ink-soft);
+  font-size: 0.9rem;
+}
+
+.pb-settings-body { min-width: 0; display: grid; gap: 12px; }
+
+/* The tabs still render their own cards; keep their top margin from
+   double-spacing under the new heading. */
+.pb-settings-body > .pb-card:first-child { margin-top: 0; }
+
+@media (max-width: 960px) {
+  .pb-settings { grid-template-columns: minmax(0, 1fr); }
+  .pb-settings-rail { position: static; }
+  .pb-settings-rail a small { display: none; }
+  .pb-settings-rail ul {
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+}
