@@ -7,6 +7,7 @@ import { tenantRoute } from "../../lib/tenantRouting.js";
 import useAdminApi from "./useAdminApi.js";
 import EventComposer from "./events/EventComposer.jsx";
 import EventDetailPane from "./events/EventDetailPane.jsx";
+import EventTypePicker from "./events/EventTypePicker.jsx";
 import EventsAgenda from "./events/EventsAgenda.jsx";
 import EventsCalendar from "./events/EventsCalendar.jsx";
 import { VIEWS, startOfDay } from "./events/eventUtils.js";
@@ -29,8 +30,10 @@ export default function DirectorAdminEventsPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerEvent, setComposerEvent] = useState(null);
+  const [composerType, setComposerType] = useState("community");
   const [composerDay, setComposerDay] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
 
@@ -90,14 +93,25 @@ export default function DirectorAdminEventsPage() {
     };
   }, [sorted]);
 
+  // Creating always starts with "which kind?" — the two forms differ enough
+  // that a dropdown inside one form hid the difference.
   function openCreate(day = null) {
     setComposerEvent(null);
     setComposerDay(day);
+    setPickerOpen(true);
+  }
+
+  function chooseType(nextType) {
+    setPickerOpen(false);
+    setComposerType(nextType);
+    setComposerEvent(null);
     setComposerOpen(true);
   }
 
   function openEdit(event) {
-    setComposerEvent(detail || event);
+    const target = detail || event;
+    setComposerEvent(target);
+    setComposerType(target?.eventType || "community");
     setComposerDay(null);
     setComposerOpen(true);
   }
@@ -162,7 +176,7 @@ export default function DirectorAdminEventsPage() {
       <nav className="pb-events-rail" aria-label="Event views">
         <Button type="button" className="pb-events-new-button" onClick={() => openCreate(null)}>
           <CalendarPlus aria-hidden="true" />
-          New event
+          New
         </Button>
         <ul>
           {VIEWS.map((item) => (
@@ -238,9 +252,17 @@ export default function DirectorAdminEventsPage() {
         </div>
       </div>
 
+      <EventTypePicker
+        open={pickerOpen}
+        dayLabel={composerDay ? composerDay.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }) : ""}
+        onClose={() => setPickerOpen(false)}
+        onChoose={chooseType}
+      />
+
       <EventComposer
         open={composerOpen}
         event={composerEvent}
+        type={composerType}
         day={composerDay}
         saving={saving}
         request={request}
