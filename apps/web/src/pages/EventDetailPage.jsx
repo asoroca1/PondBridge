@@ -181,7 +181,7 @@ export default function EventDetailPage() {
       }
     } catch (joinRequestError) {
       if (roomWindow) roomWindow.close();
-      setJoinError(joinRequestError.message || "Could not open the seminar room.");
+      setJoinError(joinRequestError.message || "Could not open the info session room.");
     } finally {
       setJoining(false);
     }
@@ -201,7 +201,7 @@ export default function EventDetailPage() {
       <div className="ev-detail-backlink">
         <Link to={tenantRoute(slug, "/events")}>
           <ChevronLeft size={16} aria-hidden="true" />
-          <span>All events & seminars</span>
+          <span>All events & info sessions</span>
         </Link>
       </div>
 
@@ -235,7 +235,7 @@ export default function EventDetailPage() {
                 {seminar ? (
                   <span className="ev-type-chip is-seminar">
                     <GraduationCap size={12} aria-hidden="true" />
-                    Registered-member seminar
+                    Registered-member info session
                   </span>
                 ) : null}
                 {item.status === "canceled" ? (
@@ -280,7 +280,7 @@ export default function EventDetailPage() {
           <section className="ev-detail-grid">
             <article className="ev-detail-card ev-detail-main">
               <header className="ev-detail-card-head">
-                <h2>{seminar ? "About this seminar" : "About this event"}</h2>
+                <h2>{seminar ? "About this info session" : "About this event"}</h2>
                 {item.locationAddress ? (
                   <p className="ev-detail-card-sub">
                     <MapPin size={13} aria-hidden="true" />
@@ -346,7 +346,7 @@ export default function EventDetailPage() {
                         <Video size={17} aria-hidden="true" />
                       </span>
                       <div>
-                        <h2>Seminar room</h2>
+                        <h2>Info session room</h2>
                         <p className="ev-detail-card-sub">{meetingProviderLabel(item.meetingProvider)}</p>
                       </div>
                     </div>
@@ -364,12 +364,12 @@ export default function EventDetailPage() {
                     disabled={!item.meetingAccess.canRequestJoinLink || joining || item.status === "canceled"}
                     onClick={openSeminarRoom}
                   >
-                    {joining ? "Opening room…" : item.meetingAccess.isHost ? "Open host room" : "Join seminar"}
+                    {joining ? "Opening room…" : item.meetingAccess.isHost ? "Open host room" : "Join info session"}
                     <ExternalLink size={15} aria-hidden="true" />
                   </button>
                   {!item.meetingAccess.canRequestJoinLink && item.status !== "canceled" ? (
                     <p className="ev-detail-muted">
-                      RSVP <strong>Going</strong> to unlock the seminar room.
+                      RSVP <strong>Going</strong> to unlock the info session room.
                     </p>
                   ) : null}
                   {joinError ? <p className="ev-detail-error">{joinError}</p> : null}

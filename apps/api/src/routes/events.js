@@ -28,7 +28,7 @@ const eventJoinLimiter = rateLimit({
   message: {
     error: {
       code: "RATE_LIMITED",
-      message: "Too many seminar join attempts. Please wait a few minutes and try again."
+      message: "Too many info session join attempts. Please wait a few minutes and try again."
     }
   }
 });
@@ -188,7 +188,7 @@ router.post("/:eventId/join", eventJoinLimiter, async (req, res) => {
   const event = await EventModel.findOne(req.tenant._id, { _id: eventId });
   if (!event || String(event.status || "").trim().toLowerCase() !== "published") {
     return res.status(404).json({
-      error: { code: "EVENT_NOT_FOUND", message: "Seminar not found." }
+      error: { code: "EVENT_NOT_FOUND", message: "Info session not found." }
     });
   }
 
@@ -208,7 +208,7 @@ router.post("/:eventId/join", eventJoinLimiter, async (req, res) => {
   const storedMeetingUrl = String(meetingDetail?.meetingUrl || "").trim();
   if (!storedMeetingUrl) {
     throw createEventError(
-      "The seminar room is not available yet. Please check back closer to the start time.",
+      "The info session room is not available yet. Please check back closer to the start time.",
       "SEMINAR_MEETING_NOT_READY",
       503
     );

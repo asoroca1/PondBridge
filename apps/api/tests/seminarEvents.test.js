@@ -128,7 +128,7 @@ describe("registered-member seminar events", () => {
       subject: "Investment Banking seminar reminder"
     });
 
-    expect(content.text).toContain("upcoming seminar");
+    expect(content.text).toContain("upcoming info session");
     expect(content.text).toContain("Investment Banking");
     expect(content.text).toContain("Online");
     expect(content.html).not.toContain("zoom.us/j/private");

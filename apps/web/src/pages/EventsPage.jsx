@@ -116,7 +116,7 @@ function EventCard({ item, slug, featured = false }) {
         {!item.coverImageUrl ? (
           <div className={`ev-card-cover-fallback ${isSeminar(item) ? "is-seminar" : ""}`} aria-hidden="true">
             {isSeminar(item) ? <GraduationCap size={30} /> : <CalendarDays size={30} />}
-            <span>{isSeminar(item) ? item.topicTitle || "Alumni seminar" : "Camp community"}</span>
+            <span>{isSeminar(item) ? item.topicTitle || "Alumni info session" : "Camp community"}</span>
           </div>
         ) : null}
         <div className="ev-date-chip" aria-hidden="true">
@@ -127,7 +127,7 @@ function EventCard({ item, slug, featured = false }) {
           {isSeminar(item) ? (
             <span className="ev-type-chip is-seminar">
               <GraduationCap size={12} aria-hidden="true" />
-              Seminar
+              Info session
             </span>
           ) : null}
           <span className={`ev-status-chip ${toneClass}`}>{rsvpLabel(item)}</span>
@@ -270,7 +270,7 @@ export default function EventsPage() {
     <main className="ev-wrap nav2-page-shell">
       <CedarPageHeader
         icon={<CalendarDays size={18} />}
-        title="Events & Seminars"
+        title="Events & info sessions"
         subtitle="Gather in person, learn from alumni, and join live online sessions."
       >
         <div className="ev-header-actions">
@@ -333,7 +333,7 @@ export default function EventsPage() {
           onClick={() => setTypeFilter("seminar")}
         >
           <GraduationCap size={14} aria-hidden="true" />
-          Seminars
+          Info sessions
         </button>
         <button
           type="button"
@@ -363,7 +363,7 @@ export default function EventsPage() {
                 <span className="ev-featured-fallback-icon">
                   {isSeminar(featured) ? <GraduationCap size={42} /> : <CalendarDays size={42} />}
                 </span>
-                <span>{isSeminar(featured) ? "Alumni-led seminar" : "Camp community event"}</span>
+                <span>{isSeminar(featured) ? "Alumni-led info session" : "Camp community event"}</span>
                 <strong>
                   {isSeminar(featured) ? featured.topicTitle || featured.title : featured.title}
                 </strong>
@@ -372,7 +372,7 @@ export default function EventsPage() {
           </div>
           <div className="ev-featured-copy">
             <span className="ev-featured-eyebrow">
-              {isSeminar(featured) ? "Featured seminar · Next up" : "Featured event · Next up"}
+              {isSeminar(featured) ? "Featured info session · Next up" : "Featured event · Next up"}
             </span>
             <h2>{featured.title}</h2>
             <p className="ev-featured-when">
@@ -427,18 +427,18 @@ export default function EventsPage() {
               <CalendarDays size={32} className="ev-empty-icon" aria-hidden="true" />
               <h3>
                 {tab === "past"
-                  ? `No past ${typeFilter === "seminar" ? "seminars" : "events"} yet.`
+                  ? `No past ${typeFilter === "seminar" ? "info sessions" : "events"} yet.`
                   : tab === "going"
                   ? "You haven’t RSVP’d to anything."
                   : typeFilter === "seminar"
-                    ? "No upcoming seminars yet."
+                    ? "No upcoming info sessions yet."
                     : "The calendar is ready for its next event."}
               </h3>
               <p>
                 {tab === "past"
                   ? "When events wrap up, they’ll move here so you can revisit the highlights."
                   : tab === "going"
-                  ? "Open an upcoming event or seminar and let your camp know you’re coming."
+                  ? "Open an upcoming event or info session and let your camp know you’re coming."
                   : typeFilter === "seminar"
                     ? "Career, college, and mentorship sessions will appear here when directors publish them."
                     : "Check back soon or reach out to your camp directors if you expected something here."}
