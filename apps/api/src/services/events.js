@@ -343,32 +343,32 @@ export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = 
   const deliveryMode = normalizeEventDeliveryMode(event?.deliveryMode || "");
   if (!["online", "hybrid"].includes(deliveryMode)) {
     throw createEventError(
-      "Seminars must be online or hybrid.",
+      "Info sessions must be online or hybrid.",
       "SEMINAR_DELIVERY_MODE_REQUIRED"
     );
   }
   if (!String(event?.topicTitle || "").trim()) {
-    throw createEventError("Add a seminar topic before publishing.", "SEMINAR_TOPIC_REQUIRED");
+    throw createEventError("Add an info session topic before publishing.", "SEMINAR_TOPIC_REQUIRED");
   }
   if (!String(event?.hostProfileId || "").trim()) {
     throw createEventError(
-      "Select a registered network member to host this seminar.",
+      "Select a registered network member to host this info session.",
       "SEMINAR_HOST_REQUIRED"
     );
   }
   const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
   if (!provider) {
     throw createEventError(
-      "Select the seminar meeting provider.",
+      "Select the info session meeting provider.",
       "SEMINAR_MEETING_PROVIDER_REQUIRED"
     );
   }
   if (!normalizeSeminarMeetingUrl(meetingUrl, provider)) {
-    throw createEventError("Add the seminar meeting link.", "SEMINAR_MEETING_URL_REQUIRED");
+    throw createEventError("Add the info session meeting link.", "SEMINAR_MEETING_URL_REQUIRED");
   }
   if (deliveryMode === "hybrid" && !String(event?.locationName || "").trim()) {
     throw createEventError(
-      "Add the in-person location for this hybrid seminar.",
+      "Add the in-person location for this hybrid info session.",
       "SEMINAR_HYBRID_LOCATION_REQUIRED"
     );
   }
@@ -387,7 +387,7 @@ export function assertSeminarJoinEligibility({
     !["online", "hybrid"].includes(normalizeEventDeliveryMode(event?.deliveryMode || ""))
   ) {
     throw createEventError(
-      "This event does not have an online seminar room.",
+      "This event does not have an online info session room.",
       "SEMINAR_JOIN_NOT_AVAILABLE",
       400
     );
@@ -397,7 +397,7 @@ export function assertSeminarJoinEligibility({
   const endAt = event?.endsAt || event?.startsAt;
   if (endAt && new Date(endAt).getTime() + 4 * 60 * 60 * 1000 < current.getTime()) {
     throw createEventError(
-      "This seminar has ended and its live meeting link is no longer available.",
+      "This info session has ended and its live meeting link is no longer available.",
       "SEMINAR_ENDED",
       410
     );
@@ -405,7 +405,7 @@ export function assertSeminarJoinEligibility({
 
   if (!profile || String(profile?.status || "").trim().toLowerCase() !== "active") {
     throw createEventError(
-      "Only active registered network members can join seminars.",
+      "Only active registered network members can join info sessions.",
       "SEMINAR_REGISTRATION_REQUIRED",
       403
     );
@@ -415,7 +415,7 @@ export function assertSeminarJoinEligibility({
   const isHost = profileId && profileId === String(event?.hostProfileId || "");
   if (!isHost && String(rsvp?.status || "").trim().toLowerCase() !== "attending") {
     throw createEventError(
-      "RSVP “Going” before opening the seminar room.",
+      "RSVP “Going” before opening the info session room.",
       "SEMINAR_ATTENDING_RSVP_REQUIRED",
       403
     );
@@ -668,7 +668,7 @@ export function buildEventEmailContent({
   const ctaUrl = buildEventAppUrl(tenant, event?._id || event?.id || "");
   const safeKind = normalizeEventMessageKind(kind || "", "invite");
   const scheduleNoun = normalizeEventType(event?.eventType || "") === "seminar"
-    ? "seminar"
+    ? "info session"
     : "event";
   const intro = safeKind === "invite"
     ? `<p>You are invited to an upcoming ${scheduleNoun} in ${escapeHtml(branding.networkName)}.</p>`

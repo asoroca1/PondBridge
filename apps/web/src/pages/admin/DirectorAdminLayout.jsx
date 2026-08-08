@@ -34,7 +34,7 @@ const ADMIN_NAV = [
   { key: "people", to: "people", label: "People", icon: Users },
   { key: "safety", to: "safety", label: "Safety", icon: ShieldCheck },
   { type: "label", key: "engage-label", label: "Engage" },
-  { key: "events", to: "events", label: "Events & Seminars", icon: CalendarDays },
+  { key: "events", to: "events", label: "Events & info sessions", icon: CalendarDays },
   { key: "mobile-alerts", to: "settings/notifications", label: "Mobile alerts", icon: Bell },
   // Points at the workspace root so every mail folder keeps the item highlighted.
   { key: "email", to: "email", label: "Email", icon: Send },
