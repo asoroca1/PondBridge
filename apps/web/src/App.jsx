@@ -104,9 +104,7 @@ const DirectorAdminSettingsSupportPage = lazyPage(() =>
 const DirectorAdminSettingsNotificationsPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminNotificationsPage.jsx")
 );
-const DirectorAdminSettingsLayout = lazyPage(() =>
-  import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminSettingsLayout }))
-);
+const DirectorAdminSettingsLayout = lazyPage(() => import("./pages/admin/DirectorAdminSettingsLayout.jsx"));
 const DirectorAdminSettingsNetworkPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({
     default: module.DirectorAdminSettingsNetworkPage
@@ -818,7 +816,7 @@ function TenantScopeRoutes() {
           <Route path="email/history" element={<Navigate to="../email/sent" replace />} />
           <Route path="email/:folder" element={<DirectorAdminMailPage />} />
           <Route path="analytics" element={<Navigate to="../dashboard" replace />} />
-          <Route path="features" element={<DirectorAdminFeaturesPage />} />
+          <Route path="features" element={<Navigate to="../settings/features" replace />} />
           <Route
             path="billing"
             element={
@@ -830,6 +828,7 @@ function TenantScopeRoutes() {
           <Route path="settings" element={<DirectorAdminSettingsLayout />}>
             <Route index element={<Navigate to="network" replace />} />
             <Route path="network" element={<DirectorAdminSettingsNetworkPage />} />
+            <Route path="features" element={<DirectorAdminFeaturesPage />} />
             <Route path="branding" element={<DirectorAdminSettingsBrandingPage />} />
             <Route path="access" element={<DirectorAdminSettingsAccessPage />} />
             <Route path="admins" element={<DirectorAdminSettingsAdminsPage />} />
