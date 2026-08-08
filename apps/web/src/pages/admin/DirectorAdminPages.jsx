@@ -41,13 +41,6 @@ function formatDate(value) {
   return parsed.toLocaleDateString();
 }
 
-function formatDateTime(value) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleString();
-}
-
 function getNiceTickStep(maxValue = 1, targetTickCount = 5) {
   const safeMax = Math.max(1, Number(maxValue || 0));
   const roughStep = safeMax / Math.max(1, targetTickCount - 1);
@@ -2557,87 +2550,6 @@ export function DirectorAdminSettingsBrandingPage() {
           </Button>
         </div>
       </form>
-    </Card>
-  );
-}
-
-
-
-
-export function DirectorAdminSettingsDangerPage() {
-  const { request } = useAdminApi();
-  const { payload, loading, error, load } = useSettingsLoader();
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [deleteNote, setDeleteNote] = useState("");
-
-  async function togglePause(paused) {
-    setBusy(true);
-    setStatus("");
-    try {
-      await request("/settings/pause", { method: "POST", body: { paused } });
-      setStatus(paused ? "Network paused." : "Network resumed.");
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function requestDeletion(event) {
-    event.preventDefault();
-    setBusy(true);
-    setStatus("");
-    try {
-      await request("/settings/delete-request", {
-        method: "POST",
-        body: { note: deleteNote }
-      });
-      setStatus("Deletion requested. Our team will follow up within 24 hours.");
-      setDeleteNote("");
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
-
-  const isPaused = payload?.tenant?.status === "inactive";
-
-  return (
-    <Card className="director-admin-danger-card">
-      <h2 className="pb-section-title">Danger Zone</h2>
-      {error ? <p className="error-text">{error}</p> : null}
-      {status ? <p className="success-text">{status}</p> : null}
-      <div className="director-admin-danger-block">
-        <h3>Pause Network</h3>
-        <p>Temporarily hide your network. Members cannot log in while paused.</p>
-        <Button variant="secondary" onClick={() => togglePause(!isPaused)} disabled={busy}>
-          {isPaused ? "Resume Network" : "Pause Network"}
-        </Button>
-      </div>
-      <div className="director-admin-danger-block">
-        <h3>Request Deletion</h3>
-        <p>
-          Deletion requires super admin confirmation and is processed with a safety window.
-        </p>
-        <form className="director-admin-form-grid" onSubmit={requestDeletion}>
-          <label className="full-width">
-            Note to PondBridge (optional)
-            <Textarea value={deleteNote} onChange={(event) => setDeleteNote(event.target.value)} />
-          </label>
-          <div className="director-admin-form-actions full-width">
-            <Button type="submit" disabled={busy}>
-              {busy ? "Submitting..." : "Request Deletion"}
-            </Button>
-          </div>
-        </form>
-        {payload?.deletionRequest?.status === "requested" ? (
-          <p className="muted">
-            Deletion requested on {formatDateTime(payload.deletionRequest.requestedAt)}.
-          </p>
-        ) : null}
-      </div>
     </Card>
   );
 }
