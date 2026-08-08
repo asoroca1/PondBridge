@@ -27,6 +27,7 @@ export default function DirectorAdminPeoplePage() {
 
   const [inviteTargets, setInviteTargets] = useState([]);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportSelection, setExportSelection] = useState([]);
   const [notice, setNotice] = useState("");
 
   const openInvite = useCallback((people = []) => {
@@ -60,7 +61,10 @@ export default function DirectorAdminPeoplePage() {
         slug={slug}
         onInvite={openInvite}
         onEmail={emailPeople}
-        onExport={() => setExportOpen(true)}
+        onExport={(keys = []) => {
+          setExportSelection(keys);
+          setExportOpen(true);
+        }}
       />
     );
   }, [actions, activeView, directory, emailPeople, navigate, openInvite, slug, stage]);
@@ -118,6 +122,10 @@ export default function DirectorAdminPeoplePage() {
         request={request}
         download={download}
         slug={slug}
+        stage={stage}
+        filters={directory.filters}
+        selected={exportSelection}
+        listTotal={directory.total}
       />
     </section>
   );

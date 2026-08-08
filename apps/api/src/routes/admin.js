@@ -6526,56 +6526,187 @@ function personSortComparator(sort = "recent") {
   return (a, b) => activity(b) - activity(a);
 }
 
-router.get("/people", async (req, res, next) => {
+// Columns available when exporting the people list itself (as opposed to the
+// richer member-profile export, which only covers people who have joined).
+const PEOPLE_EXPORT_COLUMNS = [
+  { key: "firstName", label: "First name" },
+  { key: "lastName", label: "Last name" },
+  { key: "fullName", label: "Full name" },
+  { key: "email", label: "Email" },
+  { key: "stage", label: "Stage" },
+  { key: "role", label: "Role" },
+  { key: "location", label: "Location" },
+  { key: "yearsAtCamp", label: "Camp years" },
+  { key: "tags", label: "Tags" },
+  { key: "notes", label: "Notes" },
+  { key: "completionScore", label: "Profile completion" },
+  { key: "joinedAt", label: "Joined" },
+  { key: "lastActiveAt", label: "Last active" },
+  { key: "requestedAt", label: "Requested" },
+  { key: "requestMessage", label: "Request message" },
+  { key: "inviteCount", label: "Invitations sent" },
+  { key: "lastInvitedAt", label: "Last invited" },
+  { key: "inviteExpiresAt", label: "Invite expires" },
+  { key: "source", label: "Source" },
+  { key: "profileId", label: "Profile ID" }
+];
+const PEOPLE_EXPORT_COLUMN_MAP = new Map(PEOPLE_EXPORT_COLUMNS.map((column) => [column.key, column]));
+const PEOPLE_EXPORT_DEFAULT_COLUMNS = ["firstName", "lastName", "email", "stage", "role"];
+
+const PEOPLE_STAGE_LABELS = {
+  member: "Member",
+  request: "Pending request",
+  invited: "Invited",
+  expired: "Invite expired",
+  prospect: "Prospect",
+  on_hold: "On hold"
+};
+
+function formatPeopleExportCell(person = {}, key = "") {
+  const value = person[key];
+  if (key === "stage") return PEOPLE_STAGE_LABELS[value] || String(value || "");
+  if (Array.isArray(value)) return value.join(", ");
+  if (key.endsWith("At") && value) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+  }
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+/**
+ * Resolves the people list for a request's stage/search/filter query. Shared by
+ * the list endpoint and its CSV export so what downloads is exactly what the
+ * director is looking at.
+ */
+async function resolveFilteredPeople(req) {
+  const tenantId = req.tenant._id;
+  const directorUserId = await resolveDirectorUserId(req.tenant);
+  const ninetyDaysAgo = new Date(Date.now() - 90 * DAY_MS);
+
+  const [contactResult, invites, users, profiles, accessRequests, analyticsEvents] = await Promise.all([
+    loadAlumniContactsForGrowth(tenantId),
+    InviteModel.find(tenantId, { roleToAssign: "user" }, { sort: { createdAt: -1 }, limit: 5000 }),
+    UserModel.find(tenantId, { status: { $ne: "removed" } }, {
+      select: ["id", "email", "status", "roles", "createdAt", "updatedAt", "lastLoginAt"]
+    }),
+    ProfileModel.find(tenantId, { status: { $ne: "removed" } }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
+    AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 500 }),
+    AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
+      select: ["userId", "eventType", "createdAt"],
+      limit: 10000
+    })
+  ]);
+
+  const { people, counts } = buildPeopleDirectory({
+    contacts: contactResult.contacts,
+    invites,
+    users,
+    profiles,
+    accessRequests,
+    analyticsEvents,
+    mapMember: (profile, user) => mapMemberRow(profile, user, { directorUserId })
+  });
+
+  const stage = String(req.query.stage || "all").trim().toLowerCase();
+  const q = String(req.query.q || "").trim().toLowerCase();
+  const role = String(req.query.role || "all").trim().toLowerCase();
+  const year = String(req.query.year || "all").trim();
+  const completionRange = parseCompletionRange(req.query);
+  // An explicit selection wins over the filters that produced it.
+  const keys = new Set(
+    String(req.query.keys || "")
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  const filtered = people.filter((person) => {
+    if (keys.size) return keys.has(person.key);
+    if (stage !== "all" && person.stage !== stage) return false;
+    if (role !== "all" && String(person.role || "").toLowerCase() !== role) return false;
+    if (year !== "all" && !person.yearsAtCamp.includes(year)) return false;
+    if (completionRange && person.stage === "member"
+      && !matchesCompletionRange(person.completionScore, completionRange)) return false;
+    if (!q) return true;
+    return [person.fullName, person.email, person.role, person.location, ...person.tags]
+      .some((value) => String(value || "").toLowerCase().includes(q));
+  });
+
+  return { people, filtered, counts, storage: contactResult.storage };
+}
+
+router.get("/people/export.csv", exportLimiter, async (req, res, next) => {
   try {
-    const tenantId = req.tenant._id;
-    const directorUserId = await resolveDirectorUserId(req.tenant);
-    const ninetyDaysAgo = new Date(Date.now() - 90 * DAY_MS);
+    const requested = String(req.query.fields || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter((key) => PEOPLE_EXPORT_COLUMN_MAP.has(key));
+    const columns = (requested.length ? requested : PEOPLE_EXPORT_DEFAULT_COLUMNS)
+      .map((key) => PEOPLE_EXPORT_COLUMN_MAP.get(key));
 
-    const [contactResult, invites, users, profiles, accessRequests, analyticsEvents] = await Promise.all([
-      loadAlumniContactsForGrowth(tenantId),
-      InviteModel.find(tenantId, { roleToAssign: "user" }, { sort: { createdAt: -1 }, limit: 5000 }),
-      UserModel.find(tenantId, { status: { $ne: "removed" } }, {
-        select: ["id", "email", "status", "roles", "createdAt", "updatedAt", "lastLoginAt"]
-      }),
-      ProfileModel.find(tenantId, { status: { $ne: "removed" } }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
-      AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 500 }),
-      AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
-        select: ["userId", "eventType", "createdAt"],
-        limit: 10000
-      })
-    ]);
-
-    const { people, counts } = buildPeopleDirectory({
-      contacts: contactResult.contacts,
-      invites,
-      users,
-      profiles,
-      accessRequests,
-      analyticsEvents,
-      mapMember: (profile, user) => mapMemberRow(profile, user, { directorUserId })
+    const { filtered } = await resolveFilteredPeople(req);
+    const records = filtered.map((person) => {
+      const row = {};
+      for (const column of columns) {
+        row[column.key] = sanitizeCsvCell(formatPeopleExportCell(person, column.key));
+      }
+      return row;
     });
 
-    const stage = String(req.query.stage || "all").trim().toLowerCase();
-    const q = String(req.query.q || "").trim().toLowerCase();
-    const role = String(req.query.role || "all").trim().toLowerCase();
-    const year = String(req.query.year || "all").trim();
-    const completionRange = parseCompletionRange(req.query);
+    const csv = stringify(records, {
+      header: true,
+      columns: columns.map((column) => ({ key: column.key, header: column.label }))
+    });
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${req.tenant.slug}-people-export.csv"`
+    );
+    return res.send(csv);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/people/export/preview", async (req, res, next) => {
+  try {
+    const requested = String(req.query.fields || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter((key) => PEOPLE_EXPORT_COLUMN_MAP.has(key));
+    const columns = (requested.length ? requested : PEOPLE_EXPORT_DEFAULT_COLUMNS)
+      .map((key) => PEOPLE_EXPORT_COLUMN_MAP.get(key));
+
+    const { filtered } = await resolveFilteredPeople(req);
+    return res.json({
+      total: filtered.length,
+      columns: columns.map((column) => ({ key: column.key, label: column.label })),
+      rows: filtered.slice(0, 5).map((person) => {
+        const row = {};
+        for (const column of columns) row[column.key] = formatPeopleExportCell(person, column.key);
+        return row;
+      })
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/people/export/fields", async (_req, res) => {
+  return res.json({
+    fields: PEOPLE_EXPORT_COLUMNS,
+    defaultFields: PEOPLE_EXPORT_DEFAULT_COLUMNS
+  });
+});
+
+router.get("/people", async (req, res, next) => {
+  try {
+    const { people, filtered, counts, storage } = await resolveFilteredPeople(req);
     const sort = String(req.query.sort || "recent").trim().toLowerCase();
     const page = Math.max(1, Number(req.query.page || 1) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 25) || 25));
-
-    const filtered = people.filter((person) => {
-      if (stage !== "all" && person.stage !== stage) return false;
-      if (role !== "all" && String(person.role || "").toLowerCase() !== role) return false;
-      if (year !== "all" && !person.yearsAtCamp.includes(year)) return false;
-      // Completion only means something once someone has a profile.
-      if (completionRange && person.stage === "member"
-        && !matchesCompletionRange(person.completionScore, completionRange)) return false;
-      if (!q) return true;
-      return [person.fullName, person.email, person.role, person.location, ...person.tags]
-        .some((value) => String(value || "").toLowerCase().includes(q));
-    });
 
     filtered.sort(personSortComparator(sort));
     const skip = (page - 1) * pageSize;
@@ -6590,7 +6721,7 @@ router.get("/people", async (req, res, next) => {
         roleOptions: [...new Set(people.map((item) => item.role).filter(Boolean))].sort(),
         yearOptions: [...new Set(people.flatMap((item) => item.yearsAtCamp))].filter(Boolean).sort()
       },
-      storage: contactResult.storage
+      storage
     });
   } catch (error) {
     return next(error);
