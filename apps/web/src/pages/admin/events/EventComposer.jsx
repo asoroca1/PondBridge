@@ -200,37 +200,36 @@ export default function EventComposer({
       }
     >
       <div className="pb-events-composer">
-        <label className="pb-events-field">
-          <span>Title</span>
-          <Input
-            value={form.title}
-            onChange={(e) => patch({ title: e.target.value })}
-            placeholder={copy.titlePlaceholder}
-            maxLength={160}
-            autoFocus
-          />
-        </label>
+        <div className="pb-events-form-grid">
+          <label className="pb-events-field is-full">
+            <span>Title</span>
+            <Input
+              value={form.title}
+              onChange={(e) => patch({ title: e.target.value })}
+              placeholder={copy.titlePlaceholder}
+              maxLength={160}
+            />
+          </label>
 
-        {isSeminar ? (
-          <div className="pb-events-field-row">
-            <label className="pb-events-field">
-              <span>Topic</span>
-              <Select value={form.topicCategory} onChange={(e) => patch({ topicCategory: e.target.value })}>
-                {TOPIC_CATEGORIES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
-            </label>
-            <label className="pb-events-field is-wide">
-              <span>Topic headline <small>(optional)</small></span>
-              <Input
-                value={form.topicTitle}
-                onChange={(e) => patch({ topicTitle: e.target.value })}
-                placeholder="What the session covers in a few words"
-              />
-            </label>
-          </div>
-        ) : null}
+          {isSeminar ? (
+            <>
+              <label className="pb-events-field">
+                <span>Topic</span>
+                <Select value={form.topicCategory} onChange={(e) => patch({ topicCategory: e.target.value })}>
+                  {TOPIC_CATEGORIES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              </label>
+              <label className="pb-events-field">
+                <span>Topic headline <small>optional</small></span>
+                <Input
+                  value={form.topicTitle}
+                  onChange={(e) => patch({ topicTitle: e.target.value })}
+                  placeholder="What it covers, in a few words"
+                />
+              </label>
+            </>
+          ) : null}
 
-        <div className="pb-events-field-row">
           <label className="pb-events-field">
             <span>Starts</span>
             <Input type="datetime-local" value={form.startsAt} onChange={(e) => patch({ startsAt: e.target.value })} />
@@ -239,60 +238,93 @@ export default function EventComposer({
             <span>Ends</span>
             <Input type="datetime-local" value={form.endsAt} onChange={(e) => patch({ endsAt: e.target.value })} />
           </label>
+
           <label className="pb-events-field">
-            <span>{isSeminar ? "Registration closes" : "RSVP closes"} <small>(optional)</small></span>
+            <span>{isSeminar ? "Registration closes" : "RSVP closes"} <small>optional</small></span>
             <Input
               type="datetime-local"
               value={form.rsvpDeadlineAt}
               onChange={(e) => patch({ rsvpDeadlineAt: e.target.value })}
             />
           </label>
-        </div>
+          <label className="pb-events-field">
+            <span>{isSeminar ? "Seat limit" : "Capacity"} <small>optional</small></span>
+            <Input
+              type="number"
+              min="1"
+              value={form.capacity}
+              onChange={(e) => patch({ capacity: e.target.value })}
+              placeholder="No limit"
+            />
+          </label>
 
-        {showMeeting ? (
-          <div className="pb-events-field-row">
-            <label className="pb-events-field">
-              <span>Platform</span>
-              <Select value={form.meetingProvider} onChange={(e) => patch({ meetingProvider: e.target.value })}>
-                {providerOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
-            </label>
-            <label className="pb-events-field is-wide">
-              <span>Meeting link</span>
-              <Input
-                value={form.meetingUrl}
-                onChange={(e) => patch({ meetingUrl: e.target.value })}
-                placeholder="https://teams.microsoft.com/l/meetup-join/…"
-              />
-              <small>Only shared with members who RSVP “Going”. Needed before you can publish.</small>
-            </label>
-          </div>
-        ) : null}
+          {showMeeting ? (
+            <>
+              <label className="pb-events-field">
+                <span>Platform</span>
+                <Select value={form.meetingProvider} onChange={(e) => patch({ meetingProvider: e.target.value })}>
+                  {providerOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              </label>
+              <label className="pb-events-field">
+                <span>Meeting link</span>
+                <Input
+                  value={form.meetingUrl}
+                  onChange={(e) => patch({ meetingUrl: e.target.value })}
+                  placeholder="https://teams.microsoft.com/l/meetup-join/…"
+                />
+                <small>Shared only with members who RSVP “Going”. Required to publish.</small>
+              </label>
+            </>
+          ) : null}
 
-        {showLocation ? (
-          <div className="pb-events-field-row">
-            <label className="pb-events-field">
-              <span>Place</span>
-              <Input
-                value={form.locationName}
-                onChange={(e) => patch({ locationName: e.target.value })}
-                placeholder="Main lodge"
-              />
-            </label>
-            <label className="pb-events-field is-wide">
-              <span>Address <small>(optional)</small></span>
-              <Input
-                value={form.locationAddress}
-                onChange={(e) => patch({ locationAddress: e.target.value })}
-                placeholder="120 Camp Road, Casco, ME"
-              />
-            </label>
-          </div>
-        ) : null}
+          {showLocation ? (
+            <>
+              <label className="pb-events-field">
+                <span>Place</span>
+                <Input
+                  value={form.locationName}
+                  onChange={(e) => patch({ locationName: e.target.value })}
+                  placeholder="Main lodge"
+                />
+              </label>
+              <label className="pb-events-field">
+                <span>Address <small>optional</small></span>
+                <Input
+                  value={form.locationAddress}
+                  onChange={(e) => patch({ locationAddress: e.target.value })}
+                  placeholder="120 Camp Road, Casco, ME"
+                />
+              </label>
+            </>
+          ) : null}
 
-        <div className="pb-events-field-row">
-          <label className="pb-events-field is-wide">
-            <span>{copy.hostLabel} <small>(optional)</small></span>
+          <label className="pb-events-field">
+            <span>Who it's for</span>
+            <Select value={form.audience} onChange={(e) => patch({ audience: e.target.value })}>
+              {AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          </label>
+          <label className="pb-events-field">
+            <span>{isSeminar ? "Also in person?" : "Also online?"}</span>
+            <Select value={form.deliveryMode} onChange={(e) => patch({ deliveryMode: e.target.value })}>
+              {isSeminar ? (
+                <>
+                  <option value="online">Online only</option>
+                  <option value="hybrid">Online and in person</option>
+                </>
+              ) : (
+                <>
+                  <option value="in_person">In person only</option>
+                  <option value="hybrid">In person and online</option>
+                  <option value="online">Online only</option>
+                </>
+              )}
+            </Select>
+          </label>
+
+          <div className="pb-events-field is-full">
+            <span>{copy.hostLabel} <small>optional</small></span>
             {host ? (
               <span className="pb-events-host">
                 {host.fullName}
@@ -303,7 +335,7 @@ export default function EventComposer({
                 <Input
                   value={hostQuery}
                   onChange={(e) => setHostQuery(e.target.value)}
-                  placeholder="Search members"
+                  placeholder={`Search members — ${copy.hostHint.toLowerCase()}`}
                 />
                 {hostResults.length ? (
                   <ul className="pb-events-host-results">
@@ -324,67 +356,30 @@ export default function EventComposer({
                     ))}
                   </ul>
                 ) : null}
-                <small>{copy.hostHint}</small>
               </>
             )}
-          </label>
-          <label className="pb-events-field">
-            <span>{isSeminar ? "Seat limit" : "Capacity"} <small>(optional)</small></span>
+          </div>
+
+          <label className="pb-events-field is-full">
+            <span>Short summary</span>
             <Input
-              type="number"
-              min="1"
-              value={form.capacity}
-              onChange={(e) => patch({ capacity: e.target.value })}
-              placeholder="No limit"
+              value={form.summary}
+              onChange={(e) => patch({ summary: e.target.value })}
+              placeholder={copy.summaryPlaceholder}
+              maxLength={280}
+            />
+          </label>
+
+          <label className="pb-events-field is-full">
+            <span>Details <small>optional</small></span>
+            <Textarea
+              value={form.bodyHtml}
+              rows={3}
+              onChange={(e) => patch({ bodyHtml: e.target.value })}
+              placeholder={copy.detailsPlaceholder}
             />
           </label>
         </div>
-
-        <div className="pb-events-field-row">
-          <label className="pb-events-field">
-            <span>Who it's for</span>
-            <Select value={form.audience} onChange={(e) => patch({ audience: e.target.value })}>
-              {AUDIENCES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
-          </label>
-          <label className="pb-events-field is-wide">
-            <span>{isSeminar ? "Also held in person?" : "Also streamed online?"}</span>
-            <Select value={form.deliveryMode} onChange={(e) => patch({ deliveryMode: e.target.value })}>
-              {isSeminar ? (
-                <>
-                  <option value="online">Online only</option>
-                  <option value="hybrid">Online and in person</option>
-                </>
-              ) : (
-                <>
-                  <option value="in_person">In person only</option>
-                  <option value="hybrid">In person and online</option>
-                  <option value="online">Online only</option>
-                </>
-              )}
-            </Select>
-          </label>
-        </div>
-
-        <label className="pb-events-field">
-          <span>Short summary</span>
-          <Input
-            value={form.summary}
-            onChange={(e) => patch({ summary: e.target.value })}
-            placeholder={copy.summaryPlaceholder}
-            maxLength={280}
-          />
-        </label>
-
-        <label className="pb-events-field">
-          <span>Details</span>
-          <Textarea
-            value={form.bodyHtml}
-            rows={5}
-            onChange={(e) => patch({ bodyHtml: e.target.value })}
-            placeholder={copy.detailsPlaceholder}
-          />
-        </label>
 
         {error ? <p className="error-text" role="alert">{error}</p> : null}
       </div>
