@@ -663,56 +663,71 @@ export default function DirectorAdminBillingPage() {
             </span>
           </div>
 
-          <div className="director-admin-billing-key-grid">
-            <div className="director-admin-billing-key-item">
-              <span>Billing Status</span>
+          {/* What you pay and when it happens leads; billing internals sit
+              below as a sentence instead of competing for the same weight. */}
+          <div className="pb-billing-headline">
+            <div>
+              <span>You pay</span>
               <strong>
-                <span className={`director-admin-status-badge tone-${billingStatusBadgeTone}`.trim()}>
-                  {billingStatusLabel}
-                </span>
+                {hasNoActivePlan
+                  ? "Nothing yet"
+                  : isComplimentary
+                    ? "Nothing"
+                    : `${formatMoney(currentPlan ? currentPlan.annualAmount : payload?.billing?.annualAmount)}/yr`}
               </strong>
+              <small>{isComplimentary ? "Complimentary plan" : currentPlanTitle}</small>
             </div>
-            <div className="director-admin-billing-key-item">
-              <span>Lifecycle</span>
-              <strong>{lifecycleLabel}</strong>
-            </div>
-            <div className="director-admin-billing-key-item">
-              <span>Onboarding Fee</span>
-              <strong>{onboardingFeeLabel}</strong>
-              <small>{onboardingFeeStatusLabel}</small>
-            </div>
-            <div className="director-admin-billing-key-item">
-              <span>{subscriptionCancelAtPeriodEnd ? "Access Until" : "Renews On"}</span>
-              <strong>{formatDate(renewalDate)}</strong>
+            <div>
+              <span>{subscriptionCancelAtPeriodEnd ? "Access until" : "Next charge"}</span>
+              <strong>{renewalDate ? formatDate(renewalDate) : hasNoActivePlan ? "—" : "Not scheduled"}</strong>
               <small>
                 {hasNoActivePlan
                   ? "Activate billing to begin renewals"
                   : subscriptionCancelAtPeriodEnd
-                  ? "Cancels at end of period"
-                  : renewalDate
-                    ? `Next payment: ${currentPlan ? formatMoney(currentPlan.annualAmount) : formatMoney(payload?.billing?.annualAmount)}`
-                    : "No renewal date yet"}
+                    ? "Cancels at the end of this period"
+                    : isComplimentary
+                      ? "No charge"
+                      : renewalDate
+                        ? formatMoney(currentPlan ? currentPlan.annualAmount : payload?.billing?.annualAmount)
+                        : "No renewal date yet"}
               </small>
             </div>
-            <div className="director-admin-billing-key-item">
-              <span>Member Usage</span>
+            <div>
+              <span>Members</span>
               <strong>{memberUsageLabel}</strong>
-              <small>{payload?.billing?.launchReady ? "Launch ready" : "Not launch ready"}</small>
-            </div>
-            <div className="director-admin-billing-key-item">
-              <span>Lifecycle Dates</span>
-              <strong>{activationDate ? `Active ${formatDate(activationDate)}` : hasNoActivePlan ? "Billing inactive" : "Pending activation"}</strong>
-              <small>
-                {subscriptionCancelAtPeriodEnd
-                  ? `Scheduled to end ${formatDate(cancellationDate || renewalDate)}`
-                  : cancellationDate
-                  ? `Canceled ${formatDate(cancellationDate)}`
-                  : hasNoActivePlan
-                    ? "No activation recorded"
-                    : "No cancellation recorded"}
-              </small>
+              <small>{payload?.billing?.launchReady ? "Ready to launch" : "Not ready to launch yet"}</small>
             </div>
           </div>
+
+          <dl className="pb-billing-facts">
+            <div>
+              <dt>Status</dt>
+              <dd>
+                <span className={`director-admin-status-badge tone-${billingStatusBadgeTone}`.trim()}>
+                  {billingStatusLabel}
+                </span>
+              </dd>
+            </div>
+            {!hasNoActivePlan && !isComplimentary && Number(tenant.onboardingFeeAmount || 0) > 0 ? (
+              <div>
+                <dt>Onboarding fee</dt>
+                <dd>{onboardingFeeLabel} · {onboardingFeeStatusLabel}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>History</dt>
+              <dd>
+                {activationDate
+                  ? `Activated ${formatDate(activationDate)}`
+                  : hasNoActivePlan ? "Never activated" : "Activation pending"}
+                {subscriptionCancelAtPeriodEnd
+                  ? ` · ends ${formatDate(cancellationDate || renewalDate)}`
+                  : cancellationDate
+                    ? ` · canceled ${formatDate(cancellationDate)}`
+                    : ""}
+              </dd>
+            </div>
+          </dl>
 
           {usage.memberLimit ? (
             <div className="director-admin-billing-usage">
