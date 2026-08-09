@@ -276,38 +276,24 @@ export default function DirectorAdminBillingPage() {
               <span className="director-admin-billing-tone-pill is-premium">Premium</span>
             </div>
 
-            <div className="director-admin-billing-key-grid">
-              <div className="director-admin-billing-key-item">
-                <span>Billing Status</span>
-                <strong>
-                  <span className="director-admin-status-badge tone-success">active</span>
-                </strong>
-              </div>
-              <div className="director-admin-billing-key-item">
-                <span>Lifecycle</span>
-                <strong>active</strong>
-              </div>
-              <div className="director-admin-billing-key-item">
-                <span>Onboarding Fee</span>
-                <strong>$0</strong>
-                <small>waived</small>
-              </div>
-              <div className="director-admin-billing-key-item">
-                <span>Renews On</span>
-                <strong>Jan 1, 2027</strong>
-                <small>Next payment: $2,500</small>
-              </div>
-              <div className="director-admin-billing-key-item">
-                <span>Member Usage</span>
-                <strong>142 (unlimited)</strong>
-                <small>Launch ready</small>
-              </div>
-              <div className="director-admin-billing-key-item">
-                <span>Lifecycle Dates</span>
-                <strong>Active 3/15/2026</strong>
-                <small>No cancellation recorded</small>
-              </div>
+            {/* Mirrors the live summary so the demo preview shows directors
+                the same thing real networks see. */}
+            <div className="pb-billing-headline">
+              <div><span>You pay</span><strong>$2,500/yr</strong><small>Founders</small></div>
+              <div><span>Next charge</span><strong>Jan 1, 2027</strong><small>$2,500</small></div>
+              <div><span>Members</span><strong>142 (unlimited)</strong><small>Ready to launch</small></div>
             </div>
+
+            <dl className="pb-billing-facts">
+              <div>
+                <dt>Status</dt>
+                <dd><span className="director-admin-status-badge tone-success">active</span></dd>
+              </div>
+              <div>
+                <dt>History</dt>
+                <dd>Activated 3/15/2026</dd>
+              </div>
+            </dl>
 
             <div className="inline-actions">
               <Button variant="secondary" disabled>Open Billing Portal</Button>
