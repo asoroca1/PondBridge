@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
-import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import { ModalConfirm, WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import useAdminApi from "./useAdminApi.js";
 
@@ -442,8 +442,11 @@ export default function DirectorAdminNotificationsPage() {
 
   return (
     <div className="director-admin-stack">
+      <WorkspaceHeader
+        title="Mobile alerts"
+        subtitle="Push notifications sent to members who have the app installed."
+      />
       <Card>
-        <h2 className="pb-section-title">Mobile Notifications</h2>
         <p className="muted">
           Send push notifications to members' phones and control which automatic alerts your camp sends.
           Settings and sends here only affect the mobile app — they do not email anyone.

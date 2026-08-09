@@ -208,6 +208,23 @@ export function PageHeader({ title, subtitle = "", actions = null, className = "
   );
 }
 
+/**
+ * Page-level title for the full-width workspaces. PageHeader sits inside a
+ * Card; this one sits above the whole layout, so a workspace with its own rail
+ * still says what it is.
+ */
+export function WorkspaceHeader({ title, subtitle = "", actions = null }) {
+  return (
+    <header className="pb-workspace-header">
+      <div>
+        <h1>{title}</h1>
+        {subtitle ? <p>{subtitle}</p> : null}
+      </div>
+      {actions ? <div className="pb-workspace-header-actions">{actions}</div> : null}
+    </header>
+  );
+}
+
 export function FilterBar({ children, className = "" }) {
   return <div className={classNames("pb-admin-ui-filter-bar", className)}>{children}</div>;
 }
