@@ -25,8 +25,8 @@ const LIVE_STARTERS = [
 const CHECK_LINKS = {
   headline: { label: "Edit network identity", path: "/admin/settings/network" },
   signup: { label: "Choose access policy", path: "/admin/settings/access" },
-  modules: { label: "Review modules", path: "/admin/features" },
-  module_setup: { label: "Complete module setup", path: "/admin/features" },
+  modules: { label: "Review modules", path: "/admin/settings/features" },
+  module_setup: { label: "Complete module setup", path: "/admin/settings/features" },
   billing: { label: "Open billing", path: "/admin/billing" },
   legal: { label: "Review and accept agreements", path: "/director-legal" },
   logo: { label: "Add camp branding", path: "/admin/settings/branding" },
@@ -74,7 +74,7 @@ function directorEvidenceTarget(href = "") {
   if (value.includes("/admin/billing")) return "billing";
   if (value.includes("/settings/branding")) return "branding";
   if (value.includes("/onboarding/details")) return "detailed_setup";
-  if (value.includes("/admin/features")) return "features";
+  if (value.includes("/admin/settings/features")) return "features";
   if (value.includes("/admin/people/add")) return "invites";
   if (value.includes("/admin/people")) return "growth";
   if (value.includes("/director-legal")) return "legal";
@@ -614,7 +614,7 @@ export default function DirectorOnboardingAgentPage() {
               </details> : null}
               <Link
                 className="link-button secondary"
-                to={`/t/${slug}/admin/features`}
+                to={`/t/${slug}/admin/settings/features`}
                 onClick={() => trackWorkspaceEvent("evidence_opened", "features")}
               >
                 Configure features &amp; services
