@@ -729,11 +729,7 @@ export default function DirectorAdminBillingPage() {
               <a className="link-button" href={payload.manageBillingUrl} target="_blank" rel="noreferrer">
                 Open Billing Portal
               </a>
-            ) : (
-              <Button variant="secondary" disabled>
-                Billing Portal Unavailable
-              </Button>
-            )}
+            ) : null}
             <Button variant="secondary" onClick={loadBilling} disabled={hasNoActivePlan}>Refresh Billing</Button>
             {hasActiveSubscription && !subscriptionCancelAtPeriodEnd && !hasNoActivePlan && !isComplimentary ? (
               <Button variant="danger" onClick={() => setShowCancelConfirm(true)} disabled={hasNoActivePlan}>
