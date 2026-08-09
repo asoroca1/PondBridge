@@ -16639,3 +16639,70 @@ html.is-native-app .asset-update-notice{
     grid-template-columns:1fr;
   }
 }
+
+/* Billing summary — the two facts a director wants, given real weight. */
+
+.pb-cedar-page .pb-billing-headline{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+  gap:12px;
+  margin:14px 0 12px;
+  padding:14px;
+  border:1px solid var(--director-admin-surface-border, #dde5ef);
+  border-radius:12px;
+  background:var(--director-admin-surface-bg-strong, #f6f8fb);
+}
+
+.pb-cedar-page .pb-billing-headline > div{
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+
+.pb-cedar-page .pb-billing-headline span{
+  font-size:.74rem;
+  font-weight:700;
+  color:var(--director-admin-ink-soft, #5d7186);
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.pb-cedar-page .pb-billing-headline strong{
+  font-size:1.34rem;
+  line-height:1.2;
+  color:var(--director-admin-ink, #16283d);
+}
+
+.pb-cedar-page .pb-billing-headline small{
+  font-size:.79rem;
+  color:var(--director-admin-ink-soft, #5d7186);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pb-cedar-page .pb-billing-facts{
+  margin:0;
+  display:grid;
+  gap:7px;
+}
+
+.pb-cedar-page .pb-billing-facts > div{
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.pb-cedar-page .pb-billing-facts dt{
+  min-width:104px;
+  font-size:.78rem;
+  font-weight:700;
+  color:var(--director-admin-ink-soft, #5d7186);
+}
+
+.pb-cedar-page .pb-billing-facts dd{
+  margin:0;
+  font-size:.86rem;
+  color:var(--director-admin-ink, #16283d);
+}
