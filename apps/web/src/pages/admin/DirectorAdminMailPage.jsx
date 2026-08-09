@@ -233,7 +233,9 @@ export default function DirectorAdminMailPage() {
 
   return (
     <div className="pb-workspace">
-      <WorkspaceHeader title={"Email"} subtitle={"Write to your members, and see everything you have sent."} />
+      <WorkspaceHeader
+        eyebrow="Communications"
+        title={"Email"} subtitle={"Write to your members, and see everything you have sent."} />
       <section className="pb-mail">
       <nav className="pb-mail-rail" aria-label="Mail folders">
         <Button

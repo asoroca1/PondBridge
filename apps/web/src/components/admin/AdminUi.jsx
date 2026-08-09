@@ -209,16 +209,24 @@ export function PageHeader({ title, subtitle = "", actions = null, className = "
 }
 
 /**
- * Page-level title for the full-width workspaces. PageHeader sits inside a
- * Card; this one sits above the whole layout, so a workspace with its own rail
- * still says what it is.
+ * Page-level hero for the full-width workspaces, matching the billing header
+ * treatment: eyebrow, oversized title, subtitle, optional status chips and
+ * actions. PageHeader sits inside a Card and cannot fill this role.
  */
-export function WorkspaceHeader({ title, subtitle = "", actions = null }) {
+export function WorkspaceHeader({
+  eyebrow = "",
+  title,
+  subtitle = "",
+  meta = null,
+  actions = null
+}) {
   return (
     <header className="pb-workspace-header">
-      <div>
+      <div className="pb-workspace-header-copy">
+        {eyebrow ? <p className="pb-workspace-eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>
-        {subtitle ? <p>{subtitle}</p> : null}
+        {subtitle ? <p className="pb-workspace-subtitle">{subtitle}</p> : null}
+        {meta ? <div className="pb-workspace-meta">{meta}</div> : null}
       </div>
       {actions ? <div className="pb-workspace-header-actions">{actions}</div> : null}
     </header>

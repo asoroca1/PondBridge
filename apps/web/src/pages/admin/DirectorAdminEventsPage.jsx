@@ -173,7 +173,9 @@ export default function DirectorAdminEventsPage() {
 
   return (
     <div className="pb-workspace">
-      <WorkspaceHeader title={"Events & info sessions"} subtitle={"Plan gatherings and online sessions, and see who is coming."} />
+      <WorkspaceHeader
+        eyebrow="Programming"
+        title={"Events & info sessions"} subtitle={"Plan gatherings and online sessions, and see who is coming."} />
       <section className="pb-events">
       <nav className="pb-events-rail" aria-label="Event views">
         <Button type="button" className="pb-events-new-button" onClick={() => openCreate(null)}>
