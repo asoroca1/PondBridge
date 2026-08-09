@@ -72,7 +72,9 @@ export default function DirectorAdminPeoplePage() {
 
   return (
     <div className="pb-workspace">
-      <WorkspaceHeader title={"People"} subtitle={"Everyone connected to your camp, from prospects through to active members."} />
+      <WorkspaceHeader
+        eyebrow="Your network"
+        title={"People"} subtitle={"Everyone connected to your camp, from prospects through to active members."} />
       <section className="pb-people">
       <nav className="pb-people-rail" aria-label="People stages">
         <Button

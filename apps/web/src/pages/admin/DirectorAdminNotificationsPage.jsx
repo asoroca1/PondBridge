@@ -443,6 +443,7 @@ export default function DirectorAdminNotificationsPage() {
   return (
     <div className="director-admin-stack">
       <WorkspaceHeader
+        eyebrow="Notifications"
         title="Mobile alerts"
         subtitle="Push notifications sent to members who have the app installed."
       />
