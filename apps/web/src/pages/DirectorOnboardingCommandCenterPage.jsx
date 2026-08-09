@@ -735,7 +735,7 @@ export default function DirectorOnboardingCommandCenterPage() {
           <p className="muted">Live feature status could not be loaded. Open Director Settings to retry.</p>
         )}
         <div className="inline-actions">
-          <Link className="link-button secondary" to={`/t/${slug}/admin/features`}>
+          <Link className="link-button secondary" to={`/t/${slug}/admin/settings/features`}>
             Configure Features &amp; Services
           </Link>
         </div>
