@@ -8,7 +8,9 @@ module.exports = [
       "**/dist/**",
       "**/build/**",
       "**/_import/**",
-      "**/*.min.js"
+      "**/*.min.js",
+      // Bundled web output copied into the native shells — not source.
+      "apps/ios/**/public/assets/**"
     ]
   },
   {
@@ -27,6 +29,10 @@ module.exports = [
     },
     rules: {
       "react/jsx-uses-vars": "error",
+      // A reference to something that no longer exists builds and bundles
+      // cleanly, then throws on the page. This is the only gate that catches
+      // it before a director does.
+      "no-undef": "error",
       "no-unused-vars": [
         "warn",
         {
@@ -35,6 +41,11 @@ module.exports = [
         }
       ]
     }
+  },
+  {
+    // API tests run under Jest, which supplies describe/test/expect ambiently.
+    files: ["apps/api/tests/**/*.js", "**/*.test.js"],
+    languageOptions: { globals: { ...globals.jest } }
   },
   {
     files: [

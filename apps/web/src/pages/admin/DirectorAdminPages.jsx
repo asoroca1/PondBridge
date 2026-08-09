@@ -1358,6 +1358,29 @@ export function DirectorAdminFeaturesPage() {
 }
 
 
+// Shared by the two settings pages that read the whole /settings payload.
+function useSettingsLoader() {
+  const { request } = useAdminApi();
+  const [payload, setPayload] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setPayload(await request("/settings"));
+    } catch (requestError) {
+      setError(requestError.message || "Failed to load settings.");
+    } finally {
+      setLoading(false);
+    }
+  }, [request]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { payload, setPayload, loading, error, load };
+}
 
 export function DirectorAdminSettingsNetworkPage() {
   const { request, slug } = useAdminApi();
