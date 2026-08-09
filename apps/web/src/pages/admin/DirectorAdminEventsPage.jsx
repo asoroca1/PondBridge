@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@pondbridge/ui";
 import { CalendarPlus } from "lucide-react";
-import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import { ModalConfirm, WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import useAdminApi from "./useAdminApi.js";
@@ -172,7 +172,9 @@ export default function DirectorAdminEventsPage() {
     : "";
 
   return (
-    <section className="pb-events">
+    <div className="pb-workspace">
+      <WorkspaceHeader title={"Events & info sessions"} subtitle={"Plan gatherings and online sessions, and see who is coming."} />
+      <section className="pb-events">
       <nav className="pb-events-rail" aria-label="Event views">
         <Button type="button" className="pb-events-new-button" onClick={() => openCreate(null)}>
           <CalendarPlus aria-hidden="true" />
@@ -282,5 +284,6 @@ export default function DirectorAdminEventsPage() {
         onCancel={() => setCancelTarget(null)}
       />
     </section>
+    </div>
   );
 }

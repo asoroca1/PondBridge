@@ -16706,3 +16706,41 @@ html.is-native-app .asset-update-notice{
   font-size:.86rem;
   color:var(--director-admin-ink, #16283d);
 }
+
+/* Workspace page titles — shared by the full-width admin workspaces. */
+
+.pb-cedar-page .pb-workspace{
+  display:grid;
+  gap:14px;
+}
+
+.pb-cedar-page .pb-workspace-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+  padding:0 2px;
+}
+
+.pb-cedar-page .pb-workspace-header h1{
+  margin:0;
+  font-size:1.42rem;
+  line-height:1.25;
+  color:var(--director-admin-ink, #16283d);
+}
+
+.pb-cedar-page .pb-workspace-header p{
+  margin:4px 0 0;
+  max-width:70ch;
+  color:var(--director-admin-ink-soft, #5d7186);
+  font-size:.9rem;
+  line-height:1.5;
+}
+
+.pb-cedar-page .pb-workspace-header-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}

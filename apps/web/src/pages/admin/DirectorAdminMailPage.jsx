@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import useAdminApi from "./useAdminApi.js";
 import MailBlockedView from "./mail/MailBlockedView.jsx";
 import MailComposeView from "./mail/MailComposeView.jsx";
@@ -231,7 +232,9 @@ export default function DirectorAdminMailPage() {
   ]);
 
   return (
-    <section className="pb-mail">
+    <div className="pb-workspace">
+      <WorkspaceHeader title={"Email"} subtitle={"Write to your members, and see everything you have sent."} />
+      <section className="pb-mail">
       <nav className="pb-mail-rail" aria-label="Mail folders">
         <Button
           type="button"
@@ -280,5 +283,6 @@ export default function DirectorAdminMailPage() {
 
       <MailSignatureDialog open={signatureOpen} onClose={() => setSignatureOpen(false)} workspace={workspace} />
     </section>
+    </div>
   );
 }

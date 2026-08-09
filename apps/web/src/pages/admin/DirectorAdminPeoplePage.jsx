@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
 import { UserPlus } from "lucide-react";
+import { WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import useAdminApi from "./useAdminApi.js";
 import PeopleAddView from "./people/PeopleAddView.jsx";
 import PeopleExportDialog from "./people/PeopleExportDialog.jsx";
@@ -70,7 +71,9 @@ export default function DirectorAdminPeoplePage() {
   }, [actions, activeView, directory, emailPeople, navigate, openInvite, slug, stage]);
 
   return (
-    <section className="pb-people">
+    <div className="pb-workspace">
+      <WorkspaceHeader title={"People"} subtitle={"Everyone connected to your camp, from prospects through to active members."} />
+      <section className="pb-people">
       <nav className="pb-people-rail" aria-label="People stages">
         <Button
           type="button"
@@ -128,5 +131,6 @@ export default function DirectorAdminPeoplePage() {
         listTotal={directory.total}
       />
     </section>
+    </div>
   );
 }
