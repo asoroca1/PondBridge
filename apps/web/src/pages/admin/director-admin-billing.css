@@ -1,0 +1,77 @@
+/* Billing — one plan summary, and only the actions the current state allows. */
+
+.pb-billing-note p { margin: 0; font-size: .9rem; line-height: 1.55; }
+
+.pb-cedar-page .pb-billing-note.is-warning {
+  border-color: #f0dcbc;
+  background: #fdf7ec;
+}
+
+.pb-billing-note.is-warning p { color: #7a5810; }
+.pb-billing-note .pb-btn { margin-top: 10px; }
+
+.pb-billing-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+}
+
+.pb-billing-summary > div { display: grid; gap: 3px; min-width: 0; }
+
+.pb-billing-summary span {
+  font-size: .74rem;
+  font-weight: 700;
+  color: var(--director-admin-ink-soft, #5d7186);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.pb-billing-summary strong {
+  font-size: 1.3rem;
+  line-height: 1.2;
+  color: var(--director-admin-ink, #16283d);
+}
+
+.pb-billing-summary small {
+  font-size: .8rem;
+  color: var(--director-admin-ink-soft, #5d7186);
+}
+
+.pb-billing-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--director-admin-surface-border-soft, #e9eef5);
+}
+
+.pb-billing-plans { display: grid; gap: 8px; margin-top: 10px; }
+
+.pb-billing-plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 13px 15px;
+  border: 1px solid var(--director-admin-surface-border, #dde5ef);
+  border-radius: 12px;
+}
+
+.pb-billing-plan.is-current {
+  border-color: var(--brand-primary, #1e5cb3);
+  background: color-mix(in srgb, var(--brand-primary, #1e5cb3) 6%, transparent);
+}
+
+.pb-billing-plan > div { display: grid; gap: 2px; min-width: 0; }
+.pb-billing-plan strong { font-size: .96rem; color: var(--director-admin-ink, #16283d); }
+.pb-billing-plan span { font-size: .88rem; color: var(--director-admin-ink-soft, #5d7186); }
+.pb-billing-plan small { font-size: .78rem; color: var(--director-admin-ink-soft, #5d7186); }
+
+.pb-billing-current {
+  font-size: .76rem;
+  font-weight: 700;
+  color: var(--brand-primary, #1e5cb3);
+}
