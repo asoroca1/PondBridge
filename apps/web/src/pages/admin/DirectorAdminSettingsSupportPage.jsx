@@ -78,10 +78,6 @@ export default function DirectorAdminSettingsSupportPage() {
 
   return (
     <Card className="director-admin-support-card">
-      <h2 className="pb-section-title">Technical Support</h2>
-      <p className="muted">
-        Send a message to PondBridge support for help with setup, billing, data, or product issues.
-      </p>
       <div className="director-admin-info-banner">
         <p>
           Messages are sent to <strong>{SUPPORT_EMAIL}</strong> with your tenant context so our team can help faster.

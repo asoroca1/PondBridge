@@ -8435,7 +8435,6 @@ html.is-native-app textarea{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
-  margin-top: 18px;
   overflow: hidden;
   border: 1px solid #dce6f0;
   border-radius: 14px;
@@ -8469,6 +8468,14 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-feature-overview .is-ready strong{
   color: #237554;
+}
+
+.pb-cedar-page .director-admin-feature-overview a{
+  justify-self: start;
+  margin-top: 2px;
+  color: #1d5faa;
+  font-size: .82rem;
+  font-weight: 700;
 }
 
 .pb-cedar-page .director-admin-feature-feedback:empty{

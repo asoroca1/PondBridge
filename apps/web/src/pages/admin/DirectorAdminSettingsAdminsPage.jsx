@@ -123,7 +123,6 @@ export default function DirectorAdminSettingsAdminsPage() {
 
   return (
     <Card>
-      <h2 className="pb-section-title">Admins</h2>
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
       <div className="director-admin-table-wrap">
