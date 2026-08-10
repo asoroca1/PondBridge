@@ -25,8 +25,7 @@ import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
   LoadingSkeleton,
-  ModalConfirm,
-  PageHeader
+  ModalConfirm
 } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import {
@@ -195,8 +194,6 @@ function useAdminApi() {
 
   return { slug, token, request, download };
 }
-
-const AdminPageHeader = PageHeader;
 
 function StatIcon({ kind = "members" }) {
   if (kind === "active") {
@@ -1212,18 +1209,6 @@ export function DirectorAdminFeaturesPage() {
   return (
     <>
       <Card className="director-admin-features-card">
-        <AdminPageHeader
-          title="Features & services"
-          subtitle="Choose what members can use, then finish any services that still need setup."
-          className="director-admin-page-head"
-          actions={
-            planTier === "base" && !demoAccessEnabled ? (
-              <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>
-                View plans
-              </Link>
-            ) : null
-          }
-        />
         <div className="director-admin-feature-overview" aria-label="Feature status overview">
           <div>
             <span>Community features</span>
@@ -1236,6 +1221,9 @@ export function DirectorAdminFeaturesPage() {
           <div>
             <span>Current plan</span>
             <strong>{planLabel}</strong>
+            {planTier === "base" && !demoAccessEnabled ? (
+              <Link to={`/t/${slug}/admin/billing`}>View plans</Link>
+            ) : null}
           </div>
         </div>
         <div className="director-admin-feature-feedback" aria-live="polite">
@@ -1257,10 +1245,11 @@ export function DirectorAdminFeaturesPage() {
         </section>
       </Card>
       <Card className="director-admin-capabilities-card director-admin-services-card">
-        <AdminPageHeader
-          title="Services & plan"
-          subtitle="Check the systems behind your network. Setup items are surfaced first; the full inventory stays out of the way until you need it."
-        />
+        <h2 className="pb-section-title">Services &amp; plan</h2>
+        <p className="muted">
+          The systems behind your network. Anything needing setup is surfaced first; the full inventory stays
+          out of the way until you need it.
+        </p>
         <div className="director-admin-service-summary" aria-label="Service status">
           <div className="is-ready">
             <CheckCircle2 size={19} aria-hidden="true" />
@@ -1511,10 +1500,6 @@ export function DirectorAdminSettingsNetworkPage() {
 
   return (
     <Card className="director-admin-network-identity-card">
-      <div className="director-admin-network-identity-head">
-        <h2 className="pb-section-title">Network Identity</h2>
-        <p>Control how your camp appears across login, homepage, and emails.</p>
-      </div>
       {error ? <p className="error-text">{error}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
       <form className="director-admin-form-grid director-admin-network-identity-form" onSubmit={saveIdentity}>
@@ -2016,7 +2001,6 @@ export function DirectorAdminSettingsBrandingPage() {
 
   return (
     <Card>
-      <h2 className="pb-section-title">Branding</h2>
       {error ? <p className="error-text">{error}</p> : null}
       {uploadError ? <p className="error-text">{uploadError}</p> : null}
       {status ? <p className="success-text">{status}</p> : null}
