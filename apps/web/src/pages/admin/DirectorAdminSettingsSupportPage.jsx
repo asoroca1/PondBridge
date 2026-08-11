@@ -4,8 +4,7 @@ import { CheckCircle2, LifeBuoy } from "lucide-react";
 import {
   SettingActions,
   SettingField,
-  SettingRow,
-  SettingStatus
+  SettingRow
 } from "../../components/admin/SettingControls.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -111,13 +110,6 @@ export default function DirectorAdminSettingsSupportPage() {
 
   return (
     <div className="pb-set-stack">
-      <SettingStatus
-        icon={LifeBuoy}
-        tone="on"
-        title="PondBridge support"
-        detail={`Messages go to ${SUPPORT_EMAIL} with your network details attached. We usually reply within one business day.`}
-      />
-
       <Card>
       <h2 className="pb-section-title">Message PondBridge</h2>
       <p className="muted">
