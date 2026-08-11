@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Input, Textarea } from "@pondbridge/ui";
 import { PauseCircle, PlayCircle, TriangleAlert } from "lucide-react";
 import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import { SettingStatus } from "../../components/admin/SettingControls.jsx";
 import useAdminApi from "./useAdminApi.js";
 import "./director-admin-danger.css";
 
@@ -82,15 +83,16 @@ export default function DirectorAdminSettingsDangerPage() {
 
   return (
     <div className="pb-danger">
-      {isPaused ? (
-        <div className="pb-danger-banner" role="status">
-          <PauseCircle aria-hidden="true" />
-          <div>
-            <strong>This network is paused.</strong>
-            <span>Members cannot log in. Everything is preserved — resume whenever you are ready.</span>
-          </div>
-        </div>
-      ) : null}
+      <SettingStatus
+        icon={isPaused ? PauseCircle : PlayCircle}
+        tone={isPaused ? "warning" : "on"}
+        title={isPaused ? "This network is paused" : "This network is live"}
+        detail={
+          isPaused
+            ? "Members cannot log in. Everything is preserved — resume whenever you are ready."
+            : "Members can log in and use everything you have switched on."
+        }
+      />
 
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       {status ? <p className="success-text" role="status">{status}</p> : null}

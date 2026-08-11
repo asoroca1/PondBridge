@@ -5,7 +5,8 @@ import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
 import {
   SettingField,
   SettingList,
-  SettingListItem
+  SettingListItem,
+  SettingStatus
 } from "../../components/admin/SettingControls.jsx";
 import useAdminApi from "./useAdminApi.js";
 
@@ -119,6 +120,21 @@ export default function DirectorAdminSettingsAdminsPage() {
 
   return (
     <div className="pb-set-stack">
+      <SettingStatus
+        icon={ShieldCheck}
+        tone="on"
+        title={
+          admins.length === 1
+            ? "You are the only admin"
+            : `${admins.length} people can run this network`
+        }
+        detail={
+          pending.length
+            ? `${pending.length} invitation${pending.length === 1 ? "" : "s"} still waiting to be accepted.`
+            : "Anyone listed below has the same dashboard you do."
+        }
+      />
+
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       {status ? <p className="success-text" role="status">{status}</p> : null}
 

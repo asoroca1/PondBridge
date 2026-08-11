@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@pondbridge/ui";
-import { BellOff, BellRing, Check, LoaderCircle } from "lucide-react";
+import { BellOff, BellRing } from "lucide-react";
 import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import {
+  SettingMasterSwitch,
+  SettingStatus,
+  SettingTabs
+} from "../../components/admin/SettingControls.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import useAdminApi from "./useAdminApi.js";
 import AlertsActivityView from "./alerts/AlertsActivityView.jsx";
@@ -104,53 +109,27 @@ export default function DirectorAdminNotificationsPage() {
 
   return (
     <div className="pb-alerts">
-      <Card className={`pb-alerts-master${off ? " is-off" : ""}`}>
-        <div className="pb-alerts-master-copy">
-          {off ? <BellOff aria-hidden="true" /> : <BellRing aria-hidden="true" />}
-          <div>
-            <strong>{off ? "Mobile alerts are off" : "Mobile alerts are on"}</strong>
-            <span>
-              {off
-                ? "Nothing reaches anyone's phone — not automatic alerts, not one-offs. Your settings below are kept."
-                : "Members with the app installed can receive alerts from this network."}
-            </span>
-          </div>
-        </div>
-        <label className="pb-alerts-master-switch">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={!off}
-            onChange={(event) => update({ mobileEnabled: event.target.checked })}
-          />
-          <span aria-hidden="true" />
-          <em>{off ? "Off" : "On"}</em>
-        </label>
-      </Card>
+      <SettingStatus
+        icon={off ? BellOff : BellRing}
+        tone={off ? "off" : "on"}
+        title={off ? "Mobile alerts are off" : "Mobile alerts are on"}
+        detail={
+          off
+            ? "Nothing reaches anyone's phone — not automatic alerts, not one-offs. Your settings below are kept."
+            : "Members with the app installed can receive alerts from this network."
+        }
+      >
+        <SettingMasterSwitch checked={!off} onChange={(next) => update({ mobileEnabled: next })} />
+      </SettingStatus>
 
-      <div className="pb-alerts-bar">
-        <nav className="pb-alerts-tabs" aria-label="Mobile alert sections">
-          {TABS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={tab === item.key ? "is-active" : ""}
-              aria-current={tab === item.key ? "page" : undefined}
-              onClick={() => setTab(item.key)}
-            >
-              {item.label}
-              {item.key === "activity" && pending.length ? <em>{pending.length}</em> : null}
-            </button>
-          ))}
-        </nav>
-        <span className="pb-alerts-savestate" role="status" aria-live="polite">
-          {saveState === "saving" ? (
-            <><LoaderCircle aria-hidden="true" className="is-spinning" /> Saving…</>
-          ) : saveState === "saved" ? (
-            <><Check aria-hidden="true" /> Saved</>
-          ) : null}
-        </span>
-      </div>
+      <SettingTabs
+        tabs={TABS.map((tab) => (
+          tab.key === "activity" && pending.length ? { ...tab, badge: pending.length } : tab
+        ))}
+        active={tab}
+        onChange={setTab}
+        saveState={saveState}
+      />
 
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       {status ? <p className="success-text" role="status">{status}</p> : null}
