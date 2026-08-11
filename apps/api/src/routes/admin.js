@@ -2766,7 +2766,7 @@ router.get("/dashboard", async (req, res, next) => {
         title: `${pendingApprovals} access ${pendingApprovals === 1 ? "request" : "requests"} waiting`,
         detail: "Review member access before applicants are left waiting.",
         actionLabel: "Review requests",
-        href: `${tenantAdminBase}/approvals`
+        href: `${tenantAdminBase}/people/request`
       });
     }
     if (failedBroadcasts > 0) {
@@ -2775,8 +2775,8 @@ router.get("/dashboard", async (req, res, next) => {
         priority: "high",
         title: `${failedBroadcasts} failed ${failedBroadcasts === 1 ? "email" : "emails"}`,
         detail: "Inspect delivery details and resend only after correcting the cause.",
-        actionLabel: "Open email history",
-        href: `${tenantAdminBase}/email/history`
+        actionLabel: "See what failed",
+        href: `${tenantAdminBase}/email/sent`
       });
     }
     if (!billingReadiness.ok) {
@@ -2807,7 +2807,7 @@ router.get("/dashboard", async (req, res, next) => {
         title: `${scheduledBroadcasts} scheduled ${scheduledBroadcasts === 1 ? "email" : "emails"}`,
         detail: "Confirm timing and recipient choices before the provider sends them.",
         actionLabel: "Review schedule",
-        href: `${tenantAdminBase}/email/history`
+        href: `${tenantAdminBase}/email/scheduled`
       });
     }
     if (activeMembers > 0 && completionAverage < 70) {
@@ -2817,7 +2817,7 @@ router.get("/dashboard", async (req, res, next) => {
         title: `Member profiles average ${completionAverage}% complete`,
         detail: "Consider a focused reminder to help members finish useful directory details.",
         actionLabel: "Review members",
-        href: `${tenantAdminBase}/members`
+        href: `${tenantAdminBase}/people/member`
       });
     }
 
