@@ -10,9 +10,12 @@ import {
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import {
   ArrowUpRight,
+  Building2,
   CheckCircle2,
+  Image as ImageIcon,
   RefreshCw,
   Send,
+  SlidersHorizontal,
   Sparkles,
   UserPlus,
   Users
@@ -30,7 +33,9 @@ import {
 import {
   SettingActions,
   SettingField,
-  SettingRow
+  SettingRow,
+  SettingStatus,
+  SettingTabs
 } from "../../components/admin/SettingControls.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import {
@@ -1213,24 +1218,21 @@ export function DirectorAdminFeaturesPage() {
 
   return (
     <>
+      <SettingStatus
+        icon={SlidersHorizontal}
+        tone={totalAttention ? "warning" : "on"}
+        title={`${payload?.summary?.activeModules || 0} of ${payload?.summary?.totalModules || 0} features are live`}
+        detail={
+          totalAttention
+            ? `${totalAttention} item${totalAttention === 1 ? "" : "s"} still need setup before members can use them.`
+            : `Everything you have switched on is working. You are on the ${planLabel} plan.`
+        }
+      >
+        {planTier === "base" && !demoAccessEnabled ? (
+          <Link className="link-button secondary" to={`/t/${slug}/admin/billing`}>View plans</Link>
+        ) : null}
+      </SettingStatus>
       <Card className="director-admin-features-card">
-        <div className="director-admin-feature-overview" aria-label="Feature status overview">
-          <div>
-            <span>Community features</span>
-            <strong>{payload?.summary?.activeModules || 0} of {payload?.summary?.totalModules || 0} live</strong>
-          </div>
-          <div className={totalAttention ? "needs-attention" : "is-ready"}>
-            <span>Needs attention</span>
-            <strong>{totalAttention ? `${totalAttention} item${totalAttention === 1 ? "" : "s"}` : "Nothing"}</strong>
-          </div>
-          <div>
-            <span>Current plan</span>
-            <strong>{planLabel}</strong>
-            {planTier === "base" && !demoAccessEnabled ? (
-              <Link to={`/t/${slug}/admin/billing`}>View plans</Link>
-            ) : null}
-          </div>
-        </div>
         <div className="director-admin-feature-feedback" aria-live="polite">
           {error ? <p className="error-text">{error}</p> : null}
           {status ? <p className="success-text">{status}</p> : null}
@@ -1546,6 +1548,16 @@ export function DirectorAdminSettingsNetworkPage() {
 
   return (
     <form onSubmit={saveIdentity} className="pb-set-stack">
+      <SettingStatus
+        icon={Building2}
+        title={payload?.identity?.networkName || form.networkName || "Your network"}
+        detail={
+          payload?.identity?.homepageQuote || payload?.identity?.tagline
+            ? `Visitors see “${payload.identity.homepageQuote || payload.identity.tagline}” before they log in.`
+            : "Visitors see this name on the login page, the homepage, and every email you send."
+        }
+      />
+
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       {status ? <p className="success-text" role="status">{status}</p> : null}
 
@@ -1696,6 +1708,7 @@ export function DirectorAdminSettingsBrandingPage() {
   const [status, setStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadingField, setUploadingField] = useState("");
+  const [section, setSection] = useState("logo");
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
   const [pendingLogoFile, setPendingLogoFile] = useState(null);
@@ -1968,6 +1981,30 @@ export function DirectorAdminSettingsBrandingPage() {
       {uploadError ? <p className="error-text" role="alert">{uploadError}</p> : null}
       {status ? <p className="success-text" role="status">{status}</p> : null}
 
+      <SettingStatus
+        icon={ImageIcon}
+        title={liveLogoPreviewUrl ? "Your branding is set" : "No logo yet"}
+        detail={
+          liveLogoPreviewUrl
+            ? `Members see your logo and ${previewBrandPrimary.toUpperCase()} across every page.`
+            : "Add a logo and a main photo so the network looks like your camp rather than a template."
+        }
+      >
+        <span className="pb-set-brand-chip" style={{ backgroundColor: previewBrandPrimary }} aria-hidden="true" />
+      </SettingStatus>
+
+      <SettingTabs
+        tabs={[
+          { key: "logo", label: "Logo" },
+          { key: "photo", label: "Main photo" },
+          { key: "colour", label: "Colour" },
+          { key: "preview", label: "Preview" }
+        ]}
+        active={section}
+        onChange={setSection}
+      />
+
+      {section === "logo" ? (
       <Card>
         <h2 className="pb-section-title">Your logo</h2>
         <p className="muted">Sits in the top-left of every page, and at the top of the emails you send.</p>
@@ -1999,7 +2036,9 @@ export function DirectorAdminSettingsBrandingPage() {
               </div>
         </div>
       </Card>
+      ) : null}
 
+      {section === "photo" ? (
       <Card>
         <h2 className="pb-section-title">Your main photo</h2>
         <p className="muted">
@@ -2033,7 +2072,9 @@ export function DirectorAdminSettingsBrandingPage() {
               </div>
         </div>
       </Card>
+      ) : null}
 
+      {section === "colour" ? (
       <Card>
         <h2 className="pb-section-title">Your colour</h2>
         <p className="muted">
@@ -2081,7 +2122,9 @@ export function DirectorAdminSettingsBrandingPage() {
               </div>
         </div>
       </Card>
+      ) : null}
 
+      {section === "preview" ? (
       <Card>
         <h2 className="pb-section-title">How it looks</h2>
         <p className="muted">Drag the photo to choose what stays in frame on each page.</p>
@@ -2126,6 +2169,7 @@ export function DirectorAdminSettingsBrandingPage() {
             }
           />
       </Card>
+      ) : null}
 
       <Card>
         <SettingActions note="Uploads are only stored once you save.">

@@ -3,191 +3,6 @@
   gap: 16px;
 }
 
-/* Master switch ---------------------------------------------------------- */
-
-.pb-alerts-master {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.pb-alerts-master-copy {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-}
-
-.pb-alerts-master-copy > svg {
-  width: 22px;
-  height: 22px;
-  flex: none;
-  margin-top: 2px;
-  color: #237554;
-}
-
-.pb-alerts-master.is-off .pb-alerts-master-copy > svg {
-  color: #93a3b6;
-}
-
-.pb-alerts-master-copy strong {
-  display: block;
-  color: #173756;
-  font-size: 1.02rem;
-}
-
-.pb-alerts-master-copy span {
-  display: block;
-  margin-top: 3px;
-  max-width: 62ch;
-  color: #57687d;
-  font-size: .88rem;
-  line-height: 1.45;
-}
-
-/* The app sets `.pb-cedar-page label { display: grid }` globally, which beats a
-   single class. Every label rule here is doubled up to outrank it. */
-.pb-alerts .pb-alerts-master-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  flex: none;
-  cursor: pointer;
-}
-
-.pb-alerts-master-switch input {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-}
-
-.pb-alerts-master-switch > span {
-  position: relative;
-  width: 46px;
-  height: 26px;
-  border-radius: 999px;
-  background: #c3cede;
-  transition: background .16s ease;
-}
-
-.pb-alerts-master-switch > span::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(16, 38, 62, .3);
-  transition: transform .16s ease;
-}
-
-.pb-alerts-master-switch input:checked + span {
-  background: #237554;
-}
-
-.pb-alerts-master-switch input:checked + span::after {
-  transform: translateX(20px);
-}
-
-.pb-alerts-master-switch input:focus-visible + span {
-  outline: 2px solid #1d5faa;
-  outline-offset: 2px;
-}
-
-.pb-alerts-master-switch em {
-  color: #57687d;
-  font-size: .82rem;
-  font-style: normal;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  min-width: 2.2em;
-}
-
-/* Tabs ------------------------------------------------------------------- */
-
-.pb-alerts-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.pb-alerts-tabs {
-  display: inline-flex;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid #dce6f0;
-  border-radius: 11px;
-  background: #f1f5fa;
-}
-
-.pb-alerts-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 15px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #4a5d74;
-  font-size: .89rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.pb-alerts-tabs button:hover {
-  color: #173756;
-}
-
-.pb-alerts-tabs button.is-active {
-  background: #fff;
-  color: #173756;
-  box-shadow: 0 1px 3px rgba(16, 38, 62, .14);
-}
-
-.pb-alerts-tabs em {
-  display: inline-grid;
-  place-items: center;
-  min-width: 19px;
-  height: 19px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #1d5faa;
-  color: #fff;
-  font-size: .7rem;
-  font-style: normal;
-  font-weight: 800;
-}
-
-.pb-alerts-savestate {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #237554;
-  font-size: .84rem;
-  font-weight: 700;
-}
-
-.pb-alerts-savestate svg {
-  width: 15px;
-  height: 15px;
-}
-
-.pb-alerts-savestate .is-spinning {
-  animation: pb-alerts-spin 1s linear infinite;
-}
-
-@keyframes pb-alerts-spin {
-  to { transform: rotate(360deg); }
-}
-
 /* Panes ------------------------------------------------------------------ */
 
 .pb-alerts-pane {
@@ -197,7 +12,7 @@
 
 /* Cards carry their own stacking margin globally, which doubles up with the
    grid gap here. */
-.pb-alerts .pb-alerts-pane > .pb-card {
+.pb-cedar-page .pb-alerts-pane > .pb-card {
   margin: 0;
 }
 
@@ -492,16 +307,6 @@
 }
 
 @media (max-width: 720px) {
-  .pb-alerts-bar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .pb-alerts-tabs {
-    width: 100%;
-    overflow-x: auto;
-  }
-
   .pb-alerts-actions {
     align-items: stretch;
     flex-direction: column;

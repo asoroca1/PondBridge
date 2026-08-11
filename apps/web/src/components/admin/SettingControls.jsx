@@ -1,9 +1,79 @@
+import { Card } from "@pondbridge/ui";
+import { Check, LoaderCircle } from "lucide-react";
 import "./setting-controls.css";
 
 /**
  * The shared vocabulary every Settings tab is built from, so a switch, a field
  * label, and a row of records look the same whichever tab you are on.
  */
+
+/**
+ * Every tab opens by saying where you stand — what is on, what is set, how many
+ * there are — before showing anything to change. `children` is for the one
+ * control that belongs with that statement, if there is one.
+ */
+export function SettingStatus({ icon: Icon, tone = "on", title, detail = "", children = null }) {
+  return (
+    <Card className={`pb-set-status is-${tone}`}>
+      <div className="pb-set-status-copy">
+        {Icon ? <Icon aria-hidden="true" /> : null}
+        <div>
+          <strong>{title}</strong>
+          {detail ? <span>{detail}</span> : null}
+        </div>
+      </div>
+      {children ? <div className="pb-set-status-action">{children}</div> : null}
+    </Card>
+  );
+}
+
+/**
+ * Sections within a tab. Used wherever a tab holds more than a couple of
+ * distinct jobs, so Settings never becomes a long scroll you have to hunt in.
+ */
+export function SettingTabs({ tabs, active, onChange, saveState = "" }) {
+  return (
+    <div className="pb-set-bar">
+      <nav className="pb-set-tabs" aria-label="Sections">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={active === tab.key ? "is-active" : ""}
+            aria-current={active === tab.key ? "page" : undefined}
+            onClick={() => onChange(tab.key)}
+          >
+            {tab.label}
+            {tab.badge ? <em>{tab.badge}</em> : null}
+          </button>
+        ))}
+      </nav>
+      <span className="pb-set-savestate" role="status" aria-live="polite">
+        {saveState === "saving" ? (
+          <><LoaderCircle aria-hidden="true" className="is-spinning" /> Saving…</>
+        ) : saveState === "saved" ? (
+          <><Check aria-hidden="true" /> Saved</>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/** The big on/off switch that belongs inside a SettingStatus. */
+export function SettingMasterSwitch({ checked, onChange, label }) {
+  return (
+    <label className="pb-set-master-switch">
+      <input
+        type="checkbox"
+        role="switch"
+        checked={Boolean(checked)}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span aria-hidden="true" />
+      <em>{label || (checked ? "On" : "Off")}</em>
+    </label>
+  );
+}
 
 export function SettingSwitch({ checked, onChange, label, blurb = "", disabled = false }) {
   return (

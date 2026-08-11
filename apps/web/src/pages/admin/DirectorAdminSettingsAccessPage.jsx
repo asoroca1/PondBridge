@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, Input, Textarea } from "@pondbridge/ui";
 import { ClipboardCheck, DoorOpen, KeyRound, MailCheck } from "lucide-react";
+import { SettingStatus } from "../../components/admin/SettingControls.jsx";
 import useAdminApi from "./useAdminApi.js";
 import "./director-admin-access.css";
 
@@ -97,8 +98,22 @@ export default function DirectorAdminSettingsAccessPage() {
   const active = MODES.find((mode) => mode.value === form.signupMode) || MODES[0];
   const hasCode = Boolean(payload?.access?.hasAccessCode);
 
+  const savedMode = MODES.find((mode) => mode.value === (payload?.access?.signupMode || "open")) || MODES[0];
+  const domains = payload?.access?.allowedEmailDomains || [];
+
   return (
     <form onSubmit={save} className="pb-access">
+      <SettingStatus
+        icon={savedMode.icon}
+        tone="on"
+        title={savedMode.label}
+        detail={
+          domains.length
+            ? `${savedMode.blurb} Only ${domains.join(", ")} addresses are allowed.`
+            : savedMode.blurb
+        }
+      />
+
       <Card>
         <h2 className="pb-section-title">How people join</h2>
         <div className="pb-access-modes" role="radiogroup" aria-label="Signup mode">
