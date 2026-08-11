@@ -1,10 +1,35 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
+import { CheckCircle2, LifeBuoy } from "lucide-react";
+import {
+  SettingActions,
+  SettingField,
+  SettingRow
+} from "../../components/admin/SettingControls.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import useAdminApi from "./useAdminApi.js";
 
 const SUPPORT_EMAIL = "support@pondbridgealumni.com";
+
+const TOPICS = [
+  { value: "general", label: "Something else" },
+  { value: "bug", label: "Something is broken" },
+  { value: "members", label: "Members and access" },
+  { value: "email", label: "Email and alerts" },
+  { value: "branding", label: "Branding and appearance" },
+  { value: "billing", label: "Billing" },
+  { value: "integrations", label: "Integrations" }
+];
+
+// Named by the wait a director should expect, not by an abstract severity.
+const PRIORITIES = [
+  { value: "low", label: "Whenever — no rush" },
+  { value: "normal", label: "Normal — within a day or two" },
+  { value: "high", label: "Soon — it is blocking me" },
+  { value: "urgent", label: "Urgent — members are affected" }
+];
+
 const INITIAL_FORM = {
   topic: "general",
   priority: "normal",
@@ -18,9 +43,9 @@ export default function DirectorAdminSettingsSupportPage() {
   const { user } = useAuth();
   const { tenant, slug } = useTenant();
   const [form, setForm] = useState(INITIAL_FORM);
-  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
+  const [sent, setSent] = useState(null);
 
   useEffect(() => {
     const email = String(user?.email || "").trim();
@@ -28,124 +53,125 @@ export default function DirectorAdminSettingsSupportPage() {
     setForm((prev) => (prev.replyEmail ? prev : { ...prev, replyEmail: email }));
   }, [user?.email]);
 
-  async function submitSupportRequest(event) {
+  function patch(changes) {
+    setForm((prev) => ({ ...prev, ...changes }));
+  }
+
+  async function submit(event) {
     event.preventDefault();
-    const subject = String(form.subject || "").trim();
-    const message = String(form.message || "").trim();
+    const subject = form.subject.trim();
+    const message = form.message.trim();
     if (!subject) {
-      setError("Please add a subject.");
-      setStatus("");
+      setError("Add a subject so we know what this is about.");
       return;
     }
     if (message.length < 10) {
-      setError("Please provide a little more detail so support can help.");
-      setStatus("");
+      setError("Tell us a little more — what happened, and where.");
       return;
     }
 
-    setSaving(true);
+    setSending(true);
     setError("");
-    setStatus("");
     try {
       const response = await request("/settings/support-request", {
         method: "POST",
-        body: {
-          topic: form.topic,
-          priority: form.priority,
-          replyEmail: form.replyEmail,
-          subject,
-          message
-        }
+        body: { topic: form.topic, priority: form.priority, replyEmail: form.replyEmail, subject, message }
       });
-      const requestId = String(response?.requestId || "").trim();
-      const sentTo = String(response?.sentTo || SUPPORT_EMAIL).trim().toLowerCase();
-      setStatus(
-        requestId
-          ? `Support request sent to ${sentTo}. Reference: ${requestId}`
-          : `Support request sent to ${sentTo}.`
-      );
-      setForm((prev) => ({
-        ...prev,
-        subject: "",
-        message: ""
-      }));
+      setSent({
+        requestId: String(response?.requestId || "").trim(),
+        sentTo: String(response?.sentTo || SUPPORT_EMAIL).trim().toLowerCase(),
+        replyEmail: form.replyEmail.trim() || String(user?.email || "")
+      });
+      setForm((prev) => ({ ...prev, subject: "", message: "" }));
     } catch (requestError) {
-      setError(requestError.message || "Unable to send support request.");
+      setError(requestError.message || "That message could not be sent.");
     } finally {
-      setSaving(false);
+      setSending(false);
     }
   }
 
+  if (sent) {
+    return (
+      <Card className="pb-set-stack">
+        <div className="pb-set-note">
+          <CheckCircle2 aria-hidden="true" />
+          <p>
+            <strong>Sent to {sent.sentTo}.</strong> We reply to{" "}
+            <strong>{sent.replyEmail || "your account email"}</strong>, usually within one business day.
+            {sent.requestId ? <> Quote <strong>{sent.requestId}</strong> if you follow up.</> : null}
+          </p>
+        </div>
+        <SettingActions note="Need to send something else?">
+          <Button variant="secondary" onClick={() => setSent(null)}>Write another message</Button>
+        </SettingActions>
+      </Card>
+    );
+  }
+
   return (
-    <Card className="director-admin-support-card">
-      <div className="director-admin-info-banner">
-        <p>
-          Messages are sent to <strong>{SUPPORT_EMAIL}</strong> with your tenant context so our team can help faster.
-        </p>
-      </div>
-      {error ? <p className="error-text">{error}</p> : null}
-      {status ? <p className="success-text">{status}</p> : null}
-      <form className="director-admin-form-grid director-admin-support-form" onSubmit={submitSupportRequest}>
-        <label>
-          Topic
-          <Select
-            value={form.topic}
-            onChange={(event) => setForm((prev) => ({ ...prev, topic: event.target.value }))}
-          >
-            <option value="general">General</option>
-            <option value="billing">Billing</option>
-            <option value="branding">Branding</option>
-            <option value="members">Members</option>
-            <option value="email">Email</option>
-            <option value="integrations">Integrations</option>
-            <option value="bug">Bug Report</option>
-          </Select>
-        </label>
-        <label>
-          Priority
-          <Select
-            value={form.priority}
-            onChange={(event) => setForm((prev) => ({ ...prev, priority: event.target.value }))}
-          >
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </Select>
-        </label>
-        <label className="full-width">
-          Reply Email
-          <Input
-            type="email"
-            value={form.replyEmail}
-            placeholder={String(user?.email || tenant?.content?.contactEmail || "")}
-            onChange={(event) => setForm((prev) => ({ ...prev, replyEmail: event.target.value }))}
-          />
-        </label>
-        <label className="full-width">
-          Subject
+    <Card>
+      <h2 className="pb-section-title">Message PondBridge</h2>
+      <p className="muted">
+        Goes to our team along with which network you are on, so nobody has to ask you for it.
+      </p>
+
+      {error ? <p className="error-text" role="alert">{error}</p> : null}
+
+      <form className="pb-set-form" onSubmit={submit}>
+        <SettingRow>
+          <SettingField label="What is this about?">
+            <Select value={form.topic} onChange={(event) => patch({ topic: event.target.value })}>
+              {TOPICS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
+          </SettingField>
+          <SettingField label="How urgent is it?">
+            <Select value={form.priority} onChange={(event) => patch({ priority: event.target.value })}>
+              {PRIORITIES.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
+          </SettingField>
+        </SettingRow>
+
+        <SettingField label="Subject">
           <Input
             value={form.subject}
             maxLength={160}
-            placeholder={`Help with ${slug || "my network"}...`}
-            onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))}
+            placeholder={`Help with ${slug || "my network"}`}
+            onChange={(event) => patch({ subject: event.target.value })}
           />
-        </label>
-        <label className="full-width">
-          Message
+        </SettingField>
+
+        <SettingField
+          label="What is happening?"
+          hint="What you did, what you expected, and what you saw instead. A page name or a member's email helps a lot."
+        >
           <Textarea
             value={form.message}
             rows={6}
             maxLength={6000}
-            placeholder="Describe what happened, where you saw it, and what you expected."
-            onChange={(event) => setForm((prev) => ({ ...prev, message: event.target.value }))}
+            placeholder="I tried to… and expected… but instead…"
+            onChange={(event) => patch({ message: event.target.value })}
           />
-        </label>
-        <div className="director-admin-form-actions full-width">
-          <Button type="submit" disabled={saving}>
-            {saving ? "Sending..." : "Send to Support"}
+        </SettingField>
+
+        <SettingField label="Reply to" hint="Change this if someone else should get the answer.">
+          <Input
+            type="email"
+            value={form.replyEmail}
+            placeholder={String(user?.email || tenant?.content?.contactEmail || "")}
+            onChange={(event) => patch({ replyEmail: event.target.value })}
+          />
+        </SettingField>
+
+        <SettingActions note={`Sent to ${SUPPORT_EMAIL}. We usually reply within one business day.`}>
+          <Button type="submit" loading={sending}>
+            <LifeBuoy aria-hidden="true" />
+            Send message
           </Button>
-        </div>
+        </SettingActions>
       </form>
     </Card>
   );

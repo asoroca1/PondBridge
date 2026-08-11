@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { Trash2 } from "lucide-react";
-import AlertSwitch from "./AlertSwitch.jsx";
+import { SettingSwitch } from "../../../components/admin/SettingControls.jsx";
 import {
   AUDIENCE_OPTIONS,
   CATEGORY_OPTIONS,
@@ -407,7 +407,7 @@ export default function AlertsSendView({
             </label>
           </div>
 
-          <AlertSwitch
+          <SettingSwitch
             checked={compose.pushRequested}
             onChange={(value) => patch({ pushRequested: value })}
             label="Push to lock screens"

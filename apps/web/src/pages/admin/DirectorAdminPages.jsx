@@ -27,6 +27,11 @@ import {
   LoadingSkeleton,
   ModalConfirm
 } from "../../components/admin/AdminUi.jsx";
+import {
+  SettingActions,
+  SettingField,
+  SettingRow
+} from "../../components/admin/SettingControls.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import {
   IMAGE_OPTIMIZATION_PRESETS,
@@ -1347,6 +1352,57 @@ export function DirectorAdminFeaturesPage() {
 }
 
 
+/**
+ * A named list a director maintains — age groups, staff roles. These used to be
+ * collapsed accordions, which meant a validation error had to force one open to
+ * be readable. They are short lists; showing them costs nothing.
+ */
+function LabelListEditor({
+  label,
+  hint,
+  placeholder,
+  values = [],
+  draft,
+  error = "",
+  onDraftChange,
+  onAdd,
+  onRemove
+}) {
+  return (
+    <div className="pb-set-labels">
+      <div className="pb-set-labels-head">
+        <span>{label}</span>
+        <em>{values.length} of 20</em>
+      </div>
+      <p>{hint}</p>
+      <div className="pb-set-labels-add">
+        <Input
+          value={draft}
+          placeholder={placeholder}
+          onChange={(event) => onDraftChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            onAdd();
+          }}
+        />
+        <Button type="button" variant="secondary" onClick={onAdd} disabled={!draft.trim() || values.length >= 20}>
+          Add
+        </Button>
+      </div>
+      {error ? <p className="error-text">{error}</p> : null}
+      <div className="pb-set-labels-chips">
+        {values.length ? values.map((item, index) => (
+          <span key={`${item}_${index}`}>
+            {item}
+            <button type="button" onClick={() => onRemove(index)} aria-label={`Remove ${item}`}>×</button>
+          </span>
+        )) : <small className="muted">Nothing here yet — add at least one.</small>}
+      </div>
+    </div>
+  );
+}
+
 // Shared by the two settings pages that read the whole /settings payload.
 function useSettingsLoader() {
   const { request } = useAdminApi();
@@ -1381,7 +1437,6 @@ export function DirectorAdminSettingsNetworkPage() {
   const [ageGroupDraft, setAgeGroupDraft] = useState("");
   const [staffRoleDraft, setStaffRoleDraft] = useState("");
   const [listErrors, setListErrors] = useState({ ageGroups: "", staffRoles: "" });
-  const [taxonomyExpanded, setTaxonomyExpanded] = useState({ ageGroups: false, staffRoles: false });
   const [form, setForm] = useState({
     campName: "",
     campType: "coed",
@@ -1439,10 +1494,6 @@ export function DirectorAdminSettingsNetworkPage() {
     });
   }
 
-  function toggleTaxonomySection(section) {
-    setTaxonomyExpanded((prev) => ({ ...prev, [section]: !prev[section] }));
-  }
-
   async function saveIdentity(event) {
     event.preventDefault();
     const nextAgeGroups = normalizeAdminLabelList(form.ageGroups, []);
@@ -1452,14 +1503,7 @@ export function DirectorAdminSettingsNetworkPage() {
       staffRoles: nextStaffRoles.length ? "" : "Add at least one staff role."
     };
     setListErrors(nextErrors);
-    if (nextErrors.ageGroups || nextErrors.staffRoles) {
-      setTaxonomyExpanded((prev) => ({
-        ...prev,
-        ageGroups: nextErrors.ageGroups ? true : prev.ageGroups,
-        staffRoles: nextErrors.staffRoles ? true : prev.staffRoles
-      }));
-      return;
-    }
+    if (nextErrors.ageGroups || nextErrors.staffRoles) return;
 
     setSaving(true);
     setStatus("");
@@ -1496,232 +1540,151 @@ export function DirectorAdminSettingsNetworkPage() {
     window.setTimeout(() => setCopyStatus(""), 1800);
   }
 
-  if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
+  if (loading && !payload) return <Card><p className="muted">Loading settings…</p></Card>;
+
+  const mobileCode = String(payload?.access?.mobileAppCode || "").trim();
 
   return (
-    <Card className="director-admin-network-identity-card">
-      {error ? <p className="error-text">{error}</p> : null}
-      {status ? <p className="success-text">{status}</p> : null}
-      <form className="director-admin-form-grid director-admin-network-identity-form" onSubmit={saveIdentity}>
-        <label>
-          Camp Name
-          <Input value={form.campName} readOnly />
-        </label>
-        <label>
-          Camp Type
-          <Select
-            value={normalizeCampType(form.campType || "coed")}
-            onChange={(event) => {
-              const nextCampType = normalizeCampType(event.target.value || "coed");
-              setForm((prev) => ({
-                ...prev,
-                campType: nextCampType,
-                networkName: replaceAlumniForCampType(prev.networkName, nextCampType),
-                homepageQuote: replaceAlumniForCampType(prev.homepageQuote, nextCampType)
-              }));
-            }}
-          >
-            <option value="coed">Co-ed camp</option>
-            <option value="all_girls">All-girls camp</option>
-            <option value="all_boys">All-boys camp</option>
-          </Select>
-        </label>
-        <label className="full-width">
-          Network Name
-          <Input value={form.networkName} onChange={(event) => setForm((prev) => ({ ...prev, networkName: event.target.value }))} />
-        </label>
-        <div className="full-width director-admin-mobile-app-card">
-          <div className="director-admin-mobile-app-card-head">
-            <div>
-              <p className="director-admin-mobile-app-eyebrow">iPhone App</p>
-              <h3>Camp code</h3>
-              <p className="muted">
-                Families enter this code in the iPhone app to reach your camp login page.
-              </p>
-            </div>
-            <div className="director-admin-mobile-app-actions">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={copyMobileAppCode}
-                disabled={!payload?.access?.mobileAppCode}
+    <form onSubmit={saveIdentity} className="pb-set-stack">
+      {error ? <p className="error-text" role="alert">{error}</p> : null}
+      {status ? <p className="success-text" role="status">{status}</p> : null}
+
+      <Card>
+        <h2 className="pb-section-title">What your network is called</h2>
+        <p className="muted">Members see these on the login page, the homepage, and in every email you send.</p>
+
+        <div className="pb-set-form">
+          <SettingRow>
+            <SettingField label="Camp name" hint="Message support if this needs to change.">
+              <Input value={form.campName} readOnly />
+            </SettingField>
+            <SettingField label="Camp type" hint="Sets whether members are called alumni, alumnae, or alumni/ae.">
+              <Select
+                value={normalizeCampType(form.campType || "coed")}
+                onChange={(event) => {
+                  const nextCampType = normalizeCampType(event.target.value || "coed");
+                  setForm((prev) => ({
+                    ...prev,
+                    campType: nextCampType,
+                    networkName: replaceAlumniForCampType(prev.networkName, nextCampType),
+                    homepageQuote: replaceAlumniForCampType(prev.homepageQuote, nextCampType)
+                  }));
+                }}
               >
-                {copyStatus || "Copy Code"}
-              </Button>
-              <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
-                Access Settings
-              </Link>
-            </div>
-          </div>
-          <div className="director-admin-mobile-app-code-row">
-            <div className="director-admin-mobile-app-code">
-              {payload?.access?.mobileAppCode || "Generating..."}
-            </div>
-            <span className="director-admin-mobile-app-hint">
-              {payload?.access?.mobileAppCodeHint || "Auto-generated for your camp"}
-            </span>
-          </div>
+                <option value="coed">Co-ed camp</option>
+                <option value="all_girls">All-girls camp</option>
+                <option value="all_boys">All-boys camp</option>
+              </Select>
+            </SettingField>
+          </SettingRow>
+
+          <SettingField label="Network name" hint="The title across the top of every page.">
+            <Input
+              value={form.networkName}
+              onChange={(event) => setForm((prev) => ({ ...prev, networkName: event.target.value }))}
+            />
+          </SettingField>
+
+          <SettingField
+            label="Homepage welcome"
+            hint={`Shown to visitors before they log in. ${form.homepageQuote.length}/220 characters.`}
+          >
+            <Textarea
+              value={form.homepageQuote}
+              rows={2}
+              maxLength={220}
+              placeholder="A line that sounds like your camp."
+              onChange={(event) => setForm((prev) => ({ ...prev, homepageQuote: event.target.value }))}
+            />
+          </SettingField>
         </div>
-        <label className="full-width director-admin-network-quote-field">
-          Homepage quote (before login)
-          <Textarea
-            value={form.homepageQuote}
-            maxLength={220}
-            onChange={(event) => setForm((prev) => ({ ...prev, homepageQuote: event.target.value }))}
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">How members reach you</h2>
+        <p className="muted">Shown on your homepage and used as the reply address on the emails you send.</p>
+        <div className="pb-set-form">
+          <SettingRow>
+            <SettingField label="Contact email">
+              <Input
+                type="email"
+                value={form.contactEmail}
+                placeholder="office@yourcamp.org"
+                onChange={(event) => setForm((prev) => ({ ...prev, contactEmail: event.target.value }))}
+              />
+            </SettingField>
+            <SettingField label="Camp website" optional>
+              <Input
+                type="url"
+                value={form.websiteUrl}
+                placeholder="https://yourcamp.org"
+                onChange={(event) => setForm((prev) => ({ ...prev, websiteUrl: event.target.value }))}
+              />
+            </SettingField>
+          </SettingRow>
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">The words your camp uses</h2>
+        <p className="muted">
+          These fill the dropdowns members pick from on their profile, and the filters you search by. Use whatever
+          your camp actually calls things.
+        </p>
+
+        <div className="pb-set-form">
+          <LabelListEditor
+            label="Camper age groups"
+            hint="Members choose a starting and ending group on their profile."
+            placeholder="Senior I"
+            values={form.ageGroups}
+            draft={ageGroupDraft}
+            error={listErrors.ageGroups}
+            onDraftChange={setAgeGroupDraft}
+            onAdd={() => { addLabel("ageGroups", ageGroupDraft); setAgeGroupDraft(""); }}
+            onRemove={(index) => removeLabel("ageGroups", index)}
           />
-          <span className="muted director-admin-network-quote-help">Displayed on the public homepage hero before login.</span>
-        </label>
-        <div className="full-width director-admin-network-taxonomy">
-          <section className="director-admin-network-taxonomy-card">
-            <button
-              type="button"
-              className="director-admin-network-taxonomy-toggle"
-              onClick={() => toggleTaxonomySection("ageGroups")}
-              aria-expanded={taxonomyExpanded.ageGroups}
-              aria-controls="director-admin-age-groups-panel"
-            >
-              <span className="director-admin-network-taxonomy-toggle-copy">
-                <h3>Camper Age Groups</h3>
-                <small>Used in camper year start/end age-group selectors.</small>
-              </span>
-              <span className="director-admin-network-taxonomy-toggle-meta">
-                <span className="director-admin-network-taxonomy-count">{form.ageGroups.length}/20</span>
-                <span
-                  className={`director-admin-network-taxonomy-caret ${taxonomyExpanded.ageGroups ? "is-open" : ""}`.trim()}
-                  aria-hidden="true"
-                >
-                  ▾
-                </span>
-              </span>
-            </button>
-            {taxonomyExpanded.ageGroups ? (
-              <div className="director-admin-network-taxonomy-body" id="director-admin-age-groups-panel">
-                <div className="director-admin-network-taxonomy-input-row">
-                  <Input
-                    value={ageGroupDraft}
-                    placeholder="Add age group (ex: Senior I)"
-                    onChange={(event) => setAgeGroupDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      addLabel("ageGroups", ageGroupDraft);
-                      setAgeGroupDraft("");
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      addLabel("ageGroups", ageGroupDraft);
-                      setAgeGroupDraft("");
-                    }}
-                  >
-                    Add
-                  </Button>
-                </div>
-                {listErrors.ageGroups ? <p className="error-text">{listErrors.ageGroups}</p> : null}
-                <div className="director-admin-network-chip-list">
-                  {form.ageGroups.map((label, index) => (
-                    <span className="director-admin-network-chip" key={`${label}_${index}`}>
-                      <span>{label}</span>
-                      <button
-                        type="button"
-                        className="director-admin-network-chip-remove"
-                        onClick={() => removeLabel("ageGroups", index)}
-                        aria-label={`Remove age group ${label}`}
-                      >
-                        Remove
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </section>
-          <section className="director-admin-network-taxonomy-card">
-            <button
-              type="button"
-              className="director-admin-network-taxonomy-toggle"
-              onClick={() => toggleTaxonomySection("staffRoles")}
-              aria-expanded={taxonomyExpanded.staffRoles}
-              aria-controls="director-admin-staff-roles-panel"
-            >
-              <span className="director-admin-network-taxonomy-toggle-copy">
-                <h3>Staff Roles</h3>
-                <small>Used in member role-at-camp forms and filters.</small>
-              </span>
-              <span className="director-admin-network-taxonomy-toggle-meta">
-                <span className="director-admin-network-taxonomy-count">{form.staffRoles.length}/20</span>
-                <span
-                  className={`director-admin-network-taxonomy-caret ${taxonomyExpanded.staffRoles ? "is-open" : ""}`.trim()}
-                  aria-hidden="true"
-                >
-                  ▾
-                </span>
-              </span>
-            </button>
-            {taxonomyExpanded.staffRoles ? (
-              <div className="director-admin-network-taxonomy-body" id="director-admin-staff-roles-panel">
-                <div className="director-admin-network-taxonomy-input-row">
-                  <Input
-                    value={staffRoleDraft}
-                    placeholder="Add role (ex: Waterfront Director)"
-                    onChange={(event) => setStaffRoleDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      addLabel("staffRoles", staffRoleDraft);
-                      setStaffRoleDraft("");
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      addLabel("staffRoles", staffRoleDraft);
-                      setStaffRoleDraft("");
-                    }}
-                  >
-                    Add
-                  </Button>
-                </div>
-                {listErrors.staffRoles ? <p className="error-text">{listErrors.staffRoles}</p> : null}
-                <div className="director-admin-network-chip-list">
-                  {form.staffRoles.map((label, index) => (
-                    <span className="director-admin-network-chip" key={`${label}_${index}`}>
-                      <span>{label}</span>
-                      <button
-                        type="button"
-                        className="director-admin-network-chip-remove"
-                        onClick={() => removeLabel("staffRoles", index)}
-                        aria-label={`Remove role ${label}`}
-                      >
-                        Remove
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </section>
+          <LabelListEditor
+            label="Staff roles"
+            hint="Used on profiles and in the People filters."
+            placeholder="Waterfront Director"
+            values={form.staffRoles}
+            draft={staffRoleDraft}
+            error={listErrors.staffRoles}
+            onDraftChange={setStaffRoleDraft}
+            onAdd={() => { addLabel("staffRoles", staffRoleDraft); setStaffRoleDraft(""); }}
+            onRemove={(index) => removeLabel("staffRoles", index)}
+          />
         </div>
-        <label>
-          Contact Email
-          <Input type="email" value={form.contactEmail} onChange={(event) => setForm((prev) => ({ ...prev, contactEmail: event.target.value }))} />
-        </label>
-        <label>
-          Website URL
-          <Input type="url" value={form.websiteUrl} onChange={(event) => setForm((prev) => ({ ...prev, websiteUrl: event.target.value }))} />
-        </label>
-        <div className="director-admin-form-actions full-width director-admin-network-form-actions">
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving..." : "Save Changes"}
-          </Button>
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">iPhone app code</h2>
+        <p className="muted">
+          Families type this into the PondBridge app to find your camp. It is generated for you and cannot be changed.
+        </p>
+        <div className="pb-set-code-row">
+          <code>{mobileCode || "Generating…"}</code>
+          <div>
+            <Button type="button" variant="secondary" onClick={copyMobileAppCode} disabled={!mobileCode}>
+              {copyStatus || "Copy code"}
+            </Button>
+            <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
+              Who can join
+            </Link>
+          </div>
         </div>
-      </form>
-    </Card>
+        {payload?.access?.mobileAppCodeHint ? (
+          <p className="muted pb-set-code-hint">{payload.access.mobileAppCodeHint}</p>
+        ) : null}
+      </Card>
+
+      <Card>
+        <SettingActions note="Changes go live for members as soon as you save.">
+          <Button type="submit" loading={saving}>Save changes</Button>
+        </SettingActions>
+      </Card>
+    </form>
   );
 }
 
@@ -2000,110 +1963,128 @@ export function DirectorAdminSettingsBrandingPage() {
   const hasPendingHeroUpdate = Boolean(pendingHeroFile) || (Boolean(draftHeroUrl) && draftHeroUrl !== currentHeroUrl);
 
   return (
-    <Card>
-      {error ? <p className="error-text">{error}</p> : null}
-      {uploadError ? <p className="error-text">{uploadError}</p> : null}
-      {status ? <p className="success-text">{status}</p> : null}
-      <form className="director-admin-form-grid" onSubmit={saveBranding}>
-        <div className="full-width director-admin-upload-field">
-          <label htmlFor="director-admin-logo-upload">Logo Upload</label>
-          <label className="director-upload-control" htmlFor="director-admin-logo-upload">
-            <span className="director-upload-button">Upload logo</span>
-            <span className="director-upload-name">
-              {logoFileName || "PNG or JPG"}
-            </span>
-          </label>
-          <input
-            id="director-admin-logo-upload"
-            type="file"
-            accept="image/*"
-            className="director-upload-input"
-            onClick={(event) => {
-              event.currentTarget.value = "";
-            }}
-            onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)}
-          />
-          <div className="director-admin-branding-current-media">
-            <small>{hasPendingLogoUpdate ? "Preview (pending save)" : "Currently in use"}</small>
-            {liveLogoPreviewUrl ? (
-              <img src={liveLogoPreviewUrl} alt="Current logo" className="director-admin-branding-current-logo" />
-            ) : (
-              <p className="muted">No logo currently set.</p>
-            )}
-            {hasPendingLogoUpdate ? <p className="muted">Saving will replace the current logo.</p> : null}
-          </div>
-        </div>
-        <div className="full-width director-admin-upload-field">
-          <label htmlFor="director-admin-hero-upload">Hero Image Upload</label>
-          <label className="director-upload-control" htmlFor="director-admin-hero-upload">
-            <span className="director-upload-button">Upload main photo</span>
-            <span className="director-upload-name">
-              {heroFileName || "Used on login and home pages. PNG or JPG"}
-            </span>
-          </label>
-          <input
-            id="director-admin-hero-upload"
-            type="file"
-            accept="image/*"
-            className="director-upload-input"
-            onClick={(event) => {
-              event.currentTarget.value = "";
-            }}
-            onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)}
-          />
-          <div className="director-admin-branding-current-media">
-            <small>{hasPendingHeroUpdate ? "Preview (pending save)" : "Currently in use"}</small>
-            {liveHeroPreviewUrl ? (
-              <img src={liveHeroPreviewUrl} alt="Current hero image" className="director-admin-branding-current-hero" />
-            ) : (
-              <p className="muted">No hero image currently set.</p>
-            )}
-            {hasPendingHeroUpdate ? <p className="muted">Saving will replace the current main photo.</p> : null}
-          </div>
-        </div>
-        <div className="full-width">
-          <label htmlFor="director-admin-brand-primary">Main color</label>
-          <div className="director-color-row">
-            <input
-              id="director-admin-brand-primary"
-              type="color"
-              className="director-color-swatch"
-              value={previewBrandPrimary}
-              aria-label="Main color picker"
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(event.target.value, DEFAULT_BRAND_PRIMARY) }))
-              }
-            />
-            <Input
-              value={form.brandPrimary}
-              placeholder={DEFAULT_BRAND_PRIMARY.toUpperCase()}
-              onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))}
-              onBlur={() =>
-                setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(prev.brandPrimary, DEFAULT_BRAND_PRIMARY) }))
-              }
-            />
-          </div>
-          <BrandImageColorPicker
-            value={form.brandPrimary}
-            onPickColor={(nextHex) =>
-              setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(nextHex, DEFAULT_BRAND_PRIMARY) }))
-            }
-          />
-          <div className="director-palette-preview" aria-label="Brand palette preview">
-            {paletteSwatches.map((swatch) => (
-              <div className="director-palette-swatch" key={swatch.label}>
-                <span
-                  className="director-palette-chip"
-                  style={{ backgroundColor: swatch.color }}
-                  aria-hidden="true"
-                />
-                <span>{swatch.label}</span>
-                <code>{swatch.color.toUpperCase()}</code>
+    <form onSubmit={saveBranding} className="pb-set-stack">
+      {error ? <p className="error-text" role="alert">{error}</p> : null}
+      {uploadError ? <p className="error-text" role="alert">{uploadError}</p> : null}
+      {status ? <p className="success-text" role="status">{status}</p> : null}
+
+      <Card>
+        <h2 className="pb-section-title">Your logo</h2>
+        <p className="muted">Sits in the top-left of every page, and at the top of the emails you send.</p>
+        <div className="pb-set-upload">
+              <label className="director-upload-control" htmlFor="director-admin-logo-upload">
+                <span className="director-upload-button">Upload logo</span>
+                <span className="director-upload-name">
+                  {logoFileName || "PNG or JPG"}
+                </span>
+              </label>
+              <input
+                id="director-admin-logo-upload"
+                type="file"
+                accept="image/*"
+                className="director-upload-input"
+                onClick={(event) => {
+                  event.currentTarget.value = "";
+                }}
+                onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)}
+              />
+              <div className="director-admin-branding-current-media">
+                <small>{hasPendingLogoUpdate ? "Preview (pending save)" : "Currently in use"}</small>
+                {liveLogoPreviewUrl ? (
+                  <img src={liveLogoPreviewUrl} alt="Current logo" className="director-admin-branding-current-logo" />
+                ) : (
+                  <p className="muted">No logo currently set.</p>
+                )}
+                {hasPendingLogoUpdate ? <p className="muted">Saving will replace the current logo.</p> : null}
               </div>
-            ))}
-          </div>
         </div>
-        <div className="full-width">
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">Your main photo</h2>
+        <p className="muted">
+          The big image behind your login page and your members&apos; home page. Landscape photos work best.
+        </p>
+        <div className="pb-set-upload">
+              <label className="director-upload-control" htmlFor="director-admin-hero-upload">
+                <span className="director-upload-button">Upload main photo</span>
+                <span className="director-upload-name">
+                  {heroFileName || "Used on login and home pages. PNG or JPG"}
+                </span>
+              </label>
+              <input
+                id="director-admin-hero-upload"
+                type="file"
+                accept="image/*"
+                className="director-upload-input"
+                onClick={(event) => {
+                  event.currentTarget.value = "";
+                }}
+                onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)}
+              />
+              <div className="director-admin-branding-current-media">
+                <small>{hasPendingHeroUpdate ? "Preview (pending save)" : "Currently in use"}</small>
+                {liveHeroPreviewUrl ? (
+                  <img src={liveHeroPreviewUrl} alt="Current hero image" className="director-admin-branding-current-hero" />
+                ) : (
+                  <p className="muted">No hero image currently set.</p>
+                )}
+                {hasPendingHeroUpdate ? <p className="muted">Saving will replace the current main photo.</p> : null}
+              </div>
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">Your colour</h2>
+        <p className="muted">
+          Used for buttons, links, and highlights. Pick it from your logo if you want an exact match.
+        </p>
+        <div className="pb-set-color">
+              <div className="director-color-row">
+                <input
+                  id="director-admin-brand-primary"
+                  type="color"
+                  className="director-color-swatch"
+                  value={previewBrandPrimary}
+                  aria-label="Main color picker"
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(event.target.value, DEFAULT_BRAND_PRIMARY) }))
+                  }
+                />
+                <Input
+                  value={form.brandPrimary}
+                  placeholder={DEFAULT_BRAND_PRIMARY.toUpperCase()}
+                  onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))}
+                  onBlur={() =>
+                    setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(prev.brandPrimary, DEFAULT_BRAND_PRIMARY) }))
+                  }
+                />
+              </div>
+              <BrandImageColorPicker
+                value={form.brandPrimary}
+                onPickColor={(nextHex) =>
+                  setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(nextHex, DEFAULT_BRAND_PRIMARY) }))
+                }
+              />
+              <div className="director-palette-preview" aria-label="Brand palette preview">
+                {paletteSwatches.map((swatch) => (
+                  <div className="director-palette-swatch" key={swatch.label}>
+                    <span
+                      className="director-palette-chip"
+                      style={{ backgroundColor: swatch.color }}
+                      aria-hidden="true"
+                    />
+                    <span>{swatch.label}</span>
+                    <code>{swatch.color.toUpperCase()}</code>
+                  </div>
+                ))}
+              </div>
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">How it looks</h2>
+        <p className="muted">Drag the photo to choose what stays in frame on each page.</p>
           <HeroImageEditor
             label="Live preview"
             variant="admin"
@@ -2144,13 +2125,15 @@ export function DirectorAdminSettingsBrandingPage() {
               }))
             }
           />
-        </div>
-        <div className="director-admin-form-actions full-width">
-          <Button type="submit" disabled={saving || Boolean(uploadingField)}>
-            {uploadingField ? "Uploading..." : saving ? "Saving..." : "Save Branding"}
+      </Card>
+
+      <Card>
+        <SettingActions note="Uploads are only stored once you save.">
+          <Button type="submit" loading={saving} disabled={Boolean(uploadingField)}>
+            {uploadingField ? "Uploading…" : "Save branding"}
           </Button>
-        </div>
-      </form>
-    </Card>
+        </SettingActions>
+      </Card>
+    </form>
   );
 }

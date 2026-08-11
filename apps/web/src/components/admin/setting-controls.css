@@ -1,0 +1,403 @@
+/* Shared Settings controls. The app sets `.pb-cedar-page label { display: grid }`
+   globally, which outranks a single class, so every label rule here is doubled
+   up on `.pb-cedar-page` to win. */
+
+/* --- Switch --- */
+
+.pb-cedar-page .pb-set-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.pb-cedar-page .pb-set-switch:hover {
+  background: #f6f9fc;
+}
+
+.pb-cedar-page .pb-set-switch.is-disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.pb-set-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.pb-set-switch-track {
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #c3cede;
+  transition: background .16s ease;
+}
+
+.pb-set-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16, 39, 63, .28);
+  transition: transform .16s ease;
+}
+
+.pb-set-switch input:checked + .pb-set-switch-track {
+  background: var(--brand-primary, #1d5faa);
+}
+
+.pb-set-switch input:checked + .pb-set-switch-track::after {
+  transform: translateX(18px);
+}
+
+.pb-set-switch input:focus-visible + .pb-set-switch-track {
+  outline: 3px solid color-mix(in srgb, var(--brand-primary, #1d5faa) 28%, transparent);
+  outline-offset: 3px;
+}
+
+.pb-set-switch-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pb-set-switch-copy strong {
+  color: #173756;
+  font-size: .93rem;
+  font-weight: 700;
+}
+
+.pb-set-switch-copy small {
+  color: #6d7f94;
+  font-size: .82rem;
+  line-height: 1.4;
+}
+
+.pb-set-switches {
+  display: grid;
+  gap: 2px;
+  margin-top: 12px;
+}
+
+/* --- Fields --- */
+
+.pb-cedar-page .pb-set-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.pb-cedar-page .pb-set-field > span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #34485f;
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+.pb-cedar-page .pb-set-field > span small {
+  color: #8496aa;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.pb-cedar-page .pb-set-field > small {
+  color: #6d7f94;
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.pb-set-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  align-items: start;
+}
+
+.pb-set-form {
+  display: grid;
+  gap: 15px;
+  margin-top: 14px;
+}
+
+/* --- Actions --- */
+
+.pb-set-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  border-top: 1px solid #eef2f7;
+}
+
+.pb-set-actions p {
+  margin: 0;
+  max-width: 52ch;
+  color: #6d7f94;
+  font-size: .83rem;
+}
+
+.pb-set-actions > div {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+/* --- Record lists --- */
+
+.pb-set-list {
+  display: grid;
+  gap: 1px;
+  margin: 12px 0 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e4ebf3;
+  border-radius: 11px;
+  background: #e4ebf3;
+  list-style: none;
+}
+
+.pb-set-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  background: #fff;
+}
+
+.pb-set-list li > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pb-set-list strong {
+  color: #173756;
+  font-size: .92rem;
+}
+
+.pb-set-list small {
+  color: #6d7f94;
+  font-size: .81rem;
+}
+
+.pb-set-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.pb-set-empty {
+  margin: 12px 0 0;
+  padding: 16px;
+  border: 1px dashed #dbe4ee;
+  border-radius: 11px;
+  font-size: .88rem;
+  text-align: center;
+}
+
+/* --- Notes --- */
+
+.pb-set-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  border: 1px solid #d8e4f2;
+  border-radius: 11px;
+  background: #f2f7fd;
+  color: #2c4a6b;
+  font-size: .86rem;
+  line-height: 1.5;
+}
+
+.pb-set-note svg {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  opacity: .8;
+}
+
+.pb-set-note.is-warning {
+  border-color: #f0d8a8;
+  background: #fdf6e7;
+  color: #8a5b0b;
+}
+
+.pb-set-note p {
+  margin: 0;
+}
+
+/* Settings pages stack their own cards; the surface already spaces them. */
+.pb-set-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.pb-cedar-page .pb-set-stack > .pb-card {
+  margin: 0;
+}
+
+.pb-set-subhead {
+  margin-top: 20px;
+}
+
+/* --- Label list editor --- */
+
+.pb-set-labels {
+  padding: 14px;
+  border: 1px solid #e4ebf3;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.pb-set-labels-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pb-set-labels-head span {
+  color: #173756;
+  font-size: .93rem;
+  font-weight: 700;
+}
+
+.pb-set-labels-head em {
+  color: #6d7f94;
+  font-size: .78rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.pb-set-labels > p {
+  margin: 3px 0 11px;
+  color: #6d7f94;
+  font-size: .82rem;
+}
+
+.pb-set-labels-add {
+  display: flex;
+  gap: 8px;
+}
+
+.pb-set-labels-add input {
+  min-width: 0;
+}
+
+.pb-set-labels-add button {
+  white-space: nowrap;
+}
+
+.pb-set-labels-chips {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+}
+
+.pb-set-labels-chips > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 5px 4px 11px;
+  border: 1px solid #dce6f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #223247;
+  font-size: .85rem;
+}
+
+.pb-set-labels-chips button {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #6d7f94;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pb-set-labels-chips button:hover {
+  background: #eef2f7;
+  color: #a33a2c;
+}
+
+/* --- Read-only code --- */
+
+.pb-set-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.pb-set-code-row code {
+  padding: 10px 18px;
+  border: 1px solid #dce6f0;
+  border-radius: 11px;
+  background: #f1f5fa;
+  color: #173756;
+  font-size: 1.24rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.pb-set-code-row > div {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.pb-set-code-hint {
+  margin: 9px 0 0;
+  font-size: .82rem;
+}
+
+/* --- Upload + colour groups --- */
+
+.pb-set-upload,
+.pb-set-color {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.pb-set-upload > label:first-child {
+  display: none;
+}
+
+.pb-set-color > label:first-child {
+  color: #34485f;
+  font-size: .86rem;
+  font-weight: 700;
+}
