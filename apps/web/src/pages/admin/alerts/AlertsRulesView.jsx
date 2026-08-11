@@ -1,5 +1,5 @@
 import { Card } from "@pondbridge/ui";
-import AlertSwitch from "./AlertSwitch.jsx";
+import { SettingSwitch } from "../../../components/admin/SettingControls.jsx";
 import { AUTOMATIC_GROUPS, DELIVERY_TOGGLES } from "./alertOptions.js";
 
 export default function AlertsRulesView({ settings, update, disabled }) {
@@ -8,9 +8,9 @@ export default function AlertsRulesView({ settings, update, disabled }) {
       <Card>
         <h2 className="pb-section-title">How alerts arrive</h2>
         <p className="muted">These apply to everything below, and to one-off alerts you send yourself.</p>
-        <div className="pb-alerts-switches">
+        <div className="pb-set-switches">
           {DELIVERY_TOGGLES.map((item) => (
-            <AlertSwitch
+            <SettingSwitch
               key={item.key}
               checked={settings[item.key]}
               onChange={(value) => update({ [item.key]: value })}
@@ -31,9 +31,9 @@ export default function AlertsRulesView({ settings, update, disabled }) {
         <Card key={group.key}>
           <h2 className="pb-section-title">{group.label}</h2>
           <p className="muted">{group.blurb}</p>
-          <div className="pb-alerts-switches">
+          <div className="pb-set-switches">
             {group.items.map((item) => (
-              <AlertSwitch
+              <SettingSwitch
                 key={item.key}
                 checked={settings[item.key]}
                 onChange={(value) => update({ [item.key]: value })}

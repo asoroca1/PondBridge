@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Input } from "@pondbridge/ui";
+import { ShieldCheck } from "lucide-react";
 import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import {
+  SettingField,
+  SettingList,
+  SettingListItem
+} from "../../components/admin/SettingControls.jsx";
 import useAdminApi from "./useAdminApi.js";
 
 function formatDate(value) {
-  if (!value) return "-";
+  if (!value) return "";
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleDateString();
+  return Number.isNaN(parsed.getTime())
+    ? ""
+    : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function useDebouncedValue(value, delayMs = 220) {
@@ -27,28 +34,24 @@ export default function DirectorAdminSettingsAdminsPage() {
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [promotingUserId, setPromotingUserId] = useState("");
+  const [promoting, setPromoting] = useState("");
   const [removing, setRemoving] = useState(false);
   const [adminToRemove, setAdminToRemove] = useState(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
   const loadAdmins = useCallback(async () => {
-    setLoading(true);
     setError("");
     try {
-      const response = await request("/settings/admins");
-      setPayload(response);
+      setPayload(await request("/settings/admins"));
     } catch (requestError) {
-      setError(requestError.message || "Failed to load admin list.");
+      setError(requestError.message || "Could not load the admin list.");
     } finally {
       setLoading(false);
     }
   }, [request]);
 
-  useEffect(() => {
-    loadAdmins();
-  }, [loadAdmins]);
+  useEffect(() => { loadAdmins(); }, [loadAdmins]);
 
   useEffect(() => {
     const term = String(debouncedQuery || "").trim();
@@ -61,49 +64,37 @@ export default function DirectorAdminSettingsAdminsPage() {
     setSearching(true);
     request(`/settings/admins/search?q=${encodeURIComponent(term)}&limit=8`)
       .then((response) => {
-        if (!active) return;
-        setResults(Array.isArray(response?.items) ? response.items : []);
+        if (active) setResults(Array.isArray(response?.items) ? response.items : []);
       })
       .catch((requestError) => {
         if (!active) return;
         setResults([]);
-        setError(requestError.message || "Failed to search members.");
+        setError(requestError.message || "Could not search members.");
       })
-      .finally(() => {
-        if (active) setSearching(false);
-      });
-
-    return () => {
-      active = false;
-    };
+      .finally(() => { if (active) setSearching(false); });
+    return () => { active = false; };
   }, [debouncedQuery, request]);
 
   async function grantAdmin(member) {
     if (!member?.userId && !member?.email) return;
-    setPromotingUserId(String(member.userId || member.email || ""));
+    const key = String(member.userId || member.email || "");
+    setPromoting(key);
     setStatus("");
     setError("");
     try {
       await request("/settings/admins/grant", {
         method: "POST",
-        body: {
-          userId: member.userId,
-          email: member.email
-        }
+        body: { userId: member.userId, email: member.email }
       });
-      setStatus(`${member.fullName || member.email || "Member"} now has admin access.`);
-      setResults((prev) =>
-        prev.map((item) =>
-          String(item.userId || "") === String(member.userId || "")
-            ? { ...item, isAdmin: true }
-            : item
-        )
-      );
+      setStatus(`${member.fullName || member.email || "They"} can now run this network.`);
+      setResults((prev) => prev.map((item) => (
+        String(item.userId || "") === String(member.userId || "") ? { ...item, isAdmin: true } : item
+      )));
       await loadAdmins();
     } catch (requestError) {
-      setError(requestError.message || "Failed to grant admin access.");
+      setError(requestError.message || "Could not grant admin access.");
     } finally {
-      setPromotingUserId("");
+      setPromoting("");
     }
   }
 
@@ -112,121 +103,127 @@ export default function DirectorAdminSettingsAdminsPage() {
     setRemoving(true);
     try {
       await request(`/settings/admins/${userId}`, { method: "DELETE" });
+      setStatus("Admin access removed. They keep their member account.");
       setAdminToRemove(null);
       await loadAdmins();
     } catch (requestError) {
-      setError(requestError.message || "Failed to remove admin.");
+      setError(requestError.message || "Could not remove that admin.");
     } finally {
       setRemoving(false);
     }
   }
 
-  return (
-    <Card>
-      {error ? <p className="error-text">{error}</p> : null}
-      {status ? <p className="success-text">{status}</p> : null}
-      <div className="director-admin-table-wrap">
-        <table className="director-admin-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Added</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="muted">
-                  Loading admins...
-                </td>
-              </tr>
-            ) : (
-              payload.admins.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.name || "-"}</td>
-                  <td>{item.email}</td>
-                  <td>{item.role}</td>
-                  <td>{formatDate(item.addedAt)}</td>
-                  <td>
-                    {item.role === "Director" ? (
-                      <span className="muted">Protected</span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="director-admin-inline-link"
-                        onClick={() => setAdminToRemove(item)}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+  const admins = Array.isArray(payload?.admins) ? payload.admins : [];
+  const pending = Array.isArray(payload?.pendingInvites) ? payload.pendingInvites : [];
+  const trimmedQuery = query.trim();
 
-      <div className="director-admin-admin-search">
-        <h3 className="pb-section-title">Add Admin</h3>
-        <p className="muted">Search any member in this network and grant admin access.</p>
-        <Input
-          value={query}
-          placeholder="Search by name or email"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <div className="director-admin-admin-search-results">
-          {searching ? <p className="muted">Searching members...</p> : null}
-          {!searching && query.trim() && results.length === 0 ? (
-            <p className="muted">No matching members found.</p>
-          ) : null}
-          {!searching && results.length > 0 ? (
-            <ul className="director-admin-simple-list">
+  return (
+    <div className="pb-set-stack">
+      {error ? <p className="error-text" role="alert">{error}</p> : null}
+      {status ? <p className="success-text" role="status">{status}</p> : null}
+
+      <Card>
+        <h2 className="pb-section-title">Who can run this network</h2>
+        <p className="muted">
+          Admins see everything in this dashboard and can email members, edit profiles, and change settings.
+          They cannot remove you.
+        </p>
+
+        {loading ? (
+          <p className="muted pb-set-empty">Loading…</p>
+        ) : (
+          <SettingList empty="Nobody else has admin access yet.">
+            {admins.map((item) => (
+              <SettingListItem
+                key={item.id}
+                title={item.name || item.email}
+                meta={[item.name ? item.email : "", item.addedAt ? `added ${formatDate(item.addedAt)}` : ""]
+                  .filter(Boolean)
+                  .join(" · ")}
+              >
+                {item.role === "Director" ? (
+                  <Badge tone="neutral">Owner</Badge>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => setAdminToRemove(item)}>Remove</Button>
+                )}
+              </SettingListItem>
+            ))}
+          </SettingList>
+        )}
+
+        {pending.length ? (
+          <>
+            <h3 className="pb-section-title pb-set-subhead">Invited, not accepted yet</h3>
+            <SettingList>
+              {pending.map((item) => (
+                <SettingListItem
+                  key={item.id || item.email}
+                  title={item.email}
+                  meta={item.invitedAt ? `invited ${formatDate(item.invitedAt)}` : "invitation sent"}
+                >
+                  <Badge tone="warning">Pending</Badge>
+                </SettingListItem>
+              ))}
+            </SettingList>
+          </>
+        ) : null}
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">Add an admin</h2>
+        <p className="muted">
+          They need to be a member of this network first. Add them under People, then find them here.
+        </p>
+
+        <div className="pb-set-form">
+          <SettingField label="Find a member">
+            <Input
+              value={query}
+              placeholder="Search by name or email"
+              spellCheck={false}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </SettingField>
+
+          {searching ? (
+            <p className="muted pb-set-empty">Searching…</p>
+          ) : trimmedQuery && !results.length ? (
+            <p className="muted pb-set-empty">Nobody in this network matches “{trimmedQuery}”.</p>
+          ) : results.length ? (
+            <SettingList>
               {results.map((item) => {
-                const rowKey = String(item.userId || item.email || item.id || "");
-                const alreadyAdmin = Boolean(item.isAdmin);
-                const busy = promotingUserId === rowKey;
+                const key = String(item.userId || item.email || item.id || "");
                 return (
-                  <li key={rowKey}>
-                    <div className="director-admin-search-item-main">
-                      <strong>{item.fullName || "-"}</strong>
-                      <span>{item.email || "-"}</span>
-                    </div>
-                    {alreadyAdmin ? (
-                      <Badge tone="success">Admin</Badge>
+                  <SettingListItem key={key} title={item.fullName || item.email} meta={item.fullName ? item.email : ""}>
+                    {item.isAdmin ? (
+                      <Badge tone="success">Already an admin</Badge>
                     ) : (
-                      <Button
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => grantAdmin(item)}
-                      >
-                        {busy ? "Adding..." : "Make Admin"}
+                      <Button size="sm" loading={promoting === key} onClick={() => grantAdmin(item)}>
+                        <ShieldCheck aria-hidden="true" />
+                        Make admin
                       </Button>
                     )}
-                  </li>
+                  </SettingListItem>
                 );
               })}
-            </ul>
+            </SettingList>
           ) : null}
         </div>
-      </div>
+      </Card>
 
       <ModalConfirm
         open={Boolean(adminToRemove)}
-        title="Remove Admin Access?"
-        description={`This will revoke director-level access for ${adminToRemove?.email || "this user"}.`}
-        confirmLabel="Remove Admin"
-        cancelLabel="Cancel"
+        title={`Remove admin access for ${adminToRemove?.name || adminToRemove?.email || "this person"}?`}
+        description="They lose the dashboard immediately but keep their member account and profile. You can add them back any time."
+        confirmLabel="Remove access"
+        cancelLabel="Keep it"
+        tone="danger"
         busy={removing}
         onCancel={() => setAdminToRemove(null)}
         onConfirm={() => {
-          if (!adminToRemove?.id) return;
-          removeAdmin(adminToRemove.id);
+          if (adminToRemove?.id) removeAdmin(adminToRemove.id);
         }}
       />
-    </Card>
+    </div>
   );
 }
