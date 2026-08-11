@@ -25,7 +25,8 @@ import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
   LoadingSkeleton,
-  ModalConfirm
+  ModalConfirm,
+  WorkspaceHeader
 } from "../../components/admin/AdminUi.jsx";
 import {
   SettingActions,
@@ -38,6 +39,7 @@ import {
   IMAGE_OPTIMIZATION_PRESETS,
   optimizeImageFile
 } from "../../lib/imageOptimization.js";
+import "./director-admin-today.css";
 
 function getNiceTickStep(maxValue = 1, targetTickCount = 5) {
   const safeMax = Math.max(1, Number(maxValue || 0));
@@ -616,6 +618,24 @@ function TopProfileBreakdownCard({
   );
 }
 
+const TODAY_SHORTCUTS = [
+  { key: "invite", to: "admin/people/add", icon: UserPlus, label: "Add people" },
+  { key: "email", to: "admin/email/compose", icon: Send, label: "Write an email" },
+  { key: "people", to: "admin/people/all", icon: Users, label: "Browse people" }
+];
+
+function priorityLabel(priority) {
+  if (priority === "high") return "Do this first";
+  if (priority === "medium") return "Worth doing";
+  return "When you have time";
+}
+
+function deltaHint(delta = 0) {
+  const value = Number(delta || 0);
+  if (!value) return "No change in 30 days";
+  return `${value > 0 ? "Up" : "Down"} ${Math.abs(value)}% in 30 days`;
+}
+
 export function DirectorAdminDashboardPage() {
   const { slug, request } = useAdminApi();
   const { tenant } = useTenant();
@@ -629,55 +649,30 @@ export function DirectorAdminDashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await request(`/dashboard?ts=${Date.now()}`);
-      setPayload(data);
+      setPayload(await request(`/dashboard?ts=${Date.now()}`));
       setLastUpdatedAt(new Date());
     } catch (requestError) {
-      setError(requestError.message || "Failed to load dashboard.");
+      setError(requestError.message || "Could not load today's summary.");
     } finally {
       setLoading(false);
     }
   }, [request]);
 
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  // Refresh when the director comes back to the tab. The old page also polled
+  // on a timer, which meant the queue could reshuffle under the cursor
+  // mid-click; coming back to the tab is the moment the data actually matters.
   useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
-
-  useEffect(() => {
-    const refreshIntervalMs = 60000;
-    const intervalId = window.setInterval(() => {
-      loadDashboard();
-    }, refreshIntervalMs);
-
-    const handleWindowFocus = () => {
-      loadDashboard();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadDashboard();
     };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        loadDashboard();
-      }
-    };
-
-    window.addEventListener("focus", handleWindowFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleWindowFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [loadDashboard]);
 
   const stats = payload?.stats || {};
-  const isLive = tenant?.onboardingStatus === "live";
-  const communityName = String(tenant?.name || tenant?.networkName || "Your camp").trim();
-  const lastUpdatedLabel = lastUpdatedAt
-    ? `Updated ${lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-    : "Updating dashboard";
   const actionQueue = Array.isArray(payload?.actionQueue) ? payload.actionQueue : [];
-  const totalMembers = Number(stats.totalMembers || 0);
-  const activeMembers = Number(stats.activeMembers ?? totalMembers);
-  const recentSignups = Number(stats.newThisWeek || 0);
-  const profileCompletion = Number(stats.profileCompletion || 0);
   const newUsersSeries = payload?.charts?.newUsers || [];
   const signInsSeries = payload?.charts?.signIns || [];
   const topLocations = payload?.profileBreakdowns?.topLocations || [];
@@ -686,6 +681,7 @@ export function DirectorAdminDashboardPage() {
     label: String(item?.fullName || "Member"),
     count: Number(item?.logins || 0)
   }));
+
   const normalizedNewUsersSeries = useMemo(() => normalizeSeries(newUsersSeries), [newUsersSeries]);
   const normalizedSignInsSeries = useMemo(() => normalizeSeries(signInsSeries), [signInsSeries]);
   const combinedSeries = useMemo(
@@ -708,127 +704,104 @@ export function DirectorAdminDashboardPage() {
   }, [weekWindows]);
 
   if (loading && !payload) {
-    return (
-      <Card>
-        <LoadingSkeleton lines={4} />
-      </Card>
-    );
+    return <Card><LoadingSkeleton lines={4} /></Card>;
   }
+
+  const totalMembers = Number(stats.totalMembers || 0);
+  const activeMembers = Number(stats.activeMembers ?? totalMembers);
+  const recentSignups = Number(stats.newThisWeek || 0);
+  const profileCompletion = Number(stats.profileCompletion || 0);
+  const urgent = actionQueue.filter((item) => item.priority === "high").length;
 
   const statCards = [
     {
       key: "total-members",
-      label: "Total Members",
+      label: "Members",
       value: totalMembers,
-      hint: `${stats.totalMembersDelta >= 0 ? "+" : ""}${stats.totalMembersDelta || 0}% vs prior window`,
+      hint: deltaHint(stats.totalMembersDelta),
       tone: "success",
       icon: "members"
     },
     {
       key: "active-members",
-      label: "Active Members",
+      label: "Active",
       value: activeMembers,
-      hint: `${totalMembers ? Math.round((activeMembers / totalMembers) * 100) : 0}% currently active`,
+      hint: totalMembers ? `${Math.round((activeMembers / totalMembers) * 100)}% of everyone` : "Nobody yet",
       tone: "neutral",
       icon: "active"
     },
     {
       key: "recent-signups",
-      label: "Recent Signups",
+      label: "Joined",
       value: recentSignups,
-      hint: "Last 7 days",
+      hint: "In the last 7 days",
       tone: recentSignups > 0 ? "success" : "neutral",
       icon: "signups"
     },
     {
       key: "profile-completion",
-      label: "Profile Completion",
+      label: "Profiles filled in",
       value: `${profileCompletion}%`,
-      hint: "Average across members",
+      hint: "Averaged across members",
       tone: profileCompletion >= 70 ? "success" : "neutral",
       icon: "completion"
     }
   ];
 
   return (
-    <div className="director-admin-stack">
-      <section className="director-command-hero" aria-labelledby="director-command-title">
-        <div className="director-command-hero-copy">
-          <div className="director-command-hero-kicker-row">
-            <p className="director-command-kicker">Camp control room</p>
-            <span className={`director-command-status ${isLive ? "is-live" : "is-setup"}`}>
-              <span aria-hidden="true" />
-              {isLive ? "Community live" : "Setup in progress"}
+    <div className="pb-workspace pb-today">
+      <WorkspaceHeader
+        eyebrow="Control room"
+        title="Today"
+        subtitle={
+          actionQueue.length
+            ? "What needs you, and how your network is doing."
+            : "Nothing needs you right now. Here is how your network is doing."
+        }
+        meta={
+          <>
+            <span className={`pb-today-state ${tenant?.onboardingStatus === "live" ? "is-live" : "is-setup"}`}>
+              <i aria-hidden="true" />
+              {tenant?.onboardingStatus === "live" ? "Community live" : "Setup in progress"}
             </span>
-          </div>
-          <h1 id="director-command-title">{communityName} at a glance</h1>
-          <p>
-            See what needs attention, understand community momentum, and take the next best action from one place.
-          </p>
+            {lastUpdatedAt ? (
+              <span className="pb-today-updated">
+                Updated {lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              </span>
+            ) : null}
+          </>
+        }
+        actions={
+          <Button variant="secondary" size="sm" onClick={loadDashboard} loading={loading}>
+            <RefreshCw size={15} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+      />
+
+      {error ? <p className="error-text" role="alert">{error}</p> : null}
+
+      {/* The queue is the page. It used to sit under a hero of quick links,
+          which put the generic actions above the specific ones. */}
+      <Card className="pb-today-queue">
+        <div className="pb-today-queue-head">
+          <h2 className="pb-section-title">
+            {actionQueue.length ? "What needs you" : "Nothing needs you"}
+          </h2>
+          {actionQueue.length ? (
+            <Badge tone={urgent ? "warning" : "neutral"}>
+              {urgent ? `${urgent} urgent` : `${actionQueue.length} to look at`}
+            </Badge>
+          ) : (
+            <Badge tone="success">All clear</Badge>
+          )}
         </div>
-        <div className="director-command-refresh-wrap">
-          <button
-            type="button"
-            className="director-command-refresh"
-            onClick={loadDashboard}
-            disabled={loading}
-          >
-            <RefreshCw className={loading ? "is-spinning" : ""} size={15} aria-hidden="true" />
-            {loading ? "Refreshing…" : "Refresh status"}
-          </button>
-          <span>{lastUpdatedLabel}</span>
-        </div>
-        <nav className="director-command-actions" aria-label="Director quick actions">
-          <Link className="is-primary" to={`/t/${slug}/onboarding`}>
-            <Sparkles size={17} aria-hidden="true" />
-            <span>
-              <strong>{aiName}</strong>
-              <small>Get guided help</small>
-            </span>
-            <ArrowUpRight size={15} aria-hidden="true" />
-          </Link>
-          <Link to={`/t/${slug}/admin/people/add`}>
-            <UserPlus size={17} aria-hidden="true" />
-            <span>
-              <strong>Invite members</strong>
-              <small>Grow your network</small>
-            </span>
-            <ArrowUpRight size={15} aria-hidden="true" />
-          </Link>
-          <Link to={`/t/${slug}/admin/email/compose`}>
-            <Send size={17} aria-hidden="true" />
-            <span>
-              <strong>Send an update</strong>
-              <small>Email the community</small>
-            </span>
-            <ArrowUpRight size={15} aria-hidden="true" />
-          </Link>
-          <Link to={`/t/${slug}/admin/people/member`}>
-            <Users size={17} aria-hidden="true" />
-            <span>
-              <strong>Manage people</strong>
-              <small>Review member records</small>
-            </span>
-            <ArrowUpRight size={15} aria-hidden="true" />
-          </Link>
-        </nav>
-      </section>
-      {error ? <p className="error-text">{error}</p> : null}
-      <Card className="director-admin-action-queue">
-        <div className="director-admin-action-queue-head">
-          <div>
-            <p className="director-admin-eyebrow">Today</p>
-            <h2>Director action queue</h2>
-          </div>
-          <Badge tone={actionQueue.length ? "warning" : "success"}>
-            {actionQueue.length ? `${actionQueue.length} to review` : "All caught up"}
-          </Badge>
-        </div>
+
         {actionQueue.length ? (
-          <ol className="director-admin-action-queue-list">
+          <ol className="pb-today-queue-list">
             {actionQueue.map((item) => (
-              <li key={item.id} className={`priority-${item.priority || "low"}`}>
-                <span className="director-admin-action-priority" aria-label={`${item.priority || "low"} priority`} />
+              <li key={item.id} className={`is-${item.priority || "low"}`}>
+                <span className="pb-today-priority">{priorityLabel(item.priority)}</span>
                 <div>
                   <strong>{item.title}</strong>
                   <p>{item.detail}</p>
@@ -841,17 +814,32 @@ export function DirectorAdminDashboardPage() {
             ))}
           </ol>
         ) : (
-          <div className="director-admin-action-empty">
-            <span className="director-admin-action-empty-icon" aria-hidden="true">
-              <CheckCircle2 size={20} />
-            </span>
+          <div className="pb-today-clear">
+            <CheckCircle2 size={20} aria-hidden="true" />
             <div>
               <strong>Everything is in good shape</strong>
-              <p>No access, communication, setup, or billing issues need your attention right now.</p>
+              <p>No access requests, failed emails, safety reports, or billing problems are waiting.</p>
             </div>
           </div>
         )}
+
+        <nav className="pb-today-shortcuts" aria-label="Common tasks">
+          <Link to={`/t/${slug}/onboarding`} className="is-primary">
+            <Sparkles size={16} aria-hidden="true" />
+            Ask {aiName}
+          </Link>
+          {TODAY_SHORTCUTS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.key} to={`/t/${slug}/${item.to}`}>
+                <Icon size={16} aria-hidden="true" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
       </Card>
+
       <div className="director-admin-stat-grid director-admin-stat-grid-hero">
         {statCards.map((item) => (
           <StatCard
@@ -868,16 +856,15 @@ export function DirectorAdminDashboardPage() {
       <section className="director-admin-dashboard-section" aria-labelledby="director-trends-title">
         <header className="director-admin-section-head">
           <div>
-            <p className="director-admin-eyebrow">Community analytics</p>
-            <h2 id="director-trends-title">Community trends</h2>
-            <p>Track new registrations and repeat engagement across the selected week.</p>
+            <p className="director-admin-eyebrow">Momentum</p>
+            <h2 id="director-trends-title">Joining and signing in</h2>
+            <p>New members and repeat visits across the week you pick.</p>
           </div>
-          <span>Last 7 days</span>
         </header>
         <div className="director-admin-dashboard-charts">
           <TimeSeriesChartCard
-            title="New Users"
-            yLabel="New users"
+            title="Joined"
+            yLabel="New members"
             xLabel="Date"
             points={newUsersSeries}
             weekWindows={weekWindows}
@@ -885,7 +872,7 @@ export function DirectorAdminDashboardPage() {
             onWeekChange={setActiveWeekKey}
           />
           <TimeSeriesChartCard
-            title="Sign-Ins"
+            title="Signed in"
             yLabel="Sign-ins"
             xLabel="Date"
             points={signInsSeries}
@@ -899,30 +886,22 @@ export function DirectorAdminDashboardPage() {
       <section className="director-admin-dashboard-section" aria-labelledby="director-insights-title">
         <header className="director-admin-section-head">
           <div>
-            <p className="director-admin-eyebrow">Member insights</p>
-            <h2 id="director-insights-title">Know your community</h2>
-            <p>See where members live, how they participated at camp, and who is returning most often.</p>
+            <p className="director-admin-eyebrow">Your people</p>
+            <h2 id="director-insights-title">Who is in your network</h2>
+            <p>Where members live, what they did at camp, and who comes back most.</p>
           </div>
           <Link to={`/t/${slug}/admin/people/member`}>
-            View all members
+            See everyone
             <ArrowUpRight size={14} aria-hidden="true" />
           </Link>
         </header>
         <div className="director-admin-breakdown-grid">
+          <TopProfileBreakdownCard title="Where they live" columnLabel="Location" items={topLocations} />
+          <TopProfileBreakdownCard title="What they did at camp" columnLabel="Role" items={topRoles} />
           <TopProfileBreakdownCard
-            title="Top Locations"
-            columnLabel="Location"
-            items={topLocations}
-          />
-          <TopProfileBreakdownCard
-            title="Top Roles At Camp"
-            columnLabel="Role"
-            items={topRoles}
-          />
-          <TopProfileBreakdownCard
-            title="Top Active Members"
+            title="Who comes back most"
             columnLabel="Member"
-            countLabel="Logins"
+            countLabel="Sign-ins"
             items={topActiveMembers}
           />
         </div>

@@ -1,0 +1,204 @@
+/* Today — the action queue is the page; everything else is context under it. */
+
+.pb-today-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.pb-today-state i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pb-today-state.is-live { color: #2f9c6f; }
+.pb-today-state.is-setup { color: #d3a13b; }
+
+.pb-today-updated {
+  color: #6d7f94;
+  font-size: .82rem;
+}
+
+/* --- The queue --- */
+
+.pb-today-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pb-today-queue-head .pb-section-title {
+  margin: 0;
+}
+
+.pb-today-queue-list {
+  display: grid;
+  gap: 1px;
+  margin: 14px 0 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e4ebf3;
+  border-radius: 12px;
+  background: #e4ebf3;
+  list-style: none;
+}
+
+.pb-today-queue-list li {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  background: #fff;
+}
+
+.pb-today-queue-list li > div {
+  min-width: 0;
+}
+
+.pb-today-queue-list strong {
+  display: block;
+  color: #173756;
+  font-size: .96rem;
+}
+
+.pb-today-queue-list p {
+  margin: 3px 0 0;
+  color: #6d7f94;
+  font-size: .85rem;
+  line-height: 1.45;
+}
+
+.pb-today-queue-list a {
+  white-space: nowrap;
+}
+
+/* The old page used a coloured dot with the priority only in an aria-label, so
+   sighted users had to learn the colour code. It says the words now. */
+.pb-today-priority {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pb-today-queue-list .is-high .pb-today-priority {
+  background: #fbe9e6;
+  color: #a33a2c;
+}
+
+.pb-today-queue-list .is-medium .pb-today-priority {
+  background: #fdf3e0;
+  color: #8a5b0b;
+}
+
+.pb-today-queue-list .is-low .pb-today-priority {
+  background: #eef2f7;
+  color: #57687d;
+}
+
+.pb-today-clear {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 15px 16px;
+  border: 1px solid #d5ebe0;
+  border-radius: 12px;
+  background: #f2faf6;
+}
+
+.pb-today-clear svg {
+  flex: none;
+  margin-top: 1px;
+  color: #237554;
+}
+
+.pb-today-clear strong {
+  display: block;
+  color: #1b5b41;
+  font-size: .96rem;
+}
+
+.pb-today-clear p {
+  margin: 3px 0 0;
+  color: #3f7861;
+  font-size: .86rem;
+}
+
+/* --- Shortcuts --- */
+
+.pb-today-shortcuts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 15px;
+  border-top: 1px solid #eef2f7;
+}
+
+.pb-today-shortcuts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid #dce6f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #34485f;
+  font-size: .87rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pb-today-shortcuts a:hover {
+  border-color: #b9cde3;
+  background: #f6f9fc;
+  color: #173756;
+}
+
+.pb-today-shortcuts a svg {
+  opacity: .75;
+}
+
+.pb-today-shortcuts a.is-primary {
+  border-color: transparent;
+  background: var(--brand-primary, #1d5faa);
+  color: #fff;
+}
+
+.pb-today-shortcuts a.is-primary:hover {
+  background: var(--brand-primary, #1d5faa);
+  filter: brightness(1.08);
+  color: #fff;
+}
+
+.pb-today-shortcuts a.is-primary svg {
+  opacity: 1;
+}
+
+@media (max-width: 760px) {
+  .pb-today-queue-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .pb-today-priority {
+    justify-self: start;
+  }
+
+  .pb-today-queue-list a {
+    justify-self: start;
+  }
+}

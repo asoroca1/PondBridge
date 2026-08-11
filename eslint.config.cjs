@@ -30,9 +30,12 @@ module.exports = [
     rules: {
       "react/jsx-uses-vars": "error",
       // A reference to something that no longer exists builds and bundles
-      // cleanly, then throws on the page. This is the only gate that catches
-      // it before a director does.
+      // cleanly, then throws on the page. These are the only gates that catch
+      // it before a director does. `no-undef` misses JSX entirely — the parser
+      // emits JSXIdentifier nodes that scope analysis never treats as
+      // references — so an unimported <Component /> needs its own rule.
       "no-undef": "error",
+      "react/jsx-no-undef": "error",
       "no-unused-vars": [
         "warn",
         {
