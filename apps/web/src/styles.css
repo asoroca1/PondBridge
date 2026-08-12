@@ -2569,9 +2569,10 @@ img[draggable="false"] { -webkit-user-drag: none; }
   gap: 8px;
 }
 
-.brand-image-picker-head strong{
-  font-size: 0.84rem;
-  font-weight: 800;
+.brand-image-picker-head h4{
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
   color: #1d3f67;
 }
 

@@ -383,23 +383,13 @@
   font-size: .82rem;
 }
 
-/* --- Upload + colour groups --- */
+/* --- Upload + color groups --- */
 
 .pb-set-upload,
 .pb-set-color {
   display: grid;
   gap: 12px;
   margin-top: 14px;
-}
-
-.pb-set-upload > label:first-child {
-  display: none;
-}
-
-.pb-set-color > label:first-child {
-  color: #34485f;
-  font-size: .86rem;
-  font-weight: 700;
 }
 
 /* --- Status card (every tab opens with one) --- */
@@ -597,4 +587,35 @@
   height: 34px;
   border: 1px solid rgba(16, 38, 62, .18);
   border-radius: 9px;
+}
+
+/* --- Sub-section headings --- */
+
+/* Blocks inside a settings card need naming too. Loose controls under a card
+   title leave you guessing which one the description belongs to. */
+.pb-set-subsection {
+  margin: 4px 0 0;
+  color: #173756;
+  font-size: .93rem;
+  font-weight: 700;
+}
+
+.pb-cedar-page .pb-set-subsection label {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.pb-set-subsection-note {
+  margin: -6px 0 0;
+  color: #6d7f94;
+  font-size: .83rem;
+}
+
+.pb-set-upload > .pb-set-subsection:not(:first-child),
+.pb-set-color > .pb-set-subsection:not(:first-child) {
+  margin-top: 10px;
+  padding-top: 15px;
+  border-top: 1px solid #eef2f7;
 }
