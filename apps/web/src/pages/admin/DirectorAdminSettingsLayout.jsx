@@ -31,8 +31,8 @@ const GROUPS = [
         to: "branding",
         label: "Branding",
         icon: Image,
-        blurb: "Logo, colours, hero images",
-        description: "Your logo, colours, and hero images, everywhere members see them."
+        blurb: "Logo, colors, hero images",
+        description: "Your logo, colors, and hero images, everywhere members see them."
       },
       {
         to: "features",

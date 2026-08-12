@@ -1953,7 +1953,7 @@ export function DirectorAdminSettingsBrandingPage() {
         tabs={[
           { key: "logo", label: "Logo" },
           { key: "photo", label: "Main photo" },
-          { key: "colour", label: "Colour" },
+          { key: "color", label: "Color" },
           { key: "preview", label: "Preview" }
         ]}
         active={section}
@@ -1965,6 +1965,7 @@ export function DirectorAdminSettingsBrandingPage() {
         <h2 className="pb-section-title">Your logo</h2>
         <p className="muted">Sits in the top-left of every page, and at the top of the emails you send.</p>
         <div className="pb-set-upload">
+              <h3 className="pb-set-subsection">Upload a new logo</h3>
               <label className="director-upload-control" htmlFor="director-admin-logo-upload">
                 <span className="director-upload-button">Upload logo</span>
                 <span className="director-upload-name">
@@ -1981,8 +1982,10 @@ export function DirectorAdminSettingsBrandingPage() {
                 }}
                 onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)}
               />
+              <h3 className="pb-set-subsection">
+                {hasPendingLogoUpdate ? "Waiting to be saved" : "Currently in use"}
+              </h3>
               <div className="director-admin-branding-current-media">
-                <small>{hasPendingLogoUpdate ? "Preview (pending save)" : "Currently in use"}</small>
                 {liveLogoPreviewUrl ? (
                   <img src={liveLogoPreviewUrl} alt="Current logo" className="director-admin-branding-current-logo" />
                 ) : (
@@ -2001,6 +2004,7 @@ export function DirectorAdminSettingsBrandingPage() {
           The big image behind your login page and your members&apos; home page. Landscape photos work best.
         </p>
         <div className="pb-set-upload">
+              <h3 className="pb-set-subsection">Upload a new photo</h3>
               <label className="director-upload-control" htmlFor="director-admin-hero-upload">
                 <span className="director-upload-button">Upload main photo</span>
                 <span className="director-upload-name">
@@ -2017,8 +2021,10 @@ export function DirectorAdminSettingsBrandingPage() {
                 }}
                 onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)}
               />
+              <h3 className="pb-set-subsection">
+                {hasPendingHeroUpdate ? "Waiting to be saved" : "Currently in use"}
+              </h3>
               <div className="director-admin-branding-current-media">
-                <small>{hasPendingHeroUpdate ? "Preview (pending save)" : "Currently in use"}</small>
                 {liveHeroPreviewUrl ? (
                   <img src={liveHeroPreviewUrl} alt="Current hero image" className="director-admin-branding-current-hero" />
                 ) : (
@@ -2030,13 +2036,16 @@ export function DirectorAdminSettingsBrandingPage() {
       </Card>
       ) : null}
 
-      {section === "colour" ? (
+      {section === "color" ? (
       <Card>
-        <h2 className="pb-section-title">Your colour</h2>
+        <h2 className="pb-section-title">Your color</h2>
         <p className="muted">
           Used for buttons, links, and highlights. Pick it from your logo if you want an exact match.
         </p>
         <div className="pb-set-color">
+              <h3 className="pb-set-subsection">
+                <label htmlFor="director-admin-brand-primary">Main color</label>
+              </h3>
               <div className="director-color-row">
                 <input
                   id="director-admin-brand-primary"
@@ -2063,6 +2072,8 @@ export function DirectorAdminSettingsBrandingPage() {
                   setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(nextHex, DEFAULT_BRAND_PRIMARY) }))
                 }
               />
+              <h3 className="pb-set-subsection">The rest of your palette</h3>
+              <p className="pb-set-subsection-note">Worked out from your main color. These are what members actually see.</p>
               <div className="director-palette-preview" aria-label="Brand palette preview">
                 {paletteSwatches.map((swatch) => (
                   <div className="director-palette-swatch" key={swatch.label}>

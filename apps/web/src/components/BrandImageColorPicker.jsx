@@ -130,11 +130,11 @@ export default function BrandImageColorPicker({
   return (
     <div className={classNames("brand-image-picker", className)}>
       <div className="brand-image-picker-head">
-        <strong>Pick Color From Image</strong>
+        <h4>Pick a color from an image</h4>
         <code>{String(value || "").toUpperCase() || "-"}</code>
       </div>
       <p className="brand-image-picker-copy">
-        Upload a logo/photo reference, then click on the image to set your main color.
+        Upload your logo or a photo, then click anywhere on it to take that color.
       </p>
       <div className="brand-image-picker-actions">
         <button
@@ -142,7 +142,7 @@ export default function BrandImageColorPicker({
           className="brand-image-picker-btn brand-image-picker-btn-primary"
           onClick={() => fileInputRef.current?.click()}
         >
-          Upload Reference
+          Upload an image
         </button>
         <input
           ref={fileInputRef}
@@ -150,7 +150,7 @@ export default function BrandImageColorPicker({
           accept="image/*"
           onChange={handleUpload}
           className="brand-image-picker-file-input"
-          aria-label="Reference image upload"
+          aria-label="Image to pick a color from"
         />
         {uploadedImageUrl ? (
           <button
@@ -158,12 +158,12 @@ export default function BrandImageColorPicker({
             className="brand-image-picker-btn"
             onClick={clearUploadedImage}
           >
-            Clear Reference
+            Remove image
           </button>
         ) : null}
         {canUseSystemDropper ? (
           <button type="button" className="brand-image-picker-btn" onClick={pickFromScreen}>
-            Screen Dropper
+            Pick from screen
           </button>
         ) : null}
       </div>
@@ -190,7 +190,7 @@ export default function BrandImageColorPicker({
         </div>
       ) : (
         <div className="brand-image-picker-empty">
-          Upload a reference image to sample colors.
+          Upload an image to pick a color from it.
         </div>
       )}
       {pickerError ? <p className="brand-image-picker-error">{pickerError}</p> : null}
