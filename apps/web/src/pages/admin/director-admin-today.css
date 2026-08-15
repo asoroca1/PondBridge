@@ -203,9 +203,14 @@
 
 /* --- Density --- */
 
-/* The axis titles are gone, so the SVG no longer needs room reserved for them. */
-.pb-today .director-admin-chart-svg {
-  max-height: 190px;
+/* Grid children are adjacent siblings, so the global `.pb-card + .pb-card`
+   stacking margin lands on every card after the first. Inside a grid that
+   pushes it down and, under align-items: stretch, leaves it shorter than the
+   card beside it — two charts that should be identical ending up different
+   sizes. The doubled class outranks that rule without depending on file order. */
+.pb-cedar-page .director-admin-dashboard-charts > .pb-card.pb-card,
+.pb-cedar-page .director-admin-breakdown-grid > .pb-card.pb-card {
+  margin-top: 0;
 }
 
 .pb-today .director-admin-chart-card {
