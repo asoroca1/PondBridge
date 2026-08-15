@@ -11,8 +11,7 @@ import { isNativeApp } from "../../lib/nativeApp.js";
 import {
   buildAcceptedLegalAgreementPayload,
   LEGAL_PRIVACY_VERSION,
-  LEGAL_TERMS_VERSION,
-  MINIMUM_MEMBER_AGE
+  LEGAL_TERMS_VERSION
 } from "../../lib/legalAgreement.js";
 import {
   clearPendingAccessGrant,
@@ -65,7 +64,6 @@ function LegacyCreateAccountFlow() {
   const [accessGrant, setAccessGrant] = useState(() => readPendingAccessGrant(slug));
   const [accessCode, setAccessCode] = useState("");
   const [legalAccepted, setLegalAccepted] = useState(false);
-  const [ageEligibilityConfirmed, setAgeEligibilityConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
   const [error, setError] = useState("");
@@ -174,11 +172,8 @@ function LegacyCreateAccountFlow() {
       showValidationError("password", "Password must be at least 8 characters.");
       return;
     }
-    if (!legalAccepted || !ageEligibilityConfirmed) {
-      showValidationError(
-        "legal",
-        `Confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy.`
-      );
+    if (!legalAccepted) {
+      showValidationError("legal", "Agree to the Terms of Service and Privacy Policy.");
       return;
     }
     if (inviteToken && inviteState !== "valid") {
@@ -383,21 +378,6 @@ function LegacyCreateAccountFlow() {
               I agree to the <a href={`${legalPath}#terms`} target="_blank" rel="noreferrer">Terms of Service</a> and{" "}
               <a href={`${legalPath}#privacy`} target="_blank" rel="noreferrer">Privacy Policy</a>.
             </span>
-          </label>
-          <label className="alumni-create-legal-check">
-            <input
-              type="checkbox"
-              checked={ageEligibilityConfirmed}
-              onChange={(event) => {
-                setAgeEligibilityConfirmed(event.target.checked);
-                setInvalidField("");
-                setError("");
-              }}
-              disabled={submitting || !signupEnabled}
-              aria-invalid={invalidField === "legal" || undefined}
-              aria-describedby={invalidField === "legal" ? "legacy-create-error" : undefined}
-            />
-            <span>I confirm that I am at least {MINIMUM_MEMBER_AGE} years old.</span>
           </label>
         </div>
         {error ? <p id="legacy-create-error" className="login1-error" role="alert">{error}</p> : null}
