@@ -8,7 +8,6 @@ import "./chats.css";
 import { MessageSquare, Users, Megaphone, Plus, Shield, ChevronLeft, Search } from "lucide-react";
 import PeoplePicker from "../components/chat/PeoplePicker";
 import MessageComposer from "../components/chat/MessageComposer";
-import ContentReportAction from "../components/chat/ContentReportAction.jsx";
 import AuthenticatedAttachment from "../components/chat/AuthenticatedAttachment.jsx";
 import { useTypingIndicator } from "../components/chat/useTypingIndicator.js";
 import NotificationBadge from "../../components/NotificationBadge.jsx";
@@ -2774,12 +2773,6 @@ function ForumsTab({ socket }) {
                           <div className="cf-post-time">{fmtDateTime(p.createdAt)}</div>
                         </div>
                       </div>
-                      {authorId !== String(meId) && isObjectIdLike(p?._id || p?.id) ? (
-                        <ContentReportAction
-                          targetType="forum_post"
-                          targetId={normalizeEntityId(p?._id || p?.id)}
-                        />
-                      ) : null}
                     </div>
 
                     {p.kind === "text" && <div className="cf-post-body">{p.text}</div>}
