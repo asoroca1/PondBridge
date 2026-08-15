@@ -75,6 +75,10 @@ import {
   conversationListResponseCache,
   conversationMessagesResponseCache
 } from "../services/chatRuntimeCache.js";
+import {
+  buildCorpusStats,
+  scoreSimilarity
+} from "../services/profileSimilarity.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
@@ -1043,74 +1047,6 @@ function parseCityStateFromBody(body = {}) {
   return composeCityState({ city, state, country });
 }
 
-function toSet(values = []) {
-  return new Set(
-    (Array.isArray(values) ? values : [])
-      .map((value) => String(value || "").trim().toLowerCase())
-      .filter(Boolean)
-  );
-}
-
-function overlapCount(aSet, bSet) {
-  if (!aSet?.size || !bSet?.size) return 0;
-  let count = 0;
-  for (const value of aSet) {
-    if (bSet.has(value)) count += 1;
-  }
-  return count;
-}
-
-function topCompanies(profile = {}) {
-  return toSet((profile.currentJobs || []).map((job) => String(job?.company || "").trim()));
-}
-
-function scoreSimilarity(target, candidate) {
-  let score = 0;
-  const reasons = [];
-
-  const targetRole = String(target?.roleAtCamp || "").trim().toLowerCase();
-  const candidateRole = String(candidate?.roleAtCamp || "").trim().toLowerCase();
-  if (targetRole && candidateRole && targetRole === candidateRole) {
-    score += 4;
-    reasons.push("role");
-  }
-
-  const targetIndustry = String(target?.industry || "").trim().toLowerCase();
-  const candidateIndustry = String(candidate?.industry || "").trim().toLowerCase();
-  if (targetIndustry && candidateIndustry && targetIndustry === candidateIndustry) {
-    score += 4;
-    reasons.push("industry");
-  }
-
-  const targetCity = String(target?.cityState || "").trim().toLowerCase();
-  const candidateCity = String(candidate?.cityState || "").trim().toLowerCase();
-  if (targetCity && candidateCity && targetCity === candidateCity) {
-    score += 3;
-    reasons.push("location");
-  }
-
-  const collegeOverlap = overlapCount(toSet(target?.colleges), toSet(candidate?.colleges));
-  if (collegeOverlap > 0) {
-    score += Math.min(4, collegeOverlap * 2);
-    reasons.push("college");
-  }
-
-  const companyOverlap = overlapCount(topCompanies(target), topCompanies(candidate));
-  if (companyOverlap > 0) {
-    score += Math.min(4, companyOverlap * 2);
-    reasons.push("company");
-  }
-
-  const targetSchool = String(target?.highSchool || "").trim().toLowerCase();
-  const candidateSchool = String(candidate?.highSchool || "").trim().toLowerCase();
-  if (targetSchool && candidateSchool && targetSchool === candidateSchool) {
-    score += 1;
-    reasons.push("school");
-  }
-
-  return { score, reasons };
-}
-
 function profileToSuggestion(profile = {}) {
   const id = String(profile._id || profile.id || "").trim();
   if (!id) return null;
@@ -1843,6 +1779,8 @@ router.get("/search/names", async (req, res) => {
   return res.json({ items: mapped, results: mapped });
 });
 
+const SUGGESTION_CANDIDATE_LIMIT = 5000;
+
 router.get("/suggestions", async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit || 5), 1), 20);
   const requestedId = String(req.query.forUserId || "").trim();
@@ -1870,21 +1808,30 @@ router.get("/suggestions", async (req, res) => {
     await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
   );
 
+  // `socials` carries the camper and staff stints the scorer reads for camp-era
+  // overlap; without it that signal is invisible.
   const candidates = await ProfileModel.find(req.tenant._id, {
     _id: { $ne: targetProfile._id },
     status: "active"
   }, {
-    select: ["id", "userId", "firstName", "lastName", "avatarUrl", "currentJobs", "roleAtCamp", "industry", "cityState", "colleges", "highSchool", "createdAt"],
-    limit: 800
+    select: ["id", "userId", "firstName", "lastName", "avatarUrl", "currentJobs", "roleAtCamp", "industry", "cityState", "colleges", "highSchool", "socials", "createdAt"],
+    limit: SUGGESTION_CANDIDATE_LIMIT
   });
   const visibleCandidates = candidates.filter(
     (candidate) => !blockedUserIds.has(String(candidate?.userId || ""))
   );
+  // Past this point the pool was cut off, so some members cannot be suggested.
+  // Reported rather than left silent.
+  const truncated = candidates.length >= SUGGESTION_CANDIDATE_LIMIT;
+
+  // Weights depend on how common a value is in this network, so the frequencies
+  // come from the same pool being ranked.
+  const corpusStats = buildCorpusStats([targetProfile, ...visibleCandidates]);
 
   const scored = mode === "personalized"
     ? visibleCandidates
         .map((candidate) => {
-          const similarity = scoreSimilarity(targetProfile, candidate);
+          const similarity = scoreSimilarity(targetProfile, candidate, corpusStats);
           return {
             profile: candidate,
             score: similarity.score,
@@ -1911,7 +1858,8 @@ router.get("/suggestions", async (req, res) => {
     items,
     mode,
     forUserId: String(targetProfile._id),
-    ranking: mode === "recent" ? "newest_active_profiles" : "private_profile_similarity"
+    ranking: mode === "recent" ? "newest_active_profiles" : "private_profile_similarity",
+    ...(truncated ? { candidatePoolTruncated: true } : {})
   });
 });
 

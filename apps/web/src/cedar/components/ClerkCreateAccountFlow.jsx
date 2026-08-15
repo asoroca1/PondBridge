@@ -8,7 +8,6 @@ import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import {
-  MINIMUM_MEMBER_AGE,
   clearPendingLegalAgreement,
   readPendingLegalAgreement,
   setPendingLegalAgreementAccepted
@@ -35,7 +34,6 @@ export default function ClerkCreateAccountFlow() {
   const { bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
-  const [ageEligibilityConfirmed, setAgeEligibilityConfirmed] = useState(false);
   const [legalError, setLegalError] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [accessCodeError, setAccessCodeError] = useState("");
@@ -55,21 +53,20 @@ export default function ClerkCreateAccountFlow() {
   useEffect(() => {
     const pending = readPendingLegalAgreement(slug);
     setLegalAccepted(Boolean(pending?.accepted));
-    setAgeEligibilityConfirmed(Boolean(pending?.ageEligibilityConfirmed));
   }, [slug]);
 
   useEffect(() => {
     if (!legalRequired) return;
-    setLegalError(`Confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy to create your account.`);
+    setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
   }, [legalRequired]);
 
   useEffect(() => {
-    if (legalAccepted && ageEligibilityConfirmed) {
+    if (legalAccepted) {
       setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
       return;
     }
     clearPendingLegalAgreement(slug);
-  }, [ageEligibilityConfirmed, legalAccepted, slug]);
+  }, [legalAccepted, slug]);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -103,14 +100,14 @@ export default function ClerkCreateAccountFlow() {
   const signInUrl = routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
   const legalPath = routeWithSlug(slug, "/legal");
   const onSignUpSubmitCapture = (event) => {
-    if (legalAccepted && ageEligibilityConfirmed) {
+    if (legalAccepted) {
       setLegalError("");
       setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    setLegalError(`Confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy to create your account.`);
+    setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
   };
 
   async function verifyAccessCode(event) {
@@ -291,17 +288,6 @@ export default function ClerkCreateAccountFlow() {
                   </a>
                   .
                 </span>
-              </label>
-              <label className="alumni-create-legal-check">
-                <input
-                  type="checkbox"
-                  checked={ageEligibilityConfirmed}
-                  onChange={(event) => {
-                    setAgeEligibilityConfirmed(event.target.checked);
-                    setLegalError("");
-                  }}
-                />
-                <span>I confirm that I am at least {MINIMUM_MEMBER_AGE} years old.</span>
               </label>
               {legalError ? <p className="error-text alumni-create-legal-error">{legalError}</p> : null}
             </div>
