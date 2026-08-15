@@ -26,7 +26,13 @@ import {
 } from "../services/objectStorage.js";
 import { buildTenantEmailBranding, sendBulkTransactionalEmail } from "../services/email.js";
 import { broadcastTemplate } from "../services/emailTemplates.js";
-import { cityKey, geocodeCity } from "../utils/geocode.js";
+import {
+  cityKey,
+  clearGeocodeFailure,
+  geocodeCity,
+  recordGeocodeFailure,
+  shouldSkipGeocode
+} from "../utils/geocode.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
 import { sanitizeText } from "../utils/sanitize.js";
 import {
@@ -129,6 +135,7 @@ const CITY_STATE_PARSE_CACHE_LIMIT = Math.max(
 );
 const MAP_CITY_PROFILE_SELECT = [
   "id",
+  "userId",
   "firstName",
   "lastName",
   "avatarUrl",
@@ -624,9 +631,16 @@ async function runGeocodeWorker() {
       if (!key || !row) break;
       geocodeQueue.delete(key);
 
+      // A city that keeps failing waits out its backoff instead of being
+      // retried on every request ahead of cities that can resolve.
+      if (shouldSkipGeocode(key)) continue;
+
       try {
         const existing = await CityGeoModel.findByKey(key);
-        if (hasCoords(existing)) continue;
+        if (hasCoords(existing)) {
+          clearGeocodeFailure(key);
+          continue;
+        }
         const coords = await geocodeCity(row.city, row.state);
         await CityGeoModel.upsert({
           key,
@@ -636,9 +650,10 @@ async function runGeocodeWorker() {
           lng: Number(coords.lng),
           source: coords.source || "unknown"
         });
+        clearGeocodeFailure(key);
         geocodeUpdated = true;
       } catch {
-        // Ignore individual geocode failures.
+        recordGeocodeFailure(key);
       }
     }
   } finally {
@@ -652,7 +667,13 @@ async function runGeocodeWorker() {
 }
 
 async function aggregateCityCounts(tenantId) {
-  const rows = await ProfileModel.find(tenantId, { cityState: { $ne: "" } }, { select: ["cityState"] });
+  // Flagged and deactivated profiles are excluded everywhere else in the
+  // product; counting them here made the map disagree with the member count.
+  const rows = await ProfileModel.find(
+    tenantId,
+    { cityState: { $ne: "" }, status: "active" },
+    { select: ["cityState"] }
+  );
 
   const byKey = new Map();
   for (const row of rows) {
@@ -718,7 +739,7 @@ async function loadMapProfilesForCity(tenantId, { city = "", state = "" } = {}) 
   const normalizedCity = sanitizeLikeToken(city);
   const normalizedState = sanitizeLikeToken(state).toUpperCase();
   const run = (filter) =>
-    ProfileModel.find(tenantId, filter, {
+    ProfileModel.find(tenantId, { ...filter, status: "active" }, {
       select: MAP_CITY_PROFILE_SELECT,
       limit: MAP_CITY_PROFILE_LIMIT
     });
@@ -753,6 +774,7 @@ function mapCityPerson(profile) {
   return {
     _id: id,
     id,
+    userId: String(profile.userId || ""),
     firstName: profile.firstName || "",
     lastName: profile.lastName || "",
     uploads: { photoUrl: profile.avatarUrl || "" },
@@ -761,6 +783,16 @@ function mapCityPerson(profile) {
     currentJob,
     company
   };
+}
+
+/**
+ * Blocking is between two people, so it cannot be baked into the shared
+ * per-city cache — it is applied on the way out, per viewer.
+ */
+function withoutBlockedPeople(people = [], blockedUserIds = new Set()) {
+  return (Array.isArray(people) ? people : [])
+    .filter((person) => !blockedUserIds.has(String(person?.userId || "")))
+    .map(({ userId: _userId, ...person }) => person);
 }
 
 function normalizeIdentityName(value = "") {
@@ -3710,7 +3742,11 @@ router.get("/map/city/:key", async (req, res) => {
     });
   }
 
-  return res.json(output);
+  const blockedUserIds = new Set(
+    await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
+  );
+
+  return res.json(withoutBlockedPeople(output, blockedUserIds));
 });
 
 export default router;
