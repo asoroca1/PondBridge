@@ -401,7 +401,13 @@ function TimeSeriesChartCard({
 
   const chartHeight = 232;
   const chartWidth = 560;
-  const padding = { top: 16, right: 16, bottom: 38, left: 52 };
+  // Reserve room for the axis titles only when there are axis titles.
+  const padding = {
+    top: 16,
+    right: 16,
+    bottom: xLabel ? 38 : 30,
+    left: yLabel ? 52 : 40
+  };
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
   const maxObservedValue = Math.max(0, ...weekSeries.map((point) => point.value));
@@ -556,7 +562,7 @@ function TimeSeriesChartCard({
             ? [...xLabelIndexes].map((index) => {
                 const point = chartPoints[index];
                 return (
-                  <text key={index} className="director-admin-chart-xtick" x={point.x} y={chartHeight - 18}>
+                  <text key={index} className="director-admin-chart-xtick" x={point.x} y={chartHeight - padding.bottom + 16}>
                     {point.label}
                   </text>
                 );
