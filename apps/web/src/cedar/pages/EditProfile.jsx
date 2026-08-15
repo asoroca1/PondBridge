@@ -1948,17 +1948,28 @@ export default function EditProfile() {
         <div className="wizard1-span-6">
           <div className="wizard1-field">
             <label className="wizard1-label" htmlFor="edit-profile-industry">Industry <span className="req">*</span></label>
-            <select
-              id="edit-profile-industry"
-              className={`wizard1-input wizard1-select ${errors.industry ? "has-error" : ""}`}
-              value={form.industry}
-              onChange={(e) => setField({ industry: e.target.value })}
-              aria-invalid={Boolean(errors.industry)}
-              aria-describedby={errors.industry ? "edit-profile-industry-error" : undefined}
-            >
-              <option value="">Select…</option>
-              {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-            </select>
+            <div className="edit-profile-industry-controls">
+              <select
+                id="edit-profile-industry"
+                className={`wizard1-input wizard1-select ${errors.industry ? "has-error" : ""}`}
+                value={form.industry}
+                onChange={(e) => setField({ industry: e.target.value })}
+                aria-invalid={Boolean(errors.industry)}
+                aria-describedby={errors.industry ? "edit-profile-industry-error" : undefined}
+              >
+                <option value="">Select…</option>
+                {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+              </select>
+              <button
+                type="button"
+                className={`edit-profile-student-button ${form.industry === "Student" ? "is-selected" : ""}`}
+                onClick={() => setField({ industry: "Student" })}
+                aria-controls="edit-profile-industry"
+                aria-pressed={form.industry === "Student"}
+              >
+                {form.industry === "Student" ? "Student selected" : "Select if student"}
+              </button>
+            </div>
             {errors.industry && <p id="edit-profile-industry-error" className="wizard1-error">{errors.industry}</p>}
           </div>
         </div>
