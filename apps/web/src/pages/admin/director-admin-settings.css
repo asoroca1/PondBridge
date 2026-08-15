@@ -88,22 +88,6 @@
 
 .pb-settings-surface { min-width: 0; display: grid; gap: 12px; align-content: start; }
 
-.pb-settings-head {
-  padding: 2px 2px 0;
-}
-
-.pb-settings-head h1 {
-  margin: 0;
-  font-size: 1.32rem;
-  color: var(--pb-set-ink);
-}
-
-.pb-settings-head p {
-  margin: 3px 0 0;
-  color: var(--pb-set-ink-soft);
-  font-size: 0.9rem;
-}
-
 .pb-settings-body { min-width: 0; display: grid; gap: 12px; }
 
 /* The tabs still render their own cards; keep their top margin from
