@@ -81,14 +81,13 @@ describe("director onboarding guided mode", () => {
           totalMembers: 218,
           newThisWeek: 7,
           profileCompletion: 74,
-          pendingApprovals: 3,
-          openSafetyReports: 1
+          pendingApprovals: 3
         },
         actionQueue: [
           {
-            title: "1 community safety report waiting",
-            actionLabel: "Review reports",
-            href: "/t/pine/admin/safety"
+            title: "3 access requests waiting",
+            actionLabel: "Review requests",
+            href: "/t/pine/admin/people/request"
           }
         ]
       },
@@ -98,10 +97,9 @@ describe("director onboarding guided mode", () => {
     expect(answer.content).toContain("218 active members");
     expect(answer.content).toContain("7 new members");
     expect(answer.content).toContain("74% complete");
-    expect(answer.content).toContain("1 open safety report");
     expect(answer.links[0]).toEqual({
-      label: "Review reports",
-      href: "/t/pine/admin/safety"
+      label: "Review requests",
+      href: "/t/pine/admin/people/request"
     });
   });
 });

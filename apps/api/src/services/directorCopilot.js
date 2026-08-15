@@ -45,11 +45,6 @@ const ADMIN_SCREEN_CATALOG = Object.freeze({
     summary: "Reviews access requests. The copilot cannot approve or deny anyone.",
     path: "/admin/members/approvals"
   },
-  safety: {
-    title: "Community Safety",
-    summary: "Reviews member reports and documents director decisions. The copilot cannot close reports.",
-    path: "/admin/safety"
-  },
   invites: {
     title: "Invite Members",
     summary: "Previews and validates invitations before a director explicitly sends them.",
@@ -281,13 +276,6 @@ async function getDirectorActionQueue(context) {
   const billingReadiness = getBillingReadiness(context.tenant);
   const items = [];
 
-  if (openSafetyReports > 0) {
-    items.push({
-      priority: "high",
-      title: `${openSafetyReports} community safety ${openSafetyReports === 1 ? "report" : "reports"} waiting`,
-      link: link(context, "Review reports", "/admin/safety")
-    });
-  }
   if (pendingApprovals > 0) {
     items.push({
       priority: "high",

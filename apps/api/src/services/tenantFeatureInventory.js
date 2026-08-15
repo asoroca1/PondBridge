@@ -292,12 +292,6 @@ export async function buildDirectorCapabilityInventory(tenant = {}) {
       description: "Manage members, review access requests, and send reviewed invitations.",
       path: "/admin/members"
     }),
-    coreCapability(tenant, {
-      key: "community_safety",
-      label: "Community safety",
-      description: "Review reports, remove reported content, and document director decisions.",
-      path: "/admin/safety"
-    }),
     {
       ...coreCapability(tenant, {
         key: "email_campaigns",

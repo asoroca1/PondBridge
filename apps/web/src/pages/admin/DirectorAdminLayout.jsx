@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Send,
   Settings,
-  ShieldCheck,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -24,7 +23,6 @@ const ADMIN_NAV = [
   { type: "label", key: "people-label", label: "People" },
   // Members, approvals, and invitations are stages of one workspace now.
   { key: "people", to: "people", label: "People", icon: Users },
-  { key: "safety", to: "safety", label: "Safety", icon: ShieldCheck },
   { type: "label", key: "engage-label", label: "Engage" },
   { key: "events", to: "events", label: "Events & info sessions", icon: CalendarDays },
   // Points at the workspace root so every mail folder keeps the item highlighted.

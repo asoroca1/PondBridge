@@ -2749,16 +2749,6 @@ router.get("/dashboard", async (req, res, next) => {
     const actionQueue = [];
     const tenantAdminBase = `/t/${encodeURIComponent(String(req.tenant.slug || ""))}/admin`;
 
-    if (openSafetyReports > 0) {
-      actionQueue.push({
-        id: "community-safety-reports",
-        priority: "high",
-        title: `${openSafetyReports} community safety ${openSafetyReports === 1 ? "report" : "reports"} waiting`,
-        detail: "Review member reports before lower-priority operational work.",
-        actionLabel: "Review reports",
-        href: `${tenantAdminBase}/safety`
-      });
-    }
     if (pendingApprovals > 0) {
       actionQueue.push({
         id: "pending-approvals",
