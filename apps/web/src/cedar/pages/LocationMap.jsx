@@ -21,13 +21,9 @@ function cityLabel(c) {
   return [c.city, c.state].filter(Boolean).join(", ");
 }
 
-function markerSize(count) {
-  const n = Number(count || 0);
-  if (n >= 20) return 36;
-  if (n >= 10) return 30;
-  if (n >= 5) return 26;
-  return 22;
-}
+const CLUSTER_SOURCE_ID = "lm-cities";
+const CLUSTER_LAYER_ID = "lm-cluster";
+const CITY_LAYER_ID = "lm-city";
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const toRad = (value) => (Number(value) * Math.PI) / 180;
@@ -180,8 +176,7 @@ export default function LocationMap() {
   const mapEl = useRef(null);
   const resultsRef = useRef(null);
 
-  const markersRef = useRef([]);
-  const selectedMarkerRef = useRef(null);
+  const interactionsBoundRef = useRef(false);
   const citiesRef = useRef([]);
   const selectedRef = useRef(null);
 
@@ -357,129 +352,182 @@ export default function LocationMap() {
     }
   }
 
-  function clearHighlightedMarker() {
-    if (!selectedMarkerRef.current) return;
-    selectedMarkerRef.current.classList.remove("is-selected");
-    selectedMarkerRef.current.style.zIndex = "";
-    selectedMarkerRef.current = null;
-  }
+  /**
+   * One clustered source instead of a DOM marker per city. At 135 cities the
+   * old approach drew 135 overlapping pins that nearly all read "1", so the
+   * shape of the network was invisible; clusters merge them by proximity and
+   * carry the total alumni underneath, not the number of cities.
+   */
+  function bindClusterInteractions(map) {
+    if (interactionsBoundRef.current) return;
+    interactionsBoundRef.current = true;
 
-  function highlightMarker(el) {
-    if (!el) return;
-    if (selectedMarkerRef.current && selectedMarkerRef.current !== el) {
-      selectedMarkerRef.current.classList.remove("is-selected");
-      selectedMarkerRef.current.style.zIndex = "";
-    }
-    el.classList.add("is-selected");
-    el.style.zIndex = "3";
-    selectedMarkerRef.current = el;
-  }
+    // A cluster is an invitation to zoom, not a selection.
+    map.on("click", CLUSTER_LAYER_ID, (event) => {
+      const feature = event.features?.[0];
+      const clusterId = feature?.properties?.cluster_id;
+      if (clusterId == null) return;
+      map.getSource(CLUSTER_SOURCE_ID).getClusterExpansionZoom(clusterId).then((zoom) => {
+        map.easeTo({ center: feature.geometry.coordinates, zoom });
+      }).catch(() => {});
+    });
 
-  function clearMarkers() {
-    clearHighlightedMarker();
-    for (const marker of markersRef.current) {
-      try {
-        marker.remove();
-      } catch {
-        // ignore remove failures
-      }
+    map.on("click", CITY_LAYER_ID, (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      const [lng, lat] = feature.geometry.coordinates;
+      const sel = {
+        key: String(feature.properties.cityKey || ""),
+        city: String(feature.properties.city || ""),
+        state: String(feature.properties.state || ""),
+        count: Number(feature.properties.count || 0),
+        lat,
+        lng
+      };
+      setSelected(sel);
+      loadPeople(sel);
+      map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 8) });
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+    });
+
+    let hoverPopup = null;
+    const closePopup = () => {
+      hoverPopup?.remove();
+      hoverPopup = null;
+    };
+
+    map.on("mouseenter", CITY_LAYER_ID, (event) => {
+      map.getCanvas().style.cursor = "pointer";
+      const feature = event.features?.[0];
+      const label = String(feature?.properties?.label || "");
+      if (!label) return;
+      const count = Number(feature.properties.count || 0);
+      const maplibregl = maplibreRuntimeRef.current;
+      if (!maplibregl) return;
+      closePopup();
+      hoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
+        .setLngLat(feature.geometry.coordinates)
+        .setHTML(
+          `<div class="lm-tip-title">${escapeHtml(label)}</div>` +
+          `<div class="lm-tip-meta">${count} ${escapeHtml(alumniWord)}</div>`
+        )
+        .addTo(map);
+    });
+
+    map.on("mouseleave", CITY_LAYER_ID, () => {
+      map.getCanvas().style.cursor = "";
+      closePopup();
+    });
+
+    for (const layer of [CLUSTER_LAYER_ID]) {
+      map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
     }
-    markersRef.current = [];
   }
 
   function renderMarkers(list) {
     const map = mapRef.current;
-    const maplibregl = maplibreRuntimeRef.current;
-    if (!map || !maplibregl) return;
+    if (!map || !map.isStyleLoaded()) return;
 
-    clearMarkers();
-
-    (list || []).forEach((city, index) => {
-      const lat = Number(city.lat);
-      const lng = Number(city.lng);
-      const count = Number(city.count || 0);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng) || count <= 0) return;
-
-      const size = markerSize(count);
-      const cityKey = String(city.key || "")
-        .trim()
-        .toLowerCase();
-      const label = [city.city, city.state].filter(Boolean).join(", ");
-
-      const el = document.createElement("div");
-      el.className = "lm-marker";
-      el.dataset.cityKey = cityKey;
-      el.style.width = `${size}px`;
-      el.style.height = `${size}px`;
-      el.style.background = brandPrimary;
-
-      const countLabel = document.createElement("span");
-      countLabel.className = "lm-marker-count";
-      countLabel.textContent = count > 99 ? "99+" : String(count);
-      countLabel.style.fontSize = size <= 22 ? "10px" : size <= 26 ? "11px" : "12px";
-      el.appendChild(countLabel);
-
-      const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-        .setLngLat([lng, lat])
-        .addTo(map);
-
-      setTimeout(() => {
-        el.classList.add("is-ready");
-      }, index * 20);
-
-      if (selectedRef.current?.key && cityKey === String(selectedRef.current.key).toLowerCase()) {
-        highlightMarker(el);
-      }
-
-      el.addEventListener("click", () => {
-        const sel = {
-          key: cityKey,
-          city: String(city.city || ""),
-          state: String(city.state || ""),
-          count,
-          lat,
-          lng,
+    const features = (list || [])
+      .map((city) => {
+        const lat = Number(city.lat);
+        const lng = Number(city.lng);
+        const count = Number(city.count || 0);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || count <= 0) return null;
+        return {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [lng, lat] },
+          properties: {
+            cityKey: String(city.key || "").trim().toLowerCase(),
+            city: String(city.city || ""),
+            state: String(city.state || ""),
+            label: [city.city, city.state].filter(Boolean).join(", "),
+            count
+          }
         };
+      })
+      .filter(Boolean);
 
-        highlightMarker(el);
-        setSelected(sel);
-        loadPeople(sel);
-        map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 7) });
+    const data = { type: "FeatureCollection", features };
+    const existing = map.getSource(CLUSTER_SOURCE_ID);
+    if (existing) {
+      existing.setData(data);
+      return;
+    }
 
-        setTimeout(() => {
-          resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 300);
-      });
-
-      let popup = null;
-      el.addEventListener("mouseenter", () => {
-        if (!label) return;
-
-        popup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 14,
-        })
-          .setLngLat([lng, lat])
-          .setHTML(
-            `<div class=\"lm-tip-title\">${escapeHtml(label)}</div><div class=\"lm-tip-meta\">${count} ${escapeHtml(
-              alumniWord
-            )}</div>`
-          )
-          .addTo(map);
-      });
-
-      el.addEventListener("mouseleave", () => {
-        try {
-          popup?.remove();
-        } catch {
-          // ignore popup teardown failures
-        }
-        popup = null;
-      });
-
-      markersRef.current.push(marker);
+    map.addSource(CLUSTER_SOURCE_ID, {
+      type: "geojson",
+      data,
+      cluster: true,
+      clusterMaxZoom: 9,
+      clusterRadius: 46,
+      // Clusters report people, not pins — "12" should mean twelve alumni.
+      clusterProperties: { total: ["+", ["get", "count"]] }
     });
+
+    const circleSize = (field) => [
+      "interpolate", ["linear"], ["max", ["get", field], 1],
+      1, 15,
+      5, 20,
+      20, 27,
+      75, 34
+    ];
+
+    map.addLayer({
+      id: CLUSTER_LAYER_ID,
+      type: "circle",
+      source: CLUSTER_SOURCE_ID,
+      filter: ["has", "point_count"],
+      paint: {
+        "circle-color": brandPrimary,
+        "circle-radius": circleSize("total"),
+        "circle-opacity": 0.92,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff"
+      }
+    });
+
+    map.addLayer({
+      id: CITY_LAYER_ID,
+      type: "circle",
+      source: CLUSTER_SOURCE_ID,
+      filter: ["!", ["has", "point_count"]],
+      paint: {
+        "circle-color": brandPrimary,
+        "circle-radius": circleSize("count"),
+        "circle-opacity": 0.92,
+        "circle-stroke-width": ["case", ["==", ["get", "cityKey"], ["literal", ""]], 2, 2],
+        "circle-stroke-color": "#ffffff"
+      }
+    });
+
+    for (const [id, filter, field] of [
+      [`${CLUSTER_LAYER_ID}-count`, ["has", "point_count"], "total"],
+      [`${CITY_LAYER_ID}-count`, ["!", ["has", "point_count"]], "count"]
+    ]) {
+      map.addLayer({
+        id,
+        type: "symbol",
+        source: CLUSTER_SOURCE_ID,
+        filter,
+        layout: {
+          "text-field": [
+            "case",
+            [">", ["get", field], 99], "99+",
+            ["to-string", ["get", field]]
+          ],
+          "text-font": ["Open Sans Bold", "Noto Sans Bold"],
+          "text-size": 12,
+          "text-allow-overlap": true
+        },
+        paint: { "text-color": "#ffffff" }
+      });
+    }
+
+    bindClusterInteractions(map);
   }
 
   function focusMapOnPreferredRegion(focus, { animate = true } = {}) {
@@ -548,6 +596,10 @@ export default function LocationMap() {
           attribution: "© OpenStreetMap contributors, © CARTO",
         },
       },
+      // A raster style carries no glyphs, and MapLibre silently drops any text
+      // layer without them — which is why the counts have to come from a font
+      // source even though the basemap is images.
+      glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
       layers: [{ id: "cartoLight", type: "raster", source: "cartoLight" }],
     };
 
@@ -586,12 +638,12 @@ export default function LocationMap() {
     mapRef.current = map;
 
     return () => {
-      clearMarkers();
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
       loadedRef.current = false;
+      interactionsBoundRef.current = false;
     };
   }, [brandPrimary, mapRuntimeReady]);
 
@@ -776,7 +828,6 @@ export default function LocationMap() {
 
   function clearSelection() {
     peopleReqRef.current += 1;
-    clearHighlightedMarker();
     setSelected(null);
     setPeople([]);
   }

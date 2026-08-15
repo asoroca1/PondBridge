@@ -30,6 +30,7 @@ import {
   cityKey,
   clearGeocodeFailure,
   geocodeCity,
+  isVerifiedSource,
   recordGeocodeFailure,
   shouldSkipGeocode
 } from "../utils/geocode.js";
@@ -637,7 +638,7 @@ async function runGeocodeWorker() {
 
       try {
         const existing = await CityGeoModel.findByKey(key);
-        if (hasCoords(existing)) {
+        if (hasCoords(existing) && isVerifiedSource(existing?.source)) {
           clearGeocodeFailure(key);
           continue;
         }
