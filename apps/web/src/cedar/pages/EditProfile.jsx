@@ -1554,6 +1554,30 @@ export default function EditProfile() {
 
             <div className="wizard1-span-6">
               <div className="wizard1-field">
+                <label className="wizard1-label" htmlFor="edit-profile-location">Current Location <span className="req">*</span></label>
+                <CityCombobox
+                  inputId="edit-profile-location"
+                  value={form.cityState}
+                  hasError={Boolean(errors.cityState)}
+                  ariaDescribedBy={errors.cityState ? "edit-profile-location-error" : "edit-profile-location-hint"}
+                  placeholder="City, State (US) or City, Country"
+                  onChange={(next, selected) => {
+                    if (selected) {
+                      setField({ cityState: selected.label });
+                    } else {
+                      setField({ cityState: next });
+                    }
+                  }}
+                />
+                <p id="edit-profile-location-hint" className="wizard1-hint" style={{ marginTop: 6 }}>
+                  Start typing — pick a match, or add a new city if it's missing.
+                </p>
+                {errors.cityState && <p id="edit-profile-location-error" className="wizard1-error">{errors.cityState}</p>}
+              </div>
+            </div>
+
+            <div className="wizard1-span-6">
+              <div className="wizard1-field">
                 <label className="wizard1-label" htmlFor="edit-profile-email">Email</label>
                 <input id="edit-profile-email" className="wizard1-input" value={form.email} disabled />
                 <label className="wizard1-label edit-profile-privacy-label" htmlFor="edit-profile-email-privacy">
@@ -1607,30 +1631,6 @@ export default function EditProfile() {
                   <option value="admins_only">Camp directors only</option>
                   <option value="hidden">Only me</option>
                 </select>
-              </div>
-            </div>
-
-            <div className="wizard1-span-6">
-              <div className="wizard1-field">
-                <label className="wizard1-label" htmlFor="edit-profile-location">Current Location <span className="req">*</span></label>
-                <CityCombobox
-                  inputId="edit-profile-location"
-                  value={form.cityState}
-                  hasError={Boolean(errors.cityState)}
-                  ariaDescribedBy={errors.cityState ? "edit-profile-location-error" : "edit-profile-location-hint"}
-                  placeholder="City, State (US) or City, Country"
-                  onChange={(next, selected) => {
-                    if (selected) {
-                      setField({ cityState: selected.label });
-                    } else {
-                      setField({ cityState: next });
-                    }
-                  }}
-                />
-                <p id="edit-profile-location-hint" className="wizard1-hint" style={{ marginTop: 6 }}>
-                  Start typing — pick a match, or add a new city if it's missing.
-                </p>
-                {errors.cityState && <p id="edit-profile-location-error" className="wizard1-error">{errors.cityState}</p>}
               </div>
             </div>
 
@@ -1858,7 +1858,7 @@ export default function EditProfile() {
             <span className="edit-profile-eyebrow">Step 2</span>
             <h2 className="wizard1-h2">Education</h2>
           </div>
-          <p>Add only what you’re comfortable sharing with the camp community.</p>
+          <p>Add your schools so alumni can connect over shared campuses.</p>
         </div>
 
         <div className="wizard1-span-6">
