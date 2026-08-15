@@ -136,7 +136,7 @@ router.post("/reports", safetyWriteLimiter, async (req, res) => {
       kind: "content_report_created",
       title: "New community safety report",
       body: "A member submitted a report that needs review.",
-      deepLink: `/t/${req.tenant.slug}/admin/safety`,
+      deepLink: `/t/${req.tenant.slug}/admin/dashboard`,
       data: { reportId: String(result.report?._id || "") }
     }).catch(() => {});
   }

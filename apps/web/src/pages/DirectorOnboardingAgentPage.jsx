@@ -105,7 +105,7 @@ function dashboardBrief(dashboard = {}) {
       "Current director brief:",
       `• ${pluralize(stats.totalMembers, "active member")}; ${pluralize(stats.newThisWeek, "new member")} in the last 7 days.`,
       `• Profiles average ${Number(stats.profileCompletion || 0)}% complete.`,
-      `• ${pluralize(stats.pendingApprovals, "access request")} pending; ${pluralize(stats.openSafetyReports, "open safety report")}.`,
+      `• ${pluralize(stats.pendingApprovals, "access request")} pending.`,
       `• ${priorityLine}`
     ].join("\n"),
     links: queue

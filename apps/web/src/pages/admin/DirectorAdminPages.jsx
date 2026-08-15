@@ -811,7 +811,7 @@ export function DirectorAdminDashboardPage() {
           <p className="pb-today-clear">
             <CheckCircle2 size={18} aria-hidden="true" />
             <strong>Nothing needs you.</strong>
-            No access requests, failed emails, safety reports, or billing problems are waiting.
+            No access requests, failed emails, or billing problems are waiting.
           </p>
         )}
 
