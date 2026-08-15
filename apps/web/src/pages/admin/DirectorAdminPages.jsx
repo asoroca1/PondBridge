@@ -457,7 +457,6 @@ function TimeSeriesChartCard({
     <Card className="director-admin-chart-card">
       <div className="director-admin-chart-head">
         <div>
-          <p className="director-admin-eyebrow">Seven-day activity</p>
           <h2 className="pb-section-title">{title}</h2>
         </div>
         {activePoint ? (
@@ -630,8 +629,9 @@ function priorityLabel(priority) {
   return "When you have time";
 }
 
-function deltaHint(delta = 0) {
-  const value = Number(delta || 0);
+function deltaHint(delta) {
+  if (delta === null || delta === undefined) return "In your network";
+  const value = Number(delta);
   if (!value) return "No change in 30 days";
   return `${value > 0 ? "Up" : "Down"} ${Math.abs(value)}% in 30 days`;
 }
@@ -708,8 +708,10 @@ export function DirectorAdminDashboardPage() {
   }
 
   const totalMembers = Number(stats.totalMembers || 0);
-  const activeMembers = Number(stats.activeMembers ?? totalMembers);
   const recentSignups = Number(stats.newThisWeek || 0);
+  const signInsThisWeek = normalizedSignInsSeries
+    .slice(-7)
+    .reduce((sum, point) => sum + Number(point?.value || 0), 0);
   const profileCompletion = Number(stats.profileCompletion || 0);
   const urgent = actionQueue.filter((item) => item.priority === "high").length;
 
@@ -723,11 +725,11 @@ export function DirectorAdminDashboardPage() {
       icon: "members"
     },
     {
-      key: "active-members",
-      label: "Active",
-      value: activeMembers,
-      hint: totalMembers ? `${Math.round((activeMembers / totalMembers) * 100)}% of everyone` : "Nobody yet",
-      tone: "neutral",
+      key: "sign-ins",
+      label: "Sign-ins",
+      value: signInsThisWeek,
+      hint: "In the last 7 days",
+      tone: signInsThisWeek > 0 ? "success" : "neutral",
       icon: "active"
     },
     {
@@ -753,11 +755,7 @@ export function DirectorAdminDashboardPage() {
       <WorkspaceHeader
         eyebrow="Control room"
         title="Today"
-        subtitle={
-          actionQueue.length
-            ? "What needs you, and how your network is doing."
-            : "Nothing needs you right now. Here is how your network is doing."
-        }
+        subtitle="What needs you, and how your network is doing."
         meta={
           <>
             <span className={`pb-today-state ${tenant?.onboardingStatus === "live" ? "is-live" : "is-setup"}`}>
@@ -784,18 +782,14 @@ export function DirectorAdminDashboardPage() {
       {/* The queue is the page. It used to sit under a hero of quick links,
           which put the generic actions above the specific ones. */}
       <Card className="pb-today-queue">
-        <div className="pb-today-queue-head">
-          <h2 className="pb-section-title">
-            {actionQueue.length ? "What needs you" : "Nothing needs you"}
-          </h2>
-          {actionQueue.length ? (
+        {actionQueue.length ? (
+          <div className="pb-today-queue-head">
+            <h2 className="pb-section-title">What needs you</h2>
             <Badge tone={urgent ? "warning" : "neutral"}>
               {urgent ? `${urgent} urgent` : `${actionQueue.length} to look at`}
             </Badge>
-          ) : (
-            <Badge tone="success">All clear</Badge>
-          )}
-        </div>
+          </div>
+        ) : null}
 
         {actionQueue.length ? (
           <ol className="pb-today-queue-list">
@@ -814,13 +808,11 @@ export function DirectorAdminDashboardPage() {
             ))}
           </ol>
         ) : (
-          <div className="pb-today-clear">
-            <CheckCircle2 size={20} aria-hidden="true" />
-            <div>
-              <strong>Everything is in good shape</strong>
-              <p>No access requests, failed emails, safety reports, or billing problems are waiting.</p>
-            </div>
-          </div>
+          <p className="pb-today-clear">
+            <CheckCircle2 size={18} aria-hidden="true" />
+            <strong>Nothing needs you.</strong>
+            No access requests, failed emails, safety reports, or billing problems are waiting.
+          </p>
         )}
 
         <nav className="pb-today-shortcuts" aria-label="Common tasks">
@@ -856,7 +848,6 @@ export function DirectorAdminDashboardPage() {
       <section className="director-admin-dashboard-section" aria-labelledby="director-trends-title">
         <header className="director-admin-section-head">
           <div>
-            <p className="director-admin-eyebrow">Momentum</p>
             <h2 id="director-trends-title">Joining and signing in</h2>
             <p>New members and repeat visits across the week you pick.</p>
           </div>
@@ -864,8 +855,8 @@ export function DirectorAdminDashboardPage() {
         <div className="director-admin-dashboard-charts">
           <TimeSeriesChartCard
             title="Joined"
-            yLabel="New members"
-            xLabel="Date"
+            yLabel=""
+            xLabel=""
             points={newUsersSeries}
             weekWindows={weekWindows}
             activeWeekKey={activeWeekKey}
@@ -873,8 +864,8 @@ export function DirectorAdminDashboardPage() {
           />
           <TimeSeriesChartCard
             title="Signed in"
-            yLabel="Sign-ins"
-            xLabel="Date"
+            yLabel=""
+            xLabel=""
             points={signInsSeries}
             weekWindows={weekWindows}
             activeWeekKey={activeWeekKey}
@@ -886,7 +877,6 @@ export function DirectorAdminDashboardPage() {
       <section className="director-admin-dashboard-section" aria-labelledby="director-insights-title">
         <header className="director-admin-section-head">
           <div>
-            <p className="director-admin-eyebrow">Your people</p>
             <h2 id="director-insights-title">Who is in your network</h2>
             <p>Where members live, what they did at camp, and who comes back most.</p>
           </div>

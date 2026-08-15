@@ -108,33 +108,31 @@
   color: #57687d;
 }
 
+/* One line, not a panel. Nothing being wrong is the common case and does not
+   deserve more room than the things that are. */
 .pb-today-clear {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-top: 14px;
-  padding: 15px 16px;
-  border: 1px solid #d5ebe0;
-  border-radius: 12px;
-  background: #f2faf6;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 0;
+  color: #3f7861;
+  font-size: .9rem;
 }
 
 .pb-today-clear svg {
   flex: none;
-  margin-top: 1px;
   color: #237554;
 }
 
 .pb-today-clear strong {
-  display: block;
   color: #1b5b41;
-  font-size: .96rem;
 }
 
-.pb-today-clear p {
-  margin: 3px 0 0;
-  color: #3f7861;
-  font-size: .86rem;
+.pb-today-shortcuts:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 /* --- Shortcuts --- */
@@ -201,4 +199,28 @@
   .pb-today-queue-list a {
     justify-self: start;
   }
+}
+
+/* --- Density --- */
+
+/* The axis titles are gone, so the SVG no longer needs room reserved for them. */
+.pb-today .director-admin-chart-svg {
+  max-height: 190px;
+}
+
+.pb-today .director-admin-chart-card {
+  padding: 16px 18px;
+}
+
+/* A decorative dot in the corner of every stat, signifying nothing. */
+.pb-today .director-admin-stat-footer > span {
+  display: none;
+}
+
+.pb-today .director-admin-section-head {
+  margin-bottom: 10px;
+}
+
+.pb-today .director-admin-section-head h2 {
+  font-size: 1.15rem;
 }

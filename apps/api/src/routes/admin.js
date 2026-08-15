@@ -2834,12 +2834,14 @@ router.get("/dashboard", async (req, res, next) => {
       },
       stats: {
         totalMembers: activeMembers,
+        // A percentage off a near-empty baseline is arithmetic, not information:
+        // one member growing to 316 by import reads as "up 31500%". Below a
+        // handful of prior members there is no trend to report, so send null and
+        // let the page say nothing rather than something absurd.
         totalMembersDelta:
-          priorWindowCount > 0
+          priorWindowCount >= 5
             ? Math.round(((activeMembers - priorWindowCount) / priorWindowCount) * 100)
-            : activeMembers > 0
-            ? 100
-            : 0,
+            : null,
         newThisWeek,
         pendingApprovals,
         openSafetyReports,
