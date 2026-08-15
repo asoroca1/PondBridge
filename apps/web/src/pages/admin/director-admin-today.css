@@ -222,10 +222,48 @@
   display: none;
 }
 
-.pb-today .director-admin-section-head {
-  margin-bottom: 10px;
+/* --- Sections --- */
+
+/* These headings used to sit on the page background with nothing behind them,
+   floating above the cards they described. The section is one card now, and
+   the heading belongs to it. */
+.pb-today-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 
-.pb-today .director-admin-section-head h2 {
-  font-size: 1.15rem;
+.pb-today-section-head h2 {
+  margin: 0;
+  color: #173756;
+  font-size: 1.12rem;
+}
+
+.pb-today-section-head p {
+  margin: 3px 0 0;
+  color: #6d7f94;
+  font-size: .88rem;
+}
+
+.pb-today-section-head a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  color: var(--brand-primary, #1d5faa);
+  font-size: .86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The charts and breakdowns are regions inside that card now, not cards of
+   their own — so they lose the lift that made them read as separate objects. */
+.pb-cedar-page .pb-today-section .director-admin-chart-card,
+.pb-cedar-page .pb-today-section .director-admin-breakdown-card {
+  border-color: #e4ebf3;
+  background: #fbfcfe;
+  box-shadow: none;
 }

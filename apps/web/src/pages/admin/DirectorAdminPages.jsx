@@ -852,7 +852,8 @@ export function DirectorAdminDashboardPage() {
       </div>
 
       <section className="director-admin-dashboard-section" aria-labelledby="director-trends-title">
-        <header className="director-admin-section-head">
+        <Card className="pb-today-section">
+        <header className="pb-today-section-head">
           <div>
             <h2 id="director-trends-title">Joining and signing in</h2>
             <p>New members and repeat visits across the week you pick.</p>
@@ -878,10 +879,12 @@ export function DirectorAdminDashboardPage() {
             onWeekChange={setActiveWeekKey}
           />
         </div>
+        </Card>
       </section>
 
       <section className="director-admin-dashboard-section" aria-labelledby="director-insights-title">
-        <header className="director-admin-section-head">
+        <Card className="pb-today-section">
+        <header className="pb-today-section-head">
           <div>
             <h2 id="director-insights-title">Who is in your network</h2>
             <p>Where members live, what they did at camp, and who comes back most.</p>
@@ -901,6 +904,7 @@ export function DirectorAdminDashboardPage() {
             items={topActiveMembers}
           />
         </div>
+        </Card>
       </section>
     </div>
   );
