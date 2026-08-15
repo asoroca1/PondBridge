@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import {
   Building2,
   Image,
@@ -100,8 +101,12 @@ const GROUPS = [
  */
 export default function DirectorAdminSettingsLayout() {
   const location = useLocation();
-  const active = GROUPS
-    .flatMap((group) => group.items)
+  // Track the group too, so the header can say which part of Settings you are
+  // in the way the other workspaces name themselves.
+  const activeGroup = GROUPS.find((group) =>
+    group.items.some((item) => location.pathname.endsWith(`/settings/${item.to}`))
+  );
+  const active = (activeGroup?.items || [])
     .find((item) => location.pathname.endsWith(`/settings/${item.to}`));
 
   return (
@@ -135,10 +140,11 @@ export default function DirectorAdminSettingsLayout() {
 
       <div className="pb-settings-surface">
         {active ? (
-          <header className="pb-settings-head">
-            <h1>{active.label}</h1>
-            <p>{active.description || active.blurb}</p>
-          </header>
+          <WorkspaceHeader
+            eyebrow={activeGroup?.label || "Settings"}
+            title={active.label}
+            subtitle={active.description || active.blurb}
+          />
         ) : null}
         <div className="pb-settings-body">
           <Outlet />
