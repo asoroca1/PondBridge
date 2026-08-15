@@ -559,7 +559,7 @@ export default function FamilyTreeView() {
         token: getToken(),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Delete failed (${res.status})`);
+      if (!res.ok) throw new Error(data?.error?.message || `Delete failed (${res.status})`);
       navigate(tenantRoute(slug, "/family-trees"));
     } catch (err) {
       setError(err?.message || "Unable to delete family tree.");

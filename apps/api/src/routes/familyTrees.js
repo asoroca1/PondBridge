@@ -159,6 +159,11 @@ function canEditTree(tree, userId, profileId, userRoles = []) {
   return tree.members.some((member) => asId(member.profileId) === String(profileId));
 }
 
+function canDeleteTree(tree, userId, userRoles = []) {
+  if (userRoles.includes("super_admin")) return true;
+  return String(tree.createdByUserId) === String(userId);
+}
+
 router.get("/", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const filter = {};
@@ -300,6 +305,25 @@ router.put("/:treeId", async (req, res) => {
   });
 
   res.json({ tree: hydratedTree || updated, ...serialized });
+});
+
+router.delete("/:treeId", async (req, res) => {
+  const tree = await FamilyTreeModel.findOne(req.tenant._id, { _id: req.params.treeId });
+  if (!tree) {
+    return res.status(404).json({
+      error: { code: "TREE_NOT_FOUND", message: "Family tree not found" }
+    });
+  }
+
+  if (!canDeleteTree(tree, req.user.id, req.user.roles)) {
+    return res.status(403).json({
+      error: { code: "FORBIDDEN", message: "Only the creator can delete this tree" }
+    });
+  }
+
+  await FamilyTreeModel.delete(tree._id);
+
+  res.json({ ok: true, id: String(tree._id) });
 });
 
 export default router;
