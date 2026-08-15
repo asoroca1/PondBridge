@@ -8,7 +8,6 @@ import { tenantHasFeature } from "../lib/features.js";
 import {
   LEGAL_PRIVACY_VERSION,
   LEGAL_TERMS_VERSION,
-  MINIMUM_MEMBER_AGE,
   buildAcceptedLegalAgreementPayload
 } from "../lib/legalAgreement.js";
 
@@ -34,7 +33,6 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [legalAgreementAccepted, setLegalAgreementAccepted] = useState(false);
-  const [ageEligibilityConfirmed, setAgeEligibilityConfirmed] = useState(false);
   const canUseResumeParsing = tenantHasFeature(tenant, "resumeParsing");
   const signupEnabled = tenant?.accessSettings?.signupEnabled !== false;
 
@@ -70,14 +68,14 @@ export default function RegisterPage() {
   async function onSubmit(event) {
     event.preventDefault();
     setError("");
-    if (!legalAgreementAccepted || !ageEligibilityConfirmed) {
-      setError(`You must confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy.`);
+    if (!legalAgreementAccepted) {
+      setError("You must agree to the Terms of Service and Privacy Policy.");
       return;
     }
     setSaving(true);
 
     try {
-      const legalAgreement = buildAcceptedLegalAgreementPayload({ ageEligibilityConfirmed });
+      const legalAgreement = buildAcceptedLegalAgreementPayload({ ageEligibilityConfirmed: true });
       const payload = await requestJson(`/api/t/${slug}/auth/register`, {
         method: "POST",
         body: {
@@ -184,15 +182,6 @@ export default function RegisterPage() {
               </a>
               .
             </span>
-          </label>
-
-          <label className="wizard1-legal-check">
-            <input
-              type="checkbox"
-              checked={ageEligibilityConfirmed}
-              onChange={(event) => setAgeEligibilityConfirmed(event.target.checked)}
-            />
-            <span>I confirm that I am at least {MINIMUM_MEMBER_AGE} years old.</span>
           </label>
 
           {error ? <p className="error-text">{error}</p> : null}

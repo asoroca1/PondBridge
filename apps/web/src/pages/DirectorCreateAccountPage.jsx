@@ -21,7 +21,6 @@ import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/stor
 import HeroImageEditor from "../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
-import { MINIMUM_MEMBER_AGE } from "../lib/legalAgreement.js";
 import {
   IMAGE_OPTIMIZATION_PRESETS,
   extensionForImageMime,
@@ -510,7 +509,6 @@ function DirectorCreateAccountWizardPage() {
   });
   const [, setBillingErrors] = useState({});
   const [legalAgreementAccepted, setLegalAgreementAccepted] = useState(false);
-  const [ageEligibilityConfirmed, setAgeEligibilityConfirmed] = useState(false);
   const [legalAgreementError, setLegalAgreementError] = useState("");
   const [specificsErrors, setSpecificsErrors] = useState({});
   const [showNewsletterSettings, setShowNewsletterSettings] = useState(false);
@@ -1591,9 +1589,6 @@ function DirectorCreateAccountWizardPage() {
     if (!campTypeValid) {
       next.campType = "Please choose your camp type.";
     }
-    if (!ageEligibilityConfirmed) {
-      next.ageEligibility = `Confirm that you are at least ${MINIMUM_MEMBER_AGE} years old.`;
-    }
     if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
       next.billingPlanCode = "Please choose a plan.";
     }
@@ -2040,8 +2035,8 @@ function DirectorCreateAccountWizardPage() {
       setBillingErrors({});
     }
 
-    if (!legalAgreementAccepted || !ageEligibilityConfirmed) {
-      setLegalAgreementError("Confirm age eligibility and accept PondBridge client legal agreements before launch.");
+    if (!legalAgreementAccepted) {
+      setLegalAgreementError("Accept the PondBridge client legal agreements before launch.");
       setStep(STEP_REVIEW_LAUNCH);
       setSubmitError("Accept legal agreements before launching your network.");
       return;
@@ -2516,30 +2511,6 @@ function DirectorCreateAccountWizardPage() {
                       ))}
                     </select>
                     {errors.campType ? <p className="wizard1-error">{errors.campType}</p> : null}
-                  </div>
-
-                  <div className="wizard1-field wizard1-span-12">
-                    <label className={`director-inline-checkbox ${errors.ageEligibility ? "has-error" : ""}`} htmlFor="director-age-eligibility">
-                      <input
-                        id="director-age-eligibility"
-                        type="checkbox"
-                        checked={ageEligibilityConfirmed}
-                        aria-invalid={Boolean(errors.ageEligibility)}
-                        aria-describedby={errors.ageEligibility ? "director-age-eligibility-error" : undefined}
-                        onChange={(event) => {
-                          setAgeEligibilityConfirmed(event.target.checked);
-                          setErrors((current) => ({ ...current, ageEligibility: "" }));
-                          setLegalAgreementError("");
-                          setSubmitError("");
-                        }}
-                      />
-                      <span>I confirm that I am at least {MINIMUM_MEMBER_AGE} years old.</span>
-                    </label>
-                    {errors.ageEligibility ? (
-                      <p id="director-age-eligibility-error" className="wizard1-error" role="alert">
-                        {errors.ageEligibility}
-                      </p>
-                    ) : null}
                   </div>
 
                   <div className="wizard1-field wizard1-span-12">
