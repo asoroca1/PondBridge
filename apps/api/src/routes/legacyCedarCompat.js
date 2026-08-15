@@ -169,6 +169,7 @@ const NEWSLETTER_R2_POINTER_MIME = "application/x.pondbridge.newsletter-r2-point
 const NEWSLETTER_COVER_R2_POINTER_MIME =
   "application/x.pondbridge.newsletter-cover-r2-pointer+json";
 const NEWSLETTER_COVER_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const NEWSLETTER_DIRECT_COVER_URL_TENANT_SLUGS = new Set(["cedar"]);
 const HOME_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
 const LOCATIONS_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
 const ACTIVITY_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
@@ -453,8 +454,18 @@ function resolveNewsletterPdfUrl(req, row = {}) {
   return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${row._id}/file`;
 }
 
-function resolveNewsletterCoverUrl(req, row = {}) {
+export function resolveNewsletterCoverUrl(req, row = {}) {
   const pointer = decodeNewsletterCoverPointer(row);
+  const tenantSlug = String(req?.tenant?.slug || "").trim().toLowerCase();
+  const tenantObjectPrefix = tenantSlug ? `${tenantSlug}/` : "";
+  if (
+    pointer?.objectUrl &&
+    tenantObjectPrefix &&
+    pointer.key.startsWith(tenantObjectPrefix) &&
+    NEWSLETTER_DIRECT_COVER_URL_TENANT_SLUGS.has(tenantSlug)
+  ) {
+    return pointer.objectUrl;
+  }
   if (pointer?.key) {
     return `${buildTenantObjectProxyBaseUrl(req)}?key=${encodeURIComponent(pointer.key)}`;
   }
