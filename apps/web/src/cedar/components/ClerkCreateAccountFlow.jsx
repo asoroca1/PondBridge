@@ -6,6 +6,7 @@ import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
+import { buildClerkSignupContext } from "../../lib/clerkSignupContext.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import {
   clearPendingLegalAgreement,
@@ -295,6 +296,7 @@ export default function ClerkCreateAccountFlow() {
               <SignUp
                 path={path}
                 routing="path"
+                unsafeMetadata={buildClerkSignupContext(slug, "member")}
                 withSignIn={false}
                 signInUrl={signInUrl}
                 fallbackRedirectUrl={callbackPath}

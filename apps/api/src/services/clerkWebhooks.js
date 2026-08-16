@@ -226,6 +226,24 @@ function firstSignUpAttemptId(data = {}) {
   return "";
 }
 
+export function extractVerificationSignUpHint(unsafeMetadata = {}) {
+  const source = unsafeMetadata && typeof unsafeMetadata === "object" ? unsafeMetadata : {};
+  const tenantSlug = normalizeSlug(
+    source?.tenantSlug ||
+    source?.tenant_slug ||
+    source?.slug
+  );
+  const rawAudience = safeString(
+    source?.signupAudience ||
+    source?.signup_audience ||
+    source?.audience
+  ).toLowerCase();
+  const audience = rawAudience === "director" ? "director" : rawAudience === "member" ? "member" : "";
+
+  if (!tenantSlug && !audience) return null;
+  return { tenantSlug, audience };
+}
+
 async function resolveSignUpAttemptHint(emailResource = {}) {
   const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
   if (!signUpAttemptId || !clerkClient?.signUps?.get) return null;
@@ -236,19 +254,7 @@ async function resolveSignUpAttemptHint(emailResource = {}) {
       signUpAttempt?.unsafeMetadata && typeof signUpAttempt.unsafeMetadata === "object"
         ? signUpAttempt.unsafeMetadata
         : {};
-    const tenantSlug = normalizeSlug(
-      unsafeMetadata?.tenantSlug ||
-      unsafeMetadata?.tenant_slug ||
-      unsafeMetadata?.slug
-    );
-    const rawAudience = safeString(
-      unsafeMetadata?.signupAudience ||
-      unsafeMetadata?.signup_audience ||
-      unsafeMetadata?.audience
-    ).toLowerCase();
-    const audience = rawAudience === "director" ? "director" : rawAudience === "member" ? "member" : "";
-    if (!tenantSlug && !audience) return null;
-    return { tenantSlug, audience };
+    return extractVerificationSignUpHint(unsafeMetadata);
   } catch {
     return null;
   }
@@ -330,11 +336,10 @@ async function resolveVerificationContext(emailResource = {}) {
   const associationHint = await resolveEmailAssociationHint(emailResource?.to_email_address);
 
   const primaryHint = signUpAttemptHint || routeHint || associationHint || {};
-  const secondaryHint = routeHint || associationHint || {};
+  const secondaryHint = signUpAttemptHint ? {} : routeHint ? associationHint || {} : {};
   const tenant = await resolveTenantFromHint(primaryHint) || await resolveTenantFromHint(secondaryHint);
-  const audience = safeString(
-    primaryHint?.audience || secondaryHint?.audience || associationHint?.audience || ""
-  ).toLowerCase() === "director"
+  const audienceHint = signUpAttemptHint || primaryHint || secondaryHint || associationHint || {};
+  const audience = safeString(audienceHint?.audience || "").toLowerCase() === "director"
     ? "director"
     : "member";
 
@@ -355,6 +360,14 @@ export async function processClerkWebhookRequest(req) {
   }
 
   const context = await resolveVerificationContext(emailResource);
+  const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
+  if (signUpAttemptId && context.audience !== "director" && !context.tenant) {
+    throw createWebhookError(
+      "Member verification email is missing tenant context.",
+      503,
+      "CLERK_VERIFICATION_TENANT_REQUIRED"
+    );
+  }
   const emailId = safeString(emailResource?.id);
   const dispatchKey = verificationDispatchFingerprint({
     recipientEmail,
