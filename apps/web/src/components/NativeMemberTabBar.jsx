@@ -1,12 +1,11 @@
 import { useMemo } from "react";
-import { CalendarDays, Home, Image, MessageSquare, Sparkles, Bell, Shield, TreePine, User } from "lucide-react";
+import { CalendarDays, Home, Image, MessageSquare, Bell, Shield, TreePine, User } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { useMobileNotifications } from "../context/MobileNotificationsContext.jsx";
 import { tenantHasFeature } from "../lib/features.js";
-import { resolveCampAiName } from "../lib/campLabels.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 
 function tenantRelativePath(pathname = "") {
@@ -51,7 +50,6 @@ export default function NativeMemberTabBar() {
       .filter(Boolean)
   );
   const isCampDirector = roles.has("tenant_admin") || roles.has("admin");
-  const aiName = resolveCampAiName(tenant);
 
   const tabs = useMemo(() => {
     const nextTabs = [
@@ -63,15 +61,6 @@ export default function NativeMemberTabBar() {
         matchers: ["/home"]
       }
     ];
-
-    nextTabs.push({
-      id: "camp-ai",
-      label: "AI",
-      accessibilityLabel: aiName,
-      icon: Sparkles,
-      to: tenantRoute(slug, "/ai"),
-      matchers: ["/ai"]
-    });
 
     if (canChat) {
       nextTabs.push({
@@ -143,7 +132,7 @@ export default function NativeMemberTabBar() {
     }
 
     return nextTabs;
-  }, [aiName, canChat, canEvents, canFamilyTrees, canPhotos, isCampDirector, slug, unreadCount]);
+  }, [canChat, canEvents, canFamilyTrees, canPhotos, isCampDirector, slug, unreadCount]);
 
   return (
     <nav className="native-member-tabbar" aria-label="App navigation">

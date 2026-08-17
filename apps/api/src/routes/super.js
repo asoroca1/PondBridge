@@ -92,7 +92,7 @@ const BILLING_PLAN_MRR = {
   institutional: 3800 / 12,
   test: 10 / 12
 };
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
+const VALID_BILLING_PLAN_CODES = new Set(["flagship", "legacy", "founders", "institutional", "test"]);
 const BILLING_PLAN_DEFAULTS = {
   legacy: {
     planTier: "base",
