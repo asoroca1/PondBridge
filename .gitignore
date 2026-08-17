@@ -12,6 +12,7 @@ uploads
 .qa-screens
 _import
 .local-staging/
+.wrangler/
 
 # Tenant exports and migration identity maps contain private member data.
 # Keep generated migration artifacts local and store approved backups off-repo.
