@@ -10,7 +10,7 @@ const LIFECYCLE_STATUSES = new Set([
   "paused"
 ]);
 const ONBOARDING_FEE_STATUSES = new Set(["unpaid", "paid", "waived"]);
-const BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
+const BILLING_PLAN_CODES = new Set(["flagship", "legacy", "founders", "institutional", "test"]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

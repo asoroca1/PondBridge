@@ -29,6 +29,18 @@ const stripe = env.STRIPE_SECRET_KEY
   : null;
 
 const BILLING_PLAN_CATALOG = {
+  flagship: {
+    code: "flagship",
+    label: "Flagship",
+    description: "Flagship annual plan ($1,200/year)",
+    planTier: "base",
+    annualAmount: 1200,
+    onboardingFeeAmount: 0,
+    annualPriceId: String(env.STRIPE_PRICE_FLAGSHIP_ANNUAL || "").trim(),
+    onboardingPriceId: "",
+    foundersOnly: false,
+    offered: true
+  },
   legacy: {
     code: "legacy",
     label: "Legacy",
@@ -40,7 +52,8 @@ const BILLING_PLAN_CATALOG = {
     onboardingPriceId: String(
       env.STRIPE_PRICE_LEGACY_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_BASE || ""
     ).trim(),
-    foundersOnly: false
+    foundersOnly: false,
+    offered: false
   },
   founders: {
     code: "founders",
@@ -51,7 +64,8 @@ const BILLING_PLAN_CATALOG = {
     onboardingFeeAmount: 0,
     annualPriceId: String(env.STRIPE_PRICE_FOUNDERS_ANNUAL || "").trim(),
     onboardingPriceId: "",
-    foundersOnly: true
+    foundersOnly: true,
+    offered: false
   },
   institutional: {
     code: "institutional",
@@ -64,7 +78,8 @@ const BILLING_PLAN_CATALOG = {
     onboardingPriceId: String(
       env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_PREMIUM || ""
     ).trim(),
-    foundersOnly: false
+    foundersOnly: false,
+    offered: false
   },
   test: {
     code: "test",
@@ -80,6 +95,7 @@ const BILLING_PLAN_CATALOG = {
 };
 
 const STRIPE_PRODUCT_NAME_BY_PLAN_CODE = {
+  flagship: "Flagship",
   legacy: "Legacy",
   founders: "Founders",
   institutional: "Institutional",
@@ -128,16 +144,28 @@ function isTestPlanEnabledForTenant(tenant = null) {
 }
 
 function listCatalogEntriesForTenant(tenant = null) {
+  // Flagship ($1,200/year) is the only plan we sell. Superseded plans stay in
+  // the catalog so tenants already subscribed to them keep resolving, but they
+  // are never offered for a new selection or checkout.
   return Object.values(BILLING_PLAN_CATALOG).filter((entry) => {
-    if (entry.code !== "test") return true;
-    return isTestPlanEnabledForTenant(tenant);
+    if (entry.code === "test") return isTestPlanEnabledForTenant(tenant);
+    return entry.offered !== false;
   });
 }
 
 export function isBillingPlanAvailableForTenant(planCode = "", tenant = null) {
   const normalizedPlanCode = normalizePlanCode(planCode, tenant?.planTier || "base");
-  if (normalizedPlanCode !== "test") return true;
-  return isTestPlanEnabledForTenant(tenant);
+  if (normalizedPlanCode === "test") return isTestPlanEnabledForTenant(tenant);
+
+  const entry = BILLING_PLAN_CATALOG[normalizedPlanCode];
+  if (entry && entry.offered !== false) return true;
+
+  // A superseded plan stays selectable only for a tenant already sitting on it,
+  // so existing subscribers keep working without reopening retired pricing.
+  const currentPlanCode = String(tenant?.settings?.billing?.planCode || "")
+    .trim()
+    .toLowerCase();
+  return Boolean(currentPlanCode) && currentPlanCode === normalizedPlanCode;
 }
 
 async function findStripePriceIdByProductName(
@@ -952,8 +980,12 @@ export async function createTenantCheckoutSession({
   }
 
   if (!catalogEntry.annualPriceId) {
+    const expectedProductName =
+      STRIPE_PRODUCT_NAME_BY_PLAN_CODE[catalogEntry.code] || catalogEntry.label || catalogEntry.code;
     const error = new Error(
-      `Missing Stripe annual price ID for plan '${catalogEntry.code}'. Configure the corresponding STRIPE_PRICE_* variable.`
+      `Missing Stripe annual price ID for plan '${catalogEntry.code}'. Create a Stripe product named ` +
+        `"${expectedProductName}" with a recurring annual price of $${catalogEntry.annualAmount}, ` +
+        "or set the corresponding STRIPE_PRICE_* variable."
     );
     error.statusCode = 400;
     error.code = "STRIPE_PRICE_MISSING";

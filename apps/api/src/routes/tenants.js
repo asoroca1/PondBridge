@@ -63,7 +63,7 @@ function toBoolean(value) {
 const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
 const DIRECTOR_CLIENT_PRIVACY_VERSION = "2026-03-06";
 const DIRECTOR_SERVICE_AGREEMENT_VERSION = "2026-03-06";
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
+const VALID_BILLING_PLAN_CODES = new Set(["flagship", "legacy", "founders", "institutional", "test"]);
 
 function hasOwn(source, key) {
   return Boolean(source && Object.prototype.hasOwnProperty.call(source, key));
