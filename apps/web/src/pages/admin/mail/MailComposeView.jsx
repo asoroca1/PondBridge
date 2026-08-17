@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { Button, Input, Select } from "@pondbridge/ui";
 import {
-  Check,
-  CircleAlert,
   Eye,
   EyeOff,
   FlaskConical,
@@ -37,7 +34,6 @@ function formatClock(value) {
 
 export default function MailComposeView({
   request,
-  slug,
   tenant,
   compose,
   setCompose,
@@ -53,7 +49,6 @@ export default function MailComposeView({
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [recipientPreview, setRecipientPreview] = useState({ count: 0, excludedCount: 0, preview: [] });
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [readiness, setReadiness] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
@@ -72,8 +67,7 @@ export default function MailComposeView({
   const targeting = useMemo(() => buildTargetingFromChips(chips), [chips]);
   const hasRecipients = recipientPreview.count > 0;
   const hasMessage = Boolean(compose.subject.trim() && compose.body.trim());
-  const checksReady = Boolean(readiness?.ready);
-  const sendDisabled = sending || !hasRecipients || !hasMessage || !checksReady;
+  const sendDisabled = sending || !hasRecipients || !hasMessage;
   const hasAnyContent = Boolean(compose.subject.trim() || compose.body.trim() || chips.length);
 
   const footer = useMemo(() => normalizeFooter(activeFooter, {}), [activeFooter]);
@@ -90,7 +84,7 @@ export default function MailComposeView({
   const patch = useCallback((changes) => setCompose((prev) => ({ ...prev, ...changes })), [setCompose]);
 
   // ---------------------------------------------------------------------------
-  // Recipient count + readiness
+  // Recipient count
   // ---------------------------------------------------------------------------
 
   const debouncedTargeting = useDebouncedValue(targeting, 300);
@@ -104,30 +98,6 @@ export default function MailComposeView({
       .finally(() => { if (active) setPreviewLoading(false); });
     return () => { active = false; };
   }, [debouncedTargeting, request]);
-
-  // Deterministic preflight: checks the physical-address and unsubscribe
-  // requirements the server enforces at send time.
-  useEffect(() => {
-    let active = true;
-    const timer = window.setTimeout(() => {
-      request("/email-agent/quality", {
-        method: "POST",
-        body: {
-          subject: compose.subject,
-          preheader: compose.preheader,
-          body: compose.body,
-          campaignType: "marketing",
-          recipientCount: recipientPreview.count
-        }
-      })
-        .then((payload) => { if (active) setReadiness(payload); })
-        .catch(() => { if (active) setReadiness(null); });
-    }, 320);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [compose.body, compose.preheader, compose.subject, recipientPreview.count, request]);
 
   // ---------------------------------------------------------------------------
   // Server-side draft autosave
@@ -196,10 +166,6 @@ export default function MailComposeView({
   function requestSend() {
     if (!hasMessage || !hasRecipients) {
       setError("Add recipients, a subject, and a message before sending.");
-      return;
-    }
-    if (readiness && !readiness.ready) {
-      setError(readiness.blockers?.[0]?.message || "Resolve the send checks first.");
       return;
     }
     if (compose.scheduleType === "later") {
@@ -611,32 +577,6 @@ export default function MailComposeView({
             ) : (
               <span className="pb-mail-delivery-note">{scheduleSummary}</span>
             )}
-          </div>
-
-          <div className={`pb-mail-checks ${checksReady ? "is-ready" : ""}`}>
-            <span className="pb-mail-checks-icon" aria-hidden="true">
-              {checksReady ? <Check /> : <CircleAlert />}
-            </span>
-            <div>
-              <strong>
-                {readiness === null ? "Running send checks…" : checksReady ? "Ready to send" : "Needs attention"}
-              </strong>
-              {readiness?.blockers?.length ? (
-                <ul>
-                  {readiness.blockers.map((item) => <li key={item.code}>{item.message}</li>)}
-                </ul>
-              ) : null}
-              {readiness?.warnings?.length ? (
-                <ul className="is-warning">
-                  {readiness.warnings.map((item) => <li key={item.code}>{item.message}</li>)}
-                </ul>
-              ) : null}
-              {readiness?.blockers?.some((item) => item.code === "postal_address_required") ? (
-                <Link className="pb-mail-link-button" to={`/t/${slug}/admin/billing`}>
-                  Add the mailing address in Billing
-                </Link>
-              ) : null}
-            </div>
           </div>
         </div>
 

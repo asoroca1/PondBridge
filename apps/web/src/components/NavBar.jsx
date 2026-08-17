@@ -18,8 +18,7 @@ import {
   User,
   Pencil,
   Repeat2,
-  Scale,
-  Sparkles
+  Scale
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -299,7 +298,6 @@ export default function NavBar() {
 
     const accountItems = [
       { id: "home", icon: Home, label: "Home", to: pathWithCamp(slug, "/home") },
-      { id: "camp-ai", icon: Sparkles, label: aiName, to: pathWithCamp(slug, "/ai") },
       { id: "profile", icon: User, label: "My Profile", to: pathWithCamp(slug, "/my-profile") },
       { id: "edit", icon: Pencil, label: "Edit Profile", to: pathWithCamp(slug, "/edit-profile") }
     ];
