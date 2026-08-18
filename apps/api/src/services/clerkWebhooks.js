@@ -9,6 +9,7 @@ import {
 } from "../db/models/index.js";
 import { sendVerificationCodeEmail } from "./email.js";
 import { logLine } from "./logger.js";
+import { recallSignupIntent } from "./signupIntent.js";
 
 const RESERVED_SUBDOMAINS = new Set(["www", "app", "api", "super"]);
 const recentVerificationDispatches = new Map();
@@ -394,6 +395,17 @@ async function resolveTenantFromHint(hint = {}) {
 }
 
 async function resolveVerificationContext(emailResource = {}) {
+  // Clerk's payload has no tenant of its own, so the intent the signup flow
+  // recorded against this address outranks everything we could infer.
+  const intentHint = recallSignupIntent(emailResource?.to_email_address);
+  if (intentHint?.tenantSlug) {
+    const intentTenant = await resolveTenantFromHint(intentHint);
+    if (intentTenant) {
+      return { tenant: intentTenant, audience: intentHint.audience === "director" ? "director" : "member" };
+    }
+    logLine("warn", "clerk.verification.intent_tenant_missing", { tenantSlug: intentHint.tenantSlug });
+  }
+
   const signUpAttemptHint = await resolveSignUpAttemptHint(emailResource);
   const routeHints = recursiveStringValues({
     subject: emailResource?.subject,

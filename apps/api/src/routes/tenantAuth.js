@@ -10,6 +10,7 @@ import {
   TenantModel
 } from "../db/models/index.js";
 import { requireTenant } from "../middleware/tenantContext.js";
+import { rememberSignupIntent } from "../services/signupIntent.js";
 import { buildAuthenticatedUserPayload, comparePassword, hashPassword, signToken } from "../utils/auth.js";
 import { env } from "../config/env.js";
 import { sendMagicLinkEmail, sendWelcomeEmail } from "../services/email.js";
@@ -66,6 +67,13 @@ const accessCodeVerifyLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => authLimiterKey(req)
+});
+const signupIntentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req, { includeEmail: true })
 });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -269,6 +277,21 @@ function profileFromBody(body) {
     avatarUrl: String(body.uploads?.photoUrl || body.avatarUrl || body.photoUrl || "").trim()
   };
 }
+
+// Records which camp an address is signing up for so the Clerk email.created
+// webhook can brand the verification email. Clerk's payload carries no tenant,
+// and the address is the only value both sides share.
+router.post("/signup-intent", signupIntentLimiter, requireTenant, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const audience = String(req.body?.audience || "member").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({
+      error: { code: "EMAIL_REQUIRED", message: "A valid email address is required." }
+    });
+  }
+  rememberSignupIntent({ email, tenantSlug: req.tenant?.slug, audience });
+  return res.json({ ok: true });
+});
 
 router.post("/access-code/verify", accessCodeVerifyLimiter, requireTenant, async (req, res) => {
   const policy = resolveTenantAccessPolicy(req.tenant);

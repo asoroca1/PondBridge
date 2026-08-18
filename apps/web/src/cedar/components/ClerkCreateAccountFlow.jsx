@@ -103,10 +103,28 @@ export default function ClerkCreateAccountFlow() {
   );
   const signInUrl = routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
   const legalPath = routeWithSlug(slug, "/legal");
+  // Clerk's email.created webhook carries no tenant, so tell the API which camp
+  // this address is signing up for before Clerk sends the code. Fire and
+  // forget: a failure only costs the camp branding on the email.
+  const noteSignupIntent = (form) => {
+    if (!slug || !form) return;
+    const email = String(
+      form.querySelector('input[name="emailAddress"]')?.value ||
+      form.querySelector('input[type="email"]')?.value ||
+      ""
+    ).trim();
+    if (!email.includes("@")) return;
+    requestJson(`/api/t/${slug}/auth/signup-intent`, {
+      method: "POST",
+      body: { email, audience: "member" }
+    }).catch(() => {});
+  };
+
   const onSignUpSubmitCapture = (event) => {
     if (legalAccepted) {
       setLegalError("");
       setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
+      noteSignupIntent(event.target?.closest?.("form") || event.target);
       return;
     }
     event.preventDefault();
