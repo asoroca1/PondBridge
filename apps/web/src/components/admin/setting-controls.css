@@ -333,7 +333,7 @@
 
 .pb-set-labels-reorder-hint {
   margin: 9px 0 0;
-  color: #6d7f94;
+  color: var(--neutral-500);
   font-size: .78rem;
 }
 
@@ -352,12 +352,12 @@
 
 /* Marks where the dragged chip will land. */
 .pb-set-labels-chips > span.is-drop-target {
-  border-color: #1f4aa8;
+  border-color: var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(31, 74, 168, .14);
 }
 
 .pb-set-label-grip {
-  color: #9bacc0;
+  color: var(--neutral-400);
   flex: 0 0 auto;
 }
 
