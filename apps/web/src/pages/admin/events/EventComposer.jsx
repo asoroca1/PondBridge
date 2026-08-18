@@ -163,8 +163,14 @@ export default function EventComposer({
       setError("Give it a title.");
       return;
     }
-    if (!form.startsAt) {
+    // An info session can open for registration before a date exists, so the
+    // camp can pick a time that suits whoever signs up.
+    if (!form.startsAt && !isSeminar) {
       setError("Choose when it starts.");
+      return;
+    }
+    if (form.endsAt && !form.startsAt) {
+      setError("Add a start time before setting when it ends.");
       return;
     }
     if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) {
@@ -231,8 +237,13 @@ export default function EventComposer({
           ) : null}
 
           <label className="pb-events-field">
-            <span>Starts</span>
+            <span>Starts {isSeminar ? <small>optional — add it later</small> : null}</span>
             <Input type="datetime-local" value={form.startsAt} onChange={(e) => patch({ startsAt: e.target.value })} />
+            {isSeminar && !form.startsAt ? (
+              <small className="muted">
+                Members can register now and you can set the date once you know who is coming.
+              </small>
+            ) : null}
           </label>
           <label className="pb-events-field">
             <span>Ends</span>

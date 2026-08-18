@@ -7,6 +7,7 @@ const COLUMNS = {
   profileId: "profile_id",
   userId: "user_id",
   status: "status",
+  registrationRole: "registration_role",
   respondedAt: "responded_at",
   createdAt: "created_at",
   updatedAt: "updated_at"
