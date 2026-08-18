@@ -16366,7 +16366,9 @@ button.super-stat-card {
   gap:var(--ev-roster-gap);
   /* A popular event runs to hundreds of names, which otherwise pushes the
      rest of the sidebar far below the fold. Show five and scroll the rest. */
-  max-height:calc(var(--ev-roster-row) * 5 + var(--ev-roster-gap) * 4);
+  /* box-sizing is border-box here, so the list's own top padding and rule
+     have to be added back or the fifth row is clipped. */
+  max-height:calc(var(--ev-roster-row) * 5 + var(--ev-roster-gap) * 4 + 14px + 1px);
   overflow-y:auto;
   overscroll-behavior:contain;
   scrollbar-width:thin;
