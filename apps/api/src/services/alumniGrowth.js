@@ -353,6 +353,22 @@ function indexPeopleSources({
 }
 
 /**
+ * Camp years reach us from two places: the stints on a member's own profile,
+ * and whatever a director typed in while the person was still a prospect.
+ * Both describe the same thing, so the row shows the union.
+ */
+function mergeCampYears(...sources) {
+  const years = new Set();
+  for (const source of sources) {
+    for (const value of Array.isArray(source) ? source : []) {
+      const year = String(value || "").trim();
+      if (year) years.add(year);
+    }
+  }
+  return [...years].sort();
+}
+
+/**
  * The unified people list behind the director People workspace. Every row
  * carries whichever identifiers its stage supports, so the UI can offer
  * stage-appropriate actions without a second lookup.
@@ -415,8 +431,7 @@ export function buildPeopleDirectory({
       avatarUrl: memberRow?.avatarUrl || String(profile?.avatarUrl || ""),
       role: memberRow?.role || String(request?.selfReportedRole || contact?.roleAtCamp || ""),
       location: memberRow?.location || String(profile?.cityState || ""),
-      yearsAtCamp: memberRow?.yearsAtCamp
-        || (Array.isArray(profile?.collegeYears) ? profile.collegeYears : []),
+      yearsAtCamp: mergeCampYears(memberRow?.yearsAtCamp, contact?.campYears),
       completionScore: Number(memberRow?.completionScore || 0),
       memberStatus: memberRow?.status || "",
       joinedAt: iso(profile?.createdAt || user?.createdAt),
