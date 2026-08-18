@@ -331,6 +331,47 @@
   font-size: .85rem;
 }
 
+.pb-set-labels-reorder-hint {
+  margin: 9px 0 0;
+  color: #6d7f94;
+  font-size: .78rem;
+}
+
+.pb-set-labels-chips > span.is-sortable {
+  padding-left: 5px;
+  cursor: grab;
+}
+
+.pb-set-labels-chips > span.is-sortable:active {
+  cursor: grabbing;
+}
+
+.pb-set-labels-chips > span.is-dragging {
+  opacity: .45;
+}
+
+/* Marks where the dragged chip will land. */
+.pb-set-labels-chips > span.is-drop-target {
+  border-color: #1f4aa8;
+  box-shadow: 0 0 0 3px rgba(31, 74, 168, .14);
+}
+
+.pb-set-label-grip {
+  color: #9bacc0;
+  flex: 0 0 auto;
+}
+
+.pb-set-labels-chips button.pb-set-label-move {
+  width: 16px;
+  height: 19px;
+  font-size: 1.05rem;
+}
+
+.pb-set-labels-chips button.pb-set-label-move:disabled {
+  opacity: .3;
+  cursor: not-allowed;
+}
+
 .pb-set-labels-chips button {
   display: grid;
   place-items: center;

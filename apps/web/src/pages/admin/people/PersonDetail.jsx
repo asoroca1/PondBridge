@@ -63,6 +63,7 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
   const [denyReason, setDenyReason] = useState("");
   const [removeOpen, setRemoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
 
   if (!person) {
     return (
@@ -76,6 +77,9 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
   const meta = stageMeta(person.stage);
   const busy = Boolean(actions.busy);
   const onHold = person.stage === "on_hold";
+  // Someone who never joined leaves only a contact row, invitations and maybe a
+  // request behind, so those can be erased outright.
+  const canPurge = ["invited", "expired", "on_hold"].includes(person.stage) && Boolean(person.email);
 
   return (
     <div className="pb-people-detail">
@@ -158,6 +162,13 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
               Remove
             </Button>
           )
+        ) : null}
+
+        {canPurge ? (
+          <Button type="button" variant="ghost" onClick={() => setPurgeOpen(true)} disabled={busy}>
+            <Trash2 aria-hidden="true" />
+            Delete permanently
+          </Button>
         ) : null}
       </div>
 
@@ -256,6 +267,25 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
           setDeleteOpen(false);
         }}
         onCancel={() => setDeleteOpen(false)}
+      />
+
+      <ModalConfirm
+        open={purgeOpen}
+        title={`Permanently delete ${personName(person)}?`}
+        description={
+          person.stage === "on_hold"
+            ? "This wipes their contact record, every invitation sent to them and any pending request. They will no longer be on hold because they will no longer exist here. This cannot be undone."
+            : "This wipes their contact record and every invitation sent to them, including any that is still valid. This cannot be undone."
+        }
+        confirmLabel="Delete permanently"
+        cancelLabel="Cancel"
+        tone="danger"
+        busy={actions.busy === "purge"}
+        onConfirm={async () => {
+          await actions.purgePerson(person);
+          setPurgeOpen(false);
+        }}
+        onCancel={() => setPurgeOpen(false)}
       />
     </div>
   );

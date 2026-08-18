@@ -57,7 +57,6 @@ export default function DirectorAdminPeoplePage() {
           storage={directory.storage}
           slug={slug}
           networkName={networkName}
-          onInvite={openInvite}
           onDone={() => navigate(`/t/${slug}/admin/people/prospect`)}
         />
       );
