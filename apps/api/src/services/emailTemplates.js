@@ -405,6 +405,59 @@ export function welcomeTemplate({
 // 4. Verification code template
 // ---------------------------------------------------------------------------
 
+export function passwordResetCodeTemplate({
+  brandName = "PondBridge",
+  code,
+  requestIp = "",
+  requestedAt = null,
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
+  const safeBrandName = escapeHtml(brandName || "PondBridge");
+  const safeCode = escapeHtml(String(code || "").trim());
+  const safeRequestIp = escapeHtml(String(requestIp || "").trim());
+  const requestedAtLabel = formatDate(requestedAt);
+  const requestSummary = [safeRequestIp, requestedAtLabel].filter(Boolean).join(" at ");
+  const subject = `${String(code || "").trim()} is your password reset code`;
+
+  const text = [
+    brandName || "PondBridge",
+    "",
+    "Reset your password",
+    `Enter the code below to reset your ${brandName || "your network"} password.`,
+    "",
+    String(code || "").trim(),
+    "",
+    "To protect your account, do not share this code.",
+    "If you did not request a password reset, you can ignore this email.",
+    requestSummary ? `Requested from ${requestSummary}.` : ""
+  ].filter(Boolean).join("\n");
+
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:#13263f;letter-spacing:-0.02em;">Reset your password</h1>
+    <p style="margin:0 0 12px;">Enter the code below to reset your ${safeBrandName} password.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 18px;border:1px solid #dbe6f3;border-radius:12px;background:#f6f9ff;">
+      <tr>
+        <td align="center" style="padding:18px 16px;font-size:44px;font-weight:800;letter-spacing:0.08em;color:#13263f;">${safeCode}</td>
+      </tr>
+    </table>
+    <p style="margin:0 0 10px;font-size:14px;color:${BRAND.muted};">To protect your account, do not share this code.</p>
+    <p style="margin:0 0 10px;font-size:14px;color:${BRAND.muted};">If you did not request a password reset, you can ignore this email.</p>
+    ${
+      requestSummary
+        ? `<p style="margin:0;font-size:13px;color:${BRAND.muted};">Requested from ${requestSummary}.</p>`
+        : ""
+    }
+  `, {
+    contextName: brandName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Password reset"
+  });
+
+  return { subject, text, html };
+}
+
 export function verificationCodeTemplate({
   brandName = "PondBridge",
   code,

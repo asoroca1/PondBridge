@@ -7,7 +7,7 @@ import {
   TenantModel,
   UserModel
 } from "../db/models/index.js";
-import { sendVerificationCodeEmail } from "./email.js";
+import { sendPasswordResetCodeEmail, sendVerificationCodeEmail } from "./email.js";
 import { logLine } from "./logger.js";
 import { recallSignupIntent } from "./signupIntent.js";
 
@@ -66,6 +66,14 @@ function markRecentDispatch(key = "", now = nowMs()) {
 const VERIFICATION_COLLAPSE_MS = 3000;
 const pendingVerificationSends = new Map();
 
+// Clerk names the template in `slug`, e.g. verification_code or
+// reset_password_code. Match loosely so a rename does not silently send a
+// password reset worded as a signup verification.
+function isPasswordResetTemplate(emailResource = {}) {
+  const slug = safeString(emailResource?.slug).toLowerCase();
+  return slug.includes("reset") && slug.includes("password");
+}
+
 function verificationCollapseKey(recipientEmail = "") {
   return normalizeEmail(recipientEmail);
 }
@@ -94,9 +102,11 @@ function scheduleVerificationSend(request = {}) {
       emailId: pending.emailId,
       signUpAttemptId: pending.signUpAttemptId,
       audience: pending.audience,
-      tenantSlug: pending.tenantSlug || "none"
+      tenantSlug: pending.tenantSlug || "none",
+      kind: pending.isPasswordReset ? "password_reset" : "verification"
     });
-    Promise.resolve(sendVerificationCodeEmail(pending.send)).catch((error) => {
+    const send = pending.isPasswordReset ? sendPasswordResetCodeEmail : sendVerificationCodeEmail;
+    Promise.resolve(send(pending.send)).catch((error) => {
       logLine("error", "clerk.verification.dispatch_failed", {
         emailId: pending.emailId,
         message: String(error?.message || error)
@@ -437,15 +447,9 @@ export async function processClerkWebhookRequest(req) {
 
   const emailResource = event?.data || {};
   const recipientEmail = normalizeEmail(emailResource?.to_email_address || "");
-  const otpCode = firstOtpCode(emailResource?.data || {});
-  if (!recipientEmail || !otpCode) {
-    return { ok: true, ignored: true, reason: "not_verification_email" };
-  }
-
-  // Clerk sends no sign_up_id on email.created, so the unsafeMetadata lookup
-  // can never resolve a tenant. Record which identifiers the payload actually
-  // carries so branding can key off something real. Names only - the payload
-  // body holds the OTP and is never logged.
+  // Clerk sends no tenant of its own, so record what the payload does carry.
+  // Logged before the OTP gate: a template that keys its code differently would
+  // otherwise be dropped here with nothing to show why.
   logLine("info", "clerk.verification.payload_shape", {
     topLevelKeys: Object.keys(emailResource || {}).sort().join(","),
     dataKeys: Object.keys(emailResource?.data || {}).sort().join(","),
@@ -453,6 +457,11 @@ export async function processClerkWebhookRequest(req) {
     emailAddressId: safeString(emailResource?.email_address_id) || "none",
     slug: safeString(emailResource?.slug) || "none"
   });
+
+  const otpCode = firstOtpCode(emailResource?.data || {});
+  if (!recipientEmail || !otpCode) {
+    return { ok: true, ignored: true, reason: "not_verification_email" };
+  }
 
   const context = await resolveVerificationContext(emailResource);
   const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
@@ -488,6 +497,7 @@ export async function processClerkWebhookRequest(req) {
     tenantSlug: safeString(context?.tenant?.slug),
     emailId,
     signUpAttemptId,
+    isPasswordReset: isPasswordResetTemplate(emailResource),
     send: {
       tenant: context.tenant,
       email: recipientEmail,

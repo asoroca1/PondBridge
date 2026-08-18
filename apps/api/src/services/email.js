@@ -7,6 +7,7 @@ import {
   inviteTemplate,
   magicLinkTemplate,
   verificationCodeTemplate,
+  passwordResetCodeTemplate,
   welcomeTemplate,
   accessApprovedTemplate,
   accessDeniedTemplate
@@ -1303,6 +1304,41 @@ export async function sendVerificationCodeEmail({
     tags: [
       { name: "category", value: "clerk_verification_code" },
       { name: "audience", value: normalizedAudience || "member" },
+      ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
+    ]
+  });
+}
+
+export async function sendPasswordResetCodeEmail({
+  tenant = null,
+  email,
+  code,
+  requestIp = "",
+  requestedAt = null,
+  idempotencyKey = ""
+}) {
+  // A reset always belongs to an existing member, so brand it for their camp
+  // whenever the tenant resolved; fall back to PondBridge only if it did not.
+  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  const { subject, text, html } = passwordResetCodeTemplate({
+    brandName: branding.networkName,
+    code,
+    requestIp,
+    requestedAt,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
+  });
+
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject,
+    text,
+    html,
+    idempotencyKey,
+    tags: [
+      { name: "category", value: "clerk_password_reset_code" },
       ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
     ]
   });
