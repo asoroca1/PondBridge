@@ -111,7 +111,8 @@ import {
   resolveEmailRecipientEligibility
 } from "../services/emailPreferences.js";
 import {
-  assertEmailDraftReady
+  assertEmailDraftReady,
+  resolveCampPostalAddress
 } from "../services/emailCompliance.js";
 import {
   canonicalizeCityName,
@@ -5409,6 +5410,9 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
       onboardingFeeWaived: billing.onboardingFeeWaived,
       onboardingFeeInvoiceId: req.tenant.onboardingFeeInvoiceId || "",
       billingDetails: req.tenant.billingDetails || {},
+      // The same resolver the send check uses, so the Billing page shows the
+      // address that actually decides whether a broadcast is allowed.
+      postalAddress: resolveCampPostalAddress(req.tenant),
       currentPeriodEnd: billing.currentPeriodEnd,
       initialCheckoutCompletedAt: billing.initialCheckoutCompletedAt,
       activatedAt: billing.activatedAt,

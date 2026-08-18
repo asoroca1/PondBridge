@@ -75,3 +75,74 @@
   font-weight: 700;
   color: var(--brand-primary, #1e5cb3);
 }
+
+/* Mailing address: legally required in every broadcast, so it reads as part of
+   billing rather than as an optional extra. */
+.pb-billing-address-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.pb-billing-address-head h2 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.pb-billing-address-head p {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 0.88rem;
+}
+
+.pb-billing-address-badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(180, 35, 24, 0.12);
+  color: #b42318;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pb-billing-address-badge.is-ok {
+  background: rgba(21, 128, 61, 0.12);
+  color: #15803d;
+}
+
+.pb-billing-address-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.pb-billing-address-grid label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pb-billing-address-grid label.is-wide { grid-column: 1 / -1; }
+
+.pb-billing-address-grid em {
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.pb-billing-address-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .pb-billing-address-grid { grid-template-columns: minmax(0, 1fr); }
+}
