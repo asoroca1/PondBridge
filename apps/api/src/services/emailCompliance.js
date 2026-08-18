@@ -118,7 +118,13 @@ export function analyzeEmailDraft({
 export function assertEmailDraftReady(input = {}) {
   const result = analyzeEmailDraft(input);
   if (result.ready) return result;
-  const error = new Error("Resolve the email readiness blockers before sending.");
+  // Production strips error.details, so the blockers have to travel in the
+  // message or the director is told only that something is wrong.
+  const reasons = result.blockers
+    .map((item) => String(item?.message || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  const error = new Error(reasons || "Resolve the email readiness blockers before sending.");
   error.code = "EMAIL_COMPLIANCE_BLOCKED";
   error.statusCode = 409;
   error.details = { blockers: result.blockers };

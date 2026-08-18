@@ -1,17 +1,34 @@
 import { useMemo, useRef, useState } from "react";
-import { Button, Input, Textarea } from "@pondbridge/ui";
-import { Send, Upload, UserPlus } from "lucide-react";
+import { Button, Input } from "@pondbridge/ui";
+import { Mail, Plus, Send, Trash2, Upload, UserPlus } from "lucide-react";
+import InviteMessageDialog, { readInviteMessage } from "./InviteMessageDialog.jsx";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_VISIBLE_ROWS = 5;
+
+function emptyRow() {
+  return { firstName: "", lastName: "", email: "" };
+}
+
+function padRows(rows = []) {
+  const next = [...rows];
+  while (next.length < MIN_VISIBLE_ROWS) next.push(emptyRow());
+  return next;
+}
+
+function isBlankRow(row = {}) {
+  return !String(row.firstName || "").trim() &&
+    !String(row.lastName || "").trim() &&
+    !String(row.email || "").trim();
+}
 
 /**
- * Accepts pasted rows or a CSV and turns them into recipients. Both paths land
- * in the same shape, so an uploaded file gets the same server-side review as a
- * hand-typed list rather than a separate untested code path.
+ * Turns pasted or uploaded text into grid rows. CSV and hand entry land in the
+ * same shape so an uploaded file gets the same validation and the same
+ * server-side review as anything typed by hand.
  */
 export function parsePeopleRows(value = "") {
-  const people = [];
-  const invalid = [];
+  const rows = [];
   const seen = new Set();
 
   String(value || "")
@@ -19,52 +36,118 @@ export function parsePeopleRows(value = "") {
     .map((line) => line.trim())
     .filter(Boolean)
     .forEach((line, index) => {
-      const parts = line.split(/[,\t]/).map((item) => item.trim()).filter(Boolean);
-      // Skip a header row rather than reporting it as broken input.
-      if (index === 0 && /^(first\s*name|firstname)$/i.test(parts[0] || "")) return;
-      const emailIndex = parts.findIndex((item) => EMAIL_REGEX.test(item.toLowerCase()));
-      if (emailIndex < 0) {
-        invalid.push({ line: index + 1, value: line });
-        return;
-      }
-      const email = parts[emailIndex].toLowerCase();
-      if (seen.has(email)) return;
-      seen.add(email);
-      people.push({
-        firstName: emailIndex >= 1 ? parts[0] : "",
-        lastName: emailIndex >= 2 ? parts[1] : "",
+      const parts = line.split(/[,\t]/).map((item) => item.trim());
+      const cleaned = parts.filter(Boolean);
+      // Skip a header row rather than importing it as a person.
+      if (index === 0 && /^(first\s*name|firstname)$/i.test(cleaned[0] || "")) return;
+
+      const emailIndex = cleaned.findIndex((item) => EMAIL_REGEX.test(item.toLowerCase()));
+      const email = emailIndex >= 0 ? cleaned[emailIndex].toLowerCase() : "";
+      if (email && seen.has(email)) return;
+      if (email) seen.add(email);
+
+      const names = emailIndex >= 0
+        ? cleaned.filter((_item, position) => position !== emailIndex)
+        : cleaned;
+
+      rows.push({
+        firstName: names[0] || "",
+        lastName: names[1] || "",
         email
       });
     });
 
-  return { people, invalid };
+  return rows;
 }
 
 function parseLabels(value = "") {
   return [...new Set(String(value || "").split(/[,\n]+/g).map((item) => item.trim()).filter(Boolean))];
 }
 
-export default function PeopleAddView({ actions, storage, onInvite, onDone }) {
-  const [rows, setRows] = useState("");
+/**
+ * Only the email is required; names are optional so a plain list of addresses
+ * still imports. Problems are reported per row rather than as one message for
+ * the whole batch.
+ */
+export function validateRows(rows = []) {
+  // Problems are keyed by the row's own index so the grid can look each one up
+  // directly rather than searching a filtered copy.
+  const problems = new Map();
+  const seen = new Map();
+  const ready = [];
+
+  rows.forEach((row, index) => {
+    if (isBlankRow(row)) return;
+
+    const email = String(row.email || "").trim().toLowerCase();
+    if (!email) {
+      problems.set(index, "Add an email address.");
+      return;
+    }
+    if (!EMAIL_REGEX.test(email)) {
+      problems.set(index, "That email address is not valid.");
+      return;
+    }
+    if (seen.has(email)) {
+      problems.set(index, "Duplicate of an earlier row.");
+      return;
+    }
+
+    seen.set(email, index);
+    ready.push({
+      firstName: String(row.firstName).trim(),
+      lastName: String(row.lastName).trim(),
+      email
+    });
+  });
+
+  return { ready, problems };
+}
+
+export default function PeopleAddView({ actions, storage, slug = "", networkName = "", onInvite, onDone }) {
+  const [rows, setRows] = useState(() => padRows([]));
   const [tags, setTags] = useState("");
   const [campYears, setCampYears] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState(() => readInviteMessage(slug));
   const fileRef = useRef(null);
 
-  const parsed = useMemo(() => parsePeopleRows(rows), [rows]);
-  const canSubmit = parsed.people.length > 0;
+  const { ready, problems } = useMemo(() => validateRows(rows), [rows]);
+  const canSubmit = ready.length > 0 && problems.size === 0;
   const storageReady = storage?.available !== false;
+  const hasCustomMessage = Boolean(inviteMessage.subject || inviteMessage.message);
+
+  function updateCell(index, field, value) {
+    setRows((current) => {
+      const next = current.map((row, position) => (
+        position === index ? { ...row, [field]: value } : row
+      ));
+      // Keep a spare row at the bottom so typing never runs out of space.
+      if (index === next.length - 1 && !isBlankRow(next[index])) next.push(emptyRow());
+      return next;
+    });
+    setError("");
+  }
+
+  function removeRow(index) {
+    setRows((current) => padRows(current.filter((_row, position) => position !== index)));
+  }
 
   function readCsv(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const text = String(reader.result || "");
-      setRows((current) => (current.trim() ? `${current.trim()}\n${text}` : text));
-      setStatus(`Loaded ${file.name}.`);
+      const imported = parsePeopleRows(String(reader.result || ""));
+      if (!imported.length) {
+        setError("That file did not contain any rows.");
+        return;
+      }
+      setRows((current) => padRows([...current.filter((row) => !isBlankRow(row)), ...imported]));
+      setStatus(`Loaded ${imported.length} row${imported.length === 1 ? "" : "s"} from ${file.name}.`);
       setError("");
     };
     reader.onerror = () => setError("That file could not be read.");
@@ -72,12 +155,25 @@ export default function PeopleAddView({ actions, storage, onInvite, onDone }) {
     event.target.value = "";
   }
 
+  function onPasteGrid(event, index) {
+    const text = event.clipboardData?.getData("text") || "";
+    if (!text.includes("\n") && !text.includes("\t")) return;
+    event.preventDefault();
+    const imported = parsePeopleRows(text);
+    if (!imported.length) return;
+    setRows((current) => {
+      const kept = current.filter((row, position) => position < index || !isBlankRow(row));
+      return padRows([...kept.slice(0, index), ...imported, ...kept.slice(index + 1)]);
+    });
+    setStatus(`Pasted ${imported.length} row${imported.length === 1 ? "" : "s"}.`);
+  }
+
   async function saveProspects() {
     if (!canSubmit) {
-      setError("Add at least one row with a valid email address.");
+      setError("Add a valid email address on every row.");
       return;
     }
-    const result = await actions.addProspects(parsed.people.map((person) => ({
+    const result = await actions.addProspects(ready.map((person) => ({
       ...person,
       tags: parseLabels(tags),
       campYears: parseLabels(campYears),
@@ -88,7 +184,7 @@ export default function PeopleAddView({ actions, storage, onInvite, onDone }) {
       setError(result.message);
       return;
     }
-    setRows("");
+    setRows(padRows([]));
     setTags("");
     setCampYears("");
     setNotes("");
@@ -97,34 +193,32 @@ export default function PeopleAddView({ actions, storage, onInvite, onDone }) {
     onDone?.();
   }
 
+  function startInvite() {
+    if (!canSubmit) {
+      setError("Add a valid email address on every row.");
+      return;
+    }
+    onInvite(
+      ready.map((person) => ({ ...person, stage: "prospect" })),
+      { customSubject: inviteMessage.subject, customMessage: inviteMessage.message }
+    );
+  }
+
   return (
     <div className="pb-people-panel">
-      <header className="pb-people-panel-head">
+      <header className="pb-people-panel-head pb-people-add-head">
         <div>
           <h2>Add people</h2>
           <p>
-            Paste a list or drop in a CSV, then either save them as prospects or send invitations.
-            Saving never emails anyone.
+            Fill in the sheet or upload a CSV, then either save them as prospects or send
+            invitations. Only the email address is required. Saving never emails anyone.
           </p>
         </div>
-      </header>
-
-      <div className="pb-people-add-grid">
-        <label className="pb-people-add-rows">
-          <span>One person per line — name and email, or just an email</span>
-          <Textarea
-            value={rows}
-            rows={10}
-            onChange={(event) => setRows(event.target.value)}
-            placeholder={"Ada, Lovelace, ada@example.org\nsomeone@example.org"}
-          />
-          <small className={parsed.invalid.length ? "error-text" : "muted"}>
-            {parsed.people.length} valid email{parsed.people.length === 1 ? "" : "s"}
-            {parsed.invalid.length ? ` · ${parsed.invalid.length} row${parsed.invalid.length === 1 ? "" : "s"} without a usable email` : ""}
-          </small>
-        </label>
-
-        <div className="pb-people-add-side">
+        <div className="pb-people-add-head-actions">
+          <Button type="button" variant="secondary" onClick={() => setMessageOpen(true)}>
+            <Mail aria-hidden="true" />
+            {hasCustomMessage ? "Edit invite email" : "Write invite email"}
+          </Button>
           <Button type="button" variant="secondary" onClick={() => fileRef.current?.click()}>
             <Upload aria-hidden="true" />
             Upload CSV
@@ -136,6 +230,72 @@ export default function PeopleAddView({ actions, storage, onInvite, onDone }) {
             onChange={readCsv}
             hidden
           />
+        </div>
+      </header>
+
+      <div className="pb-people-sheet" role="group" aria-label="People to add">
+        <div className="pb-people-sheet-row pb-people-sheet-header" aria-hidden="true">
+          <span>First name</span>
+          <span>Last name</span>
+          <span>Email <em>required</em></span>
+          <span />
+        </div>
+        {rows.map((row, index) => {
+          const problem = problems.get(index);
+          return (
+            <div
+              className={`pb-people-sheet-row${problem ? " has-error" : ""}`}
+              key={`row-${index}`}
+            >
+              <Input
+                value={row.firstName}
+                aria-label={`First name, row ${index + 1}`}
+                onChange={(event) => updateCell(index, "firstName", event.target.value)}
+                onPaste={(event) => onPasteGrid(event, index)}
+              />
+              <Input
+                value={row.lastName}
+                aria-label={`Last name, row ${index + 1}`}
+                onChange={(event) => updateCell(index, "lastName", event.target.value)}
+                onPaste={(event) => onPasteGrid(event, index)}
+              />
+              <Input
+                value={row.email}
+                type="email"
+                aria-label={`Email, row ${index + 1}`}
+                aria-invalid={problem ? "true" : undefined}
+                onChange={(event) => updateCell(index, "email", event.target.value)}
+                onPaste={(event) => onPasteGrid(event, index)}
+              />
+              <button
+                type="button"
+                className="pb-people-sheet-remove"
+                aria-label={`Remove row ${index + 1}`}
+                onClick={() => removeRow(index)}
+                disabled={isBlankRow(row)}
+              >
+                <Trash2 aria-hidden="true" />
+              </button>
+              {problem ? <p className="pb-people-sheet-error">{problem}</p> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="pb-people-sheet-foot">
+        <Button type="button" variant="ghost" onClick={() => setRows((current) => [...current, emptyRow()])}>
+          <Plus aria-hidden="true" />
+          Add row
+        </Button>
+        <small className={problems.size ? "error-text" : "muted"}>
+          {ready.length} ready
+          {problems.size ? ` · ${problems.size} row${problems.size === 1 ? "" : "s"} need attention` : ""}
+        </small>
+      </div>
+
+      <details className="pb-people-optional">
+        <summary>Optional details</summary>
+        <div className="pb-people-optional-grid">
           <label>
             <span>Tags</span>
             <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Reunion, donor" />
@@ -148,9 +308,9 @@ export default function PeopleAddView({ actions, storage, onInvite, onDone }) {
             <span>Notes</span>
             <Input value={notes} maxLength={800} onChange={(event) => setNotes(event.target.value)} placeholder="How the camp knows them" />
           </label>
-          <small className="muted">Tags, years, and notes apply to everyone saved in this batch.</small>
         </div>
-      </div>
+        <small className="muted">Tags, years, and notes apply to everyone saved in this batch.</small>
+      </details>
 
       {!storageReady ? (
         <p className="pb-people-warning">
@@ -171,15 +331,19 @@ export default function PeopleAddView({ actions, storage, onInvite, onDone }) {
           <UserPlus aria-hidden="true" />
           Save as prospects
         </Button>
-        <Button
-          type="button"
-          onClick={() => onInvite(parsed.people.map((person) => ({ ...person, stage: "prospect" })))}
-          disabled={!canSubmit}
-        >
+        <Button type="button" onClick={startInvite} disabled={!canSubmit}>
           <Send aria-hidden="true" />
-          Review and invite {parsed.people.length || ""}
+          Review and invite {ready.length || ""}
         </Button>
       </div>
+
+      <InviteMessageDialog
+        open={messageOpen}
+        slug={slug}
+        networkName={networkName}
+        onClose={() => setMessageOpen(false)}
+        onSaved={setInviteMessage}
+      />
     </div>
   );
 }

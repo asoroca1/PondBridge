@@ -213,8 +213,16 @@ export default function MailComposeView({
       }
       onSent?.(compose.scheduleType === "later" ? "scheduled" : "sent");
     } catch (requestError) {
-      if (requestError?.status === 409 || requestError?.payload?.error?.code === "DUPLICATE_BROADCAST_WARNING") {
+      const code = requestError?.payload?.error?.code || requestError?.code || "";
+      // Match on the code, not the status. A compliance block is also a 409, and
+      // treating it as a duplicate offered "Send anyway", which retried into the
+      // same block forever while reporting a duplicate that never existed.
+      if (code === "DUPLICATE_BROADCAST_WARNING") {
         setShowDuplicateConfirm(true);
+      } else if (code === "EMAIL_COMPLIANCE_BLOCKED") {
+        const blockers = requestError?.payload?.error?.details?.blockers || [];
+        const first = blockers.find((item) => item?.message)?.message || "";
+        setError(first || requestError.message || "This email cannot be sent yet.");
       } else {
         setError(requestError.message || "Failed to send email.");
       }

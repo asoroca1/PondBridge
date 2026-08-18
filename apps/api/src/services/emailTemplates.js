@@ -234,8 +234,6 @@ function wrapInviteLayout(bodyInner, options = {}) {
 export function inviteTemplate({
   tenantName,
   link,
-  roleToAssign = "user",
-  expiresAt,
   customSubject = "",
   customMessage = "",
   firstName = "",
@@ -244,12 +242,10 @@ export function inviteTemplate({
   logoUrl = ""
 }) {
   const safeTenant = escapeHtml(tenantName);
-  const safeRole = escapeHtml(roleToAssign);
   const recipientName = [String(firstName || "").trim(), String(lastName || "").trim()]
     .filter(Boolean)
     .join(" ");
   const safeRecipientName = escapeHtml(recipientName || "there");
-  const expiresStr = formatDate(expiresAt);
   const normalizedCustomSubject = String(customSubject || "").trim();
   const normalizedCustomMessage = String(customMessage || "").trim();
   const customMessageHtml = normalizedCustomMessage
@@ -267,13 +263,7 @@ export function inviteTemplate({
   if (normalizedCustomMessage) {
     textLines.push("Personal note:", normalizedCustomMessage, "");
   }
-  textLines.push(
-    `You were invited to join ${tenantName}.`,
-    `Assigned role: ${roleToAssign}.`
-  );
-  if (expiresStr) {
-    textLines.push(`This invite expires on ${expiresStr}.`);
-  }
+  textLines.push(`You were invited to join ${tenantName}.`);
   textLines.push(`Create your account: ${link}`);
   const text = textLines.join("\n");
 
@@ -282,13 +272,6 @@ export function inviteTemplate({
     <p style="margin:0 0 12px;">Hi <strong>${safeRecipientName}</strong>,</p>
     ${customMessageHtml}
     <p style="margin:0 0 12px;">You've been invited to join <strong>${safeTenant}</strong>.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 6px;border:1px solid #dbe6f3;border-radius:10px;background:#f6f9ff;">
-      <tr>
-        <td style="padding:12px 14px;font-size:13px;color:#44566f;">Assigned role</td>
-        <td align="right" style="padding:12px 14px;font-size:13px;font-weight:700;color:#17365d;">${safeRole}</td>
-      </tr>
-      ${expiresStr ? `<tr><td style="padding:0 14px 12px;font-size:13px;color:#44566f;">Invite expires</td><td align="right" style="padding:0 14px 12px;font-size:13px;color:#17365d;">${escapeHtml(expiresStr)}</td></tr>` : ""}
-    </table>
     ${ctaButton(link, "Create Your Account", { backgroundColor: brandPrimary })}
     <p style="margin:0;font-size:13px;color:${BRAND.muted};">If the button above doesn't work, copy and paste this link into your browser:</p>
     <p style="margin:6px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>

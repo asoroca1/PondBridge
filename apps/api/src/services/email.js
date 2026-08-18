@@ -1170,8 +1170,6 @@ export async function sendInviteEmail({
   tenant,
   email,
   token,
-  roleToAssign,
-  expiresAt,
   replyTo = "",
   customSubject = "",
   customMessage = "",
@@ -1195,8 +1193,6 @@ export async function sendInviteEmail({
   const { subject, text, html } = inviteTemplate({
     tenantName: branding.networkName,
     link,
-    roleToAssign,
-    expiresAt,
     customSubject: applyInviteMergeTags(customSubject),
     customMessage: applyInviteMergeTags(customMessage),
     firstName,
