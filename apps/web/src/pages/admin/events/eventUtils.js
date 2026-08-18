@@ -186,6 +186,46 @@ export function fromLocalInput(value = "") {
   return value ? new Date(value).toISOString() : null;
 }
 
+/**
+ * The first thing wrong with the form, or "" when it is ready to save.
+ *
+ * An undated info session skips the date checks entirely; that is the whole
+ * point of leaving it undated.
+ */
+export function findEventFormProblem({ form = {}, undated = false } = {}) {
+  if (!String(form.title || "").trim()) return "Give it a title.";
+  if (undated) return "";
+  if (!form.startsAt) return "Choose when it starts.";
+  if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) {
+    return "The end time must come after the start time.";
+  }
+  return "";
+}
+
+/**
+ * What gets sent to the server.
+ *
+ * An undated session sends its dates as explicit nulls rather than leaving them
+ * out, so turning a scheduled session back into an undated one clears the date
+ * already stored against it instead of keeping it.
+ */
+export function buildEventSavePayload({
+  form = {},
+  eventType = "community",
+  undated = false,
+  host = null
+} = {}) {
+  return {
+    ...form,
+    eventType,
+    capacity: form.capacity === "" ? null : Number(form.capacity),
+    startsAt: undated ? null : fromLocalInput(form.startsAt),
+    endsAt: undated ? null : fromLocalInput(form.endsAt),
+    rsvpDeadlineAt: fromLocalInput(form.rsvpDeadlineAt),
+    hostProfileId: host?.id || form.hostProfileId || ""
+  };
+}
+
 /** A new event defaults to the next clean hour on the chosen day. */
 export function defaultSlotForDay(day) {
   const base = day ? new Date(day) : new Date();

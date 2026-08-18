@@ -340,11 +340,34 @@ export function normalizeEventWritePayload(input = {}, { partial = false } = {})
   return payload;
 }
 
+/**
+ * Reports every reason a publish is blocked, not just the first one found.
+ *
+ * Fixing one blocker only to be told about the next is a poor way to find out
+ * what a session needs, so the whole list travels in the message. The first
+ * problem still sets the error code, which is what callers switch on.
+ */
+function assertPublishReady(problems = []) {
+  if (!problems.length) return;
+  const error = createEventError(
+    problems.length === 1
+      ? problems[0].message
+      : `Before publishing: ${problems.map((problem) => problem.message).join(" · ")}`,
+    problems[0].code
+  );
+  error.details = { problems };
+  throw error;
+}
+
 export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = {}) {
+  const problems = [];
+
   if (!String(event?.title || "").trim()) {
-    throw createEventError("Add an event title before publishing.", "EVENT_TITLE_REQUIRED");
+    problems.push({ code: "EVENT_TITLE_REQUIRED", message: "Add an event title before publishing." });
   }
 
+  // Dates that contradict each other are reported on their own: until they are
+  // sorted out there is nothing dependable to say about the rest of the form.
   validateEventTimeline({
     startsAt: event?.startsAt,
     endsAt: event?.endsAt || null,
@@ -352,36 +375,53 @@ export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = 
   });
 
   if (normalizeEventType(event?.eventType || "") !== "seminar") {
+    assertPublishReady(problems);
     return { ready: true };
   }
 
   const deliveryMode = normalizeEventDeliveryMode(event?.deliveryMode || "");
   if (!["online", "hybrid"].includes(deliveryMode)) {
-    throw createEventError(
-      "Info sessions must be online or hybrid.",
-      "SEMINAR_DELIVERY_MODE_REQUIRED"
-    );
-  }
-  if (!String(event?.topicTitle || "").trim()) {
-    throw createEventError("Add an info session topic before publishing.", "SEMINAR_TOPIC_REQUIRED");
-  }
-  const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
-  if (!provider) {
-    throw createEventError(
-      "Select the info session meeting provider.",
-      "SEMINAR_MEETING_PROVIDER_REQUIRED"
-    );
-  }
-  if (!normalizeSeminarMeetingUrl(meetingUrl, provider)) {
-    throw createEventError("Add the info session meeting link.", "SEMINAR_MEETING_URL_REQUIRED");
-  }
-  if (deliveryMode === "hybrid" && !String(event?.locationName || "").trim()) {
-    throw createEventError(
-      "Add the in-person location for this hybrid info session.",
-      "SEMINAR_HYBRID_LOCATION_REQUIRED"
-    );
+    problems.push({
+      code: "SEMINAR_DELIVERY_MODE_REQUIRED",
+      message: "Info sessions must be online or hybrid."
+    });
   }
 
+  // The Topic dropdown and the free-text headline both count as a topic. The
+  // form marks the headline optional, so requiring it told directors who had
+  // chosen a topic that they had not added one.
+  const hasTopic = Boolean(
+    normalizeEventTopicCategory(event?.topicCategory || "", "") ||
+      String(event?.topicTitle || "").trim()
+  );
+  if (!hasTopic) {
+    problems.push({
+      code: "SEMINAR_TOPIC_REQUIRED",
+      message: "Choose a topic for this info session."
+    });
+  }
+
+  const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
+  if (!provider) {
+    problems.push({
+      code: "SEMINAR_MEETING_PROVIDER_REQUIRED",
+      message: "Select the info session meeting provider."
+    });
+  } else if (!normalizeSeminarMeetingUrl(meetingUrl, provider)) {
+    problems.push({
+      code: "SEMINAR_MEETING_URL_REQUIRED",
+      message: "Add the info session meeting link."
+    });
+  }
+
+  if (deliveryMode === "hybrid" && !String(event?.locationName || "").trim()) {
+    problems.push({
+      code: "SEMINAR_HYBRID_LOCATION_REQUIRED",
+      message: "Add the in-person location for this hybrid info session."
+    });
+  }
+
+  assertPublishReady(problems);
   return { ready: true };
 }
 
