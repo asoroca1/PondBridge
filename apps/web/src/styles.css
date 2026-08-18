@@ -15969,11 +15969,17 @@ button.super-stat-card {
   align-items:start;
 }
 
-/* When there is no write-up and no host card, the main column is a few
-   short facts. Stacking it keeps the page from reading as mostly background. */
+/* When there is no write-up and no host card, the main column is a few short
+   facts, which leaves a tall empty column beside three stacked side cards.
+   Flatten the side rail so every card is its own grid cell and the page fills
+   the same width as the hero above it, in even rows. */
 .ev-detail-grid.is-lean{
-  grid-template-columns:minmax(0, 1fr);
-  max-width:760px;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  align-items:start;
+}
+
+.ev-detail-grid.is-lean > .ev-detail-side{
+  display:contents;
 }
 
 .ev-detail-main,
@@ -16485,8 +16491,14 @@ button.super-stat-card {
     aspect-ratio: 16 / 9;
   }
 
-  .ev-detail-grid{
+  .ev-detail-grid,
+  .ev-detail-grid.is-lean{
     grid-template-columns:1fr;
+  }
+
+  .ev-detail-grid.is-lean > .ev-detail-side{
+    display:grid;
+    gap:14px;
   }
 
   /* Keep the action (RSVP / join) above the fold instead of below the copy. */
