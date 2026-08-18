@@ -91,6 +91,66 @@ describe("info sessions without a date yet", () => {
   });
 });
 
+describe("what publishing an info session actually requires", () => {
+  const meetingUrl = "https://example.zoom.us/j/1234567890";
+
+  test("accepts the Topic dropdown on its own, since the headline is optional", () => {
+    // The form labels the free-text headline "optional", so requiring it told a
+    // director who had chosen College that they had not added a topic.
+    expect(() =>
+      validateEventPublishReadiness(
+        session({ topicCategory: "college", topicTitle: "" }),
+        { meetingUrl }
+      )
+    ).not.toThrow();
+  });
+
+  test("accepts a headline with no category chosen", () => {
+    expect(() =>
+      validateEventPublishReadiness(
+        session({ topicCategory: "", topicTitle: "Breaking into product" }),
+        { meetingUrl }
+      )
+    ).not.toThrow();
+  });
+
+  test("asks for a topic only when neither field says anything", () => {
+    expect(() =>
+      validateEventPublishReadiness(
+        session({ topicCategory: "", topicTitle: "" }),
+        { meetingUrl }
+      )
+    ).toThrow(expect.objectContaining({ code: "SEMINAR_TOPIC_REQUIRED" }));
+  });
+
+  test("names every blocker at once instead of one per attempt", () => {
+    let caught = null;
+    try {
+      validateEventPublishReadiness(
+        session({ title: "", topicCategory: "", topicTitle: "" }),
+        { meetingUrl: "" }
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).not.toBeNull();
+    expect(caught.message).toMatch(/title/i);
+    expect(caught.message).toMatch(/topic/i);
+    expect(caught.message).toMatch(/meeting link/i);
+    expect(caught.details.problems.map((problem) => problem.code)).toEqual([
+      "EVENT_TITLE_REQUIRED",
+      "SEMINAR_TOPIC_REQUIRED",
+      "SEMINAR_MEETING_URL_REQUIRED"
+    ]);
+  });
+
+  test("still reads as one sentence when only one thing is missing", () => {
+    expect(() =>
+      validateEventPublishReadiness(session(), { meetingUrl: "" })
+    ).toThrow("Add the info session meeting link.");
+  });
+});
+
 describe("applying the schema change", () => {
   test("refuses production without a deliberate acknowledgement", () => {
     expect(() =>

@@ -5,8 +5,9 @@ import {
   AUDIENCES,
   MEETING_PROVIDERS,
   TOPIC_CATEGORIES,
+  buildEventSavePayload,
   defaultSlotForDay,
-  fromLocalInput,
+  findEventFormProblem,
   toLocalInput
 } from "./eventUtils.js";
 
@@ -106,6 +107,9 @@ export default function EventComposer({
   const isSeminar = eventType === "seminar";
 
   const [form, setForm] = useState(() => initialForm(event, day, eventType));
+  // A new session starts scheduled, since most are. An existing one remembers
+  // whichever it is, so editing an undated session does not silently date it.
+  const [dated, setDated] = useState(() => (event ? Boolean(event.startsAt) : true));
   const [error, setError] = useState("");
   const [hostQuery, setHostQuery] = useState("");
   const [hostResults, setHostResults] = useState([]);
@@ -158,35 +162,29 @@ export default function EventComposer({
     setForm((prev) => ({ ...prev, ...changes }));
   }
 
-  function submit() {
-    if (!form.title.trim()) {
-      setError("Give it a title.");
+  function chooseDated(nextDated) {
+    setDated(nextDated);
+    setError("");
+    if (nextDated) {
+      // Coming back from undated, offer the same default a new session gets
+      // rather than an empty field the director has to fill from scratch.
+      if (!form.startsAt) patch(defaultSlotForDay(day));
       return;
     }
+    patch({ startsAt: "", endsAt: "" });
+  }
+
+  function submit() {
     // An info session can open for registration before a date exists, so the
     // camp can pick a time that suits whoever signs up.
-    if (!form.startsAt && !isSeminar) {
-      setError("Choose when it starts.");
-      return;
-    }
-    if (form.endsAt && !form.startsAt) {
-      setError("Add a start time before setting when it ends.");
-      return;
-    }
-    if (form.endsAt && new Date(form.endsAt) <= new Date(form.startsAt)) {
-      setError("The end time must come after the start time.");
+    const undated = isSeminar && !dated;
+    const problem = findEventFormProblem({ form, undated });
+    if (problem) {
+      setError(problem);
       return;
     }
     setError("");
-    onSave?.({
-      ...form,
-      eventType,
-      capacity: form.capacity === "" ? null : Number(form.capacity),
-      startsAt: fromLocalInput(form.startsAt),
-      endsAt: fromLocalInput(form.endsAt),
-      rsvpDeadlineAt: fromLocalInput(form.rsvpDeadlineAt),
-      hostProfileId: host?.id || form.hostProfileId || ""
-    });
+    onSave?.(buildEventSavePayload({ form, eventType, undated, host }));
   }
 
   return (
@@ -236,19 +234,51 @@ export default function EventComposer({
             </>
           ) : null}
 
-          <label className="pb-events-field">
-            <span>Starts {isSeminar ? <small>optional — add it later</small> : null}</span>
-            <Input type="datetime-local" value={form.startsAt} onChange={(e) => patch({ startsAt: e.target.value })} />
-            {isSeminar && !form.startsAt ? (
-              <small className="muted">
-                Members can register now and you can set the date once you know who is coming.
-              </small>
-            ) : null}
-          </label>
-          <label className="pb-events-field">
-            <span>Ends</span>
-            <Input type="datetime-local" value={form.endsAt} onChange={(e) => patch({ endsAt: e.target.value })} />
-          </label>
+          {isSeminar ? (
+            <div className="pb-events-field is-full">
+              <span>When</span>
+              <div className="pb-events-date-mode" role="radiogroup" aria-label="When this session happens">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={dated}
+                  className={dated ? "is-selected" : ""}
+                  onClick={() => chooseDated(true)}
+                >
+                  <strong>Pick a date</strong>
+                  <small>Members see when it is.</small>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!dated}
+                  className={!dated ? "is-selected" : ""}
+                  onClick={() => chooseDated(false)}
+                >
+                  <strong>No date yet</strong>
+                  <small>Open it for sign-ups and schedule it later.</small>
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {isSeminar && !dated ? (
+            <p className="pb-events-date-note is-full">
+              Members can register as a presenter or an attendee now. It shows as
+              “Date coming soon” until you add one.
+            </p>
+          ) : (
+            <>
+              <label className="pb-events-field">
+                <span>Starts</span>
+                <Input type="datetime-local" value={form.startsAt} onChange={(e) => patch({ startsAt: e.target.value })} />
+              </label>
+              <label className="pb-events-field">
+                <span>Ends</span>
+                <Input type="datetime-local" value={form.endsAt} onChange={(e) => patch({ endsAt: e.target.value })} />
+              </label>
+            </>
+          )}
 
           <label className="pb-events-field">
             <span>{isSeminar ? "Registration closes" : "RSVP closes"} <small>optional</small></span>
