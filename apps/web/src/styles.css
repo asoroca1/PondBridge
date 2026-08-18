@@ -15110,15 +15110,14 @@ button.super-stat-card {
 }
 
 .ev-type-filter{
-  display:flex;
+  display:inline-flex;
   align-items:center;
   gap:6px;
   width:max-content;
   padding:4px;
   border:1px solid var(--ev-border);
-  border-radius:12px;
-  background:rgba(255,255,255,0.9);
-  box-shadow:0 1px 2px rgba(15,23,42,0.04);
+  border-radius:999px;
+  background:#f4f6fb;
 }
 
 .ev-type-filter button{
@@ -15126,19 +15125,59 @@ button.super-stat-card {
   align-items:center;
   gap:6px;
   min-height:34px;
-  padding:7px 12px;
+  padding:7px 14px;
   border:0;
-  border-radius:9px;
+  border-radius:999px;
   background:transparent;
   color:#526579;
   font-size:13px;
   font-weight:700;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
 }
 
-.ev-type-filter button:hover,
-.ev-type-filter button.is-active{
-  background:color-mix(in srgb, var(--ev-navy) 8%, #ffffff);
+.ev-type-filter button:hover{
   color:var(--ev-navy);
+}
+
+.ev-type-filter button.is-active{
+  background:#fff;
+  color:var(--ev-navy);
+  box-shadow:0 1px 3px rgba(15,23,42,0.08);
+}
+
+/* Undated events: a real label, not a date-shaped placeholder */
+
+.ev-date-chip-pending,
+.ev-row-date.is-pending .ev-date-chip-pending{
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  color:var(--ev-navy);
+  white-space:nowrap;
+}
+
+.ev-detail-date-chip.is-pending .ev-date-chip-pending{
+  font-size:12px;
+}
+
+.ev-detail-date-chip.is-pending{
+  min-width:0;
+  padding:12px 14px;
+}
+
+/* Calendar tail note (shown instead of an empty state under a live event) */
+
+.ev-list-note{
+  margin:0;
+  padding:14px 16px;
+  border:1px dashed var(--ev-border);
+  border-radius:14px;
+  background:rgba(255,255,255,0.7);
+  color:var(--ev-muted);
+  font-size:13.5px;
+  line-height:1.5;
+  text-align:center;
 }
 
 /* Featured banner */
@@ -15890,6 +15929,37 @@ button.super-stat-card {
   color:#fef2f2;
 }
 
+/* "Not scheduled yet" notice */
+
+.ev-detail-notice{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  padding:14px 16px;
+  border:1px solid #dbe7f3;
+  border-radius:14px;
+  background:linear-gradient(135deg, #f8fbff, #f2f7fc);
+}
+
+.ev-detail-notice svg{
+  flex:0 0 auto;
+  margin-top:2px;
+  color:#2770aa;
+}
+
+.ev-detail-notice strong{
+  display:block;
+  color:#17324d;
+  font-size:14.5px;
+}
+
+.ev-detail-notice p{
+  margin:3px 0 0;
+  color:#4a6076;
+  font-size:13.5px;
+  line-height:1.5;
+}
+
 /* Detail grid */
 
 .ev-detail-grid{
@@ -15897,6 +15967,13 @@ button.super-stat-card {
   grid-template-columns:minmax(0, 1.5fr) minmax(280px, 0.7fr);
   gap:16px;
   align-items:start;
+}
+
+/* When there is no write-up and no host card, the main column is a few
+   short facts. Stacking it keeps the page from reading as mostly background. */
+.ev-detail-grid.is-lean{
+  grid-template-columns:minmax(0, 1fr);
+  max-width:760px;
 }
 
 .ev-detail-main,
@@ -15957,15 +16034,15 @@ button.super-stat-card {
 
 .ev-seminar-facts{
   display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns:repeat(auto-fit, minmax(112px, 1fr));
   gap:8px;
   padding-top:4px;
 }
 
 .ev-seminar-facts > div{
   display:grid;
-  gap:3px;
-  padding:11px 12px;
+  gap:2px;
+  padding:9px 11px;
   border:1px solid #dbe7f3;
   border-radius:12px;
   background:#f7fbff;
@@ -16195,7 +16272,7 @@ button.super-stat-card {
 
 .ev-detail-counts{
   display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
+  grid-template-columns:repeat(auto-fit, minmax(0, 1fr));
   gap:8px;
 }
 
@@ -16315,6 +16392,11 @@ button.super-stat-card {
 
   .ev-detail-grid{
     grid-template-columns:1fr;
+  }
+
+  /* Keep the action (RSVP / join) above the fold instead of below the copy. */
+  .ev-detail-side{
+    order:-1;
   }
 
   .ev-detail-hero{

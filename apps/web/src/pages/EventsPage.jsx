@@ -53,10 +53,26 @@ function formatTimePart(item = {}) {
 function dateBadge(item = {}) {
   const timezone = String(item?.timezone || "America/New_York");
   const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
-  if (!startsAt || Number.isNaN(startsAt.getTime())) return { month: "TBD", day: "--" };
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return { month: "", day: "", pending: true };
   const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: timezone }).format(startsAt);
   const day = new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: timezone }).format(startsAt);
-  return { month: month.toUpperCase(), day };
+  return { month: month.toUpperCase(), day, pending: false };
+}
+
+function DateChip({ badge, className, partClass = "ev-date-chip" }) {
+  if (badge.pending) {
+    return (
+      <div className={`${className} is-pending`} aria-hidden="true">
+        <span className="ev-date-chip-pending">Date TBD</span>
+      </div>
+    );
+  }
+  return (
+    <div className={className} aria-hidden="true">
+      <span className={`${partClass}-month`}>{badge.month}</span>
+      <span className={`${partClass}-day`}>{badge.day}</span>
+    </div>
+  );
 }
 
 function rsvpLabel(item = {}) {
@@ -77,6 +93,10 @@ function rsvpToneClass(item = {}) {
 
 function isSeminar(item = {}) {
   return item?.eventType === "seminar";
+}
+
+function eventNoun(item = {}) {
+  return isSeminar(item) ? "info session" : "event";
 }
 
 function eventLocationLabel(item = {}) {
@@ -119,10 +139,7 @@ function EventCard({ item, slug, featured = false }) {
             <span>{isSeminar(item) ? item.topicTitle || "Alumni info session" : "Camp community"}</span>
           </div>
         ) : null}
-        <div className="ev-date-chip" aria-hidden="true">
-          <span className="ev-date-chip-month">{bd.month}</span>
-          <span className="ev-date-chip-day">{bd.day}</span>
-        </div>
+        <DateChip badge={bd} className="ev-date-chip" />
         <div className="ev-card-cover-chips">
           {isSeminar(item) ? (
             <span className="ev-type-chip is-seminar">
@@ -148,9 +165,7 @@ function EventCard({ item, slug, featured = false }) {
           </span>
         </div>
         <span className="ev-card-cta">
-          {featured
-            ? `Open ${isSeminar(item) ? "seminar" : "event"}`
-            : `View ${isSeminar(item) ? "seminar" : "event"} details`}
+          {featured ? `Open ${eventNoun(item)}` : `View ${eventNoun(item)} details`}
           <ChevronRight size={14} aria-hidden="true" />
         </span>
       </div>
@@ -163,14 +178,11 @@ function EventRow({ item, slug }) {
   const toneClass = rsvpToneClass(item);
   return (
     <Link to={tenantRoute(slug, `/events/${item.id}`)} className="ev-row">
-      <div className="ev-row-date" aria-hidden="true">
-        <span className="ev-row-date-month">{bd.month}</span>
-        <span className="ev-row-date-day">{bd.day}</span>
-      </div>
+      <DateChip badge={bd} className="ev-row-date" partClass="ev-row-date" />
       <div className="ev-row-body">
         <div className="ev-row-head">
           <h3>{item.title}</h3>
-          {isSeminar(item) ? <span className="ev-type-chip is-seminar">Seminar</span> : null}
+          {isSeminar(item) ? <span className="ev-type-chip is-seminar">Info session</span> : null}
           <span className={`ev-status-chip ${toneClass}`}>{rsvpLabel(item)}</span>
         </div>
         <div className="ev-row-meta">
@@ -265,6 +277,15 @@ export default function EventsPage() {
     tab === "past" ? filteredPast : tab === "going" ? goingList : upcomingCards;
 
   const showFeaturedBanner = !loading && !error && tab === "upcoming" && featured;
+  // The artwork panel sits beside the headline, so it only earns a subject line
+  // when the topic says something the headline does not already say.
+  const featuredSubject = useMemo(() => {
+    if (!featured || !isSeminar(featured)) return "";
+    const topic = String(featured.topicTitle || "").trim();
+    const title = String(featured.title || "").trim();
+    if (!topic || topic.toLowerCase() === title.toLowerCase()) return "";
+    return topic;
+  }, [featured]);
 
   return (
     <main className="ev-wrap nav2-page-shell">
@@ -283,7 +304,7 @@ export default function EventsPage() {
               onClick={() => setTab("upcoming")}
             >
               Upcoming
-              <span className="ev-tab-count">{counts.upcoming}</span>
+              {counts.upcoming > 0 ? <span className="ev-tab-count">{counts.upcoming}</span> : null}
             </button>
             <button
               type="button"
@@ -293,7 +314,7 @@ export default function EventsPage() {
               onClick={() => setTab("going")}
             >
               My RSVPs
-              <span className="ev-tab-count">{counts.going}</span>
+              {counts.going > 0 ? <span className="ev-tab-count">{counts.going}</span> : null}
             </button>
             <button
               type="button"
@@ -303,12 +324,12 @@ export default function EventsPage() {
               onClick={() => setTab("past")}
             >
               Past
-              <span className="ev-tab-count">{counts.past}</span>
+              {counts.past > 0 ? <span className="ev-tab-count">{counts.past}</span> : null}
             </button>
           </div>
           {canManageEvents ? (
             <Link
-              className="ev-btn ev-btn-primary ev-admin-link"
+              className="ev-btn ev-admin-link"
               to={tenantRoute(slug, "/admin/events")}
             >
               Manage schedule
@@ -364,9 +385,7 @@ export default function EventsPage() {
                   {isSeminar(featured) ? <GraduationCap size={42} /> : <CalendarDays size={42} />}
                 </span>
                 <span>{isSeminar(featured) ? "Alumni-led info session" : "Camp community event"}</span>
-                <strong>
-                  {isSeminar(featured) ? featured.topicTitle || featured.title : featured.title}
-                </strong>
+                {featuredSubject ? <strong>{featuredSubject}</strong> : null}
               </div>
             ) : null}
           </div>
@@ -392,7 +411,7 @@ export default function EventsPage() {
               <span className={`ev-status-chip ${rsvpToneClass(featured)}`}>{rsvpLabel(featured)}</span>
             </div>
             <Link className="ev-btn ev-btn-primary" to={tenantRoute(slug, `/events/${featured.id}`)}>
-              See {isSeminar(featured) ? "seminar" : "event"} details
+              See {eventNoun(featured)} details
               <ChevronRight size={16} aria-hidden="true" />
             </Link>
           </div>
@@ -422,7 +441,13 @@ export default function EventsPage() {
 
       {!loading && !error ? (
         <section className="ev-list-section">
-          {activeList.length === 0 ? (
+          {activeList.length === 0 && showFeaturedBanner ? (
+            <p className="ev-list-note">
+              That’s everything on the calendar right now. More{" "}
+              {typeFilter === "seminar" ? "info sessions" : "events"} appear here as your
+              directors publish them.
+            </p>
+          ) : activeList.length === 0 ? (
             <div className="ev-empty">
               <CalendarDays size={32} className="ev-empty-icon" aria-hidden="true" />
               <h3>
