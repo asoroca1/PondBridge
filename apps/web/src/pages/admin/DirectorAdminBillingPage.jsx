@@ -119,11 +119,16 @@ export default function DirectorAdminBillingPage() {
     setError("");
     setStatus("");
     try {
-      // The address lives on the tenant route rather than the admin one, so it
-      // is requested directly instead of through the admin helper.
-      await requestJson(`/api/t/${slug}/me/billing`, {
+      // This lives on the tenant router, which is mounted at /api/tenants and
+      // resolves the camp from the signed-in admin rather than the URL slug, so
+      // it is requested directly instead of through the slug-scoped helper.
+      await requestJson("/api/tenants/me/billing", {
         method: "PATCH",
-        body: { mailingAddress: address, sameAsMailing: true }
+        body: {
+          tenantId: payload?.tenant?.id || undefined,
+          mailingAddress: address,
+          sameAsMailing: true
+        }
       });
       setAddressDirty(false);
       setStatus("Mailing address saved.");
