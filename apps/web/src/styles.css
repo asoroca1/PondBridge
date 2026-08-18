@@ -16408,7 +16408,7 @@ button.super-stat-card {
 
 .ev-roster-main small{
   font-size:12px;
-  color:#64748b;
+  color:var(--neutral-500);
 }
 
 .ev-roster-tag{
@@ -16420,8 +16420,8 @@ button.super-stat-card {
 }
 
 .ev-roster-tag.is-presenter{
-  background:#eef2ff;
-  color:#3730a3;
+  background:var(--neutral-50);
+  color:var(--brand-primary);
 }
 
 .ev-roster-tag.is-maybe{
@@ -16431,7 +16431,7 @@ button.super-stat-card {
 
 .ev-roster-empty{
   font-size:13px;
-  color:#64748b;
+  color:var(--neutral-500);
 }
 
 /* Counts */
