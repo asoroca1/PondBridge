@@ -314,7 +314,7 @@ export default function EventComposer({
                   onChange={(e) => patch({ meetingUrl: e.target.value })}
                   placeholder="https://teams.microsoft.com/l/meetup-join/…"
                 />
-                <small>Shared only with members who RSVP “Going”. Required to publish.</small>
+                <small>Shared only with members who RSVP “Going”. You can add it after publishing.</small>
               </label>
             </>
           ) : null}

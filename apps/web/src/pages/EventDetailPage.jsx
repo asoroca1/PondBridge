@@ -384,7 +384,11 @@ export default function EventDetailPage() {
                   </button>
                   {!item.meetingAccess.canRequestJoinLink && item.status !== "canceled" ? (
                     <p className="ev-detail-muted">
-                      RSVP <strong>Going</strong> to unlock the info session room.
+                      {item.meetingAccess.hasMeetingLink === false
+                        // A session can be published before its room exists, so
+                        // the honest reason is that there is no link yet.
+                        ? "The camp has not added the meeting link yet. Register and it will appear here."
+                        : <>RSVP <strong>Going</strong> to unlock the info session room.</>}
                     </p>
                   ) : null}
                   {joinError ? <p className="ev-detail-error">{joinError}</p> : null}
