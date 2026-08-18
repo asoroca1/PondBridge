@@ -57,6 +57,56 @@ function markRecentDispatch(key = "", now = nowMs()) {
   recentVerificationDispatches.set(key, now + RECENT_VERIFICATION_TTL_MS);
 }
 
+// Clerk can raise several verification.code_sent events for a single signup,
+// each with its own code, and preparing a new code invalidates the previous
+// one. Sending every event mails the user codes that are already dead. Hold a
+// send briefly instead and mail only the newest code of a burst, so one signup
+// produces one usable email.
+const VERIFICATION_COLLAPSE_MS = 3000;
+const pendingVerificationSends = new Map();
+
+function verificationCollapseKey(recipientEmail = "") {
+  return normalizeEmail(recipientEmail);
+}
+
+function scheduleVerificationSend(request = {}) {
+  const key = verificationCollapseKey(request.recipientEmail);
+  if (!key) return false;
+
+  const existing = pendingVerificationSends.get(key);
+  if (existing) {
+    // A newer code supersedes the one still waiting. Clerk has already
+    // invalidated the older one, so the newest is the only sendable code.
+    existing.request = request;
+    logLine("info", "clerk.verification.superseded", {
+      emailId: request.emailId,
+      supersededEmailId: existing.request?.emailId || ""
+    });
+    return true;
+  }
+
+  const entry = { request, timer: null };
+  entry.timer = setTimeout(() => {
+    pendingVerificationSends.delete(key);
+    const pending = entry.request;
+    logLine("info", "clerk.verification.dispatch", {
+      emailId: pending.emailId,
+      signUpAttemptId: pending.signUpAttemptId,
+      audience: pending.audience,
+      tenantSlug: pending.tenantSlug || "none"
+    });
+    Promise.resolve(sendVerificationCodeEmail(pending.send)).catch((error) => {
+      logLine("error", "clerk.verification.dispatch_failed", {
+        emailId: pending.emailId,
+        message: String(error?.message || error)
+      });
+    });
+  }, VERIFICATION_COLLAPSE_MS);
+
+  pendingVerificationSends.set(key, entry);
+  return false;
+}
+
 function verificationDispatchFingerprint({ recipientEmail = "", otpCode = "", audience = "", tenantSlug = "" } = {}) {
   return [
     "clerk-verification",
@@ -417,29 +467,27 @@ export async function processClerkWebhookRequest(req) {
     };
   }
 
-  // One line per verification email actually sent. Two of these for a single
-  // signup is the duplicate-code symptom; a blank tenantSlug means the email
-  // went out with PondBridge branding instead of the camp's. The OTP itself is
-  // a credential and is never logged.
-  logLine("info", "clerk.verification.dispatch", {
-    emailId,
-    signUpAttemptId,
-    audience: context.audience,
-    tenantSlug: safeString(context?.tenant?.slug) || "none"
-  });
-
-  const result = await sendVerificationCodeEmail({
-    tenant: context.tenant,
-    email: recipientEmail,
-    code: otpCode,
-    audience: context.audience,
-    requestIp: safeString(event?.event_attributes?.http_request?.client_ip),
-    requestedAt: new Date(),
-    idempotencyKey: dispatchKey
-  });
-
   if (emailId) markRecentDispatch(emailId);
   if (dispatchKey) markRecentDispatch(dispatchKey);
+
+  const collapsed = scheduleVerificationSend({
+    recipientEmail,
+    audience: context.audience,
+    tenantSlug: safeString(context?.tenant?.slug),
+    emailId,
+    signUpAttemptId,
+    send: {
+      tenant: context.tenant,
+      email: recipientEmail,
+      code: otpCode,
+      audience: context.audience,
+      requestIp: safeString(event?.event_attributes?.http_request?.client_ip),
+      requestedAt: new Date(),
+      idempotencyKey: dispatchKey
+    }
+  });
+
+  const result = { mode: collapsed ? "superseded" : "queued" };
 
   return {
     ok: true,
