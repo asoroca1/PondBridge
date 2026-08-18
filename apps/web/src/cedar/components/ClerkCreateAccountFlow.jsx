@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../../lib/http.js";
@@ -46,6 +46,9 @@ export default function ClerkCreateAccountFlow() {
   ).trim().toLowerCase();
   const inviteOnlyWithoutInvite = signupMode === "invite_only" && !inviteToken;
   const accessCodeRequired = signupMode === "code" && !inviteToken;
+  // A new object identity on every render churns the Clerk widget's props, so
+  // keep the signup context stable for as long as the slug is.
+  const signupContext = useMemo(() => buildClerkSignupContext(slug, "member"), [slug]);
 
   useEffect(() => {
     noteTabLoginIntent();
@@ -185,6 +188,29 @@ export default function ClerkCreateAccountFlow() {
     );
   }
 
+  // Clerk starts a fresh sign-up attempt every time <SignUp> mounts, and each
+  // attempt sends its own code. Hold it back until the tenant has loaded: the
+  // access-mode guards below are not final before then, so an early mount could
+  // be torn down and remounted, and the signup context would carry no slug for
+  // the email.created webhook to brand against.
+  if (tenantLoading || !slug) {
+    return (
+      <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
+        <section className="login1-main login1-main-modern login1-main-create-bg">
+          <div className="login1-wrap">
+            <article className="login1-card login1-card-modern">
+              <div className="login1-intro">
+                <p className="login1-kicker">Camp Access</p>
+                <h1 className="login1-title auth-entry-title">Loading</h1>
+                <p className="login1-clerk-panel-subtitle">Getting {networkName} ready.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (!tenantLoading && inviteOnlyWithoutInvite) {
     return (
       <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
@@ -296,7 +322,7 @@ export default function ClerkCreateAccountFlow() {
               <SignUp
                 path={path}
                 routing="path"
-                unsafeMetadata={buildClerkSignupContext(slug, "member")}
+                unsafeMetadata={signupContext}
                 withSignIn={false}
                 signInUrl={signInUrl}
                 fallbackRedirectUrl={callbackPath}
