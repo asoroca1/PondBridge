@@ -16356,12 +16356,30 @@ button.super-stat-card {
 /* Roster: who has registered, presenters first */
 
 .ev-roster{
+  --ev-roster-row: 32px;
+  --ev-roster-gap: 10px;
   list-style:none;
   margin:14px 0 0;
   padding:14px 0 0;
   border-top:1px solid var(--ev-border);
   display:grid;
-  gap:10px;
+  gap:var(--ev-roster-gap);
+  /* A popular event runs to hundreds of names, which otherwise pushes the
+     rest of the sidebar far below the fold. Show five and scroll the rest. */
+  max-height:calc(var(--ev-roster-row) * 5 + var(--ev-roster-gap) * 4);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:var(--neutral-300) transparent;
+}
+
+.ev-roster::-webkit-scrollbar{ width:8px; }
+.ev-roster::-webkit-scrollbar-track{ background:transparent; }
+.ev-roster::-webkit-scrollbar-thumb{
+  background:var(--neutral-300);
+  border-radius:999px;
+  border:2px solid transparent;
+  background-clip:content-box;
 }
 
 .ev-roster-row{
