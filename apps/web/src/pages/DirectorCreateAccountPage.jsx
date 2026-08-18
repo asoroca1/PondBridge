@@ -21,6 +21,7 @@ import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/stor
 import HeroImageEditor from "../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
+import { readableTextColorOnBrand } from "../lib/colorUtils.js";
 import {
   IMAGE_OPTIMIZATION_PRESETS,
   extensionForImageMime,
@@ -33,7 +34,7 @@ const STEP_FEATURES = "features";
 const STEP_CAMP_SPECIFICS = "camp_specifics";
 const STEP_BILLING_PLAN = "billing_plan";
 const STEP_REVIEW_LAUNCH = "review_launch";
-const DEFAULT_SETUP_BRAND = "#0f2747";
+const DEFAULT_SETUP_BRAND = "var(--neutral-800)";
 const BILLING_REQUIRED_DURING_ONBOARDING = true;
 
 const STEP_ORDER = [
@@ -234,7 +235,7 @@ function isHexColor(value = "") {
   return /^#([0-9a-fA-F]{6})$/.test(String(value).trim());
 }
 
-function hexToRgb(hex = "#002b5c") {
+function hexToRgb(hex = "var(--brand-primary-strong)") {
   if (!isHexColor(hex)) return { r: 0, g: 43, b: 92 };
   const clean = String(hex).replace("#", "");
   return {
@@ -250,7 +251,7 @@ function srgbChannelToLinear(channel = 0) {
   return ((normalized + 0.055) / 1.055) ** 2.4;
 }
 
-function relativeLuminance(hex = "#002b5c") {
+function relativeLuminance(hex = "var(--brand-primary-strong)") {
   const { r, g, b } = hexToRgb(hex);
   return (
     0.2126 * srgbChannelToLinear(r) +
@@ -259,7 +260,7 @@ function relativeLuminance(hex = "#002b5c") {
   );
 }
 
-function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
+function contrastRatio(baseHex = "var(--brand-primary-strong)", candidateHex = "#ffffff") {
   const a = relativeLuminance(baseHex);
   const b = relativeLuminance(candidateHex);
   const brightest = Math.max(a, b);
@@ -267,14 +268,9 @@ function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
   return (brightest + 0.05) / (darkest + 0.05);
 }
 
-function readableTextColorOnBrand(brandHex = "#002b5c") {
-  const light = "#ffffff";
-  const dark = "#0f172a";
-  return contrastRatio(brandHex, light) >= contrastRatio(brandHex, dark) ? light : dark;
-}
 
 function darkenHex(hex, factor = 0.18) {
-  if (!isHexColor(hex)) return "#0b1e37";
+  if (!isHexColor(hex)) return "var(--neutral-900)";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => parseInt(clean.slice(index, index + 2), 16));
   const darkened = channels.map((value) => Math.max(0, Math.min(255, Math.round(value * (1 - factor)))));
@@ -282,7 +278,7 @@ function darkenHex(hex, factor = 0.18) {
 }
 
 function deriveSecondaryHex(hex, blend = 0.82) {
-  if (!isHexColor(hex)) return "#d3dde8";
+  if (!isHexColor(hex)) return "var(--neutral-200)";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => parseInt(clean.slice(index, index + 2), 16));
   const lightened = channels.map((value) =>
@@ -2134,8 +2130,8 @@ function DirectorCreateAccountWizardPage() {
             brandSecondary: deriveSecondaryHex(finalPrimaryColor),
             logoUrl: finalLogoUrl,
             brandAccent: String(baseTheme.brandAccent || "#f2b134"),
-            bg: String(baseTheme.bg || "#f5f7fa"),
-            text: String(baseTheme.text || "#0f172a"),
+            bg: String(baseTheme.bg || "#fafafa"),
+            text: String(baseTheme.text || "var(--neutral-900)"),
             card: String(baseTheme.card || "#ffffff"),
             heroImageUrl: finalHeroImageUrl,
             heroImagePosition: normalizeHeroImagePosition(

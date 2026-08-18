@@ -16,7 +16,7 @@
   gap: 6px;
   height: 34px;
   padding: 0 12px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--neutral-300);
   border-radius: 10px;
   background: #fff;
   color: var(--brand-primary);
@@ -30,13 +30,13 @@
 
 .lm-reset-view-btn:hover {
   background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
-  border-color: color-mix(in srgb, var(--brand-primary) 30%, #cbd5e1);
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--neutral-300));
 }
 
 .lm-map-card {
   position: relative;
   background: #fff;
-  border: 1px solid var(--card-border, #e5e7eb);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-md);
@@ -61,7 +61,7 @@
   justify-content: center;
   gap: 10px;
   background: rgba(255, 255, 255, 0.9);
-  color: #334155;
+  color: var(--neutral-700);
   font-weight: 600;
 }
 
@@ -79,7 +79,7 @@
 
 .maplibregl-ctrl-group {
   border-radius: 10px;
-  border: 1px solid #dbe1eb;
+  border: 1px solid var(--neutral-200);
   box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
 }
 
@@ -137,13 +137,13 @@
 .lm-tip-title {
   font-size: 14px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .lm-tip-meta {
   margin-top: 2px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--neutral-500);
 }
 
 .lm-results {
@@ -154,7 +154,7 @@
 
 .lm-results-panel {
   background: #fff;
-  border: 1px solid var(--card-border, #e5e7eb);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-lg);
   padding: 20px;
   box-shadow: var(--shadow-sm);
@@ -179,7 +179,7 @@
 .lm-results-title p {
   margin: 4px 0 0;
   font-size: 14px;
-  color: #64748b;
+  color: var(--neutral-500);
 }
 
 .lm-clear-btn {
@@ -188,7 +188,7 @@
   justify-content: center;
   gap: 6px;
   background: #fff;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--neutral-300);
   color: var(--brand-primary);
   border-radius: 10px;
   padding: 8px 12px;
@@ -201,7 +201,7 @@
 
 .lm-clear-btn:hover {
   background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
-  border-color: color-mix(in srgb, var(--brand-primary) 30%, #cbd5e1);
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--neutral-300));
 }
 
 .lm-grid {
@@ -212,7 +212,7 @@
 
 .lm-card {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--neutral-200);
   border-radius: var(--radius-md);
   padding: 14px;
   display: grid;
@@ -233,17 +233,17 @@
 }
 
 .lm-card:hover {
-  border-color: #cbd5e1;
+  border-color: var(--neutral-300);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
   transform: translateY(-1px);
 }
 
 .lm-card.lm-skel {
   height: 122px;
-  background: linear-gradient(90deg, #f8fafc, #eef2f7, #f8fafc);
+  background: linear-gradient(90deg, var(--neutral-50), var(--neutral-100), var(--neutral-50));
   background-size: 200% 100%;
   animation: lmShimmer 1.1s infinite;
-  border-color: #edf2f7;
+  border-color: var(--neutral-100);
   box-shadow: none;
 }
 
@@ -253,7 +253,7 @@
   height: 48px;
   border-radius: 999px;
   object-fit: cover;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--neutral-200);
 }
 
 .lm-avatar.lm-initials {
@@ -272,7 +272,7 @@
   grid-area: name;
   font-weight: 700;
   text-align: left;
-  color: #0f172a;
+  color: var(--neutral-900);
   font-size: 16px;
   white-space: nowrap;
   overflow: hidden;
@@ -293,8 +293,8 @@
   max-width: 160px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #dbeafe;
-  border: 1px solid #bfdbfe;
+  background: var(--neutral-200);
+  border: 1px solid var(--neutral-200);
   color: var(--brand-primary);
   font-size: 11px;
   font-weight: 600;
@@ -305,7 +305,7 @@
 
 .lm-role {
   font-size: 13px;
-  color: #64748b;
+  color: var(--neutral-500);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -326,7 +326,7 @@
   justify-content: center;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--neutral-300);
   background: #ffffff;
   color: var(--brand-primary);
   font-weight: 600;
@@ -336,7 +336,7 @@
 
 .lm-btn:hover {
   background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
-  border-color: color-mix(in srgb, var(--brand-primary) 30%, #cbd5e1);
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--neutral-300));
 }
 
 .lm-btn.primary {
@@ -353,9 +353,9 @@
   text-align: center;
   padding: 18px;
   border-radius: var(--radius-md);
-  border: 1px solid #e5e7eb;
-  background: #f8fafc;
-  color: #475569;
+  border: 1px solid var(--neutral-200);
+  background: var(--neutral-50);
+  color: var(--neutral-600);
   font-size: 14px;
   font-weight: 500;
 }
@@ -363,7 +363,7 @@
 .lm-prompt {
   text-align: center;
   padding: 32px 24px;
-  border: 1px solid var(--card-border, #e5e7eb);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-lg);
   background: #fff;
   box-shadow: var(--shadow-sm);
@@ -384,12 +384,12 @@
 .lm-prompt p {
   margin: 0;
   font-size: 14px;
-  color: #64748b;
+  color: var(--neutral-500);
 }
 
 .lm-prompt-stat {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--neutral-400);
   margin-top: 12px !important;
 }
 

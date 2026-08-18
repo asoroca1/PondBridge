@@ -1,35 +1,56 @@
 :root {
-  /* ===== Brand palette ===== */
-  --brand-primary: #002b5c;
-  --brand-primary-hover: #00224a;
-  --brand-primary-strong: #001a39;
-  --brand-primary-soft: #5f85b3;
-  --brand-primary-soft-strong: #3c679b;
-  --brand-primary-rgb: 0, 43, 92;
+  /* ===== Brand palette =====
+     Defaults only. TenantContext overwrites the brand and --neutral-* tokens
+     at runtime from the camp's own colour, so nothing here may be a specific
+     hue — a hardcoded navy used to tint every camp's chrome blue. */
+  --brand-primary: #404040;
+  --brand-primary-hover: #363636;
+  --brand-primary-strong: #303030;
+  --brand-primary-soft: #8a8a8a;
+  --brand-primary-soft-strong: #6b6b6b;
+  --brand-primary-veil: #d9d9d9;
+  --brand-primary-wash: #f0f0f0;
+  --brand-primary-rgb: 64, 64, 64;
   --brand-on-primary: #ffffff;
   --brand-on-primary-rgb: 255, 255, 255;
-  --brand-primary-shadow: rgba(0, 43, 92, 0.2);
-  --brand-primary-focus: rgba(0, 43, 92, 0.22);
-  --brand-primary-tint: rgba(0, 43, 92, 0.12);
-  --brand-secondary: #2e5f95;
+  --brand-primary-shadow: rgba(64, 64, 64, 0.2);
+  --brand-primary-focus: rgba(64, 64, 64, 0.22);
+  --brand-primary-tint: rgba(64, 64, 64, 0.12);
+  --brand-secondary: #e6e6e6;
   --brand-accent: #f2b134;
 
+  /* ===== Neutral ramp =====
+     Recomputed per tenant in the brand's hue. Reach for these instead of a
+     grey literal so chrome follows the camp's colour. */
+  --neutral-50: #f9f9f9;
+  --neutral-100: #f4f4f4;
+  --neutral-200: #e6e6e6;
+  --neutral-300: #cfcfcf;
+  --neutral-400: #a6a6a6;
+  --neutral-500: #787878;
+  --neutral-600: #5e5e5e;
+  --neutral-700: #474747;
+  --neutral-800: #303030;
+  --neutral-900: #1c1c1c;
+
   /* ===== Semantic surface colors ===== */
-  --bg: #f5f7fa;
+  --bg: #fafafa;
   --bg-warm: #f6f5f2;
   --card: #ffffff;
-  --card-border: #e6e8eb;
-  --surface-subtle: #f8fafc;
+  --card-border: var(--neutral-200);
+  --surface-subtle: var(--neutral-50);
   --surface-raised: #ffffff;
-  --border-strong: #cbd5e1;
+  --border-strong: var(--neutral-300);
 
   /* ===== Text colors ===== */
-  --text: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #5b6270;
+  --text: #1c1c1c;
+  --text-secondary: var(--neutral-700);
+  --text-muted: var(--neutral-500);
   --text-link: var(--brand-primary);
 
-  /* ===== Feedback colors ===== */
+  /* ===== Feedback colors =====
+     Success and danger keep their conventional hues. Info and the accent
+     purple follow the brand, so they cannot reintroduce a stray blue. */
   --success: #12835e;
   --success-bg: #e7f7ef;
   --success-text: #13684a;
@@ -39,12 +60,12 @@
   --warning: #d97706;
   --warning-bg: #fef3c7;
   --warning-text: #92400e;
-  --info: #0284c7;
-  --info-bg: #e8f4fb;
-  --info-text: #075f8d;
-  --purple: #7552a8;
-  --purple-bg: #f0eafb;
-  --purple-text: #5a3c86;
+  --info: var(--brand-primary);
+  --info-bg: var(--brand-primary-wash);
+  --info-text: var(--brand-primary-strong);
+  --purple: var(--brand-primary-soft-strong);
+  --purple-bg: var(--brand-primary-wash);
+  --purple-text: var(--brand-primary-strong);
 
   /* ===== Typography ===== */
   --font-display: "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
@@ -219,14 +240,14 @@ a {
 .pb-btn-secondary {
   background: #fff;
   color: var(--brand-primary);
-  border: 1.5px solid var(--card-border, #d3dde8);
+  border: 1.5px solid var(--card-border, var(--neutral-200));
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
 }
 
 .pb-btn-secondary:hover {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
-  border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--card-border, #cad6e6));
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--card-border, var(--neutral-200)));
   box-shadow: 0 6px 16px rgba(16, 24, 40, 0.08);
 }
 
@@ -328,7 +349,7 @@ a {
 
 .pb-badge-neutral {
   background: #eff3f8;
-  color: #375068;
+  color: var(--neutral-700);
 }
 
 .pb-badge-success {

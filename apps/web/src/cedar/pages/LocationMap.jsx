@@ -225,12 +225,12 @@ export default function LocationMap() {
   );
 
   const brandPrimary = useMemo(() => {
-    if (typeof window === "undefined") return "#002b5c";
+    if (typeof window === "undefined") return "var(--brand-primary-strong)";
     const resolved = window
       .getComputedStyle(document.documentElement)
       .getPropertyValue("--brand-primary")
       .trim();
-    return resolved || "#002b5c";
+    return resolved || "var(--brand-primary-strong)";
   }, []);
 
   const mappedSummary = formatMappedAlumniSummary({
@@ -588,7 +588,7 @@ export default function LocationMap() {
     if (!glOK) {
       const msg = document.createElement("div");
       msg.style.cssText =
-        "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#334155;background:#fff;";
+        "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--neutral-700);background:#fff;";
       msg.textContent = "WebGL is disabled. Enable it to view the map.";
       el.appendChild(msg);
       return;

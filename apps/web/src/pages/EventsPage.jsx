@@ -370,7 +370,7 @@ export default function EventsPage() {
       {showFeaturedBanner ? (
         <section className="ev-featured">
           <div
-            className={`ev-featured-media ${isSeminar(featured) ? "is-seminar" : ""}`.trim()}
+            className={`ev-featured-media ${featured.coverImageUrl ? "has-cover" : ""} ${isSeminar(featured) ? "is-seminar" : ""}`.trim()}
             style={
               featured.coverImageUrl
                 ? {

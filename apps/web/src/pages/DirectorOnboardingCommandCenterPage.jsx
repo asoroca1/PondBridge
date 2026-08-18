@@ -5,6 +5,7 @@ import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { resolveAlumniWord, resolveNetworkDisplayName } from "../lib/campLabels.js";
+import { readableTextColorOnBrand } from "../lib/colorUtils.js";
 
 const PHASES = [
   {
@@ -112,7 +113,7 @@ function launchGuideDismissedKey(slug = "") {
   return `pondbridge_launch_guide_dismissed_${String(slug || "").trim().toLowerCase() || "default"}`;
 }
 
-function normalizeHexColor(value = "", fallback = "#002b5c") {
+function normalizeHexColor(value = "", fallback = "var(--brand-primary-strong)") {
   const raw = String(value || "").trim();
   const hex = raw.startsWith("#") ? raw.slice(1) : raw;
   if (/^[0-9a-fA-F]{6}$/.test(hex)) return `#${hex.toLowerCase()}`;
@@ -126,7 +127,7 @@ function normalizeHexColor(value = "", fallback = "#002b5c") {
   return fallback;
 }
 
-function hexToRgb(hex = "#002b5c") {
+function hexToRgb(hex = "var(--brand-primary-strong)") {
   const normalized = normalizeHexColor(hex).slice(1);
   return {
     r: parseInt(normalized.slice(0, 2), 16),
@@ -141,7 +142,7 @@ function srgbChannelToLinear(channel = 0) {
   return ((normalized + 0.055) / 1.055) ** 2.4;
 }
 
-function relativeLuminance(hex = "#002b5c") {
+function relativeLuminance(hex = "var(--brand-primary-strong)") {
   const { r, g, b } = hexToRgb(hex);
   return (
     0.2126 * srgbChannelToLinear(r) +
@@ -150,7 +151,7 @@ function relativeLuminance(hex = "#002b5c") {
   );
 }
 
-function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
+function contrastRatio(baseHex = "var(--brand-primary-strong)", candidateHex = "#ffffff") {
   const base = relativeLuminance(baseHex);
   const candidate = relativeLuminance(candidateHex);
   const brightest = Math.max(base, candidate);
@@ -158,11 +159,6 @@ function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
   return (brightest + 0.05) / (darkest + 0.05);
 }
 
-function readableTextColorOnBrand(brandHex = "#002b5c") {
-  const light = "#ffffff";
-  const dark = "#0f172a";
-  return contrastRatio(brandHex, light) >= contrastRatio(brandHex, dark) ? light : dark;
-}
 
 export default function DirectorOnboardingCommandCenterPage() {
   const { token } = useAuth();
@@ -187,7 +183,7 @@ export default function DirectorOnboardingCommandCenterPage() {
   const previewTheme = payload?.tenant?.onboardingDraft?.theme || {};
   const previewContent = payload?.tenant?.onboardingDraft?.content || {};
   const previewBrandPrimary = normalizeHexColor(
-    previewTheme.brandPrimary || payload?.tenant?.theme?.brandPrimary || tenant?.theme?.brandPrimary || "#002b5c"
+    previewTheme.brandPrimary || payload?.tenant?.theme?.brandPrimary || tenant?.theme?.brandPrimary || "var(--brand-primary-strong)"
   );
   const previewBrandOnPrimary = readableTextColorOnBrand(previewBrandPrimary);
   const previewLogoUrl = String(
@@ -748,9 +744,9 @@ export default function DirectorOnboardingCommandCenterPage() {
           style={{
             "--brand-primary": previewBrandPrimary,
             "--brand-on-primary": previewBrandOnPrimary,
-            "--brand-secondary": previewTheme.brandSecondary || "#d3dde8",
-            "--bg": previewTheme.bg || "#f5f7fa",
-            "--text": previewTheme.text || "#0f172a",
+            "--brand-secondary": previewTheme.brandSecondary || "var(--neutral-200)",
+            "--bg": previewTheme.bg || "#fafafa",
+            "--text": previewTheme.text || "var(--neutral-900)",
             "--card": previewTheme.card || "#ffffff",
             "--font-display": "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif",
             "--font-body": "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif"

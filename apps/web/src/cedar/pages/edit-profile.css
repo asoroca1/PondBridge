@@ -1,8 +1,8 @@
 .edit-profile-page {
-  --edit-profile-ink: #102a46;
-  --edit-profile-muted: #60748a;
-  --edit-profile-border: #d9e4ef;
-  --edit-profile-soft: color-mix(in srgb, var(--brand-primary) 5%, #f8fbff);
+  --edit-profile-ink: var(--neutral-800);
+  --edit-profile-muted: var(--neutral-500);
+  --edit-profile-border: var(--neutral-200);
+  --edit-profile-soft: color-mix(in srgb, var(--brand-primary) 5%, var(--neutral-50));
 }
 
 .edit-profile-page .edit-profile-shell {
@@ -21,7 +21,7 @@
 
 .edit-profile-page .edit-profile-header {
   margin-bottom: 0;
-  border: 1px solid color-mix(in srgb, var(--brand-primary) 14%, #dce6f0);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 14%, var(--neutral-200));
   box-shadow: 0 14px 34px rgba(15, 42, 70, 0.08);
 }
 
@@ -102,7 +102,7 @@
 
 .edit-profile-page .edit-profile-personal-block {
   padding-top: 1.7rem;
-  border-top: 1px solid #e6edf4;
+  border-top: 1px solid var(--neutral-100);
 }
 
 .edit-profile-page .edit-profile-section-heading {
@@ -143,7 +143,7 @@
 .edit-profile-page .edit-profile-subsection-heading {
   margin-top: 0.35rem;
   padding-top: 1.4rem;
-  border-top: 1px solid #e6edf4;
+  border-top: 1px solid var(--neutral-100);
 }
 
 .edit-profile-page .edit-profile-subsection-heading h3 {
@@ -165,7 +165,7 @@
   min-height: 150px;
   margin: 0;
   padding: 18px;
-  border: 1px solid #d8e4ef;
+  border: 1px solid var(--neutral-200);
   border-radius: 16px;
   background: var(--edit-profile-soft);
 }
@@ -191,7 +191,7 @@
 }
 
 .edit-profile-page .edit-profile-photo-card .ac-stage {
-  border: 1px solid #d8e4ef;
+  border: 1px solid var(--neutral-200);
   border-radius: 50%;
   box-shadow: 0 10px 24px rgba(15, 42, 70, 0.1);
 }
@@ -243,7 +243,7 @@
 
 .edit-profile-page .edit-profile-photo-tips {
   padding: 8px 0 8px clamp(1.25rem, 2.5vw, 2rem);
-  border-left: 1px solid #d4e1ed;
+  border-left: 1px solid var(--neutral-200);
 }
 
 .edit-profile-page .edit-profile-photo-tips h3 {
@@ -266,7 +266,7 @@
 .edit-profile-page .edit-profile-import-card {
   margin: 0 0 0.25rem;
   padding: 18px;
-  border: 1px solid color-mix(in srgb, var(--brand-primary) 20%, #dbe5ef);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 20%, var(--neutral-200));
   border-radius: 16px;
   background:
     linear-gradient(
@@ -306,10 +306,10 @@
   gap: 10px;
   margin: 0 0 14px;
   padding: 11px 12px;
-  border: 1px solid #e1e8f0;
+  border: 1px solid var(--neutral-200);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.88);
-  color: #435a72;
+  color: var(--neutral-600);
   font-size: 0.84rem;
   line-height: 1.48;
 }
@@ -358,7 +358,7 @@
 
 .edit-profile-page .edit-profile-privacy-label {
   margin-top: 10px;
-  color: #506981;
+  color: var(--neutral-600);
   font-size: 0.79rem;
   font-weight: 780;
   letter-spacing: 0.035em;
@@ -369,10 +369,10 @@
 .edit-profile-page .wizard1-mselect {
   min-height: 48px;
   height: 48px;
-  border: 1px solid #cbd9e7;
+  border: 1px solid var(--neutral-300);
   border-radius: 12px;
   background-color: #fff;
-  color: #172534;
+  color: var(--neutral-900);
   font-size: 0.97rem;
   transition:
     border-color 150ms ease,
@@ -382,7 +382,7 @@
 
 .edit-profile-page .wizard1-input:hover,
 .edit-profile-page .wizard1-mselect:hover {
-  border-color: color-mix(in srgb, var(--brand-primary) 38%, #cbd9e7);
+  border-color: color-mix(in srgb, var(--brand-primary) 38%, var(--neutral-300));
 }
 
 .edit-profile-page .wizard1-input:focus,
@@ -392,9 +392,9 @@
 }
 
 .edit-profile-page .wizard1-input:disabled {
-  border-color: #d9e2eb;
-  background: #f3f6f9;
-  color: #526476;
+  border-color: var(--neutral-200);
+  background: var(--neutral-100);
+  color: var(--neutral-600);
   opacity: 1;
 }
 
@@ -417,7 +417,7 @@
 .edit-profile-page .edit-profile-student-button {
   min-height: 48px;
   padding: 0 16px;
-  border: 1px solid color-mix(in srgb, var(--brand-primary) 42%, #cbd9e7);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 42%, var(--neutral-300));
   border-radius: 12px;
   background: color-mix(in srgb, var(--brand-primary) 5%, #fff);
   color: var(--brand-primary);
@@ -459,7 +459,7 @@
 .edit-profile-page .wizard1-camp-section,
 .edit-profile-page .wizard1-edu-row,
 .edit-profile-page .wizard1-job-row {
-  border-color: #dfe8f1;
+  border-color: var(--neutral-200);
   border-radius: 14px;
   background: #f9fbfd;
 }
@@ -497,7 +497,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 11px 12px;
-  border: 1px solid #dbe3ea;
+  border: 1px solid var(--neutral-200);
   border-radius: 12px;
   background: #fff;
   cursor: pointer;
@@ -514,12 +514,12 @@
   display: grid;
   gap: 3px;
   min-width: 0;
-  color: #0f172a;
+  color: var(--neutral-900);
   overflow-wrap: anywhere;
 }
 
 .edit-profile-page .wizard1-import-review-copy small {
-  color: #64748b;
+  color: var(--neutral-500);
 }
 
 .edit-profile-page .wizard1-file-picker {
@@ -561,7 +561,7 @@
 
   .edit-profile-page .edit-profile-photo-tips {
     padding: 18px 0 0;
-    border-top: 1px solid #d4e1ed;
+    border-top: 1px solid var(--neutral-200);
     border-left: 0;
   }
 }

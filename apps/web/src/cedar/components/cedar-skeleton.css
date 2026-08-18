@@ -9,7 +9,7 @@
   display: block;
   height: 14px;
   border-radius: 6px;
-  background: linear-gradient(90deg, #e8edf4 30%, #f3f6fa 50%, #e8edf4 70%);
+  background: linear-gradient(90deg, var(--neutral-100) 30%, var(--neutral-50) 50%, var(--neutral-100) 70%);
   background-size: 200% 100%;
   animation: cskelShimmer 1.4s ease-in-out infinite;
 }
@@ -29,7 +29,7 @@
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: linear-gradient(90deg, #e8edf4 30%, #f3f6fa 50%, #e8edf4 70%);
+  background: linear-gradient(90deg, var(--neutral-100) 30%, var(--neutral-50) 50%, var(--neutral-100) 70%);
   background-size: 200% 100%;
   animation: cskelShimmer 1.4s ease-in-out infinite;
 }
@@ -41,7 +41,7 @@
   padding: 18px;
   border-radius: var(--radius-md, 12px);
   background: #fff;
-  border: 1px solid #e4eaf2;
+  border: 1px solid var(--neutral-200);
 }
 
 .cskel-card-body {

@@ -4,22 +4,22 @@
 
 :root {
   --cf-navy: var(--brand-primary);
-  --cf-navy-2: color-mix(in srgb, var(--brand-primary) 82%, #0f172a);
+  --cf-navy-2: color-mix(in srgb, var(--brand-primary) 82%, var(--neutral-900));
   --cf-accent-soft: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
   --cf-accent-soft-strong: color-mix(in srgb, var(--brand-primary) 14%, #ffffff);
-  --cf-accent-border: color-mix(in srgb, var(--brand-primary) 24%, #e5e7eb);
-  --cf-accent-border-strong: color-mix(in srgb, var(--brand-primary) 30%, #d1d5db);
-  --cf-accent-text: color-mix(in srgb, var(--brand-primary) 88%, #1e293b);
+  --cf-accent-border: color-mix(in srgb, var(--brand-primary) 24%, var(--neutral-200));
+  --cf-accent-border-strong: color-mix(in srgb, var(--brand-primary) 30%, var(--neutral-300));
+  --cf-accent-text: color-mix(in srgb, var(--brand-primary) 88%, var(--neutral-800));
   --cf-hover-bg: color-mix(in srgb, var(--brand-primary) 6%, #ffffff);
   --cf-active-bg: color-mix(in srgb, var(--brand-primary) 12%, #ffffff);
-  --cf-active-border: color-mix(in srgb, var(--brand-primary) 38%, #c7d2e2);
+  --cf-active-border: color-mix(in srgb, var(--brand-primary) 38%, var(--neutral-300));
   --cf-focus-ring: color-mix(in srgb, var(--brand-primary) 28%, #ffffff);
-  --cf-bg-soft: #f7f9fd;
+  --cf-bg-soft: var(--neutral-50);
   --cf-card: var(--card, #ffffff);
-  --cf-border: var(--card-border, #e1e6f0);
-  --cf-border-strong: color-mix(in srgb, var(--brand-primary) 18%, #d1d5db);
-  --cf-text: var(--text, #0f172a);
-  --cf-muted: var(--text-muted, #64748b);
+  --cf-border: var(--card-border, var(--neutral-200));
+  --cf-border-strong: color-mix(in srgb, var(--brand-primary) 18%, var(--neutral-300));
+  --cf-text: var(--text, var(--neutral-900));
+  --cf-muted: var(--text-muted, var(--neutral-500));
   --cf-shadow: var(--shadow-lg);
 }
 
@@ -70,10 +70,10 @@
   width: 30px;
   height: 30px;
   border-radius: 999px;
-  background: #edf3ff;
+  background: var(--neutral-100);
   background: var(--cf-accent-soft);
   color: var(--cf-navy);
-  border: 1px solid #d7e2f7;
+  border: 1px solid var(--neutral-200);
   border-color: var(--cf-accent-border);
 }
 
@@ -97,7 +97,7 @@
   border-radius: 999px;
   border: 1px solid var(--cf-border-strong);
   background: #fff;
-  color: #1e293b;
+  color: var(--neutral-800);
   cursor: pointer;
   font-weight: 700;
 }
@@ -163,9 +163,9 @@
   font-size: 12px;
   font-weight: 700;
   color: var(--cf-accent-text);
-  background: #f2f6ff;
+  background: var(--neutral-50);
   background: var(--cf-accent-soft-strong);
-  border: 1px solid #d9e4fb;
+  border: 1px solid var(--neutral-200);
   border-color: var(--cf-accent-border);
   border-radius: 999px;
   padding: 2px 8px;
@@ -228,7 +228,7 @@
 .cf-list::-webkit-scrollbar-thumb,
 .cf-thread-body::-webkit-scrollbar-thumb,
 .pp-list::-webkit-scrollbar-thumb {
-  background: #cdd8eb;
+  background: var(--neutral-200);
   border-radius: 999px;
 }
 
@@ -237,21 +237,21 @@
 }
 
 .cf-list-item {
-  border: 1px solid color-mix(in srgb, var(--brand-primary) 14%, #e7edf8);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 14%, var(--neutral-100));
   border-radius: 13px;
   background: #fff;
   overflow: hidden;
 }
 
 .cf-list-item:hover {
-  border-color: color-mix(in srgb, var(--brand-primary) 24%, #d3def3);
+  border-color: color-mix(in srgb, var(--brand-primary) 24%, var(--neutral-200));
   background: var(--cf-hover-bg);
 }
 
 .cf-list-item.is-active {
   border-color: var(--cf-active-border);
   background: var(--cf-active-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-primary) 24%, #dbe8ff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-primary) 24%, var(--neutral-100));
 }
 
 .cf-li-btn {
@@ -292,13 +292,13 @@
 }
 
 .cf-li-time {
-  color: #64748b;
+  color: var(--neutral-500);
   font-size: 12px;
   flex: 0 0 auto;
 }
 
 .cf-li-sub {
-  color: #64748b;
+  color: var(--neutral-500);
   font-size: 12px;
   margin-top: 4px;
   overflow: hidden;
@@ -324,7 +324,7 @@
 /* ===== Thread ===== */
 .cf-thread-header {
   padding: 12px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--brand-primary) 10%, #ebf0f9);
+  border-bottom: 1px solid color-mix(in srgb, var(--brand-primary) 10%, var(--neutral-100));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -352,7 +352,7 @@
 }
 
 .cf-thread-sub {
-  color: #64748b;
+  color: var(--neutral-500);
   font-size: 12px;
 }
 
@@ -365,9 +365,9 @@
 }
 
 .cf-thread-chip {
-  border: 1px solid #d8e5ff;
+  border: 1px solid var(--neutral-200);
   border-color: var(--cf-accent-border-strong);
-  background: #f2f7ff;
+  background: var(--neutral-50);
   background: var(--cf-accent-soft-strong);
   color: var(--cf-accent-text);
   font-weight: 700;
@@ -380,7 +380,7 @@
   display: none;
   border: 1px solid var(--cf-border-strong);
   background: #fff;
-  color: #334155;
+  color: var(--neutral-700);
   width: 30px;
   height: 30px;
   border-radius: 10px;
@@ -392,7 +392,7 @@
 .cf-ghost-btn {
   background: #fff;
   border: 1px solid var(--cf-border-strong);
-  color: #1e293b;
+  color: var(--neutral-800);
   padding: 7px 11px;
   border-radius: 10px;
   cursor: pointer;
@@ -412,11 +412,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef3ff;
+  background: var(--neutral-50);
   background: var(--cf-accent-soft);
   color: var(--cf-navy);
   font-weight: 800;
-  border: 1px solid #d8def0;
+  border: 1px solid var(--neutral-200);
   border-color: var(--cf-accent-border);
   user-select: none;
   font-size: 16px;
@@ -430,7 +430,7 @@
   border-radius: 999px;
   object-fit: cover;
   display: block;
-  border: 2px solid color-mix(in srgb, var(--brand-primary) 18%, #d8def0);
+  border: 2px solid color-mix(in srgb, var(--brand-primary) 18%, var(--neutral-200));
   background: #f3f4f6;
   flex: 0 0 auto;
 }
@@ -495,7 +495,7 @@
   background: linear-gradient(
     to bottom,
     color-mix(in srgb, var(--brand-primary) 3%, #ffffff),
-    color-mix(in srgb, var(--brand-primary) 6%, #f8fafe)
+    color-mix(in srgb, var(--brand-primary) 6%, var(--neutral-50))
   );
   scroll-behavior: auto;
 }
@@ -505,7 +505,7 @@
   background: linear-gradient(
     to bottom,
     color-mix(in srgb, var(--brand-primary) 3%, #ffffff),
-    color-mix(in srgb, var(--brand-primary) 5%, #f9fbff)
+    color-mix(in srgb, var(--brand-primary) 5%, var(--neutral-50))
   );
 }
 
@@ -547,14 +547,14 @@
 
 .cf-badge {
   font-size: 12px;
-  color: #64748b;
+  color: var(--neutral-500);
   padding: 0 4px;
   font-weight: 700;
 }
 
 .cf-time {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--neutral-400);
   padding: 0 4px;
 }
 
@@ -563,25 +563,25 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #64748b;
+  color: var(--neutral-500);
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
 }
 
 .cf-report-btn:hover { color: #991b1b; }
-.cf-report-status { max-width: 320px; color: #475569; font-size: .72rem; line-height: 1.35; }
+.cf-report-status { max-width: 320px; color: var(--neutral-600); font-size: .72rem; line-height: 1.35; }
 .cf-report-form { display: grid; gap: 14px; }
-.cf-report-form label { display: grid; gap: 6px; color: #1f2937; font-weight: 600; }
+.cf-report-form label { display: grid; gap: 6px; color: var(--neutral-800); font-weight: 600; }
 .cf-report-form select,
 .cf-report-form textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--neutral-300);
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
-  color: #0f172a;
+  color: var(--neutral-900);
   background: #fff;
 }
 
@@ -599,12 +599,12 @@
   max-width: min(72ch, 100%);
   padding: 10px 12px;
   background: #fff;
-  border: 1px solid #e6ebf6;
+  border: 1px solid var(--neutral-100);
   border-radius: 18px 18px 18px 7px;
   line-height: 1.5;
   word-break: break-word;
   box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .cf-row.is-right .cf-bubble {
@@ -618,7 +618,7 @@
 }
 
 .cf-bubble.is-mine a {
-  color: #e5ecff;
+  color: var(--neutral-100);
 }
 
 .cf-bubble-body {
@@ -631,7 +631,7 @@
   width: auto;
   height: auto;
   border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--neutral-200);
   display: block;
 }
 
@@ -657,20 +657,20 @@
 .cf-typing {
   padding: 8px 10px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--neutral-500);
 }
 
 .cf-read {
   padding: 4px 10px;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--neutral-400);
   text-align: right;
 }
 
 /* ===== Posts ===== */
 .cf-post {
   background: #fff;
-  border: 1px solid #e5ecfa;
+  border: 1px solid var(--neutral-100);
   border-radius: var(--radius-lg);
   padding: 12px;
   box-shadow: var(--shadow-sm);
@@ -703,7 +703,7 @@
 .cf-post-body {
   white-space: pre-wrap;
   line-height: 1.55;
-  color: #111827;
+  color: var(--neutral-900);
   margin-top: 6px;
 }
 
@@ -711,7 +711,7 @@
   max-width: 100%;
   height: auto;
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--neutral-200);
   display: block;
   margin-top: 8px;
 }
@@ -728,7 +728,7 @@
 .cf-empty {
   margin: auto;
   text-align: center;
-  color: #4b5563;
+  color: var(--neutral-600);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -768,7 +768,7 @@
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  border-top: 1px solid #ebf0f9;
+  border-top: 1px solid var(--neutral-100);
   padding: 10px;
   background: #fff;
 }
@@ -797,7 +797,7 @@
   border-radius: 10px;
   padding: 7px;
   cursor: pointer;
-  color: #334155;
+  color: var(--neutral-700);
 }
 
 .mc-input {
@@ -963,7 +963,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px;
-  border-bottom: 1px solid #eef1f6;
+  border-bottom: 1px solid var(--neutral-100);
 }
 
 .cf-modal-title {
@@ -981,7 +981,7 @@
 
 .cf-modal-foot {
   padding: 12px;
-  border-top: 1px solid #eef1f6;
+  border-top: 1px solid var(--neutral-100);
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -1033,7 +1033,7 @@
 
 .cf-label {
   font-size: 13px;
-  color: #334155;
+  color: var(--neutral-700);
 }
 
 .cf-input {
@@ -1047,7 +1047,7 @@
   padding: 10px;
   text-align: center;
   color: var(--cf-muted);
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px dashed var(--neutral-200);
 }
 
 .cf-avatar-link {

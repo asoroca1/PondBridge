@@ -1,17 +1,17 @@
 /* Director events workspace — view rail + calendar/agenda + detail pane. */
 
 .pb-events {
-  --pb-ev-border: var(--director-admin-surface-border, #dde5ef);
-  --pb-ev-border-soft: var(--director-admin-surface-border-soft, #e9eef5);
+  --pb-ev-border: var(--director-admin-surface-border, var(--neutral-200));
+  --pb-ev-border-soft: var(--director-admin-surface-border-soft, var(--neutral-100));
   --pb-ev-surface: var(--director-admin-surface-bg, #fff);
   --pb-ev-surface-alt: var(--director-admin-surface-bg-strong, #f6f8fb);
-  --pb-ev-ink: var(--director-admin-ink, #16283d);
-  --pb-ev-ink-soft: var(--director-admin-ink-soft, #5d7186);
-  --pb-ev-accent: var(--brand-primary, #1e5cb3);
+  --pb-ev-ink: var(--director-admin-ink, var(--neutral-800));
+  --pb-ev-ink-soft: var(--director-admin-ink-soft, var(--neutral-500));
+  --pb-ev-accent: var(--brand-primary, var(--brand-primary));
 
-  --pb-ev-community: #1e5cb3;
-  --pb-ev-seminar: #6b4bb8;
-  --pb-ev-draft: #8595a8;
+  --pb-ev-community: var(--brand-primary);
+  --pb-ev-seminar: var(--brand-primary-soft);
+  --pb-ev-draft: var(--neutral-400);
   --pb-ev-canceled: #c0554a;
 
   display: grid;
@@ -385,10 +385,10 @@
 
 .pb-events-tag { background: color-mix(in srgb, var(--pb-ev-community) 14%, transparent); color: var(--pb-ev-community); }
 .pb-events-tag.is-seminar { background: color-mix(in srgb, var(--pb-ev-seminar) 14%, transparent); color: var(--pb-ev-seminar); }
-.pb-events-tag.is-draft { background: #eef1f6; color: #56677d; }
+.pb-events-tag.is-draft { background: var(--neutral-100); color: var(--neutral-600); }
 .pb-events-tag.is-canceled { background: #fbeae8; color: var(--pb-ev-canceled); }
 
-.pb-events-status { background: #eef1f6; color: #56677d; }
+.pb-events-status { background: var(--neutral-100); color: var(--neutral-600); }
 .pb-events-status.tone-success { background: #e5f4ea; color: #276b45; }
 .pb-events-status.tone-danger { background: #fbeae8; color: #8d362f; }
 
@@ -486,21 +486,21 @@
 .pb-events-field > span {
   font-size: 0.78rem;
   font-weight: 700;
-  color: var(--director-admin-ink, #16283d);
+  color: var(--director-admin-ink, var(--neutral-800));
 }
 
 .pb-events-field > span small {
   margin-left: 4px;
   font-weight: 500;
   font-size: 0.72rem;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
   text-transform: none;
 }
 
 .pb-events-field > small {
   font-size: 0.74rem;
   line-height: 1.4;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 /* Admin inputs are sized for full-page forms; a dense dialog needs less. */
@@ -530,7 +530,7 @@
 .pb-events-host button {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #1e5cb3);
+  color: var(--brand-primary, var(--brand-primary));
   font: inherit;
   font-size: 0.78rem;
   font-weight: 700;
@@ -552,7 +552,7 @@
   display: grid;
   gap: 1px;
   padding: 6px 9px;
-  border: 1px solid var(--director-admin-surface-border-soft, #e9eef5);
+  border: 1px solid var(--director-admin-surface-border-soft, var(--neutral-100));
   border-radius: 8px;
   background: transparent;
   font: inherit;
@@ -562,7 +562,7 @@
 
 .pb-events-host-results button:hover { background: var(--director-admin-surface-bg-strong, #f6f8fb); }
 .pb-events-host-results strong { font-size: 0.85rem; }
-.pb-events-host-results small { font-size: 0.75rem; color: var(--director-admin-ink-soft, #5d7186); }
+.pb-events-host-results small { font-size: 0.75rem; color: var(--director-admin-ink-soft, var(--neutral-500)); }
 
 /* --- Responsive --- */
 
@@ -598,7 +598,7 @@
   gap: 5px;
   align-content: start;
   padding: 16px;
-  border: 1px solid var(--director-admin-surface-border, #dde5ef);
+  border: 1px solid var(--director-admin-surface-border, var(--neutral-200));
   border-radius: 14px;
   background: var(--director-admin-surface-bg, #fff);
   text-align: left;
@@ -606,8 +606,8 @@
 }
 
 .pb-events-picker button:hover {
-  border-color: var(--brand-primary, #1e5cb3);
-  background: color-mix(in srgb, var(--brand-primary, #1e5cb3) 5%, transparent);
+  border-color: var(--brand-primary, var(--brand-primary));
+  background: color-mix(in srgb, var(--brand-primary, var(--brand-primary)) 5%, transparent);
 }
 
 .pb-events-picker-icon {
@@ -617,24 +617,24 @@
   height: 38px;
   margin-bottom: 4px;
   border-radius: 10px;
-  background: color-mix(in srgb, #1e5cb3 13%, transparent);
-  color: #1e5cb3;
+  background: color-mix(in srgb, var(--brand-primary) 13%, transparent);
+  color: var(--brand-primary);
 }
 
 .pb-events-picker-icon.is-seminar {
-  background: color-mix(in srgb, #6b4bb8 13%, transparent);
-  color: #6b4bb8;
+  background: color-mix(in srgb, var(--brand-primary-soft) 13%, transparent);
+  color: var(--brand-primary-soft);
 }
 
 .pb-events-picker-icon svg { width: 19px; height: 19px; }
 
 .pb-events-picker strong {
   font-size: 1.02rem;
-  color: var(--director-admin-ink, #16283d);
+  color: var(--director-admin-ink, var(--neutral-800));
 }
 
 .pb-events-picker small {
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
   font-size: 0.85rem;
   line-height: 1.5;
 }
@@ -650,7 +650,7 @@
 .pb-events-picker li {
   position: relative;
   padding-left: 15px;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
   font-size: 0.81rem;
 }
 

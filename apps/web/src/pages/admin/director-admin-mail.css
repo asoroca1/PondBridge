@@ -1,13 +1,13 @@
 /* Director mail workspace — a mail-client shell (folder rail + surface). */
 
 .pb-mail {
-  --pb-mail-border: #dde5ef;
-  --pb-mail-border-soft: #e9eef5;
+  --pb-mail-border: var(--neutral-200);
+  --pb-mail-border-soft: var(--neutral-100);
   --pb-mail-surface: #fff;
   --pb-mail-surface-alt: #f6f8fb;
-  --pb-mail-ink: #16283d;
-  --pb-mail-ink-soft: #5d7186;
-  --pb-mail-accent: var(--brand-primary, #1e5cb3);
+  --pb-mail-ink: var(--neutral-800);
+  --pb-mail-ink-soft: var(--neutral-500);
+  --pb-mail-accent: var(--brand-primary, var(--brand-primary));
 
   display: grid;
   grid-template-columns: 218px minmax(0, 1fr);
@@ -297,14 +297,14 @@
 }
 
 .pb-mail-chip.is-person {
-  background: #eef1f6;
+  background: var(--neutral-100);
   color: var(--pb-mail-ink);
 }
 
 .pb-mail-chip.is-segment,
 .pb-mail-chip.is-year {
-  background: #f1eefb;
-  color: #52418f;
+  background: var(--neutral-100);
+  color: var(--brand-primary);
 }
 
 .pb-mail-chip-label {
@@ -552,7 +552,7 @@
 
 .pb-mail-editor-body[data-empty="true"]:before {
   content: attr(data-placeholder);
-  color: #90a0b3;
+  color: var(--neutral-400);
   pointer-events: none;
 }
 
@@ -913,17 +913,17 @@
 .pb-mail-status {
   padding: 1px 8px;
   border-radius: 999px;
-  background: #eef1f6;
-  color: #4a5b70;
+  background: var(--neutral-100);
+  color: var(--neutral-600);
   font-size: 0.73rem;
   font-weight: 700;
   text-transform: capitalize;
 }
 
 .pb-mail-status.tone-success { background: #e5f4ea; color: #276b45; }
-.pb-mail-status.tone-info { background: #e6eefb; color: #23548f; }
+.pb-mail-status.tone-info { background: var(--neutral-100); color: var(--brand-primary); }
 .pb-mail-status.tone-danger { background: #fbeae8; color: #8d362f; }
-.pb-mail-status.tone-muted { background: #eef1f6; color: #6b7a8d; }
+.pb-mail-status.tone-muted { background: var(--neutral-100); color: var(--neutral-500); }
 
 .pb-mail-list-placeholder,
 .pb-mail-list-empty {
@@ -1167,12 +1167,12 @@
    -------------------------------------------------------------------------- */
 
 .director-admin-scope .pb-mail {
-  --pb-mail-border: var(--director-admin-surface-border, #dde5ef);
-  --pb-mail-border-soft: var(--director-admin-surface-border-soft, #e9eef5);
+  --pb-mail-border: var(--director-admin-surface-border, var(--neutral-200));
+  --pb-mail-border-soft: var(--director-admin-surface-border-soft, var(--neutral-100));
   --pb-mail-surface: var(--director-admin-surface-bg, #fff);
   --pb-mail-surface-alt: var(--director-admin-surface-bg-strong, #f6f8fb);
-  --pb-mail-ink: var(--director-admin-ink, #16283d);
-  --pb-mail-ink-soft: var(--director-admin-ink-soft, #5d7186);
+  --pb-mail-ink: var(--director-admin-ink, var(--neutral-800));
+  --pb-mail-ink-soft: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 /* --------------------------------------------------------------------------

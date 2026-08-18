@@ -14,34 +14,34 @@
   gap: 4px;
   align-content: start;
   padding: 13px 14px;
-  border: 1px solid var(--director-admin-surface-border, #dde5ef);
+  border: 1px solid var(--director-admin-surface-border, var(--neutral-200));
   border-radius: 12px;
   background: var(--director-admin-surface-bg, #fff);
   text-align: left;
   cursor: pointer;
 }
 
-.pb-access-modes button:hover { border-color: var(--brand-primary, #1e5cb3); }
+.pb-access-modes button:hover { border-color: var(--brand-primary, var(--brand-primary)); }
 
 .pb-access-modes button.is-selected {
-  border-color: var(--brand-primary, #1e5cb3);
-  box-shadow: inset 0 0 0 1px var(--brand-primary, #1e5cb3);
-  background: color-mix(in srgb, var(--brand-primary, #1e5cb3) 6%, transparent);
+  border-color: var(--brand-primary, var(--brand-primary));
+  box-shadow: inset 0 0 0 1px var(--brand-primary, var(--brand-primary));
+  background: color-mix(in srgb, var(--brand-primary, var(--brand-primary)) 6%, transparent);
 }
 
 .pb-access-modes svg {
   width: 18px;
   height: 18px;
   margin-bottom: 2px;
-  color: var(--brand-primary, #1e5cb3);
+  color: var(--brand-primary, var(--brand-primary));
 }
 
-.pb-access-modes strong { font-size: 0.94rem; color: var(--director-admin-ink, #16283d); }
+.pb-access-modes strong { font-size: 0.94rem; color: var(--director-admin-ink, var(--neutral-800)); }
 
 .pb-access-modes small {
   font-size: 0.81rem;
   line-height: 1.45;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 /* The trade-off of the chosen mode, stated plainly. */
@@ -57,7 +57,7 @@
 
 .pb-access-hint {
   margin: 10px 0 0;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
   font-size: 0.87rem;
 }
 
@@ -66,20 +66,20 @@
 .pb-access-field > span {
   font-size: 0.84rem;
   font-weight: 700;
-  color: var(--director-admin-ink, #16283d);
+  color: var(--director-admin-ink, var(--neutral-800));
 }
 
 .pb-access-field > span small {
   margin-left: 5px;
   font-weight: 500;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 .pb-access-field > small,
 .pb-access-mobile {
   font-size: 0.8rem;
   line-height: 1.5;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 .pb-cedar-page .pb-access-check {
@@ -98,8 +98,8 @@
 }
 
 .pb-access-check span { display: grid; gap: 2px; }
-.pb-access-check strong { font-size: 0.88rem; color: var(--director-admin-ink, #16283d); }
-.pb-access-check small { font-size: 0.8rem; color: var(--director-admin-ink-soft, #5d7186); }
+.pb-access-check strong { font-size: 0.88rem; color: var(--director-admin-ink, var(--neutral-800)); }
+.pb-access-check small { font-size: 0.8rem; color: var(--director-admin-ink-soft, var(--neutral-500)); }
 
 .pb-access-actions { display: flex; justify-content: flex-end; }
 

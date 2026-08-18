@@ -2,12 +2,12 @@
 :root{
     --ps-navy: var(--brand-primary);
     --ps-blue-600:var(--brand-primary-hover);
-    --ps-gray-50:#f8fafc;
-    --ps-gray-100:#f1f5f9;
-    --ps-gray-200: var(--card-border, #e2e8f0);
-    --ps-gray-300:#cbd5e1;
-    --ps-gray-400:#94a3b8;
-    --ps-gray-500: var(--text-muted, #64748b);
+    --ps-gray-50:var(--neutral-50);
+    --ps-gray-100:var(--neutral-100);
+    --ps-gray-200: var(--card-border, var(--neutral-200));
+    --ps-gray-300:var(--neutral-300);
+    --ps-gray-400:var(--neutral-400);
+    --ps-gray-500: var(--text-muted, var(--neutral-500));
     --ps-white: var(--card, #ffffff);
 
     --ps-radius: var(--radius-lg);
@@ -62,7 +62,7 @@
       var(--ps-white)
       url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 8 10 12 14 8'/></svg>")
       no-repeat right 8px center;
-    color:#0f172a;
+    color:var(--neutral-900);
   }
   .ps-select:focus{ outline:2px solid var(--brand-primary-focus); }
   
@@ -75,7 +75,7 @@
   }
   .ps-btn.primary{ background:var(--ps-navy); color:var(--brand-on-primary); box-shadow:var(--ps-shadow-soft); }
   .ps-btn.primary:hover{ background:var(--ps-blue-600); }
-  .ps-btn.secondary{ background:var(--ps-gray-100); color:#0f172a; border-color:var(--ps-gray-300); }
+  .ps-btn.secondary{ background:var(--ps-gray-100); color:var(--neutral-900); border-color:var(--ps-gray-300); }
   .ps-btn-icon{
     display:inline-flex;
     align-items:center;
@@ -84,15 +84,15 @@
     border-radius:999px;
     border:1px solid var(--ps-gray-300);
     background:var(--ps-white);
-    color:#1f334d;
+    color:var(--neutral-800);
     cursor:pointer;
     font-weight:600;
     transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
   }
   .ps-btn-icon:hover{
-    background:#f8fbff;
-    border-color:#a8c0de;
-    color:#0f172a;
+    background:var(--neutral-50);
+    border-color:var(--neutral-300);
+    color:var(--neutral-900);
     transform: translateY(-1px);
   }
   .ps-btn-icon:disabled {
@@ -140,7 +140,7 @@
     padding:0;
     font-size:14px;
     line-height:1.5;
-    color:#0f172a;
+    color:var(--neutral-900);
     word-wrap:anywhere;
   }
 
@@ -165,7 +165,7 @@
     width:34px; height:34px; border-radius:50%; background:var(--ps-navy); color:var(--brand-on-primary);
     display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;
   }
-  .ps-name{ font-size:14px; color:#0f172a; font-weight:600; }
+  .ps-name{ font-size:14px; color:var(--neutral-900); font-weight:600; }
   .ps-date{ font-size:12px; color:var(--ps-gray-500); }
 
   .ps-actions{
@@ -208,7 +208,7 @@
     background:#fff;
     border-radius:16px;
     box-shadow:var(--ps-shadow);
-    border:1px solid #d3e0ef;
+    border:1px solid var(--neutral-200);
     padding:16px;
   }
   .ps-modal-head{
@@ -233,16 +233,16 @@
     transition: background-color .16s ease, color .16s ease, border-color .16s ease;
   }
   .ps-modal-close-btn:hover{
-    background:#f8fafc;
+    background:var(--neutral-50);
     color:var(--ps-navy);
-    border-color:#9fb6d2;
+    border-color:var(--neutral-400);
   }
   .ps-upload-file-row{
     display:flex;
     align-items:center;
     gap:10px;
     min-width:0;
-    border:1.5px solid #ccdbec;
+    border:1.5px solid var(--neutral-200);
     border-radius:12px;
     background:#fbfdff;
     padding:9px 10px;
@@ -259,7 +259,7 @@
     text-overflow:ellipsis;
     white-space:nowrap;
     font-size:13px;
-    color:#415a79;
+    color:var(--neutral-600);
   }
   .ps-upload-preview-wrap{
     margin-top:10px;
@@ -270,10 +270,10 @@
     position:relative;
     width:min(100%, 420px);
     aspect-ratio:4/3;
-    border:1.5px solid #cad8e8;
+    border:1.5px solid var(--neutral-300);
     border-radius:12px;
     overflow:hidden;
-    background:#e2ebf7;
+    background:var(--neutral-200);
   }
   .ps-upload-preview-image{
     position:absolute;
@@ -290,7 +290,7 @@
   }
   .ps-upload-control span{
     font-size:12px;
-    color:#334155;
+    color:var(--neutral-700);
     font-weight:600;
   }
   .ps-upload-control input[type="range"]{ width:100%; }
@@ -300,12 +300,12 @@
   }
   .ps-upload-preview-empty{
     margin-top:10px;
-    border:1.5px dashed #b7cbe2;
+    border:1.5px dashed var(--neutral-300);
     border-radius:12px;
     padding:12px;
     font-size:13px;
-    color:#4e627d;
-    background:#f8fbff;
+    color:var(--neutral-600);
+    background:var(--neutral-50);
   }
   .ps-file{ display:none !important; }
   .ps-textarea{
@@ -361,7 +361,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at top, #1f3a5f 0%, #0f172a 62%);
+  background: radial-gradient(circle at top, var(--brand-primary-strong) 0%, var(--neutral-900) 62%);
 }
 
 .ps-lightbox-img {
@@ -444,16 +444,16 @@
   border-radius: 999px;
   border: 1px solid var(--ps-gray-300);
   background: #ffffff;
-  color: #1e293b;
+  color: var(--neutral-800);
   cursor: pointer;
   font-weight: 600;
   transition: background-color 0.16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
 }
 
 .ps-icon-btn:hover {
-  background: #f8fbff;
-  border-color: #a8c0de;
-  color: #0f172a;
+  background: var(--neutral-50);
+  border-color: var(--neutral-300);
+  color: var(--neutral-900);
   transform: translateY(-1px);
 }
 
@@ -476,8 +476,8 @@
   padding: 8px 13px;
   border: 1px solid var(--ps-gray-300);
   border-radius: 999px;
-  background:#f8fbff;
-  color: #334155;
+  background:var(--neutral-50);
+  color: var(--neutral-700);
   font-weight: 600;
   font-size: 14px;
 }
@@ -490,7 +490,7 @@
   background: var(--ps-gray-50);
   font-size: 14px;
   line-height: 1.45;
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .ps-comments {
@@ -552,8 +552,8 @@
   gap: 8px;
 }
 
-.ps-comment-author { font-size: 13px; font-weight: 600; color: #0f172a; }
-.ps-comment-text { font-size: 14px; color: #0f172a; line-height: 1.4; }
+.ps-comment-author { font-size: 13px; font-weight: 600; color: var(--neutral-900); }
+.ps-comment-text { font-size: 14px; color: var(--neutral-900); line-height: 1.4; }
 .ps-comment-date { font-size: 12px; color: var(--ps-gray-500); margin-top: 2px; }
 
 .ps-comment-delete {
@@ -823,7 +823,7 @@
 /* remove underline from names */
 .ps-name {
     font-size: 14px;
-    color: #0f172a;
+    color: var(--neutral-900);
     font-weight: 600;
     text-decoration: none;
     transition: color .16s ease, opacity .16s ease;
