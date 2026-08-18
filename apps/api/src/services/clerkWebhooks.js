@@ -8,6 +8,7 @@ import {
   UserModel
 } from "../db/models/index.js";
 import { sendVerificationCodeEmail } from "./email.js";
+import { logLine } from "./logger.js";
 
 const RESERVED_SUBDOMAINS = new Set(["www", "app", "api", "super"]);
 const recentVerificationDispatches = new Map();
@@ -246,7 +247,14 @@ export function extractVerificationSignUpHint(unsafeMetadata = {}) {
 
 async function resolveSignUpAttemptHint(emailResource = {}) {
   const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
-  if (!signUpAttemptId || !clerkClient?.signUps?.get) return null;
+  if (!signUpAttemptId) {
+    logLine("warn", "clerk.verification.hint_unavailable", { reason: "no_sign_up_id" });
+    return null;
+  }
+  if (!clerkClient?.signUps?.get) {
+    logLine("warn", "clerk.verification.hint_unavailable", { reason: "clerk_client_unavailable" });
+    return null;
+  }
 
   try {
     const signUpAttempt = await clerkClient.signUps.get(signUpAttemptId);
@@ -254,8 +262,21 @@ async function resolveSignUpAttemptHint(emailResource = {}) {
       signUpAttempt?.unsafeMetadata && typeof signUpAttempt.unsafeMetadata === "object"
         ? signUpAttempt.unsafeMetadata
         : {};
-    return extractVerificationSignUpHint(unsafeMetadata);
-  } catch {
+    const hint = extractVerificationSignUpHint(unsafeMetadata);
+    if (!hint?.tenantSlug) {
+      // The signup carried no tenant slug, so branding will fall back to
+      // PondBridge. Record it rather than failing over in silence.
+      logLine("warn", "clerk.verification.hint_missing_tenant", {
+        signUpAttemptId,
+        metadataKeys: Object.keys(unsafeMetadata).join(",") || "none"
+      });
+    }
+    return hint;
+  } catch (error) {
+    logLine("error", "clerk.verification.hint_lookup_failed", {
+      signUpAttemptId,
+      message: String(error?.message || error)
+    });
     return null;
   }
 }
@@ -383,6 +404,17 @@ export async function processClerkWebhookRequest(req) {
       emailId
     };
   }
+
+  // One line per verification email actually sent. Two of these for a single
+  // signup is the duplicate-code symptom; a blank tenantSlug means the email
+  // went out with PondBridge branding instead of the camp's. The OTP itself is
+  // a credential and is never logged.
+  logLine("info", "clerk.verification.dispatch", {
+    emailId,
+    signUpAttemptId,
+    audience: context.audience,
+    tenantSlug: safeString(context?.tenant?.slug) || "none"
+  });
 
   const result = await sendVerificationCodeEmail({
     tenant: context.tenant,
