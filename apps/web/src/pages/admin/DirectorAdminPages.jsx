@@ -11,6 +11,7 @@ import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import {
   ArrowUpRight,
   CheckCircle2,
+  GripVertical,
   RefreshCw,
   Send,
   Sparkles,
@@ -1346,8 +1347,24 @@ function LabelListEditor({
   error = "",
   onDraftChange,
   onAdd,
-  onRemove
+  onRemove,
+  onReorder
 }) {
+  const [dragIndex, setDragIndex] = useState(-1);
+  const [overIndex, setOverIndex] = useState(-1);
+  const sortable = typeof onReorder === "function" && values.length > 1;
+
+  function move(from, to) {
+    if (!sortable || from === to) return;
+    if (from < 0 || to < 0 || from >= values.length || to >= values.length) return;
+    onReorder(from, to);
+  }
+
+  function endDrag() {
+    setDragIndex(-1);
+    setOverIndex(-1);
+  }
+
   return (
     <div className="pb-set-labels">
       <div className="pb-set-labels-head">
@@ -1371,10 +1388,61 @@ function LabelListEditor({
         </Button>
       </div>
       {error ? <p className="error-text">{error}</p> : null}
+      {sortable ? (
+        <p className="pb-set-labels-reorder-hint">
+          Drag to reorder, or use the arrows. Members see them in this order.
+        </p>
+      ) : null}
       <div className="pb-set-labels-chips">
         {values.length ? values.map((item, index) => (
-          <span key={`${item}_${index}`}>
+          <span
+            key={`${item}_${index}`}
+            className={[
+              sortable ? "is-sortable" : "",
+              dragIndex === index ? "is-dragging" : "",
+              overIndex === index && dragIndex >= 0 && dragIndex !== index ? "is-drop-target" : ""
+            ].filter(Boolean).join(" ")}
+            draggable={sortable}
+            onDragStart={sortable ? () => setDragIndex(index) : undefined}
+            onDragOver={sortable ? (event) => {
+              if (dragIndex < 0) return;
+              event.preventDefault();
+              setOverIndex(index);
+            } : undefined}
+            onDrop={sortable ? (event) => {
+              event.preventDefault();
+              move(dragIndex, index);
+              endDrag();
+            } : undefined}
+            onDragEnd={sortable ? endDrag : undefined}
+          >
+            {sortable ? (
+              <GripVertical size={13} className="pb-set-label-grip" aria-hidden="true" />
+            ) : null}
             {item}
+            {sortable ? (
+              <>
+                {/* Keyboard equivalent for the drag, so this is not mouse-only. */}
+                <button
+                  type="button"
+                  className="pb-set-label-move"
+                  onClick={() => move(index, index - 1)}
+                  disabled={index === 0}
+                  aria-label={`Move ${item} earlier`}
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  className="pb-set-label-move"
+                  onClick={() => move(index, index + 1)}
+                  disabled={index === values.length - 1}
+                  aria-label={`Move ${item} later`}
+                >
+                  ›
+                </button>
+              </>
+            ) : null}
             <button type="button" onClick={() => onRemove(index)} aria-label={`Remove ${item}`}>×</button>
           </span>
         )) : <small className="muted">Nothing here yet — add at least one.</small>}
@@ -1465,6 +1533,21 @@ export function DirectorAdminSettingsNetworkPage() {
       return { ...prev, [field]: [...current, nextLabel] };
     });
     setListErrors((prev) => ({ ...prev, [field]: "" }));
+  }
+
+  /**
+   * Age groups are read in order (Warrior, Freshman, ...), so the director's
+   * arrangement is the data, not a display preference. Order is saved as-is.
+   */
+  function reorderLabel(field, from, to) {
+    setForm((prev) => {
+      const current = Array.isArray(prev[field]) ? prev[field] : [];
+      if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return prev;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...prev, [field]: next };
+    });
   }
 
   function removeLabel(field, index) {
@@ -1623,6 +1706,7 @@ export function DirectorAdminSettingsNetworkPage() {
             onDraftChange={setAgeGroupDraft}
             onAdd={() => { addLabel("ageGroups", ageGroupDraft); setAgeGroupDraft(""); }}
             onRemove={(index) => removeLabel("ageGroups", index)}
+            onReorder={(from, to) => reorderLabel("ageGroups", from, to)}
           />
           <LabelListEditor
             label="Staff roles"
@@ -1634,6 +1718,7 @@ export function DirectorAdminSettingsNetworkPage() {
             onDraftChange={setStaffRoleDraft}
             onAdd={() => { addLabel("staffRoles", staffRoleDraft); setStaffRoleDraft(""); }}
             onRemove={(index) => removeLabel("staffRoles", index)}
+            onReorder={(from, to) => reorderLabel("staffRoles", from, to)}
           />
         </div>
       </Card>

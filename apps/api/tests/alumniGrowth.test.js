@@ -291,4 +291,32 @@ describe("unified people directory", () => {
     });
     expect(people[0].stage).toBe("on_hold");
   });
+
+  test("counts a member who has no email address on file", () => {
+    const { people, counts } = buildPeopleDirectory({
+      users: [
+        { _id: "u1", email: "has@example.org" },
+        { _id: "u2", email: "" }
+      ],
+      profiles: [
+        { _id: "p1", userId: "u1", emails: ["has@example.org"] },
+        { _id: "p2", userId: "u2", firstName: "Nomail" }
+      ]
+    });
+
+    expect(counts.member).toBe(2);
+    const nomail = people.find((person) => person.firstName === "Nomail");
+    expect(nomail.stage).toBe("member");
+    // The synthetic key must never leak into the address shown in the UI.
+    expect(nomail.email).toBe("");
+  });
+
+  test("counts one member when the profile email differs from the user email", () => {
+    const { counts } = buildPeopleDirectory({
+      users: [{ _id: "u1", email: "login@example.org" }],
+      profiles: [{ _id: "p1", userId: "u1", emails: ["contact@example.org"] }]
+    });
+
+    expect(counts.member).toBe(1);
+  });
 });

@@ -208,23 +208,44 @@ export async function trackInvitedAlumniContact(options = {}) {
   }
 }
 
-function membersByEmail({ users = [], profiles = [] }) {
+/**
+ * Members whose account carries no email address still exist and still count.
+ * Keying them by their own id keeps them in the directory instead of dropping
+ * them, which is what made the Members badge disagree with the member table.
+ */
+const MEMBER_IDENTITY_PREFIX = "member:";
+
+export function isMemberIdentity(key = "") {
+  return String(key || "").startsWith(MEMBER_IDENTITY_PREFIX);
+}
+
+function membersByIdentity({ users = [], profiles = [] }) {
   const usersById = new Map(users.map((user) => [String(user?._id || user?.id || ""), user]));
   const profilesByUserId = new Map(
     profiles.map((profile) => [String(profile?.userId || ""), profile])
   );
   const map = new Map();
+  // One account is one member. Tracking the user ids we have already indexed
+  // stops a profile whose email differs from its user's from being counted a
+  // second time as a separate person.
+  const claimedUserIds = new Set();
   for (const user of users) {
     const userId = String(user?._id || user?.id || "");
     const profile = profilesByUserId.get(userId) || null;
     const email = normalizeEmail(user?.email || profileEmail(profile));
-    if (!email) continue;
-    map.set(email, { user, profile });
+    const identity = email || (userId ? `${MEMBER_IDENTITY_PREFIX}${userId}` : "");
+    if (!identity) continue;
+    if (userId) claimedUserIds.add(userId);
+    map.set(identity, { user, profile, email });
   }
   for (const profile of profiles) {
+    const ownerId = String(profile?.userId || "");
+    if (ownerId && claimedUserIds.has(ownerId)) continue;
     const email = profileEmail(profile);
-    if (!email || map.has(email)) continue;
-    map.set(email, { user: usersById.get(String(profile?.userId || "")) || null, profile });
+    const profileId = ownerId || String(profile?._id || profile?.id || "");
+    const identity = email || (profileId ? `${MEMBER_IDENTITY_PREFIX}${profileId}` : "");
+    if (!identity || map.has(identity)) continue;
+    map.set(identity, { user: usersById.get(ownerId) || null, profile, email });
   }
   return map;
 }
@@ -300,7 +321,7 @@ function indexPeopleSources({
   now = new Date()
 } = {}) {
   const nowMs = new Date(now).getTime();
-  const memberMap = membersByEmail({ users, profiles });
+  const memberMap = membersByIdentity({ users, profiles });
 
   const contactMap = new Map();
   for (const contact of contacts) {
@@ -349,7 +370,13 @@ function indexPeopleSources({
     ...invitesByEmail.keys()
   ]);
 
-  return { emails, memberMap, contactMap, requestMap, invitesByEmail, stageFor };
+  function emailFor(key) {
+    const member = memberMap.get(key);
+    if (member) return String(member.email || "");
+    return isMemberIdentity(key) ? "" : key;
+  }
+
+  return { emails, memberMap, contactMap, requestMap, invitesByEmail, stageFor, emailFor };
 }
 
 /**
@@ -399,12 +426,14 @@ export function buildPeopleDirectory({
     if (!current || eventAt > current) activityByUserId.set(userId, eventAt);
   }
 
-  const people = [...index.emails].map((email) => {
-    const contact = index.contactMap.get(email) || null;
-    const member = index.memberMap.get(email) || null;
-    const request = index.requestMap.get(email) || null;
-    const latestInvite = index.invitesByEmail.get(email)?.[0] || null;
-    const stage = index.stageFor(email);
+  const people = [...index.emails].map((key) => {
+    const contact = index.contactMap.get(key) || null;
+    const member = index.memberMap.get(key) || null;
+    const request = index.requestMap.get(key) || null;
+    const latestInvite = index.invitesByEmail.get(key)?.[0] || null;
+    const stage = index.stageFor(key);
+    // A member with no address keeps a synthetic key; never show it as an email.
+    const email = index.emailFor(key);
     const profile = member?.profile || null;
     const user = member?.user || null;
     const userId = String(user?._id || user?.id || profile?.userId || "");
@@ -418,7 +447,7 @@ export function buildPeopleDirectory({
     );
 
     return {
-      key: email,
+      key,
       email,
       firstName,
       lastName,
@@ -438,7 +467,7 @@ export function buildPeopleDirectory({
       lastActiveAt: iso(activityByUserId.get(userId)),
       inviteCount: Math.max(
         Number(contact?.inviteCount || 0),
-        index.invitesByEmail.get(email)?.length || 0
+        index.invitesByEmail.get(key)?.length || 0
       ),
       lastInvitedAt: iso(contact?.lastInvitedAt || latestInvite?.createdAt),
       inviteExpiresAt: iso(latestInvite?.expiresAt),
@@ -469,8 +498,14 @@ export function buildAlumniGrowthSnapshot({
 } = {}) {
   const nowDate = new Date(now);
   const nowMs = nowDate.getTime();
-  const memberMap = membersByEmail({ users, profiles });
-  const joinedEmails = new Set(memberMap.keys());
+  const memberMap = membersByIdentity({ users, profiles });
+  const joinedEmails = new Set(
+    [...memberMap.values()].map((entry) => entry.email).filter(Boolean)
+  );
+  // A member with no address on file still joined. They cannot be matched to a
+  // contact or invite by email, but they must not vanish from the totals.
+  const joinedMemberCount = memberMap.size;
+  const emaillessMemberCount = Math.max(0, joinedMemberCount - joinedEmails.size);
   const contactMap = new Map();
   for (const contact of contacts) {
     const email = normalizeEmail(contact?.email);
@@ -599,16 +634,17 @@ export function buildAlumniGrowthSnapshot({
   const conversionRate = invitedEmails.size
     ? Math.round((convertedEmails.size / invitedEmails.size) * 100)
     : 0;
-  const weeklyActiveRate = joinedEmails.size
-    ? Math.round((active7dEmails.size / joinedEmails.size) * 100)
+  const knownAlumniCount = knownEmails.size + emaillessMemberCount;
+  const weeklyActiveRate = joinedMemberCount
+    ? Math.round((active7dEmails.size / joinedMemberCount) * 100)
     : 0;
 
   return {
     generatedAt: nowDate.toISOString(),
     metrics: {
-      knownAlumni: knownEmails.size,
-      joinedMembers: joinedEmails.size,
-      notJoined: Math.max(0, knownEmails.size - joinedEmails.size),
+      knownAlumni: knownAlumniCount,
+      joinedMembers: joinedMemberCount,
+      notJoined: Math.max(0, knownAlumniCount - joinedMemberCount),
       neverInvited: neverInvitedEmails.size,
       pendingInvites: pendingInviteEmails.size,
       expiredInvites: expiredInviteEmails.size,
@@ -621,9 +657,9 @@ export function buildAlumniGrowthSnapshot({
       incompleteProfiles: incompleteProfiles.length
     },
     funnel: [
-      { key: "known", label: "Known alumni", count: knownEmails.size },
+      { key: "known", label: "Known alumni", count: knownAlumniCount },
       { key: "invited", label: "Invited", count: invitedEmails.size },
-      { key: "joined", label: "Joined", count: joinedEmails.size },
+      { key: "joined", label: "Joined", count: joinedMemberCount },
       { key: "active", label: "Active this week", count: active7dEmails.size }
     ],
     opportunities: [

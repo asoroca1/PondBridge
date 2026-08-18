@@ -6979,6 +6979,76 @@ router.patch("/growth/contacts/:contactId", async (req, res, next) => {
   }
 });
 
+/**
+ * Erases someone who never became a member: their contact row, every invitation
+ * sent to them, and any pending access request. This is deliberate and final,
+ * so it refuses anyone who has actually joined -- deleting a real account goes
+ * through /members/:profileId/hard-delete, which also cleans up their content.
+ */
+router.delete("/growth/people/:email/purge", async (req, res, next) => {
+  try {
+    const email = normalizeEmail(decodeURIComponent(String(req.params.email || "")));
+    if (!email) {
+      return res.status(400).json({
+        error: { code: "PERSON_EMAIL_REQUIRED", message: "An email address is required." }
+      });
+    }
+
+    const joinedUser = await UserModel.findOne(req.tenant._id, { email });
+    if (joinedUser) {
+      return res.status(409).json({
+        error: {
+          code: "PERSON_ALREADY_JOINED",
+          message: "This person has joined. Remove them from Members instead."
+        }
+      });
+    }
+
+    const [contacts, invites, requests] = await Promise.all([
+      AlumniContactModel.find(req.tenant._id, { email }),
+      InviteModel.find(req.tenant._id, { email }),
+      AccessRequestModel.find(req.tenant._id, { email })
+    ]);
+
+    if (!contacts.length && !invites.length && !requests.length) {
+      return res.status(404).json({
+        error: { code: "PERSON_NOT_FOUND", message: "There is nothing left to delete for this person." }
+      });
+    }
+
+    for (const contact of contacts) await AlumniContactModel.delete(contact._id);
+    for (const invite of invites) await InviteModel.delete(invite._id);
+    for (const request of requests) await AccessRequestModel.delete(request._id);
+
+    await writeAdminAudit(req, "admin_person_purged", {
+      email,
+      contactCount: contacts.length,
+      inviteCount: invites.length,
+      requestCount: requests.length
+    });
+    clearAdminReadCaches();
+
+    return res.json({
+      ok: true,
+      deleted: {
+        contacts: contacts.length,
+        invites: invites.length,
+        requests: requests.length
+      }
+    });
+  } catch (error) {
+    if (isAlumniGrowthStorageUnavailable(error)) {
+      return res.status(503).json({
+        error: {
+          code: "ALUMNI_CONTACT_STORAGE_UNAVAILABLE",
+          message: "Pre-member alumni storage is not ready."
+        }
+      });
+    }
+    return next(error);
+  }
+});
+
 router.get("/invites", async (req, res) => {
   const status = String(req.query.status || "pending").trim().toLowerCase();
   const now = new Date();

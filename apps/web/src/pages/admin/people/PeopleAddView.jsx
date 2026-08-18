@@ -102,7 +102,7 @@ export function validateRows(rows = []) {
   return { ready, problems };
 }
 
-export default function PeopleAddView({ actions, storage, slug = "", networkName = "", onInvite, onDone }) {
+export default function PeopleAddView({ actions, storage, slug = "", networkName = "", onDone }) {
   const [rows, setRows] = useState(() => padRows([]));
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -113,6 +113,9 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
 
   const { ready, problems } = useMemo(() => validateRows(rows), [rows]);
   const canSubmit = ready.length > 0 && problems.size === 0;
+  // Saving prospects wants a clean sheet, but a bad row should not block
+  // inviting the good ones -- the skipped rows are reported instead.
+  const canInvite = ready.length > 0;
   const storageReady = storage?.available !== false;
   const hasCustomMessage = Boolean(inviteMessage.subject || inviteMessage.message);
 
@@ -218,15 +221,27 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
     onDone?.();
   }
 
-  function startInvite() {
-    if (!canSubmit) {
-      setError("Add a valid email address on every row.");
+  async function startInvite() {
+    if (!canInvite) {
+      setError("Add at least one valid email address.");
       return;
     }
-    onInvite(
+    setError("");
+    setStatus("");
+    const result = await actions.sendInvitesNow(
       ready.map((person) => ({ ...person, stage: "prospect" })),
       { customSubject: inviteMessage.subject, customMessage: inviteMessage.message }
     );
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    const skippedRows = problems.size
+      ? ` ${problems.size} row${problems.size === 1 ? "" : "s"} skipped for a bad email address.`
+      : "";
+    setRows(padRows([]));
+    setStatus(`${result.message}${skippedRows}`);
+    onDone?.();
   }
 
   return (
@@ -350,9 +365,14 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
           <UserPlus aria-hidden="true" />
           Save as prospects
         </Button>
-        <Button type="button" onClick={startInvite} disabled={!canSubmit}>
+        <Button
+          type="button"
+          onClick={startInvite}
+          loading={actions.busy === "invite"}
+          disabled={!canInvite}
+        >
           <Send aria-hidden="true" />
-          Review and invite {ready.length || ""}
+          Send {ready.length || ""} invitation{ready.length === 1 ? "" : "s"}
         </Button>
       </div>
 
