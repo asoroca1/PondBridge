@@ -5,6 +5,7 @@ import { Button } from "@pondbridge/ui";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { resolveNetworkDisplayName } from "../lib/campLabels.js";
+import { buildClerkSignupContext } from "../lib/clerkSignupContext.js";
 
 function routeWithSlug(slug, path, useSlugPrefix = true) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -169,6 +170,7 @@ export default function DirectorCreateAccountClerkPage() {
             <SignUp
               path={signUpPath}
               routing="path"
+              unsafeMetadata={buildClerkSignupContext(slug, "director")}
               withSignIn={false}
               signInUrl={signInPath}
               fallbackRedirectUrl={callbackPath}
