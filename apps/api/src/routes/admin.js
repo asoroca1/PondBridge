@@ -4929,7 +4929,11 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       text: personalizedText,
       headers: {
         "List-Unsubscribe": `<${preferenceUrls.oneClickUrl}>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        // Identifies the camp's community list. Receivers use it to group a
+        // sender's bulk mail and score it as list traffic rather than as an
+        // unrecognised one-off.
+        "List-ID": `${req.tenant.slug}.community <community.${req.tenant.slug}.pondbridgealumni.com>`
       }
     };
   };
