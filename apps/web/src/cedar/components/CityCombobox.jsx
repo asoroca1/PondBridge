@@ -200,7 +200,7 @@ export default function CityCombobox({
             right: 0,
             zIndex: 50,
             background: "var(--surface, #fff)",
-            border: "1px solid var(--border, #d0d5dd)",
+            border: "1px solid var(--border, var(--neutral-300))",
             borderRadius: 8,
             marginTop: 4,
             padding: 4,
@@ -249,7 +249,7 @@ export default function CityCombobox({
                 cursor: saving ? "progress" : "pointer",
                 fontSize: 13,
                 background: highlight === results.length ? "rgba(0,0,0,0.06)" : "transparent",
-                borderTop: results.length ? "1px solid var(--border, #e5e7eb)" : "none"
+                borderTop: results.length ? "1px solid var(--border, var(--neutral-200))" : "none"
               }}
             >
               {saving ? "Adding…" : `Add "${input.trim()}" as a new location`}

@@ -9,7 +9,7 @@
   gap: 14px;
 
   background: var(--card, #ffffff);
-  border: 1px solid var(--card-border, #e4e7ee);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-xl);
   padding: 14px 16px;
   margin: 0 0 16px;
@@ -33,7 +33,7 @@
   font-size: 22px;
   line-height: 1.2;
   letter-spacing: -0.01em;
-  color: var(--text, #0f172a);
+  color: var(--text, var(--neutral-900));
 }
 
 .cedar-ph-icon {
@@ -43,17 +43,17 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-pill);
-  background: #eef3ff;
+  background: var(--neutral-50);
   background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
   color: var(--brand-primary);
-  border: 1px solid #d8def0;
-  border-color: color-mix(in srgb, var(--brand-primary) 24%, #d8def0);
+  border: 1px solid var(--neutral-200);
+  border-color: color-mix(in srgb, var(--brand-primary) 24%, var(--neutral-200));
 }
 
 .cedar-ph-sub {
   margin: 0;
   font-size: 13px;
-  color: var(--text-muted, #6b7280);
+  color: var(--text-muted, var(--neutral-500));
 }
 
 /* Stack on narrow screens */

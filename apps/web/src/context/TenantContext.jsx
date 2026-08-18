@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { normalizeHeroImagePosition, normalizeHeroImageSize, resolveTenantModules } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
+import { NEUTRAL_RAMP, brandNeutral, readableTextColorOnBrand } from "../lib/colorUtils.js";
 
 const TenantContext = createContext(null);
 const TENANT_THEME_CACHE_PREFIX = "pondbridgeTenantTheme:";
@@ -22,7 +23,7 @@ const FONT_TOKEN_MAP = {
   }
 };
 
-function normalizeHexColor(value = "", fallback = "#002b5c") {
+function normalizeHexColor(value = "", fallback = "#404040") {
   const raw = String(value || "").trim();
   const hex = raw.startsWith("#") ? raw.slice(1) : raw;
   if (/^[0-9a-fA-F]{6}$/.test(hex)) return `#${hex.toLowerCase()}`;
@@ -36,7 +37,7 @@ function normalizeHexColor(value = "", fallback = "#002b5c") {
   return fallback;
 }
 
-function hexToRgb(hex = "#002b5c") {
+function hexToRgb(hex = "#404040") {
   const normalized = normalizeHexColor(hex).replace("#", "");
   return {
     r: Number.parseInt(normalized.slice(0, 2), 16),
@@ -67,35 +68,6 @@ function rgbaFromHex(hex, alpha = 1) {
   return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
 }
 
-function linearizeSrgbChannel(channel = 0) {
-  const normalized = Math.max(0, Math.min(255, Number(channel) || 0)) / 255;
-  if (normalized <= 0.04045) return normalized / 12.92;
-  return ((normalized + 0.055) / 1.055) ** 2.4;
-}
-
-function relativeLuminance(hex = "#002b5c") {
-  const { r, g, b } = hexToRgb(hex);
-  return (
-    0.2126 * linearizeSrgbChannel(r) +
-    0.7152 * linearizeSrgbChannel(g) +
-    0.0722 * linearizeSrgbChannel(b)
-  );
-}
-
-function contrastRatio(baseHex = "#002b5c", candidateHex = "#ffffff") {
-  const base = relativeLuminance(baseHex);
-  const candidate = relativeLuminance(candidateHex);
-  const brightest = Math.max(base, candidate);
-  const darkest = Math.min(base, candidate);
-  return (brightest + 0.05) / (darkest + 0.05);
-}
-
-function readableTextColorOnBrand(brandHex = "#002b5c") {
-  const light = "#ffffff";
-  const dark = "#0f172a";
-  return contrastRatio(brandHex, light) >= contrastRatio(brandHex, dark) ? light : dark;
-}
-
 function applyTheme(config = {}) {
   const root = document.documentElement;
   const branding = config?.branding || config?.theme || {};
@@ -108,13 +80,16 @@ function applyTheme(config = {}) {
   const heroImageSize = normalizeHeroImageSize(
     branding.heroImageSizeLanding || branding.heroImageSize || ""
   );
-  const brandPrimary = normalizeHexColor(branding.brandPrimary || "#002b5c");
+  const brandPrimary = normalizeHexColor(branding.brandPrimary || "#404040");
   const brandPrimaryHover = mixHex(brandPrimary, "#000000", 0.16);
   const brandPrimaryStrong = mixHex(brandPrimary, "#000000", 0.24);
   const brandPrimarySoft = mixHex(brandPrimary, "#ffffff", 0.46);
   const brandPrimarySoftStrong = mixHex(brandPrimary, "#ffffff", 0.28);
-  const cardBorder = mixHex(brandPrimary, "#dfe6ef", 0.84);
-  const textMuted = mixHex(brandPrimary, "#64748b", 0.74);
+  // Very light brand tints for washes and veils that used to be pale blues.
+  const brandPrimaryVeil = mixHex(brandPrimary, "#ffffff", 0.82);
+  const brandPrimaryWash = mixHex(brandPrimary, "#ffffff", 0.93);
+  const cardBorder = brandNeutral(brandPrimary, { saturation: 16, lightness: 87 });
+  const textMuted = brandNeutral(brandPrimary, { saturation: 14, lightness: 42 });
   const brandPrimaryRgb = hexToRgb(brandPrimary);
   const brandOnPrimary = readableTextColorOnBrand(brandPrimary);
   const brandOnPrimaryRgb = hexToRgb(brandOnPrimary);
@@ -124,19 +99,27 @@ function applyTheme(config = {}) {
   root.style.setProperty("--brand-primary-strong", brandPrimaryStrong);
   root.style.setProperty("--brand-primary-soft", brandPrimarySoft);
   root.style.setProperty("--brand-primary-soft-strong", brandPrimarySoftStrong);
+  root.style.setProperty("--brand-primary-veil", brandPrimaryVeil);
+  root.style.setProperty("--brand-primary-wash", brandPrimaryWash);
   root.style.setProperty("--brand-primary-rgb", `${brandPrimaryRgb.r}, ${brandPrimaryRgb.g}, ${brandPrimaryRgb.b}`);
   root.style.setProperty("--brand-on-primary", brandOnPrimary);
   root.style.setProperty("--brand-on-primary-rgb", `${brandOnPrimaryRgb.r}, ${brandOnPrimaryRgb.g}, ${brandOnPrimaryRgb.b}`);
   root.style.setProperty("--brand-primary-shadow", rgbaFromHex(brandPrimary, 0.2));
   root.style.setProperty("--brand-primary-focus", rgbaFromHex(brandPrimary, 0.22));
   root.style.setProperty("--brand-primary-tint", rgbaFromHex(brandPrimary, 0.12));
-  root.style.setProperty("--brand-secondary", branding.brandSecondary || "#d3dde8");
+  root.style.setProperty("--brand-secondary", branding.brandSecondary || "#e6e6e6");
   root.style.setProperty("--brand-accent", branding.brandAccent || "#f2b134");
-  root.style.setProperty("--bg", branding.bg || "#f5f7fa");
-  root.style.setProperty("--text", branding.text || "#0f172a");
+  root.style.setProperty("--bg", branding.bg || "#fafafa");
+  root.style.setProperty("--text", branding.text || "#1c1c1c");
   root.style.setProperty("--text-muted", branding.textMuted || textMuted);
   root.style.setProperty("--card", branding.card || "#ffffff");
   root.style.setProperty("--card-border", branding.cardBorder || cardBorder);
+
+  // Neutral ramp in the brand's own hue. The stylesheet used to hardcode a
+  // slate scale, which painted blue-grey chrome onto every non-blue camp.
+  for (const [step, stop] of Object.entries(NEUTRAL_RAMP)) {
+    root.style.setProperty(`--neutral-${step}`, brandNeutral(brandPrimary, stop));
+  }
   root.style.setProperty("--font-display", font.display);
   root.style.setProperty("--font-body", font.body);
   root.style.setProperty("--font-family", font.body);

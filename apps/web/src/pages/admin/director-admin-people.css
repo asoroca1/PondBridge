@@ -1,13 +1,13 @@
 /* Director People workspace — stage rail + list + detail pane. */
 
 .pb-people {
-  --pb-people-border: #dde5ef;
-  --pb-people-border-soft: #e9eef5;
+  --pb-people-border: var(--neutral-200);
+  --pb-people-border-soft: var(--neutral-100);
   --pb-people-surface: #fff;
   --pb-people-surface-alt: #f6f8fb;
-  --pb-people-ink: #16283d;
-  --pb-people-ink-soft: #5d7186;
-  --pb-people-accent: var(--brand-primary, #1e5cb3);
+  --pb-people-ink: var(--neutral-800);
+  --pb-people-ink-soft: var(--neutral-500);
+  --pb-people-accent: var(--brand-primary, var(--brand-primary));
 
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
@@ -283,17 +283,17 @@
   flex: none;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #eef1f6;
-  color: #4a5b70;
+  background: var(--neutral-100);
+  color: var(--neutral-600);
   font-size: 0.72rem;
   font-weight: 700;
 }
 
 .pb-people-stage.tone-success { background: #e5f4ea; color: #276b45; }
-.pb-people-stage.tone-info { background: #e6eefb; color: #23548f; }
+.pb-people-stage.tone-info { background: var(--neutral-100); color: var(--brand-primary); }
 .pb-people-stage.tone-attention { background: #fbe9e7; color: #a33f33; }
 .pb-people-stage.tone-warning { background: #fdf1dd; color: #7a5810; }
-.pb-people-stage.tone-muted { background: #eef1f6; color: #6b7a8d; }
+.pb-people-stage.tone-muted { background: var(--neutral-100); color: var(--neutral-500); }
 
 .pb-people-placeholder,
 .pb-people-empty {
@@ -439,7 +439,7 @@
   max-width: 120px;
   height: 6px;
   border-radius: 999px;
-  background: #e4eaf2;
+  background: var(--neutral-200);
   overflow: hidden;
 }
 
@@ -691,13 +691,13 @@
 /* The dialog declares its own tokens so it renders correctly wherever it is
    mounted, including if it is ever portalled out of the workspace. */
 .pb-cedar-page .pb-people-export-modal {
-  --pb-people-border: var(--director-admin-surface-border, #dde5ef);
-  --pb-people-border-soft: var(--director-admin-surface-border-soft, #e9eef5);
+  --pb-people-border: var(--director-admin-surface-border, var(--neutral-200));
+  --pb-people-border-soft: var(--director-admin-surface-border-soft, var(--neutral-100));
   --pb-people-surface: var(--director-admin-surface-bg, #fff);
   --pb-people-surface-alt: var(--director-admin-surface-bg-strong, #f6f8fb);
-  --pb-people-ink: var(--director-admin-ink, #16283d);
-  --pb-people-ink-soft: var(--director-admin-ink-soft, #5d7186);
-  --pb-people-accent: var(--brand-primary, #1e5cb3);
+  --pb-people-ink: var(--director-admin-ink, var(--neutral-800));
+  --pb-people-ink-soft: var(--director-admin-ink-soft, var(--neutral-500));
+  --pb-people-accent: var(--brand-primary, var(--brand-primary));
 
   width: min(940px, 100%);
 }
@@ -915,12 +915,12 @@
 /* --- Dark surface support --- */
 
 .director-admin-scope .pb-people {
-  --pb-people-border: var(--director-admin-surface-border, #dde5ef);
-  --pb-people-border-soft: var(--director-admin-surface-border-soft, #e9eef5);
+  --pb-people-border: var(--director-admin-surface-border, var(--neutral-200));
+  --pb-people-border-soft: var(--director-admin-surface-border-soft, var(--neutral-100));
   --pb-people-surface: var(--director-admin-surface-bg, #fff);
   --pb-people-surface-alt: var(--director-admin-surface-bg-strong, #f6f8fb);
-  --pb-people-ink: var(--director-admin-ink, #16283d);
-  --pb-people-ink-soft: var(--director-admin-ink-soft, #5d7186);
+  --pb-people-ink: var(--director-admin-ink, var(--neutral-800));
+  --pb-people-ink-soft: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 /* --- Responsive --- */

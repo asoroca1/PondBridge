@@ -30,10 +30,10 @@ export default function TenantAdminPage() {
   const [banner, setBanner] = useState("");
   const [accessSettings, setAccessSettings] = useState({ signupMode: "open", accessCode: "" });
   const [theme, setTheme] = useState({
-    brandPrimary: "#002b5c",
-    brandSecondary: "#d3dde8",
-    bg: "#f5f7fa",
-    text: "#0f172a",
+    brandPrimary: "var(--brand-primary-strong)",
+    brandSecondary: "var(--neutral-200)",
+    bg: "#fafafa",
+    text: "var(--neutral-900)",
     card: "#ffffff"
   });
   const canExportPdf = tenantHasFeature(tenant, "pdfExport");
@@ -55,10 +55,10 @@ export default function TenantAdminPage() {
         accessCode: ""
       });
       setTheme({
-        brandPrimary: overviewPayload.tenant?.theme?.brandPrimary || "#002b5c",
-        brandSecondary: overviewPayload.tenant?.theme?.brandSecondary || "#d3dde8",
-        bg: overviewPayload.tenant?.theme?.bg || "#f5f7fa",
-        text: overviewPayload.tenant?.theme?.text || "#0f172a",
+        brandPrimary: overviewPayload.tenant?.theme?.brandPrimary || "var(--brand-primary-strong)",
+        brandSecondary: overviewPayload.tenant?.theme?.brandSecondary || "var(--neutral-200)",
+        bg: overviewPayload.tenant?.theme?.bg || "#fafafa",
+        text: overviewPayload.tenant?.theme?.text || "var(--neutral-900)",
         card: overviewPayload.tenant?.theme?.card || "#ffffff"
       });
     } catch (loadError) {

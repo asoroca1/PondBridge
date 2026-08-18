@@ -358,12 +358,16 @@ export function resolveTheme(tenant) {
   const defaultPosition = normalizeHeroImagePosition(live.heroImagePosition || "");
   const defaultSize = normalizeHeroImageSize(live.heroImageSize || "");
   return {
-    brandPrimary: String(live.brandPrimary || "#002b5c"),
-    brandSecondary: String(live.brandSecondary || "#d3dde8"),
+    brandPrimary: String(live.brandPrimary || "#404040"),
+    brandSecondary: String(live.brandSecondary || "#e6e6e6"),
     brandAccent: String(live.brandAccent || "#f2b134"),
-    bg: String(live.bg || "#f5f7fa"),
-    text: String(live.text || "#0f172a"),
+    bg: String(live.bg || "#fafafa"),
+    text: String(live.text || "#1c1c1c"),
     card: String(live.card || "#ffffff"),
+    // Empty means the client derives these from brandPrimary, which is the
+    // normal case; a value here lets a camp pin its own neutrals.
+    textMuted: String(live.textMuted || ""),
+    cardBorder: String(live.cardBorder || ""),
     logoUrl: String(live.logoUrl || ""),
     heroImageUrl: String(live.heroImageUrl || ""),
     heroImagePosition: defaultPosition,

@@ -338,12 +338,16 @@ export const resumeProfileSchema = z.object({
 });
 
 export const tenantThemeSchema = z.object({
-  brandPrimary: z.string().trim().min(1).default("#002b5c"),
-  brandSecondary: z.string().trim().min(1).default("#d3dde8"),
+  brandPrimary: z.string().trim().min(1).default("#404040"),
+  brandSecondary: z.string().trim().min(1).default("#e6e6e6"),
   brandAccent: z.string().trim().default("#f2b134"),
-  bg: z.string().trim().default("#f5f7fa"),
-  text: z.string().trim().default("#0f172a"),
+  bg: z.string().trim().default("#fafafa"),
+  text: z.string().trim().default("#1c1c1c"),
   card: z.string().trim().default("#ffffff"),
+  // Optional overrides for the two neutrals the client otherwise derives from
+  // brandPrimary. Empty means "derive it", which is the normal case.
+  textMuted: z.string().trim().default(""),
+  cardBorder: z.string().trim().default(""),
   logoUrl: z.string().trim().default(""),
   heroImageUrl: z.string().trim().default(""),
   heroImagePosition: z

@@ -17,7 +17,7 @@
   justify-content: space-between;
   gap: 12px;
   background: #fff;
-  border: 1px solid #e4e7ee;
+  border: 1px solid var(--neutral-200);
   border-radius: var(--radius-xl);
   padding: 14px 16px;
   box-shadow: var(--shadow-sm);
@@ -36,22 +36,22 @@
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: #eef3ff;
+  background: var(--neutral-50);
   color: var(--brand-primary);
-  border: 1px solid #d8def0;
+  border: 1px solid var(--neutral-200);
 }
 
 .ft-title {
   margin: 0;
   font-size: 22px;
   line-height: 1.2;
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .ft-sub {
   margin: 4px 0 0;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--neutral-500);
 }
 
 .ft-toolbar {
@@ -64,7 +64,7 @@
   display: block;
   margin-bottom: 8px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--neutral-500);
 }
 
 .ft-search-nav {
@@ -88,9 +88,9 @@
 .ft-status {
   margin-top: 14px;
   background: #fff;
-  border: 1px dashed #d9dee8;
+  border: 1px dashed var(--neutral-200);
   border-radius: 12px;
-  color: #4b5563;
+  color: var(--neutral-600);
   padding: 12px;
 }
 
@@ -103,10 +103,10 @@
 .ft-empty {
   margin-top: 14px;
   background: #fff;
-  border: 1px dashed #d9dee8;
+  border: 1px dashed var(--neutral-200);
   border-radius: 14px;
   padding: 20px 16px;
-  color: #4b5563;
+  color: var(--neutral-600);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -116,7 +116,7 @@
 .ft-empty-title {
   font-size: 17px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .ft-empty-sub {
@@ -132,7 +132,7 @@
 
 .ft-card {
   background: #fff;
-  border: 1px solid var(--card-border, #e4e7ee);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-lg);
   padding: 14px;
   box-shadow: var(--shadow-sm);
@@ -144,7 +144,7 @@
 }
 
 .ft-card:hover {
-  border-color: #bcd1ee;
+  border-color: var(--neutral-300);
   box-shadow: var(--shadow-lg);
   transform: translateY(-1px);
 }
@@ -155,8 +155,8 @@
 }
 
 .ft-card.is-your {
-  border-color: #cbdcf7;
-  background: linear-gradient(180deg, #fff, #f8fbff);
+  border-color: var(--neutral-200);
+  background: linear-gradient(180deg, #fff, var(--neutral-50));
 }
 
 .ft-card-head {
@@ -168,16 +168,16 @@
 .ft-card-title {
   margin: 0;
   font-size: 18px;
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .ft-card-sub {
   font-size: 13px;
-  color: #5b6270;
+  color: var(--neutral-600);
 }
 
 .ft-card-meta {
-  color: #4b5563;
+  color: var(--neutral-600);
   font-size: 14px;
 }
 
@@ -189,7 +189,7 @@
 
 .ft-card-btn {
   appearance: none;
-  border: 1px solid #b8c6da;
+  border: 1px solid var(--neutral-300);
   border-radius: 12px;
   min-width: 96px;
   height: 44px;
@@ -223,12 +223,12 @@
 
 .ft-card-btn-ghost {
   background: #fff;
-  color: #1b2639;
+  color: var(--neutral-800);
 }
 
 .ft-card-btn-ghost:hover {
-  background: #f7fbff;
-  border-color: #9cb5d3;
+  background: var(--neutral-50);
+  border-color: var(--neutral-400);
 }
 
 @media (max-width: 760px) {
@@ -254,7 +254,7 @@
 
 .ft-simple-head {
   background: #fff;
-  border: 1px solid var(--card-border, #e4e7ee);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-xl);
   padding: 14px 16px;
   display: flex;
@@ -272,7 +272,7 @@
 
 .ft-form-card {
   background: #fff;
-  border: 1px solid var(--card-border, #d7dee9);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-lg);
   padding: 14px;
   box-shadow: var(--shadow-sm);
@@ -280,7 +280,7 @@
 
 .ft-form-title {
   margin: 0 0 10px;
-  color: #0f172a;
+  color: var(--neutral-900);
   font-size: 17px;
 }
 
@@ -292,29 +292,29 @@
 
 .ft-label {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--neutral-500);
 }
 
 .ft-input {
   width: 100%;
   background: #fff;
-  border: 1px solid #c5cfdd;
+  border: 1px solid var(--neutral-300);
   border-radius: 12px;
   padding: 12px 14px;
   outline: none;
   font: inherit;
   font-size: 16px;
   line-height: 1.35;
-  color: #0f172a;
+  color: var(--neutral-900);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .ft-input::placeholder {
-  color: #8f99a5;
+  color: var(--neutral-400);
 }
 
 .ft-input:focus {
-  border-color: #7f9bc0;
+  border-color: var(--brand-primary-soft);
   box-shadow: 0 0 0 3px var(--brand-primary-tint);
 }
 
@@ -329,7 +329,7 @@ select.ft-input {
   margin: 10px 0 0;
   padding: 0;
   list-style: none;
-  border: 1px solid #e6ebf3;
+  border: 1px solid var(--neutral-200);
   border-radius: 12px;
   max-height: 320px;
   overflow: auto;
@@ -343,15 +343,15 @@ select.ft-input {
 }
 
 .ft-result + .ft-result {
-  border-top: 1px solid #eef1f6;
+  border-top: 1px solid var(--neutral-100);
 }
 
 .ft-result.is-selected {
-  background: #f4f8ff;
+  background: var(--neutral-50);
 }
 
 .ft-result.muted {
-  color: #6b7280;
+  color: var(--neutral-500);
   font-size: 14px;
 }
 
@@ -383,12 +383,12 @@ select.ft-input {
 .ft-result-name {
   font-size: 14px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .ft-result-job {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--neutral-500);
 }
 
 .ft-inline-btn {
@@ -404,14 +404,14 @@ select.ft-input {
 
 .ft-members-head {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--neutral-500);
   margin-bottom: 6px;
 }
 
 .ft-members-empty {
-  border: 1px dashed #d9dee8;
+  border: 1px dashed var(--neutral-200);
   border-radius: 12px;
-  color: #6b7280;
+  color: var(--neutral-500);
   padding: 10px;
   font-size: 14px;
 }
@@ -426,9 +426,9 @@ select.ft-input {
 }
 
 .ft-member-chip {
-  border: 1px solid #dbe3ea;
+  border: 1px solid var(--neutral-200);
   border-radius: 999px;
-  background: #f8fbff;
+  background: var(--neutral-50);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -442,14 +442,14 @@ select.ft-input {
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
-  color: #334155;
+  color: var(--neutral-700);
 }
 
 .ft-you-chip {
   font-size: 11px;
   color: var(--brand-primary);
-  background: #e6eefb;
-  border: 1px solid #c7d8f7;
+  background: var(--neutral-100);
+  border: 1px solid var(--neutral-200);
   border-radius: 999px;
   padding: 2px 7px;
 }
@@ -473,19 +473,19 @@ select.ft-input {
   grid-template-columns: minmax(0, 1fr) minmax(160px, 220px) minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--neutral-200);
   border-radius: 12px;
   padding: 8px;
-  background: #f8fbff;
+  background: var(--neutral-50);
 }
 
 .ft-edge-row .ft-input {
-  border-color: #bcc9db;
+  border-color: var(--neutral-300);
   background: #fff;
 }
 
 .ft-main .btn-ghost {
-  border: 1px solid #c3cedd;
+  border: 1px solid var(--neutral-300);
   background: #fff;
 }
 
@@ -504,9 +504,9 @@ select.ft-input {
 
 .ft-head-btn {
   appearance: none;
-  border: 1px solid #b9c7da;
+  border: 1px solid var(--neutral-300);
   background: #fff;
-  color: #1b2639;
+  color: var(--neutral-800);
   border-radius: 14px;
   min-height: 44px;
   padding: 0 20px;
@@ -524,8 +524,8 @@ select.ft-input {
 }
 
 .ft-head-btn:hover {
-  background: #f7fbff;
-  border-color: #9cb5d3;
+  background: var(--neutral-50);
+  border-color: var(--neutral-400);
   box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
 }
 
@@ -559,7 +559,7 @@ select.ft-input {
 
 .ft-rel-card {
   background: #fff;
-  border: 1px solid var(--card-border, #e4e7ee);
+  border: 1px solid var(--card-border, var(--neutral-200));
   border-radius: var(--radius-lg);
   padding: 12px;
   box-shadow: var(--shadow-sm);
@@ -568,7 +568,7 @@ select.ft-input {
 .ft-rel-card h3 {
   margin: 0 0 10px;
   font-size: 15px;
-  color: #0f172a;
+  color: var(--neutral-900);
 }
 
 .ft-rel-list {
@@ -584,7 +584,7 @@ select.ft-input {
   display: flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid #edf0f6;
+  border: 1px solid var(--neutral-100);
   border-radius: 10px;
   padding: 8px;
   background: #fbfcfe;
@@ -606,7 +606,7 @@ select.ft-input {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  color: #5b6270;
+  color: var(--neutral-600);
   font-size: 12px;
 }
 
@@ -628,15 +628,15 @@ select.ft-input {
 .ft-leg-parent { border-top-color: var(--brand-primary-soft-strong); }
 .ft-leg-spouse { border-top-color: #b45309; border-top-style: dashed; }
 .ft-leg-sibling { border-top-color: #0f766e; border-top-style: dashed; }
-.ft-leg-cousin { border-top-color: #475569; border-top-style: dotted; }
+.ft-leg-cousin { border-top-color: var(--neutral-600); border-top-style: dotted; }
 
 .ft-tree-board {
   position: relative;
-  border: 1px solid #d7e0ed;
+  border: 1px solid var(--neutral-200);
   border-radius: var(--radius-lg);
   background:
     radial-gradient(circle at 16% 8%, rgba(214, 228, 247, 0.52), transparent 34%),
-    linear-gradient(180deg, #fcfdff, #f6f9ff);
+    linear-gradient(180deg, #fcfdff, var(--neutral-50));
   overflow: auto;
   padding: 16px;
   min-height: 260px;
@@ -676,7 +676,7 @@ select.ft-input {
 
 .ft-line-cousin {
   fill: none;
-  stroke: #475569;
+  stroke: var(--neutral-600);
   stroke-width: 1.8;
   stroke-dasharray: 2 5;
   opacity: 0.66;
@@ -702,7 +702,7 @@ select.ft-input {
 .ft-tree-node {
   width: 240px;
   min-height: 82px;
-  border: 1px solid #cfd9e8;
+  border: 1px solid var(--neutral-200);
   border-radius: var(--radius-lg);
   background: #fff;
   box-shadow: var(--shadow-sm);
@@ -715,13 +715,13 @@ select.ft-input {
 }
 
 .ft-tree-node.is-you {
-  border-color: #7fa3d6;
+  border-color: var(--brand-primary-soft);
   box-shadow: 0 0 0 3px var(--brand-primary-tint), 0 4px 12px rgba(15, 23, 42, 0.07);
 }
 
 .ft-tree-node:hover {
   transform: translateY(-1px);
-  border-color: #9eb6d8;
+  border-color: var(--neutral-300);
   box-shadow: 0 7px 16px rgba(15, 23, 42, 0.12);
 }
 
@@ -758,7 +758,7 @@ select.ft-input {
   font-size: 22px;
   line-height: 1.1;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--neutral-900);
   word-break: break-word;
 }
 
@@ -770,12 +770,12 @@ select.ft-input {
 }
 
 .ft-tree-rel-chip {
-  border: 1px solid #d7e0ec;
+  border: 1px solid var(--neutral-200);
   background: #fff;
   border-radius: 999px;
   padding: 6px 10px;
   font-size: 12px;
-  color: #334155;
+  color: var(--neutral-700);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -783,7 +783,7 @@ select.ft-input {
 }
 
 .ft-tree-rel-chip strong {
-  color: #0f172a;
+  color: var(--neutral-900);
   font-weight: 700;
 }
 

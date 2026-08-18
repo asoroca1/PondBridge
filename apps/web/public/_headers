@@ -4,7 +4,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com https://js.stripe.com https://static.cloudflareinsights.com https://challenges.cloudflare.com; connect-src 'self' https://api.pondbridgealumni.com https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com https://api.stripe.com https://r.stripe.com https://api.resend.com https://challenges.cloudflare.com ws: wss:; frame-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com https://js.stripe.com https://hooks.stripe.com https://challenges.cloudflare.com; worker-src 'self' blob: https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com https://js.stripe.com https://static.cloudflareinsights.com https://challenges.cloudflare.com; connect-src 'self' https://api.pondbridgealumni.com https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com https://api.stripe.com https://r.stripe.com https://api.resend.com https://challenges.cloudflare.com https://*.basemaps.cartocdn.com https://fonts.openmaptiles.org ws: wss:; frame-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com https://js.stripe.com https://hooks.stripe.com https://challenges.cloudflare.com; worker-src 'self' blob: https://*.clerk.accounts.dev https://*.clerk.com https://*.clerk.services https://clerk.pondbridgealumni.com https://accounts.pondbridgealumni.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;
   Cache-Control: public, max-age=0, must-revalidate
 
 /
@@ -30,3 +30,9 @@
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# The file has no extension, so the content type must be declared explicitly.
+# iOS refuses to verify Universal Links unless it is served as application/json.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400

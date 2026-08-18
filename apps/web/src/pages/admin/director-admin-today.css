@@ -19,7 +19,7 @@
 .pb-today-state.is-setup { color: #d3a13b; }
 
 .pb-today-updated {
-  color: #6d7f94;
+  color: var(--neutral-500);
   font-size: .82rem;
 }
 
@@ -43,9 +43,9 @@
   margin: 14px 0 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid #e4ebf3;
+  border: 1px solid var(--neutral-200);
   border-radius: 12px;
-  background: #e4ebf3;
+  background: var(--neutral-200);
   list-style: none;
 }
 
@@ -64,13 +64,13 @@
 
 .pb-today-queue-list strong {
   display: block;
-  color: #173756;
+  color: var(--neutral-800);
   font-size: .96rem;
 }
 
 .pb-today-queue-list p {
   margin: 3px 0 0;
-  color: #6d7f94;
+  color: var(--neutral-500);
   font-size: .85rem;
   line-height: 1.45;
 }
@@ -104,8 +104,8 @@
 }
 
 .pb-today-queue-list .is-low .pb-today-priority {
-  background: #eef2f7;
-  color: #57687d;
+  background: var(--neutral-100);
+  color: var(--neutral-600);
 }
 
 /* One line, not a panel. Nothing being wrong is the common case and does not
@@ -143,7 +143,7 @@
   flex-wrap: wrap;
   margin-top: 16px;
   padding-top: 15px;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--neutral-100);
 }
 
 .pb-today-shortcuts a {
@@ -151,19 +151,19 @@
   align-items: center;
   gap: 7px;
   padding: 8px 14px;
-  border: 1px solid #dce6f0;
+  border: 1px solid var(--neutral-200);
   border-radius: 999px;
   background: #fff;
-  color: #34485f;
+  color: var(--neutral-700);
   font-size: .87rem;
   font-weight: 700;
   text-decoration: none;
 }
 
 .pb-today-shortcuts a:hover {
-  border-color: #b9cde3;
-  background: #f6f9fc;
-  color: #173756;
+  border-color: var(--neutral-300);
+  background: var(--neutral-50);
+  color: var(--neutral-800);
 }
 
 .pb-today-shortcuts a svg {
@@ -172,12 +172,12 @@
 
 .pb-today-shortcuts a.is-primary {
   border-color: transparent;
-  background: var(--brand-primary, #1d5faa);
+  background: var(--brand-primary, var(--brand-primary));
   color: #fff;
 }
 
 .pb-today-shortcuts a.is-primary:hover {
-  background: var(--brand-primary, #1d5faa);
+  background: var(--brand-primary, var(--brand-primary));
   filter: brightness(1.08);
   color: #fff;
 }
@@ -238,13 +238,13 @@
 
 .pb-today-section-head h2 {
   margin: 0;
-  color: #173756;
+  color: var(--neutral-800);
   font-size: 1.12rem;
 }
 
 .pb-today-section-head p {
   margin: 3px 0 0;
-  color: #6d7f94;
+  color: var(--neutral-500);
   font-size: .88rem;
 }
 
@@ -253,7 +253,7 @@
   align-items: center;
   gap: 5px;
   flex: none;
-  color: var(--brand-primary, #1d5faa);
+  color: var(--brand-primary, var(--brand-primary));
   font-size: .86rem;
   font-weight: 700;
   white-space: nowrap;
@@ -263,7 +263,7 @@
    their own — so they lose the lift that made them read as separate objects. */
 .pb-cedar-page .pb-today-section .director-admin-chart-card,
 .pb-cedar-page .pb-today-section .director-admin-breakdown-card {
-  border-color: #e4ebf3;
+  border-color: var(--neutral-200);
   background: #fbfcfe;
   box-shadow: none;
 }

@@ -21,7 +21,7 @@
 .pb-billing-summary span {
   font-size: .74rem;
   font-weight: 700;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -29,12 +29,12 @@
 .pb-billing-summary strong {
   font-size: 1.3rem;
   line-height: 1.2;
-  color: var(--director-admin-ink, #16283d);
+  color: var(--director-admin-ink, var(--neutral-800));
 }
 
 .pb-billing-summary small {
   font-size: .8rem;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 .pb-billing-actions {
@@ -44,7 +44,7 @@
   flex-wrap: wrap;
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid var(--director-admin-surface-border-soft, #e9eef5);
+  border-top: 1px solid var(--director-admin-surface-border-soft, var(--neutral-100));
 }
 
 .pb-billing-plans { display: grid; gap: 8px; margin-top: 10px; }
@@ -56,24 +56,24 @@
   gap: 14px;
   flex-wrap: wrap;
   padding: 13px 15px;
-  border: 1px solid var(--director-admin-surface-border, #dde5ef);
+  border: 1px solid var(--director-admin-surface-border, var(--neutral-200));
   border-radius: 12px;
 }
 
 .pb-billing-plan.is-current {
-  border-color: var(--brand-primary, #1e5cb3);
-  background: color-mix(in srgb, var(--brand-primary, #1e5cb3) 6%, transparent);
+  border-color: var(--brand-primary, var(--brand-primary));
+  background: color-mix(in srgb, var(--brand-primary, var(--brand-primary)) 6%, transparent);
 }
 
 .pb-billing-plan > div { display: grid; gap: 2px; min-width: 0; }
-.pb-billing-plan strong { font-size: .96rem; color: var(--director-admin-ink, #16283d); }
-.pb-billing-plan span { font-size: .88rem; color: var(--director-admin-ink-soft, #5d7186); }
-.pb-billing-plan small { font-size: .78rem; color: var(--director-admin-ink-soft, #5d7186); }
+.pb-billing-plan strong { font-size: .96rem; color: var(--director-admin-ink, var(--neutral-800)); }
+.pb-billing-plan span { font-size: .88rem; color: var(--director-admin-ink-soft, var(--neutral-500)); }
+.pb-billing-plan small { font-size: .78rem; color: var(--director-admin-ink-soft, var(--neutral-500)); }
 
 .pb-billing-current {
   font-size: .76rem;
   font-weight: 700;
-  color: var(--brand-primary, #1e5cb3);
+  color: var(--brand-primary, var(--brand-primary));
 }
 
 /* Mailing address: legally required in every broadcast, so it reads as part of

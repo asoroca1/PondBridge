@@ -20,7 +20,7 @@
 .pb-danger-copy {
   margin: 0 0 10px;
   max-width: 68ch;
-  color: var(--director-admin-ink, #16283d);
+  color: var(--director-admin-ink, var(--neutral-800));
   font-size: 0.89rem;
   line-height: 1.6;
 }
@@ -48,13 +48,13 @@
 .pb-danger-form span {
   font-size: 0.84rem;
   font-weight: 700;
-  color: var(--director-admin-ink, #16283d);
+  color: var(--director-admin-ink, var(--neutral-800));
 }
 
 .pb-danger-form span small {
   margin-left: 4px;
   font-weight: 500;
-  color: var(--director-admin-ink-soft, #5d7186);
+  color: var(--director-admin-ink-soft, var(--neutral-500));
 }
 
 .pb-danger-form .pb-btn { justify-self: start; }

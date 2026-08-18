@@ -339,7 +339,7 @@ function UploadModal({ open, onClose, onPosted }) {
       const ctx = canvas.getContext("2d");
       if (!ctx) return file;
 
-      ctx.fillStyle = "#0b1220";
+      ctx.fillStyle = "var(--neutral-900)";
       ctx.fillRect(0, 0, PHOTO_EXPORT_WIDTH, PHOTO_EXPORT_HEIGHT);
       ctx.drawImage(
         image,

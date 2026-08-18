@@ -1,13 +1,13 @@
 /* Director settings workspace — grouped rail + titled surface. */
 
 .pb-settings {
-  --pb-set-border: var(--director-admin-surface-border, #dde5ef);
-  --pb-set-border-soft: var(--director-admin-surface-border-soft, #e9eef5);
+  --pb-set-border: var(--director-admin-surface-border, var(--neutral-200));
+  --pb-set-border-soft: var(--director-admin-surface-border-soft, var(--neutral-100));
   --pb-set-surface: var(--director-admin-surface-bg, #fff);
   --pb-set-surface-alt: var(--director-admin-surface-bg-strong, #f6f8fb);
-  --pb-set-ink: var(--director-admin-ink, #16283d);
-  --pb-set-ink-soft: var(--director-admin-ink-soft, #5d7186);
-  --pb-set-accent: var(--brand-primary, #1e5cb3);
+  --pb-set-ink: var(--director-admin-ink, var(--neutral-800));
+  --pb-set-ink-soft: var(--director-admin-ink-soft, var(--neutral-500));
+  --pb-set-accent: var(--brand-primary, var(--brand-primary));
 
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
