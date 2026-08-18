@@ -54,6 +54,7 @@ import {
   sendTransactionalEmail,
   sendAccessDecisionEmail
 } from "../services/email.js";
+import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
 import { getTenantAnalyticsSnapshot } from "../services/analytics.js";
 import { createInviteRecord } from "../services/invites.js";
 import {
@@ -2659,9 +2660,9 @@ router.get("/dashboard", async (req, res, next) => {
       openSafetyReports
     ] =
       await Promise.all([
-        ProfileModel.count(tenantId, { status: "active" }),
+        countActiveAlumni(tenantId),
         ProfileModel.count(tenantId, {
-          status: "active",
+          ...ACTIVE_ALUMNI_FILTER,
           createdAt: { $gte: sevenDaysAgo }
         }),
         AccessRequestModel.count(tenantId, { status: "pending" }),
@@ -2718,7 +2719,7 @@ router.get("/dashboard", async (req, res, next) => {
     );
 
     const priorWindowCount = await ProfileModel.count(tenantId, {
-      status: "active",
+      ...ACTIVE_ALUMNI_FILTER,
       createdAt: {
         $gte: new Date(thirtyDaysAgo.getTime() - 30 * DAY_MS),
         $lt: thirtyDaysAgo
