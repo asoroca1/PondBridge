@@ -380,6 +380,18 @@ export async function processClerkWebhookRequest(req) {
     return { ok: true, ignored: true, reason: "not_verification_email" };
   }
 
+  // Clerk sends no sign_up_id on email.created, so the unsafeMetadata lookup
+  // can never resolve a tenant. Record which identifiers the payload actually
+  // carries so branding can key off something real. Names only - the payload
+  // body holds the OTP and is never logged.
+  logLine("info", "clerk.verification.payload_shape", {
+    topLevelKeys: Object.keys(emailResource || {}).sort().join(","),
+    dataKeys: Object.keys(emailResource?.data || {}).sort().join(","),
+    userId: safeString(emailResource?.user_id) || "none",
+    emailAddressId: safeString(emailResource?.email_address_id) || "none",
+    slug: safeString(emailResource?.slug) || "none"
+  });
+
   const context = await resolveVerificationContext(emailResource);
   const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
   if (signUpAttemptId && context.audience !== "director" && !context.tenant) {
