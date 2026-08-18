@@ -541,7 +541,7 @@
 
 .pb-people-sheet-row input:focus,
 .pb-people-sheet-row input:focus-visible {
-  outline: 2px solid var(--pb-people-accent, #2f6fdb);
+  outline: 2px solid var(--pb-people-accent, var(--brand-primary-soft));
   outline-offset: -2px;
   background: var(--pb-people-surface-alt);
 }
