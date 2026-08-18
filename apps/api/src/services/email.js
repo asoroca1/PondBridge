@@ -8,6 +8,7 @@ import {
   magicLinkTemplate,
   verificationCodeTemplate,
   passwordResetCodeTemplate,
+  passwordChangedTemplate,
   welcomeTemplate,
   accessApprovedTemplate,
   accessDeniedTemplate
@@ -1339,6 +1340,66 @@ export async function sendPasswordResetCodeEmail({
     idempotencyKey,
     tags: [
       { name: "category", value: "clerk_password_reset_code" },
+      ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
+    ]
+  });
+}
+
+export async function sendPasswordChangedEmail({
+  tenant = null,
+  email,
+  firstName = "",
+  accountEmail = "",
+  idempotencyKey = ""
+}) {
+  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  const { subject, text, html } = passwordChangedTemplate({
+    brandName: branding.networkName,
+    firstName,
+    accountEmail: accountEmail || email,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
+  });
+
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject,
+    text,
+    html,
+    idempotencyKey,
+    tags: [
+      { name: "category", value: "clerk_password_changed" },
+      ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
+    ]
+  });
+}
+
+/**
+ * Last resort for a Clerk template we have no design for. Clerk has already
+ * rendered subject and body, so relay those through the camp's sender rather
+ * than let the message vanish because delivery was switched off in Clerk.
+ */
+export async function sendRelayedClerkEmail({
+  tenant = null,
+  email,
+  subject = "",
+  html = "",
+  text = "",
+  idempotencyKey = ""
+}) {
+  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject: String(subject || "").trim() || `A message from ${branding.networkName}`,
+    text: String(text || "").trim() || " ",
+    html: String(html || "").trim() || `<p>${String(text || "").trim()}</p>`,
+    idempotencyKey,
+    tags: [
+      { name: "category", value: "clerk_relayed" },
       ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
     ]
   });

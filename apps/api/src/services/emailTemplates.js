@@ -405,6 +405,50 @@ export function welcomeTemplate({
 // 4. Verification code template
 // ---------------------------------------------------------------------------
 
+export function passwordChangedTemplate({
+  brandName = "PondBridge",
+  firstName = "",
+  accountEmail = "",
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
+  const safeBrandName = escapeHtml(brandName || "PondBridge");
+  const safeAccountEmail = escapeHtml(String(accountEmail || "").trim());
+  const greetingName = String(firstName || "").trim();
+  const safeGreeting = greetingName ? `Hi ${escapeHtml(greetingName)},` : "Hi,";
+  const subject = `Your ${brandName || "PondBridge"} password has been changed`;
+
+  const text = [
+    brandName || "PondBridge",
+    "",
+    "Password changed",
+    greetingName ? `Hi ${greetingName},` : "Hi,",
+    accountEmail
+      ? `The password for ${accountEmail} has been changed.`
+      : "The password on your account has been changed.",
+    "",
+    "If you did not make this change, contact your camp administrator right away."
+  ].filter(Boolean).join("\n");
+
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:#13263f;letter-spacing:-0.02em;">Password changed</h1>
+    <p style="margin:0 0 12px;">${safeGreeting}</p>
+    <p style="margin:0 0 12px;">${
+      safeAccountEmail
+        ? `The password for <strong>${safeAccountEmail}</strong> has been changed.`
+        : "The password on your account has been changed."
+    }</p>
+    <p style="margin:0;font-size:14px;color:${BRAND.muted};">If you did not make this change, contact your ${safeBrandName} administrator right away.</p>
+  `, {
+    contextName: brandName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Account security"
+  });
+
+  return { subject, text, html };
+}
+
 export function passwordResetCodeTemplate({
   brandName = "PondBridge",
   code,
