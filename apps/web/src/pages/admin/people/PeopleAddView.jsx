@@ -2,9 +2,11 @@ import { useMemo, useRef, useState } from "react";
 import { Button, Input } from "@pondbridge/ui";
 import { Mail, Plus, Send, Trash2, Upload, UserPlus } from "lucide-react";
 import InviteMessageDialog, { readInviteMessage } from "./InviteMessageDialog.jsx";
+import { nextGridCell } from "../../../lib/gridNavigation.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_VISIBLE_ROWS = 5;
+const COLUMNS = ["firstName", "lastName", "email"];
 
 function emptyRow() {
   return { firstName: "", lastName: "", email: "" };
@@ -60,10 +62,6 @@ export function parsePeopleRows(value = "") {
   return rows;
 }
 
-function parseLabels(value = "") {
-  return [...new Set(String(value || "").split(/[,\n]+/g).map((item) => item.trim()).filter(Boolean))];
-}
-
 /**
  * Only the email is required; names are optional so a plain list of addresses
  * still imports. Problems are reported per row rather than as one message for
@@ -106,14 +104,12 @@ export function validateRows(rows = []) {
 
 export default function PeopleAddView({ actions, storage, slug = "", networkName = "", onInvite, onDone }) {
   const [rows, setRows] = useState(() => padRows([]));
-  const [tags, setTags] = useState("");
-  const [campYears, setCampYears] = useState("");
-  const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [messageOpen, setMessageOpen] = useState(false);
   const [inviteMessage, setInviteMessage] = useState(() => readInviteMessage(slug));
   const fileRef = useRef(null);
+  const sheetRef = useRef(null);
 
   const { ready, problems } = useMemo(() => validateRows(rows), [rows]);
   const canSubmit = ready.length > 0 && problems.size === 0;
@@ -130,6 +126,41 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
       return next;
     });
     setError("");
+  }
+
+  /**
+   * Moves focus between cells the way a spreadsheet does. The arithmetic lives
+   * in nextGridCell; this only reads the caret and moves the focus.
+   */
+  function onCellKeyDown(event, index, field) {
+    const { key, currentTarget: input } = event;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    const target = nextGridCell({
+      key,
+      row: index,
+      column: COLUMNS.indexOf(field),
+      rowCount: rows.length,
+      columnCount: COLUMNS.length,
+      atStart: input.selectionStart === 0 && input.selectionEnd === 0,
+      atEnd:
+        input.selectionStart === input.value.length &&
+        input.selectionEnd === input.value.length
+    });
+    if (!target) return;
+
+    const cell = sheetRef.current?.querySelector(
+      `[data-cell="${target.row}-${COLUMNS[target.column]}"]`
+    );
+    if (!cell) return;
+
+    event.preventDefault();
+    cell.focus();
+    // Arriving from the left means the caret was travelling rightward, so it
+    // belongs at the start. Everywhere else it belongs at the end, ready to
+    // keep typing rather than sitting in front of what is already there.
+    const caret = key === "ArrowRight" ? 0 : cell.value.length;
+    cell.setSelectionRange(caret, caret);
   }
 
   function removeRow(index) {
@@ -175,9 +206,6 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
     }
     const result = await actions.addProspects(ready.map((person) => ({
       ...person,
-      tags: parseLabels(tags),
-      campYears: parseLabels(campYears),
-      notes,
       source: "director_entry"
     })));
     if (!result.ok) {
@@ -185,9 +213,6 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
       return;
     }
     setRows(padRows([]));
-    setTags("");
-    setCampYears("");
-    setNotes("");
     setError("");
     setStatus(result.message);
     onDone?.();
@@ -233,7 +258,7 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
         </div>
       </header>
 
-      <div className="pb-people-sheet" role="group" aria-label="People to add">
+      <div className="pb-people-sheet" role="group" aria-label="People to add" ref={sheetRef}>
         <div className="pb-people-sheet-row pb-people-sheet-header" aria-hidden="true">
           <span>First name</span>
           <span>Last name</span>
@@ -249,22 +274,33 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
             >
               <Input
                 value={row.firstName}
+                data-cell={`${index}-firstName`}
                 aria-label={`First name, row ${index + 1}`}
                 onChange={(event) => updateCell(index, "firstName", event.target.value)}
+                onKeyDown={(event) => onCellKeyDown(event, index, "firstName")}
                 onPaste={(event) => onPasteGrid(event, index)}
               />
               <Input
                 value={row.lastName}
+                data-cell={`${index}-lastName`}
                 aria-label={`Last name, row ${index + 1}`}
                 onChange={(event) => updateCell(index, "lastName", event.target.value)}
+                onKeyDown={(event) => onCellKeyDown(event, index, "lastName")}
                 onPaste={(event) => onPasteGrid(event, index)}
               />
               <Input
                 value={row.email}
-                type="email"
+                // A text input, not type="email": email inputs report no caret
+                // position and throw on setSelectionRange, so arrow keys could
+                // not tell where the caret sat. Addresses are validated per row
+                // either way, and inputMode still asks for the email keyboard.
+                inputMode="email"
+                autoComplete="off"
+                data-cell={`${index}-email`}
                 aria-label={`Email, row ${index + 1}`}
                 aria-invalid={problem ? "true" : undefined}
                 onChange={(event) => updateCell(index, "email", event.target.value)}
+                onKeyDown={(event) => onCellKeyDown(event, index, "email")}
                 onPaste={(event) => onPasteGrid(event, index)}
               />
               <button
@@ -289,28 +325,11 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
         </Button>
         <small className={problems.size ? "error-text" : "muted"}>
           {ready.length} ready
-          {problems.size ? ` · ${problems.size} row${problems.size === 1 ? "" : "s"} need attention` : ""}
+          {problems.size
+            ? ` · ${problems.size} ${problems.size === 1 ? "row needs" : "rows need"} attention`
+            : ""}
         </small>
       </div>
-
-      <details className="pb-people-optional">
-        <summary>Optional details</summary>
-        <div className="pb-people-optional-grid">
-          <label>
-            <span>Tags</span>
-            <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Reunion, donor" />
-          </label>
-          <label>
-            <span>Camp years</span>
-            <Input value={campYears} onChange={(event) => setCampYears(event.target.value)} placeholder="2008, 2009" />
-          </label>
-          <label>
-            <span>Notes</span>
-            <Input value={notes} maxLength={800} onChange={(event) => setNotes(event.target.value)} placeholder="How the camp knows them" />
-          </label>
-        </div>
-        <small className="muted">Tags, years, and notes apply to everyone saved in this batch.</small>
-      </details>
 
       {!storageReady ? (
         <p className="pb-people-warning">

@@ -590,35 +590,6 @@
   flex-wrap: wrap;
 }
 
-.pb-people-optional {
-  border: 1px solid var(--pb-people-border-soft);
-  border-radius: 12px;
-  padding: 12px 14px;
-  background: var(--pb-people-surface-alt);
-}
-
-.pb-people-optional > summary {
-  cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--pb-people-ink);
-}
-
-.pb-people-optional-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-  margin: 12px 0 8px;
-}
-
-.pb-people-optional-grid label {
-  display: grid;
-  gap: 5px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--pb-people-ink);
-}
-
 .pb-invite-message-form {
   display: grid;
   gap: 14px;
