@@ -401,16 +401,15 @@ export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = 
     });
   }
 
+  // The meeting link is deliberately not required. A camp opens a session for
+  // sign-ups first and creates the room later, so members can register before
+  // there is anywhere to join. Whoever has registered gets the link when it
+  // lands; until then the session says the link is still to come.
   const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
-  if (!provider) {
+  if (provider && meetingUrl && !normalizeSeminarMeetingUrl(meetingUrl, provider)) {
     problems.push({
-      code: "SEMINAR_MEETING_PROVIDER_REQUIRED",
-      message: "Select the info session meeting provider."
-    });
-  } else if (!normalizeSeminarMeetingUrl(meetingUrl, provider)) {
-    problems.push({
-      code: "SEMINAR_MEETING_URL_REQUIRED",
-      message: "Add the info session meeting link."
+      code: "SEMINAR_MEETING_URL_INVALID",
+      message: "That meeting link does not look like a valid link."
     });
   }
 
@@ -609,9 +608,14 @@ export function serializeEvent(event = {}, options = {}) {
     options.viewerProfileId &&
       String(options.viewerProfileId) === String(event?.hostProfileId || "")
   );
+  // A session can be published before its room exists, so the caller tells us
+  // whether a link is on file. Without one there is nothing to hand out, and
+  // offering the button would only produce an error.
+  const hasMeetingLink = options.hasMeetingLink !== false;
   const canRequestJoinLink = Boolean(
     isOnlineSeminar &&
       event?.status === "published" &&
+      hasMeetingLink &&
       (isHost || myRsvp?.status === "attending")
   );
 
@@ -680,6 +684,7 @@ export function serializeEvent(event = {}, options = {}) {
           requiresAttendingRsvp: true,
           isHost,
           canRequestJoinLink,
+          hasMeetingLink,
           joinPath: `${eventPath(event?._id || event?.id || "")}/join`
         }
       : null

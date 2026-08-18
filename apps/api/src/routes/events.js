@@ -101,6 +101,7 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
       rsvpSummaryByEventId: new Map(),
       rsvpByEventId: new Map(),
       hostProfileById: new Map(),
+      eventIdsWithMeetingLink: new Set(),
       viewerProfile: null
     };
   }
@@ -108,13 +109,16 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
   const hostProfileIds = [...new Set(
     events.map((item) => String(item?.hostProfileId || "").trim()).filter(Boolean)
   )];
-  const [allRsvps, myRsvps, hostProfiles, viewerProfile] = await Promise.all([
+  const [allRsvps, myRsvps, hostProfiles, viewerProfile, meetingDetails] = await Promise.all([
     EventRsvpModel.find(tenantId, { eventId: { $in: eventIds } }),
     EventRsvpModel.find(tenantId, { eventId: { $in: eventIds }, userId }),
     hostProfileIds.length
       ? ProfileModel.find(tenantId, { _id: { $in: hostProfileIds } })
       : [],
-    ProfileModel.findByUserId(tenantId, userId)
+    ProfileModel.findByUserId(tenantId, userId),
+    // Only whether a link exists travels out of here. The link itself is
+    // released by the join route after its membership and RSVP checks.
+    EventMeetingDetailModel.find(tenantId, { eventId: { $in: eventIds } })
   ]);
 
   return {
@@ -122,6 +126,11 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
     rsvpByEventId: new Map(myRsvps.map((item) => [String(item?.eventId || ""), item])),
     hostProfileById: new Map(
       hostProfiles.map((item) => [String(item?._id || item?.id || ""), item])
+    ),
+    eventIdsWithMeetingLink: new Set(
+      meetingDetails
+        .filter((detail) => String(detail?.meetingUrl || "").trim())
+        .map((detail) => String(detail?.eventId || ""))
     ),
     viewerProfile
   };
@@ -137,6 +146,7 @@ router.get("/", async (req, res) => {
     rsvpSummaryByEventId,
     rsvpByEventId,
     hostProfileById,
+    eventIdsWithMeetingLink,
     viewerProfile
   } = await loadEventResponseContext(
     req.tenant._id,
@@ -151,6 +161,7 @@ router.get("/", async (req, res) => {
       rsvpSummary: rsvpSummaryByEventId.get(String(event?._id || event?.id || "")),
       myRsvp: rsvpByEventId.get(String(event?._id || event?.id || "")),
       hostProfile: hostProfileById.get(String(event?.hostProfileId || "")),
+      hasMeetingLink: eventIdsWithMeetingLink.has(String(event?._id || event?.id || "")),
       viewerProfileId: String(viewerProfile?._id || viewerProfile?.id || "")
     })
   );
@@ -182,13 +193,14 @@ router.get("/:eventId", async (req, res) => {
     });
   }
 
-  const [rsvps, myRsvp, viewerProfile, hostProfile] = await Promise.all([
+  const [rsvps, myRsvp, viewerProfile, hostProfile, meetingDetail] = await Promise.all([
     EventRsvpModel.find(req.tenant._id, { eventId }),
     EventRsvpModel.findOne(req.tenant._id, { eventId, userId: req.user.id }),
     ProfileModel.findByUserId(req.tenant._id, req.user.id),
     event?.hostProfileId
       ? ProfileModel.findOne(req.tenant._id, { _id: String(event.hostProfileId) })
-      : null
+      : null,
+    EventMeetingDetailModel.findOne(req.tenant._id, { eventId })
   ]);
 
   const roster = await resolveViewerRoster({
@@ -211,6 +223,7 @@ router.get("/:eventId", async (req, res) => {
       myRsvp,
       hostProfile,
       roster,
+      hasMeetingLink: Boolean(String(meetingDetail?.meetingUrl || "").trim()),
       viewerProfileId: String(viewerProfile?._id || viewerProfile?.id || "")
     })
   });
@@ -363,11 +376,12 @@ router.put("/:eventId/rsvp", async (req, res) => {
     metadata: { eventId, status, registrationRole }
   }).catch(() => {});
 
-  const [rsvps, hostProfile] = await Promise.all([
+  const [rsvps, hostProfile, meetingDetail] = await Promise.all([
     EventRsvpModel.find(req.tenant._id, { eventId }),
     event?.hostProfileId
       ? ProfileModel.findOne(req.tenant._id, { _id: String(event.hostProfileId) })
-      : null
+      : null,
+    EventMeetingDetailModel.findOne(req.tenant._id, { eventId })
   ]);
   // Registering is what unlocks the roster, so send it back with the response
   // that confirms it rather than making the page ask again.
@@ -384,6 +398,7 @@ router.put("/:eventId/rsvp", async (req, res) => {
       myRsvp: rsvp,
       hostProfile,
       roster,
+      hasMeetingLink: Boolean(String(meetingDetail?.meetingUrl || "").trim()),
       viewerProfileId: String(profile?._id || profile?.id || "")
     })
   });

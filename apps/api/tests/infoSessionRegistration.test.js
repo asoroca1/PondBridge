@@ -127,7 +127,7 @@ describe("what publishing an info session actually requires", () => {
     let caught = null;
     try {
       validateEventPublishReadiness(
-        session({ title: "", topicCategory: "", topicTitle: "" }),
+        session({ title: "", topicCategory: "", topicTitle: "", deliveryMode: "in_person" }),
         { meetingUrl: "" }
       );
     } catch (error) {
@@ -136,18 +136,57 @@ describe("what publishing an info session actually requires", () => {
     expect(caught).not.toBeNull();
     expect(caught.message).toMatch(/title/i);
     expect(caught.message).toMatch(/topic/i);
-    expect(caught.message).toMatch(/meeting link/i);
+    expect(caught.message).toMatch(/online or hybrid/i);
     expect(caught.details.problems.map((problem) => problem.code)).toEqual([
       "EVENT_TITLE_REQUIRED",
-      "SEMINAR_TOPIC_REQUIRED",
-      "SEMINAR_MEETING_URL_REQUIRED"
+      "SEMINAR_DELIVERY_MODE_REQUIRED",
+      "SEMINAR_TOPIC_REQUIRED"
     ]);
   });
 
   test("still reads as one sentence when only one thing is missing", () => {
     expect(() =>
+      validateEventPublishReadiness(session({ topicCategory: "", topicTitle: "" }), {
+        meetingUrl: ""
+      })
+    ).toThrow("Choose a topic for this info session.");
+  });
+});
+
+describe("publishing before the meeting room exists", () => {
+  test("publishes with no meeting link at all", () => {
+    // The room is often created after sign-ups show who is coming.
+    expect(() =>
       validateEventPublishReadiness(session(), { meetingUrl: "" })
-    ).toThrow("Add the info session meeting link.");
+    ).not.toThrow();
+  });
+
+  test("publishes with no provider chosen either", () => {
+    expect(() =>
+      validateEventPublishReadiness(session({ meetingProvider: "" }), { meetingUrl: "" })
+    ).not.toThrow();
+  });
+
+  test("still refuses a link that is not a link", () => {
+    expect(() =>
+      validateEventPublishReadiness(session(), { meetingUrl: "not-a-url" })
+    ).toThrow(expect.objectContaining({ code: "SEMINAR_MEETING_URL_INVALID" }));
+  });
+
+  test("offers no join button until a link is on file", () => {
+    const published = { ...session(), status: "published" };
+    const withoutLink = serializeEvent(published, {
+      myRsvp: { status: "attending" },
+      hasMeetingLink: false
+    });
+    expect(withoutLink.meetingAccess.canRequestJoinLink).toBe(false);
+    expect(withoutLink.meetingAccess.hasMeetingLink).toBe(false);
+
+    const withLink = serializeEvent(published, {
+      myRsvp: { status: "attending" },
+      hasMeetingLink: true
+    });
+    expect(withLink.meetingAccess.canRequestJoinLink).toBe(true);
   });
 });
 

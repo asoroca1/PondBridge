@@ -88,9 +88,11 @@ describe("registered-member seminar events", () => {
       })
     ).not.toThrow();
 
+    // A camp opens a session for sign-ups and creates the room later, so a
+    // missing meeting link no longer holds the publish back.
     expect(() =>
       validateEventPublishReadiness(seminar(), { meetingUrl: "" })
-    ).toThrow(expect.objectContaining({ code: "SEMINAR_MEETING_URL_REQUIRED" }));
+    ).not.toThrow();
 
     expect(
       validateEventPublishReadiness(seminar(), {
