@@ -70,6 +70,15 @@ const RSVP_OPTIONS = [
   { value: "not_attending", label: "Can’t go", Icon: XIcon }
 ];
 
+const REGISTRATION_ROLES = [
+  { value: "attendee", label: "Attending", blurb: "Come along and listen in." },
+  { value: "presenter", label: "Presenting", blurb: "Help run the session or speak." }
+];
+
+function registrationRoleLabel(value = "") {
+  return value === "presenter" ? "presenter" : "attendee";
+}
+
 function isSeminar(item = {}) {
   return item?.eventType === "seminar";
 }
@@ -132,7 +141,7 @@ export default function EventDetailPage() {
     };
   }, [eventId, slug, token]);
 
-  async function updateRsvp(nextStatus) {
+  async function updateRsvp(nextStatus, nextRole) {
     if (!item) return;
     setSaving(true);
     setError("");
@@ -141,10 +150,16 @@ export default function EventDetailPage() {
       const payload = await requestJson(`/api/t/${slug}/events/${eventId}/rsvp`, {
         method: "PUT",
         token,
-        body: { status: nextStatus }
+        // Sending no role leaves whatever the member already chose alone, so
+        // changing an answer to "maybe" does not quietly drop them as a presenter.
+        body: nextRole ? { status: nextStatus, registrationRole: nextRole } : { status: nextStatus }
       });
       setItem(payload?.item || null);
-      setStatus(`Your RSVP is now ${rsvpLabel(nextStatus).toLowerCase()}.`);
+      setStatus(
+        nextRole
+          ? `You are registered as a ${registrationRoleLabel(nextRole)}.`
+          : `Your RSVP is now ${rsvpLabel(nextStatus).toLowerCase()}.`
+      );
       setJoinError("");
     } catch (saveError) {
       setError(saveError.message || "Could not update your RSVP.");
@@ -402,6 +417,29 @@ export default function EventDetailPage() {
                     );
                   })}
                 </div>
+                {seminar && item?.myRsvp?.status && item.myRsvp.status !== "not_attending" ? (
+                  <div className="ev-registration-role">
+                    <p className="ev-detail-card-sub">I am joining as</p>
+                    <div className="ev-rsvp-stack">
+                      {REGISTRATION_ROLES.map(({ value, label, blurb }) => {
+                        const isActive = (item?.myRsvp?.registrationRole || "attendee") === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={isActive}
+                            disabled={saving || rsvpLocked}
+                            className={`ev-rsvp-btn ${isActive ? "is-active is-role" : ""}`}
+                            onClick={() => updateRsvp(item.myRsvp.status, value)}
+                            title={blurb}
+                          >
+                            <span>{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
                 {rsvpLocked ? (
                   <p className="ev-detail-muted ev-detail-locked">
                     {item.status === "canceled"
@@ -418,7 +456,11 @@ export default function EventDetailPage() {
                   <h2>Who’s coming</h2>
                   <p className="ev-detail-card-sub">
                     <Users size={13} aria-hidden="true" />
-                    <span>See how the community is planning.</span>
+                    <span>
+                      {Array.isArray(item.roster)
+                        ? "Everyone registered so far."
+                        : "See how the community is planning."}
+                    </span>
                   </p>
                 </header>
                 <div className="ev-detail-counts">
@@ -435,6 +477,38 @@ export default function EventDetailPage() {
                     <span>Can’t go</span>
                   </div>
                 </div>
+                {Array.isArray(item.roster) ? (
+                  <ul className="ev-roster">
+                    {item.roster.map((person) => (
+                      <li key={person.profileId} className="ev-roster-row">
+                        <span className="ev-roster-avatar" aria-hidden="true">
+                          {person.avatarUrl
+                            ? <img src={person.avatarUrl} alt="" />
+                            : (person.fullName || "?").slice(0, 1)}
+                        </span>
+                        <span className="ev-roster-main">
+                          <strong>{person.fullName}</strong>
+                          {person.roleAtCamp ? <small>{person.roleAtCamp}</small> : null}
+                        </span>
+                        {person.registrationRole === "presenter" ? (
+                          <span className="ev-roster-tag is-presenter">Presenter</span>
+                        ) : null}
+                        {person.status === "maybe" ? (
+                          <span className="ev-roster-tag is-maybe">Maybe</span>
+                        ) : null}
+                      </li>
+                    ))}
+                    {item.roster.length === 0 ? (
+                      <li className="ev-roster-empty">You are the first to register.</li>
+                    ) : null}
+                  </ul>
+                ) : (
+                  // The list is the reward for signing up, so it stays hidden
+                  // until the viewer has answered.
+                  <p className="ev-detail-muted">
+                    Register above to see everyone who is coming.
+                  </p>
+                )}
               </article>
             </aside>
           </section>

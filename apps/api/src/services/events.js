@@ -6,6 +6,8 @@ import { sanitizeHtmlContent, sanitizeText } from "../utils/sanitize.js";
 
 export const EVENT_STATUSES = ["draft", "published", "canceled"];
 export const EVENT_RSVP_STATUSES = ["attending", "maybe", "not_attending"];
+// How a member signed up: to run the session, or to sit in on it.
+export const EVENT_REGISTRATION_ROLES = ["attendee", "presenter"];
 export const EVENT_MESSAGE_KINDS = ["invite", "reminder", "update", "cancellation"];
 export const EVENT_TYPES = ["community", "seminar"];
 export const EVENT_DELIVERY_MODES = ["in_person", "online", "hybrid"];
@@ -180,6 +182,11 @@ export function normalizeEventRsvpStatus(value = "", fallback = "attending") {
   return EVENT_RSVP_STATUSES.includes(normalized) ? normalized : fallback;
 }
 
+export function normalizeEventRegistrationRole(value = "", fallback = "attendee") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return EVENT_REGISTRATION_ROLES.includes(normalized) ? normalized : fallback;
+}
+
 export function normalizeEventMessageKind(value = "", fallback = "invite") {
   const normalized = String(value || "").trim().toLowerCase();
   return EVENT_MESSAGE_KINDS.includes(normalized) ? normalized : fallback;
@@ -214,19 +221,27 @@ export function validateEventTimeline({
   const end = endsAt ? new Date(endsAt) : null;
   const deadline = rsvpDeadlineAt ? new Date(rsvpDeadlineAt) : null;
 
-  if (!start || Number.isNaN(start.getTime())) {
+  // A session can be opened for registration before anyone has picked a date,
+  // so a missing start is allowed. A start that was supplied still has to parse.
+  if (startsAt && (!start || Number.isNaN(start.getTime()))) {
     throw createEventError("A valid event start date and time is required.", "EVENT_START_REQUIRED");
   }
   if (end && Number.isNaN(end.getTime())) {
     throw createEventError("End date/time must be valid.", "EVENT_END_INVALID");
   }
-  if (end && end <= start) {
+  if (end && !start) {
+    throw createEventError(
+      "Add a start date and time before setting when the event ends.",
+      "EVENT_END_WITHOUT_START"
+    );
+  }
+  if (end && start && end <= start) {
     throw createEventError("Event end date/time must be after the start.", "EVENT_END_BEFORE_START");
   }
   if (deadline && Number.isNaN(deadline.getTime())) {
     throw createEventError("RSVP deadline must be valid.", "EVENT_RSVP_DEADLINE_INVALID");
   }
-  if (deadline && deadline > start) {
+  if (deadline && start && deadline > start) {
     throw createEventError("RSVP deadline must be on or before the event start.", "EVENT_RSVP_DEADLINE_AFTER_START");
   }
 
@@ -350,12 +365,6 @@ export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = 
   if (!String(event?.topicTitle || "").trim()) {
     throw createEventError("Add an info session topic before publishing.", "SEMINAR_TOPIC_REQUIRED");
   }
-  if (!String(event?.hostProfileId || "").trim()) {
-    throw createEventError(
-      "Select a registered network member to host this info session.",
-      "SEMINAR_HOST_REQUIRED"
-    );
-  }
   const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
   if (!provider) {
     throw createEventError(
@@ -444,7 +453,9 @@ export function summarizeRsvpRows(rows = []) {
     attending: 0,
     maybe: 0,
     notAttending: 0,
-    totalResponses: 0
+    totalResponses: 0,
+    presenters: 0,
+    attendees: 0
   };
 
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -454,9 +465,52 @@ export function summarizeRsvpRows(rows = []) {
     if (status === "maybe") summary.maybe += 1;
     if (status === "not_attending") summary.notAttending += 1;
     summary.totalResponses += 1;
+    // Someone who has declined is not on the roster for either role.
+    if (status === "not_attending") continue;
+    if (normalizeEventRegistrationRole(row?.registrationRole || "") === "presenter") {
+      summary.presenters += 1;
+    } else {
+      summary.attendees += 1;
+    }
   }
 
   return summary;
+}
+
+/**
+ * The roster a registered member is allowed to see: everyone who said they are
+ * coming or might, presenters first, each in the order they signed up.
+ *
+ * Members who declined are left out — they are not part of the session, and
+ * publishing "who said no" to the whole network is not the point of the list.
+ */
+export function buildRegistrationRoster(rows = [], profilesById = new Map()) {
+  const registered = (Array.isArray(rows) ? rows : []).filter(
+    (row) => normalizeEventRsvpStatus(row?.status || "", "") !== "not_attending"
+  );
+
+  const byRoleThenTime = (left, right) => {
+    const leftRole = normalizeEventRegistrationRole(left?.registrationRole || "");
+    const rightRole = normalizeEventRegistrationRole(right?.registrationRole || "");
+    if (leftRole !== rightRole) return leftRole === "presenter" ? -1 : 1;
+    return new Date(left?.respondedAt || 0).getTime() - new Date(right?.respondedAt || 0).getTime();
+  };
+
+  return registered.sort(byRoleThenTime).map((row) => {
+    const profileId = String(row?.profileId || "");
+    const profile = profilesById.get(profileId) || null;
+    return {
+      profileId,
+      fullName:
+        `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim() || "Camp member",
+      avatarUrl: String(profile?.avatarUrl || "").trim(),
+      roleAtCamp: String(profile?.roleAtCamp || "").trim(),
+      industry: String(profile?.industry || "").trim(),
+      registrationRole: normalizeEventRegistrationRole(row?.registrationRole || ""),
+      status: normalizeEventRsvpStatus(row?.status || ""),
+      respondedAt: row?.respondedAt ? new Date(row.respondedAt).toISOString() : null
+    };
+  });
 }
 
 export function buildRsvpSummaryMap(rows = []) {
@@ -494,7 +548,9 @@ export function serializeEvent(event = {}, options = {}) {
     attending: 0,
     maybe: 0,
     notAttending: 0,
-    totalResponses: 0
+    totalResponses: 0,
+    presenters: 0,
+    attendees: 0
   };
   const myRsvp = options.myRsvp || null;
   const phase = deriveEventPhase(event, options.now || new Date());
@@ -562,13 +618,19 @@ export function serializeEvent(event = {}, options = {}) {
     createdByUserId: String(event?.createdByUserId || "").trim(),
     updatedByUserId: String(event?.updatedByUserId || "").trim(),
     counts: summary,
+    // A session can be published for sign-ups before anyone picks a time.
+    scheduled: Boolean(event?.startsAt),
     myRsvp: myRsvp
       ? {
           id: String(myRsvp?._id || myRsvp?.id || ""),
           status: normalizeEventRsvpStatus(myRsvp?.status || ""),
+          registrationRole: normalizeEventRegistrationRole(myRsvp?.registrationRole || ""),
           respondedAt: myRsvp?.respondedAt ? new Date(myRsvp.respondedAt).toISOString() : null
         }
       : null,
+    // The roster is only ever passed in once the viewer has registered; see the
+    // event detail route, which is where that check lives.
+    ...(Array.isArray(options.roster) ? { roster: options.roster } : {}),
     path: eventPath(event?._id || event?.id || ""),
     rsvpClosed,
     meetingAccess: isOnlineSeminar
@@ -645,7 +707,11 @@ function eventMetaHtml(event = {}) {
           <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b6f86;">${eventTypeLabel}</p>
           <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:#10273f;">${escapeHtml(event?.title || "Event")}</h2>
           ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#31465c;">${escapeHtml(event.summary)}</p>` : ""}
-          ${startLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>` : ""}
+          ${startLabel
+            ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>`
+            // An undated session is open for sign-ups; saying so beats an email
+            // that simply has no date on it.
+            : `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Starts:</strong> Date to be announced</p>`}
           ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
           ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
           ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}

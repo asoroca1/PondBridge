@@ -16191,6 +16191,101 @@ button.super-stat-card {
   box-shadow:0 0 0 3px rgba(148,163,184,0.16);
 }
 
+.ev-rsvp-btn.is-active.is-role{
+  border-color: color-mix(in srgb, var(--ev-navy) 60%, var(--ev-border));
+  color:var(--ev-navy);
+  background: color-mix(in srgb, var(--ev-navy) 6%, #ffffff);
+}
+
+.ev-registration-role{
+  display:grid;
+  gap:8px;
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid var(--ev-border);
+}
+
+/* Roster: who has registered, presenters first */
+
+.ev-roster{
+  list-style:none;
+  margin:14px 0 0;
+  padding:14px 0 0;
+  border-top:1px solid var(--ev-border);
+  display:grid;
+  gap:10px;
+}
+
+.ev-roster-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.ev-roster-avatar{
+  flex:0 0 auto;
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  background: color-mix(in srgb, var(--ev-navy) 10%, #ffffff);
+  color:var(--ev-navy);
+  font-size:12px;
+  font-weight:700;
+  text-transform:uppercase;
+}
+
+.ev-roster-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.ev-roster-main{
+  display:grid;
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.ev-roster-main strong{
+  font-size:14px;
+  color:var(--ev-navy);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.ev-roster-main small{
+  font-size:12px;
+  color:#64748b;
+}
+
+.ev-roster-tag{
+  flex:0 0 auto;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:700;
+}
+
+.ev-roster-tag.is-presenter{
+  background:#eef2ff;
+  color:#3730a3;
+}
+
+.ev-roster-tag.is-maybe{
+  background:#fffbeb;
+  color:#92400e;
+}
+
+.ev-roster-empty{
+  font-size:13px;
+  color:#64748b;
+}
+
 /* Counts */
 
 .ev-detail-counts{

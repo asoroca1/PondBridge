@@ -80,11 +80,13 @@ describe("registered-member seminar events", () => {
   });
 
   test("blocks incomplete seminars from publishing", () => {
+    // A host is no longer required: members register themselves as presenters,
+    // so a session can be opened before anyone has agreed to run it.
     expect(() =>
       validateEventPublishReadiness(seminar({ hostProfileId: "" }), {
         meetingUrl: "https://zoom.us/j/123"
       })
-    ).toThrow(expect.objectContaining({ code: "SEMINAR_HOST_REQUIRED" }));
+    ).not.toThrow();
 
     expect(() =>
       validateEventPublishReadiness(seminar(), { meetingUrl: "" })
