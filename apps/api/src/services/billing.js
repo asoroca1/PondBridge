@@ -28,6 +28,12 @@ const stripe = env.STRIPE_SECRET_KEY
     })
   : null;
 
+// The live Stripe price for the Flagship plan ($1,200/year recurring, product
+// prod_V5lyNQwTl5vsHG). Pinned here so checkout never depends on the Stripe
+// product-name lookup, which caches a miss for the life of the process.
+// STRIPE_PRICE_FLAGSHIP_ANNUAL still overrides it for staging or a re-price.
+const FLAGSHIP_ANNUAL_PRICE_ID = "price_1U5aQJKmSeC5JnMuSjZD4smU";
+
 const BILLING_PLAN_CATALOG = {
   flagship: {
     code: "flagship",
@@ -36,7 +42,7 @@ const BILLING_PLAN_CATALOG = {
     planTier: "base",
     annualAmount: 1200,
     onboardingFeeAmount: 0,
-    annualPriceId: String(env.STRIPE_PRICE_FLAGSHIP_ANNUAL || "").trim(),
+    annualPriceId: String(env.STRIPE_PRICE_FLAGSHIP_ANNUAL || FLAGSHIP_ANNUAL_PRICE_ID).trim(),
     onboardingPriceId: "",
     foundersOnly: false,
     offered: true
