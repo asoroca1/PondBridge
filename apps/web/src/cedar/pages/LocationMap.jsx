@@ -8,6 +8,7 @@ import { API_BASE } from "../lib/api";
 import { getToken, initialsOf, avatarUrl } from "../lib/helpers.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { formatMappedAlumniSummary } from "../../lib/alumniTotals.js";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import "./location-map.css";
@@ -194,6 +195,7 @@ export default function LocationMap() {
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingCities, setLoadingCities] = useState(true);
   const [pendingCityGeocodes, setPendingCityGeocodes] = useState(0);
+  const [networkAlumni, setNetworkAlumni] = useState(0);
   const [mapRuntimeReady, setMapRuntimeReady] = useState(false);
   const [mapRuntimeError, setMapRuntimeError] = useState("");
 
@@ -214,7 +216,10 @@ export default function LocationMap() {
     selectedRef.current = selected;
   }, [selected]);
 
-  const totalAlumni = useMemo(
+  // Only members with a city we could place show up on a pin. Reporting that
+  // subset as the network total made this page contradict the home page, so
+  // the two numbers stay distinct and the subtitle says which is which.
+  const mappedAlumni = useMemo(
     () => cities.reduce((sum, city) => sum + Number(city?.count || 0), 0),
     [cities]
   );
@@ -228,11 +233,18 @@ export default function LocationMap() {
     return resolved || "#002b5c";
   }, []);
 
+  const mappedSummary = formatMappedAlumniSummary({
+    mapped: mappedAlumni,
+    total: networkAlumni,
+    cities: cities.length,
+    alumniWord
+  });
+
   const subtitleText =
     cities.length > 0
       ? pendingCityGeocodes > 0
-        ? `${totalAlumni} ${alumniWord} across ${cities.length} cities • mapping ${pendingCityGeocodes} more`
-        : `${totalAlumni} ${alumniWord} across ${cities.length} cities`
+        ? `${mappedSummary} • mapping ${pendingCityGeocodes} more`
+        : mappedSummary
       : `Explore where your ${alumniWord} network lives around the world.`;
 
   const preferredMapFocus = useMemo(() => computeRegionFocus(cities), [cities]);
@@ -682,10 +694,12 @@ export default function LocationMap() {
             if (Date.now() - ts <= CITIES_CACHE_TTL_MS) {
               const cachedList = normalizeCities(cached?.data || []);
               const cachedPending = Math.max(0, Number(cached?.data?.unresolvedCityCount || 0));
+              const cachedTotal = Math.max(0, Number(cached?.data?.totalAlumni || 0));
               if (cachedList.length && !cancelled) {
                 setCities(cachedList);
                 citiesRef.current = cachedList;
                 setPendingCityGeocodes(cachedPending);
+                setNetworkAlumni(cachedTotal);
                 if (loadedRef.current) renderMarkers(cachedList);
                 if (loadedRef.current && !selectedRef.current && !autoFocusedRef.current) {
                   const focus = computeRegionFocus(cachedList);
@@ -717,6 +731,7 @@ export default function LocationMap() {
 
         if (!cancelled) {
           setPendingCityGeocodes(unresolvedCityCount);
+          setNetworkAlumni(Math.max(0, Number(data?.totalAlumni || 0)));
 
           if (list.length === 0 && citiesRef.current.length === 0) {
             setCities([]);
@@ -894,9 +909,7 @@ export default function LocationMap() {
                 <MapPin size={36} className="lm-prompt-icon" aria-hidden="true" />
                 <h3>Select a city to explore</h3>
                 <p>{`Click any pin on the map to see ${alumniWord} who live there.`}</p>
-                <p className="lm-prompt-stat">
-                  {totalAlumni} {alumniWord} across {cities.length} cities
-                </p>
+                <p className="lm-prompt-stat">{mappedSummary}</p>
               </div>
             )
           ) : (

@@ -24,6 +24,7 @@ import {
   createPresignedDownloadUrl,
   deleteObjectFromR2
 } from "../services/objectStorage.js";
+import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
 import { buildTenantEmailBranding, sendBulkTransactionalEmail } from "../services/email.js";
 import { broadcastTemplate } from "../services/emailTemplates.js";
 import {
@@ -679,11 +680,9 @@ async function runGeocodeWorker() {
 }
 
 async function aggregateCityCounts(tenantId) {
-  // Flagged and deactivated profiles are excluded everywhere else in the
-  // product; counting them here made the map disagree with the member count.
   const rows = await ProfileModel.find(
     tenantId,
-    { cityState: { $ne: "" }, status: "active" },
+    { cityState: { $ne: "" }, ...ACTIVE_ALUMNI_FILTER },
     { select: ["cityState"] }
   );
 
@@ -1912,7 +1911,11 @@ async function readHomeStatsPayload(tenantId = "") {
   const cached = homeStatsResponseCache.get(cacheKey);
   if (cached) return cached;
 
-  const profiles = await ProfileModel.find(tenantId, {}, { select: ["roleAtCamp", "collegeYears"] });
+  const profiles = await ProfileModel.find(
+    tenantId,
+    ACTIVE_ALUMNI_FILTER,
+    { select: ["roleAtCamp", "collegeYears"] }
+  );
 
   const totalAlumni = profiles.length;
   const totalStaff = profiles.filter((profile) =>
@@ -3594,11 +3597,16 @@ router.get("/map/cities", async (req, res) => {
 
   if (!cached?.inflight) {
     const inflight = (async () => {
-      const counts = await aggregateCityCounts(req.tenant._id);
+      const [counts, totalAlumni] = await Promise.all([
+        aggregateCityCounts(req.tenant._id),
+        countActiveAlumni(req.tenant._id)
+      ]);
       if (!counts.length) {
         return {
           cities: [],
-          unresolvedCityCount: 0
+          unresolvedCityCount: 0,
+          totalAlumni,
+          mappedAlumni: 0
         };
       }
 
@@ -3654,7 +3662,9 @@ router.get("/map/cities", async (req, res) => {
       resolved.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
       return {
         cities: resolved,
-        unresolvedCityCount: missing.length
+        unresolvedCityCount: missing.length,
+        totalAlumni,
+        mappedAlumni: resolved.reduce((sum, row) => sum + Number(row.count || 0), 0)
       };
     })();
 

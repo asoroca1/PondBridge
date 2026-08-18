@@ -266,6 +266,23 @@ describe("unified people directory", () => {
     expect(counts.all).toBe(6);
   });
 
+  test("shows camp years from camp history, never college graduation years", () => {
+    const { people } = buildPeopleDirectory({
+      users: [{ _id: "u1", email: "joined@example.org" }],
+      profiles: [{ _id: "p1", userId: "u1", emails: ["joined@example.org"], collegeYears: ["2026", "2027"] }],
+      contacts: [{ _id: "c1", email: "joined@example.org", contactStatus: "active", campYears: ["2019"] }],
+      mapMember: () => ({ id: "p1", yearsAtCamp: ["2017", "2018"] })
+    });
+    expect(people[0].yearsAtCamp).toEqual(["2017", "2018", "2019"]);
+  });
+
+  test("keeps the camp years a director typed in for a prospect", () => {
+    const { people } = buildPeopleDirectory({
+      contacts: [{ _id: "c1", email: "prospect@example.org", contactStatus: "active", campYears: ["2009", "2008"] }]
+    });
+    expect(people[0].yearsAtCamp).toEqual(["2008", "2009"]);
+  });
+
   test("keeps a held contact on hold even after they join", () => {
     const { people } = buildPeopleDirectory({
       users: [{ _id: "u9", email: "both@example.org" }],

@@ -54,6 +54,7 @@ import {
   sendTransactionalEmail,
   sendAccessDecisionEmail
 } from "../services/email.js";
+import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
 import { getTenantAnalyticsSnapshot } from "../services/analytics.js";
 import { createInviteRecord } from "../services/invites.js";
 import {
@@ -905,6 +906,7 @@ const ADMIN_MEMBER_PROFILE_SELECT = [
   "collegeYears",
   "currentJobs",
   "industry",
+  "socials",
   "avatarUrl",
   "status",
   "flaggedReason",
@@ -1636,7 +1638,7 @@ function mapMemberRow(profile = {}, user = null, { directorUserId = "" } = {}) {
     email,
     avatarUrl: profile.avatarUrl || "",
     role: accountRoleLabel || normalizeRoleLabel(profile.roleAtCamp || ""),
-    yearsAtCamp: Array.isArray(profile.collegeYears) ? profile.collegeYears : [],
+    yearsAtCamp: resolveMemberCampYears(profile),
     location: profile.cityState || "",
     completionScore: score,
     completionBucket: completionBucket(score),
@@ -1790,6 +1792,31 @@ function resolveMemberStaffYearsSource(profile = {}) {
     return profile.staffYears;
   }
   return {};
+}
+
+// Widest span a single stint may expand to, so a typo like 1900-2100 cannot
+// flood the year filter with entries.
+const MAX_CAMP_YEAR_SPAN = 80;
+
+/**
+ * Every year a member was actually at camp, expanded from their camper and
+ * staff stints. College years belong to the education rows, not camp history,
+ * so they are deliberately not part of this list.
+ */
+function resolveMemberCampYears(profile = {}) {
+  const stints = [
+    ...normalizeMemberYearStints(resolveMemberCamperYearsSource(profile)),
+    ...normalizeMemberYearStints(resolveMemberStaffYearsSource(profile))
+  ];
+  const years = new Set();
+  for (const stint of stints) {
+    const startYear = Number(stint.startYear);
+    const endYear = Number(stint.endYear);
+    if (!Number.isFinite(startYear) || !Number.isFinite(endYear)) continue;
+    const lastYear = Math.min(endYear, startYear + MAX_CAMP_YEAR_SPAN);
+    for (let year = startYear; year <= lastYear; year += 1) years.add(String(year));
+  }
+  return [...years].sort();
 }
 
 function rangesOverlap(startA, endA, startB, endB) {
@@ -2633,9 +2660,9 @@ router.get("/dashboard", async (req, res, next) => {
       openSafetyReports
     ] =
       await Promise.all([
-        ProfileModel.count(tenantId, { status: "active" }),
+        countActiveAlumni(tenantId),
         ProfileModel.count(tenantId, {
-          status: "active",
+          ...ACTIVE_ALUMNI_FILTER,
           createdAt: { $gte: sevenDaysAgo }
         }),
         AccessRequestModel.count(tenantId, { status: "pending" }),
@@ -2692,7 +2719,7 @@ router.get("/dashboard", async (req, res, next) => {
     );
 
     const priorWindowCount = await ProfileModel.count(tenantId, {
-      status: "active",
+      ...ACTIVE_ALUMNI_FILTER,
       createdAt: {
         $gte: new Date(thirtyDaysAgo.getTime() - 30 * DAY_MS),
         $lt: thirtyDaysAgo
@@ -3139,6 +3166,9 @@ router.get("/members", async (req, res, next) => {
       camperMaxYear !== null ||
       staffMinYear !== null ||
       staffMaxYear !== null;
+    // Camp years live inside the camper/staff stints, which Supabase cannot
+    // filter on directly, so this narrows JS-side like the range filters do.
+    const campYear = year && year !== "all" ? year : "";
     const completionRange = parseCompletionRange(req.query);
     const { page, pageSize, skip } = parseMemberPagination(req.query);
     const cacheKey = [
@@ -3159,16 +3189,12 @@ router.get("/members", async (req, res, next) => {
       filter.roleAtCamp = { $ilike: role };
     }
 
-    if (year && year !== "all") {
-      filter.collegeYears = { $contains: [year] };
-    }
-
     if (status && status !== "all") {
       filter.status = status;
     }
 
     let mongoSort = sortForMembers(sort);
-    if (completionRange || hasNestedYearFilters) {
+    if (completionRange || hasNestedYearFilters || campYear) {
       mongoSort = null;
     }
     let profiles = [];
@@ -3192,6 +3218,10 @@ router.get("/members", async (req, res, next) => {
         rx.test(p.roleAtCamp || "") ||
           (p.collegeYears || []).some((y) => rx.test(y))
       );
+    }
+
+    if (campYear) {
+      allProfiles = allProfiles.filter((profile) => resolveMemberCampYears(profile).includes(campYear));
     }
 
     if (hasNestedYearFilters) {
@@ -3921,7 +3951,7 @@ router.post("/members/bulk-action", async (req, res) => {
       lastName: profile.lastName || "",
       email: profile.emails?.[0] || "",
       role: profile.roleAtCamp || "",
-      yearsAtCamp: asArray(profile.collegeYears).join("; "),
+      yearsAtCamp: resolveMemberCampYears(profile).join("; "),
       location: profile.cityState || "",
       status: profile.status || "active"
     }));

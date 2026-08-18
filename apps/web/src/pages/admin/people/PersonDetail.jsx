@@ -12,6 +12,36 @@ import {
   stageSummary
 } from "./peopleStages.js";
 
+/**
+ * Camp years arrive as one entry per year so the year filter can match them.
+ * A ten-summer camper would read as a wall of numbers, so consecutive years
+ * collapse back into the ranges the member actually entered.
+ */
+function formatCampYears(years) {
+  const sorted = [...new Set(
+    (Array.isArray(years) ? years : [])
+      .map((value) => Number(String(value || "").trim()))
+      .filter((value) => Number.isFinite(value))
+  )].sort((a, b) => a - b);
+  if (!sorted.length) return "";
+
+  const ranges = [];
+  let start = sorted[0];
+  let end = sorted[0];
+  for (const year of sorted.slice(1)) {
+    if (year === end + 1) {
+      end = year;
+      continue;
+    }
+    ranges.push([start, end]);
+    start = year;
+    end = year;
+  }
+  ranges.push([start, end]);
+
+  return ranges.map(([from, to]) => (from === to ? String(from) : `${from}–${to}`)).join(", ");
+}
+
 function Field({ label, children }) {
   if (children === null || children === undefined || children === "") return null;
   return (
@@ -141,7 +171,7 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
       <dl className="pb-people-fields">
         <Field label="Role">{person.role || null}</Field>
         <Field label="Location">{person.location || null}</Field>
-        <Field label="Camp years">{person.yearsAtCamp?.length ? person.yearsAtCamp.join(", ") : null}</Field>
+        <Field label="Camp years">{formatCampYears(person.yearsAtCamp) || null}</Field>
         <Field label="Tags">{person.tags?.length ? person.tags.join(" · ") : null}</Field>
         {person.stage === "member" ? (
           <Field label="Profile completion">
