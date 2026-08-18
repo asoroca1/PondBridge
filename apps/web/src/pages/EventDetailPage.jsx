@@ -51,10 +51,10 @@ function formatTimeRange(item = {}) {
 function dateBadge(item = {}) {
   const timezone = String(item?.timezone || "America/New_York");
   const startsAt = item?.startsAt ? new Date(item.startsAt) : null;
-  if (!startsAt || Number.isNaN(startsAt.getTime())) return { month: "TBD", day: "--" };
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return { month: "", day: "", pending: true };
   const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: timezone }).format(startsAt);
   const day = new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: timezone }).format(startsAt);
-  return { month: month.toUpperCase(), day };
+  return { month: month.toUpperCase(), day, pending: false };
 }
 
 function rsvpLabel(status = "") {
@@ -205,6 +205,24 @@ export default function EventDetailPage() {
   const rsvpLocked = Boolean(item?.rsvpClosed || item?.status === "canceled");
   const seminar = isSeminar(item || {});
   const bd = useMemo(() => dateBadge(item || {}), [item]);
+  const noun = seminar ? "info session" : "event";
+  const canceled = item?.status === "canceled";
+  const scheduled = !bd.pending;
+  const viewerIsAttending = item?.myRsvp?.status === "attending";
+  const canJoinRoom = Boolean(item?.meetingAccess?.canRequestJoinLink);
+  // The room can be closed for two very different reasons. Saying "RSVP Going"
+  // to someone who already RSVP'd Going is the bug this distinguishes.
+  const roomBlockedReason = canJoinRoom
+    ? ""
+    : canceled
+      ? "canceled"
+      : item?.meetingAccess?.isHost || viewerIsAttending
+        ? "not_ready"
+        : "needs_rsvp";
+  const hasBody = Boolean(String(item?.bodyHtml || "").trim());
+  const hasHostCard = Boolean(seminar && item?.host);
+  const leanLayout = Boolean(item) && !hasBody && !hasHostCard;
+  const hasMainContent = hasBody || seminar || Boolean(item?.locationAddress);
   const coverStyle = item?.coverImageUrl
     ? {
         backgroundImage: `linear-gradient(100deg, rgba(10,24,40,0.82) 0%, rgba(10,24,40,0.35) 55%, rgba(10,24,40,0.05) 100%), url(${item.coverImageUrl})`
@@ -242,9 +260,18 @@ export default function EventDetailPage() {
         <>
           <section className="ev-detail-hero" style={coverStyle}>
             <div className="ev-detail-hero-inner">
-              <div className="ev-detail-date-chip" aria-hidden="true">
-                <span className="ev-date-chip-month">{bd.month}</span>
-                <span className="ev-date-chip-day">{bd.day}</span>
+              <div
+                className={`ev-detail-date-chip ${bd.pending ? "is-pending" : ""}`.trim()}
+                aria-hidden="true"
+              >
+                {bd.pending ? (
+                  <span className="ev-date-chip-pending">Date TBD</span>
+                ) : (
+                  <>
+                    <span className="ev-date-chip-month">{bd.month}</span>
+                    <span className="ev-date-chip-day">{bd.day}</span>
+                  </>
+                )}
               </div>
               <div className="ev-detail-hero-copy">
                 {seminar ? (
@@ -292,10 +319,37 @@ export default function EventDetailPage() {
             </div>
           </section>
 
-          <section className="ev-detail-grid">
+          {!scheduled && !canceled ? (
+            <div className="ev-detail-notice">
+              <CalendarDays size={18} aria-hidden="true" />
+              <div>
+                <strong>This {noun} isn’t scheduled yet.</strong>
+                <p>
+                  {viewerIsAttending
+                    ? `You’re on the list — we’ll email you as soon as the date and ${
+                        seminar ? "meeting link are" : "location are"
+                      } set.`
+                    : `RSVP Going and we’ll email you as soon as the date and ${
+                        seminar ? "meeting link are" : "location are"
+                      } set.`}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <section className={`ev-detail-grid ${leanLayout ? "is-lean" : ""}`.trim()}>
+            {hasMainContent ? (
             <article className="ev-detail-card ev-detail-main">
               <header className="ev-detail-card-head">
-                <h2>{seminar ? "About this info session" : "About this event"}</h2>
+                <h2>
+                  {hasBody
+                    ? seminar
+                      ? "About this info session"
+                      : "About this event"
+                    : seminar
+                      ? "Info session details"
+                      : "Event details"}
+                </h2>
                 {item.locationAddress ? (
                   <p className="ev-detail-card-sub">
                     <MapPin size={13} aria-hidden="true" />
@@ -303,11 +357,9 @@ export default function EventDetailPage() {
                   </p>
                 ) : null}
               </header>
-              {item.bodyHtml ? (
+              {hasBody ? (
                 <div className="ev-detail-richtext" dangerouslySetInnerHTML={{ __html: item.bodyHtml }} />
-              ) : (
-                <p className="ev-detail-muted">More details will be shared here soon.</p>
-              )}
+              ) : null}
               {seminar ? (
                 <div className="ev-seminar-facts">
                   {item.topicTitle ? (
@@ -351,6 +403,7 @@ export default function EventDetailPage() {
                 </div>
               ) : null}
             </article>
+            ) : null}
 
             <aside className="ev-detail-side">
               {seminar && item.meetingAccess ? (
@@ -372,23 +425,33 @@ export default function EventDetailPage() {
                       PondBridge releases this link only to signed-in registered members who RSVP Going.
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    className="ev-btn ev-btn-primary ev-seminar-join-btn"
-                    aria-describedby="seminar-room-access-note"
-                    disabled={!item.meetingAccess.canRequestJoinLink || joining || item.status === "canceled"}
-                    onClick={openSeminarRoom}
-                  >
-                    {joining ? "Opening room…" : item.meetingAccess.isHost ? "Open host room" : "Join info session"}
-                    <ExternalLink size={15} aria-hidden="true" />
-                  </button>
-                  {!item.meetingAccess.canRequestJoinLink && item.status !== "canceled" ? (
+                  {canJoinRoom ? (
+                    <button
+                      type="button"
+                      className="ev-btn ev-btn-primary ev-seminar-join-btn"
+                      aria-describedby="seminar-room-access-note"
+                      disabled={joining}
+                      onClick={openSeminarRoom}
+                    >
+                      {joining
+                        ? "Opening room…"
+                        : item.meetingAccess.isHost
+                          ? "Open host room"
+                          : "Join info session"}
+                      <ExternalLink size={15} aria-hidden="true" />
+                    </button>
+                  ) : roomBlockedReason === "needs_rsvp" ? (
                     <p className="ev-detail-muted">
                       {item.meetingAccess.hasMeetingLink === false
                         // A session can be published before its room exists, so
                         // the honest reason is that there is no link yet.
                         ? "The camp has not added the meeting link yet. Register and it will appear here."
                         : <>RSVP <strong>Going</strong> to unlock the info session room.</>}
+                    </p>
+                  ) : roomBlockedReason === "not_ready" ? (
+                    <p className="ev-detail-muted">
+                      You’re registered. The {meetingProviderLabel(item.meetingProvider)} link opens
+                      here once directors finish scheduling this info session.
                     </p>
                   ) : null}
                   {joinError ? <p className="ev-detail-error">{joinError}</p> : null}
@@ -472,14 +535,18 @@ export default function EventDetailPage() {
                     <strong>{item.counts?.attending || 0}</strong>
                     <span>Going</span>
                   </div>
-                  <div className="ev-detail-count is-maybe">
-                    <strong>{item.counts?.maybe || 0}</strong>
-                    <span>Maybe</span>
-                  </div>
-                  <div className="ev-detail-count is-not">
-                    <strong>{item.counts?.notAttending || 0}</strong>
-                    <span>Can’t go</span>
-                  </div>
+                  {item.counts?.maybe ? (
+                    <div className="ev-detail-count is-maybe">
+                      <strong>{item.counts.maybe}</strong>
+                      <span>Maybe</span>
+                    </div>
+                  ) : null}
+                  {item.counts?.notAttending ? (
+                    <div className="ev-detail-count is-not">
+                      <strong>{item.counts.notAttending}</strong>
+                      <span>Can’t go</span>
+                    </div>
+                  ) : null}
                 </div>
                 {Array.isArray(item.roster) ? (
                   <ul className="ev-roster">
