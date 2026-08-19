@@ -32,7 +32,7 @@
   border: 1px solid var(--card-border);
   border-radius: 16px;
   padding: clamp(18px, 3vw, 30px);
-  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 38px rgba(23, 23, 23, 0.08);
 }
 
 .director-legal-header h1 {
