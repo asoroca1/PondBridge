@@ -127,6 +127,24 @@ function applyTheme(config = {}) {
   root.style.setProperty("--hero-image-size", heroImageSize);
   if (heroImage) root.style.setProperty("--hero-image-url", `url(\"${heroImage}\")`);
   else root.style.removeProperty("--hero-image-url");
+
+  // Browser and OS chrome sit outside the stylesheet, so they have to be set
+  // here or every camp keeps the neutral default from index.html.
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute("content", brandPrimary);
+
+  // The tab icon is the camp's, not the platform's, whenever they have a logo.
+  const logo = String(branding.logoUrl || "").trim();
+  if (logo) {
+    let icon = document.querySelector('link[rel="icon"][data-tenant-icon="true"]');
+    if (!icon) {
+      icon = document.createElement("link");
+      icon.rel = "icon";
+      icon.setAttribute("data-tenant-icon", "true");
+      document.head.appendChild(icon);
+    }
+    if (icon.getAttribute("href") !== logo) icon.setAttribute("href", logo);
+  }
 }
 
 function tenantThemeCacheKey({ slug = "", host = "" } = {}) {
