@@ -527,7 +527,8 @@ export function buildNewsletterAnnouncementEmail({
   archiveUrl = "",
   pdfUrl = "",
   coverImageUrl = "",
-  brandPrimary = ""
+  brandPrimary = "",
+  logoUrl = ""
 } = {}) {
   // A newsletter announcement should look like the camp that sent it.
   const P = buildEmailPalette(brandPrimary);
@@ -585,7 +586,8 @@ export function buildNewsletterAnnouncementEmail({
     tenantName: tenantName || "PondBridge Network",
     subject: emailSubject,
     bodyHtml,
-    brandPrimary
+    brandPrimary,
+    logoUrl
   });
 }
 
@@ -3453,6 +3455,7 @@ router.post(
       const { subject, text, html } = buildNewsletterAnnouncementEmail({
         tenantName: req.tenant.name || "PondBridge Network",
         brandPrimary: emailBranding.brandPrimary,
+        logoUrl: emailBranding.logoUrl,
         newsletterLabel,
         title,
         season,

@@ -89,7 +89,27 @@ similar), not on camp data. They are a separate concern and are noted below.
 - The internal outreach/CRM tables allow any `authenticated` role to read and
   write. Nothing mints such a token today, but those policies should be scoped
   to the workspace owner rather than left open.
-- `findById`/`update` still exist unscoped for admin and super-admin paths.
-  They are behind admin authentication, but migrating them to the scoped
-  variants would remove the last places where isolation depends on a prior
-  read having been correct.
+- `findById`/`update` still exist unscoped in 51 places. Before "finishing"
+  that migration, note which conversions are worth doing:
+
+  - `update(doc._id, …)` → `updateScoped(req.tenant._id, doc._id, …)` **adds
+    safety**. It asserts the write lands in the tenant that made the request,
+    independently of how the row was fetched. The member and director routes
+    were converted this way.
+  - `update(doc._id, …)` → `updateScoped(doc.tenantId, doc._id, …)` is
+    **cosmetic**. If the read was already cross-tenant then `doc.tenantId` is
+    the other camp's id and the write still succeeds. It reads safer without
+    being safer.
+
+  What remains is mostly the second kind, or is platform-wide by design
+  (mobile notifications, identity lookups, super admin). Making those genuinely
+  safer means threading the caller's tenant through the service signatures,
+  which is worth doing when one of them next needs changing anyway — not as a
+  sweep.
+
+- The internal outreach/CRM tables are readable and writable by any Supabase
+  `authenticated` role. There is exactly one such account
+  (`founder@pondbridge.local`), so today that means "the operator" and nothing
+  more, and an app of ours depends on it. It becomes a real problem the moment
+  a second Supabase Auth user exists — scope those policies to `auth.uid()`
+  before that happens, not after.

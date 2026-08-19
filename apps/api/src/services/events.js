@@ -806,7 +806,8 @@ export function buildEventEmailContent({
     subject: String(subject || "").trim(),
     bodyHtml: composedBody,
     unsubscribeUrl: "",
-    brandPrimary: branding.brandPrimary
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
   });
 }
 

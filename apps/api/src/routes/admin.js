@@ -2983,7 +2983,7 @@ router.patch("/safety/reports/:reportId", async (req, res, next) => {
 
     const review = normalizeReportReviewInput(req.body);
     const isClosed = review.status === "resolved" || review.status === "dismissed";
-    const updated = await ContentReportModel.update(report._id, {
+    const updated = await ContentReportModel.updateScoped(req.tenant._id, report._id, {
       status: review.status,
       resolutionNote: isClosed ? review.resolutionNote : "",
       reviewedByUserId: review.status === "open" ? null : req.user.id,
@@ -3049,7 +3049,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
           error: { code: "REPORT_TARGET_NOT_FOUND", message: "The reported message is no longer available." }
         });
       }
-      await MessageModel.update(message._id, { deletedAt });
+      await MessageModel.updateScoped(req.tenant._id, message._id, { deletedAt });
 
       const conversation = await ConversationModel.findOne(req.tenant._id, {
         _id: message.conversationId
@@ -3062,7 +3062,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
         );
         const latestMessage = latest[0] || null;
         const lastMessageAt = latestMessage?.createdAt || conversation.createdAt || deletedAt;
-        await ConversationModel.update(conversation._id, {
+        await ConversationModel.updateScoped(req.tenant._id, conversation._id, {
           lastMessageAt,
           lastMessage: latestMessage
             ? {
@@ -3095,7 +3095,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
           error: { code: "REPORT_TARGET_NOT_FOUND", message: "The reported forum post is no longer available." }
         });
       }
-      await ForumPostModel.update(post._id, { deletedAt });
+      await ForumPostModel.updateScoped(req.tenant._id, post._id, { deletedAt });
       const forum = await ForumModel.findOne(req.tenant._id, { _id: post.forumId });
       if (forum) {
         const latestPosts = await ForumPostModel.find(
@@ -3103,7 +3103,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
           { forumId: forum._id, deletedAt: null },
           { sort: { createdAt: -1 }, limit: 1 }
         );
-        await ForumModel.update(forum._id, {
+        await ForumModel.updateScoped(req.tenant._id, forum._id, {
           postsCount: Math.max(0, Number(forum.postsCount || 0) - 1),
           lastActivityAt: latestPosts[0]?.createdAt || forum.createdAt || deletedAt
         });
@@ -3115,7 +3115,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
       };
     }
 
-    const updatedReport = await ContentReportModel.update(report._id, {
+    const updatedReport = await ContentReportModel.updateScoped(req.tenant._id, report._id, {
       status: "resolved",
       resolutionNote,
       reviewedByUserId: req.user.id,
@@ -3620,11 +3620,11 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
   const cleanPatch = Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined)
   );
-  const updated = await ProfileModel.update(profile._id, cleanPatch);
+  const updated = await ProfileModel.updateScoped(req.tenant._id, profile._id, cleanPatch);
 
   if (cleanPatch.status && userId) {
     const nextUserStatus = cleanPatch.status === "removed" ? "inactive" : "active";
-    await UserModel.update(userId, { status: nextUserStatus });
+    await UserModel.updateScoped(req.tenant._id, userId, { status: nextUserStatus });
   }
 
   await writeAdminAudit(req, "admin_member_full_profile_updated", {
@@ -3725,11 +3725,11 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
     patch.status = status;
   }
 
-  const updated = await ProfileModel.update(profile._id, patch);
+  const updated = await ProfileModel.updateScoped(req.tenant._id, profile._id, patch);
 
   if (patch.status) {
     const nextUserStatus = patch.status === "removed" ? "inactive" : "active";
-    await UserModel.update(updated.userId, { status: nextUserStatus });
+    await UserModel.updateScoped(req.tenant._id, updated.userId, { status: nextUserStatus });
   }
 
   const user = await UserModel.findOne(req.tenant._id, { _id: updated.userId });
@@ -4033,7 +4033,7 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
 
   const existingUser = await UserModel.findOne(req.tenant._id, { email });
   if (existingUser) {
-    await AccessRequestModel.update(request._id, {
+    await AccessRequestModel.updateScoped(req.tenant._id, request._id, {
       status: "approved",
       reviewedAt: new Date(),
       reviewedByUserId: req.user.id,
@@ -4091,9 +4091,9 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     status: "active"
   });
 
-  await UserModel.update(user._id, { profileId: profile._id });
+  await UserModel.updateScoped(req.tenant._id, user._id, { profileId: profile._id });
 
-  await AccessRequestModel.update(request._id, {
+  await AccessRequestModel.updateScoped(req.tenant._id, request._id, {
     status: "approved",
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
@@ -4160,7 +4160,7 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
     });
   }
 
-  const request = await AccessRequestModel.update(pending._id, {
+  const request = await AccessRequestModel.updateScoped(req.tenant._id, pending._id, {
     status: "denied",
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
@@ -4281,7 +4281,7 @@ router.patch("/email/draft/:id", async (req, res) => {
   if (req.body?.body !== undefined) updates.body = sanitizeHtmlContent(String(req.body.body || "").trim());
   if (req.body?.targeting !== undefined) updates.targeting = normalizeTargeting(req.body.targeting);
 
-  await EmailBroadcastModel.update(item._id, updates);
+  await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, updates);
   const fresh = await EmailBroadcastModel.findOne(req.tenant._id, { _id: item._id });
   return res.json({ ok: true, item: serializeEmailBroadcast(fresh) });
 });
@@ -4317,7 +4317,7 @@ router.delete("/email/scheduled/:broadcastId", async (req, res) => {
   // Broadcasts created before provider-backed scheduling never left PondBridge,
   // so they can be canceled locally without a provider call.
   if (messageIds.length === 0 && !providerSchedule.provider) {
-    await EmailBroadcastModel.update(item._id, {
+    await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, {
       status: "canceled",
       updatedAt: new Date(),
       stats: {
@@ -4359,7 +4359,7 @@ router.delete("/email/scheduled/:broadcastId", async (req, res) => {
   };
 
   if (failedMessageIds.length > 0) {
-    await EmailBroadcastModel.update(item._id, {
+    await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, {
       updatedAt: new Date(),
       stats: { ...currentStats, cancellation }
     });
@@ -4371,7 +4371,7 @@ router.delete("/email/scheduled/:broadcastId", async (req, res) => {
     });
   }
 
-  await EmailBroadcastModel.update(item._id, {
+  await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, {
     status: "canceled",
     updatedAt: new Date(),
     stats: {
@@ -4437,7 +4437,7 @@ router.patch("/email/suppressions/:id/lift", async (req, res) => {
   if (!item) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Active suppression not found." } });
   }
-  await EmailSuppressionModel.update(item._id, { status: "lifted", updatedAt: new Date() });
+  await EmailSuppressionModel.updateScoped(req.tenant._id, item._id, { status: "lifted", updatedAt: new Date() });
   return res.json({ ok: true });
 });
 
@@ -4981,7 +4981,7 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       personalizer
     });
   } catch (error) {
-    await EmailBroadcastModel.update(broadcast._id, {
+    await EmailBroadcastModel.updateScoped(req.tenant._id, broadcast._id, {
       status: "failed",
       sentAt: null,
       stats: {
@@ -5037,7 +5037,7 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       const uncanceledMessageIds = compensation
         .map((result, index) => (result.status === "rejected" ? acceptedMessageIds[index] : ""))
         .filter(Boolean);
-      await EmailBroadcastModel.update(broadcast._id, {
+      await EmailBroadcastModel.updateScoped(req.tenant._id, broadcast._id, {
         status: "failed",
         sentAt: null,
         excludedCount: initiallyExcludedCount + Number(delivery.suppressedCount || 0),
@@ -5953,7 +5953,7 @@ router.post("/settings/admins/grant", async (req, res) => {
   const roleSet = new Set((user.roles || []).map((role) => String(role || "").trim()).filter(Boolean));
   roleSet.add("tenant_admin");
   roleSet.add("user");
-  const updated = await UserModel.update(user._id, { roles: [...roleSet] });
+  const updated = await UserModel.updateScoped(req.tenant._id, user._id, { roles: [...roleSet] });
   await writeAdminAudit(req, "admin_role_granted", {
     targetUserId: toObjectIdString(updated._id),
     targetEmail: updated.email,
@@ -5983,7 +5983,7 @@ router.post("/settings/admins/invite", inviteSendLimiter, async (req, res) => {
     const roles = new Set(existing.roles || []);
     roles.add("tenant_admin");
     roles.add("user");
-    await UserModel.update(existing._id, { roles: [...roles] });
+    await UserModel.updateScoped(req.tenant._id, existing._id, { roles: [...roles] });
     await writeAdminAudit(req, "admin_role_granted", {
       targetUserId: toObjectIdString(existing._id),
       targetEmail: existing.email,
@@ -6059,7 +6059,7 @@ router.delete("/settings/admins/:userId", async (req, res) => {
 
   let roles = (user.roles || []).filter((role) => role !== "tenant_admin");
   if (!roles.includes("user")) roles.push("user");
-  await UserModel.update(user._id, { roles });
+  await UserModel.updateScoped(req.tenant._id, user._id, { roles });
   await writeAdminAudit(req, "admin_role_revoked", {
     targetUserId: toObjectIdString(user._id),
     targetEmail: user.email,
@@ -6306,7 +6306,7 @@ router.delete("/notifications/schedules/:id", async (req, res) => {
   if (existing.status !== "pending") {
     return res.status(400).json({ error: { code: "SCHEDULE_NOT_CANCELABLE", message: "Only pending schedules can be canceled." } });
   }
-  await MobileNotificationScheduleModel.update(id, { status: "canceled" });
+  await MobileNotificationScheduleModel.updateScoped(req.tenant._id, id, { status: "canceled" });
   await writeAdminAudit(req, "admin_mobile_notification_schedule_canceled", { scheduleId: id });
   return res.json({ ok: true });
 });
@@ -6938,7 +6938,7 @@ router.patch("/growth/contacts/:contactId", async (req, res, next) => {
       ...req.body,
       email: contact.email
     });
-    const updated = await AlumniContactModel.update(contact._id, {
+    const updated = await AlumniContactModel.updateScoped(req.tenant._id, contact._id, {
       firstName: normalized.firstName,
       lastName: normalized.lastName,
       contactStatus: normalized.contactStatus,
