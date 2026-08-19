@@ -585,7 +585,7 @@ function buildDirectorBroadcastEmailContent({
     logoUrl: theme.logoUrl || ""
   });
   const tenantName = escapeEmailHtml(String(content.networkDisplayName || tenant?.name || "Your Camp").trim());
-  const brandPrimary = String(theme.brandPrimary || "#002b5c").trim() || "#002b5c";
+  const brandPrimary = String(theme.brandPrimary || "#252525").trim() || "#252525";
   const bodyText = toPlainTextFromHtml(safeBodyHtml);
   const footerContactParts = [normalizedFooter.senderEmail, normalizedFooter.senderPhone].filter(Boolean);
   const footerContact = escapeEmailHtml(footerContactParts.join("  •  "));
@@ -637,20 +637,20 @@ function buildDirectorBroadcastEmailContent({
               </td>
             </tr>
             <tr>
-              <td style="padding:24px 22px 18px 22px;font-family:Arial,sans-serif;color:#13263f;">
-                <h1 style="margin:0 0 14px 0;font-size:24px;line-height:1.28;color:#13263f;">${escapeEmailHtml(safeSubject)}</h1>
-                <div style="font-size:15px;line-height:1.65;color:#1d3552;">${safeBodyForEmail}</div>
+              <td style="padding:24px 22px 18px 22px;font-family:Arial,sans-serif;color:#242424;">
+                <h1 style="margin:0 0 14px 0;font-size:24px;line-height:1.28;color:#242424;">${escapeEmailHtml(safeSubject)}</h1>
+                <div style="font-size:15px;line-height:1.65;color:#323232;">${safeBodyForEmail}</div>
               </td>
             </tr>
             <tr>
               <td style="padding:0 22px 22px 22px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3ebf6;margin-top:6px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eaeaea;margin-top:6px;">
                   <tr>
-                    <td style="padding-top:16px;font-family:Arial,sans-serif;color:#35506f;font-size:14px;line-height:1.6;vertical-align:top;">
+                    <td style="padding-top:16px;font-family:Arial,sans-serif;color:#4c4c4c;font-size:14px;line-height:1.6;vertical-align:top;">
                       <div>${safeSignOff}</div>
-                      ${safeSenderName ? `<div style="margin-top:6px;font-weight:700;color:#143457;">${safeSenderName}</div>` : ""}
-                      ${safeSenderRole ? `<div style="color:#4a6483;">${safeSenderRole}</div>` : ""}
-                      ${footerContact ? `<div style="margin-top:4px;color:#4a6483;">${footerContact}</div>` : ""}
+                      ${safeSenderName ? `<div style="margin-top:6px;font-weight:700;color:#303030;">${safeSenderName}</div>` : ""}
+                      ${safeSenderRole ? `<div style="color:#616161;">${safeSenderRole}</div>` : ""}
+                      ${footerContact ? `<div style="margin-top:4px;color:#616161;">${footerContact}</div>` : ""}
                     </td>
                     ${footerLogoMarkup ? `<td style="padding-top:16px;width:64px;vertical-align:top;text-align:right;">${footerLogoMarkup}</td>` : ""}
                   </tr>
@@ -6418,7 +6418,7 @@ router.post("/settings/support-request", supportRequestLimiter, async (req, res)
   ];
   const text = lines.join("\n");
   const html = `
-    <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.55;color:#0f172a;">
+    <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.55;color:#171717;">
       <p style="margin:0 0 10px;"><strong>Support Request ID:</strong> ${escapeEmailHtml(ticketId)}</p>
       <p style="margin:0 0 6px;"><strong>Tenant:</strong> ${escapeEmailHtml(tenantName)}</p>
       <p style="margin:0 0 6px;"><strong>Tenant Slug:</strong> ${escapeEmailHtml(tenantSlug || "-")}</p>
@@ -6431,7 +6431,7 @@ router.post("/settings/support-request", supportRequestLimiter, async (req, res)
       <p style="margin:0 0 6px;"><strong>Priority:</strong> ${escapeEmailHtml(priority)}</p>
       <p style="margin:0 0 12px;"><strong>Subject:</strong> ${escapeEmailHtml(subject)}</p>
       <p style="margin:0 0 6px;"><strong>Message</strong></p>
-      <pre style="margin:0;padding:10px 12px;border:1px solid #dbe6f3;border-radius:8px;background:#f8fbff;white-space:pre-wrap;">${escapeEmailHtml(message)}</pre>
+      <pre style="margin:0;padding:10px 12px;border:1px solid #e5e5e5;border-radius:8px;background:#f8fbff;white-space:pre-wrap;">${escapeEmailHtml(message)}</pre>
     </div>
   `;
 
@@ -7652,7 +7652,7 @@ router.get("/export/pdf", exportLimiter, requireFeature("pdfExport"), async (req
     if (letter !== currentLetter) {
       currentLetter = letter;
       doc.moveDown(0.6);
-      doc.fontSize(14).fillColor("#002b5c").text(letter);
+      doc.fontSize(14).fillColor("#252525").text(letter);
       doc.fillColor("black");
     }
 

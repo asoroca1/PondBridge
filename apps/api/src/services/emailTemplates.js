@@ -6,14 +6,16 @@
 
 import { buildEmailPalette } from "./brandPalette.js";
 
+// Fallbacks only, used when a camp has not set a brand. They must stay hueless
+// so an un-branded camp's mail is grey rather than somebody else's navy.
 const BRAND = {
-  primary: "#002b5c",
-  secondary: "#d3dde8",
-  accent: "#1e5cb3",
-  bg: "#f5f7fa",
+  primary: "#404040",
+  secondary: "#e6e6e6",
+  accent: "#404040",
+  bg: "#f5f5f5",
   white: "#ffffff",
-  muted: "#6b7280",
-  border: "#e5e7eb",
+  muted: "#737373",
+  border: "#e0e0e0",
   fontStack:
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'"
 };
@@ -127,6 +129,7 @@ function footerHtml({ unsubscribeUrl = "", contextName = "" } = {}) {
 
 function wrapLayout(bodyInner, options = {}) {
   const opts = typeof options === "string" ? { unsubscribeUrl: options } : options || {};
+  const palette = buildEmailPalette(opts.brandPrimary || BRAND.primary);
   const contextName = String(opts.contextName || "").trim();
   const titleLabel = contextName || "PondBridge";
   return `<!DOCTYPE html>
@@ -151,7 +154,7 @@ function wrapLayout(bodyInner, options = {}) {
         <!-- Card -->
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background-color:${BRAND.white};border-radius:8px;border:1px solid ${BRAND.border};">
           <tr>
-            <td style="padding:40px 36px;font-family:${BRAND.fontStack};font-size:15px;line-height:1.6;color:#1f2937;">
+            <td style="padding:40px 36px;font-family:${BRAND.fontStack};font-size:15px;line-height:1.6;color:${palette.text};">
               ${bodyInner}
             </td>
           </tr>
@@ -245,6 +248,7 @@ export function inviteTemplate({
   brandPrimary = BRAND.primary,
   logoUrl = ""
 }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const recipientName = [String(firstName || "").trim(), String(lastName || "").trim()]
     .filter(Boolean)
@@ -254,8 +258,8 @@ export function inviteTemplate({
   const normalizedCustomMessage = String(customMessage || "").trim();
   const customMessageHtml = normalizedCustomMessage
     ? `
-      <div style="margin:0 0 18px;padding:14px 16px;border:1px solid #dbe6f3;border-radius:12px;background:#f8fbff;">
-        <div style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#51657d;">Personal note</div>
+      <div style="margin:0 0 18px;padding:14px 16px;border:1px solid ${P.border};border-radius:12px;background:${P.wash};">
+        <div style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#616161;">Personal note</div>
         ${formatPlainTextParagraphs(normalizedCustomMessage)}
       </div>
     `
@@ -272,7 +276,7 @@ export function inviteTemplate({
   const text = textLines.join("\n");
 
   const html = wrapInviteLayout(`
-    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:#13263f;letter-spacing:-0.02em;">You're Invited</h1>
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:${P.text};letter-spacing:-0.02em;">You're Invited</h1>
     <p style="margin:0 0 12px;">Hi <strong>${safeRecipientName}</strong>,</p>
     ${customMessageHtml}
     <p style="margin:0 0 12px;">You've been invited to join <strong>${safeTenant}</strong>.</p>
@@ -300,6 +304,7 @@ export function magicLinkTemplate({
   brandPrimary = BRAND.primary,
   logoUrl = ""
 }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const expiresStr = formatDate(expiresAt);
 
@@ -312,7 +317,7 @@ export function magicLinkTemplate({
   ].filter(Boolean).join("\n");
 
   const html = wrapInviteLayout(`
-    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:#13263f;letter-spacing:-0.02em;">Sign In to ${safeTenant}</h1>
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:${P.text};letter-spacing:-0.02em;">Sign In to ${safeTenant}</h1>
     <p style="margin:0 0 12px;">Click the button below to sign in to your <strong>${safeTenant}</strong> account. This is a one-time link&mdash;no password needed.</p>
     ${expiresStr ? `<p style="margin:0 0 12px;font-size:13px;color:${BRAND.muted};">This link expires on ${escapeHtml(expiresStr)}.</p>` : ""}
     ${ctaButton(link, "Sign In", { backgroundColor: brandPrimary })}
@@ -338,6 +343,7 @@ export function welcomeTemplate({
   brandPrimary = BRAND.primary,
   logoUrl = ""
 }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const safeName = escapeHtml(firstName || "there");
 
@@ -357,22 +363,22 @@ export function welcomeTemplate({
   ].join("\n");
 
   const html = wrapInviteLayout(`
-    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:#13263f;letter-spacing:-0.02em;">Welcome, ${safeName}</h1>
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:${P.text};letter-spacing:-0.02em;">Welcome, ${safeName}</h1>
     <p style="margin:0 0 12px;">Your <strong>${safeTenant}</strong> account has been created successfully. We're glad you're here!</p>
     <p style="margin:0 0 8px;font-weight:600;">Here's what you can do next:</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
       <tr>
-        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:#1f2937;">
+        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${P.text};">
           &#x2022;&nbsp; Complete your profile so other members can find you
         </td>
       </tr>
       <tr>
-        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:#1f2937;">
+        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${P.text};">
           &#x2022;&nbsp; Browse the member directory
         </td>
       </tr>
       <tr>
-        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:#1f2937;">
+        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${P.text};">
           &#x2022;&nbsp; Connect with fellow members
         </td>
       </tr>
@@ -399,6 +405,7 @@ export function passwordChangedTemplate({
   brandPrimary = BRAND.primary,
   logoUrl = ""
 }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeBrandName = escapeHtml(brandName || "PondBridge");
   const safeAccountEmail = escapeHtml(String(accountEmail || "").trim());
   const greetingName = String(firstName || "").trim();
@@ -418,7 +425,7 @@ export function passwordChangedTemplate({
   ].filter(Boolean).join("\n");
 
   const html = wrapInviteLayout(`
-    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:#13263f;letter-spacing:-0.02em;">Password changed</h1>
+    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:${P.text};letter-spacing:-0.02em;">Password changed</h1>
     <p style="margin:0 0 12px;">${safeGreeting}</p>
     <p style="margin:0 0 12px;">${
       safeAccountEmail
@@ -444,6 +451,7 @@ export function passwordResetCodeTemplate({
   brandPrimary = BRAND.primary,
   logoUrl = ""
 }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeBrandName = escapeHtml(brandName || "PondBridge");
   const safeCode = escapeHtml(String(code || "").trim());
   const safeRequestIp = escapeHtml(String(requestIp || "").trim());
@@ -465,11 +473,11 @@ export function passwordResetCodeTemplate({
   ].filter(Boolean).join("\n");
 
   const html = wrapInviteLayout(`
-    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:#13263f;letter-spacing:-0.02em;">Reset your password</h1>
+    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:${P.text};letter-spacing:-0.02em;">Reset your password</h1>
     <p style="margin:0 0 12px;">Enter the code below to reset your ${safeBrandName} password.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 18px;border:1px solid #dbe6f3;border-radius:12px;background:#f6f9ff;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 18px;border:1px solid ${P.border};border-radius:12px;background:#f6f9ff;">
       <tr>
-        <td align="center" style="padding:18px 16px;font-size:44px;font-weight:800;letter-spacing:0.08em;color:#13263f;">${safeCode}</td>
+        <td align="center" style="padding:18px 16px;font-size:44px;font-weight:800;letter-spacing:0.08em;color:${P.text};">${safeCode}</td>
       </tr>
     </table>
     <p style="margin:0 0 10px;font-size:14px;color:${BRAND.muted};">To protect your account, do not share this code.</p>
@@ -498,6 +506,7 @@ export function verificationCodeTemplate({
   brandPrimary = BRAND.primary,
   logoUrl = ""
 }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeBrandName = escapeHtml(brandName || "PondBridge");
   const safeCode = escapeHtml(String(code || "").trim());
   const safeRequestIp = escapeHtml(String(requestIp || "").trim());
@@ -524,11 +533,11 @@ export function verificationCodeTemplate({
   ].filter(Boolean).join("\n");
 
   const html = wrapInviteLayout(`
-    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:#13263f;letter-spacing:-0.02em;">Verification code</h1>
+    <h1 style="margin:0 0 16px;font-size:34px;font-weight:700;line-height:1.15;color:${P.text};letter-spacing:-0.02em;">Verification code</h1>
     <p style="margin:0 0 12px;">${intro}</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 18px;border:1px solid #dbe6f3;border-radius:12px;background:#f6f9ff;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 18px;border:1px solid ${P.border};border-radius:12px;background:#f6f9ff;">
       <tr>
-        <td align="center" style="padding:18px 16px;font-size:44px;font-weight:800;letter-spacing:0.08em;color:#13263f;">${safeCode}</td>
+        <td align="center" style="padding:18px 16px;font-size:44px;font-weight:800;letter-spacing:0.08em;color:${P.text};">${safeCode}</td>
       </tr>
     </table>
     <p style="margin:0 0 10px;font-size:14px;color:${BRAND.muted};">To protect your account, do not share this code.</p>
@@ -601,7 +610,7 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
     <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">Access Request Update</h1>
     <p style="margin:0 0 12px;">Hi ${safeName},</p>
     <p style="margin:0 0 12px;">Unfortunately, your request to join <strong>${safeTenant}</strong> was not approved at this time.</p>
-    ${safeReason ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0;"><tr><td style="padding:12px 16px;background-color:${BRAND.bg};border-radius:6px;border-left:4px solid ${BRAND.secondary};font-family:${BRAND.fontStack};font-size:14px;color:#374151;"><strong>Reason:</strong> ${safeReason}</td></tr></table>` : ""}
+    ${safeReason ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0;"><tr><td style="padding:12px 16px;background-color:${BRAND.bg};border-radius:6px;border-left:4px solid ${BRAND.secondary};font-family:${BRAND.fontStack};font-size:14px;color:#3b3b3b;"><strong>Reason:</strong> ${safeReason}</td></tr></table>` : ""}
     <p style="margin:0;font-size:14px;color:${BRAND.muted};">If you have questions, please reach out to the camp director for more details.</p>
   `, { contextName: tenantName });
 
@@ -612,7 +621,8 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
 // 7. Broadcast template (director email wrapper)
 // ---------------------------------------------------------------------------
 
-export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUrl }) {
+export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUrl, brandPrimary = BRAND.primary }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const safeSubject = String(subject || "").trim();
 
@@ -645,10 +655,10 @@ export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUr
   const html = wrapLayout(`
     <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:${BRAND.muted};">Message from ${safeTenant}</p>
     <h1 style="margin:0 0 20px;font-size:22px;font-weight:700;color:${BRAND.primary};">${escapeHtml(safeSubject)}</h1>
-    <div style="font-size:15px;line-height:1.6;color:#1f2937;">
+    <div style="font-size:15px;line-height:1.6;color:${P.text};">
       ${safeBodyHtml}
     </div>
-  `, { unsubscribeUrl, contextName: tenantName });
+  `, { unsubscribeUrl, contextName: tenantName, brandPrimary });
 
   return { subject: safeSubject, text, html };
 }

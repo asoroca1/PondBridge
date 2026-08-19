@@ -147,7 +147,7 @@ function normalizeHttpUrl(value = "") {
   }
 }
 
-function normalizeBrandColor(value = "", fallback = "#002b5c") {
+function normalizeBrandColor(value = "", fallback = "#252525") {
   const candidate = String(value || "").trim();
   if (HEX_COLOR_REGEX.test(candidate)) return candidate;
   return fallback;
@@ -208,7 +208,7 @@ export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) 
     : normalizeFromAddress(env.EMAIL_FROM || "");
   const contactEmail = normalizeEmailAddress(tenant?.content?.contactEmail || "");
   const replyTo = isValidEmailAddress(contactEmail) ? contactEmail : "";
-  const brandPrimary = normalizeBrandColor(themeSource?.brandPrimary || "", "#002b5c");
+  const brandPrimary = normalizeBrandColor(themeSource?.brandPrimary || "", "#252525");
   const logoUrl = normalizeHttpUrl(themeSource?.logoUrl || "");
   return {
     networkName,
@@ -229,7 +229,7 @@ export function buildPondBridgeEmailBranding({ senderName = "PondBridge" } = {})
     networkName: "PondBridge",
     from,
     replyTo: "",
-    brandPrimary: "#002b5c",
+    brandPrimary: "#252525",
     logoUrl: ""
   };
 }
