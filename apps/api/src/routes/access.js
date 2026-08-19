@@ -160,7 +160,7 @@ async function persistProfileLegalAgreement(profile, legalAgreement = null) {
     String(existingAgreement.agePolicyVersion || "") !== AGE_POLICY_VERSION;
   if (!needsPatch) return profile;
 
-  return ProfileModel.updateScoped(req.tenant._id, profile._id, {
+  return ProfileModel.updateScoped(profile.tenantId, profile._id, {
     socials: {
       ...currentSocials,
       legalAgreement: nextAgreement

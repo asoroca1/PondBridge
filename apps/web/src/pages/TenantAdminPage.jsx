@@ -30,10 +30,10 @@ export default function TenantAdminPage() {
   const [banner, setBanner] = useState("");
   const [accessSettings, setAccessSettings] = useState({ signupMode: "open", accessCode: "" });
   const [theme, setTheme] = useState({
-    brandPrimary: "var(--brand-primary-strong)",
-    brandSecondary: "var(--neutral-200)",
+    brandPrimary: "#303030",
+    brandSecondary: "#e6e6e6",
     bg: "#fafafa",
-    text: "var(--neutral-900)",
+    text: "#1c1c1c",
     card: "#ffffff"
   });
   const canExportPdf = tenantHasFeature(tenant, "pdfExport");
@@ -55,10 +55,10 @@ export default function TenantAdminPage() {
         accessCode: ""
       });
       setTheme({
-        brandPrimary: overviewPayload.tenant?.theme?.brandPrimary || "var(--brand-primary-strong)",
-        brandSecondary: overviewPayload.tenant?.theme?.brandSecondary || "var(--neutral-200)",
+        brandPrimary: overviewPayload.tenant?.theme?.brandPrimary || "#303030",
+        brandSecondary: overviewPayload.tenant?.theme?.brandSecondary || "#e6e6e6",
         bg: overviewPayload.tenant?.theme?.bg || "#fafafa",
-        text: overviewPayload.tenant?.theme?.text || "var(--neutral-900)",
+        text: overviewPayload.tenant?.theme?.text || "#1c1c1c",
         card: overviewPayload.tenant?.theme?.card || "#ffffff"
       });
     } catch (loadError) {

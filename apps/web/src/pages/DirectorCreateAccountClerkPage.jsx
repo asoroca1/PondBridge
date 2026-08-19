@@ -200,7 +200,7 @@ export default function DirectorCreateAccountClerkPage() {
               }}
               appearance={{
                 variables: {
-                  colorPrimary: "var(--brand-primary)",
+                  colorPrimary: "#404040",
                   colorText: "var(--text)",
                   colorTextSecondary: "var(--text-muted)",
                   colorInputBackground: "#ffffff",
@@ -274,7 +274,7 @@ export default function DirectorCreateAccountClerkPage() {
                     gap: "12px"
                   },
                   formFieldLabel: {
-                    color: "var(--brand-primary-strong)",
+                    color: "#303030",
                     fontWeight: "700"
                   },
                   formFieldInput: {
@@ -288,7 +288,7 @@ export default function DirectorCreateAccountClerkPage() {
                   formButtonPrimary: {
                     minHeight: "48px",
                     borderRadius: "12px",
-                    background: "var(--brand-primary)",
+                    background: "#404040",
                     boxShadow: "none",
                     fontWeight: "700",
                     fontSize: "1rem"

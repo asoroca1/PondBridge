@@ -72,7 +72,7 @@ function formatChartTickValue(value = 0) {
   return rounded.replace(/\.0$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
 }
 
-const DEFAULT_BRAND_PRIMARY = "var(--brand-primary-strong)";
+const DEFAULT_BRAND_PRIMARY = "#303030";
 const DEFAULT_AGE_GROUPS = [
   "Super Warrior",
   "Warrior",
@@ -125,7 +125,7 @@ function isHexColor(value = "") {
 }
 
 function darkenHex(hex, factor = 0.18) {
-  if (!isHexColor(hex)) return "var(--neutral-900)";
+  if (!isHexColor(hex)) return "#1c1c1c";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => Number.parseInt(clean.slice(index, index + 2), 16));
   const darkened = channels.map((value) => Math.max(0, Math.min(255, Math.round(value * (1 - factor)))));
@@ -133,7 +133,7 @@ function darkenHex(hex, factor = 0.18) {
 }
 
 function deriveSecondaryHex(hex, blend = 0.82) {
-  if (!isHexColor(hex)) return "var(--neutral-200)";
+  if (!isHexColor(hex)) return "#e6e6e6";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => Number.parseInt(clean.slice(index, index + 2), 16));
   const lightened = channels.map((value) => Math.min(255, Math.round(value + (255 - value) * blend)));
