@@ -129,6 +129,7 @@ function footerHtml({ unsubscribeUrl = "", contextName = "" } = {}) {
 
 function wrapLayout(bodyInner, options = {}) {
   const opts = typeof options === "string" ? { unsubscribeUrl: options } : options || {};
+  const palette = buildEmailPalette(opts.brandPrimary || BRAND.primary);
   const contextName = String(opts.contextName || "").trim();
   const titleLabel = contextName || "PondBridge";
   return `<!DOCTYPE html>
