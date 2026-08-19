@@ -258,7 +258,7 @@ export function inviteTemplate({
   const customMessageHtml = normalizedCustomMessage
     ? `
       <div style="margin:0 0 18px;padding:14px 16px;border:1px solid ${P.border};border-radius:12px;background:${P.wash};">
-        <div style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#51657d;">Personal note</div>
+        <div style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#616161;">Personal note</div>
         ${formatPlainTextParagraphs(normalizedCustomMessage)}
       </div>
     `
@@ -609,7 +609,7 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
     <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">Access Request Update</h1>
     <p style="margin:0 0 12px;">Hi ${safeName},</p>
     <p style="margin:0 0 12px;">Unfortunately, your request to join <strong>${safeTenant}</strong> was not approved at this time.</p>
-    ${safeReason ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0;"><tr><td style="padding:12px 16px;background-color:${BRAND.bg};border-radius:6px;border-left:4px solid ${BRAND.secondary};font-family:${BRAND.fontStack};font-size:14px;color:#374151;"><strong>Reason:</strong> ${safeReason}</td></tr></table>` : ""}
+    ${safeReason ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0;"><tr><td style="padding:12px 16px;background-color:${BRAND.bg};border-radius:6px;border-left:4px solid ${BRAND.secondary};font-family:${BRAND.fontStack};font-size:14px;color:#3b3b3b;"><strong>Reason:</strong> ${safeReason}</td></tr></table>` : ""}
     <p style="margin:0;font-size:14px;color:${BRAND.muted};">If you have questions, please reach out to the camp director for more details.</p>
   `, { contextName: tenantName });
 
