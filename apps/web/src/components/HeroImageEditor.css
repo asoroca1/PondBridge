@@ -418,7 +418,7 @@
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  object-fit: cover;
+  object-fit: contain;
   border: 1px solid rgba(255, 255, 255, 0.45);
 }
 
