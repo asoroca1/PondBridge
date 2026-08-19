@@ -78,8 +78,14 @@ function initialsFromName(value = "", fallback = "PB") {
   return letters || fallback;
 }
 
-function wordmark(value = "PondBridge", color = BRAND.primary) {
-  return `<span style="font-size:22px;font-weight:700;color:${color};letter-spacing:-0.5px;font-family:${BRAND.fontStack};">${escapeHtml(value)}</span>`;
+function wordmark(value = "PondBridge", color = BRAND.primary, logoUrl = "") {
+  const safeLogo = normalizeHttpUrl(logoUrl || "");
+  // Sized with max-width/max-height and auto, never cropped: a camp logo can be
+  // any shape, and portrait marks with a wordmark underneath are common.
+  const mark = safeLogo
+    ? `<div style="margin:0 0 10px;"><img src="${escapeHtml(safeLogo)}" alt="" style="display:block;margin:0 auto;max-width:56px;max-height:56px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></div>`
+    : "";
+  return `${mark}<span style="font-size:22px;font-weight:700;color:${color};letter-spacing:-0.5px;font-family:${BRAND.fontStack};">${escapeHtml(value)}</span>`;
 }
 
 function ctaButton(href, label, { backgroundColor = BRAND.accent } = {}) {
@@ -149,7 +155,7 @@ function wrapLayout(bodyInner, options = {}) {
       <td align="center" style="padding:32px 16px;">
         <!-- Wordmark -->
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
-          <tr><td align="center">${wordmark(contextName || "PondBridge", palette.primary)}</td></tr>
+          <tr><td align="center">${wordmark(contextName || "PondBridge", palette.primary, opts.logoUrl || "")}</td></tr>
         </table>
         <!-- Card -->
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background-color:${palette.surface};border-radius:8px;border:1px solid ${palette.border};">
@@ -621,7 +627,7 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
 // 7. Broadcast template (director email wrapper)
 // ---------------------------------------------------------------------------
 
-export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUrl, brandPrimary = BRAND.primary }) {
+export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUrl, brandPrimary = BRAND.primary, logoUrl = "" }) {
   const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const safeSubject = String(subject || "").trim();
@@ -658,7 +664,7 @@ export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUr
     <div style="font-size:15px;line-height:1.6;color:${P.text};">
       ${safeBodyHtml}
     </div>
-  `, { unsubscribeUrl, contextName: tenantName, brandPrimary });
+  `, { unsubscribeUrl, contextName: tenantName, brandPrimary, logoUrl });
 
   return { subject: safeSubject, text, html };
 }

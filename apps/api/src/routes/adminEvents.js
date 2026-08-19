@@ -119,7 +119,7 @@ async function saveMeetingDetail({ tenantId, eventId, meetingUrl = "" }) {
   };
 
   if (existing) {
-    return EventMeetingDetailModel.update(existing._id, patch);
+    return EventMeetingDetailModel.updateScoped(tenantId, existing._id, patch);
   }
   if (!patch.meetingUrl) return null;
   return EventMeetingDetailModel.create({
@@ -342,7 +342,7 @@ router.patch("/:eventId", async (req, res) => {
     ? await resolveUniqueEventSlug(req.tenant._id, patch.title, toId(event?._id || event?.id))
     : String(event.slug || "").trim();
 
-  const updated = await EventModel.update(event._id, {
+  const updated = await EventModel.updateScoped(req.tenant._id, event._id, {
     ...patch,
     slug: nextSlug,
     updatedByUserId: req.user.id
@@ -381,7 +381,7 @@ router.post("/:eventId/publish", async (req, res) => {
   });
 
   const publishedAt = new Date();
-  const updated = await EventModel.update(event._id, {
+  const updated = await EventModel.updateScoped(req.tenant._id, event._id, {
     status: "published",
     publishedAt,
     updatedByUserId: req.user.id
@@ -429,7 +429,7 @@ router.post("/:eventId/unpublish", async (req, res) => {
   const event = await loadEventOr404(req, res);
   if (!event) return;
 
-  const updated = await EventModel.update(event._id, {
+  const updated = await EventModel.updateScoped(req.tenant._id, event._id, {
     status: "draft",
     publishedAt: null,
     updatedByUserId: req.user.id
@@ -449,7 +449,7 @@ router.post("/:eventId/cancel", async (req, res) => {
   const event = await loadEventOr404(req, res);
   if (!event) return;
 
-  const updated = await EventModel.update(event._id, {
+  const updated = await EventModel.updateScoped(req.tenant._id, event._id, {
     status: "canceled",
     publishedAt: event.publishedAt || new Date(),
     updatedByUserId: req.user.id
