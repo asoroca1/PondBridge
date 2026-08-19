@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { buildEmailPalette } from "../services/brandPalette.js";
 import crypto from "crypto";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
@@ -592,6 +593,7 @@ function buildDirectorBroadcastEmailContent({
   const safeSenderName = escapeEmailHtml(normalizedFooter.senderName || "");
   const safeSenderRole = escapeEmailHtml(normalizedFooter.senderRole || "");
   const safeHeaderTagline = escapeEmailHtml(normalizedFooter.headerTagline || "Community update");
+  const emailPalette = buildEmailPalette(brandPrimary);
   const headerLogoUrl = normalizeHttpUrl(theme.logoUrl || "");
   const footerLogoUrl = normalizedFooter.showLogo
     ? normalizeHttpUrl(theme.logoUrl || normalizedFooter.logoUrl || "")
@@ -600,7 +602,7 @@ function buildDirectorBroadcastEmailContent({
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:42px;height:42px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.14);"><tr><td align="center" valign="middle" style="width:42px;height:42px;line-height:0;"><img src="${escapeEmailHtml(headerLogoUrl)}" alt="" style="display:block;max-width:38px;max-height:38px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
     : `<div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,0.18);color:#ffffff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;line-height:42px;text-align:center;">PB</div>`;
   const footerLogoMarkup = footerLogoUrl
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:52px;height:52px;border-radius:10px;overflow:hidden;border:1px solid #dbe6f3;background:#ffffff;"><tr><td align="center" valign="middle" style="width:52px;height:52px;line-height:0;"><img src="${escapeEmailHtml(footerLogoUrl)}" alt="" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:52px;height:52px;border-radius:10px;overflow:hidden;border:1px solid ${emailPalette.border};background:${emailPalette.surface};"><tr><td align="center" valign="middle" style="width:52px;height:52px;line-height:0;"><img src="${escapeEmailHtml(footerLogoUrl)}" alt="" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
     : "";
   const safeBodyForEmail = safeBodyHtml || "<p style=\"margin:0;\">&nbsp;</p>";
   const isMarketing = campaignType !== "transactional";
@@ -610,19 +612,19 @@ function buildDirectorBroadcastEmailContent({
     ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">${escapeEmailHtml(safePreheader)}</div>`
     : "";
   const preferenceMarkup = isMarketing
-    ? `<tr><td style="padding:16px 22px 22px 22px;border-top:1px solid #e3ebf6;font-family:Arial,sans-serif;color:#6b7f93;font-size:11px;line-height:1.6;text-align:center;">${safePostalAddress ? `<div>${safePostalAddress}</div>` : ""}<div style="margin-top:4px;"><a href="${safeUnsubscribeUrl}" style="color:#456b91;text-decoration:underline;">Manage email preferences</a></div></td></tr>`
+    ? `<tr><td style="padding:16px 22px 22px 22px;border-top:1px solid ${emailPalette.borderSoft};font-family:Arial,sans-serif;color:${emailPalette.textMuted};font-size:11px;line-height:1.6;text-align:center;">${safePostalAddress ? `<div>${safePostalAddress}</div>` : ""}<div style="margin-top:4px;"><a href="${safeUnsubscribeUrl}" style="color:${emailPalette.primary};text-decoration:underline;">Manage email preferences</a></div></td></tr>`
     : "";
 
   const html = `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#eef3fa;">
+  <body style="margin:0;padding:0;background:${emailPalette.page};">
     ${preheaderMarkup}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef3fa;padding:24px 12px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${emailPalette.page};padding:24px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;border-radius:18px;overflow:hidden;background:#ffffff;border:1px solid #d6e2f0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;border-radius:18px;overflow:hidden;background:${emailPalette.surface};border:1px solid ${emailPalette.border};">
             <tr>
-              <td style="padding:18px 20px;background:${escapeEmailHtml(brandPrimary)};color:#ffffff;">
+              <td style="padding:18px 20px;background:${escapeEmailHtml(brandPrimary)};color:${emailPalette.onPrimary};">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td style="width:52px;vertical-align:middle;">${headerLogoMarkup}</td>

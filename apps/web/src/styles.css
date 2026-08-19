@@ -1319,9 +1319,14 @@ body{
 }
 
 .auth-brand-mark img {
+  /* A camp logo is whatever shape the camp gives us — often portrait, with a
+     wordmark under the symbol. `cover` cropped it; fit the whole mark inside
+     the tile instead, with a little breathing room. */
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  padding: 5px;
+  box-sizing: border-box;
 }
 
 .auth-brand-copy {
