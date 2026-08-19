@@ -748,20 +748,20 @@ function eventMetaHtml(event = {}) {
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;border-collapse:separate;border-spacing:0;">
       <tr>
-        <td style="padding:16px 18px;border:1px solid #d7e2ee;border-radius:18px;background:#f8fbff;">
-          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b6f86;">${eventTypeLabel}</p>
-          <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:#10273f;">${escapeHtml(event?.title || "Event")}</h2>
-          ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#31465c;">${escapeHtml(event.summary)}</p>` : ""}
+        <td style="padding:16px 18px;border:1px solid #e1e1e1;border-radius:18px;background:#f8fbff;">
+          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6c6c6c;">${eventTypeLabel}</p>
+          <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:#242424;">${escapeHtml(event?.title || "Event")}</h2>
+          ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#434343;">${escapeHtml(event.summary)}</p>` : ""}
           ${startLabel
-            ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>`
+            ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>`
             // An undated session is open for sign-ups; saying so beats an email
             // that simply has no date on it.
-            : `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Starts:</strong> Date to be announced</p>`}
-          ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
-          ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
-          ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}
-          ${event?.locationName ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Location:</strong> ${escapeHtml(event.locationName)}</p>` : ""}
-          ${event?.locationAddress ? `<p style="margin:0;font-size:14px;color:#4b6076;">${escapeHtml(event.locationAddress)}</p>` : ""}
+            : `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Starts:</strong> Date to be announced</p>`}
+          ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
+          ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
+          ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}
+          ${event?.locationName ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Location:</strong> ${escapeHtml(event.locationName)}</p>` : ""}
+          ${event?.locationAddress ? `<p style="margin:0;font-size:14px;color:#5d5d5d;">${escapeHtml(event.locationAddress)}</p>` : ""}
         </td>
       </tr>
     </table>
