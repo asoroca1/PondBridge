@@ -367,17 +367,17 @@ export function welcomeTemplate({
     <p style="margin:0 0 8px;font-weight:600;">Here's what you can do next:</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
       <tr>
-        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${palette.text};">
+        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${P.text};">
           &#x2022;&nbsp; Complete your profile so other members can find you
         </td>
       </tr>
       <tr>
-        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${palette.text};">
+        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${P.text};">
           &#x2022;&nbsp; Browse the member directory
         </td>
       </tr>
       <tr>
-        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${palette.text};">
+        <td style="padding:6px 0;font-family:${BRAND.fontStack};font-size:15px;line-height:1.5;color:${P.text};">
           &#x2022;&nbsp; Connect with fellow members
         </td>
       </tr>
@@ -620,7 +620,8 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
 // 7. Broadcast template (director email wrapper)
 // ---------------------------------------------------------------------------
 
-export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUrl }) {
+export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUrl, brandPrimary = BRAND.primary }) {
+  const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const safeSubject = String(subject || "").trim();
 
@@ -653,10 +654,10 @@ export function broadcastTemplate({ tenantName, subject, bodyHtml, unsubscribeUr
   const html = wrapLayout(`
     <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:${BRAND.muted};">Message from ${safeTenant}</p>
     <h1 style="margin:0 0 20px;font-size:22px;font-weight:700;color:${BRAND.primary};">${escapeHtml(safeSubject)}</h1>
-    <div style="font-size:15px;line-height:1.6;color:${palette.text};">
+    <div style="font-size:15px;line-height:1.6;color:${P.text};">
       ${safeBodyHtml}
     </div>
-  `, { unsubscribeUrl, contextName: tenantName });
+  `, { unsubscribeUrl, contextName: tenantName, brandPrimary });
 
   return { subject: safeSubject, text, html };
 }
