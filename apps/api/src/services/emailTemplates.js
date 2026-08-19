@@ -78,8 +78,8 @@ function initialsFromName(value = "", fallback = "PB") {
   return letters || fallback;
 }
 
-function wordmark(value = "PondBridge") {
-  return `<span style="font-size:22px;font-weight:700;color:${BRAND.primary};letter-spacing:-0.5px;font-family:${BRAND.fontStack};">${escapeHtml(value)}</span>`;
+function wordmark(value = "PondBridge", color = BRAND.primary) {
+  return `<span style="font-size:22px;font-weight:700;color:${color};letter-spacing:-0.5px;font-family:${BRAND.fontStack};">${escapeHtml(value)}</span>`;
 }
 
 function ctaButton(href, label, { backgroundColor = BRAND.accent } = {}) {
@@ -143,16 +143,16 @@ function wrapLayout(bodyInner, options = {}) {
   <style>table,td{font-family:Arial,Helvetica,sans-serif !important;}</style>
   <![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:${BRAND.bg};font-family:${BRAND.fontStack};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:${BRAND.bg};">
+<body style="margin:0;padding:0;background-color:${palette.page};font-family:${BRAND.fontStack};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:${palette.page};">
     <tr>
       <td align="center" style="padding:32px 16px;">
         <!-- Wordmark -->
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
-          <tr><td align="center">${wordmark(contextName || "PondBridge")}</td></tr>
+          <tr><td align="center">${wordmark(contextName || "PondBridge", palette.primary)}</td></tr>
         </table>
         <!-- Card -->
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background-color:${BRAND.white};border-radius:8px;border:1px solid ${BRAND.border};">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background-color:${palette.surface};border-radius:8px;border:1px solid ${palette.border};">
           <tr>
             <td style="padding:40px 36px;font-family:${BRAND.fontStack};font-size:15px;line-height:1.6;color:${palette.text};">
               ${bodyInner}
