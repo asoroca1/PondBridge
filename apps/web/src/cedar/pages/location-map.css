@@ -80,7 +80,7 @@
 .maplibregl-ctrl-group {
   border-radius: 10px;
   border: 1px solid var(--neutral-200);
-  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 8px 16px rgba(23, 23, 23, 0.12);
 }
 
 .maplibregl-ctrl-group button {
@@ -93,7 +93,7 @@
   justify-content: center;
   border-radius: 999px;
   border: 2px solid #ffffff;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 6px 16px rgba(23, 23, 23, 0.18);
   cursor: pointer;
   user-select: none;
   transform: scale(0);
@@ -112,8 +112,8 @@
 
 .lm-marker.is-selected {
   box-shadow:
-    0 0 0 4px rgba(2, 132, 199, 0.35),
-    0 6px 16px rgba(15, 23, 42, 0.18);
+    0 0 0 4px rgba(109, 109, 109, 0.35),
+    0 6px 16px rgba(23, 23, 23, 0.18);
   transform: scale(1.14);
 }
 
@@ -403,7 +403,7 @@
 .lm-prompt-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(2, 43, 92, 0.25);
+  border: 2px solid rgba(38, 38, 38, 0.25);
   border-top-color: var(--brand-primary);
   border-radius: 50%;
   animation: lmSpin 0.8s linear infinite;
