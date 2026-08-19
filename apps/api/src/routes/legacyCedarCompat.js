@@ -2262,7 +2262,7 @@ router.post("/photos/:id/comments", async (req, res) => {
   const authorAvatarUrl = String(profile?.avatarUrl || "").trim();
   const commentId = generateObjectId();
 
-  await PhotoModel.addComment(id, {
+  await PhotoModel.addComment(req.tenant._id, id, {
     _id: commentId,
     authorId: req.user.id,
     authorName,
@@ -2304,7 +2304,7 @@ router.delete("/photos/:id/comments/:commentId", async (req, res) => {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Cannot delete this comment" } });
   }
 
-  await PhotoModel.removeComment(id, commentId);
+  await PhotoModel.removeComment(req.tenant._id, id, commentId);
   clearPhotoFeedCache();
 
   return res.json({ ok: true });
@@ -2323,9 +2323,9 @@ router.post("/photos/:id/like", async (req, res) => {
 
   let updated;
   if (alreadyLiked) {
-    updated = await PhotoModel.removeLike(id, req.user.id);
+    updated = await PhotoModel.removeLike(req.tenant._id, id, req.user.id);
   } else {
-    updated = await PhotoModel.addLike(id, req.user.id);
+    updated = await PhotoModel.addLike(req.tenant._id, id, req.user.id);
   }
 
   clearPhotoFeedCache();
@@ -3071,7 +3071,7 @@ router.post("/forums/:id/join", async (req, res) => {
   const existing = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
-  await ForumModel.addMember(existing._id, req.user.id);
+  await ForumModel.addMember(req.tenant._id, existing._id, req.user.id);
   const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   clearForumCaches();
   const payload = forumToClient(forum);
@@ -3088,7 +3088,7 @@ router.post("/forums/:id/leave", async (req, res) => {
   const existing = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
-  await ForumModel.removeMember(existing._id, req.user.id);
+  await ForumModel.removeMember(req.tenant._id, existing._id, req.user.id);
   const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   evictUserFromRealtimeRoom(req.user.id, `forum:${id}`);
   clearForumCaches();
