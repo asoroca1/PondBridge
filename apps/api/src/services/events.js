@@ -1,5 +1,6 @@
 import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { broadcastTemplate } from "./emailTemplates.js";
+import { buildEmailPalette } from "./brandPalette.js";
 import { buildTenantEmailBranding } from "./email.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { sanitizeHtmlContent, sanitizeText } from "../utils/sanitize.js";
@@ -718,7 +719,9 @@ export function serializeEventMessage(message = {}) {
   };
 }
 
-function eventMetaHtml(event = {}) {
+function eventMetaHtml(event = {}, palette = null) {
+  // Falls back to the neutral default when no camp brand is supplied.
+  const P = palette || buildEmailPalette();
   const startsAt = event?.startsAt ? new Date(event.startsAt) : null;
   const endsAt = event?.endsAt ? new Date(event.endsAt) : null;
   const startLabel = startsAt && !Number.isNaN(startsAt.getTime())
@@ -748,20 +751,20 @@ function eventMetaHtml(event = {}) {
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;border-collapse:separate;border-spacing:0;">
       <tr>
-        <td style="padding:16px 18px;border:1px solid #e1e1e1;border-radius:18px;background:#f8fbff;">
-          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6c6c6c;">${eventTypeLabel}</p>
-          <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:#242424;">${escapeHtml(event?.title || "Event")}</h2>
-          ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#434343;">${escapeHtml(event.summary)}</p>` : ""}
+        <td style="padding:16px 18px;border:1px solid ${P.border};border-radius:18px;background:${P.wash};">
+          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${P.textMuted};">${eventTypeLabel}</p>
+          <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:${P.text};">${escapeHtml(event?.title || "Event")}</h2>
+          ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:${P.text};">${escapeHtml(event.summary)}</p>` : ""}
           ${startLabel
-            ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>`
+            ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>`
             // An undated session is open for sign-ups; saying so beats an email
             // that simply has no date on it.
-            : `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Starts:</strong> Date to be announced</p>`}
-          ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
-          ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
-          ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}
-          ${event?.locationName ? `<p style="margin:0 0 8px;font-size:14px;color:#242424;"><strong>Location:</strong> ${escapeHtml(event.locationName)}</p>` : ""}
-          ${event?.locationAddress ? `<p style="margin:0;font-size:14px;color:#5d5d5d;">${escapeHtml(event.locationAddress)}</p>` : ""}
+            : `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Starts:</strong> Date to be announced</p>`}
+          ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
+          ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
+          ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}
+          ${event?.locationName ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Location:</strong> ${escapeHtml(event.locationName)}</p>` : ""}
+          ${event?.locationAddress ? `<p style="margin:0;font-size:14px;color:${P.textMuted};">${escapeHtml(event.locationAddress)}</p>` : ""}
         </td>
       </tr>
     </table>
@@ -776,6 +779,8 @@ export function buildEventEmailContent({
   bodyHtml = ""
 } = {}) {
   const branding = buildTenantEmailBranding(tenant);
+  // The camp's own colour, so an event email matches its network.
+  const palette = buildEmailPalette(branding.brandPrimary);
   const ctaUrl = buildEventAppUrl(tenant, event?._id || event?.id || "");
   const safeKind = normalizeEventMessageKind(kind || "", "invite");
   const scheduleNoun = normalizeEventType(event?.eventType || "") === "seminar"
@@ -792,7 +797,7 @@ export function buildEventEmailContent({
   const composedBody = `
     ${intro}
     ${bodyHtml ? String(bodyHtml) : ""}
-    ${eventMetaHtml(event)}
+    ${eventMetaHtml(event, palette)}
     ${ctaUrl ? `<p><a href="${escapeHtml(ctaUrl)}" target="_blank" rel="noopener noreferrer">View ${scheduleNoun} details and RSVP</a></p>` : ""}
   `;
 
@@ -800,7 +805,8 @@ export function buildEventEmailContent({
     tenantName: branding.networkName,
     subject: String(subject || "").trim(),
     bodyHtml: composedBody,
-    unsubscribeUrl: ""
+    unsubscribeUrl: "",
+    brandPrimary: branding.brandPrimary
   });
 }
 

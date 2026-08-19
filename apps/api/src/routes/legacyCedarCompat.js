@@ -27,6 +27,7 @@ import {
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
 import { buildTenantEmailBranding, sendBulkTransactionalEmail } from "../services/email.js";
 import { broadcastTemplate } from "../services/emailTemplates.js";
+import { buildEmailPalette } from "../services/brandPalette.js";
 import {
   cityKey,
   clearGeocodeFailure,
@@ -525,8 +526,11 @@ export function buildNewsletterAnnouncementEmail({
   year = "",
   archiveUrl = "",
   pdfUrl = "",
-  coverImageUrl = ""
+  coverImageUrl = "",
+  brandPrimary = ""
 } = {}) {
+  // A newsletter announcement should look like the camp that sent it.
+  const P = buildEmailPalette(brandPrimary);
   const safeTenantName = escapeHtml(tenantName || "your network");
   const safeNewsletterLabel = escapeHtml(newsletterLabel || "Newsletter");
   const safeTitle = escapeHtml(title || `${newsletterLabel} update`);
@@ -542,7 +546,7 @@ export function buildNewsletterAnnouncementEmail({
           <img
             src="${safeCoverImageUrl}"
             alt="${safeTitle} cover"
-            style="display:block;width:100%;max-width:560px;height:auto;border-radius:14px;border:1px solid #e4e4e4;"
+            style="display:block;width:100%;max-width:560px;height:auto;border-radius:14px;border:1px solid ${P.border};"
           />
         </div>
       `
@@ -551,8 +555,8 @@ export function buildNewsletterAnnouncementEmail({
     ? `
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
           <tr>
-            ${safeArchiveUrl ? `<td style="padding:0 12px 12px 0;"><a href="${safeArchiveUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#393939;color:#ffffff;text-decoration:none;font-weight:700;">Open in PondBridge</a></td>` : ""}
-            ${safePdfUrl ? `<td style="padding:0 0 12px 0;"><a href="${safePdfUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#edf3fb;color:#393939;text-decoration:none;font-weight:700;border:1px solid #d6d6d6;">Download PDF</a></td>` : ""}
+            ${safeArchiveUrl ? `<td style="padding:0 12px 12px 0;"><a href="${safeArchiveUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:${P.primary};color:${P.onPrimary};text-decoration:none;font-weight:700;">Open in PondBridge</a></td>` : ""}
+            ${safePdfUrl ? `<td style="padding:0 0 12px 0;"><a href="${safePdfUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:${P.wash};color:${P.text};text-decoration:none;font-weight:700;border:1px solid ${P.border};">Download PDF</a></td>` : ""}
           </tr>
         </table>
       `
@@ -562,9 +566,9 @@ export function buildNewsletterAnnouncementEmail({
     ${coverMarkup}
     <p style="margin:0 0 14px;">A new <strong>${safeNewsletterLabel}</strong> has been published for <strong>${safeTenantName}</strong>.</p>
     <p style="margin:0 0 14px;">The PDF is attached to this email so members can open it right away, and the archive link below will take them straight back into PondBridge.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid #e4e4e4;border-radius:12px;background:#f8fbff;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid ${P.border};border-radius:12px;background:${P.wash};">
       <tr>
-        <td style="padding:16px 18px;font-size:14px;color:#282828;">
+        <td style="padding:16px 18px;font-size:14px;color:${P.text};">
           <div style="margin:0 0 8px;"><strong>Title:</strong> ${safeTitle}</div>
           <div style="margin:0 0 8px;"><strong>Season:</strong> ${safeSeason}</div>
           <div style="margin:0;"><strong>Year:</strong> ${safeYear}</div>
@@ -572,15 +576,16 @@ export function buildNewsletterAnnouncementEmail({
       </tr>
     </table>
     ${actionMarkup}
-    <p style="margin:0 0 10px;font-size:13px;color:#545454;">If the buttons above do not open, you can use the attached PDF or copy this archive link into your browser:</p>
-    ${safeArchiveUrl ? `<p style="margin:0 0 8px;font-size:13px;"><a href="${safeArchiveUrl}" style="color:#555555;text-decoration:underline;">${safeArchiveUrl}</a></p>` : ""}
-    ${safePdfUrl ? `<p style="margin:0;font-size:13px;color:#727272;">Direct PDF link: <a href="${safePdfUrl}" style="color:#555555;text-decoration:underline;">${safePdfUrl}</a></p>` : ""}
+    <p style="margin:0 0 10px;font-size:13px;color:${P.textMuted};">If the buttons above do not open, you can use the attached PDF or copy this archive link into your browser:</p>
+    ${safeArchiveUrl ? `<p style="margin:0 0 8px;font-size:13px;"><a href="${safeArchiveUrl}" style="color:${P.primary};text-decoration:underline;">${safeArchiveUrl}</a></p>` : ""}
+    ${safePdfUrl ? `<p style="margin:0;font-size:13px;color:${P.textMuted};">Direct PDF link: <a href="${safePdfUrl}" style="color:${P.primary};text-decoration:underline;">${safePdfUrl}</a></p>` : ""}
   `;
 
   return broadcastTemplate({
     tenantName: tenantName || "PondBridge Network",
     subject: emailSubject,
-    bodyHtml
+    bodyHtml,
+    brandPrimary
   });
 }
 
@@ -3444,8 +3449,10 @@ router.post(
       };
     } else {
       const networkUrl = `${req.protocol}://${req.get("host")}/t/${req.tenant.slug}/cedar-chest`;
+      const emailBranding = buildTenantEmailBranding(req.tenant);
       const { subject, text, html } = buildNewsletterAnnouncementEmail({
         tenantName: req.tenant.name || "PondBridge Network",
+        brandPrimary: emailBranding.brandPrimary,
         newsletterLabel,
         title,
         season,
@@ -3454,7 +3461,6 @@ router.post(
         pdfUrl: uploaded.objectUrl,
         coverImageUrl: uploadedCover.objectUrl
       });
-      const emailBranding = buildTenantEmailBranding(req.tenant);
       const resolvedReplyTo = isValidEmail(req.user?.email || "")
         ? normalizeEmail(req.user.email)
         : emailBranding.replyTo || undefined;
