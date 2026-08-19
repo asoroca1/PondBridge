@@ -169,3 +169,29 @@ describe("id lookups can be tenant-scoped", () => {
     await expect(PhotoLike.updateScoped("", "photo-1", { caption: "x" })).resolves.toBeNull();
   });
 });
+
+describe("collection helpers cannot be reached with another camp's id", () => {
+  // addLike/addComment/addMember read-modify-write a JSON column. They used to
+  // look the row up by id alone, so they were safe only because every caller
+  // happened to do a tenant-scoped read first.
+  const Collection = createModel("photos", {
+    id: "id",
+    tenantId: "tenant_id",
+    likes: "likes",
+    comments: "comments",
+    createdAt: "created_at",
+    updatedAt: "updated_at"
+  });
+
+  test("a scoped id lookup is what the helpers must build on", async () => {
+    await Collection.findByIdScoped("tenant-a", "photo-from-tenant-b");
+    const call = captured.at(-1);
+    expect(call.query.filters).toContainEqual(["tenant_id", "tenant-a"]);
+    expect(call.query.filters).toContainEqual(["id", "photo-from-tenant-b"]);
+  });
+
+  test("a foreign row resolves to null rather than being mutated", async () => {
+    // The stubbed query returns no row, which is what a tenant mismatch yields.
+    await expect(Collection.findByIdScoped("tenant-a", "photo-1")).resolves.toBeNull();
+  });
+});

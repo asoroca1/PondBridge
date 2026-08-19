@@ -20,6 +20,13 @@ const base = createModel("forums", COLUMNS);
 export const ForumModel = {
   ...base,
 
+/**
+ * These helpers read-modify-write a JSON column, so they take the tenant
+ * explicitly rather than trusting the caller to have scoped the read first.
+ * A collection mutation reached with another camp's id now finds nothing
+ * instead of quietly editing that camp's row.
+ */
+
   async findByMember(tenantId, userId, opts = {}) {
     let query = getSupabaseAdmin()
       .from("forums")
@@ -35,18 +42,18 @@ export const ForumModel = {
     return (data || []).map((r) => toDoc(r, COLUMNS));
   },
 
-  async addMember(id, userId) {
-    const doc = await base.findById(id);
+  async addMember(tenantId, id, userId) {
+    const doc = await base.findByIdScoped(tenantId, id);
     if (!doc) return null;
     const memberIds = doc.memberIds || [];
     if (!memberIds.includes(userId)) memberIds.push(userId);
-    return base.update(id, { memberIds });
+    return base.updateScoped(tenantId, id, { memberIds });
   },
 
-  async removeMember(id, userId) {
-    const doc = await base.findById(id);
+  async removeMember(tenantId, id, userId) {
+    const doc = await base.findByIdScoped(tenantId, id);
     if (!doc) return null;
     const memberIds = (doc.memberIds || []).filter((m) => m !== userId);
-    return base.update(id, { memberIds });
+    return base.updateScoped(tenantId, id, { memberIds });
   }
 };
