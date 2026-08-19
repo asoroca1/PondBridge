@@ -360,7 +360,7 @@ router.put("/:eventId/rsvp", async (req, res) => {
   let rsvp;
   try {
     rsvp = existing
-      ? await EventRsvpModel.update(existing._id, patch)
+      ? await EventRsvpModel.updateScoped(req.tenant._id, existing._id, patch)
       : await EventRsvpModel.create({
           tenantId: req.tenant._id,
           ...patch

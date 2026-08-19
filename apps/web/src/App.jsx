@@ -680,16 +680,21 @@ function TenantScopeRoutes() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="cedar-chest"
-          element={
-            <ProtectedRoute>
-              <MemberModuleRoute moduleKey="newsletter">
-                <CedarChestPage />
-              </MemberModuleRoute>
-            </ProtectedRoute>
-          }
-        />
+        {/* `newsletter` is the name every camp sees; `cedar-chest` is the
+            original path, kept so existing links and bookmarks still resolve. */}
+        {["newsletter", "cedar-chest"].map((newsletterPath) => (
+          <Route
+            key={newsletterPath}
+            path={newsletterPath}
+            element={
+              <ProtectedRoute>
+                <MemberModuleRoute moduleKey="newsletter">
+                  <CedarChestPage />
+                </MemberModuleRoute>
+              </ProtectedRoute>
+            }
+          />
+        ))}
         <Route
           path="location-map"
           element={

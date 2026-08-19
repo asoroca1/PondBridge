@@ -391,7 +391,7 @@ async function resolveEmailAssociationHint(recipientEmail = "") {
     return { tenantId: membershipTenantIds[0], audience };
   }
 
-  const invites = await InviteModel.find({ email, usedAt: null });
+  const invites = await InviteModel.acrossTenants().find({ email, usedAt: null });
   const activeInvites = (invites || []).filter((invite) => {
     const expiresAt = invite?.expiresAt ? new Date(invite.expiresAt) : null;
     return !expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() > nowMs();
@@ -406,7 +406,7 @@ async function resolveEmailAssociationHint(recipientEmail = "") {
     return { tenantId: inviteTenantIds[0], audience };
   }
 
-  const pendingRequests = await AccessRequestModel.find({ email, status: "pending" });
+  const pendingRequests = await AccessRequestModel.acrossTenants().find({ email, status: "pending" });
   const requestTenantIds = [...new Set(
     (pendingRequests || []).map((item) => safeString(item?.tenantId)).filter(Boolean)
   )];

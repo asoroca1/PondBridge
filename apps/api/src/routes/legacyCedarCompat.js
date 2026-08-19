@@ -1715,13 +1715,13 @@ router.put("/me", async (req, res) => {
     if (update[key] === undefined) delete update[key];
   });
 
-  const updatedProfile = await ProfileModel.update(profile._id, update);
+  const updatedProfile = await ProfileModel.updateScoped(req.tenant._id, profile._id, update);
   invalidateMapCaches(req.tenant?._id);
   clearHomeStatsCaches();
 
   const updatedUser = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   if (updatedUser) {
-    await UserModel.update(updatedUser._id, { profileId: updatedProfile._id });
+    await UserModel.updateScoped(req.tenant._id, updatedUser._id, { profileId: updatedProfile._id });
   }
   const user = updatedUser
     ? await UserModel.findOne(req.tenant._id, { _id: req.user.id })
@@ -2099,7 +2099,7 @@ router.patch("/activity/:id/pin", async (req, res) => {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Activity not found" } });
   }
 
-  const updated = await ActivityItemModel.update(existing._id, {
+  const updated = await ActivityItemModel.updateScoped(req.tenant._id, existing._id, {
     pinned,
     pinnedAt: pinned ? new Date() : null
   });
@@ -2608,7 +2608,7 @@ router.patch("/conversations/:id", async (req, res) => {
   }
 
   const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 100);
-  const updated = await ConversationModel.update(convo._id, { name: name || convo.name });
+  const updated = await ConversationModel.updateScoped(req.tenant._id, convo._id, { name: name || convo.name });
 
   clearConversationCaches();
   const payload = conversationToClient(updated, req.user.id);
@@ -2654,7 +2654,7 @@ router.post("/conversations/:id/members", async (req, res) => {
     if (!readBy.some((entry) => String(entry.userId || "") === String(targetId))) {
       readBy.push({ userId: targetId, lastReadAt: new Date(0) });
     }
-    const updated = await ConversationModel.update(convo._id, { participantIds, members, readBy });
+    const updated = await ConversationModel.updateScoped(req.tenant._id, convo._id, { participantIds, members, readBy });
     await joinUserSocketsToRealtimeRoom([targetId], `conversation:${id}`);
     const payload = conversationToClient(updated, req.user.id);
     if (!payload) {
@@ -2720,7 +2720,7 @@ router.delete("/conversations/:id/members", async (req, res) => {
     createdBy = promotedUserId;
   }
 
-  const updated = await ConversationModel.update(convo._id, {
+  const updated = await ConversationModel.updateScoped(req.tenant._id, convo._id, {
     participantIds,
     members,
     readBy,
@@ -2830,7 +2830,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
   });
 
   const lastMessageAt = created.createdAt || new Date();
-  await ConversationModel.update(convo._id, {
+  await ConversationModel.updateScoped(req.tenant._id, convo._id, {
     lastMessageAt,
     readBy: advanceReadBy(convo.readBy, req.user.id, lastMessageAt),
     lastMessage: {
@@ -2871,7 +2871,7 @@ router.post("/conversations/:id/read", async (req, res) => {
 
   const nextReadAt = clampReadAt(req.body?.iso, new Date());
   const readBy = advanceReadBy(convo.readBy, req.user.id, nextReadAt);
-  await ConversationModel.update(convo._id, { readBy });
+  await ConversationModel.updateScoped(req.tenant._id, convo._id, { readBy });
 
   clearConversationCaches();
   return res.json({ ok: true, id, iso: nextReadAt.toISOString() });
@@ -3070,7 +3070,7 @@ router.post("/forums/:id/join", async (req, res) => {
   if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
   await ForumModel.addMember(existing._id, req.user.id);
-  const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
+  const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   clearForumCaches();
   const payload = forumToClient(forum);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
@@ -3087,7 +3087,7 @@ router.post("/forums/:id/leave", async (req, res) => {
   if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
   await ForumModel.removeMember(existing._id, req.user.id);
-  const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
+  const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   evictUserFromRealtimeRoom(req.user.id, `forum:${id}`);
   clearForumCaches();
   const payload = forumToClient(forum);
@@ -3210,7 +3210,7 @@ router.post("/forums/:id/posts", async (req, res) => {
     throw error;
   }
 
-  await ForumModel.update(forum._id, {
+  await ForumModel.updateScoped(req.tenant._id, forum._id, {
     postsCount: Number(forum.postsCount || 0) + 1,
     lastActivityAt: new Date()
   });

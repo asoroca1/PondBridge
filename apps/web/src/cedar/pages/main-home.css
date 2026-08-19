@@ -1,5 +1,4 @@
 :root{
-    --cedar-navy: var(--brand-primary);
     --grid-gap: 18px;
     --card-pad: 14px;
     --maxw: 1240px;
@@ -37,7 +36,7 @@
   .welcome-copy{ display:flex; flex-direction:column; gap:6px; }
   .welcome-title{ position:relative; margin:0; font-size:30px; line-height:1.15; color:var(--brand-primary); letter-spacing:.2px; }
   .title-accent{ position:absolute; left:0; bottom:-6px; width:64px; height:4px; border-radius:4px;
-    background: linear-gradient(90deg, var(--cedar-navy), var(--brand-primary-soft-strong)); opacity:.9; }
+    background: linear-gradient(90deg, var(--brand-primary), var(--brand-primary-soft-strong)); opacity:.9; }
   .welcome-sub{ margin:6px 0 0; color:var(--neutral-600); font-size:14.5px; }
   
   /* Pulse card inside hero */
@@ -115,7 +114,7 @@
   .btn-link{
     font-weight:700;
     text-decoration:none;
-    color: var(--cedar-navy);
+    color: var(--brand-primary);
     display:inline-flex;
     align-items:center;
     padding:3px 8px;
@@ -132,7 +131,7 @@
   /* ---------- Announce + feed ---------- */
   .announce-form{ display:flex; gap:8px; padding:8px 10px; background:var(--neutral-50); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px; }
   .announce-input{ flex:1; border:0; background:transparent; outline:none; font-size:16px; padding:10px 8px; }
-  .announce-btn{ background:var(--cedar-navy); color:var(--brand-on-primary); border:0; border-radius:var(--radius-md); padding:10px 12px; font-weight:700; cursor:pointer; }
+  .announce-btn{ background:var(--brand-primary); color:var(--brand-on-primary); border:0; border-radius:var(--radius-md); padding:10px 12px; font-weight:700; cursor:pointer; }
   .announce-btn:disabled{ opacity:.6; cursor:not-allowed; }
   
   /* feed list + separators */
@@ -275,7 +274,7 @@
     height:100%;
     display:grid;
     place-items:center;
-    background:var(--cedar-navy);
+    background:var(--brand-primary);
     color:#fff;
     font-weight:700;
     letter-spacing:0;

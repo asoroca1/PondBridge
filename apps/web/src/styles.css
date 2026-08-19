@@ -2690,7 +2690,6 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 /* ========== NAVBAR2 (stable, right-locked, scalable search) ========== */
 :root{
-  --cedar-navy: var(--brand-primary);
 
   /* Neutral ramp, overwritten at runtime by TenantContext in the tenant's own
      brand hue. These defaults only cover the first paint, before the theme
@@ -2777,7 +2776,7 @@ html.is-native-app textarea{
   padding: 0 var(--nav-pad-x);
   position: fixed; inset: 0 0 auto 0;
   z-index: 1000;
-  background: var(--cedar-navy); color:var(--brand-on-primary);
+  background: var(--brand-primary); color:var(--brand-on-primary);
 
   display:flex; align-items:center; gap:12px;
   flex-wrap: nowrap !important;     /* never wrap */
@@ -2792,7 +2791,7 @@ html.is-native-app textarea{
 }
 
 .navbar2.is-native-member-route{
-  background: color-mix(in srgb, var(--cedar-navy) 94%, rgba(255,255,255,0.08));
+  background: color-mix(in srgb, var(--brand-primary) 94%, rgba(255,255,255,0.08));
   backdrop-filter: blur(18px);
   box-shadow: 0 12px 24px rgba(19, 19, 19, 0.18);
 }
@@ -3823,7 +3822,7 @@ html.is-native-app textarea{
 
 /* Primary */
 .btn-cedar{
-  background: var(--cedar-navy);
+  background: var(--brand-primary);
   color: var(--brand-on-primary);
   box-shadow: 0 3px 10px var(--brand-primary-shadow);
 }

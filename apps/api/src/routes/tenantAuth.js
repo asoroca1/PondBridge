@@ -460,7 +460,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     });
 
     if (existingRequest) {
-      await AccessRequestModel.update(existingRequest._id, {
+      await AccessRequestModel.updateScoped(req.tenant._id, existingRequest._id, {
         firstName,
         lastName,
         passwordHash,
@@ -527,7 +527,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     ...profileFromBody(req.body)
   });
 
-  await UserModel.update(user._id, { profileId: profile._id });
+  await UserModel.updateScoped(req.tenant._id, user._id, { profileId: profile._id });
   user.profileId = profile._id;
 
   const actorName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() || "Someone";
@@ -701,7 +701,7 @@ router.post("/login", loginLimiter, requireTenant, async (req, res) => {
     });
   }
 
-  await UserModel.update(user._id, { lastLoginAt: new Date() });
+  await UserModel.updateScoped(req.tenant._id, user._id, { lastLoginAt: new Date() });
   user.lastLoginAt = new Date();
 
   const token = signToken(user);
@@ -788,7 +788,7 @@ router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) =
   }
 
   const nextLastLoginAt = new Date();
-  await UserModel.update(user._id, { lastLoginAt: nextLastLoginAt });
+  await UserModel.updateScoped(req.tenant._id, user._id, { lastLoginAt: nextLastLoginAt });
   user.lastLoginAt = nextLastLoginAt;
 
   const token = signToken(user);
@@ -926,7 +926,7 @@ router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async
   }
 
   if (matchedLegacyPlaintextToken) {
-    await MagicLinkTokenModel.update(magicLink._id, { token: tokenHash }).catch(() => {});
+    await MagicLinkTokenModel.updateScoped(req.tenant._id, magicLink._id, { token: tokenHash }).catch(() => {});
   }
 
   if (new Date(magicLink.expiresAt) <= new Date()) {
@@ -979,7 +979,7 @@ router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async
     });
   }
 
-  await UserModel.update(user._id, { lastLoginAt: new Date() });
+  await UserModel.updateScoped(req.tenant._id, user._id, { lastLoginAt: new Date() });
   user.lastLoginAt = new Date();
 
   const authToken = signToken(user);
