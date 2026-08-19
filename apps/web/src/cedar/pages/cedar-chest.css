@@ -388,7 +388,7 @@ body,
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(23, 23, 23, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -496,7 +496,7 @@ body,
 .cc-admin-form select:focus {
   outline: none;
   border-color: var(--brand-primary-soft);
-  box-shadow: 0 0 0 3px rgba(69, 110, 162, 0.18);
+  box-shadow: 0 0 0 3px rgba(105, 105, 105, 0.18);
 }
 
 .cc-admin-form .cc-form-divider {
