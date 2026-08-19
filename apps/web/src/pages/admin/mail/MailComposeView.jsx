@@ -504,7 +504,7 @@ export default function MailComposeView({
               This is how the email arrives, including your camp header and signature.
             </p>
             <div className="pb-mail-preview-frame">
-              <div className="pb-mail-preview-head" style={{ background: "var(--brand-primary)" }}>
+              <div className="pb-mail-preview-head" style={{ background: "#404040" }}>
                 {logoUrl ? <img src={logoUrl} alt="" /> : <span className="pb-mail-preview-logo">{previewInitials}</span>}
                 <div>
                   <strong>{networkName || "Your Camp Network"}</strong>

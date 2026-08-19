@@ -11,11 +11,11 @@ export const Profile = {
   },
 
   async find(filter = {}, options = {}) {
-    return toCompatDocuments(ProfileModel, await ProfileModel.find(filter, options));
+    return toCompatDocuments(ProfileModel, await ProfileModel.acrossTenants().find(filter, options));
   },
 
   async findOne(filter = {}) {
-    return toCompatDocument(ProfileModel, await ProfileModel.findOne(filter));
+    return toCompatDocument(ProfileModel, await ProfileModel.acrossTenants().findOne(filter));
   },
 
   async findById(id) {

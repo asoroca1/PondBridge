@@ -222,7 +222,7 @@ router.put("/me", profileUpdateLimiter, async (req, res) => {
     Object.entries(update).filter(([, value]) => value !== undefined)
   );
 
-  const profile = await ProfileModel.update(existing._id, cleanUpdate);
+  const profile = await ProfileModel.updateScoped(req.tenant._id, existing._id, cleanUpdate);
   profileListResponseCache.clear();
 
   await logTenantEvent({

@@ -160,7 +160,7 @@ async function persistProfileLegalAgreement(profile, legalAgreement = null) {
     String(existingAgreement.agePolicyVersion || "") !== AGE_POLICY_VERSION;
   if (!needsPatch) return profile;
 
-  return ProfileModel.update(profile._id, {
+  return ProfileModel.updateScoped(profile.tenantId, profile._id, {
     socials: {
       ...currentSocials,
       legalAgreement: nextAgreement
@@ -829,7 +829,7 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
   ).trim();
   let requestRow = existingPending;
   if (existingPending) {
-    requestRow = await AccessRequestModel.update(existingPending._id, {
+    requestRow = await AccessRequestModel.updateScoped(req.tenant._id, existingPending._id, {
       firstName: profilePayload.firstName,
       lastName: profilePayload.lastName,
       selfReportedRole,

@@ -356,7 +356,7 @@ async function ensureIdentityMembership({
 async function deleteIdentityWhenUnused(identityId) {
   const normalizedIdentityId = String(identityId || "").trim();
   if (!normalizedIdentityId) return false;
-  const remaining = await TenantMembershipModel.count({ identityId: normalizedIdentityId });
+  const remaining = await TenantMembershipModel.acrossTenants().count({ identityId: normalizedIdentityId });
   const identity = await IdentityModel.findById(normalizedIdentityId);
   if (!identity || !canDeleteUnusedIdentity({
     remainingMembershipCount: remaining,

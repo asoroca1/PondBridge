@@ -309,12 +309,12 @@ function ClerkSuperLoginPage() {
               }}
               appearance={{
                 variables: {
-                  colorPrimary: "var(--brand-primary)",
+                  colorPrimary: "#404040",
                   colorText: "var(--text)",
                   colorTextSecondary: "var(--text-muted)",
                   colorInputBackground: "#ffffff",
                   colorInputText: "var(--text)",
-                  colorNeutral: "var(--neutral-200)",
+                  colorNeutral: "#e6e6e6",
                   borderRadius: "12px",
                   fontFamily: "Inter Variable, Inter, Avenir Next, Segoe UI, sans-serif"
                 },

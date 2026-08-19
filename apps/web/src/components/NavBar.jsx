@@ -128,7 +128,7 @@ function nativeMemberNavTitle(
   if (/^\/events(?:\/|$)/.test(pathname)) return pathname === "/events" ? "Events & Seminars" : "Event or Seminar";
   if (pathname === "/notifications") return "Notifications";
   if (pathname === "/location-map") return `${alumniWordTitle} Map`;
-  if (pathname === "/cedar-chest") return newsletterLabel;
+  if (pathname === "/newsletter" || pathname === "/cedar-chest") return newsletterLabel;
   if (/^\/family-trees(?:\/|$)/.test(pathname)) return "Family Trees";
   return "PondBridge";
 }
@@ -356,7 +356,7 @@ export default function NavBar() {
         id: "chest",
         icon: BookOpen,
         label: newsletterLabel,
-        to: pathWithCamp(slug, "/cedar-chest")
+        to: pathWithCamp(slug, "/newsletter")
       });
     }
     if (modules.merchShop !== false && merchShopUrl) {

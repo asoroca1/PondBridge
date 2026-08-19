@@ -9,6 +9,13 @@ const TENANT_CONFIG_CACHE_PREFIX = "pondbridgeTenantConfig:";
 const TENANT_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const FONT_TOKEN_MAP = {
+  // `cedar_default` is the historical name for the platform default and is kept
+  // so existing tenants keep rendering; `default` is the name to use going
+  // forward. Both resolve to the same stack.
+  default: {
+    display: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif",
+    body: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif"
+  },
   cedar_default: {
     display: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif",
     body: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif"

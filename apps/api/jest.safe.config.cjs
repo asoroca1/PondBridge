@@ -37,6 +37,7 @@ module.exports = {
     "**/tests/superSearchRole.test.js",
     "**/tests/supabaseConfig.test.js",
     "**/tests/tenantFeatureInventory.test.js",
-    "**/tests/tenantSchemaHardening.test.js"
+    "**/tests/tenantSchemaHardening.test.js",
+    "**/tests/tenantIsolation.test.js"
   ]
 };

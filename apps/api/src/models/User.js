@@ -11,11 +11,11 @@ export const User = {
   },
 
   async find(filter = {}, options = {}) {
-    return toCompatDocuments(UserModel, await UserModel.find(filter, options));
+    return toCompatDocuments(UserModel, await UserModel.acrossTenants().find(filter, options));
   },
 
   async findOne(filter = {}) {
-    return toCompatDocument(UserModel, await UserModel.findOne(filter));
+    return toCompatDocument(UserModel, await UserModel.acrossTenants().findOne(filter));
   },
 
   async findById(id) {

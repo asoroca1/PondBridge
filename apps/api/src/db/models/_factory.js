@@ -19,6 +19,48 @@ function hasFilterScope(filter) {
   );
 }
 
+/**
+ * Tenant isolation is enforced here rather than left to each caller.
+ *
+ * Every read and bulk write on a tenant-scoped table must name its tenant.
+ * Previously the tenant id was optional: omitting it silently widened the
+ * query to every camp on the platform, so the guarantee rested on ~370 call
+ * sites each being written correctly, forever. The API connects with the
+ * Supabase service role, which bypasses RLS, so there is no database backstop
+ * behind this check.
+ *
+ * Genuinely global reads (super admin, identity lookup by email, device token
+ * lookup) must say so out loud via `Model.acrossTenants()`, which is greppable
+ * and auditable.
+ */
+function filterNamesTenant(filter) {
+  if (!filter || typeof filter !== "object" || Array.isArray(filter)) return false;
+  const hasKey =
+    Object.prototype.hasOwnProperty.call(filter, "tenantId") ||
+    Object.prototype.hasOwnProperty.call(filter, "tenant_id");
+  if (!hasKey) return false;
+  // Read the key that is actually present; `??` would skip a deliberate null.
+  const value = Object.prototype.hasOwnProperty.call(filter, "tenantId")
+    ? filter.tenantId
+    : filter.tenant_id;
+  // `tenantId: null` is how platform-level rows (super admins) are addressed,
+  // which is an explicit scope decision. `undefined` is a mistake, not intent.
+  if (value === undefined) return false;
+  if (value === null) return true;
+  // `{ tenantId: { $in: [...] } }` is a deliberate multi-tenant read and still
+  // names the tenants it touches.
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return Boolean(normalizeId(value));
+}
+
+function assertTenantScope({ tableName = "", tenantId = "", method = "", filter = null } = {}) {
+  if (normalizeId(tenantId) || filterNamesTenant(filter)) return;
+  throw new Error(
+    `Refusing unscoped ${method} on tenant-scoped table "${tableName}". ` +
+      `Pass a tenantId, or use ${tableName}Model.acrossTenants().${method}() if the query is deliberately platform-wide.`
+  );
+}
+
 function assertDeleteManyScope({ tableName = "", tenantId = "", filter = {} } = {}) {
   const normalizedTenantId = normalizeId(tenantId);
   if (normalizedTenantId || hasFilterScope(filter)) return normalizedTenantId;
@@ -199,8 +241,11 @@ function applySort(query, sort, colMap) {
 
 export function createModel(tableName, colMap) {
   const sb = () => getSupabaseAdmin();
+  // Only tables that carry a tenant_id can be scoped; `tenants` itself and the
+  // identity tables are platform-wide by nature.
+  const isTenantScoped = Object.prototype.hasOwnProperty.call(colMap, "tenantId");
 
-  const model = {
+  const buildModel = (enforceScope) => ({
     tableName,
     colMap,
 
@@ -219,6 +264,7 @@ export function createModel(tableName, colMap) {
         actualOpts = filter;
       }
 
+      if (enforceScope && isTenantScoped) assertTenantScope({ tableName, tenantId, method: "find", filter: actualFilter });
       const selectCols = actualOpts.select
         ? actualOpts.select
             .map((c) => (c === "_id" ? "id" : colMap[c] || c))
@@ -257,6 +303,7 @@ export function createModel(tableName, colMap) {
         actualFilter = tenantIdOrFilter;
       }
 
+      if (enforceScope && isTenantScoped) assertTenantScope({ tableName, tenantId, method: "findOne", filter: actualFilter });
       let query = sb().from(tableName).select("*");
       if (tenantId) query = query.eq("tenant_id", tenantId);
       query = applyFilter(query, actualFilter, colMap);
@@ -273,6 +320,22 @@ export function createModel(tableName, colMap) {
         .select("*")
         .eq("id", id)
         .maybeSingle();
+      if (error) throw error;
+      return toDoc(data, colMap);
+    },
+
+    /**
+     * Fetch by id *and* tenant, so a valid id belonging to another camp
+     * returns null rather than that camp's row. Prefer this over findById on
+     * anything reachable from a member request.
+     */
+    async findByIdScoped(tenantId, id) {
+      const normalizedTenantId = normalizeId(tenantId);
+      const normalizedId = normalizeId(id);
+      if (!normalizedTenantId || !normalizedId) return null;
+      let query = sb().from(tableName).select("*").eq("id", normalizedId);
+      if (isTenantScoped) query = query.eq("tenant_id", normalizedTenantId);
+      const { data, error } = await query.maybeSingle();
       if (error) throw error;
       return toDoc(data, colMap);
     },
@@ -344,6 +407,21 @@ export function createModel(tableName, colMap) {
       return toDoc(data, colMap);
     },
 
+    /** Update by id, but only if the row belongs to this tenant. */
+    async updateScoped(tenantId, id, patch) {
+      const normalizedTenantId = normalizeId(tenantId);
+      const normalizedId = normalizeId(id);
+      if (!normalizedTenantId || !normalizedId) return null;
+      const row = toRow(patch, colMap);
+      delete row.id;
+
+      let query = sb().from(tableName).update(row).eq("id", normalizedId);
+      if (isTenantScoped) query = query.eq("tenant_id", normalizedTenantId);
+      const { data, error } = await query.select("*").maybeSingle();
+      if (error) throw error;
+      return toDoc(data, colMap);
+    },
+
     async updateMany(tenantIdOrFilter, filterOrPatch, maybePatch) {
       let tenantId, actualFilter, patch;
 
@@ -357,6 +435,7 @@ export function createModel(tableName, colMap) {
         patch = filterOrPatch;
       }
 
+      if (enforceScope && isTenantScoped) assertTenantScope({ tableName, tenantId, method: "updateMany", filter: actualFilter });
       const row = toRow(patch, colMap);
       delete row.id;
 
@@ -394,6 +473,7 @@ export function createModel(tableName, colMap) {
         actualFilter = tenantIdOrFilter;
       }
 
+      if (enforceScope && isTenantScoped) assertTenantScope({ tableName, tenantId, method: "deleteMany", filter: actualFilter });
       const safeTenantId = assertDeleteManyScope({
         tableName,
         tenantId,
@@ -421,6 +501,7 @@ export function createModel(tableName, colMap) {
         actualFilter = tenantIdOrFilter;
       }
 
+      if (enforceScope && isTenantScoped) assertTenantScope({ tableName, tenantId, method: "count", filter: actualFilter });
       let query = sb()
         .from(tableName)
         .select("id", { count: "exact", head: true });
@@ -439,7 +520,14 @@ export function createModel(tableName, colMap) {
       if (error) throw error;
       return data;
     }
-  };
+  });
 
-  return model;
+  const scoped = buildModel(true);
+  const unscoped = buildModel(false);
+
+  // Deliberate, greppable opt-out for platform-wide queries.
+  scoped.acrossTenants = () => unscoped;
+  unscoped.acrossTenants = () => unscoped;
+
+  return scoped;
 }
