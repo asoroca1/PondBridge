@@ -542,7 +542,7 @@ export function buildNewsletterAnnouncementEmail({
           <img
             src="${safeCoverImageUrl}"
             alt="${safeTitle} cover"
-            style="display:block;width:100%;max-width:560px;height:auto;border-radius:14px;border:1px solid #dbe5f0;"
+            style="display:block;width:100%;max-width:560px;height:auto;border-radius:14px;border:1px solid #e4e4e4;"
           />
         </div>
       `
@@ -551,8 +551,8 @@ export function buildNewsletterAnnouncementEmail({
     ? `
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
           <tr>
-            ${safeArchiveUrl ? `<td style="padding:0 12px 12px 0;"><a href="${safeArchiveUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#153e75;color:#ffffff;text-decoration:none;font-weight:700;">Open in PondBridge</a></td>` : ""}
-            ${safePdfUrl ? `<td style="padding:0 0 12px 0;"><a href="${safePdfUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#edf3fb;color:#153e75;text-decoration:none;font-weight:700;border:1px solid #c9d8ea;">Download PDF</a></td>` : ""}
+            ${safeArchiveUrl ? `<td style="padding:0 12px 12px 0;"><a href="${safeArchiveUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#393939;color:#ffffff;text-decoration:none;font-weight:700;">Open in PondBridge</a></td>` : ""}
+            ${safePdfUrl ? `<td style="padding:0 0 12px 0;"><a href="${safePdfUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#edf3fb;color:#393939;text-decoration:none;font-weight:700;border:1px solid #d6d6d6;">Download PDF</a></td>` : ""}
           </tr>
         </table>
       `
@@ -562,9 +562,9 @@ export function buildNewsletterAnnouncementEmail({
     ${coverMarkup}
     <p style="margin:0 0 14px;">A new <strong>${safeNewsletterLabel}</strong> has been published for <strong>${safeTenantName}</strong>.</p>
     <p style="margin:0 0 14px;">The PDF is attached to this email so members can open it right away, and the archive link below will take them straight back into PondBridge.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid #dbe5f0;border-radius:12px;background:#f8fbff;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid #e4e4e4;border-radius:12px;background:#f8fbff;">
       <tr>
-        <td style="padding:16px 18px;font-size:14px;color:#1f2937;">
+        <td style="padding:16px 18px;font-size:14px;color:#282828;">
           <div style="margin:0 0 8px;"><strong>Title:</strong> ${safeTitle}</div>
           <div style="margin:0 0 8px;"><strong>Season:</strong> ${safeSeason}</div>
           <div style="margin:0;"><strong>Year:</strong> ${safeYear}</div>
@@ -572,9 +572,9 @@ export function buildNewsletterAnnouncementEmail({
       </tr>
     </table>
     ${actionMarkup}
-    <p style="margin:0 0 10px;font-size:13px;color:#4b5563;">If the buttons above do not open, you can use the attached PDF or copy this archive link into your browser:</p>
-    ${safeArchiveUrl ? `<p style="margin:0 0 8px;font-size:13px;"><a href="${safeArchiveUrl}" style="color:#1e5cb3;text-decoration:underline;">${safeArchiveUrl}</a></p>` : ""}
-    ${safePdfUrl ? `<p style="margin:0;font-size:13px;color:#6b7280;">Direct PDF link: <a href="${safePdfUrl}" style="color:#1e5cb3;text-decoration:underline;">${safePdfUrl}</a></p>` : ""}
+    <p style="margin:0 0 10px;font-size:13px;color:#545454;">If the buttons above do not open, you can use the attached PDF or copy this archive link into your browser:</p>
+    ${safeArchiveUrl ? `<p style="margin:0 0 8px;font-size:13px;"><a href="${safeArchiveUrl}" style="color:#555555;text-decoration:underline;">${safeArchiveUrl}</a></p>` : ""}
+    ${safePdfUrl ? `<p style="margin:0;font-size:13px;color:#727272;">Direct PDF link: <a href="${safePdfUrl}" style="color:#555555;text-decoration:underline;">${safePdfUrl}</a></p>` : ""}
   `;
 
   return broadcastTemplate({
