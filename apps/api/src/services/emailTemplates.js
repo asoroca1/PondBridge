@@ -4,6 +4,8 @@
 // HTML is table-based with inline styles for maximum email-client compatibility.
 // ---------------------------------------------------------------------------
 
+import { buildEmailPalette } from "./brandPalette.js";
+
 const BRAND = {
   primary: "#002b5c",
   secondary: "#d3dde8",
@@ -173,6 +175,8 @@ function wrapInviteLayout(bodyInner, options = {}) {
   const displayName = contextName || "PondBridge";
   const titleLabel = displayName;
   const brandPrimary = normalizeBrandColor(opts.brandPrimary || BRAND.primary, BRAND.primary);
+  // Chrome follows the camp's colour; email cannot use CSS variables.
+  const palette = buildEmailPalette(brandPrimary);
   const logoUrl = normalizeHttpUrl(opts.logoUrl || "");
   const tagline = escapeHtml(opts.tagline || "Member invitation");
   const initials = escapeHtml(initialsFromName(displayName, "PB"));
@@ -191,13 +195,13 @@ function wrapInviteLayout(bodyInner, options = {}) {
   <style>table,td{font-family:Arial,Helvetica,sans-serif !important;}</style>
   <![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:#eef3fa;font-family:${BRAND.fontStack};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#eef3fa;">
+<body style="margin:0;padding:0;background-color:${palette.page};font-family:${BRAND.fontStack};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:${palette.page};">
     <tr>
       <td align="center" style="padding:24px 12px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;width:100%;background-color:${BRAND.white};border-radius:18px;border:1px solid #d6e2f0;overflow:hidden;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;width:100%;background-color:${palette.surface};border-radius:18px;border:1px solid ${palette.border};overflow:hidden;">
           <tr>
-            <td style="padding:18px 20px;background-color:${escapeHtml(brandPrimary)};color:#ffffff;">
+            <td style="padding:18px 20px;background-color:${escapeHtml(brandPrimary)};color:${palette.onPrimary};">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="width:52px;vertical-align:middle;">${headerLogoMarkup}</td>
@@ -210,7 +214,7 @@ function wrapInviteLayout(bodyInner, options = {}) {
             </td>
           </tr>
           <tr>
-            <td style="padding:28px 24px 24px;font-family:${BRAND.fontStack};font-size:15px;line-height:1.65;color:#1f2937;">
+            <td style="padding:28px 24px 24px;font-family:${BRAND.fontStack};font-size:15px;line-height:1.65;color:${palette.text};">
               ${bodyInner}
             </td>
           </tr>
