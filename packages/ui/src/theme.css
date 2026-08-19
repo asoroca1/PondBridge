@@ -111,9 +111,9 @@
   --radius-pill: 999px;
 
   /* ===== Shadows (elevation levels) ===== */
-  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-sm: 0 1px 3px rgba(23, 23, 23, 0.06), 0 1px 2px rgba(23, 23, 23, 0.04);
   --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 24px rgba(13, 34, 66, 0.08);
+  --shadow-lg: 0 10px 24px rgba(32, 32, 32, 0.08);
   --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-focus: 0 0 0 4px color-mix(in srgb, var(--brand-primary) 16%, transparent);
 
@@ -241,14 +241,14 @@ a {
   background: #fff;
   color: var(--brand-primary);
   border: 1.5px solid var(--card-border, var(--neutral-200));
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  box-shadow: 0 1px 2px rgba(23, 23, 23, 0.06);
 }
 
 .pb-btn-secondary:hover {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
   border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--card-border, var(--neutral-200)));
-  box-shadow: 0 6px 16px rgba(16, 24, 40, 0.08);
+  box-shadow: 0 6px 16px rgba(23, 23, 23, 0.08);
 }
 
 .pb-btn-danger {

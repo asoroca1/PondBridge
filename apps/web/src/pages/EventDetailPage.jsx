@@ -236,7 +236,7 @@ export default function EventDetailPage() {
   const leanLayout = Boolean(item) && !hasMainContent;
   const coverStyle = item?.coverImageUrl
     ? {
-        backgroundImage: `linear-gradient(100deg, rgba(10,24,40,0.82) 0%, rgba(10,24,40,0.35) 55%, rgba(10,24,40,0.05) 100%), url(${item.coverImageUrl})`
+        backgroundImage: `linear-gradient(100deg, rgba(22, 22, 22,0.82) 0%, rgba(22, 22, 22,0.35) 55%, rgba(22, 22, 22,0.05) 100%), url(${item.coverImageUrl})`
       }
     : undefined;
 

@@ -938,7 +938,7 @@ const MODULE_LAYOUT_HINTS = {
 
 export function DirectorAdminFeaturesPage() {
   const { slug, request } = useAdminApi();
-  const { tenant } = useTenant();
+  const { tenant, refreshTenant } = useTenant();
   const { confirm, confirmDialogProps } = useConfirmDialog();
   const [payload, setPayload] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -984,6 +984,10 @@ export function DirectorAdminFeaturesPage() {
       });
       setStatus("Features updated.");
       await loadFeatures();
+      // The rest of the app reads these labels from the cached tenant config,
+      // which otherwise keeps the old newsletter name for a further 5 minutes
+      // and makes a successful save look like it did nothing.
+      await refreshTenant?.();
     } catch (requestError) {
       const message = requestError.message || "Failed to update features.";
       await loadFeatures();

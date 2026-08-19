@@ -93,7 +93,7 @@
 .hero-image-editor__viewport-toggle button.is-active {
   background: #ffffff;
   color: var(--neutral-800);
-  box-shadow: 0 1px 3px rgba(15, 39, 71, 0.12);
+  box-shadow: 0 1px 3px rgba(36, 36, 36, 0.12);
 }
 
 .hero-image-editor__screen-tabs button:focus-visible,
@@ -124,7 +124,7 @@
   border-radius: 12px;
   background: #ffffff;
   overflow: hidden;
-  box-shadow: 0 16px 36px rgba(22, 47, 77, 0.15);
+  box-shadow: 0 16px 36px rgba(44, 44, 44, 0.15);
   transition: width 180ms ease, max-width 180ms ease;
 }
 
@@ -327,8 +327,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 50% 34%, rgba(13, 28, 49, 0.22) 0%, rgba(13, 28, 49, 0.38) 56%, rgba(13, 28, 49, 0.58) 100%),
-    linear-gradient(to bottom, rgba(10, 21, 39, 0.24), rgba(10, 21, 39, 0.46));
+    radial-gradient(circle at 50% 34%, rgba(26, 26, 26, 0.22) 0%, rgba(26, 26, 26, 0.38) 56%, rgba(26, 26, 26, 0.58) 100%),
+    linear-gradient(to bottom, rgba(20, 20, 20, 0.24), rgba(20, 20, 20, 0.46));
   pointer-events: none;
 }
 
@@ -348,7 +348,7 @@
 .hero-image-editor__landing-content h3 {
   margin: 0;
   color: var(--neutral-50);
-  text-shadow: 0 2px 8px rgba(8, 17, 31, 0.42);
+  text-shadow: 0 2px 8px rgba(16, 16, 16, 0.42);
   font-size: clamp(1.26rem, 2.1vw, 2.04rem);
   line-height: 1.08;
   font-weight: 800;
@@ -359,7 +359,7 @@
   margin: 0;
   max-width: 62ch;
   color: rgba(246, 250, 255, 0.95);
-  text-shadow: 0 1px 4px rgba(8, 17, 31, 0.45);
+  text-shadow: 0 1px 4px rgba(16, 16, 16, 0.45);
   font-size: clamp(0.76rem, 1vw, 1.02rem);
   line-height: 1.4;
 }
@@ -727,7 +727,7 @@
 }
 
 .hero-image-editor__drag-surface:focus-visible {
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.82), inset 0 0 0 4px rgba(15, 39, 71, 0.58);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.82), inset 0 0 0 4px rgba(36, 36, 36, 0.58);
 }
 
 /* ---- Empty state ---- */
@@ -761,7 +761,7 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(9, 20, 35, 0.52);
+  background: rgba(19, 19, 19, 0.52);
   backdrop-filter: blur(1.5px);
   display: flex;
   align-items: center;
@@ -776,7 +776,7 @@
   border: 1px solid var(--neutral-200);
   border-radius: 14px;
   background: #ffffff;
-  box-shadow: 0 24px 80px rgba(9, 26, 48, 0.28);
+  box-shadow: 0 24px 80px rgba(24, 24, 24, 0.28);
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 10px;

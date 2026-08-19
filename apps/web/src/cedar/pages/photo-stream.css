@@ -194,7 +194,7 @@
     position:fixed;
     inset:0;
     z-index:4200;
-    background:rgba(15,23,42,.45);
+    background:rgba(23, 23, 23,.45);
     display:flex;
     align-items:center;
     justify-content:center;
@@ -334,7 +334,7 @@
   position: fixed;
   inset: 0;
   z-index: 4300;
-  background: rgba(15, 23, 42, 0.68);
+  background: rgba(23, 23, 23, 0.68);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
@@ -353,7 +353,7 @@
   background: #ffffff;
   border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 26px 64px rgba(2, 33, 71, 0.3);
+  box-shadow: 0 26px 64px rgba(29, 29, 29, 0.3);
 }
 
 .ps-lightbox-media {
