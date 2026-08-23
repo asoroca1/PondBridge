@@ -63,13 +63,13 @@ describe("Super provisioning", () => {
       .send({
         name: "Camp Cedar",
         slug: "camp-cedar",
-        billingPlan: "legacy"
+        billingPlan: "flagship"
       });
 
     expect(createTenant.status).toBe(201);
     expect(createTenant.body.tenant.slug).toBe("cedar");
     expect(createTenant.body.tenant.customDomain).toBe("cedar.pondbridge.test");
-    expect(createTenant.body.billingPlan).toBe("legacy");
+    expect(createTenant.body.billingPlan).toBe("flagship");
   });
 
   test("super admin can create tenant and first director can bootstrap before launch", async () => {
@@ -82,14 +82,14 @@ describe("Super provisioning", () => {
       .send({
         name: "Pine Ridge Camp",
         slug: "pine-ridge",
-        billingPlan: "institutional",
+        billingPlan: "flagship",
         directorEmail: "director@pineridge.org"
       });
 
     expect(createTenant.status).toBe(201);
     expect(createTenant.body.tenant.slug).toBe("pine-ridge");
-    expect(createTenant.body.billingPlan).toBe("institutional");
-    expect(createTenant.body.tenant.onboardingFeeAmount).toBe(200);
+    expect(createTenant.body.billingPlan).toBe("flagship");
+    expect(createTenant.body.tenant.onboardingFeeAmount).toBe(0);
     expect(createTenant.body.tenant.onboardingStatus).toBe("not_started");
     expect(createTenant.body.directorInvite?.email).toBe("director@pineridge.org");
     expect(createTenant.body.directorInvite?.roleToAssign).toBe("tenant_admin");
@@ -122,7 +122,7 @@ describe("Super provisioning", () => {
     expect(loginDirector.body.user.roles).toEqual(expect.arrayContaining(["tenant_admin", "user"]));
   });
 
-  test("founders billing plan defaults to premium tier with waived onboarding fee", async () => {
+  test("flagship billing plan provisions the premium tier with no onboarding fee", async () => {
     await createSuperAdmin();
     const superToken = await loginSuper();
 
@@ -130,15 +130,34 @@ describe("Super provisioning", () => {
       .post("/api/super/tenants")
       .set("Authorization", `Bearer ${superToken}`)
       .send({
-        name: "Founders Camp",
-        slug: "founders-camp",
-        billingPlan: "founders"
+        name: "Flagship Camp",
+        slug: "flagship-camp",
+        billingPlan: "flagship"
       });
 
     expect(createTenant.status).toBe(201);
-    expect(createTenant.body.billingPlan).toBe("founders");
+    expect(createTenant.body.billingPlan).toBe("flagship");
     expect(createTenant.body.tenant.planTier).toBe("premium");
     expect(createTenant.body.tenant.onboardingFeeAmount).toBe(0);
     expect(createTenant.body.tenant.onboardingFeePaid).toBe(true);
+  });
+
+  test("retired billing plan codes are rejected at provisioning", async () => {
+    await createSuperAdmin();
+    const superToken = await loginSuper();
+
+    for (const retiredPlan of ["legacy", "founders", "institutional"]) {
+      const createTenant = await request(app)
+        .post("/api/super/tenants")
+        .set("Authorization", `Bearer ${superToken}`)
+        .send({
+          name: `Retired ${retiredPlan}`,
+          slug: `retired-${retiredPlan}`,
+          billingPlan: retiredPlan
+        });
+
+      expect(createTenant.status).toBe(400);
+      expect(createTenant.body.error?.code).toBe("INVALID_BILLING_PLAN");
+    }
   });
 });

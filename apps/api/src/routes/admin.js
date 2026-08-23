@@ -78,7 +78,6 @@ import {
   createTenantCheckoutSession,
   getBillingCatalog,
   getBillingMode,
-  getFoundersAvailability,
   getTenantSubscriptionStatus,
   listRecentTenantInvoices,
   resumeTenantSubscription,
@@ -231,7 +230,7 @@ const exportLimiter = rateLimit({
     }
   }
 });
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
+const VALID_BILLING_PLAN_CODES = new Set(["flagship", "test"]);
 const DEFAULT_AGE_GROUPS = [
   "Super Warrior",
   "Warrior",
@@ -5410,13 +5409,12 @@ router.patch("/features", async (req, res) => {
 router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
   const planTier = resolveTenantFeatureTier(req.tenant);
   const mode = getBillingMode();
-  const [portal, billing, foundersAvailability, invoices, memberCount, subscriptionStatus] = await Promise.all([
+  const [portal, billing, invoices, memberCount, subscriptionStatus] = await Promise.all([
     createBillingPortalUrl({
       tenant: req.tenant,
       returnPath: `/t/${req.tenant.slug}/admin/billing`
     }),
     Promise.resolve(buildBillingPublicSnapshot(req.tenant)),
-    getFoundersAvailability(),
     listRecentTenantInvoices(req.tenant, { limit: 12 }),
     ProfileModel.count(req.tenant._id, { status: { $ne: "removed" } }),
     getTenantSubscriptionStatus(req.tenant)
@@ -5443,14 +5441,10 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
       initialCheckoutCompletedAt: billing.initialCheckoutCompletedAt,
       activatedAt: billing.activatedAt,
       canceledAt: billing.canceledAt,
-      foundersReserved: billing.foundersReserved,
-      foundersSlot: billing.foundersSlot,
-      foundersEligible: billing.foundersEligible,
       isComplimentary: Boolean(billing.isComplimentary)
     },
     billing,
     catalog: getBillingCatalog({ tenant: req.tenant }),
-    foundersAvailability,
     usage: {
       members: memberCount,
       memberLimit: planLimit,
@@ -5470,7 +5464,7 @@ router.post("/billing/checkout", ensureBillingVisibleForTenant, async (req, res,
       return res.status(400).json({
         error: {
           code: "INVALID_BILLING_PLAN",
-          message: "Billing plan must be legacy, founders, institutional, or test."
+          message: "Billing plan must be flagship or test."
         }
       });
     }

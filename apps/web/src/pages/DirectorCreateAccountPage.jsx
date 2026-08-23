@@ -118,32 +118,11 @@ const EMPTY_ADDRESS = {
 };
 const BILLING_PLAN_OPTIONS = [
   {
-    code: "legacy",
-    title: "Legacy Plan",
-    annualAmount: 3000,
+    code: "flagship",
+    title: "Flagship Plan",
+    annualAmount: 1200,
     onboardingFeeAmount: 0,
-    summary: "Core network features with annual billing and no onboarding fee."
-  },
-  {
-    code: "founders",
-    title: "Founders Plan",
-    annualAmount: 2500,
-    onboardingFeeAmount: 0,
-    summary: "Discounted annual pricing for the first 5 camps with no onboarding fee."
-  },
-  {
-    code: "institutional",
-    title: "Institutional Plan",
-    annualAmount: 3800,
-    onboardingFeeAmount: 200,
-    summary: "Advanced feature tier with a one-time onboarding fee on initial checkout."
-  },
-  {
-    code: "test",
-    title: "Internal Test",
-    annualAmount: 10,
-    onboardingFeeAmount: 0,
-    summary: "Internal production billing tier for live Stripe checkout testing."
+    summary: "Every PondBridge feature, billed annually with no onboarding fee."
   }
 ];
 const HERO_POSITION_LABELS = {
@@ -176,7 +155,7 @@ const HERO_SIZE_OPTIONS = heroImageSizePresets.map((value) => ({
 
 function normalizeBillingPlanCode(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
-  return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized) ? normalized : "legacy";
+  return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized) ? normalized : "flagship";
 }
 
 function resolveTenantBillingPlanCode(tenant = null, fallback = "") {
@@ -205,14 +184,14 @@ function resolveLaunchRedirectTarget(launchPayload = {}, slug = "") {
   return safeSlug ? `/t/${safeSlug}/home` : "/home";
 }
 
-function billingPlanIsPremium(code = "") {
-  const normalized = normalizeBillingPlanCode(code);
-  return normalized === "founders" || normalized === "institutional" || normalized === "test";
+function billingPlanIsPremium() {
+  // Flagship includes the full feature set, so every camp is on the premium tier.
+  return true;
 }
 
 function billingPlanLabel(code = "") {
   const match = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(code));
-  return match ? match.title : "Legacy Plan";
+  return match ? match.title : "Flagship Plan";
 }
 
 const FEATURE_OPTIONS = TENANT_MODULE_CATALOG.map((module) => ({
@@ -472,7 +451,7 @@ function DirectorCreateAccountWizardPage() {
     confirmPassword: "",
     campName: "",
     campType: "coed",
-    billingPlanCode: "legacy"
+    billingPlanCode: "flagship"
   });
   const [errors, setErrors] = useState({});
   const [themeErrors, setThemeErrors] = useState({});
@@ -511,7 +490,6 @@ function DirectorCreateAccountWizardPage() {
   const campSpecificsHydratedRef = useRef(false);
   const campTypeHydratedRef = useRef(false);
   const planHydratedRef = useRef(false);
-  const previousBillingPlanRef = useRef("");
   const initialThemeVarsRef = useRef(null);
   const skipAccountHydratedRef = useRef(false);
   const postCheckoutLaunchAttemptedRef = useRef(false);
@@ -1018,39 +996,8 @@ function DirectorCreateAccountWizardPage() {
   }, [tenant?.content?.newsletterName]);
 
   useEffect(() => {
-    const previousPlanCode = normalizeBillingPlanCode(previousBillingPlanRef.current);
-    const switchedToPremium = !billingPlanIsPremium(previousPlanCode) && isPremiumCamp;
-
-    setModulesDraft((prev) => {
-      if (switchedToPremium) {
-        return {
-          ...prev,
-          ...DEFAULT_FEATURE_MODULES,
-          familyTrees: true
-        };
-      }
-
-      if (isPremiumCamp) return prev;
-
-      let changed = false;
-      const next = { ...prev };
-      PREMIUM_ONLY_MODULE_KEYS.forEach((key) => {
-        if (next[key]) {
-          next[key] = false;
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-
-    previousBillingPlanRef.current = selectedBillingPlanCode;
-  }, [isPremiumCamp, selectedBillingPlanCode]);
-
-  useEffect(() => {
     if (!tenant || planHydratedRef.current) return;
-    const billingPlanCode =
-      resolveTenantBillingPlanCode(tenant) ||
-      (String(tenant?.planTier || "").trim().toLowerCase() === "premium" ? "institutional" : "legacy");
+    const billingPlanCode = resolveTenantBillingPlanCode(tenant) || "flagship";
     setForm((prev) => ({ ...prev, billingPlanCode }));
     planHydratedRef.current = true;
   }, [tenant]);
@@ -2511,7 +2458,8 @@ function DirectorCreateAccountWizardPage() {
 
                   <div className="wizard1-field wizard1-span-12">
                     <label className="wizard1-label">
-                      Choose {alumniWord} network plan<span className="req" aria-hidden="true"> *</span>
+                      {BILLING_PLAN_OPTIONS.length > 1 ? "Choose" : "Your"} {alumniWord} network plan
+                      <span className="req" aria-hidden="true"> *</span>
                     </label>
                     <div className="director-plan-grid" role="radiogroup" aria-label={`Choose ${alumniWord} network plan`}>
                       {BILLING_PLAN_OPTIONS.map((option) => (
@@ -3321,9 +3269,7 @@ function DirectorCreateAccountWizardPage() {
                           <dt>Onboarding fee</dt>
                           <dd>
                             {formatMoney(onboardingFeeAmount)}
-                            {selectedBillingPlanCode === "institutional" && onboardingFeeAmount > 0
-                              ? " (first checkout only)"
-                              : ""}
+                            {onboardingFeeAmount > 0 ? " (first checkout only)" : ""}
                           </dd>
                         </div>
                         <div>

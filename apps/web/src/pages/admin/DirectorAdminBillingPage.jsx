@@ -25,8 +25,8 @@ function formatMoney(value = 0) {
 // A demo network cannot call the billing API, so it previews the same UI from
 // sample data rather than a second hand-written copy of the page.
 const DEMO_PAYLOAD = {
-  tenant: { billingPlan: "founders", billingStatus: "active", isComplimentary: false },
-  billing: { annualAmount: 2500, currentPeriodEnd: "2027-01-01", activatedAt: "2026-03-15" },
+  tenant: { billingPlan: "flagship", billingStatus: "active", isComplimentary: false },
+  billing: { annualAmount: 1200, currentPeriodEnd: "2027-01-01", activatedAt: "2026-03-15" },
   usage: { members: 142, memberLimit: null },
   catalog: { plans: [] }
 };

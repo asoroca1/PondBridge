@@ -83,25 +83,17 @@ services:
       - key: OPENAI_SUPER_COPILOT_TIMEOUT_MS
         value: "30000"
       - key: BILLING_MODE
-        value: auto
+        value: stripe
       - key: ALLOW_MOCK_BILLING_IN_PRODUCTION
         value: "false"
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
-      - key: STRIPE_PRICE_LEGACY_ANNUAL
-        value: price_1T8tD3KmSeC5JnMupWTAn1kQ
-      - key: STRIPE_PRICE_FOUNDERS_ANNUAL
-        value: price_1THBiAKmSeC5JnMu5C33ovqH
-      - key: STRIPE_PRICE_INSTITUTIONAL_ANNUAL
-        value: price_1T8tDWKmSeC5JnMufEtrpCCj
+      - key: STRIPE_PRICE_FLAGSHIP_ANNUAL
+        value: price_1U5aQJKmSeC5JnMuSjZD4smU
       - key: STRIPE_PRICE_TEST_ANNUAL
         value: price_1TJdoAKmSeC5JnMuIjxDUD4m
-      - key: STRIPE_PRICE_LEGACY_ONBOARDING
-        value: ""
-      - key: STRIPE_PRICE_INSTITUTIONAL_ONBOARDING
-        value: price_1T8tDqKmSeC5JnMuWfkuQk8s
       - key: STRIPE_SUCCESS_URL
         value: https://app.pondbridgealumni.com/admin/billing?checkout=success
       - key: STRIPE_CANCEL_URL

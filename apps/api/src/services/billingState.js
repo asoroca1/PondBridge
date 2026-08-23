@@ -10,7 +10,17 @@ const LIFECYCLE_STATUSES = new Set([
   "paused"
 ]);
 const ONBOARDING_FEE_STATUSES = new Set(["unpaid", "paid", "waived"]);
-const BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
+const BILLING_PLAN_CODES = new Set(["flagship", "test"]);
+
+// Retired plan codes still stored on existing tenants. They all resolve to the
+// single Flagship plan so historical records keep reading cleanly.
+const RETIRED_BILLING_PLAN_CODES = new Map([
+  ["legacy", "flagship"],
+  ["founders", "flagship"],
+  ["institutional", "flagship"],
+  ["base", "flagship"],
+  ["premium", "flagship"]
+]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -46,15 +56,17 @@ function normalizeOnboardingFeeStatus(value = "", fallback = "unpaid") {
   return fallback;
 }
 
-function defaultBillingPlanFromTier(planTier = "") {
-  return String(planTier || "").trim().toLowerCase() === "premium"
-    ? "institutional"
-    : "legacy";
+function defaultBillingPlanFromTier() {
+  // Flagship is the only plan PondBridge sells, regardless of stored feature tier.
+  return "flagship";
 }
 
-function normalizeBillingPlanCode(value = "", fallback = "legacy") {
+function normalizeBillingPlanCode(value = "", fallback = "flagship") {
   const normalized = String(value || "").trim().toLowerCase();
   if (BILLING_PLAN_CODES.has(normalized)) return normalized;
+  if (RETIRED_BILLING_PLAN_CODES.has(normalized)) {
+    return RETIRED_BILLING_PLAN_CODES.get(normalized);
+  }
   return fallback;
 }
 
@@ -100,9 +112,7 @@ export function resolveTenantBilling(tenant = {}) {
       : billingSettings.onboardingFeeAmount || 0
   );
   const onboardingFeeWaived = Boolean(
-    billingSettings.onboardingFeeWaived ||
-      billingPlan === "founders" ||
-      onboardingFeeAmount <= 0
+    billingSettings.onboardingFeeWaived || onboardingFeeAmount <= 0
   );
   const onboardingFeePaid = Boolean(
     tenant.onboardingFeePaid ||
@@ -113,13 +123,6 @@ export function resolveTenantBilling(tenant = {}) {
     billingSettings.onboardingFeeStatus,
     onboardingFeeWaived ? "waived" : onboardingFeePaid ? "paid" : "unpaid"
   );
-
-  const foundersReserved = Boolean(
-    billingSettings.foundersReserved || billingPlan === "founders"
-  );
-  const foundersSlot = Number.isInteger(billingSettings.foundersSlot)
-    ? billingSettings.foundersSlot
-    : null;
 
   return {
     legacyStatus,
@@ -146,10 +149,6 @@ export function resolveTenantBilling(tenant = {}) {
     initialCheckoutCompletedAt: toIso(billingSettings.initialCheckoutCompletedAt),
     activatedAt: toIso(billingSettings.activatedAt),
     canceledAt: toIso(billingSettings.canceledAt),
-    foundersReserved,
-    foundersReservedAt: toIso(billingSettings.foundersReservedAt),
-    foundersSlot,
-    foundersEligible: billingSettings.foundersEligible !== false,
     processedEventIds: normalizeProcessedEventIds(billingSettings.processedEventIds || [])
   };
 }
@@ -242,10 +241,9 @@ export function isTenantBillingAccessAllowed(tenant = {}) {
 }
 
 export function resolveFeatureTierFromBillingPlan(planCode = "") {
-  const normalized = normalizeBillingPlanCode(planCode);
-  return normalized === "institutional" || normalized === "founders" || normalized === "test"
-    ? "premium"
-    : "base";
+  // Every live plan (Flagship and the internal test tier) is the full product.
+  normalizeBillingPlanCode(planCode);
+  return "premium";
 }
 
 export function resolveTenantFeatureTier(tenant = {}) {

@@ -87,33 +87,25 @@ const SUPER_CONSOLE_ROLES = ["super_admin", "support_admin", "finance_admin"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const BILLING_PLAN_MRR = {
-  legacy: 3000 / 12,
-  founders: 2500 / 12,
-  institutional: 3800 / 12,
+  flagship: 1200 / 12,
   test: 10 / 12
 };
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
+const BILLING_PLAN_LABELS = {
+  flagship: "Flagship",
+  test: "Internal Test"
+};
+const BILLING_PLAN_ANNUAL_AMOUNT = {
+  flagship: 1200,
+  test: 10
+};
+const VALID_BILLING_PLAN_CODES = new Set(["flagship", "test"]);
 const BILLING_PLAN_DEFAULTS = {
-  legacy: {
-    planTier: "base",
+  flagship: {
+    planTier: "premium",
     onboardingFeeAmount: 0,
     onboardingFeePaid: true,
     onboardingFeeStatus: "waived",
     onboardingFeeWaiveReason: "plan_has_no_onboarding_fee"
-  },
-  founders: {
-    planTier: "premium",
-    onboardingFeeAmount: 0,
-    onboardingFeePaid: true,
-    onboardingFeeStatus: "waived",
-    onboardingFeeWaiveReason: "founders"
-  },
-  institutional: {
-    planTier: "premium",
-    onboardingFeeAmount: 200,
-    onboardingFeePaid: false,
-    onboardingFeeStatus: "unpaid",
-    onboardingFeeWaiveReason: ""
   },
   test: {
     planTier: "premium",
@@ -482,9 +474,38 @@ function billingStatusLabel(tenant = {}) {
   return tenant.billingStatus || "trialing";
 }
 
+function tenantBillingPlanCode(tenant = {}) {
+  return resolveTenantBilling(tenant).billingPlan;
+}
+
+function billingPlanLabel(planCode = "") {
+  return BILLING_PLAN_LABELS[planCode] || BILLING_PLAN_LABELS.flagship;
+}
+
+function billingPlanAnnualAmount(planCode = "") {
+  const amount = BILLING_PLAN_ANNUAL_AMOUNT[planCode];
+  return amount === undefined ? BILLING_PLAN_ANNUAL_AMOUNT.flagship : amount;
+}
+
+function tenantBillingPlanSummary(tenant = {}) {
+  const billingPlan = tenantBillingPlanCode(tenant);
+  return {
+    billingPlan,
+    billingPlanLabel: billingPlanLabel(billingPlan),
+    annualAmount: billingPlanAnnualAmount(billingPlan)
+  };
+}
+
+// A plan filter only matches a plan PondBridge currently sells; anything else
+// matches nothing rather than silently falling back to Flagship.
+function requestedBillingPlanFilter(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  return VALID_BILLING_PLAN_CODES.has(normalized) ? normalized : "__none__";
+}
+
 function planMonthlyAmount(tenant = {}) {
-  const billing = resolveTenantBilling(tenant);
-  return BILLING_PLAN_MRR[billing.billingPlan] || BILLING_PLAN_MRR.legacy;
+  return BILLING_PLAN_MRR[tenantBillingPlanCode(tenant)] || BILLING_PLAN_MRR.flagship;
 }
 
 function tenantMrr(tenant = {}) {
@@ -821,11 +842,18 @@ router.get("/tenants", requireRole("support_admin"), async (req, res) => {
 
   const filter = {};
   if (status) filter.status = status;
-  if (plan) filter.planTier = plan;
   if (billingStatus) filter.billingStatus = billingStatus;
 
   const includeHidden = getPrimaryRole(req.user) === "super_admin";
-  let items = await loadTenantsWithCounts(filter, { includeHidden });
+  let items = (await loadTenantsWithCounts(filter, { includeHidden })).map((tenant) => ({
+    ...tenant,
+    ...tenantBillingPlanSummary(tenant)
+  }));
+
+  const planFilter = requestedBillingPlanFilter(plan);
+  if (planFilter) {
+    items = items.filter((tenant) => tenant.billingPlan === planFilter);
+  }
 
   if (search) {
     const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
@@ -849,15 +877,13 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     return res.status(400).json({
       error: {
         code: "INVALID_BILLING_PLAN",
-        message: "Billing plan must be legacy, founders, institutional, or test."
+        message: "Billing plan must be flagship or test."
       }
     });
   }
   const billingPlan = requestedBillingPlan
-    ? normalizeBillingPlan(requestedBillingPlan, req.body.planTier === "premium" ? "premium" : "base")
-    : req.body.planTier === "premium"
-    ? "institutional"
-    : "legacy";
+    ? normalizeBillingPlan(requestedBillingPlan)
+    : "flagship";
   if (!isBillingPlanAvailableForTenant(billingPlan, { slug, planTier: req.body.planTier || "base" })) {
     return res.status(403).json({
       error: {
@@ -866,7 +892,7 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
       }
     });
   }
-  const billingDefaults = BILLING_PLAN_DEFAULTS[billingPlan] || BILLING_PLAN_DEFAULTS.legacy;
+  const billingDefaults = BILLING_PLAN_DEFAULTS[billingPlan] || BILLING_PLAN_DEFAULTS.flagship;
   const campType = normalizeCampType(req.body.campType || "coed");
   const alumniWord = alumniPluralForCampType(campType, { capitalized: false });
   const networkName = defaultNetworkDisplayNameForCamp(name, campType);
@@ -896,82 +922,98 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
     });
   }
 
-  const tenant = await TenantModel.create({
-    name,
-    slug,
-    planTier: billingDefaults.planTier,
-    onboardingStatus: "not_started",
-    onboardingStep: "name_branding",
-    onboardingChecklist: createDefaultChecklist(campType),
-    onboardingFeeAmount: billingDefaults.onboardingFeeAmount,
-    onboardingFeePaid: billingDefaults.onboardingFeePaid,
-    customDomain: defaultTenantDomain(slug),
-    theme: {},
-    content: {
-      campType,
-      networkDisplayName: networkName,
-      welcomeHeadline: `Welcome to ${networkName}`,
-      welcomeBody: `Connect with ${alumniWord}, staff, and directors from every era.`,
-      newsletterName: "Newsletter",
-      ageGroups: [
-        "Super Warrior",
-        "Warrior",
-        "Freshman",
-        "Sophomore",
-        "Junior",
-        "Intermediate",
-        "Senior I",
-        "Senior II"
-      ],
-      staffRoles: ["Camper", "Counselor", "JC", "CIT", "Admin"],
-      merchShopUrl: "",
-      aboutText: "",
-      contactEmail: "",
-      supportUrl: "",
-      footerLinks: []
-    },
-    settings: {
-      billing: {
-        planCode: billingPlan,
-        lifecycleStatus: "uninitialized",
-        onboardingFeeStatus: billingDefaults.onboardingFeeStatus,
-        onboardingFeeWaived: billingDefaults.onboardingFeeStatus === "waived",
-        onboardingFeeWaiveReason: billingDefaults.onboardingFeeWaiveReason,
-        foundersEligible: true
+  // The findOne check above is not atomic: two creates for the same slug
+  // can both pass it and the second then trips the unique index, which
+  // would surface as a raw 500. Report it as the same conflict the
+  // pre-check reports.
+  let tenant;
+  try {
+    tenant = await TenantModel.create({
+      name,
+      slug,
+      planTier: billingDefaults.planTier,
+      onboardingStatus: "not_started",
+      onboardingStep: "name_branding",
+      onboardingChecklist: createDefaultChecklist(campType),
+      onboardingFeeAmount: billingDefaults.onboardingFeeAmount,
+      onboardingFeePaid: billingDefaults.onboardingFeePaid,
+      customDomain: defaultTenantDomain(slug),
+      theme: {},
+      content: {
+        campType,
+        networkDisplayName: networkName,
+        welcomeHeadline: `Welcome to ${networkName}`,
+        welcomeBody: `Connect with ${alumniWord}, staff, and directors from every era.`,
+        newsletterName: "Newsletter",
+        ageGroups: [
+          "Super Warrior",
+          "Warrior",
+          "Freshman",
+          "Sophomore",
+          "Junior",
+          "Intermediate",
+          "Senior I",
+          "Senior II"
+        ],
+        staffRoles: ["Camper", "Counselor", "JC", "CIT", "Admin"],
+        merchShopUrl: "",
+        aboutText: "",
+        contactEmail: "",
+        supportUrl: "",
+        footerLinks: []
       },
-      signupMode: "open",
-      accessCodeHash: "",
-      accessCodeHint: "",
-      mobileAppCodeLookup: await generateUniqueMobileAppCode(),
-      mobileAppCodeHint: `Generated (${new Date().toLocaleDateString("en-US")})`,
-      allowedEmailDomains: [],
-      allowSearchByDefault: true,
-      allowDirectoryBrowse: true,
-      requireProfileCompletion: false
-    },
-    modules: {
-      directory: true,
-      search: true,
-      photoStream: true,
-      chat: true,
-      map: true,
-      familyTrees: true,
-      relatedProfiles: true,
-      newsletter: true,
-      merchShop: true
-    },
-    accessSettings: {
-      signupMode: "open",
-      accessCode: ""
+      settings: {
+        billing: {
+          planCode: billingPlan,
+          lifecycleStatus: "uninitialized",
+          onboardingFeeStatus: billingDefaults.onboardingFeeStatus,
+          onboardingFeeWaived: billingDefaults.onboardingFeeStatus === "waived",
+          onboardingFeeWaiveReason: billingDefaults.onboardingFeeWaiveReason
+        },
+        signupMode: "open",
+        accessCodeHash: "",
+        accessCodeHint: "",
+        mobileAppCodeLookup: await generateUniqueMobileAppCode(),
+        mobileAppCodeHint: `Generated (${new Date().toLocaleDateString("en-US")})`,
+        allowedEmailDomains: [],
+        allowSearchByDefault: true,
+        allowDirectoryBrowse: true,
+        requireProfileCompletion: false
+      },
+      modules: {
+        directory: true,
+        search: true,
+        photoStream: true,
+        chat: true,
+        map: true,
+        familyTrees: true,
+        relatedProfiles: true,
+        newsletter: true,
+        merchShop: true
+      },
+      accessSettings: {
+        signupMode: "open",
+        accessCode: ""
+      }
+    });
+  } catch (createError) {
+    if (String(createError?.code || "") === "23505") {
+      return res.status(409).json({
+        error: { code: "TENANT_EXISTS", message: `Tenant slug '${slug}' already exists` }
+      });
     }
-  });
+    throw createError;
+  }
 
   const inviteLink = `/t/${tenant.slug}/director-claim`;
   const network = buildTenantUrls(tenant);
   let domainProvisioning = { status: "skipped", reason: "not_attempted" };
 
   try {
-    domainProvisioning = await provisionTenantDomain(network.domain);
+    // Registering the domain is quick; waiting for Cloudflare to mark it active
+    // is not, and a new subdomain never activates inside that window. Blocking
+    // the create response on it leaves the operator staring at an idle form.
+    domainProvisioning = await provisionTenantDomain(network.domain, { waitForReadiness: false });
   } catch (error) {
     domainProvisioning = {
       status: "error",
@@ -1355,15 +1397,12 @@ router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, re
       return res.status(400).json({
         error: {
           code: "INVALID_BILLING_PLAN",
-          message: "Billing plan must be legacy, founders, institutional, or test."
+          message: "Billing plan must be flagship or test."
         }
       });
     }
 
-    const requestedPlanCode = normalizeBillingPlan(
-      requested,
-      req.body.planTier === "premium" ? "premium" : tenant.planTier
-    );
+    const requestedPlanCode = normalizeBillingPlan(requested);
 
     const checkout = await createTenantCheckoutSession({
       tenant,
@@ -1518,8 +1557,12 @@ router.get("/billing/overview", requireRole("support_admin", "finance_admin"), a
   const failedPayments = tenants.filter((tenant) => billingStatusLabel(tenant) === "past_due").length;
 
   const planDistribution = {
-    base: tenants.filter((tenant) => tenant.planTier !== "premium" && billingStatusLabel(tenant) !== "comp").length,
-    premium: tenants.filter((tenant) => tenant.planTier === "premium" && billingStatusLabel(tenant) !== "comp").length,
+    flagship: tenants.filter(
+      (tenant) => tenantBillingPlanCode(tenant) === "flagship" && billingStatusLabel(tenant) !== "comp"
+    ).length,
+    test: tenants.filter(
+      (tenant) => tenantBillingPlanCode(tenant) === "test" && billingStatusLabel(tenant) !== "comp"
+    ).length,
     trial: tenants.filter((tenant) => billingStatusLabel(tenant) === "trialing").length,
     comp: tenants.filter((tenant) => billingStatusLabel(tenant) === "comp").length
   };
@@ -1557,8 +1600,9 @@ router.get("/billing/tenants", requireRole("support_admin", "finance_admin"), as
     const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     tenants = tenants.filter((tenant) => rx.test(tenant.name) || rx.test(tenant.slug));
   }
-  if (plan) {
-    tenants = tenants.filter((tenant) => tenant.planTier === plan);
+  const planFilter = requestedBillingPlanFilter(plan);
+  if (planFilter) {
+    tenants = tenants.filter((tenant) => tenantBillingPlanCode(tenant) === planFilter);
   }
   if (status) {
     tenants = tenants.filter((tenant) => billingStatusLabel(tenant) === status);
@@ -1573,6 +1617,7 @@ router.get("/billing/tenants", requireRole("support_admin", "finance_admin"), as
       slug: tenant.slug,
       customDomain: tenant.customDomain || `${tenant.slug}.${APP_BASE_DOMAIN}`,
       planTier: tenant.planTier,
+      ...tenantBillingPlanSummary(tenant),
       billingStatus: billingStatusLabel(tenant),
       mrr: tenantMrr(tenant),
       nextRenewal: billing.currentPeriodEnd,
@@ -1621,7 +1666,9 @@ router.get("/billing/failed", requireRole("support_admin", "finance_admin"), asy
 
   const items = failedTenants.map((tenant) => {
     const daysOverdue = Math.max(1, Math.floor((now.getTime() - new Date(tenant.updatedAt || now).getTime()) / DAY_MS));
-    const amountDue = planMonthlyAmount(tenant);
+    const planSummary = tenantBillingPlanSummary(tenant);
+    // Every live plan bills annually, so the unpaid invoice is the annual amount.
+    const amountDue = planSummary.annualAmount;
     const declineReason = tenant.onboardingFeePaid ? "Card declined" : "Onboarding invoice unpaid";
     return {
       id: toObjectIdString(tenant._id),
@@ -1629,6 +1676,7 @@ router.get("/billing/failed", requireRole("support_admin", "finance_admin"), asy
       slug: tenant.slug,
       daysOverdue,
       planTier: tenant.planTier,
+      ...planSummary,
       amountDue,
       lastAttempt: tenant.updatedAt,
       declineReason,
@@ -1765,6 +1813,7 @@ router.get("/analytics/engagement", requireRole("support_admin"), async (_req, r
         lastLoginAt: latestEvent || null,
         members: memberCount,
         planTier: tenant.planTier,
+        ...tenantBillingPlanSummary(tenant),
         daysInactive
       };
     })

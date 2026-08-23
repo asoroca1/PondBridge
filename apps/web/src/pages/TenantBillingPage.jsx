@@ -13,11 +13,7 @@ function formatMoney(value) {
 }
 
 function billingPlanLabel(code = "") {
-  const normalized = String(code || "").trim().toLowerCase();
-  if (normalized === "test") return "Internal Test";
-  if (normalized === "founders") return "Founders";
-  if (normalized === "institutional") return "Institutional";
-  return "Legacy";
+  return String(code || "").trim().toLowerCase() === "test" ? "Internal Test" : "Flagship";
 }
 
 export default function TenantBillingPage() {
@@ -26,7 +22,7 @@ export default function TenantBillingPage() {
 
   const [billing, setBilling] = useState(null);
   const [error, setError] = useState("");
-  const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
+  const [selectedPlanCode, setSelectedPlanCode] = useState("flagship");
   const [startingCheckout, setStartingCheckout] = useState(false);
 
   async function loadBilling() {
@@ -34,7 +30,7 @@ export default function TenantBillingPage() {
     try {
       const payload = await requestJson(`/api/tenants/me/billing`, { token });
       setBilling(payload);
-      const livePlanCode = String(payload?.tenant?.billingPlan || payload?.billing?.billingPlan || "legacy")
+      const livePlanCode = String(payload?.tenant?.billingPlan || payload?.billing?.billingPlan || "flagship")
         .trim()
         .toLowerCase();
       if (livePlanCode) {
@@ -97,7 +93,9 @@ export default function TenantBillingPage() {
   }
 
   const tenant = billing.tenant;
-  const planCode = String(tenant.billingPlan || billing?.billing?.billingPlan || "legacy").trim().toLowerCase();
+  const planCode = String(tenant.billingPlan || billing?.billing?.billingPlan || "flagship").trim().toLowerCase();
+  const catalogPlans = Array.isArray(billing?.catalog?.plans) ? billing.catalog.plans : [];
+  const activePlan = catalogPlans.find((plan) => plan.code === planCode) || catalogPlans[0] || null;
 
   return (
     <PageShell className="pb-cedar-page">
@@ -108,6 +106,7 @@ export default function TenantBillingPage() {
         </p>
         <p>
           <strong>Plan:</strong> {billingPlanLabel(planCode)}
+          {activePlan ? ` · ${formatMoney(activePlan.annualAmount)}/year` : null}
         </p>
         <p>
           <strong>Billing status:</strong> {tenant.billingStatus}
@@ -123,19 +122,16 @@ export default function TenantBillingPage() {
         </p>
         {billing.notes ? <p className="muted">{billing.notes}</p> : null}
 
-        {Array.isArray(billing?.catalog?.plans) && billing.catalog.plans.length ? (
+        {catalogPlans.length > 1 ? (
           <label className="director-command-center-plan-select">
             Plan selection
             <select
               value={selectedPlanCode}
               onChange={(event) => setSelectedPlanCode(event.target.value)}
             >
-              {billing.catalog.plans.map((plan) => (
+              {catalogPlans.map((plan) => (
                 <option key={plan.code} value={plan.code}>
-                  {plan.label} · {formatMoney(plan.annualAmount)}/yr
-                  {plan.code === "institutional"
-                    ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding (first checkout only)`
-                    : " · no onboarding fee"}
+                  {plan.label} · {formatMoney(plan.annualAmount)}/yr · no onboarding fee
                 </option>
               ))}
             </select>
@@ -166,24 +162,6 @@ export default function TenantBillingPage() {
             Back to admin
           </Link>
         </div>
-      </Card>
-
-      <Card>
-        <SectionTitle>Onboarding Fee</SectionTitle>
-        <p>
-          <strong>Amount:</strong> {formatMoney(tenant.onboardingFeeAmount)}
-        </p>
-        <p>
-          <strong>Status:</strong> {tenant.onboardingFeeStatus || (tenant.onboardingFeePaid ? "paid" : "unpaid")}
-        </p>
-        <p>
-          <strong>Invoice ID:</strong> {tenant.onboardingFeeInvoiceId || "Not available"}
-        </p>
-        {billing?.foundersAvailability ? (
-          <p>
-            <strong>Founders slots:</strong> {billing.foundersAvailability.reserved}/{billing.foundersAvailability.max} reserved
-          </p>
-        ) : null}
       </Card>
 
       <Card>

@@ -58,16 +58,12 @@ function formatMoney(value) {
 }
 
 function billingPlanLabel(code = "") {
-  const normalized = String(code || "").trim().toLowerCase();
-  if (normalized === "test") return "Internal Test";
-  if (normalized === "founders") return "Founders";
-  if (normalized === "institutional") return "Institutional";
-  return "Legacy";
+  return String(code || "").trim().toLowerCase() === "test" ? "Internal Test" : "Flagship";
 }
 
-function billingPlanIsPremium(code = "") {
-  const normalized = String(code || "").trim().toLowerCase();
-  return normalized === "founders" || normalized === "institutional" || normalized === "test";
+function billingPlanIsPremium() {
+  // Flagship (and the internal test tier) both include the full feature set.
+  return true;
 }
 
 function resolveLaunchRedirectTarget(payload = {}, slug = "") {
@@ -179,7 +175,7 @@ export default function DirectorOnboardingCommandCenterPage() {
   const [launching, setLaunching] = useState(false);
   const [syncingBilling, setSyncingBilling] = useState(false);
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
-  const [selectedPlanCode, setSelectedPlanCode] = useState("legacy");
+  const [selectedPlanCode, setSelectedPlanCode] = useState("flagship");
   const previewTheme = payload?.tenant?.onboardingDraft?.theme || {};
   const previewContent = payload?.tenant?.onboardingDraft?.content || {};
   const previewBrandPrimary = normalizeHexColor(
@@ -222,7 +218,7 @@ export default function DirectorOnboardingCommandCenterPage() {
       setBilling(billingPayload);
       setFeatureInventory(featurePayload);
       const livePlanCode = String(
-        billingPayload?.tenant?.billingPlan || billingPayload?.billing?.billingPlan || "legacy"
+        billingPayload?.tenant?.billingPlan || billingPayload?.billing?.billingPlan || "flagship"
       )
         .trim()
         .toLowerCase();
@@ -405,7 +401,7 @@ export default function DirectorOnboardingCommandCenterPage() {
     billingReady
   });
   const activePlanCode = String(
-    billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "legacy"
+    billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "flagship"
   )
     .trim()
     .toLowerCase();
@@ -639,7 +635,7 @@ export default function DirectorOnboardingCommandCenterPage() {
               {lastInvoiceErrorMessage ? ` ${lastInvoiceErrorMessage}` : ""}
             </p>
           ) : null}
-          {Array.isArray(billing?.catalog?.plans) && billing.catalog.plans.length ? (
+          {Array.isArray(billing?.catalog?.plans) && billing.catalog.plans.length > 1 ? (
             <label className="director-command-center-plan-select">
               Plan selection
               <select
@@ -648,21 +644,11 @@ export default function DirectorOnboardingCommandCenterPage() {
               >
                 {billing.catalog.plans.map((plan) => (
                   <option key={plan.code} value={plan.code}>
-                    {plan.label} · {formatMoney(plan.annualAmount)}/yr
-                    {plan.code === "institutional"
-                      ? ` + ${formatMoney(plan.onboardingFeeAmount)} onboarding (first checkout only)`
-                      : " · no onboarding fee"}
+                    {plan.label} · {formatMoney(plan.annualAmount)}/yr · no onboarding fee
                   </option>
                 ))}
               </select>
             </label>
-          ) : null}
-          {billing?.foundersAvailability ? (
-            <p className="muted">
-              Founders slots: {billing.foundersAvailability.reserved}/{billing.foundersAvailability.max} reserved
-              {" · "}
-              {billing.foundersAvailability.remaining} remaining
-            </p>
           ) : null}
           <div className="inline-actions">
             <Button onClick={startStripeCheckout} disabled={startingCheckout}>

@@ -13,7 +13,6 @@ import {
   createTenantCheckoutSession,
   getBillingCatalog,
   getBillingMode,
-  getFoundersAvailability,
   isStripeEnabled,
   listRecentTenantInvoices,
   syncStripeCustomerContact
@@ -63,7 +62,7 @@ function toBoolean(value) {
 const DIRECTOR_CLIENT_TERMS_VERSION = "2026-03-06";
 const DIRECTOR_CLIENT_PRIVACY_VERSION = "2026-03-06";
 const DIRECTOR_SERVICE_AGREEMENT_VERSION = "2026-03-06";
-const VALID_BILLING_PLAN_CODES = new Set(["legacy", "founders", "institutional", "test"]);
+const VALID_BILLING_PLAN_CODES = new Set(["flagship", "test"]);
 
 function hasOwn(source, key) {
   return Boolean(source && Object.prototype.hasOwnProperty.call(source, key));
@@ -305,7 +304,7 @@ function resolveRequestedBillingPlan(body = {}, tenant = null) {
           payload: {
             error: {
               code: "INVALID_BILLING_PLAN",
-              message: "Billing plan must be legacy, founders, institutional, or test."
+              message: "Billing plan must be flagship or test."
             }
           }
         }
@@ -314,12 +313,8 @@ function resolveRequestedBillingPlan(body = {}, tenant = null) {
     return { planCode: direct };
   }
 
-  const planTier = String(body?.planTier || "").trim().toLowerCase();
-  if (planTier === "premium") return { planCode: "institutional" };
-  if (planTier === "base") return { planCode: "legacy" };
-
   return {
-    planCode: tenant ? resolveTenantBilling(tenant).billingPlan : "legacy"
+    planCode: tenant ? resolveTenantBilling(tenant).billingPlan : "flagship"
   };
 }
 
@@ -1116,9 +1111,6 @@ router.post("/me/billing/checkout", async (req, res, next) => {
     });
 
     const updatedTenant = checkout?.tenant || (await TenantModel.findById(tenant._id));
-    const [foundersAvailability] = await Promise.all([
-      getFoundersAvailability()
-    ]);
 
     await createAuditLog({
       tenantId: tenant._id,
@@ -1140,7 +1132,6 @@ router.post("/me/billing/checkout", async (req, res, next) => {
       sessionId: checkout.sessionId || "",
       notes: checkout.message || "",
       catalog: getBillingCatalog({ tenant: updatedTenant }),
-      foundersAvailability,
       billing: buildBillingPublicSnapshot(updatedTenant),
       tenant: {
         id: String(updatedTenant._id),
@@ -1175,9 +1166,8 @@ router.get("/me/billing", async (req, res) => {
     });
   }
 
-  const [portal, foundersAvailability, invoices] = await Promise.all([
+  const [portal, invoices] = await Promise.all([
     createBillingPortalUrl({ tenant: { ...tenant } }),
-    getFoundersAvailability(),
     listRecentTenantInvoices(tenant, { limit: 12 })
   ]);
   const billing = buildBillingPublicSnapshot(tenant);
@@ -1207,14 +1197,10 @@ router.get("/me/billing", async (req, res) => {
       currentPeriodEnd: billing.currentPeriodEnd,
       initialCheckoutCompletedAt: billing.initialCheckoutCompletedAt,
       activatedAt: billing.activatedAt,
-      canceledAt: billing.canceledAt,
-      foundersReserved: billing.foundersReserved,
-      foundersSlot: billing.foundersSlot,
-      foundersEligible: billing.foundersEligible
+      canceledAt: billing.canceledAt
     },
     features: listFeaturesForPlan(planTier, tenant.addOns || []),
     catalog: getBillingCatalog({ tenant }),
-    foundersAvailability,
     billing,
     manageSubscriptionUrl: portal.url || "",
     notes: portal.message || "",

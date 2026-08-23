@@ -27,36 +27,23 @@ function formatMoney(value = 0) {
 
 const BILLING_PLAN_OPTIONS = [
   {
+    code: "flagship",
+    label: "Flagship",
+    annualAmount: 1200,
+    onboardingFeeAmount: 0
+  },
+  {
     code: "test",
     label: "Internal Test",
     annualAmount: 10,
     onboardingFeeAmount: 0
-  },
-  {
-    code: "legacy",
-    label: "Legacy",
-    annualAmount: 3000,
-    onboardingFeeAmount: 0
-  },
-  {
-    code: "founders",
-    label: "Founders",
-    annualAmount: 2500,
-    onboardingFeeAmount: 0
-  },
-  {
-    code: "institutional",
-    label: "Institutional",
-    annualAmount: 3800,
-    onboardingFeeAmount: 200
   }
 ];
 
 function billingPlanLabel(code = "") {
   const normalized = String(code || "").trim().toLowerCase();
-  if (normalized === "test") return "Internal Test";
   const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalized);
-  return option?.label || "Legacy";
+  return option?.label || "Flagship";
 }
 
 function billingPlanOptionByCode(code = "") {
@@ -526,7 +513,7 @@ export function SuperTenantsPage() {
         <header className="super-tenant-list-head">
           <div>
             <h2 className="pb-section-title">Tenant List</h2>
-            <p className="super-tenant-list-subtitle">Filter camps by status, plan tier, and billing state.</p>
+            <p className="super-tenant-list-subtitle">Filter camps by status, billing plan, and billing state.</p>
           </div>
         </header>
         <div className="super-filter-grid super-filter-grid-tenants super-filter-grid-tenants-inline">
@@ -546,8 +533,11 @@ export function SuperTenantsPage() {
             Plan
             <Select value={filters.plan} onChange={(event) => setFilters((prev) => ({ ...prev, plan: event.target.value }))}>
               <option value="">All</option>
-              <option value="base">Base</option>
-              <option value="premium">Premium</option>
+              {BILLING_PLAN_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
             </Select>
           </label>
           <label>
@@ -587,7 +577,7 @@ export function SuperTenantsPage() {
                   <td>
                     <StatusBadge status={camp.status} />
                   </td>
-                  <td>{camp.planTier === "premium" ? "Premium" : "Base"}</td>
+                  <td>{billingPlanLabel(camp.billingPlan)}</td>
                   <td>{camp.counts?.users || 0}</td>
                   <td>{camp.counts?.profiles || 0}</td>
                   <td>
@@ -664,18 +654,28 @@ export function SuperTenantCreatePage() {
   const [status, setStatus] = useState("");
   const [createResult, setCreateResult] = useState(null);
   const createResultRef = useRef(null);
+  const [creating, setCreating] = useState(false);
+  // State updates are batched, so a double-click inside one tick would still
+  // see `creating === false`. The ref flips synchronously on the first click.
+  const creatingRef = useRef(false);
   const [form, setForm] = useState({
     name: "",
     slug: "",
-    billingPlan: "legacy",
+    billingPlan: "flagship",
     directorEmail: ""
   });
 
   async function createCamp(event) {
     event.preventDefault();
+    // Creation reaches Cloudflare, so it can take several seconds. Without a
+    // guard a second click fires a duplicate POST that comes back as
+    // "slug already exists" — for a camp the first click just created.
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setError("");
     setStatus("");
     setCreateResult(null);
+    setCreating(true);
     try {
       const payload = await requestJson("/api/super/tenants", {
         method: "POST",
@@ -698,7 +698,7 @@ export function SuperTenantCreatePage() {
         : rawNetworkClaimLink;
       const domain = payload?.tenant?.customDomain || payload?.network?.domain || "";
       const selectedBillingPlan = String(
-        payload?.billingPlan || payload?.tenant?.settings?.billing?.planCode || form.billingPlan || "legacy"
+        payload?.billingPlan || payload?.tenant?.settings?.billing?.planCode || form.billingPlan || "flagship"
       )
         .trim()
         .toLowerCase();
@@ -721,11 +721,14 @@ export function SuperTenantCreatePage() {
         directorEmail: directorInvite?.email || form.directorEmail || "",
         nextSteps: Array.isArray(payload?.nextSteps) ? payload.nextSteps : []
       });
-      setForm({ name: "", slug: "", billingPlan: "legacy", directorEmail: "" });
+      setForm({ name: "", slug: "", billingPlan: "flagship", directorEmail: "" });
       setStatus("Camp created successfully.");
     } catch (createError) {
       setCreateResult(null);
       setError(createError.message || "Could not create camp.");
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
     }
   }
 
@@ -788,8 +791,13 @@ export function SuperTenantCreatePage() {
             />
           </label>
           <div className="super-form-actions full-width">
-            <Button disabled={!canMutate(role)}>Create camp</Button>
+            <Button type="submit" disabled={!canMutate(role) || creating}>
+              {creating ? "Creating camp..." : "Create camp"}
+            </Button>
             {!canMutate(role) ? <small className="muted">View only role</small> : null}
+            {creating ? (
+              <small className="muted">Registering the camp domain with Cloudflare. This can take a few seconds.</small>
+            ) : null}
           </div>
           <p className="muted full-width">
             This billing plan is saved to the camp now, so directors land on onboarding with billing already pre-selected.
@@ -1242,8 +1250,8 @@ export function SuperBillingOverviewPage() {
           <h2 className="pb-section-title">Plan Distribution</h2>
           <HorizontalBars
             items={[
-              { label: "Base", value: data?.charts?.planDistribution?.base || 0 },
-              { label: "Premium", value: data?.charts?.planDistribution?.premium || 0 },
+              { label: "Flagship", value: data?.charts?.planDistribution?.flagship || 0 },
+              { label: "Internal Test", value: data?.charts?.planDistribution?.test || 0 },
               { label: "Trial", value: data?.charts?.planDistribution?.trial || 0 },
               { label: "Comp", value: data?.charts?.planDistribution?.comp || 0 }
             ]}
@@ -1297,11 +1305,14 @@ export function SuperBillingTenantsPage() {
             <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
           </label>
           <label>
-            Plan tier
+            Plan
             <Select value={filters.plan} onChange={(event) => setFilters((prev) => ({ ...prev, plan: event.target.value }))}>
               <option value="">All</option>
-              <option value="base">Base</option>
-              <option value="premium">Premium</option>
+              {BILLING_PLAN_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
             </Select>
           </label>
           <label>
@@ -1346,7 +1357,7 @@ export function SuperBillingTenantsPage() {
               {data.items.map((row) => (
                 <tr key={row.id} onClick={() => setSelected(row)} className={selected?.id === row.id ? "is-selected" : ""}>
                   <td>{row.name}</td>
-                  <td>{row.planTier === "premium" ? "Premium" : "Base"}</td>
+                  <td>{billingPlanLabel(row.billingPlan)}</td>
                   <td>
                     <StatusBadge status={row.billingStatus} />
                   </td>
@@ -1403,7 +1414,8 @@ export function SuperBillingTenantsPage() {
             <section>
               <h3>Plan Summary</h3>
               <p>
-                <strong>Plan:</strong> {selected.planTier === "premium" ? "Premium" : "Base"}
+                <strong>Plan:</strong> {billingPlanLabel(selected.billingPlan)}
+                {selected.annualAmount ? ` — ${formatMoney(selected.annualAmount)}/year` : ""}
               </p>
               <p>
                 <strong>MRR:</strong> {formatMoney(selected.mrr)}
@@ -1519,7 +1531,7 @@ export function SuperBillingFailedPage() {
                 <tr key={row.id}>
                   <td>{row.name}</td>
                   <td>{row.daysOverdue}</td>
-                  <td>{row.planTier === "premium" ? "Premium" : "Base"}</td>
+                  <td>{billingPlanLabel(row.billingPlan)}</td>
                   <td>{formatMoney(row.amountDue)}</td>
                   <td>{formatDateTime(row.lastAttempt)}</td>
                   <td>{row.declineReason}</td>
@@ -1660,7 +1672,7 @@ export function SuperAnalyticsEngagementPage() {
                   <td>{row.name}</td>
                   <td>{formatDate(row.lastLoginAt)}</td>
                   <td>{row.members}</td>
-                  <td>{row.planTier === "premium" ? "Premium" : "Base"}</td>
+                  <td>{billingPlanLabel(row.billingPlan)}</td>
                   <td>{row.daysInactive}</td>
                 </tr>
               ))}

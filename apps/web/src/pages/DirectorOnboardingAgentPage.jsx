@@ -52,13 +52,7 @@ function formatMoney(value) {
 }
 
 function planLabel(code = "") {
-  const labels = {
-    test: "Internal Test",
-    legacy: "Legacy",
-    founders: "Founders",
-    institutional: "Institutional"
-  };
-  return labels[String(code || "").trim().toLowerCase()] || "Legacy";
+  return String(code || "").trim().toLowerCase() === "test" ? "Internal Test" : "Flagship";
 }
 
 function launchTarget(response = {}, slug = "") {
@@ -186,7 +180,7 @@ export function buildDirectorGuidedAnswer({ question, payload, billing, dashboar
   }
 
   if (normalized.includes("billing") || normalized.includes("plan") || normalized.includes("payment")) {
-    const activePlan = billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "legacy";
+    const activePlan = billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "flagship";
     const lifecycle = billing?.tenant?.billingLifecycleStatus || "uninitialized";
     return {
       content: `The current plan is ${planLabel(activePlan)} and the billing lifecycle is ${String(lifecycle).replace(/_/g, " ")}. Billing is ${checks.find((item) => item.id === "billing")?.ok ? "ready for launch" : "still a launch blocker"}. Use Billing Details to verify the Stripe-backed state.`,
@@ -247,7 +241,7 @@ export default function DirectorOnboardingAgentPage() {
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [selectedPlan, setSelectedPlan] = useState("legacy");
+  const [selectedPlan, setSelectedPlan] = useState("flagship");
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
@@ -271,7 +265,7 @@ export default function DirectorOnboardingAgentPage() {
       setCapability(capabilityPayload);
       setFeatureInventory(featurePayload);
       setSelectedPlan(
-        String(billingPayload?.tenant?.billingPlan || billingPayload?.billing?.billingPlan || "legacy").toLowerCase()
+        String(billingPayload?.tenant?.billingPlan || billingPayload?.billing?.billingPlan || "flagship").toLowerCase()
       );
       return { onboardingPayload, billingPayload, dashboardPayload };
     } catch (requestError) {
@@ -341,7 +335,7 @@ export default function DirectorOnboardingAgentPage() {
   const completed = checks.filter((item) => item.ok).length;
   const launchReady = Boolean(payload?.readiness?.isReady);
   const isLive = payload?.tenant?.onboardingStatus === "live";
-  const activePlan = String(billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "legacy").toLowerCase();
+  const activePlan = String(billing?.tenant?.billingPlan || billing?.billing?.billingPlan || "flagship").toLowerCase();
   const availablePlans = billing?.catalog?.plans || [];
 
   const planItems = useMemo(

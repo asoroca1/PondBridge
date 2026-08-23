@@ -16,7 +16,6 @@ import {
 } from "./billingState.js";
 import { logLine } from "./logger.js";
 
-const FOUNDERS_MAX_CAMPS = 5;
 const ONBOARDING_FEE_UNPAID = "unpaid";
 const ONBOARDING_FEE_PAID = "paid";
 const ONBOARDING_FEE_WAIVED = "waived";
@@ -29,42 +28,15 @@ const stripe = env.STRIPE_SECRET_KEY
   : null;
 
 const BILLING_PLAN_CATALOG = {
-  legacy: {
-    code: "legacy",
-    label: "Legacy",
-    description: "Legacy annual plan ($3,000/year)",
-    planTier: "base",
-    annualAmount: 3000,
-    onboardingFeeAmount: 0,
-    annualPriceId: String(env.STRIPE_PRICE_LEGACY_ANNUAL || env.STRIPE_PRICE_BASE || "").trim(),
-    onboardingPriceId: String(
-      env.STRIPE_PRICE_LEGACY_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_BASE || ""
-    ).trim(),
-    foundersOnly: false
-  },
-  founders: {
-    code: "founders",
-    label: "Founders",
-    description: "Founders annual plan ($2,500/year, first 5 camps)",
+  flagship: {
+    code: "flagship",
+    label: "Flagship",
+    description: "PondBridge Flagship plan ($1,200/year, everything included)",
     planTier: "premium",
-    annualAmount: 2500,
+    annualAmount: 1200,
     onboardingFeeAmount: 0,
-    annualPriceId: String(env.STRIPE_PRICE_FOUNDERS_ANNUAL || "").trim(),
-    onboardingPriceId: "",
-    foundersOnly: true
-  },
-  institutional: {
-    code: "institutional",
-    label: "Institutional",
-    description: "Institutional annual plan ($3,800/year + $200 one-time onboarding on initial checkout)",
-    planTier: "premium",
-    annualAmount: 3800,
-    onboardingFeeAmount: 200,
-    annualPriceId: String(env.STRIPE_PRICE_INSTITUTIONAL_ANNUAL || env.STRIPE_PRICE_PREMIUM || "").trim(),
-    onboardingPriceId: String(
-      env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING || env.STRIPE_ONBOARDING_PRICE_PREMIUM || ""
-    ).trim(),
-    foundersOnly: false
+    annualPriceId: String(env.STRIPE_PRICE_FLAGSHIP_ANNUAL || "").trim(),
+    onboardingPriceId: ""
   },
   test: {
     code: "test",
@@ -74,20 +46,13 @@ const BILLING_PLAN_CATALOG = {
     annualAmount: 10,
     onboardingFeeAmount: 0,
     annualPriceId: String(env.STRIPE_PRICE_TEST_ANNUAL || "").trim(),
-    onboardingPriceId: "",
-    foundersOnly: false
+    onboardingPriceId: ""
   }
 };
 
 const STRIPE_PRODUCT_NAME_BY_PLAN_CODE = {
-  legacy: "Legacy",
-  founders: "Founders",
-  institutional: "Institutional",
-  test: "Internal Test"
-};
-
-const STRIPE_ONBOARDING_PRODUCT_NAME_BY_PLAN_CODE = {
-  institutional: "Institutional Onboarding"
+  flagship: "Flagship",
+  test: "Test"
 };
 
 const stripePriceLookupCache = new Map();
@@ -109,8 +74,8 @@ function normalizePlanCode(value = "", fallbackTier = "base") {
   return normalizeBillingPlan(value, fallbackTier);
 }
 
-function getCatalogEntry(planCode = "legacy") {
-  return BILLING_PLAN_CATALOG[normalizePlanCode(planCode)] || BILLING_PLAN_CATALOG.legacy;
+function getCatalogEntry(planCode = "flagship") {
+  return BILLING_PLAN_CATALOG[normalizePlanCode(planCode)] || BILLING_PLAN_CATALOG.flagship;
 }
 
 function parseTenantAllowlist(rawValue = "") {
@@ -183,7 +148,7 @@ async function resolveCatalogEntryForCheckout(entry = {}) {
   if (!stripe) return entry;
 
   let annualPriceId = String(entry?.annualPriceId || "").trim();
-  let onboardingPriceId = String(entry?.onboardingPriceId || "").trim();
+  const onboardingPriceId = String(entry?.onboardingPriceId || "").trim();
   const normalizedCode = String(entry?.code || "").trim().toLowerCase();
 
   if (!annualPriceId) {
@@ -194,19 +159,6 @@ async function resolveCatalogEntryForCheckout(entry = {}) {
         unitAmount:
           Number.isFinite(Number(entry?.annualAmount)) && Number(entry.annualAmount) > 0
             ? Number(entry.annualAmount) * 100
-            : null
-      }
-    );
-  }
-
-  if (!onboardingPriceId && Number(entry?.onboardingFeeAmount || 0) > 0) {
-    onboardingPriceId = await findStripePriceIdByProductName(
-      STRIPE_ONBOARDING_PRODUCT_NAME_BY_PLAN_CODE[normalizedCode] || "",
-      {
-        recurring: false,
-        unitAmount:
-          Number.isFinite(Number(entry?.onboardingFeeAmount)) && Number(entry.onboardingFeeAmount) > 0
-            ? Number(entry.onboardingFeeAmount) * 100
             : null
       }
     );
@@ -347,9 +299,10 @@ function resolveOnboardingFeeStatusForCheckout({
 
 function resolveOnboardingFeeWaiveReason({ planCode = "", onboardingFeeStatus = "" } = {}) {
   if (onboardingFeeStatus !== ONBOARDING_FEE_WAIVED) return "";
-  const normalizedPlanCode = String(planCode || "").trim().toLowerCase();
-  if (normalizedPlanCode === "founders") return "founders";
-  if (normalizedPlanCode === "legacy") return "plan_has_no_onboarding_fee";
+  const catalogEntry = getCatalogEntry(planCode);
+  if (Number(catalogEntry.onboardingFeeAmount || 0) <= 0) {
+    return "plan_has_no_onboarding_fee";
+  }
   return "initial_checkout_only";
 }
 
@@ -530,7 +483,7 @@ function getPlanCodeFromTenant(tenant) {
 
 function getPlanCodeFromStripePriceId(priceId = "", tenant = null) {
   const price = String(priceId || "").trim();
-  if (!price) return tenant ? getPlanCodeFromTenant(tenant) : "legacy";
+  if (!price) return tenant ? getPlanCodeFromTenant(tenant) : "flagship";
 
   for (const entry of Object.values(BILLING_PLAN_CATALOG)) {
     if (price === entry.annualPriceId || price === entry.onboardingPriceId) {
@@ -538,7 +491,7 @@ function getPlanCodeFromStripePriceId(priceId = "", tenant = null) {
     }
   }
 
-  return tenant ? getPlanCodeFromTenant(tenant) : "legacy";
+  return tenant ? getPlanCodeFromTenant(tenant) : "flagship";
 }
 
 async function getStripeSubscriptionForTenant(tenant = null) {
@@ -579,7 +532,7 @@ async function getStripeSubscriptionForTenant(tenant = null) {
 
 function hasOnboardingFeeLine(invoice, tenant = null) {
   const lines = invoice?.lines?.data || [];
-  const planCode = tenant ? getPlanCodeFromTenant(tenant) : "legacy";
+  const planCode = tenant ? getPlanCodeFromTenant(tenant) : "flagship";
   const catalog = getCatalogEntry(planCode);
   const knownOnboardingPriceIds = new Set(
     Object.values(BILLING_PLAN_CATALOG)
@@ -604,75 +557,6 @@ function inferCheckoutLifecycleStatus(session = {}) {
   if (paymentStatus === "paid") return "active";
   if (paymentStatus === "unpaid" || paymentStatus === "no_payment_required") return "checkout_started";
   return "checkout_started";
-}
-
-async function listFoundersReservations() {
-  const tenants = await TenantModel.find({}, {
-    select: ["id", "slug", "settings", "planTier"]
-  });
-
-  return tenants
-    .map((tenant) => ({
-      tenantId: String(tenant._id),
-      slug: tenant.slug,
-      billing: resolveTenantBilling(tenant)
-    }))
-    .filter((item) => item.billing.foundersReserved || item.billing.billingPlan === "founders")
-    .sort((a, b) => {
-      const at = new Date(a.billing.foundersReservedAt || 0).getTime();
-      const bt = new Date(b.billing.foundersReservedAt || 0).getTime();
-      return at - bt;
-    });
-}
-
-function nextAvailableFoundersSlot(reservations = []) {
-  const used = new Set(
-    reservations
-      .map((entry) => Number(entry.billing.foundersSlot))
-      .filter((slot) => Number.isInteger(slot) && slot >= 1 && slot <= FOUNDERS_MAX_CAMPS)
-  );
-  for (let slot = 1; slot <= FOUNDERS_MAX_CAMPS; slot += 1) {
-    if (!used.has(slot)) return slot;
-  }
-  return null;
-}
-
-async function ensureFoundersReservation(tenant) {
-  const billing = resolveTenantBilling(tenant);
-  if (billing.foundersReserved) {
-    return { tenant, slot: billing.foundersSlot || null };
-  }
-
-  const reservations = await listFoundersReservations();
-  if (reservations.length >= FOUNDERS_MAX_CAMPS) {
-    const error = new Error("Founders plan is no longer available.");
-    error.statusCode = 409;
-    error.code = "FOUNDERS_CAP_REACHED";
-    throw error;
-  }
-
-  const slot = nextAvailableFoundersSlot(reservations);
-  if (!slot) {
-    const error = new Error("Founders plan is no longer available.");
-    error.statusCode = 409;
-    error.code = "FOUNDERS_CAP_REACHED";
-    throw error;
-  }
-
-  const updated = await updateTenantWithBillingPatch(tenant, {
-    billingPatch: {
-      foundersReserved: true,
-      foundersReservedAt: nowIso(),
-      foundersSlot: slot,
-      foundersEligible: true
-    }
-  });
-
-  await writeBillingAudit(tenant._id, "founders_slot_reserved", {
-    slot
-  }).catch(() => {});
-
-  return { tenant: updated, slot };
 }
 
 async function findTenantForStripePayload(payload = {}) {
@@ -773,25 +657,12 @@ export function isStripeEnabled() {
   return getBillingMode() === "stripe";
 }
 
-export function getPriceIdForPlan(planTier = "base") {
-  return String(planTier || "").trim().toLowerCase() === "premium"
-    ? BILLING_PLAN_CATALOG.institutional.annualPriceId
-    : BILLING_PLAN_CATALOG.legacy.annualPriceId;
+export function getPriceIdForPlan() {
+  return BILLING_PLAN_CATALOG.flagship.annualPriceId;
 }
 
-export function getOnboardingPriceIdForPlan(planTier = "base") {
-  return String(planTier || "").trim().toLowerCase() === "premium"
-    ? BILLING_PLAN_CATALOG.institutional.onboardingPriceId
-    : BILLING_PLAN_CATALOG.legacy.onboardingPriceId;
-}
-
-export async function getFoundersAvailability() {
-  const reservations = await listFoundersReservations();
-  return {
-    max: FOUNDERS_MAX_CAMPS,
-    reserved: reservations.length,
-    remaining: Math.max(0, FOUNDERS_MAX_CAMPS - reservations.length)
-  };
+export function getOnboardingPriceIdForPlan() {
+  return BILLING_PLAN_CATALOG.flagship.onboardingPriceId;
 }
 
 export function getBillingCatalog({ tenant = null } = {}) {
@@ -803,13 +674,9 @@ export function getBillingCatalog({ tenant = null } = {}) {
       planTier: entry.planTier,
       annualAmount: entry.annualAmount,
       onboardingFeeAmount: entry.onboardingFeeAmount,
-      foundersOnly: entry.foundersOnly,
       hasAnnualPriceId: Boolean(entry.annualPriceId),
       hasOnboardingPriceId: entry.onboardingFeeAmount > 0 ? Boolean(entry.onboardingPriceId) : true
-    })),
-    founders: {
-      maxCamps: FOUNDERS_MAX_CAMPS
-    }
+    }))
   };
 }
 
@@ -817,23 +684,17 @@ export async function createTenantCheckoutSession({
   tenant,
   billingOperator = null,
   planCode = "",
-  planTier = "",
   successUrl,
   cancelUrl
 }) {
   const mode = getBillingMode();
   const currentBilling = resolveTenantBilling(tenant);
-  const planCodeFromTier = String(planTier || "").trim().toLowerCase() === "premium"
-    ? "institutional"
-    : String(planTier || "").trim().toLowerCase() === "base"
-    ? "legacy"
-    : "";
   const normalizedPlanCode = normalizePlanCode(
-    planCode || planCodeFromTier || currentBilling.billingPlan,
+    planCode || currentBilling.billingPlan,
     tenant.planTier
   );
   let catalogEntry = getCatalogEntry(normalizedPlanCode);
-  let tenantForUpdate = tenant;
+  const tenantForUpdate = tenant;
 
   if (!isBillingPlanAvailableForTenant(catalogEntry.code, tenantForUpdate)) {
     const error = new Error(
@@ -842,11 +703,6 @@ export async function createTenantCheckoutSession({
     error.statusCode = 403;
     error.code = "BILLING_TEST_PLAN_NOT_ENABLED";
     throw error;
-  }
-
-  if (catalogEntry.code === "founders") {
-    const reserved = await ensureFoundersReservation(tenantForUpdate);
-    tenantForUpdate = reserved.tenant;
   }
 
   if (isComplimentaryTenant(tenantForUpdate)) {
@@ -2114,9 +1970,6 @@ export function buildBillingPublicSnapshot(tenant = {}) {
     initialCheckoutCompletedAt: readiness.initialCheckoutCompletedAt,
     activatedAt: readiness.activatedAt,
     canceledAt: readiness.canceledAt,
-    foundersReserved: readiness.foundersReserved,
-    foundersSlot: readiness.foundersSlot,
-    foundersEligible: readiness.foundersEligible,
     isComplimentary,
     launchReady: readiness.ok,
     launchReadiness: {

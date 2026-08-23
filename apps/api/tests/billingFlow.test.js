@@ -104,12 +104,8 @@ beforeAll(async () => {
   process.env.APP_BASE_DOMAIN = "pondbridge.test";
   process.env.BILLING_MODE = "mock";
   process.env.BILLING_TEST_PLAN_TENANTS = "billing-test-tier-allowed-1,billing-test-tier-allowed-3";
-  process.env.STRIPE_PRICE_LEGACY_ANNUAL = "price_legacy_annual";
-  process.env.STRIPE_PRICE_FOUNDERS_ANNUAL = "price_founders_annual";
-  process.env.STRIPE_PRICE_INSTITUTIONAL_ANNUAL = "price_institutional_annual";
+  process.env.STRIPE_PRICE_FLAGSHIP_ANNUAL = "price_flagship_annual";
   process.env.STRIPE_PRICE_TEST_ANNUAL = "price_test_annual";
-  process.env.STRIPE_PRICE_LEGACY_ONBOARDING = "price_legacy_onboarding";
-  process.env.STRIPE_PRICE_INSTITUTIONAL_ONBOARDING = "price_institutional_onboarding";
 
   ({ connectToDatabase } = await import("../src/db/connect.js"));
   ({ clearAllDocuments } = await import("../src/db/supabaseDocumentModel.js"));
@@ -202,133 +198,95 @@ describe("Stripe billing system", () => {
     expect(response.body.error?.code).toBe("BILLING_TEST_PLAN_NOT_ENABLED");
   });
 
-  test("tenant admin checkout stores canonical legacy billing metadata", async () => {
+  test("tenant admin checkout stores canonical flagship billing metadata", async () => {
     const tenant = await createTenant({
-      slug: "billing-legacy-checkout",
+      slug: "billing-flagship-checkout",
       onboardingStatus: "in_progress"
     });
-    await createTenantAdmin(tenant._id, "director@legacy.test");
-    const token = await loginTenant(tenant.slug, "director@legacy.test");
+    await createTenantAdmin(tenant._id, "director@flagship.test");
+    const token = await loginTenant(tenant.slug, "director@flagship.test");
 
     const response = await request(app)
       .post("/api/tenants/me/billing/checkout")
       .set("Authorization", `Bearer ${token}`)
-      .send({ planCode: "legacy" });
+      .send({ planCode: "flagship" });
 
     expect(response.status).toBe(201);
     expect(response.body.ok).toBe(true);
     expect(response.body.checkoutUrl).toContain("mock-billing");
-    expect(response.body.billing.billingPlan).toBe("legacy");
+    expect(response.body.billing.billingPlan).toBe("flagship");
+    expect(response.body.billing.annualAmount).toBe(1200);
     expect(response.body.billing.onboardingFeeAmount).toBe(0);
     expect(response.body.billing.onboardingFeeStatus).toBe("waived");
     expect(response.body.billing.lifecycleStatus).toBe("checkout_started");
 
     const stored = await Tenant.findById(tenant._id);
-    expect(stored.planTier).toBe("base");
+    expect(stored.planTier).toBe("premium");
     expect(Number(stored.onboardingFeeAmount)).toBe(0);
     expect(stored.onboardingFeePaid).toBe(true);
-    expect(stored.settings?.billing?.planCode).toBe("legacy");
+    expect(stored.settings?.billing?.planCode).toBe("flagship");
     expect(stored.settings?.billing?.lifecycleStatus).toBe("checkout_started");
   });
 
-  test("tenant admin can start institutional checkout with premium feature tier mapping", async () => {
+  test("flagship is the only purchasable plan in the catalog", async () => {
     const tenant = await createTenant({
-      slug: "billing-institutional-checkout",
+      slug: "billing-catalog-single-plan",
       onboardingStatus: "in_progress"
     });
-    await createTenantAdmin(tenant._id, "director@institutional.test");
-    const token = await loginTenant(tenant.slug, "director@institutional.test");
+    await createTenantAdmin(tenant._id, "director@catalog.test");
+    const token = await loginTenant(tenant.slug, "director@catalog.test");
+
+    const response = await request(app)
+      .get("/api/tenants/me/billing")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.catalog.plans).toHaveLength(1);
+    expect(response.body.catalog.plans[0]).toMatchObject({
+      code: "flagship",
+      annualAmount: 1200,
+      onboardingFeeAmount: 0
+    });
+  });
+
+  test("retired plan codes resolve to flagship and never add an onboarding fee", async () => {
+    const tenant = await createTenant({
+      slug: "billing-retired-plan-code",
+      onboardingStatus: "in_progress"
+    });
+    await createTenantAdmin(tenant._id, "director@retired-plan.test");
+    const token = await loginTenant(tenant.slug, "director@retired-plan.test");
 
     const response = await request(app)
       .post("/api/tenants/me/billing/checkout")
       .set("Authorization", `Bearer ${token}`)
       .send({ planCode: "institutional" });
 
-    expect(response.status).toBe(201);
-    expect(response.body.ok).toBe(true);
-    expect(response.body.billing.billingPlan).toBe("institutional");
-    expect(response.body.billing.onboardingFeeAmount).toBe(200);
-    expect(response.body.billing.onboardingFeeStatus).toBe("unpaid");
+    expect(response.status).toBe(400);
+    expect(response.body.error?.code).toBe("INVALID_BILLING_PLAN");
 
-    const stored = await Tenant.findById(tenant._id);
-    expect(stored.planTier).toBe("premium");
-    expect(Number(stored.onboardingFeeAmount)).toBe(200);
-    expect(stored.settings?.billing?.planCode).toBe("institutional");
-    expect(stored.settings?.billing?.lifecycleStatus).toBe("checkout_started");
-  });
-
-  test("institutional onboarding fee remains paid after the initial completed checkout", async () => {
-    const tenant = await createTenant({
-      slug: "billing-institutional-repeat-checkout",
+    // Tenants already stored on a retired code still read as flagship.
+    const stored = await createTenant({
+      slug: "billing-retired-plan-stored",
       onboardingStatus: "live",
       billingStatus: "active",
-      stripeCustomerId: "cus_existing_001",
-      onboardingFeeAmount: 200,
-      onboardingFeePaid: true,
       settings: {
         billing: {
           planCode: "institutional",
-          lifecycleStatus: "active",
-          initialCheckoutCompletedAt: "2026-01-05T12:00:00.000Z",
-          activatedAt: "2026-01-05T12:00:00.000Z"
+          lifecycleStatus: "active"
         }
       }
     });
-    tenant.stripeSubscriptionId = "sub_existing_001";
-    tenant.stripePriceId = "price_institutional_annual";
-    await tenant.save();
-    await createTenantAdmin(tenant._id, "director@institutional-repeat.test");
-    const token = await loginTenant(tenant.slug, "director@institutional-repeat.test");
+    await createTenantAdmin(stored._id, "director@retired-stored.test");
+    const storedToken = await loginTenant(stored.slug, "director@retired-stored.test");
 
-    const response = await request(app)
-      .post("/api/tenants/me/billing/checkout")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ planCode: "institutional" });
+    const storedResponse = await request(app)
+      .get("/api/tenants/me/billing")
+      .set("Authorization", `Bearer ${storedToken}`);
 
-    expect(response.status).toBe(201);
-    expect(response.body.billing.billingPlan).toBe("institutional");
-    expect(response.body.billing.onboardingFeeAmount).toBe(200);
-    expect(response.body.billing.onboardingFeeStatus).toBe("paid");
-  });
-
-  test("founders plan is capped at first 5 camps and maps to premium tier", async () => {
-    await createSuperAdmin();
-    const superToken = await loginSuper();
-
-    const tenants = [];
-    for (let i = 1; i <= 6; i += 1) {
-      const tenant = await createTenant({
-        slug: `founders-cap-${i}`,
-        onboardingStatus: "in_progress"
-      });
-      tenants.push(tenant);
-    }
-
-    for (let i = 0; i < 5; i += 1) {
-      const response = await request(app)
-        .post("/api/tenants/me/billing/checkout")
-        .set("Authorization", `Bearer ${superToken}`)
-        .send({
-          tenantId: String(tenants[i]._id),
-          planCode: "founders"
-        });
-
-      expect(response.status).toBe(201);
-      expect(response.body.billing.billingPlan).toBe("founders");
-      expect(response.body.billing.onboardingFeeStatus).toBe("waived");
-      expect(response.body.tenant.planTier).toBe("premium");
-    }
-
-    const sixth = await request(app)
-      .post("/api/tenants/me/billing/checkout")
-      .set("Authorization", `Bearer ${superToken}`)
-      .send({
-        tenantId: String(tenants[5]._id),
-        planCode: "founders"
-      });
-
-    expect(sixth.status).toBe(409);
-    expect(sixth.body.error?.code).toBe("FOUNDERS_CAP_REACHED");
+    expect(storedResponse.status).toBe(200);
+    expect(storedResponse.body.billing.billingPlan).toBe("flagship");
+    expect(storedResponse.body.billing.annualAmount).toBe(1200);
   });
 
   test("billing checkout rejects invalid plan codes", async () => {
@@ -358,7 +316,7 @@ describe("Stripe billing system", () => {
       onboardingFeePaid: false,
       settings: {
         billing: {
-          planCode: "institutional",
+          planCode: "flagship",
           lifecycleStatus: "checkout_started",
           processedEventIds: []
         }
@@ -376,8 +334,8 @@ describe("Stripe billing system", () => {
           lines: {
             data: [
               {
-                price: { id: "price_institutional_onboarding" },
-                description: "Institutional onboarding fee"
+                price: { id: "price_onboarding_legacy_charge" },
+                description: "Onboarding fee"
               }
             ]
           }
@@ -423,7 +381,7 @@ describe("Stripe billing system", () => {
       stripeCustomerId: "cus_test_fail",
       settings: {
         billing: {
-          planCode: "legacy",
+          planCode: "flagship",
           lifecycleStatus: "active",
           processedEventIds: []
         }
@@ -472,7 +430,7 @@ describe("Stripe billing system", () => {
       stripeCustomerId: "cus_test_new_route",
       settings: {
         billing: {
-          planCode: "legacy",
+          planCode: "flagship",
           lifecycleStatus: "active",
           processedEventIds: []
         }
@@ -545,7 +503,7 @@ describe("Stripe billing system", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({
         tenantId: String(tenantB._id),
-        planCode: "legacy"
+        planCode: "flagship"
       });
 
     expect(response.status).toBe(403);

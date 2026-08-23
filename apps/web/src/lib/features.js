@@ -5,15 +5,9 @@ const FEATURE_TO_MODULE = {
   familyTrees: "familyTrees"
 };
 
-function resolveTenantPlanTier(tenant) {
-  const billingPlan = String(tenant?.billingPlan || tenant?.billing?.billingPlan || "")
-    .trim()
-    .toLowerCase();
-  if (billingPlan === "founders" || billingPlan === "institutional" || billingPlan === "test") {
-    return "premium";
-  }
-  if (billingPlan === "legacy") return "base";
-  return String(tenant?.planTier || "").trim().toLowerCase() === "premium" ? "premium" : "base";
+function resolveTenantPlanTier() {
+  // Flagship is the only plan PondBridge sells and it includes every feature.
+  return "premium";
 }
 
 export function tenantHasFeature(tenant, feature) {
@@ -32,5 +26,5 @@ export function tenantHasFeature(tenant, feature) {
     return false;
   }
 
-  return hasFeature(resolveTenantPlanTier(tenant), normalizedFeature, tenant.addOns || []);
+  return hasFeature(resolveTenantPlanTier(), normalizedFeature, tenant.addOns || []);
 }

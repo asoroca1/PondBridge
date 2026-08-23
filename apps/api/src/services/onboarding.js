@@ -827,9 +827,6 @@ export function getBillingReadiness(tenant) {
     initialCheckoutCompletedAt: billing.initialCheckoutCompletedAt,
     activatedAt: billing.activatedAt,
     canceledAt: billing.canceledAt,
-    foundersReserved: billing.foundersReserved,
-    foundersSlot: billing.foundersSlot,
-    foundersEligible: billing.foundersEligible,
     ok: billing.ok
   };
 }
