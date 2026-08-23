@@ -159,7 +159,7 @@ export function buildMemberGuideAnswer({ question, slug, tenant }) {
           links: []
         }
       : {
-          content: "You can browse upcoming camp events and registered-member seminars, review the host and topic, RSVP, and securely open an online room from the Events & Seminars page.",
+          content: "You can browse upcoming camp events and registered-member info sessions, review the host and topic, RSVP, and securely open an online room from the Events & Info Sessions page.",
           links: [{ label: "View events & seminars", href: tenantRoute(slug, "/events") }]
         };
   }

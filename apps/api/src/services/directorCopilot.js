@@ -51,7 +51,7 @@ const ADMIN_SCREEN_CATALOG = Object.freeze({
     path: "/admin/invites"
   },
   events: {
-    title: "Events & Seminars",
+    title: "Events & Info Sessions",
     summary: "Creates community events and registered-member online seminars, manages RSVPs, and tracks room access.",
     path: "/admin/events"
   },

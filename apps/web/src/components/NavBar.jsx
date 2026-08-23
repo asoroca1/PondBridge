@@ -126,7 +126,7 @@ function nativeMemberNavTitle(
   if (/^\/profile\/[^/]+$/.test(pathname)) return "Profile";
   if (pathname === "/photo-stream") return "Photos";
   if (/^\/chat(?:-rooms)?(?:\/|$)/.test(pathname)) return "Messages";
-  if (/^\/events(?:\/|$)/.test(pathname)) return pathname === "/events" ? "Events & Seminars" : "Event or Seminar";
+  if (/^\/events(?:\/|$)/.test(pathname)) return pathname === "/events" ? "Events & Info Sessions" : "Event or Info Session";
   if (pathname === "/notifications") return "Notifications";
   if (pathname === "/location-map") return `${alumniWordTitle} Map`;
   if (pathname === "/cedar-chest") return newsletterLabel;
@@ -325,7 +325,7 @@ export default function NavBar() {
       communityItems.push({
         id: "events",
         icon: CalendarDays,
-        label: "Events & Seminars",
+        label: "Events & Info Sessions",
         to: pathWithCamp(slug, "/events")
       });
     }

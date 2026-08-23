@@ -31,8 +31,8 @@ export const TENANT_MODULE_CATALOG = Object.freeze([
   },
   {
     key: "events",
-    label: "Events & Seminars",
-    description: "Community events, registered-member seminars, RSVP collection, and director invite campaigns.",
+    label: "Events & Info Sessions",
+    description: "Community events, registered-member info sessions, RSVP collection, and director invite campaigns.",
     memberPath: "/events",
     directorPath: "/admin/events"
   },

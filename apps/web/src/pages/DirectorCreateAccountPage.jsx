@@ -13,6 +13,7 @@ import {
   TENANT_MODULE_CATALOG
 } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
+import AddressAutocomplete from "../components/AddressAutocomplete.jsx";
 import { defaultTenantDomain } from "../lib/domain.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
@@ -184,11 +185,6 @@ function resolveLaunchRedirectTarget(launchPayload = {}, slug = "") {
   return safeSlug ? `/t/${safeSlug}/home` : "/home";
 }
 
-function billingPlanIsPremium() {
-  // Flagship includes the full feature set, so every camp is on the premium tier.
-  return true;
-}
-
 function billingPlanLabel(code = "") {
   const match = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(code));
   return match ? match.title : "Flagship Plan";
@@ -199,12 +195,6 @@ const FEATURE_OPTIONS = TENANT_MODULE_CATALOG.map((module) => ({
   title: module.key === "chat" ? "Chats and Forums" : module.label,
   description: module.description
 }));
-
-const PREMIUM_ONLY_MODULE_KEYS = ["familyTrees"];
-const BASE_FEATURE_SET_KEYS = Object.keys(DEFAULT_FEATURE_MODULES).filter(
-  (key) => !PREMIUM_ONLY_MODULE_KEYS.includes(key)
-);
-const PREMIUM_FEATURE_SET_KEYS = Object.keys(DEFAULT_FEATURE_MODULES);
 
 function emailLooksValid(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
@@ -835,31 +825,124 @@ function DirectorCreateAccountWizardPage() {
       })),
     [alumniWordTitle, selectedCampType]
   );
-  const isPremiumCamp = billingPlanIsPremium(selectedBillingPlanCode);
-  const planScopedModulesDraft = useMemo(() => {
-    const next = { ...modulesDraft };
-    if (!isPremiumCamp) {
-      PREMIUM_ONLY_MODULE_KEYS.forEach((key) => {
-        next[key] = false;
-      });
-    }
-    return next;
-  }, [isPremiumCamp, modulesDraft]);
+  const mailingAddressDraft = { ...EMPTY_ADDRESS, ...(billingDetails.mailingAddress || {}) };
+  // A director who already has an account never sees the account step, so the
+  // address would otherwise be skipped entirely on the resume path.
+  const mailingAddressOnSpecificsStep = !accountStepRequired;
+  // Rendered in the account step for a new director, and in camp specifics
+  // for a returning one whose account step is skipped — either way the
+  // address is collected before launch.
+  const mailingAddressFields = (
+      <div className="wizard1-span-12 director-address-block">
+        <div className="director-address-head">
+          <strong>Camp mailing address</strong>
+          <span>
+            Included in the footer of every email your camp sends, as anti-spam law
+            requires. It is not shown on your public pages.
+          </span>
+        </div>
+
+        <div className="wizard1-grid wizard1-gap">
+          <div className="wizard1-field wizard1-span-12">
+            <label className="wizard1-label" htmlFor="director-address-line1">
+              Street address<span className="req" aria-hidden="true"> *</span>
+            </label>
+            <AddressAutocomplete
+              id="director-address-line1"
+              value={mailingAddressDraft.line1}
+              hasError={Boolean(errors["mailingAddress.line1"])}
+              placeholder="Start typing to search"
+              onChange={(next) => updateMailingAddress({ line1: next })}
+              onSelect={(picked) => updateMailingAddress(picked)}
+            />
+            {errors["mailingAddress.line1"] ? (
+              <p className="wizard1-error">{errors["mailingAddress.line1"]}</p>
+            ) : null}
+          </div>
+
+          <div className="wizard1-field wizard1-span-12">
+            <label className="wizard1-label" htmlFor="director-address-line2">
+              Suite, unit, or building <small>optional</small>
+            </label>
+            <input
+              id="director-address-line2"
+              className="wizard1-input"
+              value={mailingAddressDraft.line2}
+              onChange={(event) => updateMailingAddress({ line2: event.target.value })}
+              autoComplete="address-line2"
+            />
+          </div>
+
+          <div className="wizard1-field wizard1-span-6">
+            <label className="wizard1-label" htmlFor="director-address-city">
+              City<span className="req" aria-hidden="true"> *</span>
+            </label>
+            <input
+              id="director-address-city"
+              className={`wizard1-input ${errors["mailingAddress.city"] ? "has-error" : ""}`}
+              value={mailingAddressDraft.city}
+              onChange={(event) => updateMailingAddress({ city: event.target.value })}
+              autoComplete="address-level2"
+            />
+            {errors["mailingAddress.city"] ? (
+              <p className="wizard1-error">{errors["mailingAddress.city"]}</p>
+            ) : null}
+          </div>
+
+          <div className="wizard1-field wizard1-span-3">
+            <label className="wizard1-label" htmlFor="director-address-state">
+              State<span className="req" aria-hidden="true"> *</span>
+            </label>
+            <input
+              id="director-address-state"
+              className={`wizard1-input ${errors["mailingAddress.state"] ? "has-error" : ""}`}
+              value={mailingAddressDraft.state}
+              onChange={(event) => updateMailingAddress({ state: event.target.value })}
+              autoComplete="address-level1"
+            />
+            {errors["mailingAddress.state"] ? (
+              <p className="wizard1-error">{errors["mailingAddress.state"]}</p>
+            ) : null}
+          </div>
+
+          <div className="wizard1-field wizard1-span-3">
+            <label className="wizard1-label" htmlFor="director-address-postal">
+              ZIP code<span className="req" aria-hidden="true"> *</span>
+            </label>
+            <input
+              id="director-address-postal"
+              className={`wizard1-input ${errors["mailingAddress.postalCode"] ? "has-error" : ""}`}
+              value={mailingAddressDraft.postalCode}
+              onChange={(event) => updateMailingAddress({ postalCode: event.target.value })}
+              autoComplete="postal-code"
+            />
+            {errors["mailingAddress.postalCode"] ? (
+              <p className="wizard1-error">{errors["mailingAddress.postalCode"]}</p>
+            ) : null}
+          </div>
+
+          <div className="wizard1-field wizard1-span-12">
+            <label className="wizard1-label" htmlFor="director-address-country">
+              Country<span className="req" aria-hidden="true"> *</span>
+            </label>
+            <input
+              id="director-address-country"
+              className={`wizard1-input ${errors["mailingAddress.country"] ? "has-error" : ""}`}
+              value={mailingAddressDraft.country}
+              onChange={(event) => updateMailingAddress({ country: event.target.value })}
+              autoComplete="country-name"
+            />
+            {errors["mailingAddress.country"] ? (
+              <p className="wizard1-error">{errors["mailingAddress.country"]}</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+  );
+
   const enabledFeatureLabels = featureOptionsForCopy
-    .filter((item) => Boolean(planScopedModulesDraft[item.key]))
+    .filter((item) => Boolean(modulesDraft[item.key]))
     .map((item) => item.title);
-  const recommendedFeatureSet = isPremiumCamp ? "premium" : "base";
-  const activeFeatureSet = useMemo(() => {
-    const hasPremiumSet = PREMIUM_FEATURE_SET_KEYS.every((key) => Boolean(planScopedModulesDraft[key]));
-    if (hasPremiumSet) return "premium";
-
-    const hasBaseSet =
-      BASE_FEATURE_SET_KEYS.every((key) => Boolean(planScopedModulesDraft[key])) &&
-      PREMIUM_ONLY_MODULE_KEYS.every((key) => !Boolean(planScopedModulesDraft[key]));
-    if (hasBaseSet) return "base";
-
-    return "custom";
-  }, [planScopedModulesDraft]);
   const reviewDirectorName = `${form.firstName} ${form.lastName}`.trim() || "Not set";
   const mainPhotoFramingLabel = `${
     HERO_POSITION_OPTIONS.find((item) => item.value === themeDraft.heroImagePositionLanding)?.label || "Center"
@@ -1299,7 +1382,7 @@ function DirectorCreateAccountWizardPage() {
           themeDraft.heroImageSizeMember || themeDraft.heroImageSize || DEFAULT_HERO_IMAGE_SIZE
         )
       },
-      modulesDraft: { ...planScopedModulesDraft },
+      modulesDraft: { ...modulesDraft },
       newsletterName: String(newsletterName || ""),
       campSpecifics: {
         ageGroupsText: String(campSpecifics.ageGroupsText || ""),
@@ -1341,7 +1424,14 @@ function DirectorCreateAccountWizardPage() {
     const shouldIncludeAccount = includeAllSections || completedStep === STEP_ACCOUNT;
     const shouldIncludeFeatureChoices = includeAllSections || completedStep === STEP_FEATURES;
     const shouldIncludeCampSpecifics = includeAllSections || completedStep === STEP_CAMP_SPECIFICS;
-    const shouldIncludeBilling = includeAllSections || completedStep === STEP_BILLING_PLAN;
+    // The mailing address lives under billingDetails but is collected on the
+    // account step (or camp specifics for a returning director), so those
+    // steps have to save that section too.
+    const shouldIncludeBilling =
+      includeAllSections ||
+      completedStep === STEP_BILLING_PLAN ||
+      completedStep === STEP_ACCOUNT ||
+      completedStep === STEP_CAMP_SPECIFICS;
 
     if (shouldIncludeTheme) {
       payload.theme = {
@@ -1378,7 +1468,7 @@ function DirectorCreateAccountWizardPage() {
     }
 
     if (shouldIncludeFeatureChoices) {
-      payload.modules = { ...planScopedModulesDraft };
+      payload.modules = { ...modulesDraft };
       payload.content = {
         ...(payload.content || {}),
         newsletterName: String(newsletterName || "").trim() || "Newsletter"
@@ -1506,12 +1596,42 @@ function DirectorCreateAccountWizardPage() {
     return objectUrl;
   }
 
+  // Anti-spam law requires a physical address in every marketing email, so the
+  // mail tools stay blocked until this is on file. Collecting it during
+  // onboarding keeps that block from ever appearing.
+  function validateMailingAddress() {
+    const next = {};
+    const mailingAddress = normalizeAddress(billingDetails.mailingAddress);
+    if (!mailingAddress.line1) next["mailingAddress.line1"] = "Please enter your camp mailing address.";
+    if (!mailingAddress.city) next["mailingAddress.city"] = "Please enter the city.";
+    if (!mailingAddress.state) next["mailingAddress.state"] = "Please enter the state.";
+    if (!mailingAddress.postalCode) next["mailingAddress.postalCode"] = "Please enter the ZIP or postal code.";
+    if (!mailingAddress.country) next["mailingAddress.country"] = "Please enter the country.";
+    return next;
+  }
+
+  /**
+   * The address sits on the account step for a new director and on camp
+   * specifics for a returning one, so a failure has to send each to the step
+   * that actually shows the empty field.
+   */
+  function stepForAccountErrors(accountErrors = {}) {
+    const keys = Object.keys(accountErrors);
+    const onlyAddressMissing =
+      keys.length > 0 && keys.every((key) => key.startsWith("mailingAddress."));
+    if (onlyAddressMissing && mailingAddressOnSpecificsStep) return STEP_CAMP_SPECIFICS;
+    return firstWizardStep;
+  }
+
   function validateAccountStep() {
     const campTypeValid = CAMP_TYPE_OPTIONS.some(
       (item) => item.value === normalizeCampType(form.campType || "")
     );
     if (!accountStepRequired) {
-      return campTypeValid ? {} : { campType: "Please choose your camp type." };
+      return {
+        ...(campTypeValid ? {} : { campType: "Please choose your camp type." }),
+        ...validateMailingAddress()
+      };
     }
 
     const next = {};
@@ -1535,7 +1655,8 @@ function DirectorCreateAccountWizardPage() {
     if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
       next.billingPlanCode = "Please choose a plan.";
     }
-    return next;
+
+    return { ...next, ...validateMailingAddress() };
   }
 
   function validateDesignStep() {
@@ -1566,9 +1687,9 @@ function DirectorCreateAccountWizardPage() {
     if (!homepageQuote) {
       next.homepageQuote = "Add the quote shown on your pre-login homepage.";
     }
-    if (planScopedModulesDraft.merchShop && !merchShopUrl) {
+    if (modulesDraft.merchShop && !merchShopUrl) {
       next.merchShopUrl = "Add the camp merch shop URL or turn off the Merch Shop module.";
-    } else if (planScopedModulesDraft.merchShop && !urlLooksValid(merchShopUrl)) {
+    } else if (modulesDraft.merchShop && !urlLooksValid(merchShopUrl)) {
       next.merchShopUrl = "Enter a valid URL starting with http:// or https://";
     }
 
@@ -1609,7 +1730,7 @@ function DirectorCreateAccountWizardPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(firstWizardStep);
+      setStep(stepForAccountErrors(accountErrors));
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -1631,7 +1752,7 @@ function DirectorCreateAccountWizardPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(firstWizardStep);
+      setStep(stepForAccountErrors(accountErrors));
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -1661,7 +1782,7 @@ function DirectorCreateAccountWizardPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(firstWizardStep);
+      setStep(stepForAccountErrors(accountErrors));
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -1699,7 +1820,7 @@ function DirectorCreateAccountWizardPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(firstWizardStep);
+      setStep(stepForAccountErrors(accountErrors));
       setSubmitError("Please complete the required account fields before moving forward.");
       return;
     }
@@ -1825,9 +1946,6 @@ function DirectorCreateAccountWizardPage() {
   }
 
   function updateModule(moduleKey, enabled) {
-    if (!isPremiumCamp && PREMIUM_ONLY_MODULE_KEYS.includes(moduleKey)) {
-      return;
-    }
     setModulesDraft((prev) => {
       const next = { ...prev, [moduleKey]: enabled };
       if (moduleKey === "directory" && !enabled) {
@@ -1845,16 +1963,20 @@ function DirectorCreateAccountWizardPage() {
     setSubmitError("");
   }
 
-  function applyFeatureSetPreset(nextSet = "premium") {
-    const usePremium = String(nextSet || "").trim().toLowerCase() === "premium";
-    if (usePremium && !isPremiumCamp) {
-      return;
-    }
-    setModulesDraft((prev) => ({
+  function updateMailingAddress(patch = {}) {
+    setBillingDetails((prev) => ({
       ...prev,
-      ...DEFAULT_FEATURE_MODULES,
-      familyTrees: usePremium
+      // Merged raw rather than through normalizeAddress: trimming on every
+      // keystroke would stop anyone typing a space mid-field.
+      mailingAddress: { ...EMPTY_ADDRESS, ...(prev.mailingAddress || {}), ...patch }
     }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(patch).forEach((field) => {
+        delete next[`mailingAddress.${field}`];
+      });
+      return next;
+    });
     setSubmitError("");
   }
 
@@ -1883,7 +2005,7 @@ function DirectorCreateAccountWizardPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setStep(firstWizardStep);
+      setStep(stepForAccountErrors(accountErrors));
       setSubmitError("Complete account details before continuing.");
       return;
     }
@@ -1947,7 +2069,7 @@ function DirectorCreateAccountWizardPage() {
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setSubmitError("Please complete your account details before finishing setup.");
-      setStep(firstWizardStep);
+      setStep(stepForAccountErrors(accountErrors));
       return;
     }
 
@@ -2110,16 +2232,16 @@ function DirectorCreateAccountWizardPage() {
         token,
         body: {
           modules: {
-            directory: Boolean(planScopedModulesDraft.directory),
-            search: Boolean(planScopedModulesDraft.search),
-            events: Boolean(planScopedModulesDraft.events),
-            photoStream: Boolean(planScopedModulesDraft.photoStream),
-            chat: Boolean(planScopedModulesDraft.chat),
-            map: Boolean(planScopedModulesDraft.map),
-            familyTrees: Boolean(planScopedModulesDraft.familyTrees),
-            relatedProfiles: Boolean(planScopedModulesDraft.relatedProfiles),
-            newsletter: Boolean(planScopedModulesDraft.newsletter),
-            merchShop: Boolean(planScopedModulesDraft.merchShop)
+            directory: Boolean(modulesDraft.directory),
+            search: Boolean(modulesDraft.search),
+            events: Boolean(modulesDraft.events),
+            photoStream: Boolean(modulesDraft.photoStream),
+            chat: Boolean(modulesDraft.chat),
+            map: Boolean(modulesDraft.map),
+            familyTrees: Boolean(modulesDraft.familyTrees),
+            relatedProfiles: Boolean(modulesDraft.relatedProfiles),
+            newsletter: Boolean(modulesDraft.newsletter),
+            merchShop: Boolean(modulesDraft.merchShop)
           }
         }
       });
@@ -2456,6 +2578,8 @@ function DirectorCreateAccountWizardPage() {
                     {errors.campType ? <p className="wizard1-error">{errors.campType}</p> : null}
                   </div>
 
+                  {mailingAddressFields}
+
                   <div className="wizard1-field wizard1-span-12">
                     <label className="wizard1-label">
                       {BILLING_PLAN_OPTIONS.length > 1 ? "Choose" : "Your"} {alumniWord} network plan
@@ -2752,75 +2876,28 @@ function DirectorCreateAccountWizardPage() {
               <form className="director-create-form" onSubmit={onContinueToCampSpecifics} noValidate>
                 <div className="wizard1-grid wizard1-gap director-create-fields director-feature-fields">
                   <div className="wizard1-span-12">
-                    <div className="director-feature-set-panel">
-                      <div className="director-feature-set-head">
-                        <strong>Feature set</strong>
-                        <span>
-                          Recommended for selected plan:{" "}
-                          {recommendedFeatureSet === "premium" ? "Premium" : "Base"}
-                        </span>
-                      </div>
-                      <div className="director-feature-set-toggle" role="group" aria-label="Choose feature set">
-                        <button
-                          type="button"
-                          className={`director-feature-set-btn ${activeFeatureSet === "base" ? "active" : ""}`}
-                          onClick={() => applyFeatureSetPreset("base")}
-                        >
-                          Base features
-                        </button>
-                        <button
-                          type="button"
-                          className={`director-feature-set-btn ${activeFeatureSet === "premium" ? "active" : ""}`}
-                          onClick={() => applyFeatureSetPreset("premium")}
-                          disabled={!isPremiumCamp}
-                        >
-                          Premium features
-                        </button>
-                        {activeFeatureSet === "custom" ? (
-                          <span className="director-feature-set-custom">Custom selection</span>
-                        ) : null}
-                      </div>
-                      <p className="director-feature-set-note">
-                        Base keeps core modules enabled and turns off Family Trees. Premium enables all modules.
-                      </p>
-                    </div>
-
                     <div className="director-feature-grid">
-                      {featureOptionsForCopy.map((item) => {
-                        const premiumOnly = PREMIUM_ONLY_MODULE_KEYS.includes(item.key);
-                        const isLocked = premiumOnly && !isPremiumCamp;
-                        return (
-                          <div
-                            className={`director-feature-item ${isLocked ? "is-locked" : ""}`}
-                            key={item.key}
-                          >
-                            <div>
-                              <div className="director-feature-copy">
-                                <div className="director-feature-title-row">
-                                  <strong>{item.title}</strong>
-                                  {premiumOnly ? <span className="director-feature-tier-pill">Premium</span> : null}
-                                </div>
-                                <span>{item.description}</span>
-                                {isLocked ? (
-                                  <p className="director-feature-lock-note">
-                                    Upgrade this camp to Premium to enable this feature.
-                                  </p>
-                                ) : null}
+                      {featureOptionsForCopy.map((item) => (
+                        <div className="director-feature-item" key={item.key}>
+                          <div>
+                            <div className="director-feature-copy">
+                              <div className="director-feature-title-row">
+                                <strong>{item.title}</strong>
                               </div>
+                              <span>{item.description}</span>
                             </div>
-                            <input
-                              type="checkbox"
-                              checked={Boolean(planScopedModulesDraft[item.key])}
-                              onChange={(event) => updateModule(item.key, event.target.checked)}
-                              aria-label={`Enable ${item.title}`}
-                              disabled={isLocked}
-                            />
                           </div>
-                        );
-                      })}
+                          <input
+                            type="checkbox"
+                            checked={Boolean(modulesDraft[item.key])}
+                            onChange={(event) => updateModule(item.key, event.target.checked)}
+                            aria-label={`Enable ${item.title}`}
+                          />
+                        </div>
+                      ))}
                     </div>
 
-                    {planScopedModulesDraft.newsletter ? (
+                    {modulesDraft.newsletter ? (
                       <div className="director-newsletter-panel">
                         <button
                           type="button"
@@ -2910,6 +2987,8 @@ function DirectorCreateAccountWizardPage() {
 
               <form className="director-create-form" onSubmit={onContinueToBillingPlan} noValidate>
                 <div className="wizard1-grid wizard1-gap director-create-fields director-specifics-fields">
+                  {mailingAddressOnSpecificsStep ? mailingAddressFields : null}
+
                   <div className="wizard1-field wizard1-span-6">
                     <label className="wizard1-label" htmlFor="director-age-groups">
                       Age group names<span className="req" aria-hidden="true"> *</span>
@@ -2963,7 +3042,7 @@ function DirectorCreateAccountWizardPage() {
                     ) : null}
                   </div>
 
-                  {planScopedModulesDraft.merchShop ? (
+                  {modulesDraft.merchShop ? (
                     <div className="wizard1-field wizard1-span-12">
                       <label className="wizard1-label" htmlFor="director-merch-shop-url">
                         Merch shop link
@@ -3224,7 +3303,7 @@ function DirectorCreateAccountWizardPage() {
                           <span>None</span>
                         )}
                       </div>
-                      {planScopedModulesDraft.newsletter ? (
+                      {modulesDraft.newsletter ? (
                         <dl className="director-review-kv director-review-kv--compact">
                           <div>
                             <dt>Newsletter label</dt>
@@ -3249,7 +3328,7 @@ function DirectorCreateAccountWizardPage() {
                           <dt>Homepage quote</dt>
                           <dd>{String(campSpecifics.homepageQuote || "").trim() || "Not set"}</dd>
                         </div>
-                        {planScopedModulesDraft.merchShop ? (
+                        {modulesDraft.merchShop ? (
                           <div>
                             <dt>Merch link</dt>
                             <dd>{String(campSpecifics.merchShopUrl || "").trim() || "Not set"}</dd>

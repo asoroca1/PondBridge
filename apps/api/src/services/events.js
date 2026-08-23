@@ -629,7 +629,7 @@ function eventMetaHtml(event = {}) {
       })
     : "";
   const eventTypeLabel = normalizeEventType(event?.eventType || "") === "seminar"
-    ? "Seminar"
+    ? "Info session"
     : "Event";
   const deliveryLabel =
     event?.deliveryMode === "online"

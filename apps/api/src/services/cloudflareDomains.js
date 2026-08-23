@@ -204,7 +204,14 @@ async function waitForDomainReadiness(domain) {
   };
 }
 
-export async function provisionTenantDomain(domain = "") {
+/**
+ * `waitForReadiness: false` registers the domain and returns immediately
+ * instead of polling until Cloudflare reports it active. A freshly created
+ * subdomain is never ready inside the timeout, so waiting only stalls the
+ * caller for the full window before returning "pending" anyway. Callers that
+ * are explicitly checking activation (the retry action) still wait.
+ */
+export async function provisionTenantDomain(domain = "", { waitForReadiness = true } = {}) {
   const safeDomain = sanitizeDomain(domain);
   if (!safeDomain) return { status: "skipped", reason: "missing_domain" };
   if (safeDomain.includes("*")) return { status: "skipped", reason: "wildcard_not_supported" };
@@ -218,7 +225,15 @@ export async function provisionTenantDomain(domain = "") {
 
   const dnsAction = await upsertCnameRecord(safeDomain, cnameTarget, proxied, ttl);
   const pagesAction = await bindPagesDomain(safeDomain);
-  const readiness = await waitForDomainReadiness(safeDomain);
+  const readiness = waitForReadiness
+    ? await waitForDomainReadiness(safeDomain)
+    : {
+        ready: false,
+        reason: "readiness_check_deferred",
+        elapsedMs: 0,
+        pagesStatus: { status: "unknown", validationStatus: "", verificationStatus: "" },
+        httpReady: false
+      };
   const ready = Boolean(readiness?.ready);
 
   return {

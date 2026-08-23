@@ -13,6 +13,7 @@ import {
   resolveContent,
   resolveTheme
 } from "../services/onboarding.js";
+import { suggestAddresses } from "../services/addressSuggest.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { generateUniqueMobileAppCode } from "../utils/mobileAppCode.js";
 import { buildBillingPublicSnapshot } from "../services/billing.js";
@@ -174,6 +175,21 @@ const publicLookupLimiter = rateLimit({
     }
   }
 });
+// Type-ahead fires per keystroke (debounced), so this sits well above the
+// lookup limiter while still capping a single client's burst.
+const publicAddressLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many address lookups. Please slow down."
+    }
+  }
+});
+
 const publicPreferenceLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 40,
@@ -285,6 +301,21 @@ async function resolveTenantForPublicRequest(req) {
     lookupValue: hostFromRequest
   };
 }
+
+router.get("/address-suggest", publicAddressLimiter, async (req, res, next) => {
+  try {
+    // The director has no account yet on the step that uses this, so the
+    // endpoint is public. It reads nothing and returns only what the upstream
+    // geocoder already publishes.
+    const { suggestions, provider } = await suggestAddresses(req.query.q, {
+      countryCode: req.query.country
+    });
+    res.set("Cache-Control", "private, max-age=60");
+    res.json({ suggestions, provider });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
   try {

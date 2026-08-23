@@ -1023,17 +1023,91 @@
   line-height: 1.35;
 }
 
-.director-address-card h3,
 .director-legal-card h3 {
   margin-bottom: 10px;
 }
 
+.director-address-block {
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: #fbfcfe;
+  padding: 14px;
+}
+
 .director-address-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  gap: 4px;
   margin-bottom: 12px;
+}
+
+.director-address-head strong {
+  color: var(--neutral-800);
+  font-size: 0.99rem;
+  line-height: 1.35;
+}
+
+.director-address-head > span {
+  color: var(--neutral-500);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.director-address-block .wizard1-label small {
+  margin-left: 6px;
+  color: var(--neutral-500);
+  font-weight: 600;
+}
+
+/* The suggestion list overlays the fields beneath it, so the block that holds
+   it cannot clip its own overflow. */
+.pb-address-autocomplete {
+  position: relative;
+  width: 100%;
+}
+
+.pb-address-autocomplete > input {
+  width: 100%;
+}
+
+.pb-address-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.12);
+}
+
+.pb-address-suggestions li + li {
+  margin-top: 2px;
+}
+
+.pb-address-suggestions button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 4px);
+  background: transparent;
+  color: var(--neutral-700);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pb-address-suggestions li.is-active button,
+.pb-address-suggestions button:hover {
+  background: var(--neutral-50);
+  color: var(--neutral-800);
 }
 
 .director-inline-checkbox {
@@ -1089,89 +1163,17 @@
   grid-auto-rows: 1fr;
 }
 
-.director-feature-set-panel {
-  border: 1px solid var(--neutral-200);
-  border-radius: var(--radius-md);
-  background: var(--neutral-50);
-  padding: 12px 14px;
-  margin-bottom: 12px;
-  display: grid;
-  gap: 8px;
-}
 
-.director-feature-set-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px 10px;
-}
 
-.director-feature-set-head strong {
-  color: var(--neutral-800);
-  font-size: 0.98rem;
-}
 
-.director-feature-set-head span {
-  color: var(--neutral-500);
-  font-size: 0.82rem;
-  font-weight: 600;
-}
 
-.director-feature-set-toggle {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
-.director-feature-set-btn {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--neutral-300);
-  background: #ffffff;
-  color: var(--neutral-600);
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
-}
 
-.director-feature-set-btn:hover {
-  border-color: var(--neutral-300);
-}
 
-.director-feature-set-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-  border-color: var(--neutral-200);
-  background: var(--neutral-50);
-  color: var(--neutral-500);
-}
 
-.director-feature-set-btn:disabled:hover {
-  border-color: var(--neutral-200);
-}
 
-.director-feature-set-btn.active {
-  border-color: color-mix(in srgb, var(--po-brand) 35%, #ffffff);
-  background: color-mix(in srgb, var(--po-brand) 10%, #ffffff);
-  color: var(--po-brand);
-}
 
-.director-feature-set-custom {
-  color: var(--neutral-500);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
 
-.director-feature-set-note {
-  margin: 0;
-  color: var(--neutral-500);
-  font-size: 0.82rem;
-  line-height: 1.36;
-}
 
 .director-feature-item {
   display: flex;
@@ -1186,10 +1188,6 @@
   height: 100%;
 }
 
-.director-feature-item.is-locked {
-  background: var(--neutral-50);
-  border-color: var(--neutral-200);
-}
 
 .director-feature-copy {
   display: grid;
@@ -1215,26 +1213,7 @@
   line-height: 1.45;
 }
 
-.director-feature-tier-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--po-brand) 30%, var(--neutral-200));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--po-brand) 8%, #ffffff);
-  color: var(--po-brand);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
 
-.director-feature-lock-note {
-  margin: 2px 0 0;
-  color: var(--neutral-500);
-  font-size: 0.78rem;
-  line-height: 1.35;
-}
 
 .director-feature-item input[type="checkbox"] {
   width: 18px;
@@ -1244,10 +1223,6 @@
   flex: 0 0 auto;
 }
 
-.director-feature-item input[type="checkbox"]:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
 
 .director-feature-note {
   margin: 6px 0 0;
@@ -1970,15 +1945,6 @@
 
   .director-review-kv--two {
     grid-template-columns: 1fr;
-  }
-
-  .director-feature-set-toggle {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .director-feature-set-btn {
-    width: 100%;
   }
 
   .director-plan-grid {
