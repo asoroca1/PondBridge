@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../../lib/http.js";
@@ -6,6 +6,7 @@ import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
+import { buildClerkSignupContext } from "../../lib/clerkSignupContext.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import {
   clearPendingLegalAgreement,
@@ -45,6 +46,9 @@ export default function ClerkCreateAccountFlow() {
   ).trim().toLowerCase();
   const inviteOnlyWithoutInvite = signupMode === "invite_only" && !inviteToken;
   const accessCodeRequired = signupMode === "code" && !inviteToken;
+  // A new object identity on every render churns the Clerk widget's props, so
+  // keep the signup context stable for as long as the slug is.
+  const signupContext = useMemo(() => buildClerkSignupContext(slug, "member"), [slug]);
 
   useEffect(() => {
     noteTabLoginIntent();
@@ -99,10 +103,28 @@ export default function ClerkCreateAccountFlow() {
   );
   const signInUrl = routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
   const legalPath = routeWithSlug(slug, "/legal");
+  // Clerk's email.created webhook carries no tenant, so tell the API which camp
+  // this address is signing up for before Clerk sends the code. Fire and
+  // forget: a failure only costs the camp branding on the email.
+  const noteSignupIntent = (form) => {
+    if (!slug || !form) return;
+    const email = String(
+      form.querySelector('input[name="emailAddress"]')?.value ||
+      form.querySelector('input[type="email"]')?.value ||
+      ""
+    ).trim();
+    if (!email.includes("@")) return;
+    requestJson(`/api/t/${slug}/auth/signup-intent`, {
+      method: "POST",
+      body: { email, audience: "member" }
+    }).catch(() => {});
+  };
+
   const onSignUpSubmitCapture = (event) => {
     if (legalAccepted) {
       setLegalError("");
       setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
+      noteSignupIntent(event.target?.closest?.("form") || event.target);
       return;
     }
     event.preventDefault();
@@ -176,6 +198,29 @@ export default function ClerkCreateAccountFlow() {
                 <Link to={signInUrl} className="auth-create-account-link" style={{ textAlign: "center" }}>
                   Back to login
                 </Link>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  // Clerk starts a fresh sign-up attempt every time <SignUp> mounts, and each
+  // attempt sends its own code. Hold it back until the tenant has loaded: the
+  // access-mode guards below are not final before then, so an early mount could
+  // be torn down and remounted, and the signup context would carry no slug for
+  // the email.created webhook to brand against.
+  if (tenantLoading || !slug) {
+    return (
+      <div className={`login1 login1-modern login1-clerk-page ${nativeApp ? "login1-native-auth" : ""}`.trim()}>
+        <section className="login1-main login1-main-modern login1-main-create-bg">
+          <div className="login1-wrap">
+            <article className="login1-card login1-card-modern">
+              <div className="login1-intro">
+                <p className="login1-kicker">Camp Access</p>
+                <h1 className="login1-title auth-entry-title">Loading</h1>
+                <p className="login1-clerk-panel-subtitle">Getting {networkName} ready.</p>
               </div>
             </article>
           </div>
@@ -295,6 +340,7 @@ export default function ClerkCreateAccountFlow() {
               <SignUp
                 path={path}
                 routing="path"
+                unsafeMetadata={signupContext}
                 withSignIn={false}
                 signInUrl={signInUrl}
                 fallbackRedirectUrl={callbackPath}
@@ -322,7 +368,7 @@ export default function ClerkCreateAccountFlow() {
                 }}
                 appearance={{
                   variables: {
-                    colorPrimary: "var(--brand-primary)",
+                    colorPrimary: "#404040",
                     colorText: "var(--text)",
                     colorTextSecondary: "var(--text-muted)",
                     colorInputBackground: "#ffffff",
@@ -402,7 +448,7 @@ export default function ClerkCreateAccountFlow() {
                       gap: "12px"
                     },
                     formFieldLabel: {
-                      color: "var(--brand-primary-strong)",
+                      color: "#303030",
                       fontWeight: "700"
                     },
                     formFieldInput: {
@@ -419,7 +465,7 @@ export default function ClerkCreateAccountFlow() {
                     formButtonPrimary: {
                       minHeight: "48px",
                       borderRadius: "12px",
-                      background: "var(--brand-primary)",
+                      background: "#404040",
                       boxShadow: "none",
                       fontWeight: "700",
                       fontSize: "1rem"

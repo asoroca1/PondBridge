@@ -603,7 +603,7 @@
   border-radius: 18px 18px 18px 7px;
   line-height: 1.5;
   word-break: break-word;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
+  box-shadow: 0 1px 0 rgba(24, 24, 24, 0.03);
   color: var(--neutral-900);
 }
 
@@ -941,7 +941,7 @@
 .cf-modal {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(23, 23, 23, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1220,7 +1220,7 @@
     gap: 7px;
     align-items: flex-end;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 -8px 18px rgba(23, 23, 23, 0.06);
   }
 
   .mc-send span {

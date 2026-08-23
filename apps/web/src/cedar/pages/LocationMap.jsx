@@ -225,12 +225,12 @@ export default function LocationMap() {
   );
 
   const brandPrimary = useMemo(() => {
-    if (typeof window === "undefined") return "var(--brand-primary-strong)";
+    if (typeof window === "undefined") return "#303030";
     const resolved = window
       .getComputedStyle(document.documentElement)
       .getPropertyValue("--brand-primary")
       .trim();
-    return resolved || "var(--brand-primary-strong)";
+    return resolved || "#303030";
   }, []);
 
   const mappedSummary = formatMappedAlumniSummary({

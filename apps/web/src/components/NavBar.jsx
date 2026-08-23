@@ -18,8 +18,7 @@ import {
   User,
   Pencil,
   Repeat2,
-  Scale,
-  Sparkles
+  Scale
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -129,7 +128,7 @@ function nativeMemberNavTitle(
   if (/^\/events(?:\/|$)/.test(pathname)) return pathname === "/events" ? "Events & Info Sessions" : "Event or Info Session";
   if (pathname === "/notifications") return "Notifications";
   if (pathname === "/location-map") return `${alumniWordTitle} Map`;
-  if (pathname === "/cedar-chest") return newsletterLabel;
+  if (pathname === "/newsletter" || pathname === "/cedar-chest") return newsletterLabel;
   if (/^\/family-trees(?:\/|$)/.test(pathname)) return "Family Trees";
   return "PondBridge";
 }
@@ -299,7 +298,6 @@ export default function NavBar() {
 
     const accountItems = [
       { id: "home", icon: Home, label: "Home", to: pathWithCamp(slug, "/home") },
-      { id: "camp-ai", icon: Sparkles, label: aiName, to: pathWithCamp(slug, "/ai") },
       { id: "profile", icon: User, label: "My Profile", to: pathWithCamp(slug, "/my-profile") },
       { id: "edit", icon: Pencil, label: "Edit Profile", to: pathWithCamp(slug, "/edit-profile") }
     ];
@@ -358,7 +356,7 @@ export default function NavBar() {
         id: "chest",
         icon: BookOpen,
         label: newsletterLabel,
-        to: pathWithCamp(slug, "/cedar-chest")
+        to: pathWithCamp(slug, "/newsletter")
       });
     }
     if (modules.merchShop !== false && merchShopUrl) {

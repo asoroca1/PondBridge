@@ -1,6 +1,7 @@
 import {
   buildNewsletterAnnouncementEmail,
-  collectTenantNewsletterRecipients
+  collectTenantNewsletterRecipients,
+  resolveNewsletterCoverUrl
 } from "../src/routes/legacyCedarCompat.js";
 
 describe("newsletter emailing helpers", () => {
@@ -51,5 +52,58 @@ describe("newsletter emailing helpers", () => {
     expect(composed.html).toContain("Summer &amp; Sun");
     expect(composed.text).toContain("The PDF is attached to this email");
     expect(composed.text).toContain("Camp Cedar");
+  });
+
+  test("resolveNewsletterCoverUrl uses the stored permanent cover URL for Cedar", () => {
+    const objectUrl = "https://media.pondbridge.test/cedar/newsletters/covers/fall-2024.jpg";
+    const coverImageData = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        key: "cedar/newsletters/covers/fall-2024.jpg",
+        objectUrl
+      }),
+      "utf8"
+    );
+
+    const resolved = resolveNewsletterCoverUrl(
+      {
+        protocol: "https",
+        get: () => "api.pondbridge.test",
+        tenant: { slug: "cedar" }
+      },
+      {
+        coverImageData,
+        coverImageMimeType: "application/x.pondbridge.newsletter-cover-r2-pointer+json"
+      }
+    );
+
+    expect(resolved).toBe(objectUrl);
+  });
+
+  test("resolveNewsletterCoverUrl preserves proxy delivery for non-target tenants", () => {
+    const coverImageData = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        key: "demoa/newsletters/covers/fall-2024.jpg",
+        objectUrl: "https://media.pondbridge.test/demoa/newsletters/covers/fall-2024.jpg"
+      }),
+      "utf8"
+    );
+
+    const resolved = resolveNewsletterCoverUrl(
+      {
+        protocol: "https",
+        get: () => "api.pondbridge.test",
+        tenant: { slug: "demoa" }
+      },
+      {
+        coverImageData,
+        coverImageMimeType: "application/x.pondbridge.newsletter-cover-r2-pointer+json"
+      }
+    );
+
+    expect(resolved).toBe(
+      "https://api.pondbridge.test/api/t/demoa/uploads/object?key=demoa%2Fnewsletters%2Fcovers%2Ffall-2024.jpg"
+    );
   });
 });

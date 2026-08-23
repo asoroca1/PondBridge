@@ -21,6 +21,22 @@ export const SUPPORTED_FEATURE_ROLLOUTS = Object.freeze({
   }
 });
 
+/**
+ * Camp-facing AI features that are held back while the experience is still
+ * being built. These stay off no matter what a stored rollout record says, so
+ * a stale `enabled` row can never expose them to a camp.
+ */
+export const HARD_DISABLED_FEATURE_ROLLOUTS = Object.freeze([
+  "director_copilot_v1",
+  "camp_ai_search_v1"
+]);
+
+const HARD_DISABLED_LOOKUP = new Set(HARD_DISABLED_FEATURE_ROLLOUTS);
+
+export function isHardDisabledFeature(featureKey = "") {
+  return HARD_DISABLED_LOOKUP.has(String(featureKey || "").trim());
+}
+
 const VALID_STATES = new Set(["disabled", "pilot", "enabled"]);
 const CACHE_TTL_MS = 15_000;
 const rolloutCache = new Map();
@@ -116,6 +132,9 @@ export async function getFeatureRollout(featureKey) {
 }
 
 export async function evaluateFeatureRollout(featureKey, tenant) {
+  if (isHardDisabledFeature(featureKey)) {
+    return { enabled: false, reason: "hard_disabled", revision: 0, controlAvailable: false };
+  }
   const status = await getFeatureRollout(featureKey);
   return {
     ...evaluateFeatureRolloutRecord(status.record, tenant),

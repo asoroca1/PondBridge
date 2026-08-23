@@ -291,7 +291,7 @@ router.put("/:treeId", async (req, res) => {
     patch.members = requestedMembers;
   }
 
-  const updated = await FamilyTreeModel.update(tree._id, patch);
+  const updated = await FamilyTreeModel.updateScoped(req.tenant._id, tree._id, patch);
   const hydratedTree = await FamilyTreeModel.findByIdWithProfiles(req.tenant._id, updated?._id || updated?.id || tree._id);
   const serialized = serializeTreeForClient(hydratedTree || updated, {
     reqUserId: req.user.id,

@@ -483,6 +483,52 @@
 
 .pb-events-field.is-full { grid-column: 1 / -1; }
 
+/* Scheduled now, or opened for sign-ups and dated later */
+
+.pb-events-date-mode {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.pb-events-date-mode button {
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--director-admin-border, var(--neutral-200));
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pb-events-date-mode button strong {
+  font-size: 0.82rem;
+  color: var(--director-admin-ink, var(--neutral-800));
+}
+
+.pb-events-date-mode button small {
+  font-size: 0.72rem;
+  color: var(--director-admin-ink-soft, var(--neutral-500));
+}
+
+.pb-events-date-mode button:hover {
+  border-color: var(--director-admin-ink-soft, var(--neutral-500));
+}
+
+.pb-events-date-mode button.is-selected {
+  border-color: var(--director-admin-ink, var(--neutral-800));
+  background: color-mix(in srgb, var(--director-admin-ink, var(--neutral-800)) 6%, #ffffff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--director-admin-ink, var(--neutral-800)) 12%, transparent);
+}
+
+.pb-events-date-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--director-admin-ink-soft, var(--neutral-500));
+}
+
 .pb-events-field > span {
   font-size: 0.78rem;
   font-weight: 700;

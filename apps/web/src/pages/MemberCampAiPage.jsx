@@ -208,7 +208,7 @@ export function buildMemberGuideAnswer({ question, slug, tenant }) {
         }
       : {
           content: `You can read past community updates in ${newsletterLabel}.`,
-          links: [{ label: `Open ${newsletterLabel}`, href: tenantRoute(slug, "/cedar-chest") }]
+          links: [{ label: `Open ${newsletterLabel}`, href: tenantRoute(slug, "/newsletter") }]
         };
   }
 

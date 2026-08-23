@@ -1,11 +1,14 @@
 import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { broadcastTemplate } from "./emailTemplates.js";
+import { buildEmailPalette } from "./brandPalette.js";
 import { buildTenantEmailBranding } from "./email.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { sanitizeHtmlContent, sanitizeText } from "../utils/sanitize.js";
 
 export const EVENT_STATUSES = ["draft", "published", "canceled"];
 export const EVENT_RSVP_STATUSES = ["attending", "maybe", "not_attending"];
+// How a member signed up: to run the session, or to sit in on it.
+export const EVENT_REGISTRATION_ROLES = ["attendee", "presenter"];
 export const EVENT_MESSAGE_KINDS = ["invite", "reminder", "update", "cancellation"];
 export const EVENT_TYPES = ["community", "seminar"];
 export const EVENT_DELIVERY_MODES = ["in_person", "online", "hybrid"];
@@ -180,6 +183,11 @@ export function normalizeEventRsvpStatus(value = "", fallback = "attending") {
   return EVENT_RSVP_STATUSES.includes(normalized) ? normalized : fallback;
 }
 
+export function normalizeEventRegistrationRole(value = "", fallback = "attendee") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return EVENT_REGISTRATION_ROLES.includes(normalized) ? normalized : fallback;
+}
+
 export function normalizeEventMessageKind(value = "", fallback = "invite") {
   const normalized = String(value || "").trim().toLowerCase();
   return EVENT_MESSAGE_KINDS.includes(normalized) ? normalized : fallback;
@@ -214,19 +222,27 @@ export function validateEventTimeline({
   const end = endsAt ? new Date(endsAt) : null;
   const deadline = rsvpDeadlineAt ? new Date(rsvpDeadlineAt) : null;
 
-  if (!start || Number.isNaN(start.getTime())) {
+  // A session can be opened for registration before anyone has picked a date,
+  // so a missing start is allowed. A start that was supplied still has to parse.
+  if (startsAt && (!start || Number.isNaN(start.getTime()))) {
     throw createEventError("A valid event start date and time is required.", "EVENT_START_REQUIRED");
   }
   if (end && Number.isNaN(end.getTime())) {
     throw createEventError("End date/time must be valid.", "EVENT_END_INVALID");
   }
-  if (end && end <= start) {
+  if (end && !start) {
+    throw createEventError(
+      "Add a start date and time before setting when the event ends.",
+      "EVENT_END_WITHOUT_START"
+    );
+  }
+  if (end && start && end <= start) {
     throw createEventError("Event end date/time must be after the start.", "EVENT_END_BEFORE_START");
   }
   if (deadline && Number.isNaN(deadline.getTime())) {
     throw createEventError("RSVP deadline must be valid.", "EVENT_RSVP_DEADLINE_INVALID");
   }
-  if (deadline && deadline > start) {
+  if (deadline && start && deadline > start) {
     throw createEventError("RSVP deadline must be on or before the event start.", "EVENT_RSVP_DEADLINE_AFTER_START");
   }
 
@@ -325,11 +341,34 @@ export function normalizeEventWritePayload(input = {}, { partial = false } = {})
   return payload;
 }
 
+/**
+ * Reports every reason a publish is blocked, not just the first one found.
+ *
+ * Fixing one blocker only to be told about the next is a poor way to find out
+ * what a session needs, so the whole list travels in the message. The first
+ * problem still sets the error code, which is what callers switch on.
+ */
+function assertPublishReady(problems = []) {
+  if (!problems.length) return;
+  const error = createEventError(
+    problems.length === 1
+      ? problems[0].message
+      : `Before publishing: ${problems.map((problem) => problem.message).join(" · ")}`,
+    problems[0].code
+  );
+  error.details = { problems };
+  throw error;
+}
+
 export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = {}) {
+  const problems = [];
+
   if (!String(event?.title || "").trim()) {
-    throw createEventError("Add an event title before publishing.", "EVENT_TITLE_REQUIRED");
+    problems.push({ code: "EVENT_TITLE_REQUIRED", message: "Add an event title before publishing." });
   }
 
+  // Dates that contradict each other are reported on their own: until they are
+  // sorted out there is nothing dependable to say about the rest of the form.
   validateEventTimeline({
     startsAt: event?.startsAt,
     endsAt: event?.endsAt || null,
@@ -337,42 +376,52 @@ export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = 
   });
 
   if (normalizeEventType(event?.eventType || "") !== "seminar") {
+    assertPublishReady(problems);
     return { ready: true };
   }
 
   const deliveryMode = normalizeEventDeliveryMode(event?.deliveryMode || "");
   if (!["online", "hybrid"].includes(deliveryMode)) {
-    throw createEventError(
-      "Info sessions must be online or hybrid.",
-      "SEMINAR_DELIVERY_MODE_REQUIRED"
-    );
-  }
-  if (!String(event?.topicTitle || "").trim()) {
-    throw createEventError("Add an info session topic before publishing.", "SEMINAR_TOPIC_REQUIRED");
-  }
-  if (!String(event?.hostProfileId || "").trim()) {
-    throw createEventError(
-      "Select a registered network member to host this info session.",
-      "SEMINAR_HOST_REQUIRED"
-    );
-  }
-  const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
-  if (!provider) {
-    throw createEventError(
-      "Select the info session meeting provider.",
-      "SEMINAR_MEETING_PROVIDER_REQUIRED"
-    );
-  }
-  if (!normalizeSeminarMeetingUrl(meetingUrl, provider)) {
-    throw createEventError("Add the info session meeting link.", "SEMINAR_MEETING_URL_REQUIRED");
-  }
-  if (deliveryMode === "hybrid" && !String(event?.locationName || "").trim()) {
-    throw createEventError(
-      "Add the in-person location for this hybrid info session.",
-      "SEMINAR_HYBRID_LOCATION_REQUIRED"
-    );
+    problems.push({
+      code: "SEMINAR_DELIVERY_MODE_REQUIRED",
+      message: "Info sessions must be online or hybrid."
+    });
   }
 
+  // The Topic dropdown and the free-text headline both count as a topic. The
+  // form marks the headline optional, so requiring it told directors who had
+  // chosen a topic that they had not added one.
+  const hasTopic = Boolean(
+    normalizeEventTopicCategory(event?.topicCategory || "", "") ||
+      String(event?.topicTitle || "").trim()
+  );
+  if (!hasTopic) {
+    problems.push({
+      code: "SEMINAR_TOPIC_REQUIRED",
+      message: "Choose a topic for this info session."
+    });
+  }
+
+  // The meeting link is deliberately not required. A camp opens a session for
+  // sign-ups first and creates the room later, so members can register before
+  // there is anywhere to join. Whoever has registered gets the link when it
+  // lands; until then the session says the link is still to come.
+  const provider = normalizeMeetingProvider(event?.meetingProvider || "", meetingUrl, "");
+  if (provider && meetingUrl && !normalizeSeminarMeetingUrl(meetingUrl, provider)) {
+    problems.push({
+      code: "SEMINAR_MEETING_URL_INVALID",
+      message: "That meeting link does not look like a valid link."
+    });
+  }
+
+  if (deliveryMode === "hybrid" && !String(event?.locationName || "").trim()) {
+    problems.push({
+      code: "SEMINAR_HYBRID_LOCATION_REQUIRED",
+      message: "Add the in-person location for this hybrid info session."
+    });
+  }
+
+  assertPublishReady(problems);
   return { ready: true };
 }
 
@@ -444,7 +493,9 @@ export function summarizeRsvpRows(rows = []) {
     attending: 0,
     maybe: 0,
     notAttending: 0,
-    totalResponses: 0
+    totalResponses: 0,
+    presenters: 0,
+    attendees: 0
   };
 
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -454,9 +505,52 @@ export function summarizeRsvpRows(rows = []) {
     if (status === "maybe") summary.maybe += 1;
     if (status === "not_attending") summary.notAttending += 1;
     summary.totalResponses += 1;
+    // Someone who has declined is not on the roster for either role.
+    if (status === "not_attending") continue;
+    if (normalizeEventRegistrationRole(row?.registrationRole || "") === "presenter") {
+      summary.presenters += 1;
+    } else {
+      summary.attendees += 1;
+    }
   }
 
   return summary;
+}
+
+/**
+ * The roster a registered member is allowed to see: everyone who said they are
+ * coming or might, presenters first, each in the order they signed up.
+ *
+ * Members who declined are left out — they are not part of the session, and
+ * publishing "who said no" to the whole network is not the point of the list.
+ */
+export function buildRegistrationRoster(rows = [], profilesById = new Map()) {
+  const registered = (Array.isArray(rows) ? rows : []).filter(
+    (row) => normalizeEventRsvpStatus(row?.status || "", "") !== "not_attending"
+  );
+
+  const byRoleThenTime = (left, right) => {
+    const leftRole = normalizeEventRegistrationRole(left?.registrationRole || "");
+    const rightRole = normalizeEventRegistrationRole(right?.registrationRole || "");
+    if (leftRole !== rightRole) return leftRole === "presenter" ? -1 : 1;
+    return new Date(left?.respondedAt || 0).getTime() - new Date(right?.respondedAt || 0).getTime();
+  };
+
+  return registered.sort(byRoleThenTime).map((row) => {
+    const profileId = String(row?.profileId || "");
+    const profile = profilesById.get(profileId) || null;
+    return {
+      profileId,
+      fullName:
+        `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim() || "Camp member",
+      avatarUrl: String(profile?.avatarUrl || "").trim(),
+      roleAtCamp: String(profile?.roleAtCamp || "").trim(),
+      industry: String(profile?.industry || "").trim(),
+      registrationRole: normalizeEventRegistrationRole(row?.registrationRole || ""),
+      status: normalizeEventRsvpStatus(row?.status || ""),
+      respondedAt: row?.respondedAt ? new Date(row.respondedAt).toISOString() : null
+    };
+  });
 }
 
 export function buildRsvpSummaryMap(rows = []) {
@@ -494,7 +588,9 @@ export function serializeEvent(event = {}, options = {}) {
     attending: 0,
     maybe: 0,
     notAttending: 0,
-    totalResponses: 0
+    totalResponses: 0,
+    presenters: 0,
+    attendees: 0
   };
   const myRsvp = options.myRsvp || null;
   const phase = deriveEventPhase(event, options.now || new Date());
@@ -513,9 +609,14 @@ export function serializeEvent(event = {}, options = {}) {
     options.viewerProfileId &&
       String(options.viewerProfileId) === String(event?.hostProfileId || "")
   );
+  // A session can be published before its room exists, so the caller tells us
+  // whether a link is on file. Without one there is nothing to hand out, and
+  // offering the button would only produce an error.
+  const hasMeetingLink = options.hasMeetingLink !== false;
   const canRequestJoinLink = Boolean(
     isOnlineSeminar &&
       event?.status === "published" &&
+      hasMeetingLink &&
       (isHost || myRsvp?.status === "attending")
   );
 
@@ -562,13 +663,19 @@ export function serializeEvent(event = {}, options = {}) {
     createdByUserId: String(event?.createdByUserId || "").trim(),
     updatedByUserId: String(event?.updatedByUserId || "").trim(),
     counts: summary,
+    // A session can be published for sign-ups before anyone picks a time.
+    scheduled: Boolean(event?.startsAt),
     myRsvp: myRsvp
       ? {
           id: String(myRsvp?._id || myRsvp?.id || ""),
           status: normalizeEventRsvpStatus(myRsvp?.status || ""),
+          registrationRole: normalizeEventRegistrationRole(myRsvp?.registrationRole || ""),
           respondedAt: myRsvp?.respondedAt ? new Date(myRsvp.respondedAt).toISOString() : null
         }
       : null,
+    // The roster is only ever passed in once the viewer has registered; see the
+    // event detail route, which is where that check lives.
+    ...(Array.isArray(options.roster) ? { roster: options.roster } : {}),
     path: eventPath(event?._id || event?.id || ""),
     rsvpClosed,
     meetingAccess: isOnlineSeminar
@@ -578,6 +685,7 @@ export function serializeEvent(event = {}, options = {}) {
           requiresAttendingRsvp: true,
           isHost,
           canRequestJoinLink,
+          hasMeetingLink,
           joinPath: `${eventPath(event?._id || event?.id || "")}/join`
         }
       : null
@@ -611,7 +719,9 @@ export function serializeEventMessage(message = {}) {
   };
 }
 
-function eventMetaHtml(event = {}) {
+function eventMetaHtml(event = {}, palette = null) {
+  // Falls back to the neutral default when no camp brand is supplied.
+  const P = palette || buildEmailPalette();
   const startsAt = event?.startsAt ? new Date(event.startsAt) : null;
   const endsAt = event?.endsAt ? new Date(event.endsAt) : null;
   const startLabel = startsAt && !Number.isNaN(startsAt.getTime())
@@ -641,16 +751,20 @@ function eventMetaHtml(event = {}) {
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;border-collapse:separate;border-spacing:0;">
       <tr>
-        <td style="padding:16px 18px;border:1px solid #d7e2ee;border-radius:18px;background:#f8fbff;">
-          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b6f86;">${eventTypeLabel}</p>
-          <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:#10273f;">${escapeHtml(event?.title || "Event")}</h2>
-          ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#31465c;">${escapeHtml(event.summary)}</p>` : ""}
-          ${startLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>` : ""}
-          ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
-          ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
-          ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}
-          ${event?.locationName ? `<p style="margin:0 0 8px;font-size:14px;color:#10273f;"><strong>Location:</strong> ${escapeHtml(event.locationName)}</p>` : ""}
-          ${event?.locationAddress ? `<p style="margin:0;font-size:14px;color:#4b6076;">${escapeHtml(event.locationAddress)}</p>` : ""}
+        <td style="padding:16px 18px;border:1px solid ${P.border};border-radius:18px;background:${P.wash};">
+          <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${P.textMuted};">${eventTypeLabel}</p>
+          <h2 style="margin:0 0 12px;font-size:22px;line-height:1.2;color:${P.text};">${escapeHtml(event?.title || "Event")}</h2>
+          ${event?.summary ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:${P.text};">${escapeHtml(event.summary)}</p>` : ""}
+          ${startLabel
+            ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Starts:</strong> ${escapeHtml(startLabel)}</p>`
+            // An undated session is open for sign-ups; saying so beats an email
+            // that simply has no date on it.
+            : `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Starts:</strong> Date to be announced</p>`}
+          ${endLabel ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Ends:</strong> ${escapeHtml(endLabel)}</p>` : ""}
+          ${event?.topicTitle ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Topic:</strong> ${escapeHtml(event.topicTitle)}</p>` : ""}
+          ${deliveryLabel ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Format:</strong> ${escapeHtml(deliveryLabel)}</p>` : ""}
+          ${event?.locationName ? `<p style="margin:0 0 8px;font-size:14px;color:${P.text};"><strong>Location:</strong> ${escapeHtml(event.locationName)}</p>` : ""}
+          ${event?.locationAddress ? `<p style="margin:0;font-size:14px;color:${P.textMuted};">${escapeHtml(event.locationAddress)}</p>` : ""}
         </td>
       </tr>
     </table>
@@ -665,6 +779,8 @@ export function buildEventEmailContent({
   bodyHtml = ""
 } = {}) {
   const branding = buildTenantEmailBranding(tenant);
+  // The camp's own colour, so an event email matches its network.
+  const palette = buildEmailPalette(branding.brandPrimary);
   const ctaUrl = buildEventAppUrl(tenant, event?._id || event?.id || "");
   const safeKind = normalizeEventMessageKind(kind || "", "invite");
   const scheduleNoun = normalizeEventType(event?.eventType || "") === "seminar"
@@ -681,7 +797,7 @@ export function buildEventEmailContent({
   const composedBody = `
     ${intro}
     ${bodyHtml ? String(bodyHtml) : ""}
-    ${eventMetaHtml(event)}
+    ${eventMetaHtml(event, palette)}
     ${ctaUrl ? `<p><a href="${escapeHtml(ctaUrl)}" target="_blank" rel="noopener noreferrer">View ${scheduleNoun} details and RSVP</a></p>` : ""}
   `;
 
@@ -689,7 +805,9 @@ export function buildEventEmailContent({
     tenantName: branding.networkName,
     subject: String(subject || "").trim(),
     bodyHtml: composedBody,
-    unsubscribeUrl: ""
+    unsubscribeUrl: "",
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
   });
 }
 

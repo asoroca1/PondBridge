@@ -207,8 +207,8 @@ async function getPlatformPulse() {
   const sevenDaysAgo = new Date(Date.now() - 7 * DAY_MS);
   const [tenants, newMembers7d, failedImports7d] = await Promise.all([
     TenantModel.find({}),
-    ProfileModel.count({ createdAt: { $gte: sevenDaysAgo } }),
-    ImportReportModel.count({ createdAt: { $gte: sevenDaysAgo }, "summary.errorCount": { $gt: 0 } })
+    ProfileModel.acrossTenants().count({ createdAt: { $gte: sevenDaysAgo } }),
+    ImportReportModel.acrossTenants().count({ createdAt: { $gte: sevenDaysAgo }, "summary.errorCount": { $gt: 0 } })
   ]);
   const active = tenants.filter((tenant) => tenant.status === "active").length;
   const live = tenants.filter((tenant) => tenant.status === "active" && tenant.onboardingStatus === "live").length;
@@ -318,11 +318,11 @@ async function getCampBilling(args = {}) {
 async function getCampHealth(args = {}) {
   const tenant = await requireCamp(args.camp_slug);
   const [activeMembers, pendingApprovals, activeReports, failedBroadcasts, failedImports] = await Promise.all([
-    ProfileModel.count(tenant._id, { status: "active" }),
-    AccessRequestModel.count(tenant._id, { status: "pending" }),
-    ContentReportModel.count(tenant._id, { status: { $in: ["open", "reviewing"] } }),
-    EmailBroadcastModel.count(tenant._id, { status: "failed" }),
-    ImportReportModel.count(tenant._id, { "summary.errorCount": { $gt: 0 } })
+    ProfileModel.acrossTenants().count(tenant._id, { status: "active" }),
+    AccessRequestModel.acrossTenants().count(tenant._id, { status: "pending" }),
+    ContentReportModel.acrossTenants().count(tenant._id, { status: { $in: ["open", "reviewing"] } }),
+    EmailBroadcastModel.acrossTenants().count(tenant._id, { status: "failed" }),
+    ImportReportModel.acrossTenants().count(tenant._id, { "summary.errorCount": { $gt: 0 } })
   ]);
   const readiness = getReadinessChecklist(tenant, { importedCount: activeMembers });
   const blockers = readiness.checks.filter((item) => !item.ok);

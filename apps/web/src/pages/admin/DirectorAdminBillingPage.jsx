@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Button, Card } from "@pondbridge/ui";
+import { Button, Card, Input } from "@pondbridge/ui";
 import { ModalConfirm, WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import useAdminApi from "./useAdminApi.js";
+import { requestJson } from "../../lib/http.js";
 import "./director-admin-billing.css";
 
 function formatDate(value) {
@@ -21,6 +22,15 @@ function formatMoney(value = 0) {
     maximumFractionDigits: 0
   }).format(Number(value || 0));
 }
+
+const EMPTY_ADDRESS = {
+  line1: "",
+  line2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  country: "United States"
+};
 
 // A demo network cannot call the billing API, so it previews the same UI from
 // sample data rather than a second hand-written copy of the page.
@@ -41,6 +51,8 @@ export default function DirectorAdminBillingPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [address, setAddress] = useState(EMPTY_ADDRESS);
+  const [addressDirty, setAddressDirty] = useState(false);
 
   const isDemo = Boolean(tenantConfig?.accessSettings?.demoAccessEnabled);
   const checkoutState = String(searchParams.get("checkout") || "").trim().toLowerCase();
@@ -64,6 +76,14 @@ export default function DirectorAdminBillingPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    if (addressDirty) return;
+    const fields = payload?.tenant?.postalAddress?.fields;
+    const stored = payload?.tenant?.billingDetails?.mailingAddress;
+    const source = fields && Object.values(fields).some(Boolean) ? fields : stored;
+    if (source) setAddress({ ...EMPTY_ADDRESS, ...source });
+  }, [addressDirty, payload]);
+
+  useEffect(() => {
     if (checkoutState === "success") setStatus("Payment complete. Activation can take a few seconds.");
     if (checkoutState === "cancel") setError("Checkout was canceled. Nothing was charged.");
   }, [checkoutState]);
@@ -84,6 +104,37 @@ export default function DirectorAdminBillingPage() {
       await load();
     } catch (requestError) {
       setError(requestError.message || "That could not be completed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function patchAddress(field, value) {
+    setAddressDirty(true);
+    setAddress((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveAddress() {
+    setBusy("address");
+    setError("");
+    setStatus("");
+    try {
+      // This lives on the tenant router, which is mounted at /api/tenants and
+      // resolves the camp from the signed-in admin rather than the URL slug, so
+      // it is requested directly instead of through the slug-scoped helper.
+      await requestJson("/api/tenants/me/billing", {
+        method: "PATCH",
+        body: {
+          tenantId: payload?.tenant?.id || undefined,
+          mailingAddress: address,
+          sameAsMailing: true
+        }
+      });
+      setAddressDirty(false);
+      setStatus("Mailing address saved.");
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "That address could not be saved.");
     } finally {
       setBusy("");
     }
@@ -126,6 +177,11 @@ export default function DirectorAdminBillingPage() {
         : renewsAt
           ? `Renews ${formatDate(renewsAt)}`
           : "No renewal date yet";
+
+  const addressComplete = Boolean(
+    payload?.tenant?.postalAddress?.complete ||
+    (address.line1 && address.city && address.state && address.postalCode && address.country)
+  );
 
   const canCheckout = !isComplimentary && plans.length > 0 && (!hasPlan || !isActive);
   const canCancel = isActive && hasPlan && !isComplimentary && !cancelAtPeriodEnd;
@@ -261,6 +317,86 @@ export default function DirectorAdminBillingPage() {
           </div>
         </Card>
       ) : null}
+
+      <Card className="pb-billing-address">
+        <div className="pb-billing-address-head">
+          <div>
+            <h2>Mailing address</h2>
+            <p className="muted">
+              US law requires a physical postal address in every community broadcast, and it is
+              printed in the footer of those emails. Without it, broadcasts cannot be sent.
+            </p>
+          </div>
+          <span className={addressComplete ? "pb-billing-address-badge is-ok" : "pb-billing-address-badge"}>
+            {addressComplete ? "Complete" : "Needed to send"}
+          </span>
+        </div>
+
+        <div className="pb-billing-address-grid">
+          <label className="is-wide">
+            <span>Street address</span>
+            <Input
+              value={address.line1}
+              onChange={(event) => patchAddress("line1", event.target.value)}
+              placeholder="123 Lakeside Road"
+              disabled={isDemo}
+            />
+          </label>
+          <label className="is-wide">
+            <span>Apartment, suite, PO box <em>optional</em></span>
+            <Input
+              value={address.line2}
+              onChange={(event) => patchAddress("line2", event.target.value)}
+              placeholder="PO Box 44"
+              disabled={isDemo}
+            />
+          </label>
+          <label>
+            <span>City</span>
+            <Input
+              value={address.city}
+              onChange={(event) => patchAddress("city", event.target.value)}
+              disabled={isDemo}
+            />
+          </label>
+          <label>
+            <span>State or province</span>
+            <Input
+              value={address.state}
+              onChange={(event) => patchAddress("state", event.target.value)}
+              disabled={isDemo}
+            />
+          </label>
+          <label>
+            <span>Postal code</span>
+            <Input
+              value={address.postalCode}
+              onChange={(event) => patchAddress("postalCode", event.target.value)}
+              disabled={isDemo}
+            />
+          </label>
+          <label>
+            <span>Country</span>
+            <Input
+              value={address.country}
+              onChange={(event) => patchAddress("country", event.target.value)}
+              disabled={isDemo}
+            />
+          </label>
+        </div>
+
+        <div className="pb-billing-address-actions">
+          <Button
+            type="button"
+            onClick={saveAddress}
+            loading={busy === "address"}
+            disabled={isDemo || !addressDirty}
+          >
+            Save address
+          </Button>
+          <small className="muted">A PO box is fine. This is shown to everyone who receives a broadcast.</small>
+        </div>
+      </Card>
 
       <ModalConfirm
         open={cancelOpen}

@@ -109,7 +109,7 @@ function launchGuideDismissedKey(slug = "") {
   return `pondbridge_launch_guide_dismissed_${String(slug || "").trim().toLowerCase() || "default"}`;
 }
 
-function normalizeHexColor(value = "", fallback = "var(--brand-primary-strong)") {
+function normalizeHexColor(value = "", fallback = "#303030") {
   const raw = String(value || "").trim();
   const hex = raw.startsWith("#") ? raw.slice(1) : raw;
   if (/^[0-9a-fA-F]{6}$/.test(hex)) return `#${hex.toLowerCase()}`;
@@ -123,37 +123,9 @@ function normalizeHexColor(value = "", fallback = "var(--brand-primary-strong)")
   return fallback;
 }
 
-function hexToRgb(hex = "var(--brand-primary-strong)") {
-  const normalized = normalizeHexColor(hex).slice(1);
-  return {
-    r: parseInt(normalized.slice(0, 2), 16),
-    g: parseInt(normalized.slice(2, 4), 16),
-    b: parseInt(normalized.slice(4, 6), 16)
-  };
-}
 
-function srgbChannelToLinear(channel = 0) {
-  const normalized = Math.max(0, Math.min(255, Number(channel) || 0)) / 255;
-  if (normalized <= 0.04045) return normalized / 12.92;
-  return ((normalized + 0.055) / 1.055) ** 2.4;
-}
 
-function relativeLuminance(hex = "var(--brand-primary-strong)") {
-  const { r, g, b } = hexToRgb(hex);
-  return (
-    0.2126 * srgbChannelToLinear(r) +
-    0.7152 * srgbChannelToLinear(g) +
-    0.0722 * srgbChannelToLinear(b)
-  );
-}
 
-function contrastRatio(baseHex = "var(--brand-primary-strong)", candidateHex = "#ffffff") {
-  const base = relativeLuminance(baseHex);
-  const candidate = relativeLuminance(candidateHex);
-  const brightest = Math.max(base, candidate);
-  const darkest = Math.min(base, candidate);
-  return (brightest + 0.05) / (darkest + 0.05);
-}
 
 
 export default function DirectorOnboardingCommandCenterPage() {
@@ -179,7 +151,7 @@ export default function DirectorOnboardingCommandCenterPage() {
   const previewTheme = payload?.tenant?.onboardingDraft?.theme || {};
   const previewContent = payload?.tenant?.onboardingDraft?.content || {};
   const previewBrandPrimary = normalizeHexColor(
-    previewTheme.brandPrimary || payload?.tenant?.theme?.brandPrimary || tenant?.theme?.brandPrimary || "var(--brand-primary-strong)"
+    previewTheme.brandPrimary || payload?.tenant?.theme?.brandPrimary || tenant?.theme?.brandPrimary || "#303030"
   );
   const previewBrandOnPrimary = readableTextColorOnBrand(previewBrandPrimary);
   const previewLogoUrl = String(
@@ -730,9 +702,9 @@ export default function DirectorOnboardingCommandCenterPage() {
           style={{
             "--brand-primary": previewBrandPrimary,
             "--brand-on-primary": previewBrandOnPrimary,
-            "--brand-secondary": previewTheme.brandSecondary || "var(--neutral-200)",
+            "--brand-secondary": previewTheme.brandSecondary || "#e6e6e6",
             "--bg": previewTheme.bg || "#fafafa",
-            "--text": previewTheme.text || "var(--neutral-900)",
+            "--text": previewTheme.text || "#1c1c1c",
             "--card": previewTheme.card || "#ffffff",
             "--font-display": "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif",
             "--font-body": "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif"

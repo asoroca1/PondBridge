@@ -112,11 +112,11 @@ async function maybeAutoBootstrapFirstTenant(slug = "") {
       launchedAt: new Date().toISOString()
     },
     theme: {
-      brandPrimary: "#002b5c",
-      brandSecondary: "#d3dde8",
+      brandPrimary: "#252525",
+      brandSecondary: "#dcdcdc",
       brandAccent: "#f2b134",
       bg: "#f5f7fa",
-      text: "#0f172a",
+      text: "#171717",
       card: "#ffffff",
       logoUrl: "",
       heroImageUrl: "",

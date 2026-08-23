@@ -9,6 +9,13 @@ const TENANT_CONFIG_CACHE_PREFIX = "pondbridgeTenantConfig:";
 const TENANT_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const FONT_TOKEN_MAP = {
+  // `cedar_default` is the historical name for the platform default and is kept
+  // so existing tenants keep rendering; `default` is the name to use going
+  // forward. Both resolve to the same stack.
+  default: {
+    display: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif",
+    body: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif"
+  },
   cedar_default: {
     display: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif",
     body: "\"Inter Variable\", Inter, \"Avenir Next\", \"Segoe UI\", sans-serif"
@@ -127,6 +134,24 @@ function applyTheme(config = {}) {
   root.style.setProperty("--hero-image-size", heroImageSize);
   if (heroImage) root.style.setProperty("--hero-image-url", `url(\"${heroImage}\")`);
   else root.style.removeProperty("--hero-image-url");
+
+  // Browser and OS chrome sit outside the stylesheet, so they have to be set
+  // here or every camp keeps the neutral default from index.html.
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute("content", brandPrimary);
+
+  // The tab icon is the camp's, not the platform's, whenever they have a logo.
+  const logo = String(branding.logoUrl || "").trim();
+  if (logo) {
+    let icon = document.querySelector('link[rel="icon"][data-tenant-icon="true"]');
+    if (!icon) {
+      icon = document.createElement("link");
+      icon.rel = "icon";
+      icon.setAttribute("data-tenant-icon", "true");
+      document.head.appendChild(icon);
+    }
+    if (icon.getAttribute("href") !== logo) icon.setAttribute("href", logo);
+  }
 }
 
 function tenantThemeCacheKey({ slug = "", host = "" } = {}) {

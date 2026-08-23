@@ -35,7 +35,7 @@ const STEP_FEATURES = "features";
 const STEP_CAMP_SPECIFICS = "camp_specifics";
 const STEP_BILLING_PLAN = "billing_plan";
 const STEP_REVIEW_LAUNCH = "review_launch";
-const DEFAULT_SETUP_BRAND = "var(--neutral-800)";
+const DEFAULT_SETUP_BRAND = "#303030";
 const BILLING_REQUIRED_DURING_ONBOARDING = true;
 
 const STEP_ORDER = [
@@ -204,7 +204,7 @@ function isHexColor(value = "") {
   return /^#([0-9a-fA-F]{6})$/.test(String(value).trim());
 }
 
-function hexToRgb(hex = "var(--brand-primary-strong)") {
+function hexToRgb(hex = "#303030") {
   if (!isHexColor(hex)) return { r: 0, g: 43, b: 92 };
   const clean = String(hex).replace("#", "");
   return {
@@ -214,32 +214,12 @@ function hexToRgb(hex = "var(--brand-primary-strong)") {
   };
 }
 
-function srgbChannelToLinear(channel = 0) {
-  const normalized = Math.max(0, Math.min(255, Number(channel) || 0)) / 255;
-  if (normalized <= 0.04045) return normalized / 12.92;
-  return ((normalized + 0.055) / 1.055) ** 2.4;
-}
 
-function relativeLuminance(hex = "var(--brand-primary-strong)") {
-  const { r, g, b } = hexToRgb(hex);
-  return (
-    0.2126 * srgbChannelToLinear(r) +
-    0.7152 * srgbChannelToLinear(g) +
-    0.0722 * srgbChannelToLinear(b)
-  );
-}
 
-function contrastRatio(baseHex = "var(--brand-primary-strong)", candidateHex = "#ffffff") {
-  const a = relativeLuminance(baseHex);
-  const b = relativeLuminance(candidateHex);
-  const brightest = Math.max(a, b);
-  const darkest = Math.min(a, b);
-  return (brightest + 0.05) / (darkest + 0.05);
-}
 
 
 function darkenHex(hex, factor = 0.18) {
-  if (!isHexColor(hex)) return "var(--neutral-900)";
+  if (!isHexColor(hex)) return "#1c1c1c";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => parseInt(clean.slice(index, index + 2), 16));
   const darkened = channels.map((value) => Math.max(0, Math.min(255, Math.round(value * (1 - factor)))));
@@ -247,7 +227,7 @@ function darkenHex(hex, factor = 0.18) {
 }
 
 function deriveSecondaryHex(hex, blend = 0.82) {
-  if (!isHexColor(hex)) return "var(--neutral-200)";
+  if (!isHexColor(hex)) return "#e6e6e6";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => parseInt(clean.slice(index, index + 2), 16));
   const lightened = channels.map((value) =>
@@ -2200,7 +2180,7 @@ function DirectorCreateAccountWizardPage() {
             logoUrl: finalLogoUrl,
             brandAccent: String(baseTheme.brandAccent || "#f2b134"),
             bg: String(baseTheme.bg || "#fafafa"),
-            text: String(baseTheme.text || "var(--neutral-900)"),
+            text: String(baseTheme.text || "#1c1c1c"),
             card: String(baseTheme.card || "#ffffff"),
             heroImageUrl: finalHeroImageUrl,
             heroImagePosition: normalizeHeroImagePosition(

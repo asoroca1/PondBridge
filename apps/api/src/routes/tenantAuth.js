@@ -10,6 +10,7 @@ import {
   TenantModel
 } from "../db/models/index.js";
 import { requireTenant } from "../middleware/tenantContext.js";
+import { rememberSignupIntent } from "../services/signupIntent.js";
 import { buildAuthenticatedUserPayload, comparePassword, hashPassword, signToken } from "../utils/auth.js";
 import { env } from "../config/env.js";
 import { sendMagicLinkEmail, sendWelcomeEmail } from "../services/email.js";
@@ -66,6 +67,13 @@ const accessCodeVerifyLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => authLimiterKey(req)
+});
+const signupIntentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => authLimiterKey(req, { includeEmail: true })
 });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -270,6 +278,21 @@ function profileFromBody(body) {
   };
 }
 
+// Records which camp an address is signing up for so the Clerk email.created
+// webhook can brand the verification email. Clerk's payload carries no tenant,
+// and the address is the only value both sides share.
+router.post("/signup-intent", signupIntentLimiter, requireTenant, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const audience = String(req.body?.audience || "member").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({
+      error: { code: "EMAIL_REQUIRED", message: "A valid email address is required." }
+    });
+  }
+  rememberSignupIntent({ email, tenantSlug: req.tenant?.slug, audience });
+  return res.json({ ok: true });
+});
+
 router.post("/access-code/verify", accessCodeVerifyLimiter, requireTenant, async (req, res) => {
   const policy = resolveTenantAccessPolicy(req.tenant);
   if (policy.signupMode !== "code") {
@@ -437,7 +460,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     });
 
     if (existingRequest) {
-      await AccessRequestModel.update(existingRequest._id, {
+      await AccessRequestModel.updateScoped(req.tenant._id, existingRequest._id, {
         firstName,
         lastName,
         passwordHash,
@@ -504,7 +527,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     ...profileFromBody(req.body)
   });
 
-  await UserModel.update(user._id, { profileId: profile._id });
+  await UserModel.updateScoped(req.tenant._id, user._id, { profileId: profile._id });
   user.profileId = profile._id;
 
   const actorName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() || "Someone";
@@ -678,7 +701,7 @@ router.post("/login", loginLimiter, requireTenant, async (req, res) => {
     });
   }
 
-  await UserModel.update(user._id, { lastLoginAt: new Date() });
+  await UserModel.updateScoped(req.tenant._id, user._id, { lastLoginAt: new Date() });
   user.lastLoginAt = new Date();
 
   const token = signToken(user);
@@ -765,7 +788,7 @@ router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) =
   }
 
   const nextLastLoginAt = new Date();
-  await UserModel.update(user._id, { lastLoginAt: nextLastLoginAt });
+  await UserModel.updateScoped(req.tenant._id, user._id, { lastLoginAt: nextLastLoginAt });
   user.lastLoginAt = nextLastLoginAt;
 
   const token = signToken(user);
@@ -903,7 +926,7 @@ router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async
   }
 
   if (matchedLegacyPlaintextToken) {
-    await MagicLinkTokenModel.update(magicLink._id, { token: tokenHash }).catch(() => {});
+    await MagicLinkTokenModel.updateScoped(req.tenant._id, magicLink._id, { token: tokenHash }).catch(() => {});
   }
 
   if (new Date(magicLink.expiresAt) <= new Date()) {
@@ -956,7 +979,7 @@ router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async
     });
   }
 
-  await UserModel.update(user._id, { lastLoginAt: new Date() });
+  await UserModel.updateScoped(req.tenant._id, user._id, { lastLoginAt: new Date() });
   user.lastLoginAt = new Date();
 
   const authToken = signToken(user);

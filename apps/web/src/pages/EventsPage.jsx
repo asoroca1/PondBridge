@@ -122,7 +122,7 @@ function EventCard({ item, slug, featured = false }) {
   const toneClass = rsvpToneClass(item);
   const coverStyle = item.coverImageUrl
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(9,22,37,0.05) 0%, rgba(9,22,37,0.72) 100%), url(${item.coverImageUrl})`
+        backgroundImage: `linear-gradient(180deg, rgba(20, 20, 20,0.05) 0%, rgba(20, 20, 20,0.72) 100%), url(${item.coverImageUrl})`
       }
     : undefined;
 
@@ -374,7 +374,7 @@ export default function EventsPage() {
             style={
               featured.coverImageUrl
                 ? {
-                    backgroundImage: `linear-gradient(100deg, rgba(10,24,40,0.86) 0%, rgba(10,24,40,0.35) 60%, rgba(10,24,40,0.05) 100%), url(${featured.coverImageUrl})`
+                    backgroundImage: `linear-gradient(100deg, rgba(22, 22, 22,0.86) 0%, rgba(22, 22, 22,0.35) 60%, rgba(22, 22, 22,0.05) 100%), url(${featured.coverImageUrl})`
                   }
                 : undefined
             }

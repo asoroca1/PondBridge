@@ -3,6 +3,8 @@ import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
 import { UserPlus } from "lucide-react";
 import { WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import useAdminApi from "./useAdminApi.js";
 import PeopleAddView from "./people/PeopleAddView.jsx";
 import PeopleExportDialog from "./people/PeopleExportDialog.jsx";
@@ -19,6 +21,8 @@ export default function DirectorAdminPeoplePage() {
   const navigate = useNavigate();
   const { view = "all" } = useParams();
   const { slug, request, download } = useAdminApi();
+  const { tenant } = useTenant();
+  const networkName = resolveNetworkDisplayName(tenant);
 
   const activeView = VALID_VIEWS.has(view) ? view : "all";
   const stage = activeView === "add" ? "all" : activeView;
@@ -27,13 +31,15 @@ export default function DirectorAdminPeoplePage() {
   const actions = usePersonActions({ request, reload: directory.reload });
 
   const [inviteTargets, setInviteTargets] = useState([]);
+  const [inviteExtras, setInviteExtras] = useState({});
   const [exportOpen, setExportOpen] = useState(false);
   const [exportSelection, setExportSelection] = useState([]);
   const [notice, setNotice] = useState("");
 
-  const openInvite = useCallback((people = []) => {
+  const openInvite = useCallback((people = [], extras = {}) => {
     if (!people.length) return;
     setNotice("");
+    setInviteExtras(extras || {});
     setInviteTargets(people);
   }, []);
 
@@ -49,7 +55,8 @@ export default function DirectorAdminPeoplePage() {
         <PeopleAddView
           actions={actions}
           storage={directory.storage}
-          onInvite={openInvite}
+          slug={slug}
+          networkName={networkName}
           onDone={() => navigate(`/t/${slug}/admin/people/prospect`)}
         />
       );
@@ -116,6 +123,7 @@ export default function DirectorAdminPeoplePage() {
       <InviteReviewDialog
         open={inviteTargets.length > 0}
         people={inviteTargets}
+        extras={inviteExtras}
         actions={actions}
         onClose={() => setInviteTargets([])}
         onSent={(message) => setNotice(message)}

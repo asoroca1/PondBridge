@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { buildEmailPalette } from "../services/brandPalette.js";
 import crypto from "crypto";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
@@ -111,7 +112,8 @@ import {
   resolveEmailRecipientEligibility
 } from "../services/emailPreferences.js";
 import {
-  assertEmailDraftReady
+  assertEmailDraftReady,
+  resolveCampPostalAddress
 } from "../services/emailCompliance.js";
 import {
   canonicalizeCityName,
@@ -582,7 +584,7 @@ function buildDirectorBroadcastEmailContent({
     logoUrl: theme.logoUrl || ""
   });
   const tenantName = escapeEmailHtml(String(content.networkDisplayName || tenant?.name || "Your Camp").trim());
-  const brandPrimary = String(theme.brandPrimary || "#002b5c").trim() || "#002b5c";
+  const brandPrimary = String(theme.brandPrimary || "#252525").trim() || "#252525";
   const bodyText = toPlainTextFromHtml(safeBodyHtml);
   const footerContactParts = [normalizedFooter.senderEmail, normalizedFooter.senderPhone].filter(Boolean);
   const footerContact = escapeEmailHtml(footerContactParts.join("  •  "));
@@ -590,6 +592,7 @@ function buildDirectorBroadcastEmailContent({
   const safeSenderName = escapeEmailHtml(normalizedFooter.senderName || "");
   const safeSenderRole = escapeEmailHtml(normalizedFooter.senderRole || "");
   const safeHeaderTagline = escapeEmailHtml(normalizedFooter.headerTagline || "Community update");
+  const emailPalette = buildEmailPalette(brandPrimary);
   const headerLogoUrl = normalizeHttpUrl(theme.logoUrl || "");
   const footerLogoUrl = normalizedFooter.showLogo
     ? normalizeHttpUrl(theme.logoUrl || normalizedFooter.logoUrl || "")
@@ -598,7 +601,7 @@ function buildDirectorBroadcastEmailContent({
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:42px;height:42px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.14);"><tr><td align="center" valign="middle" style="width:42px;height:42px;line-height:0;"><img src="${escapeEmailHtml(headerLogoUrl)}" alt="" style="display:block;max-width:38px;max-height:38px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
     : `<div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,0.18);color:#ffffff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;line-height:42px;text-align:center;">PB</div>`;
   const footerLogoMarkup = footerLogoUrl
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:52px;height:52px;border-radius:10px;overflow:hidden;border:1px solid #dbe6f3;background:#ffffff;"><tr><td align="center" valign="middle" style="width:52px;height:52px;line-height:0;"><img src="${escapeEmailHtml(footerLogoUrl)}" alt="" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:52px;height:52px;border-radius:10px;overflow:hidden;border:1px solid ${emailPalette.border};background:${emailPalette.surface};"><tr><td align="center" valign="middle" style="width:52px;height:52px;line-height:0;"><img src="${escapeEmailHtml(footerLogoUrl)}" alt="" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" /></td></tr></table>`
     : "";
   const safeBodyForEmail = safeBodyHtml || "<p style=\"margin:0;\">&nbsp;</p>";
   const isMarketing = campaignType !== "transactional";
@@ -608,19 +611,19 @@ function buildDirectorBroadcastEmailContent({
     ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">${escapeEmailHtml(safePreheader)}</div>`
     : "";
   const preferenceMarkup = isMarketing
-    ? `<tr><td style="padding:16px 22px 22px 22px;border-top:1px solid #e3ebf6;font-family:Arial,sans-serif;color:#6b7f93;font-size:11px;line-height:1.6;text-align:center;">${safePostalAddress ? `<div>${safePostalAddress}</div>` : ""}<div style="margin-top:4px;"><a href="${safeUnsubscribeUrl}" style="color:#456b91;text-decoration:underline;">Manage email preferences</a></div></td></tr>`
+    ? `<tr><td style="padding:16px 22px 22px 22px;border-top:1px solid ${emailPalette.borderSoft};font-family:Arial,sans-serif;color:${emailPalette.textMuted};font-size:11px;line-height:1.6;text-align:center;">${safePostalAddress ? `<div>${safePostalAddress}</div>` : ""}<div style="margin-top:4px;"><a href="${safeUnsubscribeUrl}" style="color:${emailPalette.primary};text-decoration:underline;">Manage email preferences</a></div></td></tr>`
     : "";
 
   const html = `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#eef3fa;">
+  <body style="margin:0;padding:0;background:${emailPalette.page};">
     ${preheaderMarkup}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef3fa;padding:24px 12px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${emailPalette.page};padding:24px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;border-radius:18px;overflow:hidden;background:#ffffff;border:1px solid #d6e2f0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;border-radius:18px;overflow:hidden;background:${emailPalette.surface};border:1px solid ${emailPalette.border};">
             <tr>
-              <td style="padding:18px 20px;background:${escapeEmailHtml(brandPrimary)};color:#ffffff;">
+              <td style="padding:18px 20px;background:${escapeEmailHtml(brandPrimary)};color:${emailPalette.onPrimary};">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td style="width:52px;vertical-align:middle;">${headerLogoMarkup}</td>
@@ -633,20 +636,20 @@ function buildDirectorBroadcastEmailContent({
               </td>
             </tr>
             <tr>
-              <td style="padding:24px 22px 18px 22px;font-family:Arial,sans-serif;color:#13263f;">
-                <h1 style="margin:0 0 14px 0;font-size:24px;line-height:1.28;color:#13263f;">${escapeEmailHtml(safeSubject)}</h1>
-                <div style="font-size:15px;line-height:1.65;color:#1d3552;">${safeBodyForEmail}</div>
+              <td style="padding:24px 22px 18px 22px;font-family:Arial,sans-serif;color:#242424;">
+                <h1 style="margin:0 0 14px 0;font-size:24px;line-height:1.28;color:#242424;">${escapeEmailHtml(safeSubject)}</h1>
+                <div style="font-size:15px;line-height:1.65;color:#323232;">${safeBodyForEmail}</div>
               </td>
             </tr>
             <tr>
               <td style="padding:0 22px 22px 22px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3ebf6;margin-top:6px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eaeaea;margin-top:6px;">
                   <tr>
-                    <td style="padding-top:16px;font-family:Arial,sans-serif;color:#35506f;font-size:14px;line-height:1.6;vertical-align:top;">
+                    <td style="padding-top:16px;font-family:Arial,sans-serif;color:#4c4c4c;font-size:14px;line-height:1.6;vertical-align:top;">
                       <div>${safeSignOff}</div>
-                      ${safeSenderName ? `<div style="margin-top:6px;font-weight:700;color:#143457;">${safeSenderName}</div>` : ""}
-                      ${safeSenderRole ? `<div style="color:#4a6483;">${safeSenderRole}</div>` : ""}
-                      ${footerContact ? `<div style="margin-top:4px;color:#4a6483;">${footerContact}</div>` : ""}
+                      ${safeSenderName ? `<div style="margin-top:6px;font-weight:700;color:#303030;">${safeSenderName}</div>` : ""}
+                      ${safeSenderRole ? `<div style="color:#616161;">${safeSenderRole}</div>` : ""}
+                      ${footerContact ? `<div style="margin-top:4px;color:#616161;">${footerContact}</div>` : ""}
                     </td>
                     ${footerLogoMarkup ? `<td style="padding-top:16px;width:64px;vertical-align:top;text-align:right;">${footerLogoMarkup}</td>` : ""}
                   </tr>
@@ -2979,7 +2982,7 @@ router.patch("/safety/reports/:reportId", async (req, res, next) => {
 
     const review = normalizeReportReviewInput(req.body);
     const isClosed = review.status === "resolved" || review.status === "dismissed";
-    const updated = await ContentReportModel.update(report._id, {
+    const updated = await ContentReportModel.updateScoped(req.tenant._id, report._id, {
       status: review.status,
       resolutionNote: isClosed ? review.resolutionNote : "",
       reviewedByUserId: review.status === "open" ? null : req.user.id,
@@ -3045,7 +3048,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
           error: { code: "REPORT_TARGET_NOT_FOUND", message: "The reported message is no longer available." }
         });
       }
-      await MessageModel.update(message._id, { deletedAt });
+      await MessageModel.updateScoped(req.tenant._id, message._id, { deletedAt });
 
       const conversation = await ConversationModel.findOne(req.tenant._id, {
         _id: message.conversationId
@@ -3058,7 +3061,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
         );
         const latestMessage = latest[0] || null;
         const lastMessageAt = latestMessage?.createdAt || conversation.createdAt || deletedAt;
-        await ConversationModel.update(conversation._id, {
+        await ConversationModel.updateScoped(req.tenant._id, conversation._id, {
           lastMessageAt,
           lastMessage: latestMessage
             ? {
@@ -3091,7 +3094,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
           error: { code: "REPORT_TARGET_NOT_FOUND", message: "The reported forum post is no longer available." }
         });
       }
-      await ForumPostModel.update(post._id, { deletedAt });
+      await ForumPostModel.updateScoped(req.tenant._id, post._id, { deletedAt });
       const forum = await ForumModel.findOne(req.tenant._id, { _id: post.forumId });
       if (forum) {
         const latestPosts = await ForumPostModel.find(
@@ -3099,7 +3102,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
           { forumId: forum._id, deletedAt: null },
           { sort: { createdAt: -1 }, limit: 1 }
         );
-        await ForumModel.update(forum._id, {
+        await ForumModel.updateScoped(req.tenant._id, forum._id, {
           postsCount: Math.max(0, Number(forum.postsCount || 0) - 1),
           lastActivityAt: latestPosts[0]?.createdAt || forum.createdAt || deletedAt
         });
@@ -3111,7 +3114,7 @@ router.delete("/safety/reports/:reportId/target", async (req, res, next) => {
       };
     }
 
-    const updatedReport = await ContentReportModel.update(report._id, {
+    const updatedReport = await ContentReportModel.updateScoped(req.tenant._id, report._id, {
       status: "resolved",
       resolutionNote,
       reviewedByUserId: req.user.id,
@@ -3616,11 +3619,11 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
   const cleanPatch = Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined)
   );
-  const updated = await ProfileModel.update(profile._id, cleanPatch);
+  const updated = await ProfileModel.updateScoped(req.tenant._id, profile._id, cleanPatch);
 
   if (cleanPatch.status && userId) {
     const nextUserStatus = cleanPatch.status === "removed" ? "inactive" : "active";
-    await UserModel.update(userId, { status: nextUserStatus });
+    await UserModel.updateScoped(req.tenant._id, userId, { status: nextUserStatus });
   }
 
   await writeAdminAudit(req, "admin_member_full_profile_updated", {
@@ -3721,11 +3724,11 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
     patch.status = status;
   }
 
-  const updated = await ProfileModel.update(profile._id, patch);
+  const updated = await ProfileModel.updateScoped(req.tenant._id, profile._id, patch);
 
   if (patch.status) {
     const nextUserStatus = patch.status === "removed" ? "inactive" : "active";
-    await UserModel.update(updated.userId, { status: nextUserStatus });
+    await UserModel.updateScoped(req.tenant._id, updated.userId, { status: nextUserStatus });
   }
 
   const user = await UserModel.findOne(req.tenant._id, { _id: updated.userId });
@@ -4029,7 +4032,7 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
 
   const existingUser = await UserModel.findOne(req.tenant._id, { email });
   if (existingUser) {
-    await AccessRequestModel.update(request._id, {
+    await AccessRequestModel.updateScoped(req.tenant._id, request._id, {
       status: "approved",
       reviewedAt: new Date(),
       reviewedByUserId: req.user.id,
@@ -4087,9 +4090,9 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     status: "active"
   });
 
-  await UserModel.update(user._id, { profileId: profile._id });
+  await UserModel.updateScoped(req.tenant._id, user._id, { profileId: profile._id });
 
-  await AccessRequestModel.update(request._id, {
+  await AccessRequestModel.updateScoped(req.tenant._id, request._id, {
     status: "approved",
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
@@ -4156,7 +4159,7 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
     });
   }
 
-  const request = await AccessRequestModel.update(pending._id, {
+  const request = await AccessRequestModel.updateScoped(req.tenant._id, pending._id, {
     status: "denied",
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
@@ -4277,7 +4280,7 @@ router.patch("/email/draft/:id", async (req, res) => {
   if (req.body?.body !== undefined) updates.body = sanitizeHtmlContent(String(req.body.body || "").trim());
   if (req.body?.targeting !== undefined) updates.targeting = normalizeTargeting(req.body.targeting);
 
-  await EmailBroadcastModel.update(item._id, updates);
+  await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, updates);
   const fresh = await EmailBroadcastModel.findOne(req.tenant._id, { _id: item._id });
   return res.json({ ok: true, item: serializeEmailBroadcast(fresh) });
 });
@@ -4313,7 +4316,7 @@ router.delete("/email/scheduled/:broadcastId", async (req, res) => {
   // Broadcasts created before provider-backed scheduling never left PondBridge,
   // so they can be canceled locally without a provider call.
   if (messageIds.length === 0 && !providerSchedule.provider) {
-    await EmailBroadcastModel.update(item._id, {
+    await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, {
       status: "canceled",
       updatedAt: new Date(),
       stats: {
@@ -4355,7 +4358,7 @@ router.delete("/email/scheduled/:broadcastId", async (req, res) => {
   };
 
   if (failedMessageIds.length > 0) {
-    await EmailBroadcastModel.update(item._id, {
+    await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, {
       updatedAt: new Date(),
       stats: { ...currentStats, cancellation }
     });
@@ -4367,7 +4370,7 @@ router.delete("/email/scheduled/:broadcastId", async (req, res) => {
     });
   }
 
-  await EmailBroadcastModel.update(item._id, {
+  await EmailBroadcastModel.updateScoped(req.tenant._id, item._id, {
     status: "canceled",
     updatedAt: new Date(),
     stats: {
@@ -4433,7 +4436,7 @@ router.patch("/email/suppressions/:id/lift", async (req, res) => {
   if (!item) {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Active suppression not found." } });
   }
-  await EmailSuppressionModel.update(item._id, { status: "lifted", updatedAt: new Date() });
+  await EmailSuppressionModel.updateScoped(req.tenant._id, item._id, { status: "lifted", updatedAt: new Date() });
   return res.json({ ok: true });
 });
 
@@ -4927,7 +4930,11 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       text: personalizedText,
       headers: {
         "List-Unsubscribe": `<${preferenceUrls.oneClickUrl}>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        // Identifies the camp's community list. Receivers use it to group a
+        // sender's bulk mail and score it as list traffic rather than as an
+        // unrecognised one-off.
+        "List-ID": `${req.tenant.slug}.community <community.${req.tenant.slug}.pondbridgealumni.com>`
       }
     };
   };
@@ -4973,7 +4980,7 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       personalizer
     });
   } catch (error) {
-    await EmailBroadcastModel.update(broadcast._id, {
+    await EmailBroadcastModel.updateScoped(req.tenant._id, broadcast._id, {
       status: "failed",
       sentAt: null,
       stats: {
@@ -5029,7 +5036,7 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
       const uncanceledMessageIds = compensation
         .map((result, index) => (result.status === "rejected" ? acceptedMessageIds[index] : ""))
         .filter(Boolean);
-      await EmailBroadcastModel.update(broadcast._id, {
+      await EmailBroadcastModel.updateScoped(req.tenant._id, broadcast._id, {
         status: "failed",
         sentAt: null,
         excludedCount: initiallyExcludedCount + Number(delivery.suppressedCount || 0),
@@ -5437,6 +5444,9 @@ router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {
       onboardingFeeWaived: billing.onboardingFeeWaived,
       onboardingFeeInvoiceId: req.tenant.onboardingFeeInvoiceId || "",
       billingDetails: req.tenant.billingDetails || {},
+      // The same resolver the send check uses, so the Billing page shows the
+      // address that actually decides whether a broadcast is allowed.
+      postalAddress: resolveCampPostalAddress(req.tenant),
       currentPeriodEnd: billing.currentPeriodEnd,
       initialCheckoutCompletedAt: billing.initialCheckoutCompletedAt,
       activatedAt: billing.activatedAt,
@@ -5937,7 +5947,7 @@ router.post("/settings/admins/grant", async (req, res) => {
   const roleSet = new Set((user.roles || []).map((role) => String(role || "").trim()).filter(Boolean));
   roleSet.add("tenant_admin");
   roleSet.add("user");
-  const updated = await UserModel.update(user._id, { roles: [...roleSet] });
+  const updated = await UserModel.updateScoped(req.tenant._id, user._id, { roles: [...roleSet] });
   await writeAdminAudit(req, "admin_role_granted", {
     targetUserId: toObjectIdString(updated._id),
     targetEmail: updated.email,
@@ -5967,7 +5977,7 @@ router.post("/settings/admins/invite", inviteSendLimiter, async (req, res) => {
     const roles = new Set(existing.roles || []);
     roles.add("tenant_admin");
     roles.add("user");
-    await UserModel.update(existing._id, { roles: [...roles] });
+    await UserModel.updateScoped(req.tenant._id, existing._id, { roles: [...roles] });
     await writeAdminAudit(req, "admin_role_granted", {
       targetUserId: toObjectIdString(existing._id),
       targetEmail: existing.email,
@@ -6043,7 +6053,7 @@ router.delete("/settings/admins/:userId", async (req, res) => {
 
   let roles = (user.roles || []).filter((role) => role !== "tenant_admin");
   if (!roles.includes("user")) roles.push("user");
-  await UserModel.update(user._id, { roles });
+  await UserModel.updateScoped(req.tenant._id, user._id, { roles });
   await writeAdminAudit(req, "admin_role_revoked", {
     targetUserId: toObjectIdString(user._id),
     targetEmail: user.email,
@@ -6290,7 +6300,7 @@ router.delete("/notifications/schedules/:id", async (req, res) => {
   if (existing.status !== "pending") {
     return res.status(400).json({ error: { code: "SCHEDULE_NOT_CANCELABLE", message: "Only pending schedules can be canceled." } });
   }
-  await MobileNotificationScheduleModel.update(id, { status: "canceled" });
+  await MobileNotificationScheduleModel.updateScoped(req.tenant._id, id, { status: "canceled" });
   await writeAdminAudit(req, "admin_mobile_notification_schedule_canceled", { scheduleId: id });
   return res.json({ ok: true });
 });
@@ -6402,7 +6412,7 @@ router.post("/settings/support-request", supportRequestLimiter, async (req, res)
   ];
   const text = lines.join("\n");
   const html = `
-    <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.55;color:#0f172a;">
+    <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.55;color:#171717;">
       <p style="margin:0 0 10px;"><strong>Support Request ID:</strong> ${escapeEmailHtml(ticketId)}</p>
       <p style="margin:0 0 6px;"><strong>Tenant:</strong> ${escapeEmailHtml(tenantName)}</p>
       <p style="margin:0 0 6px;"><strong>Tenant Slug:</strong> ${escapeEmailHtml(tenantSlug || "-")}</p>
@@ -6415,7 +6425,7 @@ router.post("/settings/support-request", supportRequestLimiter, async (req, res)
       <p style="margin:0 0 6px;"><strong>Priority:</strong> ${escapeEmailHtml(priority)}</p>
       <p style="margin:0 0 12px;"><strong>Subject:</strong> ${escapeEmailHtml(subject)}</p>
       <p style="margin:0 0 6px;"><strong>Message</strong></p>
-      <pre style="margin:0;padding:10px 12px;border:1px solid #dbe6f3;border-radius:8px;background:#f8fbff;white-space:pre-wrap;">${escapeEmailHtml(message)}</pre>
+      <pre style="margin:0;padding:10px 12px;border:1px solid #e5e5e5;border-radius:8px;background:#f8fbff;white-space:pre-wrap;">${escapeEmailHtml(message)}</pre>
     </div>
   `;
 
@@ -6922,7 +6932,7 @@ router.patch("/growth/contacts/:contactId", async (req, res, next) => {
       ...req.body,
       email: contact.email
     });
-    const updated = await AlumniContactModel.update(contact._id, {
+    const updated = await AlumniContactModel.updateScoped(req.tenant._id, contact._id, {
       firstName: normalized.firstName,
       lastName: normalized.lastName,
       contactStatus: normalized.contactStatus,
@@ -6950,6 +6960,76 @@ router.patch("/growth/contacts/:contactId", async (req, res, next) => {
         tags: updated.tags || [],
         campYears: updated.campYears || [],
         notes: updated.notes || ""
+      }
+    });
+  } catch (error) {
+    if (isAlumniGrowthStorageUnavailable(error)) {
+      return res.status(503).json({
+        error: {
+          code: "ALUMNI_CONTACT_STORAGE_UNAVAILABLE",
+          message: "Pre-member alumni storage is not ready."
+        }
+      });
+    }
+    return next(error);
+  }
+});
+
+/**
+ * Erases someone who never became a member: their contact row, every invitation
+ * sent to them, and any pending access request. This is deliberate and final,
+ * so it refuses anyone who has actually joined -- deleting a real account goes
+ * through /members/:profileId/hard-delete, which also cleans up their content.
+ */
+router.delete("/growth/people/:email/purge", async (req, res, next) => {
+  try {
+    const email = normalizeEmail(decodeURIComponent(String(req.params.email || "")));
+    if (!email) {
+      return res.status(400).json({
+        error: { code: "PERSON_EMAIL_REQUIRED", message: "An email address is required." }
+      });
+    }
+
+    const joinedUser = await UserModel.findOne(req.tenant._id, { email });
+    if (joinedUser) {
+      return res.status(409).json({
+        error: {
+          code: "PERSON_ALREADY_JOINED",
+          message: "This person has joined. Remove them from Members instead."
+        }
+      });
+    }
+
+    const [contacts, invites, requests] = await Promise.all([
+      AlumniContactModel.find(req.tenant._id, { email }),
+      InviteModel.find(req.tenant._id, { email }),
+      AccessRequestModel.find(req.tenant._id, { email })
+    ]);
+
+    if (!contacts.length && !invites.length && !requests.length) {
+      return res.status(404).json({
+        error: { code: "PERSON_NOT_FOUND", message: "There is nothing left to delete for this person." }
+      });
+    }
+
+    for (const contact of contacts) await AlumniContactModel.delete(contact._id);
+    for (const invite of invites) await InviteModel.delete(invite._id);
+    for (const request of requests) await AccessRequestModel.delete(request._id);
+
+    await writeAdminAudit(req, "admin_person_purged", {
+      email,
+      contactCount: contacts.length,
+      inviteCount: invites.length,
+      requestCount: requests.length
+    });
+    clearAdminReadCaches();
+
+    return res.json({
+      ok: true,
+      deleted: {
+        contacts: contacts.length,
+        invites: invites.length,
+        requests: requests.length
       }
     });
   } catch (error) {
@@ -7566,7 +7646,7 @@ router.get("/export/pdf", exportLimiter, requireFeature("pdfExport"), async (req
     if (letter !== currentLetter) {
       currentLetter = letter;
       doc.moveDown(0.6);
-      doc.fontSize(14).fillColor("#002b5c").text(letter);
+      doc.fontSize(14).fillColor("#252525").text(letter);
       doc.fillColor("black");
     }
 

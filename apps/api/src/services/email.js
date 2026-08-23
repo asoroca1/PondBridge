@@ -7,6 +7,8 @@ import {
   inviteTemplate,
   magicLinkTemplate,
   verificationCodeTemplate,
+  passwordResetCodeTemplate,
+  passwordChangedTemplate,
   welcomeTemplate,
   accessApprovedTemplate,
   accessDeniedTemplate
@@ -145,7 +147,7 @@ function normalizeHttpUrl(value = "") {
   }
 }
 
-function normalizeBrandColor(value = "", fallback = "#002b5c") {
+function normalizeBrandColor(value = "", fallback = "#252525") {
   const candidate = String(value || "").trim();
   if (HEX_COLOR_REGEX.test(candidate)) return candidate;
   return fallback;
@@ -206,7 +208,7 @@ export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) 
     : normalizeFromAddress(env.EMAIL_FROM || "");
   const contactEmail = normalizeEmailAddress(tenant?.content?.contactEmail || "");
   const replyTo = isValidEmailAddress(contactEmail) ? contactEmail : "";
-  const brandPrimary = normalizeBrandColor(themeSource?.brandPrimary || "", "#002b5c");
+  const brandPrimary = normalizeBrandColor(themeSource?.brandPrimary || "", "#252525");
   const logoUrl = normalizeHttpUrl(themeSource?.logoUrl || "");
   return {
     networkName,
@@ -227,7 +229,7 @@ export function buildPondBridgeEmailBranding({ senderName = "PondBridge" } = {})
     networkName: "PondBridge",
     from,
     replyTo: "",
-    brandPrimary: "#002b5c",
+    brandPrimary: "#252525",
     logoUrl: ""
   };
 }
@@ -1168,8 +1170,6 @@ export async function sendInviteEmail({
   tenant,
   email,
   token,
-  roleToAssign,
-  expiresAt,
   replyTo = "",
   customSubject = "",
   customMessage = "",
@@ -1193,8 +1193,6 @@ export async function sendInviteEmail({
   const { subject, text, html } = inviteTemplate({
     tenantName: branding.networkName,
     link,
-    roleToAssign,
-    expiresAt,
     customSubject: applyInviteMergeTags(customSubject),
     customMessage: applyInviteMergeTags(customMessage),
     firstName,
@@ -1303,6 +1301,101 @@ export async function sendVerificationCodeEmail({
     tags: [
       { name: "category", value: "clerk_verification_code" },
       { name: "audience", value: normalizedAudience || "member" },
+      ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
+    ]
+  });
+}
+
+export async function sendPasswordResetCodeEmail({
+  tenant = null,
+  email,
+  code,
+  requestIp = "",
+  requestedAt = null,
+  idempotencyKey = ""
+}) {
+  // A reset always belongs to an existing member, so brand it for their camp
+  // whenever the tenant resolved; fall back to PondBridge only if it did not.
+  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  const { subject, text, html } = passwordResetCodeTemplate({
+    brandName: branding.networkName,
+    code,
+    requestIp,
+    requestedAt,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
+  });
+
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject,
+    text,
+    html,
+    idempotencyKey,
+    tags: [
+      { name: "category", value: "clerk_password_reset_code" },
+      ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
+    ]
+  });
+}
+
+export async function sendPasswordChangedEmail({
+  tenant = null,
+  email,
+  firstName = "",
+  accountEmail = "",
+  idempotencyKey = ""
+}) {
+  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  const { subject, text, html } = passwordChangedTemplate({
+    brandName: branding.networkName,
+    firstName,
+    accountEmail: accountEmail || email,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
+  });
+
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject,
+    text,
+    html,
+    idempotencyKey,
+    tags: [
+      { name: "category", value: "clerk_password_changed" },
+      ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
+    ]
+  });
+}
+
+/**
+ * Last resort for a Clerk template we have no design for. Clerk has already
+ * rendered subject and body, so relay those through the camp's sender rather
+ * than let the message vanish because delivery was switched off in Clerk.
+ */
+export async function sendRelayedClerkEmail({
+  tenant = null,
+  email,
+  subject = "",
+  html = "",
+  text = "",
+  idempotencyKey = ""
+}) {
+  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject: String(subject || "").trim() || `A message from ${branding.networkName}`,
+    text: String(text || "").trim() || " ",
+    html: String(html || "").trim() || `<p>${String(text || "").trim()}</p>`,
+    idempotencyKey,
+    tags: [
+      { name: "category", value: "clerk_relayed" },
       ...(tenant?.slug ? [{ name: "tenant", value: String(tenant.slug) }] : [])
     ]
   });

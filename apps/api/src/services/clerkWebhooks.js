@@ -7,7 +7,14 @@ import {
   TenantModel,
   UserModel
 } from "../db/models/index.js";
-import { sendVerificationCodeEmail } from "./email.js";
+import {
+  sendPasswordChangedEmail,
+  sendPasswordResetCodeEmail,
+  sendRelayedClerkEmail,
+  sendVerificationCodeEmail
+} from "./email.js";
+import { logLine } from "./logger.js";
+import { recallSignupIntent } from "./signupIntent.js";
 
 const RESERVED_SUBDOMAINS = new Set(["www", "app", "api", "super"]);
 const recentVerificationDispatches = new Map();
@@ -54,6 +61,93 @@ function hasRecentDispatch(key = "", now = nowMs()) {
 function markRecentDispatch(key = "", now = nowMs()) {
   if (!key) return;
   recentVerificationDispatches.set(key, now + RECENT_VERIFICATION_TTL_MS);
+}
+
+// Clerk can raise several verification.code_sent events for a single signup,
+// each with its own code, and preparing a new code invalidates the previous
+// one. Sending every event mails the user codes that are already dead. Hold a
+// send briefly instead and mail only the newest code of a burst, so one signup
+// produces one usable email.
+const VERIFICATION_COLLAPSE_MS = 3000;
+const pendingVerificationSends = new Map();
+
+// Clerk names the template in `slug` (verification_code, reset_password_code,
+// password_changed, ...). Classify rather than special-case, so switching off
+// Clerk delivery for a template we have not designed for still sends
+// something instead of silently sending nothing.
+const CLERK_EMAIL_KIND = {
+  VERIFICATION_CODE: "verification_code",
+  PASSWORD_RESET_CODE: "password_reset_code",
+  PASSWORD_CHANGED: "password_changed",
+  RELAY: "relay"
+};
+
+export function classifyClerkEmail(emailResource = {}, { hasOtpCode = false } = {}) {
+  const slug = safeString(emailResource?.slug).toLowerCase();
+  // Order matters: reset_password_code contains "password" too.
+  if (slug.includes("reset") && slug.includes("password")) return CLERK_EMAIL_KIND.PASSWORD_RESET_CODE;
+  // Only an actual change gets the bespoke notice. Anything else about a
+  // password (removal, for instance) relays Clerk's own accurate wording.
+  if (slug.includes("password") && slug.includes("changed")) return CLERK_EMAIL_KIND.PASSWORD_CHANGED;
+  if (hasOtpCode) return CLERK_EMAIL_KIND.VERIFICATION_CODE;
+  return CLERK_EMAIL_KIND.RELAY;
+}
+
+function verificationCollapseKey(recipientEmail = "") {
+  return normalizeEmail(recipientEmail);
+}
+
+function scheduleVerificationSend(request = {}) {
+  const base = verificationCollapseKey(request.recipientEmail);
+  if (!base) return false;
+  // Scope the key by kind so a password-change notice cannot supersede a
+  // verification code that is still waiting, or vice versa.
+  const key = `${base}/${request.kind || "verification_code"}`;
+
+  const existing = pendingVerificationSends.get(key);
+  if (existing && request.collapsible !== false) {
+    // A newer code supersedes the one still waiting. Clerk has already
+    // invalidated the older one, so the newest is the only sendable code.
+    existing.request = request;
+    logLine("info", "clerk.verification.superseded", {
+      emailId: request.emailId,
+      supersededEmailId: existing.request?.emailId || ""
+    });
+    return true;
+  }
+
+  const entry = { request, timer: null };
+  if (existing) {
+    // Non-collapsible: let the queued one stand and send this separately.
+    pendingVerificationSends.delete(key);
+  }
+  entry.timer = setTimeout(() => {
+    pendingVerificationSends.delete(key);
+    const pending = entry.request;
+    logLine("info", "clerk.verification.dispatch", {
+      emailId: pending.emailId,
+      signUpAttemptId: pending.signUpAttemptId,
+      audience: pending.audience,
+      tenantSlug: pending.tenantSlug || "none",
+      kind: pending.kind
+    });
+    const senders = {
+      [CLERK_EMAIL_KIND.VERIFICATION_CODE]: sendVerificationCodeEmail,
+      [CLERK_EMAIL_KIND.PASSWORD_RESET_CODE]: sendPasswordResetCodeEmail,
+      [CLERK_EMAIL_KIND.PASSWORD_CHANGED]: sendPasswordChangedEmail,
+      [CLERK_EMAIL_KIND.RELAY]: sendRelayedClerkEmail
+    };
+    const send = senders[pending.kind] || sendVerificationCodeEmail;
+    Promise.resolve(send(pending.send)).catch((error) => {
+      logLine("error", "clerk.verification.dispatch_failed", {
+        emailId: pending.emailId,
+        message: String(error?.message || error)
+      });
+    });
+  }, VERIFICATION_COLLAPSE_MS);
+
+  pendingVerificationSends.set(key, entry);
+  return false;
 }
 
 function verificationDispatchFingerprint({ recipientEmail = "", otpCode = "", audience = "", tenantSlug = "" } = {}) {
@@ -226,9 +320,34 @@ function firstSignUpAttemptId(data = {}) {
   return "";
 }
 
+export function extractVerificationSignUpHint(unsafeMetadata = {}) {
+  const source = unsafeMetadata && typeof unsafeMetadata === "object" ? unsafeMetadata : {};
+  const tenantSlug = normalizeSlug(
+    source?.tenantSlug ||
+    source?.tenant_slug ||
+    source?.slug
+  );
+  const rawAudience = safeString(
+    source?.signupAudience ||
+    source?.signup_audience ||
+    source?.audience
+  ).toLowerCase();
+  const audience = rawAudience === "director" ? "director" : rawAudience === "member" ? "member" : "";
+
+  if (!tenantSlug && !audience) return null;
+  return { tenantSlug, audience };
+}
+
 async function resolveSignUpAttemptHint(emailResource = {}) {
   const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
-  if (!signUpAttemptId || !clerkClient?.signUps?.get) return null;
+  if (!signUpAttemptId) {
+    logLine("warn", "clerk.verification.hint_unavailable", { reason: "no_sign_up_id" });
+    return null;
+  }
+  if (!clerkClient?.signUps?.get) {
+    logLine("warn", "clerk.verification.hint_unavailable", { reason: "clerk_client_unavailable" });
+    return null;
+  }
 
   try {
     const signUpAttempt = await clerkClient.signUps.get(signUpAttemptId);
@@ -236,20 +355,21 @@ async function resolveSignUpAttemptHint(emailResource = {}) {
       signUpAttempt?.unsafeMetadata && typeof signUpAttempt.unsafeMetadata === "object"
         ? signUpAttempt.unsafeMetadata
         : {};
-    const tenantSlug = normalizeSlug(
-      unsafeMetadata?.tenantSlug ||
-      unsafeMetadata?.tenant_slug ||
-      unsafeMetadata?.slug
-    );
-    const rawAudience = safeString(
-      unsafeMetadata?.signupAudience ||
-      unsafeMetadata?.signup_audience ||
-      unsafeMetadata?.audience
-    ).toLowerCase();
-    const audience = rawAudience === "director" ? "director" : rawAudience === "member" ? "member" : "";
-    if (!tenantSlug && !audience) return null;
-    return { tenantSlug, audience };
-  } catch {
+    const hint = extractVerificationSignUpHint(unsafeMetadata);
+    if (!hint?.tenantSlug) {
+      // The signup carried no tenant slug, so branding will fall back to
+      // PondBridge. Record it rather than failing over in silence.
+      logLine("warn", "clerk.verification.hint_missing_tenant", {
+        signUpAttemptId,
+        metadataKeys: Object.keys(unsafeMetadata).join(",") || "none"
+      });
+    }
+    return hint;
+  } catch (error) {
+    logLine("error", "clerk.verification.hint_lookup_failed", {
+      signUpAttemptId,
+      message: String(error?.message || error)
+    });
     return null;
   }
 }
@@ -271,7 +391,7 @@ async function resolveEmailAssociationHint(recipientEmail = "") {
     return { tenantId: membershipTenantIds[0], audience };
   }
 
-  const invites = await InviteModel.find({ email, usedAt: null });
+  const invites = await InviteModel.acrossTenants().find({ email, usedAt: null });
   const activeInvites = (invites || []).filter((invite) => {
     const expiresAt = invite?.expiresAt ? new Date(invite.expiresAt) : null;
     return !expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() > nowMs();
@@ -286,7 +406,7 @@ async function resolveEmailAssociationHint(recipientEmail = "") {
     return { tenantId: inviteTenantIds[0], audience };
   }
 
-  const pendingRequests = await AccessRequestModel.find({ email, status: "pending" });
+  const pendingRequests = await AccessRequestModel.acrossTenants().find({ email, status: "pending" });
   const requestTenantIds = [...new Set(
     (pendingRequests || []).map((item) => safeString(item?.tenantId)).filter(Boolean)
   )];
@@ -317,6 +437,17 @@ async function resolveTenantFromHint(hint = {}) {
 }
 
 async function resolveVerificationContext(emailResource = {}) {
+  // Clerk's payload has no tenant of its own, so the intent the signup flow
+  // recorded against this address outranks everything we could infer.
+  const intentHint = recallSignupIntent(emailResource?.to_email_address);
+  if (intentHint?.tenantSlug) {
+    const intentTenant = await resolveTenantFromHint(intentHint);
+    if (intentTenant) {
+      return { tenant: intentTenant, audience: intentHint.audience === "director" ? "director" : "member" };
+    }
+    logLine("warn", "clerk.verification.intent_tenant_missing", { tenantSlug: intentHint.tenantSlug });
+  }
+
   const signUpAttemptHint = await resolveSignUpAttemptHint(emailResource);
   const routeHints = recursiveStringValues({
     subject: emailResource?.subject,
@@ -330,11 +461,10 @@ async function resolveVerificationContext(emailResource = {}) {
   const associationHint = await resolveEmailAssociationHint(emailResource?.to_email_address);
 
   const primaryHint = signUpAttemptHint || routeHint || associationHint || {};
-  const secondaryHint = routeHint || associationHint || {};
+  const secondaryHint = signUpAttemptHint ? {} : routeHint ? associationHint || {} : {};
   const tenant = await resolveTenantFromHint(primaryHint) || await resolveTenantFromHint(secondaryHint);
-  const audience = safeString(
-    primaryHint?.audience || secondaryHint?.audience || associationHint?.audience || ""
-  ).toLowerCase() === "director"
+  const audienceHint = signUpAttemptHint || primaryHint || secondaryHint || associationHint || {};
+  const audience = safeString(audienceHint?.audience || "").toLowerCase() === "director"
     ? "director"
     : "member";
 
@@ -349,12 +479,50 @@ export async function processClerkWebhookRequest(req) {
 
   const emailResource = event?.data || {};
   const recipientEmail = normalizeEmail(emailResource?.to_email_address || "");
+  // Clerk sends no tenant of its own, so record what the payload does carry.
+  // Logged before the OTP gate: a template that keys its code differently would
+  // otherwise be dropped here with nothing to show why.
+  logLine("info", "clerk.verification.payload_shape", {
+    topLevelKeys: Object.keys(emailResource || {}).sort().join(","),
+    dataKeys: Object.keys(emailResource?.data || {}).sort().join(","),
+    userId: safeString(emailResource?.user_id) || "none",
+    emailAddressId: safeString(emailResource?.email_address_id) || "none",
+    slug: safeString(emailResource?.slug) || "none"
+  });
+
   const otpCode = firstOtpCode(emailResource?.data || {});
-  if (!recipientEmail || !otpCode) {
-    return { ok: true, ignored: true, reason: "not_verification_email" };
+  if (!recipientEmail) {
+    return { ok: true, ignored: true, reason: "no_recipient" };
+  }
+
+  const kind = classifyClerkEmail(emailResource, { hasOtpCode: Boolean(otpCode) });
+  const needsCode =
+    kind === CLERK_EMAIL_KIND.VERIFICATION_CODE || kind === CLERK_EMAIL_KIND.PASSWORD_RESET_CODE;
+  if (needsCode && !otpCode) {
+    // Clerk is no longer delivering this template, so dropping it would leave
+    // the member with no code at all. Record the keys it did send.
+    logLine("error", "clerk.verification.code_missing", {
+      slug: safeString(emailResource?.slug) || "none",
+      kind,
+      dataKeys: Object.keys(emailResource?.data || {}).sort().join(",")
+    });
+    return { ok: true, ignored: true, reason: "code_missing" };
+  }
+  if (kind === CLERK_EMAIL_KIND.RELAY) {
+    logLine("warn", "clerk.verification.relaying_unknown_template", {
+      slug: safeString(emailResource?.slug) || "none"
+    });
   }
 
   const context = await resolveVerificationContext(emailResource);
+  const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
+  if (signUpAttemptId && context.audience !== "director" && !context.tenant) {
+    throw createWebhookError(
+      "Member verification email is missing tenant context.",
+      503,
+      "CLERK_VERIFICATION_TENANT_REQUIRED"
+    );
+  }
   const emailId = safeString(emailResource?.id);
   const dispatchKey = verificationDispatchFingerprint({
     recipientEmail,
@@ -371,18 +539,50 @@ export async function processClerkWebhookRequest(req) {
     };
   }
 
-  const result = await sendVerificationCodeEmail({
-    tenant: context.tenant,
-    email: recipientEmail,
-    code: otpCode,
-    audience: context.audience,
-    requestIp: safeString(event?.event_attributes?.http_request?.client_ip),
-    requestedAt: new Date(),
-    idempotencyKey: dispatchKey
-  });
-
   if (emailId) markRecentDispatch(emailId);
   if (dispatchKey) markRecentDispatch(dispatchKey);
+
+  const requestIp = safeString(event?.event_attributes?.http_request?.client_ip);
+  const sendPayload = needsCode
+    ? {
+        tenant: context.tenant,
+        email: recipientEmail,
+        code: otpCode,
+        audience: context.audience,
+        requestIp,
+        requestedAt: new Date(),
+        idempotencyKey: dispatchKey
+      }
+    : kind === CLERK_EMAIL_KIND.PASSWORD_CHANGED
+      ? {
+          tenant: context.tenant,
+          email: recipientEmail,
+          accountEmail: recipientEmail,
+          idempotencyKey: dispatchKey
+        }
+      : {
+          tenant: context.tenant,
+          email: recipientEmail,
+          subject: safeString(emailResource?.subject),
+          html: String(emailResource?.body || ""),
+          text: String(emailResource?.body_plain || ""),
+          idempotencyKey: dispatchKey
+        };
+
+  const collapsed = scheduleVerificationSend({
+    recipientEmail,
+    audience: context.audience,
+    tenantSlug: safeString(context?.tenant?.slug),
+    emailId,
+    signUpAttemptId,
+    kind,
+    // Only codes supersede one another. A notification is a distinct event and
+    // must never be swallowed by a code burst.
+    collapsible: needsCode,
+    send: sendPayload
+  });
+
+  const result = { mode: collapsed ? "superseded" : "queued" };
 
   return {
     ok: true,

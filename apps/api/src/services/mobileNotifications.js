@@ -401,7 +401,7 @@ export async function registerMobileDevice({
     ? "production"
     : normalizeText(environment, 32) || "sandbox";
 
-  const existing = await MobileNotificationDeviceModel.findOne({ token: normalizedToken });
+  const existing = await MobileNotificationDeviceModel.acrossTenants().findOne({ token: normalizedToken });
   if (existing) {
     return MobileNotificationDeviceModel.update(existing._id, {
       tenantId,
@@ -846,7 +846,7 @@ export async function resolveAudienceUserIds(tenantId, audience = "all_active_me
 }
 
 export async function runDueMobileNotificationSchedules({ now = new Date(), batchLimit = 25 } = {}) {
-  const due = await MobileNotificationScheduleModel.find(
+  const due = await MobileNotificationScheduleModel.acrossTenants().find(
     {
       status: "pending",
       runAt: { $lte: now }

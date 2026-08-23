@@ -1,5 +1,17 @@
 import { useCallback, useState } from "react";
 
+/** Who the server refused to invite, phrased for a director rather than a log. */
+function describeSkipped(summary = {}) {
+  const skipped = [];
+  const pending = Number(summary.pendingInviteCount || 0);
+  const joined = Number(summary.existingMemberCount || 0);
+  const held = Number(summary.contactOnHoldCount || 0);
+  if (pending) skipped.push(`${pending} already had a pending invite`);
+  if (joined) skipped.push(`${joined} already joined`);
+  if (held) skipped.push(`${held} on hold`);
+  return skipped;
+}
+
 /**
  * Every write the People workspace can perform, in one place. Each action
  * returns { ok, message } so callers can report without duplicating error
@@ -42,6 +54,31 @@ export default function usePersonActions({ request, reload }) {
     const sent = Number(response?.sentCount || 0);
     return `${sent} invitation${sent === 1 ? "" : "s"} sent.`;
   }), [request, run]);
+
+  /**
+   * Preview and send in one step. The preview still runs, so nobody who has
+   * joined, is on hold, or already has a pending invite gets a second email --
+   * the director just reads the outcome afterwards instead of confirming first.
+   */
+  const sendInvitesNow = useCallback((people = [], extras = {}) => run("invite", async () => {
+    const { preview, recipients } = await previewInvites(people);
+    const summary = preview?.summary || {};
+    const skipped = describeSkipped(summary);
+    if (!Number(summary.readyCount || 0)) {
+      throw new Error(
+        skipped.length
+          ? `Nobody was invited — ${skipped.join(", ")}.`
+          : "Nobody in this list can be invited right now."
+      );
+    }
+    const response = await request("/invites/send", {
+      method: "POST",
+      body: { roleToAssign: "user", recipients, previewToken: preview?.previewToken || "", ...extras }
+    });
+    const sent = Number(response?.sentCount || 0);
+    const head = `${sent} invitation${sent === 1 ? "" : "s"} sent.`;
+    return skipped.length ? `${head} Skipped: ${skipped.join(", ")}.` : head;
+  }), [previewInvites, request, run]);
 
   const approve = useCallback((person) => run("approve", async () => {
     await request(`/members/approvals/${person.requestId}/approve`, { method: "POST" });
@@ -107,6 +144,22 @@ export default function usePersonActions({ request, reload }) {
     return `${affected} member${affected === 1 ? "" : "s"} removed.`;
   }), [request, run]);
 
+  /**
+   * Erases someone who never joined: their contact row, their invitations and
+   * any pending request. Members are refused by the server; they go through
+   * deleteMember so their profile and content are cleaned up too.
+   */
+  const purgePerson = useCallback((person) => run("purge", async () => {
+    const email = String(person?.email || "").trim();
+    if (!email) throw new Error("This person has no email address on file, so there is nothing to delete.");
+    const response = await request(`/growth/people/${encodeURIComponent(email)}/purge`, {
+      method: "DELETE"
+    });
+    const invites = Number(response?.deleted?.invites || 0);
+    const detail = invites ? ` ${invites} invitation${invites === 1 ? "" : "s"} removed.` : "";
+    return `${person.fullName || email} was deleted from the system.${detail}`;
+  }), [request, run]);
+
   const deleteMember = useCallback((person) => run("delete", async () => {
     await request(`/members/${person.profileId}/hard-delete`, { method: "DELETE" });
     return `${person.fullName || person.email} was permanently deleted.`;
@@ -116,11 +169,13 @@ export default function usePersonActions({ request, reload }) {
     busy,
     previewInvites,
     sendInvites,
+    sendInvitesNow,
     approve,
     deny,
     setContactStatus,
     addProspects,
     removeMembers,
-    deleteMember
+    deleteMember,
+    purgePerson
   };
 }

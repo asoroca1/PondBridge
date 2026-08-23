@@ -27,6 +27,7 @@ import {
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
 import { buildTenantEmailBranding, sendBulkTransactionalEmail } from "../services/email.js";
 import { broadcastTemplate } from "../services/emailTemplates.js";
+import { buildEmailPalette } from "../services/brandPalette.js";
 import {
   cityKey,
   clearGeocodeFailure,
@@ -170,6 +171,7 @@ const NEWSLETTER_R2_POINTER_MIME = "application/x.pondbridge.newsletter-r2-point
 const NEWSLETTER_COVER_R2_POINTER_MIME =
   "application/x.pondbridge.newsletter-cover-r2-pointer+json";
 const NEWSLETTER_COVER_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const NEWSLETTER_DIRECT_COVER_URL_TENANT_SLUGS = new Set(["cedar"]);
 const HOME_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
 const LOCATIONS_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
 const ACTIVITY_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
@@ -454,8 +456,18 @@ function resolveNewsletterPdfUrl(req, row = {}) {
   return `${req.protocol}://${req.get("host")}/api/t/${req.tenant.slug}/newsletters/${row._id}/file`;
 }
 
-function resolveNewsletterCoverUrl(req, row = {}) {
+export function resolveNewsletterCoverUrl(req, row = {}) {
   const pointer = decodeNewsletterCoverPointer(row);
+  const tenantSlug = String(req?.tenant?.slug || "").trim().toLowerCase();
+  const tenantObjectPrefix = tenantSlug ? `${tenantSlug}/` : "";
+  if (
+    pointer?.objectUrl &&
+    tenantObjectPrefix &&
+    pointer.key.startsWith(tenantObjectPrefix) &&
+    NEWSLETTER_DIRECT_COVER_URL_TENANT_SLUGS.has(tenantSlug)
+  ) {
+    return pointer.objectUrl;
+  }
   if (pointer?.key) {
     return `${buildTenantObjectProxyBaseUrl(req)}?key=${encodeURIComponent(pointer.key)}`;
   }
@@ -514,8 +526,12 @@ export function buildNewsletterAnnouncementEmail({
   year = "",
   archiveUrl = "",
   pdfUrl = "",
-  coverImageUrl = ""
+  coverImageUrl = "",
+  brandPrimary = "",
+  logoUrl = ""
 } = {}) {
+  // A newsletter announcement should look like the camp that sent it.
+  const P = buildEmailPalette(brandPrimary);
   const safeTenantName = escapeHtml(tenantName || "your network");
   const safeNewsletterLabel = escapeHtml(newsletterLabel || "Newsletter");
   const safeTitle = escapeHtml(title || `${newsletterLabel} update`);
@@ -531,7 +547,7 @@ export function buildNewsletterAnnouncementEmail({
           <img
             src="${safeCoverImageUrl}"
             alt="${safeTitle} cover"
-            style="display:block;width:100%;max-width:560px;height:auto;border-radius:14px;border:1px solid #dbe5f0;"
+            style="display:block;width:100%;max-width:560px;height:auto;border-radius:14px;border:1px solid ${P.border};"
           />
         </div>
       `
@@ -540,8 +556,8 @@ export function buildNewsletterAnnouncementEmail({
     ? `
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
           <tr>
-            ${safeArchiveUrl ? `<td style="padding:0 12px 12px 0;"><a href="${safeArchiveUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#153e75;color:#ffffff;text-decoration:none;font-weight:700;">Open in PondBridge</a></td>` : ""}
-            ${safePdfUrl ? `<td style="padding:0 0 12px 0;"><a href="${safePdfUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#edf3fb;color:#153e75;text-decoration:none;font-weight:700;border:1px solid #c9d8ea;">Download PDF</a></td>` : ""}
+            ${safeArchiveUrl ? `<td style="padding:0 12px 12px 0;"><a href="${safeArchiveUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:${P.primary};color:${P.onPrimary};text-decoration:none;font-weight:700;">Open in PondBridge</a></td>` : ""}
+            ${safePdfUrl ? `<td style="padding:0 0 12px 0;"><a href="${safePdfUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:${P.wash};color:${P.text};text-decoration:none;font-weight:700;border:1px solid ${P.border};">Download PDF</a></td>` : ""}
           </tr>
         </table>
       `
@@ -551,9 +567,9 @@ export function buildNewsletterAnnouncementEmail({
     ${coverMarkup}
     <p style="margin:0 0 14px;">A new <strong>${safeNewsletterLabel}</strong> has been published for <strong>${safeTenantName}</strong>.</p>
     <p style="margin:0 0 14px;">The PDF is attached to this email so members can open it right away, and the archive link below will take them straight back into PondBridge.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid #dbe5f0;border-radius:12px;background:#f8fbff;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;border:1px solid ${P.border};border-radius:12px;background:${P.wash};">
       <tr>
-        <td style="padding:16px 18px;font-size:14px;color:#1f2937;">
+        <td style="padding:16px 18px;font-size:14px;color:${P.text};">
           <div style="margin:0 0 8px;"><strong>Title:</strong> ${safeTitle}</div>
           <div style="margin:0 0 8px;"><strong>Season:</strong> ${safeSeason}</div>
           <div style="margin:0;"><strong>Year:</strong> ${safeYear}</div>
@@ -561,15 +577,17 @@ export function buildNewsletterAnnouncementEmail({
       </tr>
     </table>
     ${actionMarkup}
-    <p style="margin:0 0 10px;font-size:13px;color:#4b5563;">If the buttons above do not open, you can use the attached PDF or copy this archive link into your browser:</p>
-    ${safeArchiveUrl ? `<p style="margin:0 0 8px;font-size:13px;"><a href="${safeArchiveUrl}" style="color:#1e5cb3;text-decoration:underline;">${safeArchiveUrl}</a></p>` : ""}
-    ${safePdfUrl ? `<p style="margin:0;font-size:13px;color:#6b7280;">Direct PDF link: <a href="${safePdfUrl}" style="color:#1e5cb3;text-decoration:underline;">${safePdfUrl}</a></p>` : ""}
+    <p style="margin:0 0 10px;font-size:13px;color:${P.textMuted};">If the buttons above do not open, you can use the attached PDF or copy this archive link into your browser:</p>
+    ${safeArchiveUrl ? `<p style="margin:0 0 8px;font-size:13px;"><a href="${safeArchiveUrl}" style="color:${P.primary};text-decoration:underline;">${safeArchiveUrl}</a></p>` : ""}
+    ${safePdfUrl ? `<p style="margin:0;font-size:13px;color:${P.textMuted};">Direct PDF link: <a href="${safePdfUrl}" style="color:${P.primary};text-decoration:underline;">${safePdfUrl}</a></p>` : ""}
   `;
 
   return broadcastTemplate({
     tenantName: tenantName || "PondBridge Network",
     subject: emailSubject,
-    bodyHtml
+    bodyHtml,
+    brandPrimary,
+    logoUrl
   });
 }
 
@@ -1699,13 +1717,13 @@ router.put("/me", async (req, res) => {
     if (update[key] === undefined) delete update[key];
   });
 
-  const updatedProfile = await ProfileModel.update(profile._id, update);
+  const updatedProfile = await ProfileModel.updateScoped(req.tenant._id, profile._id, update);
   invalidateMapCaches(req.tenant?._id);
   clearHomeStatsCaches();
 
   const updatedUser = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   if (updatedUser) {
-    await UserModel.update(updatedUser._id, { profileId: updatedProfile._id });
+    await UserModel.updateScoped(req.tenant._id, updatedUser._id, { profileId: updatedProfile._id });
   }
   const user = updatedUser
     ? await UserModel.findOne(req.tenant._id, { _id: req.user.id })
@@ -2083,7 +2101,7 @@ router.patch("/activity/:id/pin", async (req, res) => {
     return res.status(404).json({ error: { code: "NOT_FOUND", message: "Activity not found" } });
   }
 
-  const updated = await ActivityItemModel.update(existing._id, {
+  const updated = await ActivityItemModel.updateScoped(req.tenant._id, existing._id, {
     pinned,
     pinnedAt: pinned ? new Date() : null
   });
@@ -2244,7 +2262,7 @@ router.post("/photos/:id/comments", async (req, res) => {
   const authorAvatarUrl = String(profile?.avatarUrl || "").trim();
   const commentId = generateObjectId();
 
-  await PhotoModel.addComment(id, {
+  await PhotoModel.addComment(req.tenant._id, id, {
     _id: commentId,
     authorId: req.user.id,
     authorName,
@@ -2286,7 +2304,7 @@ router.delete("/photos/:id/comments/:commentId", async (req, res) => {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Cannot delete this comment" } });
   }
 
-  await PhotoModel.removeComment(id, commentId);
+  await PhotoModel.removeComment(req.tenant._id, id, commentId);
   clearPhotoFeedCache();
 
   return res.json({ ok: true });
@@ -2305,9 +2323,9 @@ router.post("/photos/:id/like", async (req, res) => {
 
   let updated;
   if (alreadyLiked) {
-    updated = await PhotoModel.removeLike(id, req.user.id);
+    updated = await PhotoModel.removeLike(req.tenant._id, id, req.user.id);
   } else {
-    updated = await PhotoModel.addLike(id, req.user.id);
+    updated = await PhotoModel.addLike(req.tenant._id, id, req.user.id);
   }
 
   clearPhotoFeedCache();
@@ -2592,7 +2610,7 @@ router.patch("/conversations/:id", async (req, res) => {
   }
 
   const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 100);
-  const updated = await ConversationModel.update(convo._id, { name: name || convo.name });
+  const updated = await ConversationModel.updateScoped(req.tenant._id, convo._id, { name: name || convo.name });
 
   clearConversationCaches();
   const payload = conversationToClient(updated, req.user.id);
@@ -2638,7 +2656,7 @@ router.post("/conversations/:id/members", async (req, res) => {
     if (!readBy.some((entry) => String(entry.userId || "") === String(targetId))) {
       readBy.push({ userId: targetId, lastReadAt: new Date(0) });
     }
-    const updated = await ConversationModel.update(convo._id, { participantIds, members, readBy });
+    const updated = await ConversationModel.updateScoped(req.tenant._id, convo._id, { participantIds, members, readBy });
     await joinUserSocketsToRealtimeRoom([targetId], `conversation:${id}`);
     const payload = conversationToClient(updated, req.user.id);
     if (!payload) {
@@ -2704,7 +2722,7 @@ router.delete("/conversations/:id/members", async (req, res) => {
     createdBy = promotedUserId;
   }
 
-  const updated = await ConversationModel.update(convo._id, {
+  const updated = await ConversationModel.updateScoped(req.tenant._id, convo._id, {
     participantIds,
     members,
     readBy,
@@ -2814,7 +2832,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
   });
 
   const lastMessageAt = created.createdAt || new Date();
-  await ConversationModel.update(convo._id, {
+  await ConversationModel.updateScoped(req.tenant._id, convo._id, {
     lastMessageAt,
     readBy: advanceReadBy(convo.readBy, req.user.id, lastMessageAt),
     lastMessage: {
@@ -2855,7 +2873,7 @@ router.post("/conversations/:id/read", async (req, res) => {
 
   const nextReadAt = clampReadAt(req.body?.iso, new Date());
   const readBy = advanceReadBy(convo.readBy, req.user.id, nextReadAt);
-  await ConversationModel.update(convo._id, { readBy });
+  await ConversationModel.updateScoped(req.tenant._id, convo._id, { readBy });
 
   clearConversationCaches();
   return res.json({ ok: true, id, iso: nextReadAt.toISOString() });
@@ -3053,8 +3071,8 @@ router.post("/forums/:id/join", async (req, res) => {
   const existing = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
-  await ForumModel.addMember(existing._id, req.user.id);
-  const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
+  await ForumModel.addMember(req.tenant._id, existing._id, req.user.id);
+  const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   clearForumCaches();
   const payload = forumToClient(forum);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
@@ -3070,8 +3088,8 @@ router.post("/forums/:id/leave", async (req, res) => {
   const existing = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
-  await ForumModel.removeMember(existing._id, req.user.id);
-  const forum = await ForumModel.update(existing._id, { lastActivityAt: new Date() });
+  await ForumModel.removeMember(req.tenant._id, existing._id, req.user.id);
+  const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   evictUserFromRealtimeRoom(req.user.id, `forum:${id}`);
   clearForumCaches();
   const payload = forumToClient(forum);
@@ -3194,7 +3212,7 @@ router.post("/forums/:id/posts", async (req, res) => {
     throw error;
   }
 
-  await ForumModel.update(forum._id, {
+  await ForumModel.updateScoped(req.tenant._id, forum._id, {
     postsCount: Number(forum.postsCount || 0) + 1,
     lastActivityAt: new Date()
   });
@@ -3433,8 +3451,11 @@ router.post(
       };
     } else {
       const networkUrl = `${req.protocol}://${req.get("host")}/t/${req.tenant.slug}/cedar-chest`;
+      const emailBranding = buildTenantEmailBranding(req.tenant);
       const { subject, text, html } = buildNewsletterAnnouncementEmail({
         tenantName: req.tenant.name || "PondBridge Network",
+        brandPrimary: emailBranding.brandPrimary,
+        logoUrl: emailBranding.logoUrl,
         newsletterLabel,
         title,
         season,
@@ -3443,7 +3464,6 @@ router.post(
         pdfUrl: uploaded.objectUrl,
         coverImageUrl: uploadedCover.objectUrl
       });
-      const emailBranding = buildTenantEmailBranding(req.tenant);
       const resolvedReplyTo = isValidEmail(req.user?.email || "")
         ? normalizeEmail(req.user.email)
         : emailBranding.replyTo || undefined;

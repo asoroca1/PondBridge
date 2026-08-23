@@ -1,4 +1,7 @@
-import { extractVerificationRouteHint } from "../src/services/clerkWebhooks.js";
+import {
+  extractVerificationRouteHint,
+  extractVerificationSignUpHint
+} from "../src/services/clerkWebhooks.js";
 import { verificationCodeTemplate } from "../src/services/emailTemplates.js";
 
 describe("Clerk verification email helpers", () => {
@@ -20,6 +23,31 @@ describe("Clerk verification email helpers", () => {
       host: "app.pondbridgealumni.com",
       audience: "member"
     });
+  });
+
+  test("extracts authoritative tenant context from Clerk member signup metadata", () => {
+    expect(
+      extractVerificationSignUpHint({
+        tenantSlug: "cedar",
+        signupAudience: "member"
+      })
+    ).toEqual({ tenantSlug: "cedar", audience: "member" });
+
+    expect(
+      extractVerificationSignUpHint({
+        tenantSlug: "pine-ridge",
+        signupAudience: "member"
+      })
+    ).toEqual({ tenantSlug: "pine-ridge", audience: "member" });
+  });
+
+  test("keeps director signup explicitly PondBridge-scoped", () => {
+    expect(
+      extractVerificationSignUpHint({
+        tenantSlug: "cedar",
+        signupAudience: "director"
+      })
+    ).toEqual({ tenantSlug: "cedar", audience: "director" });
   });
 
   test("renders director verification copy with PondBridge onboarding language", () => {

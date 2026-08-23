@@ -147,7 +147,7 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.94);
   color: var(--brand-primary);
-  box-shadow: 0 8px 22px rgba(24, 60, 96, 0.13);
+  box-shadow: 0 8px 22px rgba(55, 55, 55, 0.13);
   cursor: pointer;
 }
 
@@ -160,11 +160,11 @@
   padding: 14px 16px;
   border-radius: 16px;
   outline: none;
-  box-shadow: 0 5px 18px rgba(29, 58, 91, 0.06);
+  box-shadow: 0 5px 18px rgba(54, 54, 54, 0.06);
 }
 
 .agent-message:focus-visible {
-  box-shadow: 0 0 0 3px rgba(31, 111, 168, 0.2);
+  box-shadow: 0 0 0 3px rgba(98, 98, 98, 0.2);
 }
 
 .agent-message-assistant {
@@ -251,7 +251,7 @@
   background: #ffffff;
   color: var(--brand-primary-strong);
   text-decoration: none;
-  box-shadow: 0 4px 14px rgba(20, 48, 75, 0.045);
+  box-shadow: 0 4px 14px rgba(44, 44, 44, 0.045);
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease,
@@ -260,7 +260,7 @@
 
 .agent-profile-result:hover {
   border-color: color-mix(in srgb, var(--brand-primary, var(--brand-primary)) 42%, var(--neutral-200));
-  box-shadow: 0 8px 22px rgba(20, 48, 75, 0.09);
+  box-shadow: 0 8px 22px rgba(44, 44, 44, 0.09);
   transform: translateY(-1px);
 }
 
@@ -449,7 +449,7 @@
   border: 1px solid color-mix(in srgb, var(--brand-primary, var(--brand-primary)) 14%, var(--neutral-200));
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 22px 60px rgba(20, 48, 75, 0.1);
+  box-shadow: 0 22px 60px rgba(44, 44, 44, 0.1);
 }
 
 .agent-workspace-chat .agent-workspace-header {
@@ -566,7 +566,7 @@
   border: 1px solid var(--neutral-300);
   border-radius: 20px;
   background: #ffffff;
-  box-shadow: 0 12px 32px rgba(24, 60, 96, 0.1);
+  box-shadow: 0 12px 32px rgba(55, 55, 55, 0.1);
 }
 
 .agent-workspace-chat .agent-composer-label {

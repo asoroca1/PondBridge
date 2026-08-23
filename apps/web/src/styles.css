@@ -30,15 +30,15 @@ html{
   place-items:center;
   padding:32px 18px;
   background:
-    radial-gradient(circle at 12% 8%, rgba(26,96,166,.16), transparent 34%),
+    radial-gradient(circle at 12% 8%, rgba(86, 86, 86,.16), transparent 34%),
     linear-gradient(145deg, #f7f9fc 0%, var(--neutral-100) 100%);
 }
 
 .email-preferences-card{
   width:min(100%, 560px);
   padding:clamp(24px, 5vw, 42px);
-  border:1px solid rgba(26,66,108,.14);
-  box-shadow:0 24px 70px rgba(18,48,79,.14);
+  border:1px solid rgba(61, 61, 61,.14);
+  box-shadow:0 24px 70px rgba(44, 44, 44,.14);
 }
 
 .email-preferences-brand{
@@ -182,7 +182,7 @@ body{
   border-radius: 10px;
   background: #ffffff;
   color: var(--brand-primary);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 10px 28px rgba(23, 23, 23, 0.22);
   font-weight: 800;
   opacity: 0;
   pointer-events: none;
@@ -227,7 +227,7 @@ body{
   border: 1px solid var(--neutral-200);
   border-radius: 14px;
   background: #fff;
-  box-shadow: 0 10px 24px rgba(13, 34, 66, 0.08);
+  box-shadow: 0 10px 24px rgba(32, 32, 32, 0.08);
   padding: clamp(16px, 2vw, 26px);
   display: grid;
   gap: 10px;
@@ -281,7 +281,7 @@ body{
   padding: 14px clamp(20px, 5vw, 72px);
   border-bottom: 1px solid color-mix(in srgb, var(--brand-primary) 16%, var(--neutral-200));
   background: color-mix(in srgb, var(--card, #fff) 94%, transparent);
-  box-shadow: 0 8px 28px rgba(15, 35, 63, .05);
+  box-shadow: 0 8px 28px rgba(33, 33, 33, .05);
 }
 
 .app-transition-brand img,
@@ -365,7 +365,7 @@ body{
   min-height: clamp(150px, 22vw, 240px);
   border: 1px solid color-mix(in srgb, var(--brand-primary) 10%, var(--neutral-200));
   border-radius: 18px;
-  box-shadow: 0 12px 30px rgba(15, 35, 63, .045);
+  box-shadow: 0 12px 30px rgba(33, 33, 33, .045);
 }
 
 @keyframes appTransitionShimmer{
@@ -410,8 +410,8 @@ body{
   gap: 22px;
   padding: 28px 22px 22px;
   border-radius: 24px;
-  border: 1px solid rgba(188, 203, 224, 0.9);
-  box-shadow: 0 22px 44px rgba(18, 44, 86, 0.08);
+  border: 1px solid rgba(201, 201, 201, 0.9);
+  box-shadow: 0 22px 44px rgba(42, 42, 42, 0.08);
 }
 
 .mobile-camp-code-head{
@@ -478,7 +478,7 @@ body{
 .mobile-camp-code-privacy{
   margin-top:18px;
   padding-top:16px;
-  border-top:1px solid rgba(135,157,184,.24);
+  border-top:1px solid rgba(154, 154, 154,.24);
   text-align:center;
 }
 
@@ -1289,7 +1289,7 @@ body{
   border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, var(--neutral-200));
   border-radius: var(--radius-xl);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(251, 253, 255, 0.92));
-  box-shadow: 0 18px 42px rgba(13, 34, 66, 0.14);
+  box-shadow: 0 18px 42px rgba(32, 32, 32, 0.14);
   backdrop-filter: blur(2px);
   padding: clamp(24px, 3.6vw, 36px);
 }
@@ -1319,9 +1319,14 @@ body{
 }
 
 .auth-brand-mark img {
+  /* A camp logo is whatever shape the camp gives us — often portrait, with a
+     wordmark under the symbol. `cover` cropped it; fit the whole mark inside
+     the tile instead, with a little breathing room. */
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  padding: 5px;
+  box-sizing: border-box;
 }
 
 .auth-brand-copy {
@@ -1349,9 +1354,9 @@ body{
   width: 100%;
   border-radius: 24px;
   padding: 28px 22px 22px;
-  border: 1px solid rgba(188, 203, 224, 0.9);
+  border: 1px solid rgba(201, 201, 201, 0.9);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(251, 253, 255, 0.95));
-  box-shadow: 0 22px 44px rgba(18, 44, 86, 0.08);
+  box-shadow: 0 22px 44px rgba(42, 42, 42, 0.08);
   backdrop-filter: blur(4px);
 }
 
@@ -1849,7 +1854,7 @@ body{
     border:1px solid var(--neutral-200);
     border-radius:14px;
     background:var(--neutral-50);
-    box-shadow:0 6px 14px rgba(18, 42, 66, 0.04);
+    box-shadow:0 6px 14px rgba(39, 39, 39, 0.04);
   }
 
 .wizard1--create .wizard1-stepper{
@@ -1916,7 +1921,7 @@ body{
 .wizard1-step-sub { color:var(--neutral-500); font-weight:600; }
 
 /* Card & grid */
-.wizard1-card { background:#fff; border:1px solid var(--neutral-200); border-radius:14px; padding:1.1rem; box-shadow:0 8px 20px rgba(15, 36, 58, 0.04); }
+.wizard1-card { background:#fff; border:1px solid var(--neutral-200); border-radius:14px; padding:1.1rem; box-shadow:0 8px 20px rgba(33, 33, 33, 0.04); }
 .wizard1-h2 { font:800 1.35rem/1.2 "Inter Variable",Inter,sans-serif; color:var(--brand-primary); margin:0 0 .35rem; }
 .wizard1-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); }
 .wizard1-gap { gap:.85rem; }
@@ -2019,7 +2024,7 @@ body{
   left:0;
   width: min(720px, 100%);   /* same width as input, can grow up to 720px */
   background:#fff; border:1px solid var(--neutral-300); border-radius:8px;
-  box-shadow: 0 8px 24px rgba(16,24,40,.12);
+  box-shadow: 0 8px 24px rgba(23, 23, 23,.12);
   z-index: 20;
   padding:8px;
 
@@ -2213,7 +2218,7 @@ body{
   position:fixed;
   inset:0;
   z-index:80;
-  background:rgba(15, 23, 42, 0.5);
+  background:rgba(23, 23, 23, 0.5);
   display:flex;
   align-items:center;
   justify-content:center;
@@ -2225,7 +2230,7 @@ body{
   overflow:auto;
   background:#fff;
   border-radius:14px;
-  box-shadow:0 16px 40px rgba(2, 6, 23, 0.22);
+  box-shadow:0 16px 40px rgba(6, 6, 6, 0.22);
   padding:16px;
 }
 .wizard1-review-modal h3{
@@ -2685,7 +2690,6 @@ img[draggable="false"] { -webkit-user-drag: none; }
 
 /* ========== NAVBAR2 (stable, right-locked, scalable search) ========== */
 :root{
-  --cedar-navy: var(--brand-primary);
 
   /* Neutral ramp, overwritten at runtime by TenantContext in the tenant's own
      brand hue. These defaults only cover the first paint, before the theme
@@ -2748,7 +2752,7 @@ html.is-native-app textarea{
   border-radius:14px;
   color:#fff;
   background:var(--neutral-800);
-  box-shadow:0 16px 38px rgba(10,24,43,.28);
+  box-shadow:0 16px 38px rgba(22, 22, 22,.28);
   font-size:.82rem;
   line-height:1.35;
 }
@@ -2772,7 +2776,7 @@ html.is-native-app textarea{
   padding: 0 var(--nav-pad-x);
   position: fixed; inset: 0 0 auto 0;
   z-index: 1000;
-  background: var(--cedar-navy); color:var(--brand-on-primary);
+  background: var(--brand-primary); color:var(--brand-on-primary);
 
   display:flex; align-items:center; gap:12px;
   flex-wrap: nowrap !important;     /* never wrap */
@@ -2787,9 +2791,9 @@ html.is-native-app textarea{
 }
 
 .navbar2.is-native-member-route{
-  background: color-mix(in srgb, var(--cedar-navy) 94%, rgba(255,255,255,0.08));
+  background: color-mix(in srgb, var(--brand-primary) 94%, rgba(255,255,255,0.08));
   backdrop-filter: blur(18px);
-  box-shadow: 0 12px 24px rgba(7, 20, 42, 0.18);
+  box-shadow: 0 12px 24px rgba(19, 19, 19, 0.18);
 }
 
 /* Clusters */
@@ -2861,7 +2865,7 @@ html.is-native-app textarea{
   margin-right:14px;
   border-width:2px;
   font-size:1.25rem;
-  box-shadow:0 2px 8px rgba(2,33,71,.12);
+  box-shadow:0 2px 8px rgba(29, 29, 29,.12);
 }
 /* Camp names vary a lot in length, so the title scales down to fit rather than
    being clipped at a fixed width. The right-hand cluster claims its space
@@ -3033,7 +3037,7 @@ html.is-native-app textarea{
 /* Dropdowns – render OVER the page content */
 .navbar2-dropdown{
   --menu-border:var(--neutral-200);
-  --menu-shadow:0 22px 48px rgba(2,33,71,.24);
+  --menu-shadow:0 22px 48px rgba(29, 29, 29,.24);
   position:absolute;
   top:calc(100% + 14px);
   right:-8px;
@@ -3071,7 +3075,7 @@ html.is-native-app textarea{
   border-radius: 10px;
   padding-bottom: 0;
 }
-.navbar2-dropdown .dropdown-section{ padding:6px 0; border-top:1px solid rgba(2,33,71,.09); }
+.navbar2-dropdown .dropdown-section{ padding:6px 0; border-top:1px solid rgba(29, 29, 29,.09); }
 .navbar2-dropdown .dropdown-section:first-child{ border-top:0; padding-top:2px; }
 .navbar2-dropdown .dropdown-section:last-child{ padding-bottom: 2px; }
 .navbar2-dropdown .dropdown-section-title{
@@ -3153,7 +3157,7 @@ html.is-native-app textarea{
   font-size:.92rem;
   border-width:2px;
   border-color: rgba(255,255,255,.86);
-  box-shadow: 0 0 0 1px rgba(2,33,71,.18);
+  box-shadow: 0 0 0 1px rgba(29, 29, 29,.18);
   line-height:1;
 }
 .navbar2-profile-initials .pb-initials-mark{
@@ -3178,7 +3182,7 @@ html.is-native-app textarea{
     calc(10px + env(safe-area-inset-bottom, 0px))
     calc(14px + env(safe-area-inset-left, 0px));
   background:
-    linear-gradient(180deg, rgba(230, 238, 248, 0) 0%, rgba(230, 238, 248, 0.82) 28%, rgba(230, 238, 248, 0.98) 100%);
+    linear-gradient(180deg, rgba(237, 237, 237, 0) 0%, rgba(237, 237, 237, 0.82) 28%, rgba(237, 237, 237, 0.98) 100%);
   pointer-events: none;
 }
 
@@ -3190,9 +3194,9 @@ html.is-native-app textarea{
   gap: 8px;
   padding: 8px;
   border-radius: 24px;
-  border: 1px solid rgba(188, 203, 224, 0.92);
+  border: 1px solid rgba(201, 201, 201, 0.92);
   background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 20px 44px rgba(18, 44, 86, 0.14);
+  box-shadow: 0 20px 44px rgba(42, 42, 42, 0.14);
   backdrop-filter: blur(20px);
   pointer-events: auto;
 }
@@ -3227,8 +3231,8 @@ html.is-native-app textarea{
 
 .native-member-tabbar-item.is-active{
   color: var(--brand-primary);
-  background: linear-gradient(180deg, rgba(0, 43, 92, 0.1), rgba(0, 43, 92, 0.04));
-  box-shadow: inset 0 0 0 1px rgba(0, 43, 92, 0.08);
+  background: linear-gradient(180deg, rgba(37, 37, 37, 0.1), rgba(37, 37, 37, 0.04));
+  box-shadow: inset 0 0 0 1px rgba(37, 37, 37, 0.08);
 }
 
 .native-member-tabbar-icon-wrap{
@@ -3818,7 +3822,7 @@ html.is-native-app textarea{
 
 /* Primary */
 .btn-cedar{
-  background: var(--cedar-navy);
+  background: var(--brand-primary);
   color: var(--brand-on-primary);
   box-shadow: 0 3px 10px var(--brand-primary-shadow);
 }
@@ -3842,13 +3846,13 @@ html.is-native-app textarea{
   background: #fff;
   color: var(--brand-primary);
   border: 1.5px solid var(--border);
-  box-shadow: 0 1px 2px rgba(16,24,40,.06);
+  box-shadow: 0 1px 2px rgba(23, 23, 23,.06);
 }
 .btn-ghost:hover{
   background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
   border-color: color-mix(in srgb, var(--brand-primary) 24%, var(--neutral-300));
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16,24,40,.08);
+  box-shadow: 0 6px 16px rgba(23, 23, 23,.08);
 }
 .btn-ghost:active{
   transform: translateY(0);
@@ -3858,7 +3862,7 @@ html.is-native-app textarea{
 .btn-ghost:focus-visible{
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--brand-primary) 26%, #ffffff),
-    0 1px 2px rgba(16,24,40,.06);
+    0 1px 2px rgba(23, 23, 23,.06);
 }
 
 .btn-cedar:disabled,
@@ -3881,7 +3885,7 @@ html.is-native-app textarea{
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(2,33,71,0.45);   /* navy-ish scrim */
+  background: rgba(29, 29, 29,0.45);   /* navy-ish scrim */
   backdrop-filter: blur(2px);
   z-index: 3000;                    /* higher than Navbar (1000) & background */
 }
@@ -4013,13 +4017,13 @@ html.is-native-app textarea{
   background: #fff;
   color: var(--brand-primary);
   border: 1.5px solid var(--card-border, var(--brand-secondary));
-  box-shadow: 0 1px 2px rgba(16,24,40,.06);
+  box-shadow: 0 1px 2px rgba(23, 23, 23,.06);
 }
 
 .pb-cedar-page .link-button.secondary:hover{
   background: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
   border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--card-border, var(--neutral-300)));
-  box-shadow: 0 6px 16px rgba(16,24,40,.08);
+  box-shadow: 0 6px 16px rgba(23, 23, 23,.08);
 }
 
 .pb-cedar-page .form-grid{
@@ -4225,7 +4229,7 @@ html.is-native-app textarea{
   border: 1px solid var(--neutral-200);
   border-radius: 14px;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(16,24,40,.05);
+  box-shadow: 0 1px 3px rgba(23, 23, 23,.05);
   padding: 12px;
 }
 
@@ -4425,7 +4429,7 @@ html.is-native-app textarea{
   z-index: 260;
   display: flex;
   justify-content: flex-end;
-  background: rgba(2, 16, 34, .42);
+  background: rgba(14, 14, 14, .42);
 }
 
 .pb-admin-ui-slideover{
@@ -4433,7 +4437,7 @@ html.is-native-app textarea{
   height: 100%;
   background: #fff;
   border-left: 1px solid var(--neutral-200);
-  box-shadow: -12px 0 34px rgba(15,23,42,.2);
+  box-shadow: -12px 0 34px rgba(23, 23, 23,.2);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
@@ -4493,7 +4497,7 @@ html.is-native-app textarea{
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(2, 16, 34, .42);
+  background: rgba(14, 14, 14, .42);
 }
 
 .pb-admin-ui-modal{
@@ -4501,7 +4505,7 @@ html.is-native-app textarea{
   border: 1px solid var(--neutral-200);
   border-radius: 14px;
   background: #fff;
-  box-shadow: 0 12px 34px rgba(15,23,42,.2);
+  box-shadow: 0 12px 34px rgba(23, 23, 23,.2);
   padding: 16px;
 }
 
@@ -4561,7 +4565,7 @@ html.is-native-app textarea{
   display:grid;
   gap:6px;
   padding-bottom:12px;
-  border-bottom:1px solid rgba(15, 23, 42, 0.08);
+  border-bottom:1px solid rgba(23, 23, 23, 0.08);
 }
 
 .ev-create-modal-form{
@@ -4654,7 +4658,7 @@ html.is-native-app textarea{
   border: 1px solid var(--neutral-200);
   border-radius: 10px;
   background: #fff;
-  box-shadow: 0 10px 24px rgba(15,23,42,.15);
+  box-shadow: 0 10px 24px rgba(23, 23, 23,.15);
   padding: 10px;
   display: flex;
   align-items: flex-start;
@@ -4734,7 +4738,7 @@ html.is-native-app textarea{
   border-right: 1px solid var(--director-admin-soft-border);
   border-radius: 0;
   background: #fff;
-  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.035);
+  box-shadow: 10px 0 30px rgba(23, 23, 23, 0.035);
   backdrop-filter: blur(1px);
   padding: 16px 12px 20px;
   overflow-y: auto;
@@ -5114,7 +5118,7 @@ html.is-native-app textarea{
   border-color:#fff;
   color:var(--brand-primary);
   background:#fff;
-  box-shadow:0 10px 24px rgba(4,18,38,.16);
+  box-shadow:0 10px 24px rgba(16, 16, 16,.16);
 }
 
 .pb-cedar-page .director-command-actions a.is-primary small{
@@ -5228,7 +5232,7 @@ html.is-native-app textarea{
 .pb-cedar-page .director-admin-action-queue {
   padding: clamp(16px, 2.2vw, 22px);
   border-color: color-mix(in srgb, var(--brand-primary) 18%, var(--neutral-200));
-  box-shadow: 0 10px 30px rgba(15, 23, 42, .045);
+  box-shadow: 0 10px 30px rgba(23, 23, 23, .045);
 }
 
 .pb-cedar-page .director-admin-action-queue-head {
@@ -5353,7 +5357,7 @@ html.is-native-app textarea{
   display: grid;
   align-content: start;
   gap: 10px;
-  box-shadow: 0 8px 24px rgba(21, 55, 93, 0.055);
+  box-shadow: 0 8px 24px rgba(51, 51, 51, 0.055);
   transition:
     transform var(--ui-fast) var(--ui-ease),
     border-color var(--ui-fast) var(--ui-ease),
@@ -5374,7 +5378,7 @@ html.is-native-app textarea{
 .pb-cedar-page .director-admin-stat-card:hover{
   transform:translateY(-2px);
   border-color:color-mix(in srgb, var(--brand-primary) 32%, var(--neutral-200));
-  box-shadow:0 14px 32px rgba(21,55,93,.09);
+  box-shadow:0 14px 32px rgba(51, 51, 51,.09);
 }
 
 .pb-cedar-page .director-admin-stat-card-top{
@@ -5529,7 +5533,7 @@ html.is-native-app textarea{
   font-size:.74rem;
   font-weight:800;
   text-decoration:none;
-  box-shadow:0 5px 14px rgba(15,23,42,.04);
+  box-shadow:0 5px 14px rgba(23, 23, 23,.04);
 }
 
 .pb-cedar-page .director-admin-section-head > a:hover{
@@ -5585,7 +5589,7 @@ html.is-native-app textarea{
   min-height: 0;
   height: auto;
   border-color:var(--director-admin-surface-border);
-  box-shadow:0 10px 28px rgba(21,55,93,.055);
+  box-shadow:0 10px 28px rgba(51, 51, 51,.055);
 }
 
 .pb-cedar-page .director-admin-chart-head{
@@ -5816,7 +5820,7 @@ html.is-native-app textarea{
   flex-direction: column;
   min-height: 224px;
   border-color:var(--director-admin-surface-border);
-  box-shadow:0 9px 24px rgba(21,55,93,.045);
+  box-shadow:0 9px 24px rgba(51, 51, 51,.045);
 }
 
 .pb-cedar-page .director-admin-breakdown-head{
@@ -6027,7 +6031,7 @@ html.is-native-app textarea{
   border: 1px solid var(--neutral-200);
   border-radius: 10px;
   background: #fff;
-  box-shadow: 0 10px 24px rgba(15,23,42,.15);
+  box-shadow: 0 10px 24px rgba(23, 23, 23,.15);
   display: grid;
   gap: 2px;
   padding: 6px;
@@ -6174,7 +6178,7 @@ html.is-native-app textarea{
   align-items: flex-start;
   overflow: auto;
   padding: calc(var(--nav-h, 68px) + env(safe-area-inset-top, 0px) + 12px) 16px 16px;
-  background: rgba(2, 16, 34, .42);
+  background: rgba(14, 14, 14, .42);
 }
 
 .pb-cedar-page .director-admin-modal{
@@ -6184,7 +6188,7 @@ html.is-native-app textarea{
   border: 1px solid var(--neutral-200);
   border-radius: 14px;
   background: #fff;
-  box-shadow: 0 12px 34px rgba(15,23,42,.2);
+  box-shadow: 0 12px 34px rgba(23, 23, 23,.2);
   padding: 16px;
 }
 
@@ -6757,7 +6761,7 @@ html.is-native-app textarea{
   background:
     radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 38%),
     linear-gradient(145deg, color-mix(in srgb, var(--surface) 96%, var(--brand-primary) 4%), var(--surface));
-  box-shadow:0 16px 40px rgba(17,49,80,.08);
+  box-shadow:0 16px 40px rgba(44, 44, 44,.08);
 }
 
 .pb-cedar-page .director-email-agent-head{
@@ -7451,7 +7455,7 @@ html.is-native-app textarea{
   border-radius:18px;
   overflow:hidden;
   background:#fff;
-  box-shadow:0 1px 2px rgba(19,45,68,.035);
+  box-shadow:0 1px 2px rgba(41, 41, 41,.035);
 }
 
 .pb-cedar-page .director-email-compose-step-head{
@@ -7989,7 +7993,7 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-email-compose-rail .director-admin-email-frame{
   border-radius:13px;
-  box-shadow:0 8px 24px rgba(20,45,68,.08);
+  box-shadow:0 8px 24px rgba(41, 41, 41,.08);
 }
 
 .pb-cedar-page .director-email-compose-rail .director-admin-email-frame-body{
@@ -8009,7 +8013,7 @@ html.is-native-app textarea{
   display:grid;
   gap:14px;
   background:#fff;
-  box-shadow:0 10px 28px rgba(20,45,68,.07);
+  box-shadow:0 10px 28px rgba(41, 41, 41,.07);
 }
 
 .pb-cedar-page .director-email-review-head > strong{
@@ -8958,7 +8962,7 @@ html.is-native-app textarea{
   height: 18px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(16, 39, 63, .28);
+  box-shadow: 0 1px 3px rgba(36, 36, 36, .28);
   transition: transform .16s ease;
 }
 
@@ -9172,7 +9176,7 @@ html.is-native-app textarea{
 .pb-cedar-page .director-admin-scope .director-upload-control:hover,
 .pb-admin-ui-scope .director-upload-control:hover{
   border-color: var(--director-admin-surface-border-strong, var(--neutral-400));
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--brand-primary) 20%, rgba(18, 56, 96, 0.08));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--brand-primary) 20%, rgba(51, 51, 51, 0.08));
 }
 
 .pb-cedar-page .director-admin-scope .director-upload-button,
@@ -9256,7 +9260,7 @@ html.is-native-app textarea{
   width: 100%;
   height: 22px;
   border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--brand-primary) 24%, rgba(8, 21, 46, 0.16));
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 24%, rgba(20, 20, 20, 0.16));
   display: block;
 }
 
@@ -9429,7 +9433,7 @@ html.is-native-app textarea{
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--brand-primary) 10%, #ffffff), transparent 38%),
     linear-gradient(135deg, #ffffff 0%, color-mix(in srgb, var(--brand-primary) 4%, var(--neutral-50)) 100%);
-  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 18px 34px rgba(23, 23, 23, 0.06);
 }
 
 .pb-cedar-page .director-admin-billing-page-header::after{
@@ -9756,7 +9760,7 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-billing-tier-card.is-current{
   border-color: color-mix(in srgb, var(--brand-primary) 45%, var(--neutral-200));
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--brand-primary) 16%, rgba(15,23,42,.06));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--brand-primary) 16%, rgba(23, 23, 23,.06));
 }
 
 .pb-cedar-page .director-admin-billing-tier-card.is-selected{
@@ -10387,7 +10391,7 @@ html.is-native-app textarea{
     display:grid;
     gap:13px;
     background:#fff;
-    box-shadow:0 5px 16px rgba(15, 42, 76, .04);
+    box-shadow:0 5px 16px rgba(39, 39, 39, .04);
   }
 
   .pb-cedar-page .director-admin-member-mobile-card > header{
@@ -10581,7 +10585,7 @@ html.is-native-app textarea{
     border-radius: 999px;
     background: #fff;
     white-space: nowrap;
-    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 6px 16px rgba(23, 23, 23, 0.06);
   }
 
   .pb-cedar-page .director-admin-sidebar-subnav{
@@ -11424,8 +11428,8 @@ html.is-native-app textarea{
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 86% 12%, rgba(29, 78, 216, 0.22), transparent 44%),
-    radial-gradient(circle at 8% 88%, rgba(56, 130, 246, 0.14), transparent 38%);
+    radial-gradient(circle at 86% 12%, rgba(78, 78, 78, 0.22), transparent 44%),
+    radial-gradient(circle at 8% 88%, rgba(123, 123, 123, 0.14), transparent 38%);
 }
 
 .platform-landing-content {
@@ -11443,7 +11447,7 @@ html.is-native-app textarea{
   padding: clamp(28px, 5vw, 52px) clamp(24px, 5vw, 48px);
   display: grid;
   gap: 28px;
-  box-shadow: 0 4px 32px rgba(17, 47, 85, 0.09), 0 1px 4px rgba(17, 47, 85, 0.06);
+  box-shadow: 0 4px 32px rgba(43, 43, 43, 0.09), 0 1px 4px rgba(43, 43, 43, 0.06);
 }
 
 .platform-landing-header {
@@ -11584,8 +11588,8 @@ html.is-native-app textarea{
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 86% 12%, rgba(29, 78, 216, 0.22), transparent 44%),
-    radial-gradient(circle at 12% 84%, rgba(2, 43, 92, 0.18), transparent 42%);
+    radial-gradient(circle at 86% 12%, rgba(78, 78, 78, 0.22), transparent 44%),
+    radial-gradient(circle at 12% 84%, rgba(38, 38, 38, 0.18), transparent 42%);
 }
 
 .super-login-content {
@@ -11702,7 +11706,7 @@ html.is-native-app textarea{
 
 .super-login-card .cl-formFieldInput:focus {
   border-color: var(--brand-primary-hover);
-  box-shadow: 0 0 0 3px rgba(19, 72, 129, 0.12);
+  box-shadow: 0 0 0 3px rgba(65, 65, 65, 0.12);
 }
 
 .super-login-card .cl-formButtonPrimary {
@@ -11852,7 +11856,7 @@ html.is-native-app textarea{
   border: 1px solid var(--neutral-200);
   border-radius: 12px;
   background: #fff;
-  box-shadow: 0 20px 45px rgba(16, 24, 40, 0.22);
+  box-shadow: 0 20px 45px rgba(23, 23, 23, 0.22);
   overflow: hidden;
   z-index: 1400;
 }
@@ -11976,7 +11980,7 @@ html.is-native-app textarea{
 }
 
 .super-role-badge.role-support-admin {
-  background: rgba(77, 174, 255, 0.2);
+  background: rgba(159, 159, 159, 0.2);
 }
 
 .super-role-badge.role-finance-admin {
@@ -12123,7 +12127,7 @@ html.is-native-app textarea{
   border-radius: 6px;
   border: 1px solid var(--neutral-200);
   background: #ffffff;
-  box-shadow: 0 16px 40px rgba(15, 36, 63, 0.12);
+  box-shadow: 0 16px 40px rgba(33, 33, 33, 0.12);
   padding: 24px 26px;
 }
 
@@ -12150,7 +12154,7 @@ html.is-native-app textarea{
 .super-main .pb-card {
   border-radius: 6px;
   border: 1px solid var(--neutral-200);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 3px rgba(23, 23, 23, 0.06);
   padding: clamp(16px, 1.6vw, 24px);
 }
 
@@ -12329,7 +12333,7 @@ html.is-native-app textarea{
   background:
     radial-gradient(circle at 89% 5%, rgba(119, 220, 205, 0.3), transparent 35%),
     linear-gradient(135deg, var(--brand-primary-strong) 0%, var(--brand-primary-strong) 58%, #16736e 100%);
-  box-shadow: 0 16px 35px rgba(21, 61, 87, 0.16);
+  box-shadow: 0 16px 35px rgba(54, 54, 54, 0.16);
 }
 
 .super-status-hero.needs-attention {
@@ -12401,7 +12405,7 @@ html.is-native-app textarea{
   border: 1px solid var(--neutral-200);
   border-radius: 15px;
   background: #ffffff;
-  box-shadow: 0 5px 16px rgba(24, 54, 79, 0.045);
+  box-shadow: 0 5px 16px rgba(49, 49, 49, 0.045);
 }
 
 .super-status-metric.tone-success {
@@ -12618,7 +12622,7 @@ html.is-native-app textarea{
 .super-status-area-card:hover {
   transform: translateY(-2px);
   border-color: var(--neutral-400);
-  box-shadow: 0 10px 24px rgba(22, 62, 91, 0.09);
+  box-shadow: 0 10px 24px rgba(56, 56, 56, 0.09);
 }
 
 .super-status-area-card > span {
@@ -13420,7 +13424,7 @@ button.super-stat-card {
 .super-sidepanel-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.42);
+  background: rgba(23, 23, 23, 0.42);
   display: flex;
   justify-content: flex-end;
   z-index: 1600;
@@ -13432,7 +13436,7 @@ button.super-stat-card {
   overflow-y: auto;
   background: #fff;
   padding: 16px;
-  box-shadow: -12px 0 30px rgba(15, 23, 42, 0.25);
+  box-shadow: -12px 0 30px rgba(23, 23, 23, 0.25);
 }
 
 .super-sidepanel-head {
@@ -14166,7 +14170,7 @@ button.super-stat-card {
   border:2px solid rgba(255,255,255,0.96);
   background:var(--pb-badge-bg);
   color:var(--pb-badge-text);
-  box-shadow:0 4px 14px rgba(15,23,42,0.18);
+  box-shadow:0 4px 14px rgba(23, 23, 23,0.18);
   font-weight:800;
   letter-spacing:-0.01em;
   line-height:1;
@@ -14269,7 +14273,7 @@ button.super-stat-card {
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--events-brand, var(--brand-primary-strong)) 65%, white) 0%, transparent 36%),
     linear-gradient(135deg, color-mix(in srgb, var(--events-brand, var(--brand-primary-strong)) 92%, var(--neutral-900)) 0%, var(--neutral-900) 100%);
-  box-shadow:0 24px 60px rgba(7, 17, 28, 0.24);
+  box-shadow:0 24px 60px rgba(16, 16, 16, 0.24);
 }
 
 .events-hero{
@@ -14292,13 +14296,13 @@ button.super-stat-card {
   font-weight:700;
   letter-spacing:0.18em;
   text-transform:uppercase;
-  color:rgba(232, 244, 251, 0.78);
+  color:rgba(242, 242, 242, 0.78);
 }
 
 .events-hero-copy p:last-child,
 .event-detail-hero-copy p{
   max-width:58ch;
-  color:rgba(236, 246, 253, 0.84);
+  color:rgba(244, 244, 244, 0.84);
 }
 
 .events-hero-panel{
@@ -14334,7 +14338,7 @@ button.super-stat-card {
   display:grid;
   gap:12px;
   padding:24px 26px;
-  border:1px solid rgba(13, 56, 93, 0.08);
+  border:1px solid rgba(50, 50, 50, 0.08);
   background:linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,249,252,0.98));
 }
 
@@ -14355,7 +14359,7 @@ button.super-stat-card {
 
 .events-overview-card-accent{
   background:
-    radial-gradient(circle at top right, rgba(13, 56, 93, 0.14), transparent 36%),
+    radial-gradient(circle at top right, rgba(50, 50, 50, 0.14), transparent 36%),
     linear-gradient(180deg, rgba(243,248,252,0.98), rgba(237,244,250,0.98));
 }
 
@@ -14380,8 +14384,8 @@ button.super-stat-card {
   border-radius:28px;
   background:
     linear-gradient(145deg, rgba(255,255,255,0.95), rgba(244,248,252,0.96));
-  border:1px solid rgba(13, 56, 93, 0.08);
-  box-shadow:0 18px 42px rgba(12, 26, 43, 0.1);
+  border:1px solid rgba(50, 50, 50, 0.08);
+  box-shadow:0 18px 42px rgba(24, 24, 24, 0.1);
 }
 
 .events-feature-copy h2{
@@ -14422,8 +14426,8 @@ button.super-stat-card {
   min-height:100%;
   border-radius:26px;
   background:#fff;
-  border:1px solid rgba(13, 56, 93, 0.08);
-  box-shadow:0 16px 38px rgba(12, 26, 43, 0.08);
+  border:1px solid rgba(50, 50, 50, 0.08);
+  box-shadow:0 16px 38px rgba(24, 24, 24, 0.08);
 }
 
 .events-card-media{
@@ -14434,7 +14438,7 @@ button.super-stat-card {
   gap:10px;
   padding:18px;
   background:
-    linear-gradient(160deg, rgba(15, 39, 64, 0.9), rgba(15, 39, 64, 0.62)),
+    linear-gradient(160deg, rgba(36, 36, 36, 0.9), rgba(36, 36, 36, 0.62)),
     linear-gradient(135deg, var(--brand-primary), var(--brand-primary-strong));
   background-size:cover;
   background-position:center;
@@ -14530,7 +14534,7 @@ button.super-stat-card {
   min-height:300px;
   border-radius:24px;
   background:
-    linear-gradient(160deg, rgba(14, 34, 55, 0.92), rgba(14, 34, 55, 0.5)),
+    linear-gradient(160deg, rgba(31, 31, 31, 0.92), rgba(31, 31, 31, 0.5)),
     linear-gradient(135deg, var(--brand-primary), var(--brand-primary-strong));
   background-size:cover;
   background-position:center;
@@ -14638,7 +14642,7 @@ button.super-stat-card {
   gap:10px;
   padding:18px;
   border-radius:20px;
-  border:1px dashed rgba(13, 56, 93, 0.18);
+  border:1px dashed rgba(50, 50, 50, 0.18);
   background:linear-gradient(180deg, rgba(248,251,255,0.98), rgba(242,247,252,0.98));
 }
 
@@ -14652,7 +14656,7 @@ button.super-stat-card {
   text-align:left;
   padding:16px;
   border-radius:20px;
-  border:1px solid rgba(13, 56, 93, 0.08);
+  border:1px solid rgba(50, 50, 50, 0.08);
   background:#fbfdff;
   transition:transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
@@ -14660,8 +14664,8 @@ button.super-stat-card {
 .director-events-list-item:hover,
 .director-events-list-item.is-active{
   transform:translateY(-1px);
-  border-color:rgba(28, 91, 140, 0.26);
-  box-shadow:0 12px 28px rgba(12, 26, 43, 0.1);
+  border-color:rgba(81, 81, 81, 0.26);
+  box-shadow:0 12px 28px rgba(24, 24, 24, 0.1);
 }
 
 .director-events-list-item-top,
@@ -14732,7 +14736,7 @@ button.super-stat-card {
   display:grid;
   gap:5px;
   padding:16px;
-  border:1px solid rgba(13, 56, 93, 0.12);
+  border:1px solid rgba(50, 50, 50, 0.12);
   border-radius:18px;
   background:var(--neutral-50);
   color:var(--neutral-600);
@@ -14878,7 +14882,7 @@ button.super-stat-card {
   padding:12px 14px;
   border-radius:18px;
   background:var(--neutral-50);
-  border:1px solid rgba(13, 56, 93, 0.08);
+  border:1px solid rgba(50, 50, 50, 0.08);
   text-align:left;
 }
 
@@ -14896,7 +14900,7 @@ button.super-stat-card {
   display:grid;
   gap:10px;
   padding:12px;
-  border:1px solid rgba(13, 56, 93, 0.12);
+  border:1px solid rgba(50, 50, 50, 0.12);
   border-radius:16px;
   background:var(--neutral-50);
 }
@@ -14913,7 +14917,7 @@ button.super-stat-card {
   position:relative;
   overflow:hidden;
   border-radius:14px;
-  border:1px solid rgba(13, 56, 93, 0.12);
+  border:1px solid rgba(50, 50, 50, 0.12);
   background:var(--neutral-100);
   min-height:164px;
 }
@@ -15108,7 +15112,7 @@ button.super-stat-card {
 .ev-tab.is-active{
   background:#fff;
   color:var(--ev-navy);
-  box-shadow:0 1px 3px rgba(15,23,42,0.08);
+  box-shadow:0 1px 3px rgba(23, 23, 23,0.08);
 }
 
 .ev-tab-count{
@@ -15167,7 +15171,7 @@ button.super-stat-card {
 .ev-type-filter button.is-active{
   background:#fff;
   color:var(--ev-navy);
-  box-shadow:0 1px 3px rgba(15,23,42,0.08);
+  box-shadow:0 1px 3px rgba(23, 23, 23,0.08);
 }
 
 /* Undated events: a real label, not a date-shaped placeholder */
@@ -15216,7 +15220,7 @@ button.super-stat-card {
   border:1px solid var(--ev-border);
   border-radius:20px;
   overflow:hidden;
-  box-shadow:0 1px 2px rgba(15,23,42,0.04);
+  box-shadow:0 1px 2px rgba(23, 23, 23,0.04);
 }
 
 .ev-featured-media{
@@ -15242,7 +15246,7 @@ button.super-stat-card {
 
 .ev-featured-media.is-seminar{
   background:
-    radial-gradient(circle at 84% 18%, rgba(98, 196, 255, 0.3), transparent 30%),
+    radial-gradient(circle at 84% 18%, rgba(179, 179, 179, 0.3), transparent 30%),
     radial-gradient(circle at 16% 84%, rgba(255,255,255,0.12), transparent 34%),
     linear-gradient(145deg, color-mix(in srgb, var(--ev-navy) 94%, var(--neutral-900)) 0%, var(--brand-primary-strong) 100%);
 }
@@ -15268,7 +15272,7 @@ button.super-stat-card {
   border:1px solid rgba(255,255,255,0.24);
   border-radius:24px;
   background:rgba(255,255,255,0.1);
-  box-shadow:0 18px 42px rgba(3, 14, 30, 0.25);
+  box-shadow:0 18px 42px rgba(13, 13, 13, 0.25);
   backdrop-filter:blur(8px);
 }
 
@@ -15386,7 +15390,7 @@ button.super-stat-card {
 
 .ev-card-cover .ev-type-chip{
   border-color:rgba(255,255,255,0.58);
-  background:rgba(235, 246, 255, 0.94);
+  background:rgba(244, 244, 244, 0.94);
   backdrop-filter:blur(6px);
 }
 
@@ -15477,13 +15481,13 @@ button.super-stat-card {
   overflow:hidden;
   text-decoration:none;
   color:inherit;
-  box-shadow:0 1px 2px rgba(15,23,42,0.04);
+  box-shadow:0 1px 2px rgba(23, 23, 23,0.04);
   transition: border-color .15s ease, box-shadow .15s ease, transform .12s ease;
 }
 
 .ev-card:hover{
   border-color:var(--neutral-300);
-  box-shadow:0 10px 24px rgba(15,23,42,0.09);
+  box-shadow:0 10px 24px rgba(23, 23, 23,0.09);
   transform:translateY(-1px);
 }
 
@@ -15526,8 +15530,8 @@ button.super-stat-card {
 
 .ev-card-cover-fallback.is-seminar{
   background:
-    radial-gradient(circle at 75% 20%, rgba(115, 209, 255, 0.24), transparent 28%),
-    linear-gradient(145deg, transparent, rgba(12, 61, 97, 0.34));
+    radial-gradient(circle at 75% 20%, rgba(192, 192, 192, 0.24), transparent 28%),
+    linear-gradient(145deg, transparent, rgba(53, 53, 53, 0.34));
 }
 
 .ev-card-cover-fallback span{
@@ -15551,7 +15555,7 @@ button.super-stat-card {
   border-radius:12px;
   background:#ffffff;
   color:var(--ev-text);
-  box-shadow:0 4px 10px rgba(15,23,42,0.2);
+  box-shadow:0 4px 10px rgba(23, 23, 23,0.2);
   line-height:1;
 }
 
@@ -15657,7 +15661,7 @@ button.super-stat-card {
 .ev-row:hover{
   border-color:var(--neutral-300);
   background:#fbfdff;
-  box-shadow:0 4px 14px rgba(15,23,42,0.05);
+  box-shadow:0 4px 14px rgba(23, 23, 23,0.05);
 }
 
 .ev-row-date{
@@ -15740,7 +15744,7 @@ button.super-stat-card {
   background:var(--ev-card);
   border:1px solid var(--ev-border);
   border-radius:16px;
-  box-shadow:0 1px 2px rgba(15,23,42,0.04);
+  box-shadow:0 1px 2px rgba(23, 23, 23,0.04);
 }
 
 .ev-empty-icon{
@@ -15870,7 +15874,7 @@ button.super-stat-card {
     linear-gradient(135deg, color-mix(in srgb, var(--ev-navy, var(--brand-primary)) 92%, var(--neutral-900)) 0%, color-mix(in srgb, var(--ev-navy, var(--brand-primary)) 55%, var(--neutral-900)) 100%);
   background-size:cover;
   background-position:center;
-  box-shadow:0 14px 34px rgba(11, 25, 44, 0.18);
+  box-shadow:0 14px 34px rgba(23, 23, 23, 0.18);
 }
 
 .ev-detail-hero-inner{
@@ -15890,7 +15894,7 @@ button.super-stat-card {
   border-radius:14px;
   background:#ffffff;
   color:var(--ev-text);
-  box-shadow:0 6px 14px rgba(8,19,36,0.3);
+  box-shadow:0 6px 14px rgba(18, 18, 18,0.3);
   line-height:1;
 }
 
@@ -15921,7 +15925,7 @@ button.super-stat-card {
 
 .ev-detail-hero-summary{
   margin:0;
-  color:rgba(236, 246, 253, 0.88);
+  color:rgba(244, 244, 244, 0.88);
   max-width:64ch;
   line-height:1.5;
 }
@@ -15935,12 +15939,12 @@ button.super-stat-card {
 }
 
 .ev-detail-hero-meta .ev-meta-item{
-  color:rgba(236, 246, 253, 0.9);
+  color:rgba(244, 244, 244, 0.9);
   font-weight:500;
 }
 
 .ev-detail-hero-meta .ev-meta-item svg{
-  color:rgba(236, 246, 253, 0.65);
+  color:rgba(244, 244, 244, 0.65);
 }
 
 .ev-detail-hero .ev-status-chip{
@@ -15961,6 +15965,37 @@ button.super-stat-card {
   background:rgba(239, 68, 68, 0.22);
   border-color:rgba(252, 165, 165, 0.4);
   color:#fef2f2;
+}
+
+.ev-detail-hero-facts{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:4px;
+}
+
+.ev-hero-fact{
+  display:inline-flex;
+  align-items:baseline;
+  gap:6px;
+  padding:5px 11px;
+  border:1px solid rgba(255,255,255,0.22);
+  border-radius:999px;
+  background:rgba(255,255,255,0.08);
+}
+
+.ev-hero-fact > span{
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  color:rgba(242, 242, 242,0.72);
+}
+
+.ev-hero-fact > strong{
+  font-size:13px;
+  font-weight:700;
+  color:#ffffff;
 }
 
 /* "Not scheduled yet" notice */
@@ -16003,11 +16038,17 @@ button.super-stat-card {
   align-items:start;
 }
 
-/* When there is no write-up and no host card, the main column is a few
-   short facts. Stacking it keeps the page from reading as mostly background. */
+/* When there is no write-up and no host card, the main column is a few short
+   facts, which leaves a tall empty column beside three stacked side cards.
+   Flatten the side rail so every card is its own grid cell and the page fills
+   the same width as the hero above it, in even rows. */
 .ev-detail-grid.is-lean{
-  grid-template-columns:minmax(0, 1fr);
-  max-width:760px;
+  grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
+  align-items:start;
+}
+
+.ev-detail-grid.is-lean > .ev-detail-side{
+  display:contents;
 }
 
 .ev-detail-main,
@@ -16024,7 +16065,7 @@ button.super-stat-card {
   background:var(--ev-card);
   border:1px solid var(--ev-border);
   border-radius:16px;
-  box-shadow:0 1px 2px rgba(15,23,42,0.04);
+  box-shadow:0 1px 2px rgba(23, 23, 23,0.04);
 }
 
 .ev-detail-card-head{
@@ -16299,7 +16340,135 @@ button.super-stat-card {
   border-color:var(--neutral-300);
   color:var(--neutral-600);
   background:var(--neutral-50);
-  box-shadow:0 0 0 3px rgba(148,163,184,0.16);
+  box-shadow:0 0 0 3px rgba(161, 161, 161,0.16);
+}
+
+.ev-rsvp-btn.is-active.is-role{
+  border-color: color-mix(in srgb, var(--ev-navy) 60%, var(--ev-border));
+  color:var(--ev-navy);
+  background: color-mix(in srgb, var(--ev-navy) 6%, #ffffff);
+}
+
+.ev-registration-role{
+  display:grid;
+  gap:8px;
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid var(--ev-border);
+}
+
+/* Roster: who has registered, presenters first */
+
+.ev-roster{
+  --ev-roster-row: 32px;
+  --ev-roster-gap: 10px;
+  list-style:none;
+  margin:14px 0 0;
+  padding:14px 0 0;
+  border-top:1px solid var(--ev-border);
+  display:grid;
+  gap:var(--ev-roster-gap);
+  /* A popular event runs to hundreds of names, which otherwise pushes the
+     rest of the sidebar far below the fold. Show five and scroll the rest. */
+  /* box-sizing is border-box here, so the list's own top padding and rule
+     have to be added back or the fifth row is clipped. */
+  max-height:calc(var(--ev-roster-row) * 5 + var(--ev-roster-gap) * 4 + 14px + 1px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:var(--neutral-300) transparent;
+}
+
+/* Only hint at more names when a sixth row actually exists, so a short
+   roster is not given a misleading fade. */
+.ev-roster:has(.ev-roster-row:nth-child(6)){
+  -webkit-mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+  mask-image:linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+}
+
+.ev-roster:has(.ev-roster-row:nth-child(6)):hover,
+.ev-roster:has(.ev-roster-row:nth-child(6)):focus-within{
+  -webkit-mask-image:none;
+  mask-image:none;
+}
+
+.ev-roster::-webkit-scrollbar{ width:8px; }
+.ev-roster::-webkit-scrollbar-track{ background:transparent; }
+.ev-roster::-webkit-scrollbar-thumb{
+  background:var(--neutral-300);
+  border-radius:999px;
+  border:2px solid transparent;
+  background-clip:content-box;
+}
+
+.ev-roster-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.ev-roster-avatar{
+  flex:0 0 auto;
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  background: color-mix(in srgb, var(--ev-navy) 10%, #ffffff);
+  color:var(--ev-navy);
+  font-size:12px;
+  font-weight:700;
+  text-transform:uppercase;
+}
+
+.ev-roster-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.ev-roster-main{
+  display:grid;
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.ev-roster-main strong{
+  font-size:14px;
+  color:var(--ev-navy);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.ev-roster-main small{
+  font-size:12px;
+  color:var(--neutral-500);
+}
+
+.ev-roster-tag{
+  flex:0 0 auto;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:700;
+}
+
+.ev-roster-tag.is-presenter{
+  background:var(--neutral-50);
+  color:var(--brand-primary);
+}
+
+.ev-roster-tag.is-maybe{
+  background:#fffbeb;
+  color:#92400e;
+}
+
+.ev-roster-empty{
+  font-size:13px;
+  color:var(--neutral-500);
 }
 
 /* Counts */
@@ -16424,8 +16593,14 @@ button.super-stat-card {
     aspect-ratio: 16 / 9;
   }
 
-  .ev-detail-grid{
+  .ev-detail-grid,
+  .ev-detail-grid.is-lean{
     grid-template-columns:1fr;
+  }
+
+  .ev-detail-grid.is-lean > .ev-detail-side{
+    display:grid;
+    gap:14px;
   }
 
   /* Keep the action (RSVP / join) above the fold instead of below the copy. */
@@ -16573,7 +16748,7 @@ button.super-stat-card {
   border-radius:16px;
   background:var(--card, #fff);
   color:var(--text, var(--neutral-900));
-  box-shadow:0 20px 50px rgba(15, 23, 42, .18);
+  box-shadow:0 20px 50px rgba(23, 23, 23, .18);
 }
 
 .asset-update-notice > div:first-child{
@@ -16723,7 +16898,7 @@ html.is-native-app .asset-update-notice{
 
 .mobile-notifications-item.is-unread{
   border-color:color-mix(in srgb, var(--brand-primary) 42%, var(--card-border));
-  box-shadow:0 12px 24px rgba(15, 23, 42, 0.06);
+  box-shadow:0 12px 24px rgba(23, 23, 23, 0.06);
 }
 
 .mobile-notifications-item-head{
@@ -16849,7 +17024,7 @@ html.is-native-app .asset-update-notice{
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--brand-primary) 10%, #ffffff), transparent 38%),
     linear-gradient(135deg, #ffffff 0%, color-mix(in srgb, var(--brand-primary) 4%, var(--neutral-50)) 100%);
-  box-shadow:0 18px 34px rgba(15, 23, 42, .06);
+  box-shadow:0 18px 34px rgba(23, 23, 23, .06);
 }
 
 .pb-cedar-page .pb-workspace-header::after{

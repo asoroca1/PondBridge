@@ -29,6 +29,7 @@ module.exports = {
     "**/tests/platformAuditMigrationSafety.test.js",
     "**/tests/requireTenantModule.test.js",
     "**/tests/seminarEvents.test.js",
+    "**/tests/infoSessionRegistration.test.js",
     "**/tests/geocodeBackoff.test.js",
     "**/tests/profileSimilarity.test.js",
     "**/tests/suggestions.test.js",
@@ -36,6 +37,7 @@ module.exports = {
     "**/tests/superSearchRole.test.js",
     "**/tests/supabaseConfig.test.js",
     "**/tests/tenantFeatureInventory.test.js",
-    "**/tests/tenantSchemaHardening.test.js"
+    "**/tests/tenantSchemaHardening.test.js",
+    "**/tests/tenantIsolation.test.js"
   ]
 };

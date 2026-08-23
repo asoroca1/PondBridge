@@ -7,7 +7,7 @@ import { ModalDialog } from "../../../components/admin/AdminUi.jsx";
  * reports who is genuinely ready, who already has a pending invite, who has
  * joined, and who is on hold. Nothing sends until the director confirms.
  */
-export default function InviteReviewDialog({ open, people = [], actions, onClose, onSent }) {
+export default function InviteReviewDialog({ open, people = [], extras = {}, actions, onClose, onSent }) {
   const [preview, setPreview] = useState(null);
   const [recipients, setRecipients] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,7 @@ export default function InviteReviewDialog({ open, people = [], actions, onClose
   const readyCount = Number(summary.readyCount || 0);
 
   async function send() {
-    const result = await actions.sendInvites(recipients, preview?.previewToken || "");
+    const result = await actions.sendInvites(recipients, preview?.previewToken || "", extras);
     if (!result.ok) {
       setError(result.message);
       return;

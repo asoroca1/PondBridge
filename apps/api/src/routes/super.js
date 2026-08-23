@@ -613,7 +613,7 @@ async function loadTenantsWithCounts(filter = {}, { includeHidden = false } = {}
 async function buildNotifications() {
   const [pastDueCount, failedImports24h] = await Promise.all([
     TenantModel.count({ billingStatus: "past_due" }),
-    ImportReportModel.count({
+    ImportReportModel.acrossTenants().count({
       "summary.errorCount": { $gt: 0 },
       createdAt: { $gte: new Date(Date.now() - DAY_MS) }
     })
@@ -659,7 +659,7 @@ router.get("/search", superSearchLimiter, async (req, res) => {
   const ilikePattern = `%${q}%`;
   const role = getPrimaryRole(req.user);
   const directorSearch = superSearchIncludesDirectors(role)
-    ? UserModel.find(
+    ? UserModel.acrossTenants().find(
         {
           roles: { $contains: ["tenant_admin"] },
           email: { $ilike: ilikePattern }
@@ -731,8 +731,8 @@ router.get("/search", superSearchLimiter, async (req, res) => {
 router.get("/dashboard", requireRole("support_admin"), async (_req, res) => {
   const [tenantCount, userCount, profileCount] = await Promise.all([
     TenantModel.count({}),
-    UserModel.count({}),
-    ProfileModel.count({})
+    UserModel.acrossTenants().count({}),
+    ProfileModel.acrossTenants().count({})
   ]);
 
   res.json({ counts: { tenants: tenantCount, users: userCount, profiles: profileCount } });
@@ -744,9 +744,9 @@ router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) =>
 
   const [tenants, profiles7dCount, failedJobs7d, emailEvents7d, inactiveTenants] = await Promise.all([
     TenantModel.find({}),
-    ProfileModel.count({ createdAt: { $gte: sevenDaysAgo } }),
-    ImportReportModel.count({ "summary.errorCount": { $gt: 0 }, createdAt: { $gte: sevenDaysAgo } }),
-    ResendWebhookEventModel.find(
+    ProfileModel.acrossTenants().count({ createdAt: { $gte: sevenDaysAgo } }),
+    ImportReportModel.acrossTenants().count({ "summary.errorCount": { $gt: 0 }, createdAt: { $gte: sevenDaysAgo } }),
+    ResendWebhookEventModel.acrossTenants().find(
       { occurredAt: { $gte: sevenDaysAgo } },
       { sort: { occurredAt: -1 }, limit: 5000 }
     ),
@@ -1262,14 +1262,14 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
 
   const objectStorageCleanup = await purgeTenantObjectsFromR2(tenant.slug);
   const counts = await purgeTenantRows(tenant._id);
-  const resendWebhookEventsBySlug = await ResendWebhookEventModel.count({ tenantSlug: tenant.slug });
+  const resendWebhookEventsBySlug = await ResendWebhookEventModel.acrossTenants().count({ tenantSlug: tenant.slug });
   if (resendWebhookEventsBySlug > 0) {
-    await ResendWebhookEventModel.deleteMany({ tenantSlug: tenant.slug });
+    await ResendWebhookEventModel.acrossTenants().deleteMany({ tenantSlug: tenant.slug });
   }
 
-  const emailSuppressionsBySlug = await EmailSuppressionModel.count({ tenantSlug: tenant.slug });
+  const emailSuppressionsBySlug = await EmailSuppressionModel.acrossTenants().count({ tenantSlug: tenant.slug });
   if (emailSuppressionsBySlug > 0) {
-    await EmailSuppressionModel.deleteMany({ tenantSlug: tenant.slug });
+    await EmailSuppressionModel.acrossTenants().deleteMany({ tenantSlug: tenant.slug });
   }
 
   counts.resendWebhookEventsBySlug = resendWebhookEventsBySlug;
@@ -1437,7 +1437,7 @@ router.get("/email/transactional", requireRole("support_admin"), async (req, res
   const days = Math.min(Math.max(Number(req.query.days || 7), 1), 30);
   const since = new Date(Date.now() - days * DAY_MS);
   const [events, tenants] = await Promise.all([
-    ResendWebhookEventModel.find(
+    ResendWebhookEventModel.acrossTenants().find(
       { occurredAt: { $gte: since } },
       { sort: { occurredAt: -1 }, limit: 5000 }
     ),
@@ -1457,9 +1457,9 @@ router.post("/email/retry", requireSuperMutation, async (_req, res) => {
 
 router.get("/email/broadcast", requireRole("support_admin"), async (_req, res) => {
   const [directorCount, tenants, activeSuppressions] = await Promise.all([
-    UserModel.count({ roles: { $contains: ["tenant_admin"] } }),
+    UserModel.acrossTenants().count({ roles: { $contains: ["tenant_admin"] } }),
     TenantModel.find({}),
-    EmailSuppressionModel.count({ status: "active" })
+    EmailSuppressionModel.acrossTenants().count({ status: "active" })
   ]);
 
   const stageCounts = {
@@ -1738,9 +1738,9 @@ router.get("/analytics/engagement", requireRole("support_admin"), async (_req, r
   const [tenants, users, profiles, events7d, events30d] = await Promise.all([
     TenantModel.find({}),
     UserModel.find({ tenantId: { $ne: null } }),
-    ProfileModel.find({}),
-    AnalyticsEventModel.find({ createdAt: { $gte: sevenDaysAgo } }),
-    AnalyticsEventModel.find({ createdAt: { $gte: thirtyDaysAgo } })
+    ProfileModel.acrossTenants().find({}),
+    AnalyticsEventModel.acrossTenants().find({ createdAt: { $gte: sevenDaysAgo } }),
+    AnalyticsEventModel.acrossTenants().find({ createdAt: { $gte: thirtyDaysAgo } })
   ]);
 
   const activeUsers7d = new Set(events7d.map((event) => toObjectIdString(event.userId)).filter(Boolean)).size;
@@ -1977,7 +1977,7 @@ router.get("/analytics/flags", requireRole("support_admin"), async (_req, res) =
   const since = new Date(Date.now() - 30 * DAY_MS);
   const [tenants, analyticsEvents] = await Promise.all([
     TenantModel.find({}),
-    AnalyticsEventModel.find(
+    AnalyticsEventModel.acrossTenants().find(
       { createdAt: { $gte: since } },
       { select: ["tenantId", "eventType"], limit: 10000 }
     )
@@ -2069,8 +2069,8 @@ router.get("/jobs/health", requireRole("support_admin"), async (_req, res) => {
   const oneDayAgo = new Date(now.getTime() - DAY_MS);
 
   const [reports7d, reports24h] = await Promise.all([
-    ImportReportModel.find({ createdAt: { $gte: sevenDaysAgo } }),
-    ImportReportModel.find({ createdAt: { $gte: oneDayAgo } })
+    ImportReportModel.acrossTenants().find({ createdAt: { $gte: sevenDaysAgo } }),
+    ImportReportModel.acrossTenants().find({ createdAt: { $gte: oneDayAgo } })
   ]);
 
   const failureRateMap = new Map();
@@ -2122,7 +2122,7 @@ router.get("/jobs/log", requireRole("support_admin"), async (req, res) => {
   const status = String(req.query.status || "").trim();
   const tenantIdFilter = String(req.query.tenantId || "").trim();
 
-  let reports = await ImportReportModel.find({}, { sort: { createdAt: -1 }, limit: 250 });
+  let reports = await ImportReportModel.acrossTenants().find({}, { sort: { createdAt: -1 }, limit: 250 });
 
   if (tenantIdFilter) {
     reports = reports.filter((report) => toObjectIdString(report.tenantId) === tenantIdFilter);
@@ -2132,7 +2132,7 @@ router.get("/jobs/log", requireRole("support_admin"), async (req, res) => {
   const userIds = Array.from(new Set(reports.map((report) => toObjectIdString(report.createdByUserId)).filter(Boolean)));
   const [tenants, users] = await Promise.all([
     TenantModel.find({ _id: { $in: tenantIds } }),
-    UserModel.find({ _id: { $in: userIds } })
+    UserModel.acrossTenants().find({ _id: { $in: userIds } })
   ]);
 
   const tenantMap = new Map(tenants.map((tenant) => [toObjectIdString(tenant._id), tenant]));
@@ -2226,7 +2226,7 @@ router.post("/jobs/log/:runId/cancel", requireSuperMutation, async (req, res) =>
 });
 
 router.get("/jobs/imports", requireRole("support_admin"), async (_req, res) => {
-  const reports = await ImportReportModel.find({}, { sort: { createdAt: -1 }, limit: 250 });
+  const reports = await ImportReportModel.acrossTenants().find({}, { sort: { createdAt: -1 }, limit: 250 });
   const tenantIds = Array.from(new Set(reports.map((report) => toObjectIdString(report.tenantId)).filter(Boolean)));
   const tenants = await TenantModel.find({ _id: { $in: tenantIds } });
   const tenantMap = new Map(tenants.map((tenant) => [toObjectIdString(tenant._id), tenant]));

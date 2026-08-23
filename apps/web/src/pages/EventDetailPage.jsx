@@ -70,6 +70,15 @@ const RSVP_OPTIONS = [
   { value: "not_attending", label: "Can’t go", Icon: XIcon }
 ];
 
+const REGISTRATION_ROLES = [
+  { value: "attendee", label: "Attending", blurb: "Come along and listen in." },
+  { value: "presenter", label: "Presenting", blurb: "Help run the session or speak." }
+];
+
+function registrationRoleLabel(value = "") {
+  return value === "presenter" ? "presenter" : "attendee";
+}
+
 function isSeminar(item = {}) {
   return item?.eventType === "seminar";
 }
@@ -132,7 +141,7 @@ export default function EventDetailPage() {
     };
   }, [eventId, slug, token]);
 
-  async function updateRsvp(nextStatus) {
+  async function updateRsvp(nextStatus, nextRole) {
     if (!item) return;
     setSaving(true);
     setError("");
@@ -141,10 +150,16 @@ export default function EventDetailPage() {
       const payload = await requestJson(`/api/t/${slug}/events/${eventId}/rsvp`, {
         method: "PUT",
         token,
-        body: { status: nextStatus }
+        // Sending no role leaves whatever the member already chose alone, so
+        // changing an answer to "maybe" does not quietly drop them as a presenter.
+        body: nextRole ? { status: nextStatus, registrationRole: nextRole } : { status: nextStatus }
       });
       setItem(payload?.item || null);
-      setStatus(`Your RSVP is now ${rsvpLabel(nextStatus).toLowerCase()}.`);
+      setStatus(
+        nextRole
+          ? `You are registered as a ${registrationRoleLabel(nextRole)}.`
+          : `Your RSVP is now ${rsvpLabel(nextStatus).toLowerCase()}.`
+      );
       setJoinError("");
     } catch (saveError) {
       setError(saveError.message || "Could not update your RSVP.");
@@ -206,11 +221,22 @@ export default function EventDetailPage() {
         : "needs_rsvp";
   const hasBody = Boolean(String(item?.bodyHtml || "").trim());
   const hasHostCard = Boolean(seminar && item?.host);
-  const leanLayout = Boolean(item) && !hasBody && !hasHostCard;
-  const hasMainContent = hasBody || seminar || Boolean(item?.locationAddress);
+  // Track / For / Topic are one-line facts. In a card of their own they left a
+  // near-empty grid cell, so they ride in the hero next to the date and place.
+  const heroFacts = useMemo(() => {
+    if (!item || !seminar) return [];
+    const facts = [];
+    if (item.topicTitle) facts.push({ label: "Topic", value: item.topicTitle });
+    if (item.topicCategory) facts.push({ label: "Track", value: topicCategoryLabel(item.topicCategory) });
+    facts.push({ label: "For", value: audienceLabel(item.audience) });
+    if (item.capacity) facts.push({ label: "Capacity", value: `${item.capacity} members` });
+    return facts;
+  }, [item, seminar]);
+  const hasMainContent = hasBody || hasHostCard || Boolean(item?.locationAddress);
+  const leanLayout = Boolean(item) && !hasMainContent;
   const coverStyle = item?.coverImageUrl
     ? {
-        backgroundImage: `linear-gradient(100deg, rgba(10,24,40,0.82) 0%, rgba(10,24,40,0.35) 55%, rgba(10,24,40,0.05) 100%), url(${item.coverImageUrl})`
+        backgroundImage: `linear-gradient(100deg, rgba(22, 22, 22,0.82) 0%, rgba(22, 22, 22,0.35) 55%, rgba(22, 22, 22,0.05) 100%), url(${item.coverImageUrl})`
       }
     : undefined;
 
@@ -300,6 +326,16 @@ export default function EventDetailPage() {
                     </span>
                   </span>
                 </div>
+                {heroFacts.length ? (
+                  <div className="ev-detail-hero-facts">
+                    {heroFacts.map((fact) => (
+                      <span key={fact.label} className="ev-hero-fact">
+                        <span>{fact.label}</span>
+                        <strong>{fact.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           </section>
@@ -331,9 +367,9 @@ export default function EventDetailPage() {
                     ? seminar
                       ? "About this info session"
                       : "About this event"
-                    : seminar
-                      ? "Info session details"
-                      : "Event details"}
+                    : hasHostCard
+                      ? "Your host"
+                      : "Location"}
                 </h2>
                 {item.locationAddress ? (
                   <p className="ev-detail-card-sub">
@@ -344,32 +380,6 @@ export default function EventDetailPage() {
               </header>
               {hasBody ? (
                 <div className="ev-detail-richtext" dangerouslySetInnerHTML={{ __html: item.bodyHtml }} />
-              ) : null}
-              {seminar ? (
-                <div className="ev-seminar-facts">
-                  {item.topicTitle ? (
-                    <div>
-                      <span>Topic</span>
-                      <strong>{item.topicTitle}</strong>
-                    </div>
-                  ) : null}
-                  {item.topicCategory ? (
-                    <div>
-                      <span>Track</span>
-                      <strong>{topicCategoryLabel(item.topicCategory)}</strong>
-                    </div>
-                  ) : null}
-                  <div>
-                    <span>For</span>
-                    <strong>{audienceLabel(item.audience)}</strong>
-                  </div>
-                  {item.capacity ? (
-                    <div>
-                      <span>Capacity</span>
-                      <strong>{item.capacity} members</strong>
-                    </div>
-                  ) : null}
-                </div>
               ) : null}
               {seminar && item.host ? (
                 <div className="ev-seminar-host-card">
@@ -427,7 +437,11 @@ export default function EventDetailPage() {
                     </button>
                   ) : roomBlockedReason === "needs_rsvp" ? (
                     <p className="ev-detail-muted">
-                      RSVP <strong>Going</strong> to unlock the info session room.
+                      {item.meetingAccess.hasMeetingLink === false
+                        // A session can be published before its room exists, so
+                        // the honest reason is that there is no link yet.
+                        ? "The camp has not added the meeting link yet. Register and it will appear here."
+                        : <>RSVP <strong>Going</strong> to unlock the info session room.</>}
                     </p>
                   ) : roomBlockedReason === "not_ready" ? (
                     <p className="ev-detail-muted">
@@ -465,6 +479,29 @@ export default function EventDetailPage() {
                     );
                   })}
                 </div>
+                {seminar && item?.myRsvp?.status && item.myRsvp.status !== "not_attending" ? (
+                  <div className="ev-registration-role">
+                    <p className="ev-detail-card-sub">I am joining as</p>
+                    <div className="ev-rsvp-stack">
+                      {REGISTRATION_ROLES.map(({ value, label, blurb }) => {
+                        const isActive = (item?.myRsvp?.registrationRole || "attendee") === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={isActive}
+                            disabled={saving || rsvpLocked}
+                            className={`ev-rsvp-btn ${isActive ? "is-active is-role" : ""}`}
+                            onClick={() => updateRsvp(item.myRsvp.status, value)}
+                            title={blurb}
+                          >
+                            <span>{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
                 {rsvpLocked ? (
                   <p className="ev-detail-muted ev-detail-locked">
                     {item.status === "canceled"
@@ -481,7 +518,11 @@ export default function EventDetailPage() {
                   <h2>Who’s coming</h2>
                   <p className="ev-detail-card-sub">
                     <Users size={13} aria-hidden="true" />
-                    <span>See how the community is planning.</span>
+                    <span>
+                      {Array.isArray(item.roster)
+                        ? "Everyone registered so far."
+                        : "See how the community is planning."}
+                    </span>
                   </p>
                 </header>
                 <div className="ev-detail-counts">
@@ -502,6 +543,38 @@ export default function EventDetailPage() {
                     </div>
                   ) : null}
                 </div>
+                {Array.isArray(item.roster) ? (
+                  <ul className="ev-roster">
+                    {item.roster.map((person) => (
+                      <li key={person.profileId} className="ev-roster-row">
+                        <span className="ev-roster-avatar" aria-hidden="true">
+                          {person.avatarUrl
+                            ? <img src={person.avatarUrl} alt="" />
+                            : (person.fullName || "?").slice(0, 1)}
+                        </span>
+                        <span className="ev-roster-main">
+                          <strong>{person.fullName}</strong>
+                          {person.roleAtCamp ? <small>{person.roleAtCamp}</small> : null}
+                        </span>
+                        {person.registrationRole === "presenter" ? (
+                          <span className="ev-roster-tag is-presenter">Presenter</span>
+                        ) : null}
+                        {person.status === "maybe" ? (
+                          <span className="ev-roster-tag is-maybe">Maybe</span>
+                        ) : null}
+                      </li>
+                    ))}
+                    {item.roster.length === 0 ? (
+                      <li className="ev-roster-empty">You are the first to register.</li>
+                    ) : null}
+                  </ul>
+                ) : (
+                  // The list is the reward for signing up, so it stays hidden
+                  // until the viewer has answered.
+                  <p className="ev-detail-muted">
+                    Register above to see everyone who is coming.
+                  </p>
+                )}
               </article>
             </aside>
           </section>

@@ -122,7 +122,7 @@
   font: inherit;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 8px 18px rgba(23, 23, 23, 0.14);
 }
 
 .as2-sec {
@@ -236,7 +236,7 @@
 .as2-input:focus,
 .as2-mselect.is-open {
   border-color: var(--neutral-400);
-  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2);
+  box-shadow: 0 0 0 3px rgba(109, 109, 109, 0.2);
 }
 
 select.as2-input {
@@ -462,7 +462,7 @@ select.as2-input {
   background:
     radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--brand-accent, #f2b134) 22%, transparent) 0, transparent 38%),
     linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 8%, #ffffff), #ffffff 58%);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 32px rgba(23, 23, 23, 0.08);
 }
 
 .as2-ai-card-head {
@@ -521,7 +521,7 @@ select.as2-input {
   border: 1px solid var(--neutral-300);
   border-radius: 16px;
   background: #fff;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 16px rgba(23, 23, 23, 0.06);
 }
 
 .as2-ai-input-wrap:focus-within {
@@ -1022,7 +1022,7 @@ select.as2-input {
   .as2-drawer-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.28);
+    background: rgba(23, 23, 23, 0.28);
     z-index: 80;
     opacity: 0;
     pointer-events: none;
@@ -1064,7 +1064,7 @@ select.as2-input {
     border-radius: 12px;
     border: 1px solid var(--as2-border);
     background: #fff;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 2px 8px rgba(23, 23, 23, 0.08);
   }
 
   .as2-rail-footer {

@@ -206,7 +206,7 @@
   border: 1px solid var(--pb-mail-border);
   border-radius: 12px;
   background: var(--pb-mail-surface);
-  box-shadow: 0 12px 30px rgba(18, 38, 63, 0.14);
+  box-shadow: 0 12px 30px rgba(36, 36, 36, 0.14);
 }
 
 .pb-mail-menu-popover button {
@@ -370,7 +370,7 @@
   border: 1px solid var(--pb-mail-border);
   border-radius: 12px;
   background: var(--pb-mail-surface);
-  box-shadow: 0 16px 36px rgba(18, 38, 63, 0.16);
+  box-shadow: 0 16px 36px rgba(36, 36, 36, 0.16);
 }
 
 .pb-mail-suggestions button {

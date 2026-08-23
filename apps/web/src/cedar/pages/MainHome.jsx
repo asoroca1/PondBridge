@@ -473,6 +473,7 @@ function renderVerb(type) {
       return "posted a photo in";
     case "thread.new":
       return "started the thread";
+    case "newsletter.publish":
     case "cedarchest.publish":
       return "published";
     case "user.join":
@@ -686,7 +687,7 @@ export default function MainHome() {
       },
       {
         key: "newsletter",
-        to: "/cedar-chest",
+        to: "/newsletter",
         label: newsletterLabel,
         icon: BookOpen,
         enabled: modules.newsletter !== false

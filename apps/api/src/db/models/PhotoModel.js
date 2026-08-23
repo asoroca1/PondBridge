@@ -21,23 +21,30 @@ const base = createModel("photos", COLUMNS);
 export const PhotoModel = {
   ...base,
 
-  async addLike(id, userId) {
-    const doc = await base.findById(id);
+/**
+ * These helpers read-modify-write a JSON column, so they take the tenant
+ * explicitly rather than trusting the caller to have scoped the read first.
+ * A collection mutation reached with another camp's id now finds nothing
+ * instead of quietly editing that camp's row.
+ */
+
+  async addLike(tenantId, id, userId) {
+    const doc = await base.findByIdScoped(tenantId, id);
     if (!doc) return null;
     const likes = doc.likes || [];
     if (!likes.includes(userId)) likes.push(userId);
-    return base.update(id, { likes });
+    return base.updateScoped(tenantId, id, { likes });
   },
 
-  async removeLike(id, userId) {
-    const doc = await base.findById(id);
+  async removeLike(tenantId, id, userId) {
+    const doc = await base.findByIdScoped(tenantId, id);
     if (!doc) return null;
     const likes = (doc.likes || []).filter((l) => l !== userId);
-    return base.update(id, { likes });
+    return base.updateScoped(tenantId, id, { likes });
   },
 
-  async addComment(id, comment) {
-    const doc = await base.findById(id);
+  async addComment(tenantId, id, comment) {
+    const doc = await base.findByIdScoped(tenantId, id);
     if (!doc) return null;
     const comments = doc.comments || [];
     comments.push({
@@ -45,15 +52,15 @@ export const PhotoModel = {
       ...comment,
       createdAt: new Date().toISOString()
     });
-    return base.update(id, { comments });
+    return base.updateScoped(tenantId, id, { comments });
   },
 
-  async removeComment(id, commentId) {
-    const doc = await base.findById(id);
+  async removeComment(tenantId, id, commentId) {
+    const doc = await base.findByIdScoped(tenantId, id);
     if (!doc) return null;
     const comments = (doc.comments || []).filter(
       (c) => String(c._id) !== String(commentId)
     );
-    return base.update(id, { comments });
+    return base.updateScoped(tenantId, id, { comments });
   }
 };

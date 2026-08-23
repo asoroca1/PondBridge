@@ -24,6 +24,7 @@
     "supabase:apply-communications-system": "node scripts/applyCommunicationsSystemSchema.js",
     "supabase:apply-multi-camp-identity": "node scripts/applyMultiCampIdentitySchema.js",
     "supabase:apply-member-safety": "node scripts/applyMemberSafetySchema.js",
+    "supabase:apply-info-session-registration": "node scripts/applyInfoSessionRegistrationSchema.js",
     "supabase:apply-database-security-hardening": "node scripts/applyDatabaseSecurityHardening.js",
     "supabase:apply-database-performance-hardening": "node scripts/applyDatabasePerformanceHardening.js",
     "identity:backfill": "node scripts/backfillMultiCampIdentities.js",
@@ -57,7 +58,7 @@
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.15.0",
     "pg": "^8.18.0",
-    "sanitize-html": "^2.17.1",
+    "sanitize-html": "^2.17.4",
     "socket.io": "^4.8.3",
     "stripe": "^18.4.0",
     "zod": "^4.3.6"

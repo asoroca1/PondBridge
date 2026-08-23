@@ -470,7 +470,7 @@ function ClerkLogin() {
                 }}
                 appearance={{
                   variables: {
-                    colorPrimary: "var(--brand-primary)",
+                    colorPrimary: "#404040",
                     colorText: "var(--text)",
                     colorTextSecondary: "var(--text-muted)",
                     colorInputBackground: "#ffffff",
@@ -550,7 +550,7 @@ function ClerkLogin() {
                       gap: "12px"
                     },
                     formFieldLabel: {
-                      color: "var(--brand-primary-strong)",
+                      color: "#303030",
                       fontWeight: "700"
                     },
                     formFieldInput: {
@@ -569,7 +569,7 @@ function ClerkLogin() {
                       borderRadius: "12px",
                       fontSize: "1rem",
                       fontWeight: "700",
-                      background: "var(--brand-primary)",
+                      background: "#404040",
                       boxShadow: "none"
                     }
                   }

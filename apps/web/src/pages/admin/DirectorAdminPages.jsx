@@ -11,6 +11,7 @@ import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import {
   ArrowUpRight,
   CheckCircle2,
+  GripVertical,
   RefreshCw,
   Send,
   Sparkles,
@@ -71,7 +72,7 @@ function formatChartTickValue(value = 0) {
   return rounded.replace(/\.0$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
 }
 
-const DEFAULT_BRAND_PRIMARY = "var(--brand-primary-strong)";
+const DEFAULT_BRAND_PRIMARY = "#303030";
 const DEFAULT_AGE_GROUPS = [
   "Super Warrior",
   "Warrior",
@@ -124,7 +125,7 @@ function isHexColor(value = "") {
 }
 
 function darkenHex(hex, factor = 0.18) {
-  if (!isHexColor(hex)) return "var(--neutral-900)";
+  if (!isHexColor(hex)) return "#1c1c1c";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => Number.parseInt(clean.slice(index, index + 2), 16));
   const darkened = channels.map((value) => Math.max(0, Math.min(255, Math.round(value * (1 - factor)))));
@@ -132,7 +133,7 @@ function darkenHex(hex, factor = 0.18) {
 }
 
 function deriveSecondaryHex(hex, blend = 0.82) {
-  if (!isHexColor(hex)) return "var(--neutral-200)";
+  if (!isHexColor(hex)) return "#e6e6e6";
   const clean = String(hex).replace("#", "");
   const channels = [0, 2, 4].map((index) => Number.parseInt(clean.slice(index, index + 2), 16));
   const lightened = channels.map((value) => Math.min(255, Math.round(value + (255 - value) * blend)));
@@ -937,7 +938,7 @@ const MODULE_LAYOUT_HINTS = {
 
 export function DirectorAdminFeaturesPage() {
   const { slug, request } = useAdminApi();
-  const { tenant } = useTenant();
+  const { tenant, refreshTenant } = useTenant();
   const { confirm, confirmDialogProps } = useConfirmDialog();
   const [payload, setPayload] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -983,6 +984,10 @@ export function DirectorAdminFeaturesPage() {
       });
       setStatus("Features updated.");
       await loadFeatures();
+      // The rest of the app reads these labels from the cached tenant config,
+      // which otherwise keeps the old newsletter name for a further 5 minutes
+      // and makes a successful save look like it did nothing.
+      await refreshTenant?.();
     } catch (requestError) {
       const message = requestError.message || "Failed to update features.";
       await loadFeatures();
@@ -1346,8 +1351,24 @@ function LabelListEditor({
   error = "",
   onDraftChange,
   onAdd,
-  onRemove
+  onRemove,
+  onReorder
 }) {
+  const [dragIndex, setDragIndex] = useState(-1);
+  const [overIndex, setOverIndex] = useState(-1);
+  const sortable = typeof onReorder === "function" && values.length > 1;
+
+  function move(from, to) {
+    if (!sortable || from === to) return;
+    if (from < 0 || to < 0 || from >= values.length || to >= values.length) return;
+    onReorder(from, to);
+  }
+
+  function endDrag() {
+    setDragIndex(-1);
+    setOverIndex(-1);
+  }
+
   return (
     <div className="pb-set-labels">
       <div className="pb-set-labels-head">
@@ -1371,10 +1392,61 @@ function LabelListEditor({
         </Button>
       </div>
       {error ? <p className="error-text">{error}</p> : null}
+      {sortable ? (
+        <p className="pb-set-labels-reorder-hint">
+          Drag to reorder, or use the arrows. Members see them in this order.
+        </p>
+      ) : null}
       <div className="pb-set-labels-chips">
         {values.length ? values.map((item, index) => (
-          <span key={`${item}_${index}`}>
+          <span
+            key={`${item}_${index}`}
+            className={[
+              sortable ? "is-sortable" : "",
+              dragIndex === index ? "is-dragging" : "",
+              overIndex === index && dragIndex >= 0 && dragIndex !== index ? "is-drop-target" : ""
+            ].filter(Boolean).join(" ")}
+            draggable={sortable}
+            onDragStart={sortable ? () => setDragIndex(index) : undefined}
+            onDragOver={sortable ? (event) => {
+              if (dragIndex < 0) return;
+              event.preventDefault();
+              setOverIndex(index);
+            } : undefined}
+            onDrop={sortable ? (event) => {
+              event.preventDefault();
+              move(dragIndex, index);
+              endDrag();
+            } : undefined}
+            onDragEnd={sortable ? endDrag : undefined}
+          >
+            {sortable ? (
+              <GripVertical size={13} className="pb-set-label-grip" aria-hidden="true" />
+            ) : null}
             {item}
+            {sortable ? (
+              <>
+                {/* Keyboard equivalent for the drag, so this is not mouse-only. */}
+                <button
+                  type="button"
+                  className="pb-set-label-move"
+                  onClick={() => move(index, index - 1)}
+                  disabled={index === 0}
+                  aria-label={`Move ${item} earlier`}
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  className="pb-set-label-move"
+                  onClick={() => move(index, index + 1)}
+                  disabled={index === values.length - 1}
+                  aria-label={`Move ${item} later`}
+                >
+                  ›
+                </button>
+              </>
+            ) : null}
             <button type="button" onClick={() => onRemove(index)} aria-label={`Remove ${item}`}>×</button>
           </span>
         )) : <small className="muted">Nothing here yet — add at least one.</small>}
@@ -1465,6 +1537,21 @@ export function DirectorAdminSettingsNetworkPage() {
       return { ...prev, [field]: [...current, nextLabel] };
     });
     setListErrors((prev) => ({ ...prev, [field]: "" }));
+  }
+
+  /**
+   * Age groups are read in order (Warrior, Freshman, ...), so the director's
+   * arrangement is the data, not a display preference. Order is saved as-is.
+   */
+  function reorderLabel(field, from, to) {
+    setForm((prev) => {
+      const current = Array.isArray(prev[field]) ? prev[field] : [];
+      if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return prev;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...prev, [field]: next };
+    });
   }
 
   function removeLabel(field, index) {
@@ -1623,6 +1710,7 @@ export function DirectorAdminSettingsNetworkPage() {
             onDraftChange={setAgeGroupDraft}
             onAdd={() => { addLabel("ageGroups", ageGroupDraft); setAgeGroupDraft(""); }}
             onRemove={(index) => removeLabel("ageGroups", index)}
+            onReorder={(from, to) => reorderLabel("ageGroups", from, to)}
           />
           <LabelListEditor
             label="Staff roles"
@@ -1634,6 +1722,7 @@ export function DirectorAdminSettingsNetworkPage() {
             onDraftChange={setStaffRoleDraft}
             onAdd={() => { addLabel("staffRoles", staffRoleDraft); setStaffRoleDraft(""); }}
             onRemove={(index) => removeLabel("staffRoles", index)}
+            onReorder={(from, to) => reorderLabel("staffRoles", from, to)}
           />
         </div>
       </Card>

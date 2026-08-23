@@ -98,7 +98,9 @@ export default function EventDetailPane({
             <small>
               {event.meetingUrl
                 ? "Only members who RSVP “Going” can open the room."
-                : "No meeting link yet — add one before publishing."}
+                // Publishing no longer waits on the link, so this is a reminder
+                // rather than a blocker.
+                : "No meeting link yet. Members can register now; add it before it starts."}
             </small>
           </div>
           {event.meetingUrl ? (

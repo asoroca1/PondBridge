@@ -79,7 +79,7 @@ export default function HeroImageEditor({
   memberImagePosition = "",
   memberImageSize = "",
   logoUrl = "",
-  brandPrimary = "var(--neutral-800)",
+  brandPrimary = "#303030",
   campName = "Your Camp",
   campType = "coed",
   welcomeBody = "",

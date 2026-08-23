@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { SignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Button } from "@pondbridge/ui";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { resolveNetworkDisplayName } from "../lib/campLabels.js";
+import { buildClerkSignupContext } from "../lib/clerkSignupContext.js";
 
 function routeWithSlug(slug, path, useSlugPrefix = true) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -26,6 +27,8 @@ export default function DirectorCreateAccountClerkPage() {
   const { slug: contextSlug, tenant } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const networkName = resolveNetworkDisplayName(tenant);
+  // Stable identity so the Clerk widget's props do not churn between renders.
+  const signupContext = useMemo(() => buildClerkSignupContext(slug, "director"), [slug]);
   const usingSlugRoute =
     Boolean(slug) &&
     (location.pathname === `/t/${slug}` || location.pathname.startsWith(`/t/${slug}/`));
@@ -169,6 +172,7 @@ export default function DirectorCreateAccountClerkPage() {
             <SignUp
               path={signUpPath}
               routing="path"
+              unsafeMetadata={signupContext}
               withSignIn={false}
               signInUrl={signInPath}
               fallbackRedirectUrl={callbackPath}
@@ -196,7 +200,7 @@ export default function DirectorCreateAccountClerkPage() {
               }}
               appearance={{
                 variables: {
-                  colorPrimary: "var(--brand-primary)",
+                  colorPrimary: "#404040",
                   colorText: "var(--text)",
                   colorTextSecondary: "var(--text-muted)",
                   colorInputBackground: "#ffffff",
@@ -270,7 +274,7 @@ export default function DirectorCreateAccountClerkPage() {
                     gap: "12px"
                   },
                   formFieldLabel: {
-                    color: "var(--brand-primary-strong)",
+                    color: "#303030",
                     fontWeight: "700"
                   },
                   formFieldInput: {
@@ -284,7 +288,7 @@ export default function DirectorCreateAccountClerkPage() {
                   formButtonPrimary: {
                     minHeight: "48px",
                     borderRadius: "12px",
-                    background: "var(--brand-primary)",
+                    background: "#404040",
                     boxShadow: "none",
                     fontWeight: "700",
                     fontSize: "1rem"

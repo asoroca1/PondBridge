@@ -472,15 +472,130 @@
   font-size: 0.9rem;
 }
 
-.pb-people-add-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+/* Header keeps its copy on the left and the sheet's own actions hard right. */
+.pb-people-add-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
-  align-items: start;
+  flex-wrap: wrap;
 }
 
-.pb-people-add-rows,
-.pb-people-add-side label {
+.pb-people-add-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* A spreadsheet, not a form: shared column tracks keep every cell aligned. */
+.pb-people-sheet {
+  --pb-sheet-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr) 40px;
+  border: 1px solid var(--pb-people-border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--pb-people-surface);
+}
+
+.pb-people-sheet-row {
+  display: grid;
+  grid-template-columns: var(--pb-sheet-columns);
+  gap: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--pb-people-border-soft);
+}
+
+.pb-people-sheet-row:last-child { border-bottom: 0; }
+
+.pb-people-sheet-header {
+  background: var(--pb-people-surface-alt);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pb-people-ink-soft);
+}
+
+.pb-people-sheet-header span { padding: 10px 12px; }
+
+.pb-people-sheet-header em {
+  margin-left: 6px;
+  font-style: normal;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--pb-people-ink-soft);
+  opacity: 0.75;
+}
+
+/* Strip the input chrome so cells read as one continuous grid. */
+.pb-people-sheet-row input {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  box-shadow: none;
+}
+
+.pb-people-sheet-row input:focus,
+.pb-people-sheet-row input:focus-visible {
+  outline: 2px solid var(--pb-people-accent, var(--brand-primary-soft));
+  outline-offset: -2px;
+  background: var(--pb-people-surface-alt);
+}
+
+.pb-people-sheet-row.has-error { background: rgba(197, 48, 48, 0.05); }
+
+.pb-people-sheet-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0 12px 8px;
+  font-size: 0.78rem;
+  color: #b42318;
+}
+
+.pb-people-sheet-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pb-people-ink-soft);
+  cursor: pointer;
+}
+
+.pb-people-sheet-remove:hover:not(:disabled) {
+  background: rgba(180, 35, 24, 0.1);
+  color: #b42318;
+}
+
+.pb-people-sheet-remove:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.pb-people-sheet-remove svg { width: 15px; height: 15px; }
+
+.pb-people-sheet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pb-invite-message-form {
+  display: grid;
+  gap: 14px;
+}
+
+.pb-invite-message-form label {
   display: grid;
   gap: 5px;
   font-size: 0.85rem;
@@ -488,16 +603,11 @@
   color: var(--pb-people-ink);
 }
 
-.pb-people-add-rows small { font-weight: 500; }
-
-.pb-people-add-side {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  padding: 14px;
-  border: 1px solid var(--pb-people-border-soft);
-  border-radius: 12px;
+.pb-invite-message-form code {
+  padding: 1px 5px;
+  border-radius: 5px;
   background: var(--pb-people-surface-alt);
+  font-size: 0.85em;
 }
 
 .pb-people-add-actions {
@@ -840,7 +950,7 @@
 
   .pb-people-rail-note { display: none; }
 
-  .pb-people-add-grid { grid-template-columns: minmax(0, 1fr); }
+  .pb-people-sheet { --pb-sheet-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 36px; }
 
   .pb-people-export-presets { grid-template-columns: minmax(0, 1fr); }
 }

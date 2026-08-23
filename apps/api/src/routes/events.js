@@ -11,15 +11,41 @@ import {
 import { logTenantEvent } from "../services/analytics.js";
 import {
   assertSeminarJoinEligibility,
+  buildRegistrationRoster,
   buildRsvpSummaryMap,
   createEventError,
   isEventsModuleEnabled,
+  normalizeEventRegistrationRole,
   normalizeEventRsvpStatus,
   normalizeSeminarMeetingUrl,
   serializeEvent
 } from "../services/events.js";
 
 const router = Router({ mergeParams: true });
+
+/**
+ * The roster of everyone registered, or null when the viewer has not registered
+ * themselves. Seeing who else is coming is the reward for signing up, so a
+ * member who has not answered — or who declined — gets no list at all.
+ */
+async function resolveViewerRoster({ tenantId, rsvps = [], myRsvp = null }) {
+  const viewerStatus = normalizeEventRsvpStatus(myRsvp?.status || "", "");
+  if (!viewerStatus || viewerStatus === "not_attending") return null;
+
+  const profileIds = [...new Set(
+    rsvps.map((row) => String(row?.profileId || "")).filter(Boolean)
+  )];
+  const profiles = profileIds.length
+    ? await ProfileModel.find(tenantId, { _id: { $in: profileIds } }, {
+        select: ["id", "firstName", "lastName", "avatarUrl", "roleAtCamp", "industry"]
+      })
+    : [];
+  const profilesById = new Map(
+    profiles.map((profile) => [String(profile?._id || profile?.id || ""), profile])
+  );
+
+  return buildRegistrationRoster(rsvps, profilesById);
+}
 const eventJoinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
@@ -75,6 +101,7 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
       rsvpSummaryByEventId: new Map(),
       rsvpByEventId: new Map(),
       hostProfileById: new Map(),
+      eventIdsWithMeetingLink: new Set(),
       viewerProfile: null
     };
   }
@@ -82,13 +109,16 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
   const hostProfileIds = [...new Set(
     events.map((item) => String(item?.hostProfileId || "").trim()).filter(Boolean)
   )];
-  const [allRsvps, myRsvps, hostProfiles, viewerProfile] = await Promise.all([
+  const [allRsvps, myRsvps, hostProfiles, viewerProfile, meetingDetails] = await Promise.all([
     EventRsvpModel.find(tenantId, { eventId: { $in: eventIds } }),
     EventRsvpModel.find(tenantId, { eventId: { $in: eventIds }, userId }),
     hostProfileIds.length
       ? ProfileModel.find(tenantId, { _id: { $in: hostProfileIds } })
       : [],
-    ProfileModel.findByUserId(tenantId, userId)
+    ProfileModel.findByUserId(tenantId, userId),
+    // Only whether a link exists travels out of here. The link itself is
+    // released by the join route after its membership and RSVP checks.
+    EventMeetingDetailModel.find(tenantId, { eventId: { $in: eventIds } })
   ]);
 
   return {
@@ -96,6 +126,11 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
     rsvpByEventId: new Map(myRsvps.map((item) => [String(item?.eventId || ""), item])),
     hostProfileById: new Map(
       hostProfiles.map((item) => [String(item?._id || item?.id || ""), item])
+    ),
+    eventIdsWithMeetingLink: new Set(
+      meetingDetails
+        .filter((detail) => String(detail?.meetingUrl || "").trim())
+        .map((detail) => String(detail?.eventId || ""))
     ),
     viewerProfile
   };
@@ -111,6 +146,7 @@ router.get("/", async (req, res) => {
     rsvpSummaryByEventId,
     rsvpByEventId,
     hostProfileById,
+    eventIdsWithMeetingLink,
     viewerProfile
   } = await loadEventResponseContext(
     req.tenant._id,
@@ -125,6 +161,7 @@ router.get("/", async (req, res) => {
       rsvpSummary: rsvpSummaryByEventId.get(String(event?._id || event?.id || "")),
       myRsvp: rsvpByEventId.get(String(event?._id || event?.id || "")),
       hostProfile: hostProfileById.get(String(event?.hostProfileId || "")),
+      hasMeetingLink: eventIdsWithMeetingLink.has(String(event?._id || event?.id || "")),
       viewerProfileId: String(viewerProfile?._id || viewerProfile?.id || "")
     })
   );
@@ -156,14 +193,21 @@ router.get("/:eventId", async (req, res) => {
     });
   }
 
-  const [rsvps, myRsvp, viewerProfile, hostProfile] = await Promise.all([
+  const [rsvps, myRsvp, viewerProfile, hostProfile, meetingDetail] = await Promise.all([
     EventRsvpModel.find(req.tenant._id, { eventId }),
     EventRsvpModel.findOne(req.tenant._id, { eventId, userId: req.user.id }),
     ProfileModel.findByUserId(req.tenant._id, req.user.id),
     event?.hostProfileId
       ? ProfileModel.findOne(req.tenant._id, { _id: String(event.hostProfileId) })
-      : null
+      : null,
+    EventMeetingDetailModel.findOne(req.tenant._id, { eventId })
   ]);
+
+  const roster = await resolveViewerRoster({
+    tenantId: req.tenant._id,
+    rsvps,
+    myRsvp
+  });
 
   await logTenantEvent({
     tenantId: req.tenant._id,
@@ -178,6 +222,8 @@ router.get("/:eventId", async (req, res) => {
       rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
       myRsvp,
       hostProfile,
+      roster,
+      hasMeetingLink: Boolean(String(meetingDetail?.meetingUrl || "").trim()),
       viewerProfileId: String(viewerProfile?._id || viewerProfile?.id || "")
     })
   });
@@ -277,6 +323,12 @@ router.put("/:eventId/rsvp", async (req, res) => {
     userId: req.user.id
   });
 
+  // Someone updating only their status keeps the role they already chose, so
+  // answering "maybe" does not quietly demote a presenter to an attendee.
+  const registrationRole = Object.prototype.hasOwnProperty.call(req.body || {}, "registrationRole")
+    ? normalizeEventRegistrationRole(req.body.registrationRole)
+    : normalizeEventRegistrationRole(existing?.registrationRole || "");
+
   if (
     status === "attending" &&
     existing?.status !== "attending" &&
@@ -301,13 +353,14 @@ router.put("/:eventId/rsvp", async (req, res) => {
     profileId: String(profile?._id || profile?.id || ""),
     userId: req.user.id,
     status,
+    registrationRole,
     respondedAt: new Date()
   };
 
   let rsvp;
   try {
     rsvp = existing
-      ? await EventRsvpModel.update(existing._id, patch)
+      ? await EventRsvpModel.updateScoped(req.tenant._id, existing._id, patch)
       : await EventRsvpModel.create({
           tenantId: req.tenant._id,
           ...patch
@@ -320,15 +373,23 @@ router.put("/:eventId/rsvp", async (req, res) => {
     tenantId: req.tenant._id,
     userId: req.user.id,
     eventType: "event_rsvp_updated",
-    metadata: { eventId, status }
+    metadata: { eventId, status, registrationRole }
   }).catch(() => {});
 
-  const [rsvps, hostProfile] = await Promise.all([
+  const [rsvps, hostProfile, meetingDetail] = await Promise.all([
     EventRsvpModel.find(req.tenant._id, { eventId }),
     event?.hostProfileId
       ? ProfileModel.findOne(req.tenant._id, { _id: String(event.hostProfileId) })
-      : null
+      : null,
+    EventMeetingDetailModel.findOne(req.tenant._id, { eventId })
   ]);
+  // Registering is what unlocks the roster, so send it back with the response
+  // that confirms it rather than making the page ask again.
+  const roster = await resolveViewerRoster({
+    tenantId: req.tenant._id,
+    rsvps,
+    myRsvp: rsvp
+  });
   return res.json({
     ok: true,
     item: serializeEvent(event, {
@@ -336,6 +397,8 @@ router.put("/:eventId/rsvp", async (req, res) => {
       rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
       myRsvp: rsvp,
       hostProfile,
+      roster,
+      hasMeetingLink: Boolean(String(meetingDetail?.meetingUrl || "").trim()),
       viewerProfileId: String(profile?._id || profile?.id || "")
     })
   });

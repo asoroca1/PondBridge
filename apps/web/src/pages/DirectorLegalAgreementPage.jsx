@@ -72,7 +72,7 @@ export default function DirectorLegalAgreementPage() {
 
           <h3>3) Billing and payment</h3>
           <ul>
-            <li>Fees follow your selected tier (Founders, Legacy, or Institutional) and any applicable onboarding fee.</li>
+            <li>Fees follow the PondBridge Flagship plan and any applicable onboarding fee.</li>
             <li>Payments are processed by Stripe or another designated payment provider.</li>
             <li>Late or failed payments may limit access or pause launch readiness until resolved.</li>
           </ul>

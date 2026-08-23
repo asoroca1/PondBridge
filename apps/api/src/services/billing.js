@@ -27,6 +27,12 @@ const stripe = env.STRIPE_SECRET_KEY
     })
   : null;
 
+// The live Stripe price for the Flagship plan ($1,200/year recurring, product
+// prod_V5lyNQwTl5vsHG). Pinned here so checkout never depends on the Stripe
+// product-name lookup, which caches a miss for the life of the process.
+// STRIPE_PRICE_FLAGSHIP_ANNUAL still overrides it for staging or a re-price.
+const FLAGSHIP_ANNUAL_PRICE_ID = "price_1U5aQJKmSeC5JnMuSjZD4smU";
+
 const BILLING_PLAN_CATALOG = {
   flagship: {
     code: "flagship",
@@ -35,8 +41,9 @@ const BILLING_PLAN_CATALOG = {
     planTier: "premium",
     annualAmount: 1200,
     onboardingFeeAmount: 0,
-    annualPriceId: String(env.STRIPE_PRICE_FLAGSHIP_ANNUAL || "").trim(),
-    onboardingPriceId: ""
+    annualPriceId: String(env.STRIPE_PRICE_FLAGSHIP_ANNUAL || FLAGSHIP_ANNUAL_PRICE_ID).trim(),
+    onboardingPriceId: "",
+    offered: true
   },
   test: {
     code: "test",
@@ -52,7 +59,7 @@ const BILLING_PLAN_CATALOG = {
 
 const STRIPE_PRODUCT_NAME_BY_PLAN_CODE = {
   flagship: "Flagship",
-  test: "Test"
+  test: "Internal Test"
 };
 
 const stripePriceLookupCache = new Map();
@@ -93,16 +100,28 @@ function isTestPlanEnabledForTenant(tenant = null) {
 }
 
 function listCatalogEntriesForTenant(tenant = null) {
+  // Flagship ($1,200/year) is the only plan we sell. The retired plan codes are
+  // no longer catalog entries at all -- billingState maps them onto Flagship so
+  // tenants stored on them keep resolving.
   return Object.values(BILLING_PLAN_CATALOG).filter((entry) => {
-    if (entry.code !== "test") return true;
-    return isTestPlanEnabledForTenant(tenant);
+    if (entry.code === "test") return isTestPlanEnabledForTenant(tenant);
+    return entry.offered !== false;
   });
 }
 
 export function isBillingPlanAvailableForTenant(planCode = "", tenant = null) {
   const normalizedPlanCode = normalizePlanCode(planCode, tenant?.planTier || "base");
-  if (normalizedPlanCode !== "test") return true;
-  return isTestPlanEnabledForTenant(tenant);
+  if (normalizedPlanCode === "test") return isTestPlanEnabledForTenant(tenant);
+
+  const entry = BILLING_PLAN_CATALOG[normalizedPlanCode];
+  if (entry && entry.offered !== false) return true;
+
+  // Retired codes normalize onto Flagship above, so this only keeps an exact
+  // stored plan code selectable for the tenant already sitting on it.
+  const currentPlanCode = String(tenant?.settings?.billing?.planCode || "")
+    .trim()
+    .toLowerCase();
+  return Boolean(currentPlanCode) && currentPlanCode === normalizedPlanCode;
 }
 
 async function findStripePriceIdByProductName(
@@ -808,8 +827,12 @@ export async function createTenantCheckoutSession({
   }
 
   if (!catalogEntry.annualPriceId) {
+    const expectedProductName =
+      STRIPE_PRODUCT_NAME_BY_PLAN_CODE[catalogEntry.code] || catalogEntry.label || catalogEntry.code;
     const error = new Error(
-      `Missing Stripe annual price ID for plan '${catalogEntry.code}'. Configure the corresponding STRIPE_PRICE_* variable.`
+      `Missing Stripe annual price ID for plan '${catalogEntry.code}'. Create a Stripe product named ` +
+        `"${expectedProductName}" with a recurring annual price of $${catalogEntry.annualAmount}, ` +
+        "or set the corresponding STRIPE_PRICE_* variable."
     );
     error.statusCode = 400;
     error.code = "STRIPE_PRICE_MISSING";
