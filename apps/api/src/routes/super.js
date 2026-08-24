@@ -452,8 +452,18 @@ function planMonthlyAmount(tenant = {}) {
   return BILLING_PLAN_MRR[tenantBillingPlanCode(tenant)] || BILLING_PLAN_MRR.flagship;
 }
 
+/**
+ * A stored plan code is an intention; a Stripe subscription is revenue. Demo
+ * and seeded camps carry billingStatus "active" with nothing attached to
+ * Stripe, and counting their plan price as MRR reports money nobody is paying.
+ */
+function hasLiveSubscription(tenant = {}) {
+  return Boolean(String(tenant?.stripeSubscriptionId || "").trim());
+}
+
 function tenantMrr(tenant = {}) {
   if (billingStatusLabel(tenant) !== "active") return 0;
+  if (!hasLiveSubscription(tenant)) return 0;
   return planMonthlyAmount(tenant);
 }
 
@@ -1681,7 +1691,10 @@ router.get("/billing/overview", requireRole("support_admin", "finance_admin"), a
       mrrDeltaPercent: null,
       newSubscriptions30d: newSubs.length,
       churned30d: churned.length,
-      churnedMrrLost30d: churned.reduce((sum, tenant) => sum + planMonthlyAmount(tenant), 0),
+      churnedMrrLost30d: churned.reduce(
+        (sum, tenant) => sum + (hasLiveSubscription(tenant) ? planMonthlyAmount(tenant) : 0),
+        0
+      ),
       failedPayments
     },
     charts: {
