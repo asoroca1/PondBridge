@@ -1324,7 +1324,7 @@ router.post("/tenants/:tenantId/reset-demo", requireSuperMutation, async (req, r
     return res.status(400).json({
       error: {
         code: "NOT_DEMO_TENANT",
-        message: "This endpoint only works on demo/test/sandbox tenants."
+        message: "This endpoint only works on demo, test, or sandbox camps."
       }
     });
   }
@@ -1365,7 +1365,7 @@ router.post("/tenants/:tenantId/provision-domain", requireSuperMutation, async (
     return res.status(502).json({
       error: {
         code: "DOMAIN_PROVISION_FAILED",
-        message: String(error?.message || "Failed to provision tenant domain")
+        message: String(error?.message || "Failed to provision camp domain")
       }
     });
   }
@@ -1985,7 +1985,7 @@ router.get("/analytics/flags", requireRole("support_admin"), async (_req, res) =
     })),
     controlAvailable: rolloutControl.controlAvailable,
     notice: rolloutControl.controlAvailable
-      ? "Rollouts are enforced server-side by tenant ID. Keep the kill switch on until target and control checks pass."
+      ? "Rollouts are enforced server-side by camp ID. Keep the kill switch on until target and control checks pass."
       : "Rollout controls are locked until the feature_rollouts schema is applied. All supported features fail closed."
   });
 });
@@ -2007,7 +2007,7 @@ router.patch("/analytics/flags/:key", requireSuperMutation, async (req, res, nex
       return res.status(400).json({
         error: {
           code: "ROLLOUT_TENANT_NOT_FOUND",
-          message: "One or more rollout tenant IDs do not exist.",
+          message: "One or more rollout camp IDs do not exist.",
           details: { unknownTenantIds }
         }
       });
