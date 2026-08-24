@@ -24,6 +24,13 @@ import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
 import { readableTextColorOnBrand } from "../lib/colorUtils.js";
 import {
+  DEFAULT_BILLING_PLAN,
+  billingPlanLabel,
+  buildBillingPlanOptions,
+  normalizeBillingPlanCode,
+  resolveTenantBillingPlanCode
+} from "../lib/billingPlanCatalog.js";
+import {
   IMAGE_OPTIMIZATION_PRESETS,
   extensionForImageMime,
   optimizeImageFile
@@ -117,15 +124,6 @@ const EMPTY_ADDRESS = {
   postalCode: "",
   country: "United States"
 };
-const BILLING_PLAN_OPTIONS = [
-  {
-    code: "flagship",
-    title: "Flagship Plan",
-    annualAmount: 1200,
-    onboardingFeeAmount: 0,
-    summary: "Every PondBridge feature, billed annually with no onboarding fee."
-  }
-];
 const HERO_POSITION_LABELS = {
   "left top": "Top left",
   "center top": "Top center",
@@ -154,16 +152,6 @@ const HERO_SIZE_OPTIONS = heroImageSizePresets.map((value) => ({
   label: HERO_SIZE_LABELS[value] || value
 }));
 
-function normalizeBillingPlanCode(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized) ? normalized : "flagship";
-}
-
-function resolveTenantBillingPlanCode(tenant = null, fallback = "") {
-  const raw = String(tenant?.billingPlan || tenant?.billing?.billingPlan || "").trim().toLowerCase();
-  return BILLING_PLAN_OPTIONS.some((item) => item.code === raw) ? raw : fallback;
-}
-
 function billingLaunchReady(billingState = {}) {
   return Boolean(
     billingState?.launchReady ||
@@ -183,11 +171,6 @@ function resolveLaunchRedirectTarget(launchPayload = {}, slug = "") {
 
   const safeSlug = String(slug || "").trim().toLowerCase();
   return safeSlug ? `/t/${safeSlug}/home` : "/home";
-}
-
-function billingPlanLabel(code = "") {
-  const match = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(code));
-  return match ? match.title : "Flagship Plan";
 }
 
 const FEATURE_OPTIONS = TENANT_MODULE_CATALOG.map((module) => ({
@@ -412,6 +395,7 @@ function DirectorCreateAccountWizardPage() {
   const [launchRedirectUrl, setLaunchRedirectUrl] = useState("");
   const [serverOnboardingSnapshot, setServerOnboardingSnapshot] = useState(null);
   const [serverDraftLoaded, setServerDraftLoaded] = useState(false);
+  const [billingCatalogPlans, setBillingCatalogPlans] = useState([]);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -525,6 +509,25 @@ function DirectorCreateAccountWizardPage() {
     slug,
     user?.id
   ]);
+
+  useEffect(() => {
+    if (!authToken || !slug) return;
+
+    let cancelled = false;
+    requestJson("/api/tenants/me/billing", { token: authToken })
+      .then((snapshot) => {
+        if (cancelled) return;
+        const plans = Array.isArray(snapshot?.catalog?.plans) ? snapshot.catalog.plans : [];
+        if (plans.length) setBillingCatalogPlans(plans);
+      })
+      .catch(() => {
+        // Leave the Flagship fallback in place if the catalog is unreachable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, slug]);
 
   useEffect(() => {
     if (checkoutQueryState !== "cancel") return;
@@ -720,13 +723,17 @@ function DirectorCreateAccountWizardPage() {
     { label: "Surface", color: deriveSecondaryHex(effectiveMainColor, 0.9) }
   ];
 
+  const availablePlanOptions = useMemo(
+    () => buildBillingPlanOptions(billingCatalogPlans),
+    [billingCatalogPlans]
+  );
   const selectedBillingPlanCode = normalizeBillingPlanCode(form.billingPlanCode);
   const selectedBillingPlan =
-    BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) ||
-    BILLING_PLAN_OPTIONS[0];
+    availablePlanOptions.find((item) => item.code === selectedBillingPlanCode) ||
+    availablePlanOptions[0];
   const tenantBillingPlanCode = resolveTenantBillingPlanCode(tenant, selectedBillingPlanCode);
   const tenantBillingPlan =
-    BILLING_PLAN_OPTIONS.find((item) => item.code === tenantBillingPlanCode) ||
+    availablePlanOptions.find((item) => item.code === tenantBillingPlanCode) ||
     selectedBillingPlan;
   const hasTenantAnnualAmount = Number.isFinite(Number(tenant?.billing?.annualAmount));
   const hasTenantOnboardingFeeAmount =
@@ -751,12 +758,16 @@ function DirectorCreateAccountWizardPage() {
       : sanitizeMoneyValue(selectedBillingPlan.onboardingFeeAmount, 0);
   const annualAmountForPlanOption = (planCode = "") => {
     if (normalizeBillingPlanCode(planCode) === tenantBillingPlanCode) return configuredAnnualAmount;
-    const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(planCode));
+    const option = availablePlanOptions.find(
+      (item) => item.code === normalizeBillingPlanCode(planCode)
+    );
     return sanitizeMoneyValue(option?.annualAmount, 0);
   };
   const onboardingFeeAmountForPlanOption = (planCode = "") => {
     if (normalizeBillingPlanCode(planCode) === tenantBillingPlanCode) return configuredOnboardingFeeAmount;
-    const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(planCode));
+    const option = availablePlanOptions.find(
+      (item) => item.code === normalizeBillingPlanCode(planCode)
+    );
     return sanitizeMoneyValue(option?.onboardingFeeAmount, 0);
   };
   const billingStatus = String(tenant?.billingStatus || tenant?.billing?.billingStatus || "")
@@ -1060,10 +1071,21 @@ function DirectorCreateAccountWizardPage() {
 
   useEffect(() => {
     if (!tenant || planHydratedRef.current) return;
-    const billingPlanCode = resolveTenantBillingPlanCode(tenant) || "flagship";
+    const billingPlanCode = resolveTenantBillingPlanCode(tenant) || DEFAULT_BILLING_PLAN.code;
     setForm((prev) => ({ ...prev, billingPlanCode }));
     planHydratedRef.current = true;
   }, [tenant]);
+
+  // If the selected plan is not one the server offers this camp, fall back to
+  // the first plan it does offer so checkout never receives a rejected code.
+  useEffect(() => {
+    if (!availablePlanOptions.length) return;
+    setForm((prev) => {
+      const current = normalizeBillingPlanCode(prev.billingPlanCode);
+      if (availablePlanOptions.some((item) => item.code === current)) return prev;
+      return { ...prev, billingPlanCode: availablePlanOptions[0].code };
+    });
+  }, [availablePlanOptions]);
 
   useEffect(() => {
     if (!tenant || campSpecificsHydratedRef.current) return;
@@ -1632,7 +1654,7 @@ function DirectorCreateAccountWizardPage() {
     if (!campTypeValid) {
       next.campType = "Please choose your camp type.";
     }
-    if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
+    if (!availablePlanOptions.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
       next.billingPlanCode = "Please choose a plan.";
     }
 
@@ -2562,11 +2584,11 @@ function DirectorCreateAccountWizardPage() {
 
                   <div className="wizard1-field wizard1-span-12">
                     <label className="wizard1-label">
-                      {BILLING_PLAN_OPTIONS.length > 1 ? "Choose" : "Your"} {alumniWord} network plan
+                      {availablePlanOptions.length > 1 ? "Choose" : "Your"} {alumniWord} network plan
                       <span className="req" aria-hidden="true"> *</span>
                     </label>
                     <div className="director-plan-grid" role="radiogroup" aria-label={`Choose ${alumniWord} network plan`}>
-                      {BILLING_PLAN_OPTIONS.map((option) => (
+                      {availablePlanOptions.map((option) => (
                         <label
                           key={option.code}
                           className={`director-plan-card ${
@@ -3109,7 +3131,7 @@ function DirectorCreateAccountWizardPage() {
                     <div className="director-billing-overview-grid">
                       <article className="director-summary-card director-billing-highlight">
                         <h3>{`Selected ${alumniWord} network plan`}</h3>
-                        <p className="director-summary-main">{billingPlanLabel(selectedBillingPlanCode)}</p>
+                        <p className="director-summary-main">{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</p>
                         <dl className="director-billing-kv">
                           <div>
                             <dt>Annual subscription</dt>
@@ -3197,7 +3219,7 @@ function DirectorCreateAccountWizardPage() {
                       <h2>{networkDisplayNamePreview}</h2>
                       <p>Everything is ready for a final review. Launch will publish these settings live.</p>
                       <div className="director-review-pill-row">
-                        <span className="director-review-pill is-brand">{billingPlanLabel(selectedBillingPlanCode)}</span>
+                        <span className="director-review-pill is-brand">{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</span>
                         <span className="director-review-pill">{enabledModulesCount} modules enabled</span>
                         <span className="director-review-pill">{onboardingFeeStatusText}</span>
                       </div>
@@ -3239,7 +3261,7 @@ function DirectorCreateAccountWizardPage() {
                         </div>
                         <div>
                           <dt>Plan</dt>
-                          <dd>{billingPlanLabel(selectedBillingPlanCode)}</dd>
+                          <dd>{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</dd>
                         </div>
                       </dl>
                     </article>
@@ -3322,7 +3344,7 @@ function DirectorCreateAccountWizardPage() {
                       <dl className="director-review-kv director-review-kv--two">
                         <div>
                           <dt>Plan confirmed</dt>
-                          <dd>{billingPlanLabel(selectedBillingPlanCode)}</dd>
+                          <dd>{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</dd>
                         </div>
                         <div>
                           <dt>Onboarding fee</dt>
