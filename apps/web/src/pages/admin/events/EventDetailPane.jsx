@@ -11,6 +11,7 @@ import {
   Users,
   Video
 } from "lucide-react";
+import EventRoster from "./EventRoster.jsx";
 import {
   PROVIDER_LABELS,
   eventAccent,
@@ -36,8 +37,14 @@ function Stat({ label, value, tone = "" }) {
  */
 export default function EventDetailPane({
   event,
+  responses = [],
+  request,
   busy = "",
+  rosterBusyId = "",
   memberUrl = "",
+  onAddRegistration,
+  onSetRegistrationRole,
+  onRemoveRegistration,
   onEdit,
   onPublish,
   onUnpublish,
@@ -56,6 +63,7 @@ export default function EventDetailPane({
 
   const counts = event.counts || {};
   const online = isOnline(event);
+  const seminar = event.eventType === "seminar";
   const canPublish = event.status === "draft";
   const canUnpublish = event.status === "published";
   const canCancel = event.status !== "canceled";
@@ -124,6 +132,16 @@ export default function EventDetailPane({
         <Stat label="Can't go" value={counts.notAttending || 0} />
         {event.capacity ? <Stat label="Capacity" value={event.capacity} /> : null}
       </div>
+
+      <EventRoster
+        responses={responses}
+        seminar={seminar}
+        request={request}
+        busyProfileId={rosterBusyId}
+        onAdd={onAddRegistration}
+        onSetRole={onSetRegistrationRole}
+        onRemove={onRemoveRegistration}
+      />
 
       <div className="pb-events-detail-actions">
         <Button type="button" onClick={() => onEdit?.(event)}>

@@ -1625,14 +1625,43 @@ function DirectorCreateAccountWizardPage() {
     return firstWizardStep;
   }
 
-  function validateAccountStep() {
+  /**
+   * For a returning director the address sits on camp specifics, so it cannot
+   * block a move into a step that comes before it — the director has not been
+   * shown the field yet.
+   */
+  function mailingAddressRequiredForStep(targetStep) {
+    if (!mailingAddressOnSpecificsStep) return true;
+    return STEP_ORDER.indexOf(targetStep) > STEP_ORDER.indexOf(STEP_CAMP_SPECIFICS);
+  }
+
+  // Once the address is the only thing missing the director is standing on the
+  // camp specifics step, where "account fields" names nothing they can see.
+  function accountErrorsMessage(accountErrors, fallback) {
+    const keys = Object.keys(accountErrors);
+    const onlyAddressMissing =
+      keys.length > 0 && keys.every((key) => key.startsWith("mailingAddress."));
+    if (onlyAddressMissing && mailingAddressOnSpecificsStep) {
+      return "Please add your camp mailing address to continue.";
+    }
+    return fallback;
+  }
+
+  function accountErrorsForStep(targetStep) {
+    return validateAccountStep({
+      includeMailingAddress: mailingAddressRequiredForStep(targetStep)
+    });
+  }
+
+  function validateAccountStep({ includeMailingAddress = true } = {}) {
+    const addressErrors = includeMailingAddress ? validateMailingAddress() : {};
     const campTypeValid = CAMP_TYPE_OPTIONS.some(
       (item) => item.value === normalizeCampType(form.campType || "")
     );
     if (!accountStepRequired) {
       return {
         ...(campTypeValid ? {} : { campType: "Please choose your camp type." }),
-        ...validateMailingAddress()
+        ...addressErrors
       };
     }
 
@@ -1658,7 +1687,7 @@ function DirectorCreateAccountWizardPage() {
       next.billingPlanCode = "Please choose a plan.";
     }
 
-    return { ...next, ...validateMailingAddress() };
+    return { ...next, ...addressErrors };
   }
 
   function validateDesignStep() {
@@ -1716,7 +1745,7 @@ function DirectorCreateAccountWizardPage() {
 
   function onContinueToDesign(event) {
     event.preventDefault();
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_DESIGN);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setSubmitError("Please complete the required account fields to continue.");
@@ -1729,11 +1758,16 @@ function DirectorCreateAccountWizardPage() {
 
   function onContinueToFeatures(event) {
     event.preventDefault();
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_FEATURES);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -1751,11 +1785,16 @@ function DirectorCreateAccountWizardPage() {
   function onContinueToCampSpecifics(event) {
     event.preventDefault();
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_CAMP_SPECIFICS);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -1781,11 +1820,16 @@ function DirectorCreateAccountWizardPage() {
   function onContinueToBillingPlan(event) {
     event.preventDefault();
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_BILLING_PLAN);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -1819,11 +1863,16 @@ function DirectorCreateAccountWizardPage() {
   function onContinueToReviewLaunch(event) {
     event.preventDefault();
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_REVIEW_LAUNCH);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -2004,11 +2053,13 @@ function DirectorCreateAccountWizardPage() {
       return;
     }
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(targetStep);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Complete account details before continuing.");
+      setSubmitError(
+        accountErrorsMessage(accountErrors, "Complete account details before continuing.")
+      );
       return;
     }
 
@@ -2070,7 +2121,12 @@ function DirectorCreateAccountWizardPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setSubmitError("Please complete your account details before finishing setup.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete your account details before finishing setup."
+        )
+      );
       setStep(stepForAccountErrors(accountErrors));
       return;
     }

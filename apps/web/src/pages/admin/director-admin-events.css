@@ -610,6 +610,153 @@
 .pb-events-host-results strong { font-size: 0.85rem; }
 .pb-events-host-results small { font-size: 0.75rem; color: var(--director-admin-ink-soft, var(--neutral-500)); }
 
+/* --- Roster: presenters and registrations --- */
+
+.pb-events-roster {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--director-admin-surface-border-soft, var(--neutral-100));
+  border-radius: 12px;
+  background: var(--director-admin-surface-bg-strong, #f6f8fb);
+}
+
+.pb-events-roster > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pb-events-roster h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--pb-ev-ink-soft);
+}
+
+.pb-events-roster h3 svg { width: 14px; height: 14px; }
+.pb-events-roster > header small { font-size: 0.76rem; color: var(--pb-ev-ink-soft); }
+
+.pb-events-roster > header button {
+  border: 0;
+  background: transparent;
+  color: var(--brand-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pb-events-roster ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pb-events-roster li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: var(--director-admin-surface-bg, #fff);
+}
+
+.pb-events-roster-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--neutral-100);
+  color: var(--pb-ev-ink-soft);
+}
+
+.pb-events-roster-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.pb-events-roster-avatar em { font-style: normal; font-size: 0.68rem; font-weight: 700; }
+
+.pb-events-roster-name {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pb-events-roster-name strong,
+.pb-events-roster-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pb-events-roster-name strong { font-size: 0.85rem; color: var(--pb-ev-ink); }
+.pb-events-roster-name small { font-size: 0.73rem; color: var(--pb-ev-ink-soft); }
+
+.pb-events-roster-status {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--neutral-100);
+  color: var(--neutral-600);
+}
+
+.pb-events-roster-status.is-attending { background: #e5f4ea; color: #276b45; }
+.pb-events-roster-status.is-not-attending { background: #fbeae8; color: #8d362f; }
+
+.pb-events-roster-role {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--brand-primary);
+  font: inherit;
+  font-size: 0.73rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pb-events-roster-remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--pb-ev-ink-soft);
+  cursor: pointer;
+}
+
+.pb-events-roster-remove:hover:not(:disabled) { background: #fbeae8; color: #8d362f; }
+.pb-events-roster-role:disabled,
+.pb-events-roster-remove:disabled { opacity: 0.45; cursor: progress; }
+
+.pb-events-roster-empty,
+.pb-events-picker-empty {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--pb-ev-ink-soft);
+}
+
+.pb-events-member-picker { display: grid; gap: 4px; }
+
 /* --- Responsive --- */
 
 @media (max-width: 1180px) {

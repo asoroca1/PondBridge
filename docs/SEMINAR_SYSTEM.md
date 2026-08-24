@@ -25,12 +25,18 @@ mobile alerts, or event email.
 7. Save the draft and review the member-facing page.
 8. Publish when every required field is ready.
 9. Monitor registrations and the audited count of seminar-room opens.
+   From the event's detail pane, search the network to add presenters directly
+   rather than waiting for them to register. Anyone added this way is recorded
+   as going, in the presenter role. The same panel moves a person between
+   presenting and attending, and removes them from the event entirely.
 10. Use the existing reviewed member-email workflow for invitations,
     reminders, updates, or cancellation. The meeting link is never inserted
     into the generated event block.
 
-The API and database both reject a host who is inactive, unregistered, or from
-another camp.
+The API and database both reject a host or presenter who is inactive,
+unregistered, or from another camp. Director-assigned registrations go through
+the same capacity trigger as member sign-ups, so a full session refuses the
+addition instead of overselling itself.
 
 ## Member flow
 

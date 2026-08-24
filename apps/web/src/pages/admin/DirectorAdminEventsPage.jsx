@@ -24,6 +24,7 @@ export default function DirectorAdminEventsPage() {
   const [platformDisabled, setPlatformDisabled] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState(null);
+  const [rosterBusyId, setRosterBusyId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [saving, setSaving] = useState(false);
@@ -63,10 +64,16 @@ export default function DirectorAdminEventsPage() {
     }
     let active = true;
     request(`/events/${selectedId}`)
-      .then((payload) => { if (active) setDetail(payload?.item || null); })
+      .then((payload) => { if (active) setDetail(payload || null); })
       .catch(() => { if (active) setDetail(null); });
     return () => { active = false; };
   }, [request, selectedId]);
+
+  const detailItem = detail?.item || null;
+  const responses = useMemo(
+    () => (Array.isArray(detail?.responses) ? detail.responses : []),
+    [detail]
+  );
 
   const sorted = useMemo(
     () => [...items].sort((a, b) => new Date(a.startsAt || 0) - new Date(b.startsAt || 0)),
@@ -109,7 +116,7 @@ export default function DirectorAdminEventsPage() {
   }
 
   function openEdit(event) {
-    const target = detail || event;
+    const target = detailItem || event;
     setComposerEvent(target);
     setComposerType(target?.eventType || "community");
     setComposerDay(null);
@@ -130,7 +137,8 @@ export default function DirectorAdminEventsPage() {
       await loadList();
       if (saved?.id) {
         setSelectedId(saved.id);
-        setDetail(saved);
+        const fresh = await request(`/events/${saved.id}`).catch(() => null);
+        setDetail(fresh || { item: saved, responses: [], messages: [] });
         if (saved.startsAt) setMonth(new Date(saved.startsAt));
       }
     } catch (requestError) {
@@ -149,13 +157,64 @@ export default function DirectorAdminEventsPage() {
       setStatus(label);
       await loadList();
       const fresh = await request(`/events/${event.id}`).catch(() => null);
-      if (fresh?.item) setDetail(fresh.item);
+      if (fresh?.item) setDetail(fresh);
     } catch (requestError) {
       setError(requestError.message || "That action could not be completed.");
     } finally {
       setBusy("");
       setCancelTarget(null);
     }
+  }
+
+  // Every roster change answers with the whole detail payload, so one helper
+  // keeps the pane and the agenda counts in step.
+  async function runRosterAction({ path, method, body, profileId, label }) {
+    if (!detailItem?.id) return;
+    setRosterBusyId(profileId || "pending");
+    setError("");
+    setStatus("");
+    try {
+      const payload = await request(path, body ? { method, body } : { method });
+      if (payload?.item) setDetail(payload);
+      setStatus(label);
+      await loadList();
+    } catch (requestError) {
+      setError(requestError.message || "That change could not be saved.");
+    } finally {
+      setRosterBusyId("");
+    }
+  }
+
+  function addRegistration(member, registrationRole) {
+    return runRosterAction({
+      path: `/events/${detailItem.id}/registrations`,
+      method: "POST",
+      body: { profileId: member?.id || "", registrationRole },
+      profileId: member?.id || "",
+      label: `${member?.fullName || "Member"} added and marked as going.`
+    });
+  }
+
+  function setRegistrationRole(person, registrationRole) {
+    return runRosterAction({
+      path: `/events/${detailItem.id}/registrations/${person.profileId}`,
+      method: "PATCH",
+      body: { registrationRole },
+      profileId: person.profileId,
+      label:
+        registrationRole === "presenter"
+          ? `${person.fullName || "Member"} is now presenting.`
+          : `${person.fullName || "Member"} is now attending.`
+    });
+  }
+
+  function removeRegistration(person) {
+    return runRosterAction({
+      path: `/events/${detailItem.id}/registrations/${person.profileId}`,
+      method: "DELETE",
+      profileId: person.profileId,
+      label: `${person.fullName || "Member"} removed from this event.`
+    });
   }
 
   async function copyLink(url) {
@@ -167,8 +226,8 @@ export default function DirectorAdminEventsPage() {
     }
   }
 
-  const memberUrl = detail?.id && tenant?.slug
-    ? `${window.location.origin}${tenantRoute(tenant.slug, `/events/${detail.id}`)}`
+  const memberUrl = detailItem?.id && tenant?.slug
+    ? `${window.location.origin}${tenantRoute(tenant.slug, `/events/${detailItem.id}`)}`
     : "";
 
   return (
@@ -242,9 +301,15 @@ export default function DirectorAdminEventsPage() {
 
           <aside className="pb-events-side">
             <EventDetailPane
-              event={detail}
+              event={detailItem}
+              responses={responses}
+              request={request}
               busy={busy}
+              rosterBusyId={rosterBusyId}
               memberUrl={memberUrl}
+              onAddRegistration={addRegistration}
+              onSetRegistrationRole={setRegistrationRole}
+              onRemoveRegistration={removeRegistration}
               onEdit={openEdit}
               onPublish={(event) => runAction("publish", event, "Event published to members.")}
               onUnpublish={(event) => runAction("unpublish", event, "Event hidden from members.")}
