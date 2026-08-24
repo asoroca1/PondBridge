@@ -17,6 +17,7 @@ module.exports = {
     "**/tests/alumniGrowth.test.js",
     "**/tests/emailScheduling.test.js",
     "**/tests/memberSafety.test.js",
+    "**/tests/memberSearch.test.js",
     "**/tests/messaging.test.js",
     "**/tests/memberEligibility.test.js",
     "**/tests/mobileNotifications.test.js",

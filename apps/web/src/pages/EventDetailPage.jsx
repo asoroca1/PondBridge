@@ -12,7 +12,6 @@ import {
   Video,
   ExternalLink,
   GraduationCap,
-  ShieldCheck,
   UserRound
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
@@ -414,17 +413,10 @@ export default function EventDetailPage() {
                       </div>
                     </div>
                   </header>
-                  <div className="ev-seminar-access-note" id="seminar-room-access-note">
-                    <ShieldCheck size={16} aria-hidden="true" />
-                    <span>
-                      PondBridge releases this link only to signed-in registered members who RSVP Going.
-                    </span>
-                  </div>
                   {canJoinRoom ? (
                     <button
                       type="button"
                       className="ev-btn ev-btn-primary ev-seminar-join-btn"
-                      aria-describedby="seminar-room-access-note"
                       disabled={joining}
                       onClick={openSeminarRoom}
                     >

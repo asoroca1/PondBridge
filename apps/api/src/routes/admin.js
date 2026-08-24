@@ -124,6 +124,7 @@ import {
 import { emitRealtime } from "../services/socketServer.js";
 import { buildTenantFeatureInventory } from "../services/tenantFeatureInventory.js";
 import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js";
+import { matchesMemberQuery } from "../utils/memberSearch.js";
 import {
   GROWTH_EMAIL_SEGMENTS,
   buildAlumniGrowthSnapshot,
@@ -1196,9 +1197,7 @@ const MEMBER_EXPORT_DEFAULT_FIELDS = [
 ];
 const MEMBER_EXPORT_FIELD_MAP = new Map(MEMBER_EXPORT_FIELDS.map((field) => [field.key, field]));
 
-function escapeRegex(value = "") {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+
 
 function sanitizeCsvCell(value = "") {
   return sanitizeText(String(value || "").trim());
@@ -3210,15 +3209,7 @@ router.get("/members", async (req, res, next) => {
 
     // Text search filter (JS-side)
     if (q) {
-      const rx = new RegExp(escapeRegex(q), "i");
-      allProfiles = allProfiles.filter((p) =>
-        rx.test(p.firstName || "") ||
-        rx.test(p.lastName || "") ||
-        (p.emails || []).some((e) => rx.test(e)) ||
-        rx.test(p.cityState || "") ||
-        rx.test(p.roleAtCamp || "") ||
-          (p.collegeYears || []).some((y) => rx.test(y))
-      );
+      allProfiles = allProfiles.filter((p) => matchesMemberQuery(p, q));
     }
 
     if (campYear) {
@@ -3240,13 +3231,7 @@ router.get("/members", async (req, res, next) => {
           select: ADMIN_MEMBER_PROFILE_SELECT
         });
         countProfiles = countProfiles.filter((p) => {
-          const rx = new RegExp(escapeRegex(q), "i");
-          return rx.test(p.firstName || "") ||
-            rx.test(p.lastName || "") ||
-            (p.emails || []).some((e) => rx.test(e)) ||
-            rx.test(p.cityState || "") ||
-            rx.test(p.roleAtCamp || "") ||
-            (p.collegeYears || []).some((y) => rx.test(y));
+          return matchesMemberQuery(p, q);
         });
         total = countProfiles.length;
         profiles = countProfiles.slice(skip, skip + pageSize);
@@ -6483,12 +6468,7 @@ router.get("/profiles", async (req, res) => {
   });
 
   if (q) {
-    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    profiles = profiles.filter((p) =>
-      rx.test(p.firstName || "") ||
-      rx.test(p.lastName || "") ||
-      (p.emails || []).some((e) => rx.test(e))
-    );
+    profiles = profiles.filter((p) => matchesMemberQuery(p, q));
   }
 
   res.json({ total: profiles.length, items: profiles });
