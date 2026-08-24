@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
 import { Input } from "@pondbridge/ui";
+import { UserRound } from "lucide-react";
+
+
+function initials(fullName = "") {
+  return fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
+}
 
 /**
  * Type-ahead over the network's members. Used anywhere a director needs to
@@ -62,6 +73,10 @@ export default function MemberPicker({
         onChange={(event) => setQuery(event.target.value)}
         placeholder={placeholder}
       />
+      {query.trim().length === 1 ? (
+        <p className="pb-events-picker-empty">Keep typing to search.</p>
+      ) : null}
+      {searching ? <p className="pb-events-picker-empty">Searching…</p> : null}
       {query.trim().length >= 2 && !searching && !visible.length ? (
         <p className="pb-events-picker-empty">No members match “{query.trim()}”.</p>
       ) : null}
@@ -78,8 +93,19 @@ export default function MemberPicker({
                   setResults([]);
                 }}
               >
-                <strong>{member.fullName || "Member"}</strong>
-                <small>{member.email}</small>
+                <span className="pb-events-picker-avatar" aria-hidden="true">
+                  {member.avatarUrl ? (
+                    <img src={member.avatarUrl} alt="" />
+                  ) : initials(member.fullName) ? (
+                    <em>{initials(member.fullName)}</em>
+                  ) : (
+                    <UserRound size={15} />
+                  )}
+                </span>
+                <span className="pb-events-picker-who">
+                  <strong>{member.fullName || "Member"}</strong>
+                  <small>{[member.role, member.email].filter(Boolean).join(" · ")}</small>
+                </span>
               </button>
             </li>
           ))}

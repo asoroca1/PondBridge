@@ -16215,24 +16215,6 @@ button.super-stat-card {
   gap:2px;
 }
 
-.ev-seminar-access-note{
-  display:flex;
-  align-items:flex-start;
-  gap:8px;
-  padding:10px 11px;
-  border-radius:11px;
-  background:var(--neutral-50);
-  color:var(--neutral-600);
-  font-size:12px;
-  line-height:1.45;
-}
-
-.ev-seminar-access-note svg{
-  flex:0 0 auto;
-  margin-top:1px;
-  color:var(--brand-primary);
-}
-
 .ev-seminar-join-btn{
   width:100%;
   align-self:stretch;

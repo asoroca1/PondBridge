@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Input, Select, Textarea } from "@pondbridge/ui";
 import { ModalDialog } from "../../../components/admin/AdminUi.jsx";
+import MemberPicker from "./MemberPicker.jsx";
 import {
   AUDIENCES,
   MEETING_PROVIDERS,
@@ -111,40 +112,15 @@ export default function EventComposer({
   // whichever it is, so editing an undated session does not silently date it.
   const [dated, setDated] = useState(() => (event ? Boolean(event.startsAt) : true));
   const [error, setError] = useState("");
-  const [hostQuery, setHostQuery] = useState("");
-  const [hostResults, setHostResults] = useState([]);
   const [host, setHost] = useState(event?.host || null);
 
   useEffect(() => {
     if (!open) return;
     setForm(initialForm(event, day, eventType));
     setHost(event?.host || null);
-    setHostQuery("");
-    setHostResults([]);
     setError("");
   }, [day, event, eventType, open]);
 
-  useEffect(() => {
-    const needle = hostQuery.trim();
-    if (!open || needle.length < 2) {
-      setHostResults([]);
-      return undefined;
-    }
-    let active = true;
-    const timer = window.setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({
-          page: "1", pageSize: "6", q: needle,
-          role: "all", year: "all", status: "all", completion: "all", sort: "name_asc"
-        });
-        const payload = await request(`/members?${params.toString()}`);
-        if (active) setHostResults(Array.isArray(payload?.items) ? payload.items : []);
-      } catch {
-        if (active) setHostResults([]);
-      }
-    }, 220);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [hostQuery, open, request]);
 
   // An info session can also be held in a room; an event can also be streamed.
   // Both stay possible, just never the starting assumption.
@@ -372,32 +348,14 @@ export default function EventComposer({
                 <button type="button" onClick={() => { setHost(null); patch({ hostProfileId: "" }); }}>Remove</button>
               </span>
             ) : (
-              <>
-                <Input
-                  value={hostQuery}
-                  onChange={(e) => setHostQuery(e.target.value)}
-                  placeholder={`Search members — ${copy.hostHint.toLowerCase()}`}
-                />
-                {hostResults.length ? (
-                  <ul className="pb-events-host-results">
-                    {hostResults.map((member) => (
-                      <li key={member.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setHost({ id: member.id, fullName: member.fullName });
-                            patch({ hostProfileId: member.id });
-                            setHostQuery("");
-                          }}
-                        >
-                          <strong>{member.fullName || "Member"}</strong>
-                          <small>{member.email}</small>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </>
+              <MemberPicker
+                request={request}
+                placeholder={`Search members — ${copy.hostHint.toLowerCase()}`}
+                onSelect={(member) => {
+                  setHost({ id: member.id, fullName: member.fullName });
+                  patch({ hostProfileId: member.id });
+                }}
+              />
             )}
           </div>
 
