@@ -803,8 +803,8 @@ export function SuperTenantCreatePage() {
             This billing plan is saved to the camp now, so directors land on onboarding with billing already pre-selected.
           </p>
           <p className="muted full-width">
-            Internal Test is a live $10/year production tier and only succeeds for allowlisted camp slugs, including
-            <code> test23 </code>.
+            Internal Test is a live $10/year production tier for exercising Stripe end to end. Nothing stops a real
+            camp being created on it, so double-check the plan above before creating.
           </p>
         </form>
       </Card>

@@ -15,11 +15,11 @@ Stripe key is configured, otherwise `mock`.
 | Plan | Code | Price | Onboarding fee | Who sees it |
 | --- | --- | --- | --- | --- |
 | Flagship | `flagship` | $1,200/year | none | every camp |
-| Internal Test | `test` | $10/year | none | only camps listed in `BILLING_TEST_PLAN_TENANTS` |
+| Internal Test | `test` | $10/year | none | every camp |
 
 The internal test tier exists so live Stripe checkout can be exercised end to end without a
-$1,200 charge. It is invisible unless a camp slug is explicitly allowlisted, and the API
-rejects it with `BILLING_TEST_PLAN_NOT_ENABLED` for everyone else.
+$1,200 charge. It is selectable for any camp from the super admin console. Nothing stops a
+real camp being put on it by mistake, so check the plan when you create one.
 
 Retired codes (`legacy`, `founders`, `institutional`) are still accepted when read from
 existing tenant records and normalize to `flagship`; they are rejected as *input* to
@@ -41,7 +41,6 @@ STRIPE_SUCCESS_URL=
 STRIPE_CANCEL_URL=
 STRIPE_BILLING_PORTAL_RETURN_URL=
 STRIPE_CURRENCY=usd
-BILLING_TEST_PLAN_TENANTS=
 
 MOCK_BILLING_BASE_URL=https://mock-billing.pondbridge.local
 ```
