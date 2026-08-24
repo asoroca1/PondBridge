@@ -103,7 +103,6 @@ beforeAll(async () => {
   process.env.FRONTEND_ORIGIN = "http://localhost:5173";
   process.env.APP_BASE_DOMAIN = "pondbridge.test";
   process.env.BILLING_MODE = "mock";
-  process.env.BILLING_TEST_PLAN_TENANTS = "billing-test-tier-allowed-1,billing-test-tier-allowed-3";
   process.env.STRIPE_PRICE_FLAGSHIP_ANNUAL = "price_flagship_annual";
   process.env.STRIPE_PRICE_TEST_ANNUAL = "price_test_annual";
 
@@ -181,7 +180,7 @@ describe("Stripe billing system", () => {
     expect(stored.settings?.billing?.planCode).toBe("test");
   });
 
-  test("super admin cannot provision a non-allowlisted camp directly onto the internal test tier", async () => {
+  test("super admin can provision any camp onto the internal test tier", async () => {
     await createSuperAdmin();
     const superToken = await loginSuper();
 
@@ -189,13 +188,13 @@ describe("Stripe billing system", () => {
       .post("/api/super/tenants")
       .set("Authorization", `Bearer ${superToken}`)
       .send({
-        name: "Blocked Internal Test Camp",
-        slug: "billing-test-tier-blocked",
+        name: "Unlisted Internal Test Camp",
+        slug: "billing-test-tier-unlisted",
         billingPlan: "test"
       });
 
-    expect(response.status).toBe(403);
-    expect(response.body.error?.code).toBe("BILLING_TEST_PLAN_NOT_ENABLED");
+    expect(response.status).toBe(201);
+    expect(response.body.tenant?.settings?.billing?.planCode).toBe("test");
   });
 
   test("tenant admin checkout stores canonical flagship billing metadata", async () => {

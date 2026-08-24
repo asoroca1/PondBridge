@@ -85,33 +85,16 @@ function getCatalogEntry(planCode = "flagship") {
   return BILLING_PLAN_CATALOG[normalizePlanCode(planCode)] || BILLING_PLAN_CATALOG.flagship;
 }
 
-function parseTenantAllowlist(rawValue = "") {
-  return String(rawValue || "")
-    .split(",")
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function isTestPlanEnabledForTenant(tenant = null) {
-  const tenantSlug = String(tenant?.slug || "").trim().toLowerCase();
-  const allowlist = parseTenantAllowlist(env.BILLING_TEST_PLAN_TENANTS);
-  if (!tenantSlug || !allowlist.length) return false;
-  return allowlist.includes("*") || allowlist.includes(tenantSlug);
-}
-
-function listCatalogEntriesForTenant(tenant = null) {
-  // Flagship ($1,200/year) is the only plan we sell. The retired plan codes are
-  // no longer catalog entries at all -- billingState maps them onto Flagship so
-  // tenants stored on them keep resolving.
-  return Object.values(BILLING_PLAN_CATALOG).filter((entry) => {
-    if (entry.code === "test") return isTestPlanEnabledForTenant(tenant);
-    return entry.offered !== false;
-  });
+function listCatalogEntriesForTenant() {
+  // Flagship ($1,200/year) is the only plan we sell, alongside the $10/year
+  // internal test tier. The retired plan codes are no longer catalog entries
+  // at all -- billingState maps them onto Flagship so tenants stored on them
+  // keep resolving.
+  return Object.values(BILLING_PLAN_CATALOG).filter((entry) => entry.offered !== false);
 }
 
 export function isBillingPlanAvailableForTenant(planCode = "", tenant = null) {
   const normalizedPlanCode = normalizePlanCode(planCode, tenant?.planTier || "base");
-  if (normalizedPlanCode === "test") return isTestPlanEnabledForTenant(tenant);
 
   const entry = BILLING_PLAN_CATALOG[normalizedPlanCode];
   if (entry && entry.offered !== false) return true;
@@ -686,7 +669,7 @@ export function getOnboardingPriceIdForPlan() {
 
 export function getBillingCatalog({ tenant = null } = {}) {
   return {
-    plans: listCatalogEntriesForTenant(tenant).map((entry) => ({
+    plans: listCatalogEntriesForTenant().map((entry) => ({
       code: entry.code,
       label: entry.label,
       description: entry.description,
@@ -714,15 +697,6 @@ export async function createTenantCheckoutSession({
   );
   let catalogEntry = getCatalogEntry(normalizedPlanCode);
   const tenantForUpdate = tenant;
-
-  if (!isBillingPlanAvailableForTenant(catalogEntry.code, tenantForUpdate)) {
-    const error = new Error(
-      "The internal billing test tier is not enabled for this camp."
-    );
-    error.statusCode = 403;
-    error.code = "BILLING_TEST_PLAN_NOT_ENABLED";
-    throw error;
-  }
 
   if (isComplimentaryTenant(tenantForUpdate)) {
     const updated = await updateTenantWithBillingPatch(tenantForUpdate, {

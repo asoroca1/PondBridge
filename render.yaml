@@ -102,8 +102,6 @@ services:
         value: https://app.pondbridgealumni.com/admin/billing
       - key: STRIPE_CURRENCY
         value: usd
-      - key: BILLING_TEST_PLAN_TENANTS
-        sync: false
       - key: EMAIL_MODE
         value: resend
       - key: EMAIL_FROM

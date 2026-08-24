@@ -33,11 +33,7 @@ import {
   ResendWebhookEventModel,
   EmailSuppressionModel
 } from "../db/models/index.js";
-import {
-  createTenantCheckoutSession,
-  getBillingMode,
-  isBillingPlanAvailableForTenant
-} from "../services/billing.js";
+import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
 import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
 import { deprovisionTenantDomain, provisionTenantDomain } from "../services/cloudflareDomains.js";
@@ -884,14 +880,6 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
   const billingPlan = requestedBillingPlan
     ? normalizeBillingPlan(requestedBillingPlan)
     : "flagship";
-  if (!isBillingPlanAvailableForTenant(billingPlan, { slug, planTier: req.body.planTier || "base" })) {
-    return res.status(403).json({
-      error: {
-        code: "BILLING_TEST_PLAN_NOT_ENABLED",
-        message: "The internal billing test tier is not enabled for this camp."
-      }
-    });
-  }
   const billingDefaults = BILLING_PLAN_DEFAULTS[billingPlan] || BILLING_PLAN_DEFAULTS.flagship;
   const campType = normalizeCampType(req.body.campType || "coed");
   const alumniWord = alumniPluralForCampType(campType, { capitalized: false });

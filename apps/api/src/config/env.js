@@ -302,7 +302,6 @@ export const env = {
   STRIPE_CANCEL_URL: process.env.STRIPE_CANCEL_URL || "",
   STRIPE_BILLING_PORTAL_RETURN_URL: process.env.STRIPE_BILLING_PORTAL_RETURN_URL || "",
   STRIPE_CURRENCY: process.env.STRIPE_CURRENCY || "usd",
-  BILLING_TEST_PLAN_TENANTS: process.env.BILLING_TEST_PLAN_TENANTS || "",
   MOCK_BILLING_BASE_URL:
     process.env.MOCK_BILLING_BASE_URL || "https://mock-billing.pondbridge.local",
   EMAIL_MODE: String(process.env.EMAIL_MODE || "mock").trim().toLowerCase(),
