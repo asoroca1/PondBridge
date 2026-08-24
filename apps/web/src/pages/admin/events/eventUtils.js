@@ -239,3 +239,19 @@ export function defaultSlotForDay(day) {
   end.setHours(end.getHours() + 1);
   return { startsAt: toLocalInput(base), endsAt: toLocalInput(end) };
 }
+
+/**
+ * Splits an event's registrations into the people running it and everyone else.
+ * Someone who declined is never shown as a presenter, even if they were signed
+ * up as one before they changed their answer.
+ */
+export function splitRoster(responses = []) {
+  const rows = Array.isArray(responses) ? responses : [];
+  const presenters = rows.filter(
+    (person) => person?.registrationRole === "presenter" && person?.status !== "not_attending"
+  );
+  const attendees = rows.filter(
+    (person) => person?.registrationRole !== "presenter" || person?.status === "not_attending"
+  );
+  return { presenters, attendees };
+}
