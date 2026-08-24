@@ -21,6 +21,7 @@ import {
   createRichTextHtml,
   isEventsModuleEnabled,
   normalizeEventMessageKind,
+  normalizeEventRegistrationRole,
   normalizeEventStatus,
   normalizeEventWritePayload,
   normalizeSeminarMeetingUrl,
@@ -29,6 +30,11 @@ import {
   serializeEventMessage,
   validateEventPublishReadiness
 } from "../services/events.js";
+import {
+  removeRegistration,
+  setRegistrationRole,
+  upsertAdminRegistration
+} from "../services/eventRegistrations.js";
 import {
   normalizeTenantMobileNotificationPrefs,
   resolveAudienceUserIds,
@@ -224,6 +230,7 @@ async function buildEventDetailPayload(tenantId, event) {
         email: String(profile?.emails?.find(Boolean) || user?.email || "").trim().toLowerCase(),
         avatarUrl: String(profile?.avatarUrl || "").trim(),
         roleAtCamp: String(profile?.roleAtCamp || "").trim(),
+        registrationRole: normalizeEventRegistrationRole(rsvp?.registrationRole || ""),
         status: String(rsvp?.status || ""),
         respondedAt: rsvp?.respondedAt ? new Date(rsvp.respondedAt).toISOString() : null
       };
@@ -480,6 +487,86 @@ router.post("/:eventId/cancel", async (req, res) => {
   return res.json({
     ok: true,
     item: serializeEvent(updated, { now: new Date() })
+  });
+});
+
+// Directors assign the people running a session rather than waiting for them
+// to register themselves. Adding someone puts them on the roster as going in
+// the role chosen here.
+router.post("/:eventId/registrations", async (req, res) => {
+  const event = await loadEventOr404(req, res);
+  if (!event) return;
+  const eventId = toId(event?._id || event?.id);
+
+  const { profile, role, created } = await upsertAdminRegistration({
+    tenantId: req.tenant._id,
+    eventId,
+    profileId: req.body?.profileId,
+    registrationRole: req.body?.registrationRole || "presenter",
+    actorUserId: req.user.id
+  });
+
+  await writeAdminAudit(req, "admin_event_registration_added", {
+    eventId,
+    profileId: toId(profile?._id || profile?.id),
+    registrationRole: role,
+    created
+  });
+
+  return res.status(created ? 201 : 200).json({
+    ok: true,
+    created,
+    ...(await buildEventDetailPayload(req.tenant._id, event))
+  });
+});
+
+router.patch("/:eventId/registrations/:profileId", async (req, res) => {
+  const event = await loadEventOr404(req, res);
+  if (!event) return;
+  const eventId = toId(event?._id || event?.id);
+  const profileId = toId(req.params.profileId);
+
+  const { role } = await setRegistrationRole({
+    tenantId: req.tenant._id,
+    eventId,
+    profileId,
+    registrationRole: req.body?.registrationRole,
+    actorUserId: req.user.id
+  });
+
+  await writeAdminAudit(req, "admin_event_registration_role_changed", {
+    eventId,
+    profileId,
+    registrationRole: role
+  });
+
+  return res.json({
+    ok: true,
+    ...(await buildEventDetailPayload(req.tenant._id, event))
+  });
+});
+
+router.delete("/:eventId/registrations/:profileId", async (req, res) => {
+  const event = await loadEventOr404(req, res);
+  if (!event) return;
+  const eventId = toId(event?._id || event?.id);
+  const profileId = toId(req.params.profileId);
+
+  const { removedRole } = await removeRegistration({
+    tenantId: req.tenant._id,
+    eventId,
+    profileId
+  });
+
+  await writeAdminAudit(req, "admin_event_registration_removed", {
+    eventId,
+    profileId,
+    registrationRole: removedRole
+  });
+
+  return res.json({
+    ok: true,
+    ...(await buildEventDetailPayload(req.tenant._id, event))
   });
 });
 
