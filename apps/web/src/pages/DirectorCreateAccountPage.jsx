@@ -24,6 +24,13 @@ import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
 import { readableTextColorOnBrand } from "../lib/colorUtils.js";
 import {
+  DEFAULT_BILLING_PLAN,
+  billingPlanLabel,
+  buildBillingPlanOptions,
+  normalizeBillingPlanCode,
+  resolveTenantBillingPlanCode
+} from "../lib/billingPlanCatalog.js";
+import {
   IMAGE_OPTIMIZATION_PRESETS,
   extensionForImageMime,
   optimizeImageFile
@@ -117,26 +124,6 @@ const EMPTY_ADDRESS = {
   postalCode: "",
   country: "United States"
 };
-// Presentation metadata for every plan code the API can return. Availability is
-// decided by the server catalog (GET /api/tenants/me/billing -> catalog.plans),
-// not by this list, so a plan is only ever offered when the API says it is.
-const BILLING_PLAN_OPTIONS = [
-  {
-    code: "flagship",
-    title: "Flagship Plan",
-    annualAmount: 1200,
-    onboardingFeeAmount: 0,
-    summary: "Every PondBridge feature, billed annually with no onboarding fee."
-  },
-  {
-    code: "test",
-    title: "Internal Test Plan",
-    annualAmount: 10,
-    onboardingFeeAmount: 0,
-    summary: "Internal production validation plan. Not for customer camps."
-  }
-];
-const DEFAULT_BILLING_PLAN_OPTION = BILLING_PLAN_OPTIONS[0];
 const HERO_POSITION_LABELS = {
   "left top": "Top left",
   "center top": "Top center",
@@ -165,44 +152,6 @@ const HERO_SIZE_OPTIONS = heroImageSizePresets.map((value) => ({
   label: HERO_SIZE_LABELS[value] || value
 }));
 
-function normalizeBillingPlanCode(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized)
-    ? normalized
-    : DEFAULT_BILLING_PLAN_OPTION.code;
-}
-
-function resolveTenantBillingPlanCode(tenant = null, fallback = "") {
-  const raw = String(tenant?.billingPlan || tenant?.billing?.billingPlan || "").trim().toLowerCase();
-  return BILLING_PLAN_OPTIONS.some((item) => item.code === raw) ? raw : fallback;
-}
-
-// Merges the server catalog with the local presentation metadata. The server is
-// the source of truth for which plans a camp may pick and for the prices shown.
-function buildBillingPlanOptions(catalogPlans = []) {
-  const plans = Array.isArray(catalogPlans) ? catalogPlans : [];
-  const merged = plans
-    .map((plan) => {
-      const code = String(plan?.code || "").trim().toLowerCase();
-      const meta = BILLING_PLAN_OPTIONS.find((item) => item.code === code);
-      if (!meta) return null;
-      const annualAmount = Number(plan?.annualAmount);
-      const onboardingFeeAmount = Number(plan?.onboardingFeeAmount);
-      return {
-        ...meta,
-        title: String(plan?.label || "").trim() ? `${String(plan.label).trim()} Plan` : meta.title,
-        summary: String(plan?.description || "").trim() || meta.summary,
-        annualAmount: Number.isFinite(annualAmount) ? annualAmount : meta.annualAmount,
-        onboardingFeeAmount: Number.isFinite(onboardingFeeAmount)
-          ? onboardingFeeAmount
-          : meta.onboardingFeeAmount
-      };
-    })
-    .filter(Boolean);
-
-  return merged.length ? merged : [DEFAULT_BILLING_PLAN_OPTION];
-}
-
 function billingLaunchReady(billingState = {}) {
   return Boolean(
     billingState?.launchReady ||
@@ -222,11 +171,6 @@ function resolveLaunchRedirectTarget(launchPayload = {}, slug = "") {
 
   const safeSlug = String(slug || "").trim().toLowerCase();
   return safeSlug ? `/t/${safeSlug}/home` : "/home";
-}
-
-function billingPlanLabel(code = "") {
-  const match = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(code));
-  return match ? match.title : "Flagship Plan";
 }
 
 const FEATURE_OPTIONS = TENANT_MODULE_CATALOG.map((module) => ({
@@ -577,7 +521,7 @@ function DirectorCreateAccountWizardPage() {
         if (plans.length) setBillingCatalogPlans(plans);
       })
       .catch(() => {
-        // Fall back to the built-in Flagship option if the catalog is unreachable.
+        // Leave the Flagship fallback in place if the catalog is unreachable.
       });
 
     return () => {
@@ -786,12 +730,10 @@ function DirectorCreateAccountWizardPage() {
   const selectedBillingPlanCode = normalizeBillingPlanCode(form.billingPlanCode);
   const selectedBillingPlan =
     availablePlanOptions.find((item) => item.code === selectedBillingPlanCode) ||
-    BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) ||
     availablePlanOptions[0];
   const tenantBillingPlanCode = resolveTenantBillingPlanCode(tenant, selectedBillingPlanCode);
   const tenantBillingPlan =
     availablePlanOptions.find((item) => item.code === tenantBillingPlanCode) ||
-    BILLING_PLAN_OPTIONS.find((item) => item.code === tenantBillingPlanCode) ||
     selectedBillingPlan;
   const hasTenantAnnualAmount = Number.isFinite(Number(tenant?.billing?.annualAmount));
   const hasTenantOnboardingFeeAmount =
@@ -1129,15 +1071,13 @@ function DirectorCreateAccountWizardPage() {
 
   useEffect(() => {
     if (!tenant || planHydratedRef.current) return;
-    const billingPlanCode =
-      resolveTenantBillingPlanCode(tenant) || DEFAULT_BILLING_PLAN_OPTION.code;
+    const billingPlanCode = resolveTenantBillingPlanCode(tenant) || DEFAULT_BILLING_PLAN.code;
     setForm((prev) => ({ ...prev, billingPlanCode }));
     planHydratedRef.current = true;
   }, [tenant]);
 
-  // If the stored plan is not one the server currently offers this camp, fall
-  // back to the first available plan so checkout never posts a code the API
-  // would reject.
+  // If the selected plan is not one the server offers this camp, fall back to
+  // the first plan it does offer so checkout never receives a rejected code.
   useEffect(() => {
     if (!availablePlanOptions.length) return;
     setForm((prev) => {
@@ -3247,7 +3187,7 @@ function DirectorCreateAccountWizardPage() {
                     <div className="director-billing-overview-grid">
                       <article className="director-summary-card director-billing-highlight">
                         <h3>{`Selected ${alumniWord} network plan`}</h3>
-                        <p className="director-summary-main">{billingPlanLabel(selectedBillingPlanCode)}</p>
+                        <p className="director-summary-main">{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</p>
                         <dl className="director-billing-kv">
                           <div>
                             <dt>Annual subscription</dt>
@@ -3335,7 +3275,7 @@ function DirectorCreateAccountWizardPage() {
                       <h2>{networkDisplayNamePreview}</h2>
                       <p>Everything is ready for a final review. Launch will publish these settings live.</p>
                       <div className="director-review-pill-row">
-                        <span className="director-review-pill is-brand">{billingPlanLabel(selectedBillingPlanCode)}</span>
+                        <span className="director-review-pill is-brand">{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</span>
                         <span className="director-review-pill">{enabledModulesCount} modules enabled</span>
                         <span className="director-review-pill">{onboardingFeeStatusText}</span>
                       </div>
@@ -3377,7 +3317,7 @@ function DirectorCreateAccountWizardPage() {
                         </div>
                         <div>
                           <dt>Plan</dt>
-                          <dd>{billingPlanLabel(selectedBillingPlanCode)}</dd>
+                          <dd>{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</dd>
                         </div>
                       </dl>
                     </article>
@@ -3460,7 +3400,7 @@ function DirectorCreateAccountWizardPage() {
                       <dl className="director-review-kv director-review-kv--two">
                         <div>
                           <dt>Plan confirmed</dt>
-                          <dd>{billingPlanLabel(selectedBillingPlanCode)}</dd>
+                          <dd>{billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}</dd>
                         </div>
                         <div>
                           <dt>Onboarding fee</dt>
