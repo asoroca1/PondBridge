@@ -1,0 +1,175 @@
+.giving-detail-page,
+.giving-create-page {
+  --giving-ink: var(--neutral-900);
+  --giving-muted: var(--neutral-600);
+  width: min(1120px, calc(100% - 32px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 18px 0 80px;
+  color: var(--giving-ink);
+}
+
+.giving-detail-back { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 16px; color: var(--neutral-600); font-size: .82rem; font-weight: 800; }
+.giving-detail-back svg { width: 17px; height: 17px; }
+.giving-detail-hero { position: relative; min-height: clamp(300px, 34vw, 400px); overflow: hidden; border: 1px solid var(--card-border, var(--neutral-200)); border-radius: var(--radius-xl, 22px); background: var(--brand-primary); box-shadow: var(--shadow-sm); }
+.giving-detail-hero > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.giving-detail-hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--brand-primary) 8%, transparent) 12%, color-mix(in srgb, var(--brand-primary) 90%, transparent) 100%), linear-gradient(90deg, color-mix(in srgb, var(--brand-primary) 34%, transparent), transparent 72%); }
+.giving-detail-hero-copy { position: absolute; z-index: 1; left: clamp(24px, 4vw, 48px); right: clamp(24px, 4vw, 48px); bottom: clamp(24px, 4vw, 40px); max-width: 760px; color: var(--brand-on-primary); }
+.giving-detail-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.giving-detail-badges span { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--brand-on-primary) 30%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--brand-primary) 78%, transparent); color: var(--brand-on-primary); font-size: .7rem; font-weight: 850; backdrop-filter: blur(12px); }
+.giving-detail-badges svg { width: 14px; height: 14px; }
+.giving-detail-hero h1 { max-width: 760px; margin: 0; color: var(--brand-on-primary); font-family: var(--font-display); font-size: clamp(2.25rem, 5vw, 4rem); line-height: 1; letter-spacing: -.045em; }
+.giving-detail-hero-copy > p { max-width: 650px; margin: 12px 0 0; color: color-mix(in srgb, var(--brand-on-primary) 82%, transparent); font-size: clamp(.95rem, 1.5vw, 1.1rem); line-height: 1.5; }
+.giving-detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: clamp(28px, 4vw, 48px); align-items: start; padding: 34px clamp(8px, 2.5vw, 24px) 0; }
+.giving-story { min-width: 0; display: grid; gap: 16px; }
+.giving-story-card,
+.giving-updates,
+.giving-supporters { padding: clamp(22px, 3vw, 30px); border: 1px solid var(--card-border, var(--neutral-200)); border-radius: var(--radius-xl, 22px); background: var(--card, #fff); box-shadow: var(--shadow-sm); }
+.giving-detail-eyebrow { margin: 0 0 7px; color: var(--brand-primary); font-size: .7rem; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+.giving-story h2, .giving-supporters h2, .giving-updates h2 { margin: 0; font-size: clamp(1.75rem, 3.2vw, 2.4rem); letter-spacing: -.04em; }
+.giving-story-lead { margin: 20px 0 0; color: var(--giving-muted); font-size: 1.08rem; line-height: 1.85; white-space: pre-line; }
+.giving-why { display: flex; gap: 18px; margin-top: 34px; padding: 24px; border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, var(--neutral-200)); border-radius: 18px; background: color-mix(in srgb, var(--brand-primary) 5%, #fff); }
+.giving-why > svg { width: 28px; height: 28px; flex: none; color: var(--brand-primary); }
+.giving-why h3, .giving-why p { margin: 0; }
+.giving-why p { margin-top: 7px; color: var(--giving-muted); line-height: 1.65; white-space: pre-line; }
+.giving-updates > article { position: relative; margin-top: 20px; padding: 20px 20px 20px 24px; border: 1px solid color-mix(in srgb, var(--brand-primary) 13%, var(--card-border, var(--neutral-200))); border-left: 3px solid var(--brand-primary); border-radius: 0 14px 14px 0; background: color-mix(in srgb, var(--brand-secondary) 26%, var(--card, #fff)); }
+.giving-updates article span { color: var(--neutral-500); font-size: .72rem; font-weight: 750; }
+.giving-updates article h3 { margin: 5px 0 6px; }
+.giving-updates article p { margin: 0; color: var(--giving-muted); line-height: 1.6; }
+.giving-supporter-marquee { position: relative; overflow: hidden; margin-top: 14px; }
+.giving-supporter-marquee.is-scrolling { height: 292px; mask-image: linear-gradient(to bottom, transparent, #000 6%, #000 94%, transparent); }
+.giving-supporter-track { display: flex; flex-direction: column; }
+.giving-supporter-marquee.is-scrolling .giving-supporter-track { animation: giving-donor-scroll 34s linear infinite; will-change: transform; }
+.giving-supporter-marquee:is(:hover, :focus-within) .giving-supporter-track { animation-play-state: paused; }
+.giving-supporter-set { flex: none; }
+.giving-supporter-set > article { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 17px 8px; border-bottom: 1px solid var(--neutral-200); border-radius: 12px; transition: background var(--ui-fast) var(--ui-ease), box-shadow var(--ui-fast) var(--ui-ease); }
+.giving-supporter-set > article.is-linked { cursor: pointer; }
+.giving-supporter-set > article.is-linked:hover { background: color-mix(in srgb, var(--brand-secondary) 38%, var(--card, #fff)); }
+.giving-supporter-set > article.is-linked:has(.giving-supporter-row-link:focus-visible) { background: color-mix(in srgb, var(--brand-secondary) 38%, var(--card, #fff)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 24%, transparent); }
+.giving-supporter-row-link { position: absolute; z-index: 2; inset: 4px 0; border-radius: 10px; }
+.giving-supporter-set > article > span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: color-mix(in srgb, var(--brand-primary) 12%, #fff); color: var(--brand-primary); font-weight: 900; }
+.giving-supporters article div { display: grid; gap: 2px; }
+.giving-supporters small { color: var(--neutral-500); }
+.giving-supporters article p { grid-column: 1 / -1; margin: 7px 0 0; color: var(--giving-muted); font-style: italic; }
+.giving-supporters article > b { color: var(--brand-primary); font-size: .82rem; }
+.giving-no-supporters { padding: 20px 0; color: var(--neutral-500); }
+.giving-donation-card { position: sticky; top: 94px; display: grid; gap: 18px; padding: 24px; border: 1px solid var(--card-border, var(--neutral-200)); border-radius: var(--radius-xl, 22px); background: var(--card, #fff); box-shadow: var(--shadow-sm); }
+.giving-donation-total { display: grid; gap: 2px; }
+.giving-donation-total strong { font-size: 2.2rem; letter-spacing: -.045em; }
+.giving-donation-total span { color: var(--neutral-500); font-size: .82rem; }
+.giving-detail-progress { height: 9px; overflow: hidden; border-radius: 999px; background: var(--neutral-100); }
+.giving-detail-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand-primary), var(--brand-secondary)); }
+.giving-donation-meta { display: grid; gap: 9px; color: var(--neutral-600); font-size: .8rem; }
+.giving-donation-meta span { display: flex; align-items: center; gap: 8px; }
+.giving-donation-meta svg { width: 16px; height: 16px; color: var(--brand-primary); }
+.giving-donation-card > button, .giving-donate-submit, .giving-create-actions > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 11px 16px; border: 0; border-radius: 12px; background: var(--brand-primary); color: var(--brand-on-primary); font: inherit; font-weight: 850; cursor: pointer; }
+.giving-donation-card > button svg, .giving-donate-submit svg, .giving-create-actions button svg { width: 18px; height: 18px; }
+.giving-donation-card > .giving-share-button { border: 1px solid var(--neutral-200); background: #fff; color: var(--brand-primary); }
+.giving-creator { display: grid; gap: 2px; padding-top: 17px; border-top: 1px solid var(--neutral-200); }
+.giving-creator small, .giving-creator span { color: var(--neutral-500); }
+.giving-creator span { font-size: .78rem; }
+.giving-funded-message { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 12px; border-radius: 12px; background: var(--success-bg); color: var(--success-text); font-size: .8rem; line-height: 1.45; }
+.giving-funded-message svg { width: 18px; height: 18px; flex: none; }
+.giving-proposal-note { margin-bottom: 24px; padding: 18px; border: 1px solid color-mix(in srgb, var(--brand-primary) 24%, var(--card-border, var(--neutral-200))); border-radius: 14px; background: color-mix(in srgb, var(--brand-secondary) 58%, var(--card, #fff)); color: var(--brand-primary-strong); }
+.giving-proposal-note p { margin: 6px 0; }
+.giving-proposal-note a { font-weight: 850; text-decoration: underline; }
+.giving-proposal-note.is-rejected { background: var(--danger-bg); color: var(--danger-text); }
+.giving-detail-state { min-height: 70vh; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 40px; color: var(--neutral-600); text-align: center; }
+.giving-detail-state > svg { width: 42px; height: 42px; color: var(--brand-primary); }
+.giving-detail-state h1, .giving-detail-state p { margin: 0; }
+
+.giving-dialog-backdrop { position: fixed; z-index: 2000; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(5,17,25,.62); backdrop-filter: blur(7px); }
+.giving-dialog { position: relative; width: min(530px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 30px; border-radius: 22px; background: #fff; box-shadow: 0 28px 90px rgba(0,0,0,.32); }
+.giving-dialog h2 { margin: 0; font-size: 1.9rem; letter-spacing: -.035em; }
+.giving-dialog > p:not(.giving-detail-eyebrow):not(.giving-inline-error) { margin: 8px 0 22px; color: var(--giving-muted); line-height: 1.55; }
+.giving-dialog-close { position: absolute; top: 16px; right: 16px; display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--neutral-200); border-radius: 50%; background: #fff; cursor: pointer; }
+.giving-dialog-close svg { width: 18px; height: 18px; }
+.giving-dialog-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 16px; border-radius: 13px; background: color-mix(in srgb, var(--brand-primary) 10%, #fff); color: var(--brand-primary); }
+.giving-dialog-icon svg { width: 22px; height: 22px; }
+.giving-form-field { display: grid; gap: 7px; margin-top: 17px; color: var(--neutral-800); font-size: .8rem; font-weight: 800; }
+.giving-form-field small { color: var(--neutral-500); font-weight: 600; }
+.giving-form-field input, .giving-form-field textarea, .giving-form-field select { width: 100%; min-height: 45px; padding: 11px 12px; border: 1px solid var(--neutral-300); border-radius: 10px; background: #fff; color: var(--neutral-900); font: inherit; font-weight: 500; line-height: 1.5; }
+.giving-form-field textarea { resize: vertical; }
+.giving-form-field input:focus, .giving-form-field textarea:focus, .giving-form-field select:focus { outline: 3px solid color-mix(in srgb, var(--brand-primary) 17%, transparent); border-color: var(--brand-primary); }
+.giving-form-field span:has(svg) { display: flex; align-items: center; gap: 6px; }
+.giving-form-field span svg { width: 16px; height: 16px; }
+.giving-amount-input { display: flex; align-items: center; overflow: hidden; border: 1px solid var(--neutral-300); border-radius: 10px; background: #fff; }
+.giving-amount-input b { padding-left: 13px; color: var(--neutral-500); }
+.giving-amount-input input { border: 0; }
+.giving-amount-input:focus-within { outline: 3px solid color-mix(in srgb, var(--brand-primary) 17%, transparent); border-color: var(--brand-primary); }
+.giving-quick-amounts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 8px; }
+.giving-quick-amounts button { min-height: 35px; border: 1px solid var(--neutral-200); border-radius: 9px; background: var(--neutral-50); color: var(--brand-primary); font: inherit; font-size: .78rem; font-weight: 850; cursor: pointer; }
+.giving-display-prefs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 18px 0 0; padding: 0; border: 0; }
+.giving-display-prefs legend { margin-bottom: 7px; font-size: .8rem; font-weight: 800; }
+.giving-display-prefs label { display: flex; align-items: flex-start; gap: 6px; padding: 9px; border: 1px solid var(--neutral-200); border-radius: 9px; color: var(--neutral-600); font-size: .72rem; line-height: 1.3; }
+.giving-check { display: flex; align-items: center; gap: 8px; margin: 14px 0; color: var(--neutral-600); font-size: .8rem; }
+.giving-inline-error { margin: 16px 0 0; padding: 10px 12px; border-radius: 9px; background: var(--danger-bg); color: var(--danger-text); font-size: .8rem; }
+.giving-donate-submit { width: 100%; margin-top: 18px; }
+.giving-donate-submit:disabled, .giving-create-actions button:disabled { opacity: .58; cursor: wait; }
+
+.giving-create-page { max-width: 920px; }
+.giving-create-header { max-width: 740px; padding: 18px 0 30px; }
+.giving-create-header h1 { margin: 0; font-family: var(--font-display); font-size: clamp(2.8rem, 7vw, 5rem); line-height: 1; letter-spacing: -.055em; }
+.giving-create-header > p:last-child { margin: 16px 0 0; color: var(--giving-muted); font-size: 1.05rem; line-height: 1.65; }
+.giving-stepper { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0 0 20px; padding: 0; list-style: none; }
+.giving-stepper li { position: relative; display: flex; align-items: center; gap: 8px; color: var(--neutral-400); font-size: .72rem; }
+.giving-stepper li::after { content: ""; position: absolute; left: 0; right: 0; bottom: -9px; height: 3px; border-radius: 999px; background: var(--neutral-200); }
+.giving-stepper li.is-current, .giving-stepper li.is-complete { color: var(--brand-primary); }
+.giving-stepper li.is-current::after, .giving-stepper li.is-complete::after { background: var(--brand-primary); }
+.giving-stepper span { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid currentColor; border-radius: 50%; font-weight: 850; }
+.giving-stepper svg { width: 14px; height: 14px; }
+.giving-create-card { margin-top: 28px; padding: clamp(24px, 5vw, 48px); border: 1px solid color-mix(in srgb, var(--brand-primary) 14%, var(--neutral-200)); border-radius: 24px; background: rgba(255,255,255,.97); box-shadow: var(--shadow-lg); }
+.giving-create-card section > h2 { margin: 0 0 22px; font-size: clamp(1.8rem, 4vw, 2.6rem); letter-spacing: -.04em; }
+.giving-create-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.giving-create-grid .is-wide { grid-column: 1 / -1; }
+.giving-create-tip { display: flex; gap: 14px; margin-top: 24px; padding: 18px; border-radius: 14px; background: color-mix(in srgb, var(--brand-primary) 6%, #fff); }
+.giving-create-tip > svg { width: 23px; height: 23px; color: var(--brand-primary); flex: none; }
+.giving-create-tip p { margin: 5px 0 0; color: var(--giving-muted); line-height: 1.5; }
+.giving-create-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--neutral-200); }
+.giving-create-actions .is-secondary { border: 1px solid var(--neutral-200); background: #fff; color: var(--neutral-700); }
+.giving-review { padding: 24px; border: 1px solid var(--neutral-200); border-radius: 18px; background: var(--neutral-50); }
+.giving-review > span { display: inline-flex; padding: 6px 8px; border-radius: 999px; background: color-mix(in srgb, var(--brand-primary) 10%, #fff); color: var(--brand-primary); font-size: .7rem; font-weight: 850; }
+.giving-review h3 { margin: 14px 0 5px; font-size: 1.6rem; }
+.giving-review > p { margin: 0; color: var(--giving-muted); }
+.giving-review dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 22px 0; }
+.giving-review dl div { display: grid; gap: 2px; padding: 12px; border-radius: 10px; background: #fff; }
+.giving-review dt { color: var(--neutral-500); font-size: .7rem; text-transform: uppercase; }
+.giving-review dd { margin: 0; font-weight: 800; }
+.giving-review blockquote { margin: 0; padding: 18px; border-left: 3px solid var(--brand-primary); background: #fff; color: var(--giving-muted); line-height: 1.65; white-space: pre-line; }
+.giving-review-why { margin-top: 18px; }
+.giving-review-why p { margin: 6px 0 0; color: var(--giving-muted); line-height: 1.55; }
+
+@keyframes giving-donor-scroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+@media (max-width: 820px) {
+  .giving-detail-layout { grid-template-columns: 1fr; }
+  .giving-donation-card { position: static; grid-row: 1; }
+}
+
+@media (max-width: 600px) {
+  .giving-detail-page, .giving-create-page { width: min(100% - 20px, 1180px); padding-top: 8px; }
+  .giving-detail-hero { min-height: 340px; border-radius: var(--radius-xl, 22px); }
+  .giving-detail-layout { padding: 24px 8px 0; }
+  .giving-story-card, .giving-updates, .giving-supporters { padding: 20px 18px; }
+  .giving-detail-hero h1 { font-size: clamp(2.2rem, 11.5vw, 3rem); }
+  .giving-detail-badges span { font-size: .62rem; }
+  .giving-supporter-marquee.is-scrolling { height: 260px; }
+  .giving-supporter-set > article { grid-template-columns: 38px minmax(0, 1fr); }
+  .giving-supporters article > b { grid-column: 2; }
+  .giving-dialog { padding: 25px 20px; }
+  .giving-display-prefs { grid-template-columns: 1fr; }
+  .giving-stepper b { display: none; }
+  .giving-stepper li { justify-content: center; }
+  .giving-create-card { padding: 24px 18px; }
+  .giving-create-grid { grid-template-columns: 1fr; }
+  .giving-create-grid .is-wide { grid-column: auto; }
+  .giving-review dl { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .giving-detail-hero > img { transition: none; }
+  .giving-supporter-marquee.is-scrolling .giving-supporter-track { animation: none; }
+}
