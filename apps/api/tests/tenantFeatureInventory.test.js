@@ -32,7 +32,7 @@ describe("tenant feature inventory", () => {
   test("keeps the shared schema and onboarding catalog aligned", () => {
     expect(TENANT_MODULE_CATALOG.map((item) => item.key)).toEqual(Object.keys(DEFAULT_TENANT_MODULES));
     expect(Object.keys(DEFAULT_TENANT_MODULES)).toEqual(expect.arrayContaining(["directory", "events", "chat"]));
-    expect(Object.keys(DEFAULT_TENANT_MODULES)).toHaveLength(10);
+    expect(Object.keys(DEFAULT_TENANT_MODULES)).toHaveLength(11);
   });
 
   test("resolves directory dependencies without changing unrelated legacy defaults", () => {
@@ -48,13 +48,26 @@ describe("tenant feature inventory", () => {
     });
   });
 
-  test("reports plan locks and incomplete selected module setup truthfully", () => {
+  test("reports incomplete selected module setup truthfully", () => {
     const items = buildCommunityModuleInventory(tenant());
     const byKey = new Map(items.map((item) => [item.key, item]));
 
     expect(byKey.get("events")).toMatchObject({ status: "active", enabled: true });
-    expect(byKey.get("familyTrees")).toMatchObject({ status: "locked", enabled: false });
     expect(byKey.get("merchShop")).toMatchObject({ status: "setup_required", setupRequired: true });
+  });
+
+  test("locks nothing behind a plan now that every plan is the full product", () => {
+    // Single-plan billing: resolveFeatureTierFromBillingPlan returns "premium"
+    // for every plan code, so a module that used to be premium-only (family
+    // trees) is available even on a tenant still carrying the base tier.
+    const items = buildCommunityModuleInventory(tenant({ planTier: "base" }));
+
+    expect(items.filter((item) => item.locked)).toEqual([]);
+    expect(new Map(items.map((item) => [item.key, item])).get("familyTrees")).toMatchObject({
+      status: "active",
+      enabled: true,
+      locked: false
+    });
   });
 
   test("uses the configured camp storefront as the merch preview target", () => {

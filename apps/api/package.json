@@ -26,6 +26,7 @@
     "supabase:apply-communications-system": "node scripts/applyCommunicationsSystemSchema.js",
     "supabase:apply-multi-camp-identity": "node scripts/applyMultiCampIdentitySchema.js",
     "supabase:apply-member-safety": "node scripts/applyMemberSafetySchema.js",
+    "supabase:apply-giving-marketplace": "node scripts/applyGivingMarketplaceSchema.js",
     "supabase:apply-info-session-registration": "node scripts/applyInfoSessionRegistrationSchema.js",
     "supabase:apply-database-security-hardening": "node scripts/applyDatabaseSecurityHardening.js",
     "supabase:apply-database-performance-hardening": "node scripts/applyDatabasePerformanceHardening.js",
