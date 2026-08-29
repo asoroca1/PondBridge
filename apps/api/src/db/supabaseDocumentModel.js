@@ -3,6 +3,9 @@ import { env } from "../config/env.js";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
 
 const TABLES_FOR_CLEANUP = [
+  "giving_cause_updates",
+  "giving_donations",
+  "giving_causes",
   "messages",
   "forum_posts",
   "email_broadcasts",

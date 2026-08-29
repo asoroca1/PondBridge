@@ -1,0 +1,86 @@
+.director-admin-giving { display: grid; gap: 24px; padding: 34px clamp(22px, 4vw, 52px) 70px; }
+.admin-giving-primary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 15px; border-radius: 10px; background: var(--brand-primary); color: var(--brand-on-primary); font-size: .82rem; font-weight: 850; }
+.admin-giving-primary:hover { color: var(--brand-on-primary); }
+.admin-giving-primary svg { width: 17px; height: 17px; }
+.admin-giving-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.admin-giving-metrics article { display: flex; align-items: center; gap: 13px; padding: 17px; border: 1px solid var(--neutral-200); border-radius: 15px; background: #fff; box-shadow: var(--shadow-sm); }
+.admin-giving-metrics article > span { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 11px; background: color-mix(in srgb, var(--brand-primary) 9%, #fff); color: var(--brand-primary); }
+.admin-giving-metrics article > span svg { width: 20px; height: 20px; }
+.admin-giving-metrics article > div { display: grid; gap: 2px; min-width: 0; }
+.admin-giving-metrics small { overflow: hidden; color: var(--neutral-500); font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-giving-metrics strong { font-size: 1.35rem; letter-spacing: -.025em; }
+.admin-giving-metrics article.is-attention { border-color: color-mix(in srgb, var(--brand-primary) 24%, var(--neutral-200)); background: color-mix(in srgb, var(--brand-secondary) 30%, #fff); }
+.admin-giving-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; border-bottom: 1px solid var(--neutral-200); }
+.admin-giving-tabs button { display: flex; align-items: center; gap: 7px; min-height: 43px; padding: 9px 11px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--neutral-500); font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.admin-giving-tabs button.is-active { border-color: var(--brand-primary); color: var(--brand-primary); }
+.admin-giving-tabs span { min-width: 21px; padding: 3px 6px; border-radius: 999px; background: var(--neutral-100); font-size: .65rem; }
+.admin-giving-list-card, .admin-giving-table-card { overflow: hidden; border: 1px solid var(--neutral-200); border-radius: 17px; background: #fff; box-shadow: var(--shadow-sm); }
+.admin-giving-list-card > header, .admin-giving-table-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 22px; border-bottom: 1px solid var(--neutral-200); }
+.admin-giving-list-card header h2, .admin-giving-table-card header h2 { margin: 0; font-size: 1.2rem; }
+.admin-giving-list-card header p, .admin-giving-table-card header p { margin: 4px 0 0; color: var(--neutral-500); font-size: .8rem; }
+.admin-giving-list-card > header > span { color: var(--neutral-500); font-size: .74rem; }
+.admin-giving-list { display: grid; }
+.admin-giving-cause-row { display: grid; grid-template-columns: 52px minmax(220px, 1fr) 120px auto; gap: 14px; align-items: center; width: 100%; padding: 14px 20px; border: 0; border-bottom: 1px solid var(--neutral-100); background: #fff; color: var(--neutral-800); font: inherit; text-align: left; cursor: pointer; }
+.admin-giving-cause-row:hover, .admin-giving-cause-row.is-selected { background: color-mix(in srgb, var(--brand-primary) 4%, #fff); }
+.admin-giving-cause-thumb { display: grid; place-items: center; width: 52px; height: 44px; overflow: hidden; border-radius: 9px; background: var(--neutral-100); color: var(--brand-primary); }
+.admin-giving-cause-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.admin-giving-cause-thumb svg { width: 20px; height: 20px; }
+.admin-giving-cause-copy, .admin-giving-cause-progress { display: grid; gap: 3px; min-width: 0; }
+.admin-giving-cause-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-giving-cause-copy small, .admin-giving-cause-progress small { color: var(--neutral-500); font-size: .7rem; }
+.admin-giving-cause-progress b { font-size: .82rem; }
+.admin-giving-status { display: inline-flex; width: max-content; padding: 5px 8px; border-radius: 999px; background: var(--neutral-100); color: var(--neutral-600); font-size: .64rem; font-weight: 850; text-transform: capitalize; }
+.admin-giving-status.is-active, .admin-giving-status.is-succeeded { background: var(--success-bg); color: var(--success-text); }
+.admin-giving-status.is-pending, .admin-giving-status.is-changes_requested { background: color-mix(in srgb, var(--brand-secondary) 72%, #fff); color: var(--brand-primary-strong); }
+.admin-giving-status.is-rejected, .admin-giving-status.is-failed { background: var(--danger-bg); color: var(--danger-text); }
+.admin-giving-empty, .admin-giving-loading { display: grid; place-content: center; justify-items: center; min-height: 320px; padding: 30px; color: var(--neutral-500); text-align: center; }
+.admin-giving-empty svg { width: 34px; height: 34px; color: var(--brand-primary); }
+.admin-giving-empty h3, .admin-giving-empty p { margin: 7px 0 0; }
+.admin-giving-table-wrap { overflow-x: auto; }
+.admin-giving-table-card table { width: 100%; min-width: 820px; border-collapse: collapse; }
+.admin-giving-table-card th, .admin-giving-table-card td { padding: 13px 16px; border-bottom: 1px solid var(--neutral-100); text-align: left; font-size: .77rem; }
+.admin-giving-table-card th { color: var(--neutral-500); font-size: .68rem; text-transform: uppercase; }
+.admin-giving-table-card td:first-child { display: grid; gap: 2px; }
+.admin-giving-table-card td small { color: var(--neutral-500); }
+.admin-giving-notice { display: flex; align-items: center; gap: 7px; margin: 0; padding: 10px 13px; border-radius: 10px; background: var(--success-bg); color: var(--success-text); font-size: .8rem; }
+.admin-giving-notice svg { width: 17px; height: 17px; }
+.admin-giving-error { margin: 0; padding: 10px 13px; border-radius: 10px; background: var(--danger-bg); color: var(--danger-text); font-size: .8rem; }
+.admin-giving-drawer-backdrop { position: fixed; z-index: 1600; inset: 0; display: flex; justify-content: flex-end; background: rgba(7,18,26,.42); backdrop-filter: blur(3px); }
+.admin-giving-drawer { display: flex; flex-direction: column; width: min(620px, 100%); height: 100%; background: #fff; box-shadow: -20px 0 60px rgba(0,0,0,.2); }
+.admin-giving-drawer > header { display: flex; justify-content: space-between; gap: 15px; padding: 24px; border-bottom: 1px solid var(--neutral-200); }
+.admin-giving-drawer header h2 { margin: 10px 0 3px; font-size: 1.65rem; letter-spacing: -.035em; }
+.admin-giving-drawer header p { margin: 0; color: var(--neutral-500); font-size: .78rem; }
+.admin-giving-drawer header > button { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border: 1px solid var(--neutral-200); border-radius: 50%; background: #fff; cursor: pointer; }
+.admin-giving-drawer header button svg { width: 17px; height: 17px; }
+.admin-giving-drawer-body { flex: 1; overflow-y: auto; padding: 24px; }
+.admin-giving-kicker { margin: 0 0 6px; color: var(--brand-primary); font-size: .68rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.admin-giving-summary { margin: 0; font-size: 1.08rem; font-weight: 750; line-height: 1.5; }
+.admin-giving-story { color: var(--neutral-600); line-height: 1.7; white-space: pre-line; }
+.admin-giving-why { margin-top: 18px; padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--brand-primary) 5%, #fff); }
+.admin-giving-why p { margin: 5px 0 0; color: var(--neutral-600); line-height: 1.55; }
+.admin-giving-details { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 22px 0; }
+.admin-giving-details div { display: grid; gap: 2px; padding: 12px; border-radius: 9px; background: var(--neutral-50); }
+.admin-giving-details dt { color: var(--neutral-500); font-size: .66rem; text-transform: uppercase; }
+.admin-giving-details dd { margin: 0; font-size: .8rem; font-weight: 800; text-transform: capitalize; }
+.admin-giving-review-box, .admin-giving-settings { margin-top: 23px; padding-top: 22px; border-top: 1px solid var(--neutral-200); }
+.admin-giving-review-box label, .admin-giving-settings label { display: grid; gap: 7px; margin-top: 12px; font-size: .76rem; font-weight: 800; }
+.admin-giving-review-box label small { color: var(--neutral-500); font-weight: 600; }
+.admin-giving-review-box textarea, .admin-giving-settings input { width: 100%; padding: 10px 11px; border: 1px solid var(--neutral-300); border-radius: 9px; font: inherit; font-weight: 500; }
+.admin-giving-review-box > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+.admin-giving-review-box button, .admin-giving-settings button, .admin-giving-drawer footer button, .admin-giving-drawer footer a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 8px 11px; border: 1px solid var(--neutral-200); border-radius: 9px; background: #fff; color: var(--neutral-700); font: inherit; font-size: .72rem; font-weight: 850; cursor: pointer; }
+.admin-giving-review-box button svg, .admin-giving-drawer footer svg { width: 15px; height: 15px; }
+.admin-giving-review-box button.is-approve, .admin-giving-settings button { border-color: var(--brand-primary); background: var(--brand-primary); color: var(--brand-on-primary); }
+.admin-giving-review-box button.is-danger, .admin-giving-drawer footer button.is-danger { color: var(--danger-text); }
+.admin-giving-settings button { margin-top: 12px; }
+.admin-giving-drawer > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 20px; border-top: 1px solid var(--neutral-200); background: var(--neutral-50); }
+.admin-giving-drawer footer > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+
+@media (max-width: 1000px) { .admin-giving-metrics { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) {
+  .director-admin-giving { padding: 24px 16px 60px; }
+  .admin-giving-metrics { grid-template-columns: 1fr; }
+  .admin-giving-cause-row { grid-template-columns: 44px minmax(0, 1fr) auto; padding-inline: 14px; }
+  .admin-giving-cause-progress { display: none; }
+  .admin-giving-drawer > footer { align-items: stretch; flex-direction: column; }
+  .admin-giving-drawer footer > div { justify-content: flex-start; }
+}

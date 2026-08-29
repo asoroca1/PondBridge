@@ -51,6 +51,9 @@ const CedarFamilyTreeCreatePage = lazyPage(() => import("./cedar/pages/FamilyTre
 const CedarFamilyTreeViewPage = lazyPage(() => import("./cedar/pages/FamilyTreeView.jsx"));
 const EventsPage = lazyPage(() => import("./pages/EventsPage.jsx"));
 const EventDetailPage = lazyPage(() => import("./pages/EventDetailPage.jsx"));
+const GivingPage = lazyPage(() => import("./pages/GivingPage.jsx"));
+const GivingCausePage = lazyPage(() => import("./pages/GivingCausePage.jsx"));
+const GivingCreateCausePage = lazyPage(() => import("./pages/GivingCreateCausePage.jsx"));
 const MobileNotificationsPage = lazyPage(() => import("./pages/MobileNotificationsPage.jsx"));
 const MemberCampAiPage = lazyPage(() => import("./pages/MemberCampAiPage.jsx"));
 const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
@@ -74,6 +77,7 @@ const DirectorAdminDashboardPage = lazyPage(() =>
 );
 const DirectorAdminMailPage = lazyPage(() => import("./pages/admin/DirectorAdminMailPage.jsx"));
 const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdminEventsPage.jsx"));
+const DirectorAdminGivingPage = lazyPage(() => import("./pages/admin/DirectorAdminGivingPage.jsx"));
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
 );
@@ -766,6 +770,36 @@ function TenantScopeRoutes() {
           }
         />
         <Route
+          path="giving"
+          element={
+            <ProtectedRoute>
+              <MemberModuleRoute moduleKey="giving">
+                <GivingPage />
+              </MemberModuleRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="giving/new"
+          element={
+            <ProtectedRoute>
+              <MemberModuleRoute moduleKey="giving">
+                <GivingCreateCausePage />
+              </MemberModuleRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="giving/:causeId"
+          element={
+            <ProtectedRoute>
+              <MemberModuleRoute moduleKey="giving">
+                <GivingCausePage />
+              </MemberModuleRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="notifications"
           element={
             <ProtectedRoute>
@@ -802,6 +836,14 @@ function TenantScopeRoutes() {
             element={
               <MemberModuleRoute moduleKey="events" fallbackPath="/admin/features">
                 <DirectorAdminEventsPage />
+              </MemberModuleRoute>
+            }
+          />
+          <Route
+            path="giving"
+            element={
+              <MemberModuleRoute moduleKey="giving" fallbackPath="/admin/features">
+                <DirectorAdminGivingPage />
               </MemberModuleRoute>
             }
           />

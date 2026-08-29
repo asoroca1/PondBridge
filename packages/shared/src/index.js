@@ -37,6 +37,13 @@ export const TENANT_MODULE_CATALOG = Object.freeze([
     directorPath: "/admin/events"
   },
   {
+    key: "giving",
+    label: "Giving",
+    description: "Camp general fund, alumni-led causes, donations, and campaign updates.",
+    memberPath: "/giving",
+    directorPath: "/admin/giving"
+  },
+  {
     key: "photoStream",
     label: "Photo Stream",
     description: "Shared gallery where members upload and browse camp photos.",
