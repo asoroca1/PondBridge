@@ -13012,14 +13012,16 @@ button.super-stat-card {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* These three counts are context, not the point of the page -- at 150px tall
+   they pushed the camp table itself below the fold. */
 .super-tenant-metric-card {
   border: 1px solid var(--neutral-200);
   border-radius: 4px;
   background: linear-gradient(180deg, var(--neutral-50) 0%, var(--neutral-50) 100%);
-  padding: 14px;
-  min-height: 150px;
+  padding: 12px 14px;
+  min-height: 0;
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
 
 .super-tenant-metric-head {
@@ -13056,14 +13058,14 @@ button.super-stat-card {
 
 .super-tenant-metric-card strong {
   color: var(--brand-primary-strong);
-  font-size: 2.1rem;
+  font-size: 1.6rem;
   font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
   line-height: 1;
 }
 
 .super-tenant-metric-card small {
   color: var(--neutral-500);
-  font-size: 0.95rem;
+  font-size: 0.85rem;
 }
 
 .super-tenant-metric-card.kind-camps .super-tenant-metric-icon {
@@ -13334,10 +13336,12 @@ button.super-stat-card {
 }
 
 .super-row-actions {
+  position: relative;
   min-width: 104px;
 }
 
-.super-row-actions summary {
+.super-row-actions-trigger {
+  width: 100%;
   min-height: 38px;
   padding: 8px 12px;
   border: 1px solid var(--neutral-300);
@@ -13347,27 +13351,32 @@ button.super-stat-card {
   cursor: pointer;
   font-size: 0.88rem;
   font-weight: 800;
-  list-style: none;
   text-align: center;
 }
 
-.super-row-actions summary::-webkit-details-marker {
-  display: none;
-}
-
-.super-row-actions summary::after {
+.super-row-actions-trigger::after {
   content: " ▾";
 }
 
-.super-row-actions[open] summary::after {
+.super-row-actions-trigger[aria-expanded="true"]::after {
   content: " ▴";
 }
 
+/* Floated above the row rather than inserted into it, so opening a menu no
+   longer reflows the table. */
 .super-row-actions-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
   display: grid;
   gap: 7px;
-  width: 180px;
-  padding-top: 8px;
+  width: 190px;
+  padding: 8px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(16, 24, 40, 0.14);
 }
 
 .super-row-actions-menu .pb-btn {
@@ -17062,4 +17071,63 @@ html.is-native-app .asset-update-notice{
   align-items:center;
   gap:8px;
   flex-wrap:wrap;
+}
+
+/* Long camp names were wrapping to six lines and making rows taller than the
+   viewport. The full name stays available as a tooltip. */
+.super-data-table td.super-camp-name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.super-empty-state {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 32px 16px;
+  border: 1px dashed var(--neutral-200);
+  border-radius: 12px;
+  background: var(--neutral-50);
+  text-align: center;
+}
+
+.super-empty-state strong {
+  color: var(--neutral-800);
+  font-size: 1rem;
+}
+
+.super-empty-state span {
+  max-width: 46ch;
+  color: var(--neutral-500);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.super-result-count {
+  display: block;
+  padding-top: 10px;
+  color: var(--neutral-500);
+}
+
+/* Access and Runtime settings share a card; without this the second heading
+   reads as one more label/value row. */
+.super-settings-subhead {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--neutral-200);
+}
+
+.super-stat-card.is-absent strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--neutral-500);
+}
+
+/* Short button labels ("Export CSV") were wrapping mid-phrase in tight
+   toolbar rows and giving the control a ragged two-line height. */
+.super-inline-row .pb-btn {
+  white-space: nowrap;
 }

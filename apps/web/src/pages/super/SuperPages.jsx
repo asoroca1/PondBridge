@@ -5,6 +5,54 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
 import { ModalDialog, useDialogFocus } from "../../components/admin/AdminUi.jsx";
 
+/**
+ * A native <details> keeps its contents in the DOM and the tab order when
+ * closed, and the menu's own `display: grid` defeated the UA's closed-state
+ * hiding entirely -- so every row's "Wipe Camp" button was focusable without
+ * anyone opening a menu. This renders the items only while open, reports
+ * itself as a disclosure, and closes on Escape or an outside click.
+ */
+function RowActionsMenu({ label, children }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onPointerDown(event) {
+      if (!wrapRef.current?.contains(event.target)) setOpen(false);
+    }
+    function onKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="super-row-actions" ref={wrapRef}>
+      <button
+        type="button"
+        className="super-row-actions-trigger"
+        aria-label={label}
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        Manage
+      </button>
+      {open ? (
+        <div className="super-row-actions-menu" role="group" aria-label={label}>
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function roleFromUser(user) {
   const roles = new Set(user?.roles || []);
   if (roles.has("super_admin")) return "super_admin";
@@ -105,24 +153,34 @@ function PanelHeader({ title, subtitle, actions }) {
 }
 
 function StatCard({ label, value, subtext, tone = "neutral", onClick }) {
-  const className = `super-stat-card tone-${tone} ${onClick ? "is-clickable" : ""}`.trim();
+  // "Not available" set in numeral-sized display type wraps to two lines and
+  // shouts louder than the numbers it sits beside. Absent is not a headline.
+  const isAbsent = typeof value === "string" && !/\d/.test(value);
+  const className = [
+    "super-stat-card",
+    `tone-${tone}`,
+    onClick ? "is-clickable" : "",
+    isAbsent ? "is-absent" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const body = (
+    <>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {subtext ? <small>{subtext}</small> : null}
+    </>
+  );
+
   if (onClick) {
     return (
       <button type="button" className={className} onClick={onClick}>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        {subtext ? <small>{subtext}</small> : null}
+        {body}
       </button>
     );
   }
 
-  return (
-    <article className={className}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {subtext ? <small>{subtext}</small> : null}
-    </article>
-  );
+  return <article className={className}>{body}</article>;
 }
 
 function TenantMetricIcon({ kind }) {
@@ -297,7 +355,7 @@ export function SuperPlatformPulsePage() {
         {error ? <p className="error-text">{error}</p> : null}
 
         <div className="super-stat-grid seven-up">
-          <StatCard label="Active Tenants" value={stats.activeTenants ?? 0} subtext="Live camps" tone="success" />
+          <StatCard label="Active Camps" value={stats.activeTenants ?? 0} subtext="Live camps" tone="success" />
           <StatCard
             label="Configured MRR"
             value={formatMoney(stats.mrrCurrent || 0)}
@@ -317,7 +375,7 @@ export function SuperPlatformPulsePage() {
             subtext="Needs review"
             tone={stats.failedJobs7d > 0 ? "danger" : "success"}
           />
-          <StatCard label="New Members (7d)" value={stats.newMembers7d ?? 0} subtext="Across all tenants" tone="neutral" />
+          <StatCard label="New Members (7d)" value={stats.newMembers7d ?? 0} subtext="Across all camps" tone="neutral" />
           <StatCard
             label="Pending Approvals"
             value={stats.pendingApprovals ?? 0}
@@ -392,7 +450,7 @@ export function SuperTenantsPage() {
       setSummary(dashboard.counts);
       setItems(tenants.items || []);
     } catch (loadError) {
-      setError(loadError.message || "Could not load tenants.");
+      setError(loadError.message || "Could not load camps.");
     } finally {
       setLoading(false);
     }
@@ -401,7 +459,7 @@ export function SuperTenantsPage() {
   useEffect(() => {
     // Don't fire API calls before auth bootstrap has provided a token.
     // Without this guard the first render always hits the API with an empty
-    // token, gets a 401, and briefly shows "Could not load tenants."
+    // token, gets a 401, and briefly shows "Could not load camps."
     if (!token) return;
     setLoading(true);
     loadData();
@@ -420,7 +478,7 @@ export function SuperTenantsPage() {
       setStatus(`${camp.name} is now ${nextStatus}.`);
       loadData();
     } catch (toggleError) {
-      setError(toggleError.message || "Could not update tenant status.");
+      setError(toggleError.message || "Could not update camp status.");
     }
   }
 
@@ -497,10 +555,10 @@ export function SuperTenantsPage() {
   return (
     <div className="super-panel-stack">
       <Card className="super-tenants-summary-card">
-        <PanelHeader title="Tenants" subtitle="Create and manage camp tenants." />
+        <PanelHeader title="Camps" subtitle="Create and manage camps." />
         {summary ? (
           <div className="super-tenant-metric-grid">
-            <TenantMetricCard label="Camps" value={summary.tenants || 0} subtext="Total tenant records" kind="camps" />
+            <TenantMetricCard label="Camps" value={summary.tenants || 0} subtext="Total camp records" kind="camps" />
             <TenantMetricCard label="Users" value={summary.users || 0} subtext="Across all camps" kind="users" />
             <TenantMetricCard label="Profiles" value={summary.profiles || 0} subtext="Member profiles" kind="profiles" />
           </div>
@@ -512,7 +570,7 @@ export function SuperTenantsPage() {
       <Card className="super-tenants-table-card">
         <header className="super-tenant-list-head">
           <div>
-            <h2 className="pb-section-title">Tenant List</h2>
+            <h2 className="pb-section-title">All camps</h2>
             <p className="super-tenant-list-subtitle">Filter camps by status, billing plan, and billing state.</p>
           </div>
         </header>
@@ -571,7 +629,7 @@ export function SuperTenantsPage() {
             <tbody>
               {items.map((camp) => (
                 <tr key={camp._id}>
-                  <td>{camp.name}</td>
+                  <td className="super-camp-name" title={camp.name}>{camp.name}</td>
                   <td>{camp.customDomain || `${camp.slug}.pondbridgealumni.com`}</td>
                   <td>{camp.slug}</td>
                   <td>
@@ -581,28 +639,25 @@ export function SuperTenantsPage() {
                   <td>{camp.counts?.users || 0}</td>
                   <td>{camp.counts?.profiles || 0}</td>
                   <td>
-                    <details className="super-row-actions">
-                      <summary aria-label={`Manage ${camp.name}`}>Manage</summary>
-                      <div className="super-row-actions-menu">
-                        <Button variant="secondary" onClick={() => toggleTenant(camp)} disabled={!canMutate(role)}>
-                          {camp.status === "active" ? "Disable Camp" : "Enable Camp"}
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          onClick={() => provisionDomain(camp)}
-                          disabled={!canMutate(role) || provisioningTenantId === String(camp._id || "")}
-                        >
-                          {provisioningTenantId === String(camp._id || "") ? "Provisioning..." : "Provision Domain"}
-                        </Button>
-                        <Button
-                          variant="danger"
-                          onClick={() => requestTenantWipe(camp)}
-                          disabled={!canMutate(role) || deletingTenantId === String(camp._id || "")}
-                        >
-                          {deletingTenantId === String(camp._id || "") ? "Wiping..." : "Wipe Camp"}
-                        </Button>
-                      </div>
-                    </details>
+                    <RowActionsMenu label={`Manage ${camp.name}`}>
+                      <Button variant="secondary" onClick={() => toggleTenant(camp)} disabled={!canMutate(role)}>
+                        {camp.status === "active" ? "Disable Camp" : "Enable Camp"}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => provisionDomain(camp)}
+                        disabled={!canMutate(role) || provisioningTenantId === String(camp._id || "")}
+                      >
+                        {provisioningTenantId === String(camp._id || "") ? "Provisioning..." : "Provision Domain"}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        onClick={() => requestTenantWipe(camp)}
+                        disabled={!canMutate(role) || deletingTenantId === String(camp._id || "")}
+                      >
+                        {deletingTenantId === String(camp._id || "") ? "Wiping..." : "Wipe Camp"}
+                      </Button>
+                    </RowActionsMenu>
                   </td>
                 </tr>
               ))}
@@ -980,7 +1035,7 @@ export function SuperEmailTransactionalPage() {
                 filename="transactional-email-log.csv"
                 headers={[
                   { key: "timestamp", label: "Timestamp" },
-                  { key: "tenantName", label: "Tenant" },
+                  { key: "tenantName", label: "Camp" },
                   { key: "emailType", label: "Email Type" },
                   { key: "recipientDomain", label: "Recipient Domain" },
                   { key: "status", label: "Status" },
@@ -1055,7 +1110,7 @@ export function SuperEmailTransactionalPage() {
           )}
         </Card>
         <Card className="super-visual-card">
-          <h2 className="pb-section-title">Volume by Tenant</h2>
+          <h2 className="pb-section-title">Volume by camp</h2>
           <HorizontalBars items={(data?.charts?.volumeByTenant || []).map((item) => ({ label: item.tenantName, value: item.sent }))} />
         </Card>
       </div>
@@ -1225,7 +1280,7 @@ export function SuperBillingOverviewPage() {
 
         <div className="super-stat-grid four-up">
           <StatCard label="Configured MRR" value={formatMoney(data?.stats?.mrr || 0)} subtext="Active plans; not Stripe revenue" tone="success" />
-          <StatCard label="New Subs (30d)" value={data?.stats?.newSubscriptions30d || 0} subtext="New paying tenants" tone="info" />
+          <StatCard label="New Subs (30d)" value={data?.stats?.newSubscriptions30d || 0} subtext="New paying camps" tone="info" />
           <StatCard
             label="Churned (30d)"
             value={data?.stats?.churned30d || 0}
@@ -1283,7 +1338,7 @@ export function SuperBillingTenantsPage() {
       const payload = await requestJson(`/api/super/billing/tenants?${query.toString()}`, { token });
       setData(payload);
     } catch (loadError) {
-      setError(loadError.message || "Could not load tenant billing table.");
+      setError(loadError.message || "Could not load camp billing table.");
     }
   }
 
@@ -1295,7 +1350,7 @@ export function SuperBillingTenantsPage() {
   return (
     <div className="super-panel-stack">
       <Card>
-        <PanelHeader title="Tenant Billing" subtitle="Stored plan and Stripe-synchronized lifecycle state by camp." />
+        <PanelHeader title="Camp Billing" subtitle="Stored plan and Stripe-synchronized lifecycle state by camp." />
         {error ? <p className="error-text">{error}</p> : null}
         <p className="muted">Billing mutations are managed in Stripe until provider-confirmed controls are implemented here.</p>
 
@@ -1378,6 +1433,7 @@ export function SuperBillingTenantsPage() {
           </table>
         </div>
 
+        {data.total > data.pageSize ? (
         <div className="super-pagination">
           <small>
             Showing {(data.page - 1) * data.pageSize + 1}–{Math.min(data.page * data.pageSize, data.total)} of {data.total}
@@ -1396,6 +1452,11 @@ export function SuperBillingTenantsPage() {
             </Button>
           </div>
         </div>
+        ) : (
+          <small className="super-result-count">
+            {data.total} {data.total === 1 ? "camp" : "camps"}
+          </small>
+        )}
       </Card>
 
       {selected ? (
@@ -1509,10 +1570,11 @@ export function SuperBillingFailedPage() {
     <div className="super-panel-stack">
       <Card>
         <PanelHeader title="Failed Payments" subtitle="Priority queue for unresolved payment issues." />
-        {data.count > 0 ? <p className="super-critical-banner">{data.count} tenants have payment issues requiring attention.</p> : null}
+        {data.count > 0 ? <p className="super-critical-banner">{data.count} camps have payment issues requiring attention.</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
         {status ? <p className="success-text">{status}</p> : null}
 
+        {data.count ? (
         <div className="super-table-wrap">
           <table className="super-data-table">
             <thead>
@@ -1555,7 +1617,12 @@ export function SuperBillingFailedPage() {
           </table>
         </div>
 
-        {!data.count ? <p className="success-text">No failed payments. All tenants are up to date.</p> : null}
+        ) : (
+          <div className="super-empty-state">
+            <strong>No failed payments</strong>
+            <span>Every camp is up to date. Anything Stripe reports as overdue will queue here.</span>
+          </div>
+        )}
       </Card>
       <ModalDialog
         open={Boolean(graceTarget)}
@@ -1630,11 +1697,11 @@ export function SuperAnalyticsEngagementPage() {
           <StatCard
             label="Profile Completion"
             value={formatPct(data?.stats?.profileCompletion || 0)}
-            subtext="Average across tenants"
+            subtext="Average across camps"
             tone="info"
           />
           <StatCard
-            label="Inactive Tenants"
+            label="Inactive Camps"
             value={data?.stats?.inactiveTenants || 0}
             subtext="No activity in 30d"
             tone={(data?.stats?.inactiveTenants || 0) > 0 ? "warning" : "success"}
@@ -1953,14 +2020,14 @@ export function SuperJobsLogPage() {
       <Card>
         <PanelHeader
           title="Job Log"
-          subtitle="Cross-tenant job history with payload and progress details."
+          subtitle="Job history across every camp, with payload and progress details."
           actions={
             <ExportCsvButton
               rows={data.items || []}
               filename="jobs-log.csv"
               headers={[
                 { key: "timestamp", label: "Timestamp" },
-                { key: "tenantName", label: "Tenant" },
+                { key: "tenantName", label: "Camp" },
                 { key: "jobType", label: "Job Type" },
                 { key: "status", label: "Status" },
                 { key: "durationSeconds", label: "Duration (sec)" },
@@ -2351,7 +2418,7 @@ export function SuperSettingsPage() {
             <strong>Read-only mode:</strong> {data.permissions.readOnly ? "Yes" : "No"}
           </p>
 
-          <h2 className="pb-section-title">Runtime Settings</h2>
+          <h2 className="pb-section-title super-settings-subhead">Runtime settings</h2>
           <p>
             <strong>Onboarding stuck threshold:</strong> {data.settings.onboardingStuckThresholdDays} days
           </p>
@@ -2371,7 +2438,7 @@ export function SuperSettingsPage() {
         <Card>
           <PanelHeader
             title="Rollout controls"
-            subtitle="Features fail closed and are evaluated on the server using stable tenant IDs."
+            subtitle="Features fail closed and are evaluated on the server using stable camp IDs."
           />
           <p className={rolloutData.controlAvailable ? "muted" : "super-warning-banner"}>
             {rolloutData.notice}
