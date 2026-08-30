@@ -100,6 +100,9 @@ describe("buildBillingPlanOptions", () => {
     expect(options.map((item) => item.code)).toEqual(["flagship", "test"]);
   });
 
+  // This fallback is for DISPLAY only. Callers must not treat it as the
+  // server's answer about what a camp may buy: judging a selection against it
+  // before the catalog loads rewrote $10 internal test camps to Flagship.
   it("falls back to flagship when the catalog is empty or unreachable", () => {
     expect(buildBillingPlanOptions([]).map((item) => item.code)).toEqual(["flagship"]);
     expect(buildBillingPlanOptions(null).map((item) => item.code)).toEqual(["flagship"]);
