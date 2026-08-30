@@ -38,8 +38,10 @@ import {
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import {
   IMAGE_OPTIMIZATION_PRESETS,
-  optimizeImageFile
+  optimizeImageFile,
+  renderAppIconPng
 } from "../../lib/imageOptimization.js";
+import { APP_ICON_SIZES } from "../../lib/tenantBrandAssets.js";
 import "./director-admin-today.css";
 
 function getNiceTickStep(maxValue = 1, targetTickCount = 5) {
@@ -1869,6 +1871,30 @@ export function DirectorAdminSettingsBrandingPage() {
     return objectUrl;
   }
 
+  /**
+   * The tab icon, iOS home screen, and installed-app tile are all served from these
+   * derivatives, so a failure here must not leave the previous camp's icons pointing
+   * at a logo that no longer exists — returning {} makes the edge fall back to the
+   * logo that was just uploaded.
+   */
+  async function uploadAppIcons(sourceFile) {
+    try {
+      const entries = await Promise.all(
+        APP_ICON_SIZES.map(async (size) => [
+          String(size),
+          await uploadBrandingBlob({
+            blob: await renderAppIconPng(sourceFile, size),
+            fileType: "image/png",
+            scope: "branding-logo"
+          })
+        ])
+      );
+      return Object.fromEntries(entries);
+    } catch {
+      return {};
+    }
+  }
+
   async function saveBranding(event) {
     event.preventDefault();
     setSaving(true);
@@ -1898,6 +1924,7 @@ export function DirectorAdminSettingsBrandingPage() {
           fileType: pendingLogoFile.type || "image/jpeg",
           scope: "branding-logo"
         });
+        payloadToSave.iconUrls = await uploadAppIcons(pendingLogoFile);
       } else if (String(payloadToSave.logoUrl || "").startsWith("data:")) {
         const blob = await fetch(payloadToSave.logoUrl).then((response) => response.blob());
         payloadToSave.logoUrl = await uploadBrandingBlob({
@@ -1905,6 +1932,7 @@ export function DirectorAdminSettingsBrandingPage() {
           fileType: blob.type || "image/jpeg",
           scope: "branding-logo"
         });
+        payloadToSave.iconUrls = await uploadAppIcons(blob);
       }
       if (pendingHeroFile) {
         payloadToSave.heroImageUrl = await uploadBrandingBlob({
