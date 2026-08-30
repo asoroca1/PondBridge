@@ -33,6 +33,12 @@ const stripe = env.STRIPE_SECRET_KEY
 // STRIPE_PRICE_FLAGSHIP_ANNUAL still overrides it for staging or a re-price.
 const FLAGSHIP_ANNUAL_PRICE_ID = "price_1U5aQJKmSeC5JnMuSjZD4smU";
 
+// The live Stripe price for the $10/year internal test tier. Pinned for the
+// same reason as Flagship: without it an unset STRIPE_PRICE_TEST_ANNUAL falls
+// into the product-name lookup, which caches a miss for the life of the
+// process and then fails checkout outright.
+const TEST_ANNUAL_PRICE_ID = "price_1TJdoAKmSeC5JnMuIjxDUD4m";
+
 const BILLING_PLAN_CATALOG = {
   flagship: {
     code: "flagship",
@@ -52,7 +58,7 @@ const BILLING_PLAN_CATALOG = {
     planTier: "premium",
     annualAmount: 10,
     onboardingFeeAmount: 0,
-    annualPriceId: String(env.STRIPE_PRICE_TEST_ANNUAL || "").trim(),
+    annualPriceId: String(env.STRIPE_PRICE_TEST_ANNUAL || TEST_ANNUAL_PRICE_ID).trim(),
     onboardingPriceId: ""
   }
 };

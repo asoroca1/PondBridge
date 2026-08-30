@@ -4,6 +4,12 @@ import { Badge, Button, Card, Input, Select } from "@pondbridge/ui";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
 import { ModalDialog, useDialogFocus } from "../../components/admin/AdminUi.jsx";
+import {
+  BILLING_PLAN_PRESENTATION as BILLING_PLAN_OPTIONS,
+  DEFAULT_BILLING_PLAN,
+  billingPlanOptionByCode,
+  billingPlanShortLabel as billingPlanLabel
+} from "../../lib/billingPlanCatalog.js";
 
 function roleFromUser(user) {
   const roles = new Set(user?.roles || []);
@@ -23,32 +29,6 @@ function formatMoney(value = 0) {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(Number(value || 0));
-}
-
-const BILLING_PLAN_OPTIONS = [
-  {
-    code: "flagship",
-    label: "Flagship",
-    annualAmount: 1200,
-    onboardingFeeAmount: 0
-  },
-  {
-    code: "test",
-    label: "Internal Test",
-    annualAmount: 10,
-    onboardingFeeAmount: 0
-  }
-];
-
-function billingPlanLabel(code = "") {
-  const normalized = String(code || "").trim().toLowerCase();
-  const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalized);
-  return option?.label || "Flagship";
-}
-
-function billingPlanOptionByCode(code = "") {
-  const normalized = String(code || "").trim().toLowerCase();
-  return BILLING_PLAN_OPTIONS.find((item) => item.code === normalized) || BILLING_PLAN_OPTIONS[0];
 }
 
 function formatPct(value = 0, decimals = 1) {
@@ -661,7 +641,7 @@ export function SuperTenantCreatePage() {
   const [form, setForm] = useState({
     name: "",
     slug: "",
-    billingPlan: "flagship",
+    billingPlan: DEFAULT_BILLING_PLAN.code,
     directorEmail: ""
   });
 
@@ -698,7 +678,10 @@ export function SuperTenantCreatePage() {
         : rawNetworkClaimLink;
       const domain = payload?.tenant?.customDomain || payload?.network?.domain || "";
       const selectedBillingPlan = String(
-        payload?.billingPlan || payload?.tenant?.settings?.billing?.planCode || form.billingPlan || "flagship"
+        payload?.billingPlan ||
+          payload?.tenant?.settings?.billing?.planCode ||
+          form.billingPlan ||
+          DEFAULT_BILLING_PLAN.code
       )
         .trim()
         .toLowerCase();
@@ -721,7 +704,7 @@ export function SuperTenantCreatePage() {
         directorEmail: directorInvite?.email || form.directorEmail || "",
         nextSteps: Array.isArray(payload?.nextSteps) ? payload.nextSteps : []
       });
-      setForm({ name: "", slug: "", billingPlan: "flagship", directorEmail: "" });
+      setForm({ name: "", slug: "", billingPlan: DEFAULT_BILLING_PLAN.code, directorEmail: "" });
       setStatus("Camp created successfully.");
     } catch (createError) {
       setCreateResult(null);
