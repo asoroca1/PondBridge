@@ -1390,7 +1390,12 @@ router.post("/tenants/:id/create-checkout", requireSuperMutation, async (req, re
       });
     }
 
-    const requestedPlanCode = normalizeBillingPlan(requested);
+    // Falling back to normalizeBillingPlan("") here returned Flagship, so a
+    // checkout started without an explicit plan billed $1,200 to a camp stored
+    // on the $10 internal test tier. Match the tenant and admin routes instead.
+    const requestedPlanCode = requested
+      ? normalizeBillingPlan(requested, tenant.planTier)
+      : resolveTenantBilling(tenant).billingPlan;
 
     const checkout = await createTenantCheckoutSession({
       tenant,

@@ -12,6 +12,7 @@ export const BILLING_PLAN_PRESENTATION = [
   {
     code: "flagship",
     title: "Flagship Plan",
+    label: "Flagship",
     annualAmount: 1200,
     onboardingFeeAmount: 0,
     summary: "Every PondBridge feature, billed annually with no onboarding fee."
@@ -19,6 +20,7 @@ export const BILLING_PLAN_PRESENTATION = [
   {
     code: "test",
     title: "Internal Test Plan",
+    label: "Internal Test",
     annualAmount: 10,
     onboardingFeeAmount: 0,
     summary: "Internal production validation plan. Not for customer camps."
@@ -75,6 +77,22 @@ export function buildBillingPlanOptions(catalogPlans = []) {
     .filter(Boolean);
 
   return merged.length ? merged : [DEFAULT_BILLING_PLAN];
+}
+
+// The operator-facing short name ("Flagship"), for dense super-console tables
+// and dropdowns where the full director-facing title does not fit.
+export function billingPlanShortLabel(code = "") {
+  const match = BILLING_PLAN_PRESENTATION.find(
+    (item) => item.code === normalizeBillingPlanCode(code)
+  );
+  return (match || DEFAULT_BILLING_PLAN).label;
+}
+
+export function billingPlanOptionByCode(code = "") {
+  const normalized = normalizeBillingPlanCode(code);
+  return (
+    BILLING_PLAN_PRESENTATION.find((item) => item.code === normalized) || DEFAULT_BILLING_PLAN
+  );
 }
 
 export function billingPlanLabel(code = "", options = BILLING_PLAN_PRESENTATION) {

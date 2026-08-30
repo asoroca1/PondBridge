@@ -1124,7 +1124,17 @@ function DirectorCreateAccountWizardPage() {
 
     const draftForm =
       localDraft.form && typeof localDraft.form === "object" ? localDraft.form : localDraft;
-    const tenantBillingPlanCode = resolveTenantBillingPlanCode(tenant);
+    // A plan the director already picked is the most recent expression of
+    // intent. The camp's stored plan is only the creation default at this point,
+    // so letting it win here silently reverted a $10 internal test pick back to
+    // Flagship on every reload -- and then billed Flagship at checkout.
+    const draftBillingPlanCode = String(
+      draftForm.billingPlanCode || draftForm.selectedPlanCode || ""
+    )
+      .trim()
+      .toLowerCase();
+    // Stop the tenant-hydration effect below from overwriting the restored pick.
+    if (draftBillingPlanCode) planHydratedRef.current = true;
     setForm((prev) => ({
       ...prev,
       firstName: String(draftForm.firstName || prev.firstName || ""),
@@ -1134,11 +1144,9 @@ function DirectorCreateAccountWizardPage() {
       campType: normalizeCampType(
         draftForm.campType || localDraft?.content?.campType || prev.campType || "coed"
       ),
-      billingPlanCode:
-        tenantBillingPlanCode ||
-        normalizeBillingPlanCode(
-          draftForm.billingPlanCode || draftForm.selectedPlanCode || prev.billingPlanCode
-        )
+      billingPlanCode: normalizeBillingPlanCode(
+        draftBillingPlanCode || resolveTenantBillingPlanCode(tenant) || prev.billingPlanCode
+      )
     }));
 
     if (localDraft.themeDraft && typeof localDraft.themeDraft === "object") {

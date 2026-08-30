@@ -3,6 +3,8 @@ import {
   BILLING_PLAN_PRESENTATION,
   KNOWN_BILLING_PLAN_CODES,
   billingPlanLabel,
+  billingPlanOptionByCode,
+  billingPlanShortLabel,
   buildBillingPlanOptions,
   normalizeBillingPlanCode,
   resolveTenantBillingPlanCode
@@ -121,5 +123,31 @@ describe("billingPlanLabel", () => {
   it("prefers the server label when catalog options are supplied", () => {
     const options = buildBillingPlanOptions(SERVER_CATALOG);
     expect(billingPlanLabel("test", options)).toBe("Internal Test Plan");
+  });
+});
+
+// The super console renders plans from this module rather than its own copy, so
+// a hardcoded subset can no longer turn a $10 pick into a $1,200 checkout.
+describe("super console plan helpers", () => {
+  it("gives every plan a short operator label", () => {
+    expect(billingPlanShortLabel("flagship")).toBe("Flagship");
+    expect(billingPlanShortLabel("test")).toBe("Internal Test");
+  });
+
+  it("falls back to flagship only for genuinely unknown codes", () => {
+    expect(billingPlanShortLabel("nonsense")).toBe("Flagship");
+    expect(billingPlanShortLabel("")).toBe("Flagship");
+  });
+
+  it("resolves the test plan to its own $10 pricing, not flagship's", () => {
+    const option = billingPlanOptionByCode("test");
+    expect(option.code).toBe("test");
+    expect(option.annualAmount).toBe(10);
+  });
+
+  it("exposes a label for every known plan code", () => {
+    for (const code of KNOWN_BILLING_PLAN_CODES) {
+      expect(billingPlanOptionByCode(code).label).toBeTruthy();
+    }
   });
 });
