@@ -140,6 +140,47 @@ function chooseOutputMime(canvas, sourceMime, preferredMime) {
 }
 
 /**
+ * Renders a square PNG icon from a branding logo. Browsers and mobile launchers
+ * expect a square, and PNG is the only format every icon surface accepts — iOS in
+ * particular ignores a WebP apple-touch-icon. The logo is contained rather than
+ * cropped and the padding stays transparent.
+ */
+export async function renderAppIconPng(file, size) {
+  const edge = Math.max(1, Math.round(Number(size) || 0));
+  const decoded = await decodeImage(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = edge;
+  canvas.height = edge;
+  const context = canvas.getContext("2d", { alpha: true });
+  if (!context) {
+    decoded.release();
+    throw new Error("Unable to process image file.");
+  }
+
+  try {
+    const { width, height } = calculateContainDimensions(
+      decoded.width,
+      decoded.height,
+      edge,
+      edge
+    );
+    context.clearRect(0, 0, edge, edge);
+    context.drawImage(
+      decoded.source,
+      Math.round((edge - width) / 2),
+      Math.round((edge - height) / 2),
+      width,
+      height
+    );
+    return await canvasToBlob(canvas, "image/png");
+  } finally {
+    decoded.release();
+    canvas.width = 1;
+    canvas.height = 1;
+  }
+}
+
+/**
  * Reduces tenant branding transfer size before upload while retaining enough
  * resolution for high-density displays. SVG and GIF files are returned intact
  * so vectors remain vectors and animation is never flattened.

@@ -7,13 +7,13 @@ import { MobileNotificationsProvider } from "./context/MobileNotificationsContex
 import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import { resolveCampName, resolveTenantLogoUrl } from "./lib/campLabels.js";
+import { resolveCampName } from "./lib/campLabels.js";
+import { campNetworkTitle } from "./lib/tenantBrandAssets.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { HIDE_CAMP_AI, HIDE_MOBILE_APP } from "./lib/directorHiddenFeatures.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { attemptAutomaticChunkRecovery } from "./lib/chunkRecovery.js";
-import cedarLogo from "./assets/cedar-logo.png";
 import {
   installRouteIntentPreloading,
   preloadAuthenticatedCoreRoutes
@@ -131,50 +131,13 @@ const SuperTenantsPage = lazyPage(() =>
 );
 
 const DEFAULT_TAB_TITLE = "PondBridge";
-const DEFAULT_FAVICON_PATH = "/favicon.svg";
 
 function normalizeTenantKey(value = "") {
   return String(value || "").trim().toLowerCase();
 }
 
 function resolveTenantTabTitle(tenant) {
-  const campName = String(resolveCampName(tenant) || "").trim();
-  if (!campName) return DEFAULT_TAB_TITLE;
-  const labeledCampName = /^camp\s+/i.test(campName) ? campName : `Camp ${campName}`;
-  return `${labeledCampName} Alumni Network`;
-}
-
-function iconMimeTypeFromUrl(url = "") {
-  const normalized = String(url || "").split("#")[0].split("?")[0].trim().toLowerCase();
-  if (normalized.endsWith(".svg")) return "image/svg+xml";
-  if (normalized.endsWith(".png")) return "image/png";
-  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) return "image/jpeg";
-  if (normalized.endsWith(".ico")) return "image/x-icon";
-  if (normalized.endsWith(".webp")) return "image/webp";
-  return "";
-}
-
-function ensureHeadLink(relValue) {
-  if (typeof document === "undefined") return null;
-  let link = document.querySelector(`link[rel="${relValue}"]`);
-  if (!link) {
-    link = document.createElement("link");
-    link.setAttribute("rel", relValue);
-    document.head.appendChild(link);
-  }
-  return link;
-}
-
-function setIconHref(link, href = "") {
-  if (!link) return;
-  const resolvedHref = String(href || "").trim() || DEFAULT_FAVICON_PATH;
-  link.setAttribute("href", resolvedHref);
-  const mimeType = iconMimeTypeFromUrl(resolvedHref);
-  if (mimeType) {
-    link.setAttribute("type", mimeType);
-  } else {
-    link.removeAttribute("type");
-  }
+  return campNetworkTitle(resolveCampName(tenant));
 }
 
 function TenantScopeLayout() {
@@ -262,8 +225,6 @@ function TenantScopeRoutes() {
   const [wrongNetwork, setWrongNetwork] = useState(null);
   const [allowAuthCallbackRedirect, setAllowAuthCallbackRedirect] = useState(false);
   const isCampDirectorSession = Boolean(isAuthenticated && user?.roles?.includes("tenant_admin"));
-  const configuredTenantLogoUrl = resolveTenantLogoUrl(tenant);
-  const tenantLogoUrl = configuredTenantLogoUrl || (["cedar", "camp-cedar"].includes(normalizeTenantKey(slug)) ? cedarLogo : "");
   const tenantTabTitle = resolveTenantTabTitle(tenant);
   const isCampDirector = isCampDirectorSession;
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
@@ -298,43 +259,18 @@ function TenantScopeRoutes() {
     clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute && !resolvedUserOnceRef.current;
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
+  // The tab icon is resolved per camp at the edge (functions/brand/[[route]].js) so it
+  // is already correct when the document is parsed. Only the title is set here.
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
 
     const previousTitle = String(document.title || DEFAULT_TAB_TITLE);
-    const iconLink = ensureHeadLink("icon");
-    const shortcutIconLink = ensureHeadLink("shortcut icon");
-    const appleTouchIconLink = ensureHeadLink("apple-touch-icon");
-    const previousIconHref = String(iconLink?.getAttribute("href") || "");
-    const previousIconType = String(iconLink?.getAttribute("type") || "");
-    const previousShortcutHref = String(shortcutIconLink?.getAttribute("href") || "");
-    const previousShortcutType = String(shortcutIconLink?.getAttribute("type") || "");
-    const previousAppleHref = String(appleTouchIconLink?.getAttribute("href") || "");
-
     document.title = tenantTabTitle;
-    setIconHref(iconLink, tenantLogoUrl);
-    setIconHref(shortcutIconLink, tenantLogoUrl);
-    if (appleTouchIconLink) {
-      appleTouchIconLink.setAttribute("href", tenantLogoUrl || DEFAULT_FAVICON_PATH);
-    }
 
     return () => {
       document.title = previousTitle;
-      setIconHref(iconLink, previousIconHref || DEFAULT_FAVICON_PATH);
-      if (iconLink) {
-        if (previousIconType) iconLink.setAttribute("type", previousIconType);
-        else iconLink.removeAttribute("type");
-      }
-      setIconHref(shortcutIconLink, previousShortcutHref || DEFAULT_FAVICON_PATH);
-      if (shortcutIconLink) {
-        if (previousShortcutType) shortcutIconLink.setAttribute("type", previousShortcutType);
-        else shortcutIconLink.removeAttribute("type");
-      }
-      if (appleTouchIconLink) {
-        appleTouchIconLink.setAttribute("href", previousAppleHref || DEFAULT_FAVICON_PATH);
-      }
     };
-  }, [tenantLogoUrl, tenantTabTitle]);
+  }, [tenantTabTitle]);
 
   useEffect(() => {
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
