@@ -396,6 +396,10 @@ function DirectorCreateAccountWizardPage() {
   const [serverOnboardingSnapshot, setServerOnboardingSnapshot] = useState(null);
   const [serverDraftLoaded, setServerDraftLoaded] = useState(false);
   const [billingCatalogPlans, setBillingCatalogPlans] = useState([]);
+  // False until GET /api/tenants/me/billing answers. Until then the plan list
+  // is only the local Flagship fallback, which must not be used to judge
+  // whether the camp's selected plan is valid.
+  const [billingCatalogLoaded, setBillingCatalogLoaded] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -518,10 +522,15 @@ function DirectorCreateAccountWizardPage() {
       .then((snapshot) => {
         if (cancelled) return;
         const plans = Array.isArray(snapshot?.catalog?.plans) ? snapshot.catalog.plans : [];
-        if (plans.length) setBillingCatalogPlans(plans);
+        if (plans.length) {
+          setBillingCatalogPlans(plans);
+          setBillingCatalogLoaded(true);
+        }
       })
       .catch(() => {
-        // Leave the Flagship fallback in place if the catalog is unreachable.
+        // Leave the Flagship fallback in place for display if the catalog is
+        // unreachable, but never downgrade the director's plan off the back of
+        // it -- the API validates the plan code on checkout regardless.
       });
 
     return () => {
@@ -1078,14 +1087,15 @@ function DirectorCreateAccountWizardPage() {
 
   // If the selected plan is not one the server offers this camp, fall back to
   // the first plan it does offer so checkout never receives a rejected code.
+  // Only ever judge that against a catalog the server actually returned.
   useEffect(() => {
-    if (!availablePlanOptions.length) return;
+    if (!billingCatalogLoaded || !availablePlanOptions.length) return;
     setForm((prev) => {
       const current = normalizeBillingPlanCode(prev.billingPlanCode);
       if (availablePlanOptions.some((item) => item.code === current)) return prev;
       return { ...prev, billingPlanCode: availablePlanOptions[0].code };
     });
-  }, [availablePlanOptions]);
+  }, [availablePlanOptions, billingCatalogLoaded]);
 
   useEffect(() => {
     if (!tenant || campSpecificsHydratedRef.current) return;
@@ -1691,7 +1701,10 @@ function DirectorCreateAccountWizardPage() {
     if (!campTypeValid) {
       next.campType = "Please choose your camp type.";
     }
-    if (!availablePlanOptions.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
+    if (
+      billingCatalogLoaded &&
+      !availablePlanOptions.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))
+    ) {
       next.billingPlanCode = "Please choose a plan.";
     }
 
