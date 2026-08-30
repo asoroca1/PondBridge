@@ -391,6 +391,7 @@ function DirectorCreateAccountWizardPage() {
   const [savingForLater, setSavingForLater] = useState(false);
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
+  const [memberHeroFileName, setMemberHeroFileName] = useState("");
   const [showLaunchCelebration, setShowLaunchCelebration] = useState(false);
   const [launchRedirectUrl, setLaunchRedirectUrl] = useState("");
   const [serverOnboardingSnapshot, setServerOnboardingSnapshot] = useState(null);
@@ -413,6 +414,7 @@ function DirectorCreateAccountWizardPage() {
     brandPrimary: DEFAULT_SETUP_BRAND,
     logoUrl: "",
     heroImageUrl: "",
+    heroImageUrlMember: "",
     heroImagePosition: DEFAULT_HERO_IMAGE_POSITION,
     heroImageSize: DEFAULT_HERO_IMAGE_SIZE,
     heroImagePositionLanding: DEFAULT_HERO_IMAGE_POSITION,
@@ -1006,6 +1008,7 @@ function DirectorCreateAccountWizardPage() {
       brandPrimary: String(hasCustomMainColor ? prev.brandPrimary : initialBrandColor),
       logoUrl: String(source.logoUrl || prev.logoUrl || ""),
       heroImageUrl: String(source.heroImageUrl || prev.heroImageUrl || ""),
+      heroImageUrlMember: String(source.heroImageUrlMember || prev.heroImageUrlMember || ""),
       heroImagePosition: normalizeHeroImagePosition(
         source.heroImagePositionLanding ||
           source.heroImagePosition ||
@@ -1157,6 +1160,9 @@ function DirectorCreateAccountWizardPage() {
           : prev.brandPrimary,
         logoUrl: String(localDraft.themeDraft.logoUrl || prev.logoUrl || ""),
         heroImageUrl: String(localDraft.themeDraft.heroImageUrl || prev.heroImageUrl || ""),
+        heroImageUrlMember: String(
+          localDraft.themeDraft.heroImageUrlMember || prev.heroImageUrlMember || ""
+        ),
         heroImagePosition: normalizeHeroImagePosition(
           localDraft.themeDraft.heroImagePositionLanding ||
             localDraft.themeDraft.heroImagePosition ||
@@ -1449,6 +1455,7 @@ function DirectorCreateAccountWizardPage() {
         brandSecondary: deriveSecondaryHex(themeDraft.brandPrimary),
         logoUrl: themeDraft.logoUrl,
         heroImageUrl: themeDraft.heroImageUrl,
+        heroImageUrlMember: themeDraft.heroImageUrlMember,
         heroImagePosition: normalizeHeroImagePosition(
           themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
         ),
@@ -2004,6 +2011,50 @@ function DirectorCreateAccountWizardPage() {
     }
   }
 
+  // Optional second photo, shown only on the logged-in member home. Leaving it
+  // empty keeps the member home on the main photo.
+  async function onMemberHeroUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setSubmitError("Member home photo upload only supports image files.");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setSubmitError("Member home photo must be under 15MB.");
+      return;
+    }
+
+    setMemberHeroFileName(file.name);
+    setSubmitError("");
+    try {
+      const optimizedHero = await optimizeImageFile(file, IMAGE_OPTIMIZATION_PRESETS.hero);
+      const finalMime = optimizedHero.type || file.type || "image/jpeg";
+      const extension = extensionForImageMime(finalMime);
+      const uploadToken = String(authToken || "").trim();
+      const memberHeroImageUrl =
+        uploadToken
+          ? await uploadBrandingAsset({
+              blob: optimizedHero,
+              fileName: `hero-member-${Date.now()}.${extension}`,
+              fileType: finalMime,
+              scope: "branding-hero",
+              token: uploadToken
+            })
+          : await blobToDataUrl(optimizedHero);
+      updateThemeField("heroImageUrlMember", memberHeroImageUrl);
+    } catch (error) {
+      setSubmitError(error.message || "Unable to process member home photo.");
+    }
+  }
+
+  function onClearMemberHero() {
+    setMemberHeroFileName("");
+    updateThemeField("heroImageUrlMember", "");
+  }
+
   function updateModule(moduleKey, enabled) {
     setModulesDraft((prev) => {
       const next = { ...prev, [moduleKey]: enabled };
@@ -2220,6 +2271,7 @@ function DirectorCreateAccountWizardPage() {
       const finalPrimaryColor = String(themeDraft.brandPrimary || initialBrandColor);
       let finalLogoUrl = String(themeDraft.logoUrl || "");
       let finalHeroImageUrl = String(themeDraft.heroImageUrl || "");
+      let finalMemberHeroImageUrl = String(themeDraft.heroImageUrlMember || "");
 
       if (finalLogoUrl.startsWith("data:")) {
         const logoBlob = await dataUrlToBlob(finalLogoUrl);
@@ -2245,14 +2297,28 @@ function DirectorCreateAccountWizardPage() {
         });
       }
 
+      if (finalMemberHeroImageUrl.startsWith("data:")) {
+        const memberHeroBlob = await dataUrlToBlob(finalMemberHeroImageUrl);
+        const memberHeroMime = memberHeroBlob.type || "image/jpeg";
+        finalMemberHeroImageUrl = await uploadBrandingAsset({
+          blob: memberHeroBlob,
+          fileName: `hero-member-${Date.now()}.${extensionForImageMime(memberHeroMime)}`,
+          fileType: memberHeroMime,
+          scope: "branding-hero",
+          token
+        });
+      }
+
       if (
         finalLogoUrl !== String(themeDraft.logoUrl || "") ||
-        finalHeroImageUrl !== String(themeDraft.heroImageUrl || "")
+        finalHeroImageUrl !== String(themeDraft.heroImageUrl || "") ||
+        finalMemberHeroImageUrl !== String(themeDraft.heroImageUrlMember || "")
       ) {
         setThemeDraft((prev) => ({
           ...prev,
           logoUrl: finalLogoUrl,
-          heroImageUrl: finalHeroImageUrl
+          heroImageUrl: finalHeroImageUrl,
+          heroImageUrlMember: finalMemberHeroImageUrl
         }));
       }
 
@@ -2269,6 +2335,7 @@ function DirectorCreateAccountWizardPage() {
             text: String(baseTheme.text || "#1c1c1c"),
             card: String(baseTheme.card || "#ffffff"),
             heroImageUrl: finalHeroImageUrl,
+            heroImageUrlMember: finalMemberHeroImageUrl,
             heroImagePosition: normalizeHeroImagePosition(
               themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
             ),
@@ -2838,11 +2905,42 @@ function DirectorCreateAccountWizardPage() {
                     />
                   </div>
 
+                  <div className="wizard1-field wizard1-span-12">
+                    <label className="wizard1-label" htmlFor="director-member-photo-upload">
+                      Member home photo <small>optional</small>
+                    </label>
+                    <label className="director-upload-control" htmlFor="director-member-photo-upload">
+                      <span className="director-upload-button">Upload member home photo</span>
+                      <span className="director-upload-name">
+                        {memberHeroFileName ||
+                          (themeDraft.heroImageUrlMember
+                            ? "Member home photo uploaded"
+                            : "Only if you want a different photo once members log in")}
+                      </span>
+                    </label>
+                    <input
+                      id="director-member-photo-upload"
+                      type="file"
+                      accept="image/*"
+                      className="director-upload-input"
+                      onChange={onMemberHeroUpload}
+                    />
+                    <p className="wizard1-hint">
+                      Leave this empty and the logged-in home reuses your main photo.
+                    </p>
+                    {themeDraft.heroImageUrlMember ? (
+                      <button type="button" className="wizard1-btn-text" onClick={onClearMemberHero}>
+                        Use the main photo instead
+                      </button>
+                    ) : null}
+                  </div>
+
                   <aside className="wizard1-span-12 director-design-simulator" aria-label="Live site simulation">
                     <HeroImageEditor
                       label="Live site simulation"
                       variant="onboarding"
                       heroImageUrl={themeDraft.heroImageUrl}
+                      memberImageUrl={themeDraft.heroImageUrlMember}
                       landingImagePosition={themeDraft.heroImagePositionLanding}
                       landingImageSize={themeDraft.heroImageSizeLanding}
                       memberImagePosition={themeDraft.heroImagePositionMember}
@@ -3350,6 +3448,12 @@ function DirectorCreateAccountWizardPage() {
                         <div>
                           <dt>Main photo</dt>
                           <dd>{themeDraft.heroImageUrl ? "Uploaded" : "Not uploaded"}</dd>
+                        </div>
+                        <div>
+                          <dt>Member home photo</dt>
+                          <dd>
+                            {themeDraft.heroImageUrlMember ? "Uploaded" : "Same as main photo"}
+                          </dd>
                         </div>
                         <div>
                           <dt>Framing</dt>
