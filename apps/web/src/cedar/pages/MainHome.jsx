@@ -546,7 +546,9 @@ export default function MainHome() {
   const modules = tenant?.config?.modules || tenant?.modules || {};
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
-  const heroImage = heroBranding.heroImageUrl || cedarBg;
+  // Directors can upload a second photo just for the logged-in masthead; when
+  // they haven't, the member home reuses the main photo.
+  const heroImage = heroBranding.heroImageUrlMember || heroBranding.heroImageUrl || cedarBg;
   const heroImagePosition = normalizeHeroImagePosition(
     heroBranding.heroImagePositionMember || heroBranding.heroImagePosition || ""
   );

@@ -357,6 +357,9 @@ export const tenantThemeSchema = z.object({
   cardBorder: z.string().trim().default(""),
   logoUrl: z.string().trim().default(""),
   heroImageUrl: z.string().trim().default(""),
+  // Optional second photo for the logged-in member home. Empty means the
+  // member home reuses heroImageUrl, which is the normal case.
+  heroImageUrlMember: z.string().trim().default(""),
   heroImagePosition: z
     .string()
     .trim()

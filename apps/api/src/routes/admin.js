@@ -5570,6 +5570,7 @@ router.get("/settings", async (req, res) => {
     branding: {
       logoUrl: theme.logoUrl,
       heroImageUrl: theme.heroImageUrl,
+      heroImageUrlMember: theme.heroImageUrlMember,
       heroImagePosition: theme.heroImagePosition,
       heroImageSize: theme.heroImageSize,
       heroImagePositionLanding: theme.heroImagePositionLanding,
@@ -5697,6 +5698,9 @@ router.patch("/settings/branding", async (req, res) => {
       brandPrimary: String(req.body?.brandPrimary ?? (theme.brandPrimary || "")).trim(),
       logoUrl: String(req.body?.logoUrl ?? (theme.logoUrl || "")).trim(),
       heroImageUrl: String(req.body?.heroImageUrl ?? (theme.heroImageUrl || "")).trim(),
+      heroImageUrlMember: String(
+        req.body?.heroImageUrlMember ?? (theme.heroImageUrlMember || "")
+      ).trim(),
       heroImagePosition: String(req.body?.heroImagePosition ?? (theme.heroImagePosition || "")).trim(),
       heroImageSize: String(req.body?.heroImageSize ?? (theme.heroImageSize || "")).trim(),
       heroImagePositionLanding: String(
@@ -5729,6 +5733,7 @@ router.patch("/settings/branding", async (req, res) => {
       brandPrimary: next.brandPrimary || theme.brandPrimary,
       logoUrl: next.logoUrl,
       heroImageUrl: next.heroImageUrl,
+      heroImageUrlMember: next.heroImageUrlMember,
       heroImagePosition: next.heroImagePosition,
       heroImageSize: next.heroImageSize,
       heroImagePositionLanding: next.heroImagePositionLanding,
@@ -5743,6 +5748,7 @@ router.patch("/settings/branding", async (req, res) => {
         brandPrimary: next.brandPrimary || theme.brandPrimary,
         logoUrl: next.logoUrl,
         heroImageUrl: next.heroImageUrl,
+        heroImageUrlMember: next.heroImageUrlMember,
         heroImagePosition: next.heroImagePosition,
         heroImageSize: next.heroImageSize,
         heroImagePositionLanding: next.heroImagePositionLanding,
@@ -7687,6 +7693,7 @@ router.put("/branding", async (req, res) => {
       card: String(theme.card || currentTheme.card),
       logoUrl: String(theme.logoUrl || currentTheme.logoUrl),
       heroImageUrl: String(theme.heroImageUrl || currentTheme.heroImageUrl),
+      heroImageUrlMember: String(theme.heroImageUrlMember || currentTheme.heroImageUrlMember || ""),
       heroImagePosition: String(theme.heroImagePosition || currentTheme.heroImagePosition),
       heroImageSize: String(theme.heroImageSize || currentTheme.heroImageSize),
       heroImagePositionLanding: String(theme.heroImagePositionLanding || currentTheme.heroImagePositionLanding || theme.heroImagePosition || currentTheme.heroImagePosition),
