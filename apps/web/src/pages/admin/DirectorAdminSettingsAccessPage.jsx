@@ -5,8 +5,9 @@ import { ClipboardCheck, DoorOpen, KeyRound, MailCheck } from "lucide-react";
 import useAdminApi from "./useAdminApi.js";
 import "./director-admin-access.css";
 
-// Each mode is a different experience for the person trying to join, so they
-// are shown as choices with consequences rather than dropdown labels.
+// How someone reaches the signup form. Whether a director then has to say yes
+// is a separate question — see the review gate below — because the two combine:
+// invitation-only networks still want to check who actually signed up.
 const MODES = [
   {
     value: "open",
@@ -21,13 +22,6 @@ const MODES = [
     label: "With a join code",
     blurb: "Only people who know the code can sign up. Share it in a newsletter or at reunion.",
     caution: "Anyone the code is forwarded to can also join."
-  },
-  {
-    value: "approval_queue",
-    icon: ClipboardCheck,
-    label: "You approve each person",
-    blurb: "Anyone can request access; nobody gets in until you say yes.",
-    caution: "Requests land in People → Requests. Someone needs to check it."
   },
   {
     value: "invite_only",
@@ -49,7 +43,8 @@ export default function DirectorAdminSettingsAccessPage() {
     signupMode: "open",
     accessCode: "",
     allowedEmailDomains: "",
-    requireProfileCompletion: false
+    requireProfileCompletion: false,
+    requireSignupApproval: false
   });
 
   const load = useCallback(async () => {
@@ -58,10 +53,14 @@ export default function DirectorAdminSettingsAccessPage() {
       const response = await request("/settings");
       setPayload(response);
       setForm({
-        signupMode: response?.access?.signupMode || "open",
+        // Networks configured before the gate existed stored "approve each
+        // person" as a mode. entryMode unpacks that into open entry plus the
+        // gate, so they load as what they have always actually been.
+        signupMode: response?.access?.entryMode || response?.access?.signupMode || "open",
         accessCode: "",
         allowedEmailDomains: (response?.access?.allowedEmailDomains || []).join("\n"),
-        requireProfileCompletion: Boolean(response?.access?.requireProfileCompletion)
+        requireProfileCompletion: Boolean(response?.access?.requireProfileCompletion),
+        requireSignupApproval: Boolean(response?.access?.requireSignupApproval)
       });
     } catch (requestError) {
       setError(requestError.message || "Could not load access settings.");
@@ -96,6 +95,14 @@ export default function DirectorAdminSettingsAccessPage() {
 
   const active = MODES.find((mode) => mode.value === form.signupMode) || MODES[0];
   const hasCode = Boolean(payload?.access?.hasAccessCode);
+  // The gate means something different under each mode, and the difference is
+  // the whole reason a director would turn it on.
+  const gateBlurb = {
+    open: "Anyone can sign up, but nobody is in until you approve them.",
+    code: "Knowing the code gets someone to the form; your approval gets them in.",
+    invite_only:
+      "An invitation gets someone to the form; your approval gets them in. Invitations are not spent until you approve, so turning someone down costs nothing."
+  }[form.signupMode] || "Every signup waits for your decision.";
 
   return (
     <form onSubmit={save} className="pb-access">
@@ -141,16 +148,43 @@ export default function DirectorAdminSettingsAccessPage() {
           </label>
         ) : null}
 
-        {form.signupMode === "approval_queue" ? (
-          <p className="pb-access-hint">
-            Pending requests appear in{" "}
-            <Link to={`/t/${slug}/admin/people/request`}>People → Requests</Link>.
-          </p>
-        ) : null}
-
         {form.signupMode === "invite_only" ? (
           <p className="pb-access-hint">
             Send invitations from <Link to={`/t/${slug}/admin/people/add`}>People → Add people</Link>.
+          </p>
+        ) : null}
+      </Card>
+
+      <Card>
+        <h2 className="pb-section-title">Review gate</h2>
+        <p className="muted">
+          Getting to the signup form and getting into the network are two different things. Turn this
+          on and every signup waits for you, no matter how they arrived.
+        </p>
+
+        <label className="pb-access-check pb-access-gate">
+          <input
+            type="checkbox"
+            checked={form.requireSignupApproval}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, requireSignupApproval: event.target.checked }))
+            }
+          />
+          <span>
+            <strong>Review every signup before granting access</strong>
+            <small>{gateBlurb}</small>
+          </span>
+        </label>
+
+        {form.requireSignupApproval ? (
+          <p className="pb-access-hint">
+            <ClipboardCheck aria-hidden="true" />
+            <span>
+              People waiting on you appear in{" "}
+              <Link to={`/t/${slug}/admin/people/request`}>People → Requests</Link>, where you can approve
+              or turn them down one at a time or in bulk. Nobody is told they are waiting until you
+              decide, so check it regularly.
+            </span>
           </p>
         ) : null}
       </Card>

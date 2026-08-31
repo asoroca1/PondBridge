@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Input, Select } from "@pondbridge/ui";
-import { Check, Download, Mail, PauseCircle, Search, Send, UserRound } from "lucide-react";
+import { Check, Download, Mail, PauseCircle, Search, Send, UserRound, X } from "lucide-react";
 import PersonDetail from "./PersonDetail.jsx";
+import ReviewQueueBar from "./ReviewQueueBar.jsx";
 import {
   personInitials,
   personName,
+  recognitionMeta,
   stageMeta,
   stageSummary,
   isInvitable,
@@ -36,7 +38,8 @@ export default function PeopleListView({
   slug,
   onInvite,
   onEmail,
-  onExport
+  onExport,
+  onBulkResult
 }) {
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [activeKey, setActiveKey] = useState("");
@@ -78,11 +81,12 @@ export default function PeopleListView({
     setSelectedKeys([]);
   }
 
-  async function approveSelected() {
-    for (const person of approvable) {
-      await actions.approve(person);
-    }
+  // One call for the whole selection: approving people one HTTP request at a
+  // time is what made a queue of any real size unusable.
+  async function decideSelected(action) {
+    const result = await actions.decideMany(action, { people: approvable, scope: "selected" });
     setSelectedKeys([]);
+    return result;
   }
 
   return (
@@ -131,6 +135,10 @@ export default function PeopleListView({
           </div>
         </div>
 
+        {stage === "request" ? (
+          <ReviewQueueBar directory={directory} actions={actions} onResult={onBulkResult} />
+        ) : null}
+
         {selected.length ? (
           <div className="pb-people-bulk">
             <span>{selected.length} selected</span>
@@ -142,10 +150,27 @@ export default function PeopleListView({
                 </Button>
               ) : null}
               {approvable.length ? (
-                <Button type="button" size="sm" onClick={approveSelected} loading={actions.busy === "approve"}>
-                  <Check aria-hidden="true" />
-                  Approve {approvable.length}
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => decideSelected("approve")}
+                    loading={actions.busy === "approve"}
+                  >
+                    <Check aria-hidden="true" />
+                    Approve {approvable.length}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => decideSelected("deny")}
+                    loading={actions.busy === "deny"}
+                  >
+                    <X aria-hidden="true" />
+                    Turn down {approvable.length}
+                  </Button>
+                </>
               ) : null}
               {emailable.length ? (
                 <Button type="button" variant="secondary" size="sm" onClick={() => onEmail(emailable)}>
@@ -205,7 +230,14 @@ export default function PeopleListView({
                         <small>{person.email}</small>
                         <small className="pb-people-row-summary">{stageSummary(person)}</small>
                       </span>
-                      {stage === "all" ? (
+                      {person.stage === "request" ? (
+                        <span
+                          className={`pb-people-stage tone-${recognitionMeta(person.recognition).tone}`}
+                          title={recognitionMeta(person.recognition).blurb}
+                        >
+                          {recognitionMeta(person.recognition).label}
+                        </span>
+                      ) : stage === "all" ? (
                         <span className={`pb-people-stage tone-${meta.tone}`}>{meta.label}</span>
                       ) : null}
                     </button>

@@ -93,6 +93,37 @@ export default function usePersonActions({ request, reload }) {
     return `Request from ${person.fullName || person.email} denied.`;
   }), [request, run]);
 
+  /**
+   * One decision for many people. The server caps how many it will handle in a
+   * single call and reports what is left, so a queue of any size drains by
+   * repeating the call rather than by the director clicking a thousand times.
+   */
+  const decideMany = useCallback((action, { people = [], scope = "selected", match = "any", reason = "" } = {}) =>
+    run(action === "approve" ? "approve" : "deny", async () => {
+      const ids = people.map((person) => person.requestId).filter(Boolean);
+      if (scope === "selected" && !ids.length) {
+        throw new Error("Select at least one person waiting for a decision.");
+      }
+
+      let decided = 0;
+      let failures = 0;
+      // Keep going until the server says nothing is left over, so "approve
+      // everyone" means everyone and not just the first chunk.
+      for (let pass = 0; pass < 40; pass += 1) {
+        const response = await request("/members/approvals/bulk", {
+          method: "POST",
+          body: { action, ids, scope, match, reason: String(reason || "").trim() }
+        });
+        decided += Number(response?.decided || 0);
+        failures += Array.isArray(response?.failed) ? response.failed.length : 0;
+        if (scope !== "all" || !Number(response?.remaining || 0)) break;
+      }
+
+      const verb = action === "approve" ? "approved" : "denied";
+      const failureNote = failures ? ` ${failures} could not be processed.` : "";
+      return `${decided.toLocaleString()} ${decided === 1 ? "person" : "people"} ${verb}.${failureNote}`;
+    }), [request, run]);
+
   const setContactStatus = useCallback((person, contactStatus) => run("hold", async () => {
     if (!person.contactId) {
       // Someone known only through a member record or invite has no contact row
@@ -172,6 +203,7 @@ export default function usePersonActions({ request, reload }) {
     sendInvitesNow,
     approve,
     deny,
+    decideMany,
     setContactStatus,
     addProspects,
     removeMembers,

@@ -3989,60 +3989,66 @@ router.get("/members/approvals", async (req, res) => {
   });
 });
 
-router.post("/members/approvals/:requestId/approve", async (req, res) => {
-  const requestId = String(req.params.requestId || "").trim();
-  const request = await AccessRequestModel.findOne(req.tenant._id, {
-    _id: requestId,
-    status: "pending"
+// A bulk decision has to stay inside one request, so the batch is capped and
+// the client sends the next chunk. 250 keeps the slowest part — one decision
+// email per person — comfortably under the request timeout.
+const APPROVAL_BULK_MAX = 250;
+const APPROVAL_SIDE_EFFECT_CONCURRENCY = 8;
+
+/**
+ * Runs queued jobs a few at a time. Approving 250 people means 250 emails; all
+ * at once would hammer the mail provider, one at a time would time out.
+ */
+async function runWithConcurrency(jobs = [], limit = 8) {
+  const queue = [...jobs];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const job = queue.shift();
+      if (job) await job().catch(() => {});
+    }
   });
+  await Promise.all(workers);
+}
 
-  if (!request) {
-    return res.status(404).json({
-      error: {
-        code: "ACCESS_REQUEST_NOT_FOUND",
-        message: "Pending access request not found."
-      }
-    });
-  }
-
+/**
+ * Turns one pending request into a member.
+ *
+ * Approving from the row and approving 400 at once must produce identical
+ * records, so both paths run this. Pass a `collector` to have the email and
+ * push deferred to the caller — a bulk run sends one push for everyone rather
+ * than one per person.
+ */
+async function approveAccessRequest(req, request, { collector = null, audit = true } = {}) {
   const email = normalizeEmail(request.email || request.profilePayload?.emails?.[0] || "");
   if (!isEmail(email)) {
-    return res.status(400).json({
-      error: {
-        code: "INVALID_EMAIL",
-        message: "Access request is missing a valid email."
-      }
-    });
+    return { ok: false, requestId: toObjectIdString(request._id), code: "INVALID_EMAIL" };
   }
 
+  const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
   const existingUser = await UserModel.findOne(req.tenant._id, { email });
+
   if (existingUser) {
-    await AccessRequestModel.updateScoped(req.tenant._id, request._id, {
+    await AccessRequestModel.update(request._id, {
       status: "approved",
       reviewedAt: new Date(),
       reviewedByUserId: req.user.id,
       approvedUserId: existingUser._id
     });
-    await writeAdminAudit(req, "admin_access_request_approved", {
-      requestId: toObjectIdString(request._id),
-      approvedUserId: toObjectIdString(existingUser._id),
-      existingUser: true
-    });
-    clearAdminReadCaches();
-    await sendMobileNotificationBatch({
-      tenant: req.tenant,
-      userIds: [toObjectIdString(existingUser._id)],
-      createdByUserId: req.user.id,
-      kind: "access_request_approved",
-      category: "account",
-      title: "Access approved",
-      body: `Your access to ${req.tenant.name || "your camp network"} was approved.`,
-      deepLink: "/home",
-      data: {
-        requestId: toObjectIdString(request._id)
-      }
-    }).catch(() => {});
-    return res.json({ ok: true, requestId: toObjectIdString(request._id), existingUser: true });
+    if (audit) {
+      await writeAdminAudit(req, "admin_access_request_approved", {
+        requestId: toObjectIdString(request._id),
+        approvedUserId: toObjectIdString(existingUser._id),
+        existingUser: true
+      });
+    }
+    const userId = toObjectIdString(existingUser._id);
+    if (collector) {
+      collector.approvedUserIds.push(userId);
+      collector.requestIds.push(toObjectIdString(request._id));
+    } else {
+      await notifyAccessApproved(req, [userId], toObjectIdString(request._id));
+    }
+    return { ok: true, requestId: toObjectIdString(request._id), existingUser: true, userId };
   }
 
   const randomPassword = crypto.randomBytes(18).toString("hex");
@@ -4069,60 +4075,197 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
     currentJobs: asArray(profileSeed.currentJobs),
     pastJobs: asArray(profileSeed.pastJobs),
     industry: String(profileSeed.industry || "").trim(),
+    // Carries the terms the person accepted at signup, so approval never
+    // produces a member who agreed to nothing.
     socials: profileSeed.socials || {},
     avatarUrl: String(profileSeed.avatarUrl || "").trim(),
     bio: String(profileSeed.bio || "").trim(),
     status: "active"
   });
 
-  await UserModel.updateScoped(req.tenant._id, user._id, { profileId: profile._id });
-
-  await AccessRequestModel.updateScoped(req.tenant._id, request._id, {
+  await UserModel.update(user._id, { profileId: profile._id });
+  await AccessRequestModel.update(request._id, {
     status: "approved",
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
     approvedUserId: user._id
   });
-  await writeAdminAudit(req, "admin_access_request_approved", {
-    requestId: toObjectIdString(request._id),
-    approvedUserId: toObjectIdString(user._id),
-    existingUser: false
-  });
-  clearAdminReadCaches();
+  if (audit) {
+    await writeAdminAudit(req, "admin_access_request_approved", {
+      requestId: toObjectIdString(request._id),
+      approvedUserId: toObjectIdString(user._id),
+      existingUser: false
+    });
+  }
+
+  const userId = toObjectIdString(user._id);
+  const requestId = toObjectIdString(request._id);
+  if (collector) {
+    collector.approvedUserIds.push(userId);
+    collector.requestIds.push(requestId);
+    collector.emails.push(() =>
+      sendAccessDecisionEmail({ tenant: req.tenant, email, firstName, approved: true })
+    );
+  } else {
+    await notifyAccessApproved(req, [userId], requestId);
+    await sendAccessDecisionEmail({
+      tenant: req.tenant,
+      email,
+      firstName,
+      approved: true
+    }).catch((error) => {
+      console.warn("[email] approval notification failed", {
+        tenantId: String(req.tenant._id || ""),
+        email,
+        message: String(error?.message || "")
+      });
+    });
+  }
+
+  return {
+    ok: true,
+    requestId,
+    existingUser: false,
+    userId,
+    member: mapMemberRow(profile, user)
+  };
+}
+
+async function notifyAccessApproved(req, userIds = [], requestId = "") {
+  if (!userIds.length) return;
   await sendMobileNotificationBatch({
     tenant: req.tenant,
-    userIds: [toObjectIdString(user._id)],
+    userIds,
     createdByUserId: req.user.id,
     kind: "access_request_approved",
     category: "account",
     title: "Access approved",
     body: `Your access to ${req.tenant.name || "your camp network"} was approved.`,
     deepLink: "/home",
-    data: {
-      requestId: toObjectIdString(request._id)
-    }
+    data: requestId ? { requestId } : {}
   }).catch(() => {});
+}
 
-  const approvedFirstName = String(
-    request.firstName || request.profilePayload?.firstName || ""
-  ).trim();
-  await sendAccessDecisionEmail({
-    tenant: req.tenant,
-    email,
-    firstName: approvedFirstName,
-    approved: true
-  }).catch((error) => {
-    console.warn("[email] approval notification failed", {
-      tenantId: String(req.tenant._id || ""),
-      email,
-      message: String(error?.message || "")
-    });
+/**
+ * Marks one pending request denied. Shared by the row action and the bulk run
+ * for the same reason approval is.
+ */
+async function denyAccessRequest(req, pending, reason = "", { collector = null, audit = true } = {}) {
+  const request = await AccessRequestModel.update(pending._id, {
+    status: "denied",
+    reviewedAt: new Date(),
+    reviewedByUserId: req.user.id,
+    denialReason: reason
   });
+  const requestId = toObjectIdString(request._id);
+  if (audit) {
+    await writeAdminAudit(req, "admin_access_request_denied", {
+      requestId,
+      reasonLength: reason.length
+    });
+  }
+
+  if (isEmail(request.email)) {
+    const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
+    const send = () =>
+      sendAccessDecisionEmail({
+        tenant: req.tenant,
+        email: request.email,
+        firstName,
+        approved: false,
+        reason
+      });
+    if (collector) {
+      collector.emails.push(send);
+    } else {
+      await send().catch((error) => {
+        console.warn("[email] denial notification failed", {
+          tenantId: String(req.tenant._id || ""),
+          email: request.email,
+          message: String(error?.message || "")
+        });
+      });
+    }
+  }
+
+  return { ok: true, requestId };
+}
+
+/**
+ * Works out which pending requests a bulk decision applies to.
+ *
+ * A director looking at 400 requests should not have to tick 400 boxes, so the
+ * scope can be "everyone waiting" or "everyone waiting who was on the invite
+ * list" — resolved here from the same signals the queue shows.
+ */
+async function resolvePendingRequestTargets(req, { ids = [], scope = "selected", match = "any" } = {}) {
+  const tenantId = req.tenant._id;
+  const pending = await AccessRequestModel.find(tenantId, { status: "pending" }, {
+    sort: { requestedAt: -1 },
+    limit: 5000
+  });
+
+  const wanted = new Set(ids.map((id) => String(id || "").trim()).filter(Boolean));
+  let targets = scope === "all" ? pending : pending.filter((row) => wanted.has(toObjectIdString(row._id)));
+
+  if (match !== "any") {
+    const [invites, contactResult] = await Promise.all([
+      InviteModel.find(tenantId, { roleToAssign: "user" }, { sort: { createdAt: -1 }, limit: 5000 }),
+      loadAlumniContactsForGrowth(tenantId).catch(() => ({ contacts: [] }))
+    ]);
+    const invitedEmails = new Set(
+      invites.map((invite) => normalizeEmail(invite?.email)).filter(Boolean)
+    );
+    const knownEmails = new Set(
+      (contactResult.contacts || []).map((contact) => normalizeEmail(contact?.email)).filter(Boolean)
+    );
+    // Same precedence the queue badge uses, so "approve the 388 invited" acts on
+    // exactly the 388 rows the director was shown.
+    targets = targets.filter((row) => {
+      const email = normalizeEmail(row.email || row.profilePayload?.emails?.[0] || "");
+      const recognition = invitedEmails.has(email)
+        ? "invited"
+        : knownEmails.has(email)
+          ? "known"
+          : "unrecognized";
+      return recognition === match;
+    });
+  }
+
+  return targets;
+}
+
+router.post("/members/approvals/:requestId/approve", async (req, res) => {
+  const requestId = String(req.params.requestId || "").trim();
+  const request = await AccessRequestModel.findOne(req.tenant._id, {
+    _id: requestId,
+    status: "pending"
+  });
+
+  if (!request) {
+    return res.status(404).json({
+      error: {
+        code: "ACCESS_REQUEST_NOT_FOUND",
+        message: "Pending access request not found."
+      }
+    });
+  }
+
+  const result = await approveAccessRequest(req, request);
+  if (!result.ok) {
+    return res.status(400).json({
+      error: {
+        code: result.code || "ACCESS_REQUEST_NOT_APPROVED",
+        message: "Access request is missing a valid email."
+      }
+    });
+  }
+  clearAdminReadCaches();
 
   return res.json({
     ok: true,
-    requestId: toObjectIdString(request._id),
-    member: mapMemberRow(profile, user)
+    requestId: result.requestId,
+    ...(result.existingUser ? { existingUser: true } : { member: result.member })
   });
 });
 
@@ -4144,38 +4287,87 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
     });
   }
 
-  const request = await AccessRequestModel.updateScoped(req.tenant._id, pending._id, {
-    status: "denied",
-    reviewedAt: new Date(),
-    reviewedByUserId: req.user.id,
-    denialReason: reason
-  });
-  await writeAdminAudit(req, "admin_access_request_denied", {
-    requestId: toObjectIdString(request._id),
-    reasonLength: reason.length
-  });
+  const result = await denyAccessRequest(req, pending, reason);
   clearAdminReadCaches();
+  return res.json({ ok: true, requestId: result.requestId });
+});
 
-  if (isEmail(request.email)) {
-    const deniedFirstName = String(
-      request.firstName || request.profilePayload?.firstName || ""
-    ).trim();
-    await sendAccessDecisionEmail({
-      tenant: req.tenant,
-      email: request.email,
-      firstName: deniedFirstName,
-      approved: false,
-      reason
-    }).catch((error) => {
-      console.warn("[email] denial notification failed", {
-        tenantId: String(req.tenant._id || ""),
-        email: request.email,
-        message: String(error?.message || "")
-      });
+/**
+ * One decision applied to many people. A network that invited thousands can
+ * produce hundreds of requests in a weekend; deciding them one HTTP call at a
+ * time is not a workflow anyone completes.
+ */
+router.post("/members/approvals/bulk", async (req, res) => {
+  const action = String(req.body?.action || "").trim().toLowerCase();
+  if (!["approve", "deny"].includes(action)) {
+    return res.status(400).json({
+      error: { code: "INVALID_ACTION", message: "Action must be approve or deny." }
     });
   }
 
-  return res.json({ ok: true, requestId: toObjectIdString(request._id) });
+  const scope = String(req.body?.scope || "selected").trim().toLowerCase() === "all" ? "all" : "selected";
+  const match = ["invited", "known", "unrecognized"].includes(
+    String(req.body?.match || "").trim().toLowerCase()
+  )
+    ? String(req.body.match).trim().toLowerCase()
+    : "any";
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const reason = sanitizeText(String(req.body?.reason || "").trim());
+
+  if (scope === "selected" && ids.length === 0) {
+    return res.status(400).json({
+      error: { code: "NO_REQUESTS_SELECTED", message: "Select at least one request." }
+    });
+  }
+
+  const matched = await resolvePendingRequestTargets(req, { ids, scope, match });
+  const targets = matched.slice(0, APPROVAL_BULK_MAX);
+  const remaining = Math.max(0, matched.length - targets.length);
+
+  const collector = { approvedUserIds: [], requestIds: [], emails: [] };
+  const failed = [];
+  let succeeded = 0;
+
+  for (const request of targets) {
+    // Sequential so a mid-batch failure leaves every earlier person correctly
+    // decided rather than half-written.
+    try {
+      const result =
+        action === "approve"
+          ? await approveAccessRequest(req, request, { collector, audit: false })
+          : await denyAccessRequest(req, request, reason, { collector, audit: false });
+      if (result.ok) succeeded += 1;
+      else failed.push({ requestId: result.requestId, code: result.code || "FAILED" });
+    } catch (error) {
+      failed.push({
+        requestId: toObjectIdString(request._id),
+        code: String(error?.code || "FAILED")
+      });
+    }
+  }
+
+  await notifyAccessApproved(req, collector.approvedUserIds);
+  await runWithConcurrency(collector.emails, APPROVAL_SIDE_EFFECT_CONCURRENCY);
+
+  await writeAdminAudit(req, `admin_access_requests_bulk_${action}`, {
+    scope,
+    match,
+    requestedCount: scope === "all" ? matched.length : ids.length,
+    decidedCount: succeeded,
+    failedCount: failed.length,
+    remaining
+  });
+  clearAdminReadCaches();
+
+  return res.json({
+    ok: true,
+    action,
+    decided: succeeded,
+    failed,
+    // Anything past the per-request cap is still waiting; the client sends the
+    // next chunk rather than silently dropping people.
+    remaining
+  });
 });
 
 router.get("/email/history", async (req, res) => {
@@ -5587,7 +5779,9 @@ router.get("/settings", async (req, res) => {
       mobileAppCodeHint: settings.mobileAppCodeHint || "",
       hasMobileAppCode: Boolean(settings.hasMobileAppCode),
       allowedEmailDomains: settings.allowedEmailDomains || [],
-      requireProfileCompletion: Boolean(settings.requireProfileCompletion)
+      requireProfileCompletion: Boolean(settings.requireProfileCompletion),
+      requireSignupApproval: Boolean(settings.requireSignupApproval),
+      entryMode: settings.entryMode || settings.signupMode
     },
     admins: admins.map((item) => ({
       id: toObjectIdString(item._id),
@@ -5779,7 +5973,8 @@ router.patch("/settings/access", async (req, res) => {
           draft.settings?.mobileAppCodeLookup || req.tenant?.settings?.mobileAppCodeLookup || "",
         mobileAppCodeHint:
           draft.settings?.mobileAppCodeHint || req.tenant?.settings?.mobileAppCodeHint || "",
-        allowedEmailDomains: parseList(req.body?.allowedEmailDomains || req.body?.allowedDomains || [])
+        allowedEmailDomains: parseList(req.body?.allowedEmailDomains || req.body?.allowedDomains || []),
+        requireSignupApproval: Boolean(req.body?.requireSignupApproval)
       },
       req.tenant
     );
@@ -5818,6 +6013,7 @@ router.patch("/settings/access", async (req, res) => {
 
   await writeAdminAudit(req, "admin_access_settings_updated", {
     signupMode,
+    requireSignupApproval: Boolean(settings.requireSignupApproval),
     requireProfileCompletion: Boolean(settings.requireProfileCompletion),
     hasAccessCode: Boolean(settings.accessCodeHash),
     hasMobileAppCode: Boolean(settings.mobileAppCodeLookup)
@@ -6603,7 +6799,7 @@ async function resolveFilteredPeople(req) {
       select: ["id", "email", "status", "roles", "createdAt", "updatedAt", "lastLoginAt"]
     }),
     ProfileModel.find(tenantId, { status: { $ne: "removed" } }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
-    AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 500 }),
+    AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 5000 }),
     AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
       select: ["userId", "eventType", "createdAt"],
       limit: 10000
@@ -6625,6 +6821,9 @@ async function resolveFilteredPeople(req) {
   const role = String(req.query.role || "all").trim().toLowerCase();
   const year = String(req.query.year || "all").trim();
   const completionRange = parseCompletionRange(req.query);
+  // "Was this person invited, merely known, or a stranger?" — the filter that
+  // lets a director clear the recognised bulk and hand-check the rest.
+  const match = String(req.query.match || "any").trim().toLowerCase();
   // An explicit selection wins over the filters that produced it.
   const keys = new Set(
     String(req.query.keys || "")
@@ -6636,6 +6835,7 @@ async function resolveFilteredPeople(req) {
   const filtered = people.filter((person) => {
     if (keys.size) return keys.has(person.key);
     if (stage !== "all" && person.stage !== stage) return false;
+    if (match !== "any" && person.recognition !== match) return false;
     if (role !== "all" && String(person.role || "").toLowerCase() !== role) return false;
     if (year !== "all" && !person.yearsAtCamp.includes(year)) return false;
     if (completionRange && person.stage === "member"
@@ -6645,7 +6845,16 @@ async function resolveFilteredPeople(req) {
       .some((value) => String(value || "").toLowerCase().includes(q));
   });
 
-  return { people, filtered, counts, storage: contactResult.storage };
+  // How the waiting queue splits by recognition, independent of the current
+  // page or filter — a director deciding "approve everyone we invited" needs
+  // the size of that group before they commit to it.
+  const recognitionCounts = { invited: 0, known: 0, unrecognized: 0 };
+  for (const person of people) {
+    if (person.stage !== "request") continue;
+    recognitionCounts[person.recognition] = (recognitionCounts[person.recognition] || 0) + 1;
+  }
+
+  return { people, filtered, counts, recognitionCounts, storage: contactResult.storage };
 }
 
 router.get("/people/export.csv", exportLimiter, async (req, res, next) => {
@@ -6715,7 +6924,7 @@ router.get("/people/export/fields", async (_req, res) => {
 
 router.get("/people", async (req, res, next) => {
   try {
-    const { people, filtered, counts, storage } = await resolveFilteredPeople(req);
+    const { people, filtered, counts, recognitionCounts, storage } = await resolveFilteredPeople(req);
     const sort = String(req.query.sort || "recent").trim().toLowerCase();
     const page = Math.max(1, Number(req.query.page || 1) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 25) || 25));
@@ -6728,6 +6937,7 @@ router.get("/people", async (req, res, next) => {
       page,
       pageSize,
       counts,
+      recognitionCounts,
       items: filtered.slice(skip, skip + pageSize),
       filters: {
         roleOptions: [...new Set(people.map((item) => item.role).filter(Boolean))].sort(),

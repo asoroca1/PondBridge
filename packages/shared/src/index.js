@@ -479,7 +479,10 @@ export const tenantSettingsSchema = z.object({
   allowedEmailDomains: z.array(z.string().trim().toLowerCase()).max(20).default([]),
   allowSearchByDefault: z.boolean().default(true),
   allowDirectoryBrowse: z.boolean().default(true),
-  requireProfileCompletion: z.boolean().default(false)
+  requireProfileCompletion: z.boolean().default(false),
+  // The review gate sits on top of whichever signup mode is chosen: it decides
+  // whether a signup becomes a member immediately or waits for a director.
+  requireSignupApproval: z.boolean().default(false)
 });
 
 export const tenantModulesSchema = z.object({

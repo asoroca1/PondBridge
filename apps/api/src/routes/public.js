@@ -24,6 +24,7 @@ import { generateUniqueMobileAppCode } from "../utils/mobileAppCode.js";
 import { buildBillingPublicSnapshot } from "../services/billing.js";
 import { isTenantBillingAccessAllowed, resolveTenantFeatureTier } from "../services/billingState.js";
 import { resolveTenantFromRequest } from "../utils/tenantResolution.js";
+import { resolveTenantAccessPolicy } from "../services/accessPolicy.js";
 import { env } from "../config/env.js";
 import {
   maskPreferenceEmail,
@@ -343,7 +344,8 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
     const config = buildTenantConfig(tenant, { includeSensitive: false });
     const network = buildTenantUrls(tenant);
     const billing = buildBillingPublicSnapshot(tenant);
-    const signupMode = config.accessRules.signupMode;
+    const publicPolicy = resolveTenantAccessPolicy(tenant);
+    const signupMode = publicPolicy.entryMode;
 
     const planTier = resolveTenantFeatureTier(tenant);
     const payload = {
@@ -365,6 +367,9 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
       content: resolveContent(tenant),
       accessSettings: {
         signupMode,
+        // Public because the signup form has to promise the right thing: a
+        // request that waits, or an account that works straight away.
+        requireSignupApproval: publicPolicy.requireApproval,
         signupEnabled: isSignupEnabled(tenant),
         selfSignupEnabled: isSignupEnabled(tenant) && signupMode !== "invite_only",
         requiresAccessCode: signupMode === "code",
@@ -422,8 +427,8 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
     }
 
     const billingAccess = isTenantBillingAccessAllowed(tenant);
-    const config = buildTenantConfig(tenant, { includeSensitive: false });
-    const signupMode = config.accessRules.signupMode;
+    const statusPolicy = resolveTenantAccessPolicy(tenant);
+    const signupMode = statusPolicy.entryMode;
 
     const payload = {
       slug: tenant.slug,
@@ -436,6 +441,7 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
         inGrace: billingAccess.inGrace
       },
       signupMode,
+      requireSignupApproval: statusPolicy.requireApproval,
       selfSignupEnabled: isSignupEnabled(tenant) && signupMode !== "invite_only",
       requiresAccessCode: signupMode === "code",
       demoAccessEnabled: hasDemoAccessEnabled(tenant)

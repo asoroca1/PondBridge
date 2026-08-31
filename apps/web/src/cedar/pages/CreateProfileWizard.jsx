@@ -71,6 +71,11 @@ function LegacyCreateAccountFlow() {
   const loginPath = tenantRoute(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
   const legalPath = tenantRoute(slug, "/legal");
   const accessCodeRequired = signupMode === "code" && !inviteToken && !accessGrant;
+  // A network can require a director's yes on top of any signup mode, so the
+  // button has to promise a request rather than an account.
+  const reviewRequired =
+    signupMode === "approval_queue" ||
+    Boolean(tenant?.accessSettings?.requireSignupApproval || tenant?.config?.accessRules?.requireSignupApproval);
   const inviteOnlyWithoutInvite = signupMode === "invite_only" && !inviteToken;
 
   useEffect(() => {
@@ -386,7 +391,7 @@ function LegacyCreateAccountFlow() {
           type="submit"
           disabled={submitting || !signupEnabled || inviteState === "checking" || inviteState === "invalid"}
         >
-          {submitting ? "Creating account…" : signupMode === "approval_queue" ? "Request access" : "Create account"}
+          {submitting ? "Creating account…" : reviewRequired ? "Request access" : "Create account"}
         </button>
         <div className="auth-create-account-row">
           <span>Already have an account?</span>

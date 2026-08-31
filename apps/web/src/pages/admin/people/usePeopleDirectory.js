@@ -6,11 +6,14 @@ const EMPTY_COUNTS = {
   all: 0, member: 0, request: 0, invited: 0, expired: 0, prospect: 0, on_hold: 0
 };
 
+const EMPTY_RECOGNITION = { invited: 0, known: 0, unrecognized: 0 };
+
 export const DEFAULT_FILTERS = {
   q: "",
   role: "all",
   year: "all",
   completion: "all",
+  match: "any",
   sort: "recent"
 };
 
@@ -49,7 +52,7 @@ export default function usePeopleDirectory({ request, stage = "all" }) {
   // Any change to what is being asked for returns to the first page.
   useEffect(() => {
     setPage(1);
-  }, [stage, debouncedQuery, filters.role, filters.year, filters.completion, filters.sort]);
+  }, [stage, debouncedQuery, filters.role, filters.year, filters.completion, filters.match, filters.sort]);
 
   useEffect(() => {
     let active = true;
@@ -60,6 +63,7 @@ export default function usePeopleDirectory({ request, stage = "all" }) {
       q: debouncedQuery,
       role: filters.role,
       year: filters.year,
+      match: filters.match,
       sort: filters.sort,
       page: String(page),
       pageSize: String(PAGE_SIZE),
@@ -77,6 +81,7 @@ export default function usePeopleDirectory({ request, stage = "all" }) {
   }, [
     debouncedQuery,
     filters.completion,
+    filters.match,
     filters.role,
     filters.sort,
     filters.year,
@@ -93,12 +98,14 @@ export default function usePeopleDirectory({ request, stage = "all" }) {
 
   const items = useMemo(() => (Array.isArray(payload?.items) ? payload.items : []), [payload]);
   const counts = payload?.counts || EMPTY_COUNTS;
+  const recognitionCounts = payload?.recognitionCounts || EMPTY_RECOGNITION;
   const total = Number(payload?.total || 0);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return {
     items,
     counts,
+    recognitionCounts,
     total,
     page,
     totalPages,

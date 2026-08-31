@@ -35,14 +35,24 @@ export function resolveTenantAccessPolicy(tenant = null) {
   const accessCodeHash = String(settings.accessCodeHash || "").trim();
   const legacyAccessCode = String(legacy.accessCode || "").trim();
 
+  // How someone reaches the signup form, and whether a director has to say yes,
+  // are two separate questions. "approval_queue" is the old single-setting way
+  // of asking both at once; it still reads as open entry with the gate on, so
+  // tenants saved before the gate existed keep behaving exactly as they did.
+  const entryMode = signupMode === "approval_queue" ? "open" : signupMode;
+  const requireApproval =
+    signupMode === "approval_queue" || Boolean(settings.requireSignupApproval);
+
   return {
     signupMode,
+    entryMode,
+    requireApproval,
     joinMode:
-      signupMode === "approval_queue"
+      requireApproval
         ? "approval_required"
-        : signupMode === "invite_only"
+        : entryMode === "invite_only"
           ? "invite_only"
-          : signupMode === "code"
+          : entryMode === "code"
             ? "code_join"
             : "open_join",
     accessCodeHash,
@@ -78,7 +88,7 @@ function constantTimeStringMatch(left = "", right = "") {
 export async function verifyTenantAccessCode(tenant = null, submittedCode = "") {
   const policy = resolveTenantAccessPolicy(tenant);
   const code = String(submittedCode || "").trim();
-  if (policy.signupMode !== "code" || !code || !policy.hasAccessCode) return false;
+  if (policy.entryMode !== "code" || !code || !policy.hasAccessCode) return false;
 
   if (policy.accessCodeHash) {
     return comparePassword(code, policy.accessCodeHash).catch(() => false);
