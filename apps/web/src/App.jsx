@@ -287,7 +287,14 @@ function TenantScopeRoutes() {
     currentPath.includes("/login") ||
     currentPath.includes("/create-account") ||
     currentPath.includes("/request-access");
-  const waitingForTenantScopedUser = clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute;
+  // Once a member has been resolved on this screen, a momentary "signed in but
+  // no user" gap is a background refresh, not a sign-in that needs finishing.
+  // Treating it as one blanked the page behind the branded shell and then sent
+  // the member to the auth callback - the phantom reload they kept hitting.
+  const resolvedUserOnceRef = useRef(false);
+  if (user) resolvedUserOnceRef.current = true;
+  const waitingForTenantScopedUser =
+    clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute && !resolvedUserOnceRef.current;
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   useEffect(() => {
