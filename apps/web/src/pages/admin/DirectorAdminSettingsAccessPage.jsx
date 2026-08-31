@@ -95,6 +95,7 @@ export default function DirectorAdminSettingsAccessPage() {
 
   const active = MODES.find((mode) => mode.value === form.signupMode) || MODES[0];
   const hasCode = Boolean(payload?.access?.hasAccessCode);
+  const pendingApprovals = Number(payload?.access?.pendingApprovalCount || 0);
   // The gate means something different under each mode, and the difference is
   // the whole reason a director would turn it on.
   const gateBlurb = {
@@ -184,6 +185,19 @@ export default function DirectorAdminSettingsAccessPage() {
               <Link to={`/t/${slug}/admin/people/request`}>People → Requests</Link>, where you can approve
               or turn them down one at a time or in bulk. Nobody is told they are waiting until you
               decide, so check it regularly.
+            </span>
+          </p>
+        ) : pendingApprovals > 0 ? (
+          // Turning the gate off does not admit the people it already stopped.
+          // Without this they wait on an email that is never coming.
+          <p className="pb-access-hint is-warning">
+            <ClipboardCheck aria-hidden="true" />
+            <span>
+              {pendingApprovals === 1
+                ? "1 person is still waiting from when this was on. Turning it off does not let them in — "
+                : `${pendingApprovals} people are still waiting from when this was on. Turning it off does not let them in — `}
+              <Link to={`/t/${slug}/admin/people/request`}>decide on them in People → Requests</Link>{" "}
+              or they will wait indefinitely.
             </span>
           </p>
         ) : null}

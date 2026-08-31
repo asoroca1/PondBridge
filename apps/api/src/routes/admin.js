@@ -5732,6 +5732,9 @@ router.get("/settings", async (req, res) => {
   const content = draft.content;
   const theme = draft.theme;
   const settings = draft.settings;
+  // Switching the review gate off leaves anyone already queued still waiting,
+  // so the settings page has to be able to say so.
+  const pendingApprovalCount = await AccessRequestModel.count(req.tenant._id, { status: "pending" }).catch(() => 0);
   const tenantUrls = buildTenantUrls(req.tenant);
   const websiteUrl = String(content.supportUrl || "").trim() || tenantUrls.appUrl;
   const directorUserId = await resolveDirectorUserId(req.tenant);
@@ -5781,7 +5784,8 @@ router.get("/settings", async (req, res) => {
       allowedEmailDomains: settings.allowedEmailDomains || [],
       requireProfileCompletion: Boolean(settings.requireProfileCompletion),
       requireSignupApproval: Boolean(settings.requireSignupApproval),
-      entryMode: settings.entryMode || settings.signupMode
+      entryMode: settings.entryMode || settings.signupMode,
+      pendingApprovalCount: Number(pendingApprovalCount || 0)
     },
     admins: admins.map((item) => ({
       id: toObjectIdString(item._id),
