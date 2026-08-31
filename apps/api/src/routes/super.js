@@ -12,26 +12,13 @@ import {
   TenantModel,
   UserModel,
   ProfileModel,
-  InviteModel,
-  AlumniContactModel,
-  AccessRequestModel,
-  MagicLinkTokenModel,
-  ConversationModel,
-  MessageModel,
-  ForumModel,
-  ForumPostModel,
-  PhotoModel,
-  NewsletterModel,
-  EmailBroadcastModel,
-  FamilyTreeModel,
   ImportReportModel,
   AnalyticsEventModel,
   TenantAdminAuditLogModel,
   PlatformAdminAuditLogModel,
-  ResumeParseResultModel,
-  ActivityItemModel,
   ResendWebhookEventModel,
-  EmailSuppressionModel
+  EmailSuppressionModel,
+  StripeWebhookEventModel
 } from "../db/models/index.js";
 import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
 import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
@@ -63,7 +50,7 @@ import {
   normalizeFeatureRolloutInput,
   saveFeatureRollout
 } from "../services/featureRollouts.js";
-import { removeAllTenantMembershipIdentityLinks } from "../services/identityUsers.js";
+import { purgeTenantRows } from "../services/tenantPurge.js";
 
 const router = Router();
 const superSearchLimiter = rateLimit({
@@ -115,29 +102,6 @@ const APP_BASE_DOMAIN = String(env.APP_BASE_DOMAIN || "pondbridgealumni.com").tr
 const PRIVILEGED_GLOBAL_ROLES = new Set(["super_admin", "support_admin", "finance_admin"]);
 const HIDDEN_TENANT_PATTERN =
   /(^|[-_.\s])(test\d*|sandbox|qa|staging|dev|demo)([-_.\s]|$)/i;
-const TENANT_PURGE_STEPS = [
-  { key: "messages", model: MessageModel },
-  { key: "forumPosts", model: ForumPostModel },
-  { key: "conversations", model: ConversationModel },
-  { key: "forums", model: ForumModel },
-  { key: "photos", model: PhotoModel },
-  { key: "newsletters", model: NewsletterModel },
-  { key: "emailBroadcasts", model: EmailBroadcastModel },
-  { key: "familyTrees", model: FamilyTreeModel },
-  { key: "importReports", model: ImportReportModel },
-  { key: "analyticsEvents", model: AnalyticsEventModel },
-  { key: "tenantAuditLogs", model: TenantAdminAuditLogModel },
-  { key: "resumeParseResults", model: ResumeParseResultModel },
-  { key: "activityItems", model: ActivityItemModel },
-  { key: "resendWebhookEvents", model: ResendWebhookEventModel },
-  { key: "emailSuppressions", model: EmailSuppressionModel },
-  { key: "magicLinkTokens", model: MagicLinkTokenModel },
-  { key: "accessRequests", model: AccessRequestModel },
-  { key: "invites", model: InviteModel },
-  { key: "alumniContacts", model: AlumniContactModel },
-  { key: "profiles", model: ProfileModel },
-  { key: "users", model: UserModel }
-];
 router.use(requireAuth, requireRole(...SUPER_CONSOLE_ROLES));
 
 function nowIso() {
@@ -422,25 +386,6 @@ async function purgeTenantGlobalUserArtifacts({ emailCandidates = [] } = {}) {
   }
 
   return summary;
-}
-
-async function purgeTenantRows(tenantId) {
-  const counts = {};
-
-  const identityCleanup = await removeAllTenantMembershipIdentityLinks(tenantId);
-  counts.tenantMemberships = identityCleanup.membershipsDeleted;
-  counts.unusedIdentities = identityCleanup.identitiesDeleted;
-  counts.identityStorageAvailable = identityCleanup.storageAvailable;
-
-  for (const step of TENANT_PURGE_STEPS) {
-    const existing = await step.model.count(tenantId, {});
-    counts[step.key] = existing;
-    if (existing > 0) {
-      await step.model.deleteMany(tenantId, {});
-    }
-  }
-
-  return counts;
 }
 
 function requireSuperMutation(req, res, next) {
@@ -1260,8 +1205,16 @@ router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req
     await EmailSuppressionModel.acrossTenants().deleteMany({ tenantSlug: tenant.slug });
   }
 
+  // Stripe can deliver a webhook whose tenant is only known by slug, so those
+  // receipts never get a tenant_id and survive the tenant-scoped purge above.
+  const stripeWebhookEventsBySlug = await StripeWebhookEventModel.acrossTenants().count({ tenantSlug: tenant.slug });
+  if (stripeWebhookEventsBySlug > 0) {
+    await StripeWebhookEventModel.acrossTenants().deleteMany({ tenantSlug: tenant.slug });
+  }
+
   counts.resendWebhookEventsBySlug = resendWebhookEventsBySlug;
   counts.emailSuppressionsBySlug = emailSuppressionsBySlug;
+  counts.stripeWebhookEventsBySlug = stripeWebhookEventsBySlug;
 
   const clerkCleanup = await purgeTenantClerkArtifacts({ clerkCandidates });
   const globalUserCleanup = await purgeTenantGlobalUserArtifacts({
