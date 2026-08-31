@@ -295,6 +295,9 @@ export const env = {
   ),
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
+  // Safe to hand to the browser: embedded Checkout mounts Stripe's own iframe
+  // with it, so the payment form never leaves the onboarding wizard.
+  STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY || "",
   // PondBridge sells a single plan: Flagship, $1,200/year.
   STRIPE_PRICE_FLAGSHIP_ANNUAL: process.env.STRIPE_PRICE_FLAGSHIP_ANNUAL || "",
   STRIPE_PRICE_TEST_ANNUAL: process.env.STRIPE_PRICE_TEST_ANNUAL || "",

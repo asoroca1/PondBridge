@@ -225,7 +225,7 @@ export default function DirectorOnboardingAgentPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { token } = useAuth();
-  const { tenant, slug } = useTenant();
+  const { tenant, slug, markTenantLive, refreshTenant } = useTenant();
   const responseRef = useRef(null);
   const workspaceTrackedRef = useRef(false);
 
@@ -435,6 +435,12 @@ export default function DirectorOnboardingAgentPage() {
         body: { mode: "director_agent_workspace" }
       });
       setLaunchDialogOpen(false);
+      // Settle the tenant record before navigating: the router bounces a
+      // director back into onboarding while the cached tenant still reads
+      // "not live".
+      markTenantLive?.();
+      await Promise.resolve(refreshTenant?.(slug, { bypassCache: true })).catch(() => {});
+
       const target = launchTarget(result, slug);
       if (target.startsWith("http")) window.location.assign(target);
       else navigate(target);

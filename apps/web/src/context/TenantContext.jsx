@@ -272,17 +272,29 @@ function preloadTenantHero(tenant = null) {
 export function TenantProvider({ slug = "", children }) {
   const [state, setState] = useState({ loading: true, error: "", tenant: null });
 
-  async function fetchTenant(requestedSlug = slug) {
+  // `bypassCache` is for the moments where a stale tenant read changes what the
+  // app does rather than just how it looks - launch being the big one, since the
+  // router sends a director whose tenant still reads "not live" back into the
+  // onboarding wizard. It skips the local paint, the in-memory GET memo, and the
+  // browser/CDN copy (the cache buster makes it a URL no shared cache holds).
+  async function fetchTenant(requestedSlug = slug, { bypassCache = false } = {}) {
     const normalizedSlug = String(requestedSlug || "").trim().toLowerCase();
     const host = window.location.hostname || "";
     const query = normalizedSlug
       ? `slug=${encodeURIComponent(normalizedSlug)}`
       : `host=${encodeURIComponent(host)}`;
+    const requestPath = bypassCache
+      ? `/api/public/tenant-config?${query}&_=${Date.now()}`
+      : `/api/public/tenant-config?${query}`;
+    const requestOptions = bypassCache ? { cache: "no-store" } : undefined;
 
     const cachedEntry = readCachedTenantPayloadEntry({ slug: normalizedSlug, host });
     const cachedPayload = cachedEntry?.payload || null;
     const freshCachedPayload = Boolean(cachedEntry && !cachedEntry.expired);
-    if (cachedPayload) {
+    if (bypassCache) {
+      // Keep whatever is on screen; this refresh is about correctness, not paint.
+      setState((prev) => ({ ...prev, loading: false, error: "" }));
+    } else if (cachedPayload) {
       const cachedTenant = normalizeTenantPayload(cachedPayload, normalizedSlug);
       const cachedConfig = cachedTenant?.config || {};
       preloadTenantHero(cachedTenant);
@@ -304,7 +316,7 @@ export function TenantProvider({ slug = "", children }) {
     }
 
     try {
-      const tenant = await requestJson(`/api/public/tenant-config?${query}`);
+      const tenant = await requestJson(requestPath, requestOptions);
       const normalizedTenant = normalizeTenantPayload(tenant, normalizedSlug);
       const config = normalizedTenant?.config || {};
       const resolvedSlug = String(normalizedTenant?.slug || normalizedSlug).trim().toLowerCase();
@@ -345,13 +357,37 @@ export function TenantProvider({ slug = "", children }) {
     };
   }, [slug]);
 
+  // Launch is the one transition the app navigates on, and the redirect it
+  // triggers reloads the page before any refetch can land. Writing "live"
+  // through to the payload cache means that reload paints a launched tenant
+  // instead of the pre-launch copy that would bounce the director back into
+  // onboarding. The next fetch overwrites it with the server's own answer.
+  function markTenantLive() {
+    const normalizedSlug = String(state.tenant?.slug || slug || "").trim().toLowerCase();
+    const host = window.location.hostname || "";
+    const cachedEntry =
+      readCachedTenantPayloadEntry({ slug: normalizedSlug, host }) ||
+      readCachedTenantPayloadEntry({ host });
+    const basePayload = cachedEntry?.payload || null;
+    if (basePayload) {
+      const livePayload = { ...basePayload, onboardingStatus: "live" };
+      writeCachedTenantPayload({ slug: normalizedSlug, payload: livePayload });
+      writeCachedTenantPayload({ host, payload: livePayload });
+    }
+
+    setState((prev) =>
+      prev.tenant ? { ...prev, tenant: { ...prev.tenant, onboardingStatus: "live" } } : prev
+    );
+  }
+
   const value = useMemo(
     () => ({
       slug: String(state.tenant?.slug || slug || ""),
       tenant: state.tenant,
       loading: state.loading,
       error: state.error,
-      refreshTenant: fetchTenant
+      refreshTenant: fetchTenant,
+      markTenantLive
     }),
     [slug, state]
   );

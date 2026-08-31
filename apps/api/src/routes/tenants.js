@@ -9,12 +9,15 @@ import {
 } from "../db/models/index.js";
 import {
   buildBillingPublicSnapshot,
+  confirmTenantCheckoutSession,
   createBillingPortalUrl,
   createTenantCheckoutSession,
   getBillingCatalog,
   getBillingMode,
+  isEmbeddedCheckoutAvailable,
   isStripeEnabled,
   listRecentTenantInvoices,
+  normalizeCheckoutUiMode,
   syncStripeCustomerContact
 } from "../services/billing.js";
 import {
@@ -37,6 +40,7 @@ import {
   validateThemePayload
 } from "../services/onboarding.js";
 import { buildTenantUrls, resolveTenantDomain } from "../utils/domainProvisioning.js";
+import { invalidatePublicTenantCache } from "../utils/publicResponseCache.js";
 import {
   buildTenantSettingsWithBillingPatch,
   resolveTenantBilling,
@@ -342,7 +346,11 @@ async function saveTenantOnboarding(tenantId, update) {
     }
   }
 
-  return TenantModel.update(tenantId, patch);
+  const updated = await TenantModel.update(tenantId, patch);
+  // The unauthenticated tenant lookups are cached; drop those entries so the
+  // next read (the director's own browser, right after launch) sees this write.
+  invalidatePublicTenantCache(updated || existing);
+  return updated;
 }
 
 router.patch("/me/onboarding/draft", async (req, res, next) => {
@@ -1107,7 +1115,8 @@ router.post("/me/billing/checkout", async (req, res, next) => {
       billingOperator: req.user,
       planCode,
       successUrl: req.body?.successUrl,
-      cancelUrl: req.body?.cancelUrl
+      cancelUrl: req.body?.cancelUrl,
+      uiMode: normalizeCheckoutUiMode(req.body?.uiMode)
     });
 
     const updatedTenant = checkout?.tenant || (await TenantModel.findById(tenant._id));
@@ -1128,7 +1137,11 @@ router.post("/me/billing/checkout", async (req, res, next) => {
       mode: checkout.mode,
       action: checkout.action || "checkout_started",
       stripeEnabled: isStripeEnabled(),
+      embeddedAvailable: isEmbeddedCheckoutAvailable(),
+      uiMode: checkout.uiMode || "hosted",
       checkoutUrl: checkout.checkoutUrl,
+      clientSecret: checkout.clientSecret || "",
+      publishableKey: checkout.publishableKey || "",
       sessionId: checkout.sessionId || "",
       notes: checkout.message || "",
       catalog: getBillingCatalog({ tenant: updatedTenant }),
@@ -1143,6 +1156,47 @@ router.post("/me/billing/checkout", async (req, res, next) => {
         onboardingFeePaid: Boolean(updatedTenant.onboardingFeePaid),
         onboardingFeeInvoiceId: updatedTenant.onboardingFeeInvoiceId || ""
       }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/me/billing/checkout/confirm", async (req, res, next) => {
+  try {
+    const resolved = await resolveTenantForAdmin(req, { allowSuperAdmin: true });
+    if (resolved.error) {
+      return res.status(resolved.error.status).json(resolved.error.payload);
+    }
+
+    const { tenant } = resolved;
+    const result = await confirmTenantCheckoutSession({
+      tenant,
+      sessionId: req.body?.sessionId
+    });
+
+    const updatedTenant = result.tenant || (await TenantModel.findById(tenant._id));
+
+    if (result.confirmed) {
+      await createAuditLog({
+        tenantId: tenant._id,
+        actorUserId: req.user.id,
+        event: "billing_checkout_confirmed",
+        metadata: {
+          sessionId: String(req.body?.sessionId || ""),
+          status: result.status,
+          paymentStatus: result.paymentStatus
+        }
+      });
+    }
+
+    return res.json({
+      ok: true,
+      confirmed: Boolean(result.confirmed),
+      status: result.status,
+      paymentStatus: result.paymentStatus,
+      billing: buildBillingPublicSnapshot(updatedTenant),
+      launchReadiness: getBillingReadiness(updatedTenant)
     });
   } catch (error) {
     return next(error);

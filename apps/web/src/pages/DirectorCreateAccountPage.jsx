@@ -30,6 +30,7 @@ import {
   normalizeBillingPlanCode,
   resolveTenantBillingPlanCode
 } from "../lib/billingPlanCatalog.js";
+import { mountEmbeddedCheckout } from "../lib/stripeEmbeddedCheckout.js";
 import {
   IMAGE_OPTIMIZATION_PRESETS,
   extensionForImageMime,
@@ -370,7 +371,7 @@ function DirectorCreateAccountWizardPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { isAuthenticated, isReady, login, token: authToken, user } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, markTenantLive, refreshTenant } = useTenant();
   const slug = String(paramSlug || tenant?.slug || "").trim().toLowerCase();
   const isDirectorUser = user?.roles?.includes("tenant_admin");
   const accountStepRequired = !isDirectorUser;
@@ -385,6 +386,11 @@ function DirectorCreateAccountWizardPage() {
   const [step, setStep] = useState(() => (accountStepRequired ? STEP_ACCOUNT : STEP_DESIGN));
   const [submitError, setSubmitError] = useState("");
   const [checkoutReturnStatus, setCheckoutReturnStatus] = useState("");
+  // Set once Stripe hands back a session that renders inside the wizard.
+  const [embeddedCheckout, setEmbeddedCheckout] = useState(null);
+  const [embeddedCheckoutError, setEmbeddedCheckoutError] = useState("");
+  const [embeddedCheckoutReady, setEmbeddedCheckoutReady] = useState(false);
+  const [settlingPayment, setSettlingPayment] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [draftRestoredNotice, setDraftRestoredNotice] = useState("");
   const [saveLaterStatus, setSaveLaterStatus] = useState("");
@@ -453,6 +459,11 @@ function DirectorCreateAccountWizardPage() {
   const initialThemeVarsRef = useRef(null);
   const skipAccountHydratedRef = useRef(false);
   const postCheckoutLaunchAttemptedRef = useRef(false);
+  const embeddedCheckoutNodeRef = useRef(null);
+  const embeddedCheckoutInstanceRef = useRef(null);
+  // The register step mints a token that context state has not published yet,
+  // so the payment panel keeps the one it started checkout with.
+  const checkoutTokenRef = useRef("");
 
   const cardRef = useRef(null);
 
@@ -559,18 +570,14 @@ function DirectorCreateAccountWizardPage() {
 
     const run = async () => {
       try {
-        const deadline = Date.now() + 45000;
+        const ready = await waitForBillingLaunchReady({
+          token: authToken,
+          isCancelled: () => cancelled
+        });
 
-        while (!cancelled && Date.now() < deadline) {
-          const billingSnapshot = await requestJson("/api/tenants/me/billing", { token: authToken });
-          const billingState = billingSnapshot?.billing || {};
-
-          if (billingLaunchReady(billingState)) {
-            await launchCamp({ token: authToken, redirectImmediately: true });
-            return;
-          }
-
-          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        if (ready) {
+          if (!cancelled) await launchCamp({ token: authToken, redirectImmediately: true });
+          return;
         }
 
         if (!cancelled) {
@@ -660,6 +667,53 @@ function DirectorCreateAccountWizardPage() {
     };
   }, [authToken, isDirectorUser, slug]);
 
+  // Mounts Stripe's form once the panel is on screen, and tears the iframe down
+  // on unmount so leaving the step never strands it.
+  useEffect(() => {
+    if (!embeddedCheckout?.clientSecret) return undefined;
+
+    let cancelled = false;
+    const container = embeddedCheckoutNodeRef.current;
+    if (!container) return undefined;
+
+    setEmbeddedCheckoutReady(false);
+    setEmbeddedCheckoutError("");
+
+    mountEmbeddedCheckout({
+      publishableKey: embeddedCheckout.publishableKey,
+      clientSecret: embeddedCheckout.clientSecret,
+      container,
+      onComplete: () => {
+        if (!cancelled) handleEmbeddedCheckoutComplete();
+      }
+    })
+      .then((instance) => {
+        if (cancelled) {
+          try {
+            instance.destroy();
+          } catch {
+            // Already gone.
+          }
+          return;
+        }
+        embeddedCheckoutInstanceRef.current = instance;
+        setEmbeddedCheckoutReady(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setEmbeddedCheckoutError(
+          error.message || "Could not open the payment form. Please try again."
+        );
+      });
+
+    return () => {
+      cancelled = true;
+      teardownEmbeddedCheckout();
+    };
+    // Keyed on the session alone: re-running for anything else would tear down
+    // a payment form the director is in the middle of filling in.
+  }, [embeddedCheckout?.sessionId]);
+
   useEffect(() => {
     if (!showLaunchCelebration || !launchRedirectUrl) return;
     const timer = setTimeout(() => {
@@ -686,6 +740,86 @@ function DirectorCreateAccountWizardPage() {
     navigate(destination, { replace });
   }
 
+  // Polls until Stripe's state has landed on the tenant. Reads bypass the local
+  // GET memo, or every poll inside its TTL would replay the same stale answer.
+  async function waitForBillingLaunchReady({
+    token,
+    timeoutMs = 45000,
+    isCancelled = () => false
+  } = {}) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (!isCancelled() && Date.now() < deadline) {
+      const billingSnapshot = await requestJson("/api/tenants/me/billing", {
+        token,
+        cache: "no-store"
+      });
+      if (billingLaunchReady(billingSnapshot?.billing || {})) return true;
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    }
+
+    return false;
+  }
+
+  function teardownEmbeddedCheckout() {
+    const instance = embeddedCheckoutInstanceRef.current;
+    embeddedCheckoutInstanceRef.current = null;
+    if (!instance) return;
+    try {
+      instance.destroy();
+    } catch {
+      // Stripe already tore the iframe down; nothing to clean up.
+    }
+  }
+
+  function closeEmbeddedCheckout() {
+    teardownEmbeddedCheckout();
+    setEmbeddedCheckout(null);
+    setEmbeddedCheckoutReady(false);
+    setEmbeddedCheckoutError("");
+  }
+
+  // Stripe calls this the moment payment succeeds, without navigating anywhere.
+  // Confirming the session server-side applies the same state the webhook
+  // would, so launch does not have to wait for webhook delivery.
+  async function handleEmbeddedCheckoutComplete() {
+    const token = checkoutTokenRef.current || authToken;
+    const sessionId = String(embeddedCheckout?.sessionId || "");
+
+    setSettlingPayment(true);
+    setEmbeddedCheckoutError("");
+    setSubmitError("");
+    setCheckoutReturnStatus("Payment received. Finalizing your camp now...");
+
+    try {
+      const confirmation = await requestJson("/api/tenants/me/billing/checkout/confirm", {
+        method: "POST",
+        token,
+        body: { sessionId }
+      });
+
+      // An async payment method can still be settling; fall back to the poll.
+      if (!confirmation?.launchReadiness?.ok) {
+        const ready = await waitForBillingLaunchReady({ token });
+        if (!ready) {
+          throw new Error(
+            "Stripe is still confirming your payment. Give it a few seconds and try launching again."
+          );
+        }
+      }
+
+      teardownEmbeddedCheckout();
+      await launchCamp({ token });
+    } catch (error) {
+      setCheckoutReturnStatus("");
+      setEmbeddedCheckoutError(
+        error.message || "Payment went through, but the launch could not finish. Please try again."
+      );
+    } finally {
+      setSettlingPayment(false);
+    }
+  }
+
   async function launchCamp({ token, redirectImmediately = false } = {}) {
     const launchPayload = await requestJson("/api/tenants/me/launch", {
       method: "POST",
@@ -701,6 +835,14 @@ function DirectorCreateAccountWizardPage() {
     });
 
     clearWizardDraft(slug);
+
+    // The launch redirect leaves this page, and the router refuses to let a
+    // director into a network whose tenant record still reads "not live". Both
+    // the cached tenant payload and the server's public copy are pre-launch at
+    // this point, so settle them here before navigating anywhere.
+    markTenantLive?.();
+    await Promise.resolve(refreshTenant?.(slug, { bypassCache: true })).catch(() => {});
+
     const redirectTarget = resolveLaunchRedirectTarget(launchPayload, slug);
 
     if (redirectImmediately) {
@@ -2438,6 +2580,9 @@ function DirectorCreateAccountWizardPage() {
             );
           }
 
+          // The hosted URLs stay in the request as the fallback for any
+          // environment without embedded checkout (mock billing, no
+          // publishable key), so launch never dead-ends on a missing key.
           const successUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=success`;
           const cancelUrl = `${window.location.origin}/t/${slug}/director-create-account?checkout=cancel`;
           const checkoutPayload = await requestJson("/api/tenants/me/billing/checkout", {
@@ -2445,12 +2590,28 @@ function DirectorCreateAccountWizardPage() {
             token,
             body: {
               planCode: selectedBillingPlanCode,
+              uiMode: "embedded",
               successUrl,
               cancelUrl
             }
           });
           const checkoutAction = String(checkoutPayload?.action || "").trim().toLowerCase();
           const checkoutUrl = String(checkoutPayload?.checkoutUrl || "").trim();
+          const clientSecret = String(checkoutPayload?.clientSecret || "").trim();
+          const publishableKey = String(checkoutPayload?.publishableKey || "").trim();
+
+          if (clientSecret && publishableKey) {
+            // Payment happens right here; the launch resumes in
+            // handleEmbeddedCheckoutComplete once Stripe reports success.
+            checkoutTokenRef.current = token;
+            setEmbeddedCheckout({
+              clientSecret,
+              publishableKey,
+              sessionId: String(checkoutPayload?.sessionId || "")
+            });
+            return;
+          }
+
           if (checkoutUrl) {
             window.location.assign(checkoutUrl);
             return;
@@ -2521,6 +2682,60 @@ function DirectorCreateAccountWizardPage() {
           >
             Go to Launch Center
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Payment lives inside the wizard: Stripe's form mounts in this panel, so the
+  // director never leaves the page and there is no state to restore afterwards.
+  if (embeddedCheckout) {
+    return (
+      <div className="director-checkout-overlay">
+        <div className="director-checkout-card">
+          <header className="director-checkout-head">
+            <h1 className="director-checkout-title">Complete your payment</h1>
+            <p className="director-checkout-camp">{networkDisplayNamePreview}</p>
+            <p className="director-checkout-plan">
+              {billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)} ·{" "}
+              {formatMoney(selectedPlanAnnualAmount)} / year
+              {selectedPlanOnboardingFeeAmount > 0
+                ? ` + ${formatMoney(selectedPlanOnboardingFeeAmount)} onboarding fee`
+                : ""}
+            </p>
+          </header>
+
+          {settlingPayment ? (
+            <p className="director-checkout-status" role="status">
+              Payment received. Launching your network...
+            </p>
+          ) : !embeddedCheckoutReady && !embeddedCheckoutError ? (
+            <p className="director-checkout-status" role="status">
+              Loading the secure Stripe payment form...
+            </p>
+          ) : null}
+
+          {embeddedCheckoutError ? (
+            <p className="wizard1-error director-checkout-error" role="alert">
+              {embeddedCheckoutError}
+            </p>
+          ) : null}
+
+          <div className="director-checkout-frame" ref={embeddedCheckoutNodeRef} />
+
+          <div className="director-checkout-actions">
+            <button
+              type="button"
+              className="wizard1-btn-secondary"
+              onClick={closeEmbeddedCheckout}
+              disabled={settlingPayment}
+            >
+              Back to review
+            </button>
+            <p className="director-checkout-secure">
+              Card details go straight to Stripe. PondBridge never sees them.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -3283,8 +3498,8 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Billing and plan</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    Review pricing and launch billing. Stripe collects payment and billing address securely during
-                    checkout on the final launch action.
+                    Review pricing before launch. Stripe collects payment and billing address securely in a form
+                    that opens right here on the final step.
                   </p>
                 </div>
               </div>
@@ -3296,8 +3511,8 @@ function DirectorCreateAccountWizardPage() {
                       <h3>What happens in billing</h3>
                       <p className="director-summary-main">No charge is made on this step.</p>
                       <p className="director-field-hint">
-                        You will be redirected to Stripe only after clicking <strong>Create account &amp; open launch
-                        center</strong> on the final review step.
+                        Payment opens in a secure Stripe form on the final review step. You stay in onboarding the
+                        whole time.
                       </p>
                     </article>
                   </div>
@@ -3337,12 +3552,12 @@ function DirectorCreateAccountWizardPage() {
                     <article className="director-summary-card">
                       <h3>Stripe checkout will collect</h3>
                       <ul className="director-review-list">
-                        <li>Billing address and payment method securely in Stripe.</li>
+                        <li>Billing address and payment method securely in Stripe, without leaving this page.</li>
                         <li>Any onboarding fee (if applicable) with first-year subscription.</li>
                         <li>Tax and invoice details needed for billing records.</li>
                       </ul>
                       <p className="director-field-hint">
-                        After successful checkout, you return automatically to finish launch.
+                        The moment payment succeeds, your network launches automatically.
                       </p>
                     </article>
                   </div>
@@ -3540,7 +3755,7 @@ function DirectorCreateAccountWizardPage() {
                         </div>
                         <div>
                           <dt>Billing details</dt>
-                          <dd>Collected in Stripe Checkout at launch</dd>
+                          <dd>Collected in the Stripe payment form at launch</dd>
                         </div>
                       </dl>
                     </article>
@@ -3610,7 +3825,7 @@ function DirectorCreateAccountWizardPage() {
                       className="wizard1-btn-primary director-finish-btn"
                       disabled={finishing}
                     >
-                      {finishing ? "Saving..." : "Create account & open launch center"}
+                      {finishing ? "Saving..." : "Create account & launch network"}
                     </button>
                   </div>
                 </div>

@@ -15,6 +15,11 @@ import {
 } from "../services/onboarding.js";
 import { suggestAddresses } from "../services/addressSuggest.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
+import {
+  publicResponseCacheKey,
+  readPublicResponseCache,
+  writePublicResponseCache
+} from "../utils/publicResponseCache.js";
 import { generateUniqueMobileAppCode } from "../utils/mobileAppCode.js";
 import { buildBillingPublicSnapshot } from "../services/billing.js";
 import { isTenantBillingAccessAllowed, resolveTenantFeatureTier } from "../services/billingState.js";
@@ -29,43 +34,21 @@ import {
 const router = Router();
 const AUTO_BOOTSTRAP_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const PUBLIC_TENANT_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=600";
-const PUBLIC_RESPONSE_CACHE_TTL_MS = 60 * 1000;
-const PUBLIC_RESPONSE_CACHE_MAX_ENTRIES = 300;
-const publicResponseCache = new Map();
+const PRIVATE_TENANT_CACHE_CONTROL = "no-store";
 
-function applyPublicTenantCacheHeaders(res) {
-  res.set("Cache-Control", PUBLIC_TENANT_CACHE_CONTROL);
+// Only a launched tenant may be cached by the browser or the CDN. A tenant that
+// is still in onboarding changes on every wizard step, and a shared cache of
+// its pre-launch payload keeps reporting `onboardingStatus: "in_progress"`
+// after launch, which bounces the director straight back into the wizard.
+function tenantAllowsSharedCaching(tenant = null) {
+  return String(tenant?.onboardingStatus || "").trim().toLowerCase() === "live";
 }
 
-function publicResponseCacheKey(endpoint = "", lookup = "", value = "") {
-  const normalizedEndpoint = String(endpoint || "").trim().toLowerCase();
-  const normalizedLookup = String(lookup || "").trim().toLowerCase();
-  const normalizedValue = String(value || "").trim().toLowerCase();
-  if (!normalizedEndpoint || !normalizedLookup || !normalizedValue) return "";
-  return `${normalizedEndpoint}:${normalizedLookup}:${normalizedValue}`;
-}
-
-function readPublicResponseCache(cacheKey = "") {
-  if (!cacheKey) return null;
-  const entry = publicResponseCache.get(cacheKey);
-  if (!entry) return null;
-  if (Date.now() >= Number(entry.expiresAt || 0)) {
-    publicResponseCache.delete(cacheKey);
-    return null;
-  }
-  return entry.payload || null;
-}
-
-function writePublicResponseCache(cacheKey = "", payload = null) {
-  if (!cacheKey || !payload || typeof payload !== "object") return;
-  if (publicResponseCache.size >= PUBLIC_RESPONSE_CACHE_MAX_ENTRIES) {
-    const firstKey = publicResponseCache.keys().next().value;
-    if (firstKey) publicResponseCache.delete(firstKey);
-  }
-  publicResponseCache.set(cacheKey, {
-    expiresAt: Date.now() + PUBLIC_RESPONSE_CACHE_TTL_MS,
-    payload
-  });
+function applyPublicTenantCacheHeaders(res, tenant = null) {
+  res.set(
+    "Cache-Control",
+    tenantAllowsSharedCaching(tenant) ? PUBLIC_TENANT_CACHE_CONTROL : PRIVATE_TENANT_CACHE_CONTROL
+  );
 }
 
 function canAutoBootstrapSlug(slug = "") {
@@ -327,6 +310,7 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
     const cacheKey = publicResponseCacheKey("tenant-config", cacheLookup, cacheLookupValue);
     const cached = readPublicResponseCache(cacheKey);
     if (cached) {
+      applyPublicTenantCacheHeaders(res, cached);
       return res.json(cached);
     }
 
@@ -391,7 +375,8 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
       features: listFeaturesForPlan(planTier, tenant.addOns || [])
     };
 
-    if (cacheKey) {
+    applyPublicTenantCacheHeaders(res, tenant);
+    if (cacheKey && tenantAllowsSharedCaching(tenant)) {
       writePublicResponseCache(cacheKey, payload);
     }
     return res.json(payload);
@@ -410,6 +395,7 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
     const cacheKey = publicResponseCacheKey("tenant-status", cacheLookup, cacheLookupValue);
     const cached = readPublicResponseCache(cacheKey);
     if (cached) {
+      applyPublicTenantCacheHeaders(res, cached);
       return res.json(cached);
     }
 
@@ -455,7 +441,8 @@ router.get("/tenant-status", publicLookupLimiter, async (req, res, next) => {
       demoAccessEnabled: hasDemoAccessEnabled(tenant)
     };
 
-    if (cacheKey) {
+    applyPublicTenantCacheHeaders(res, tenant);
+    if (cacheKey && tenantAllowsSharedCaching(tenant)) {
       writePublicResponseCache(cacheKey, payload);
     }
     return res.json(payload);

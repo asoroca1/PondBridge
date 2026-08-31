@@ -130,7 +130,7 @@ function normalizeHexColor(value = "", fallback = "#303030") {
 
 export default function DirectorOnboardingCommandCenterPage() {
   const { token } = useAuth();
-  const { tenant, slug } = useTenant();
+  const { tenant, slug, markTenantLive, refreshTenant } = useTenant();
   const alumniWord = resolveAlumniWord(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const networkDisplayName = resolveNetworkDisplayName(tenant);
@@ -310,6 +310,12 @@ export default function DirectorOnboardingCommandCenterPage() {
         mode: "onboarding_command_center"
       }
     });
+      // Settle the tenant record before navigating: the router bounces a
+      // director back into onboarding while the cached tenant still reads
+      // "not live".
+      markTenantLive?.();
+      await Promise.resolve(refreshTenant?.(slug, { bypassCache: true })).catch(() => {});
+
       const redirectTarget = resolveLaunchRedirectTarget(response, slug);
       if (redirectTarget.startsWith("http")) {
         window.location.assign(redirectTarget);
