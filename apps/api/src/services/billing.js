@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { env } from "../config/env.js";
+import { invalidatePublicTenantCache } from "../utils/publicResponseCache.js";
 import {
   StripeWebhookEventModel,
   TenantAdminAuditLogModel,
@@ -407,7 +408,11 @@ async function updateTenantWithBillingPatch(tenant, { tenantPatch = {}, billingP
     patch.settings = buildTenantSettingsWithBillingPatch(tenant, billingPatch);
   }
 
-  return TenantModel.update(tenantId, patch);
+  const updated = await TenantModel.update(tenantId, patch);
+  // Billing status is part of the cached public tenant payload, so a webhook
+  // that flips it has to drop those entries too.
+  invalidatePublicTenantCache(updated || tenant);
+  return updated;
 }
 
 async function ensureStripeCustomer(tenant, billingOperator = null) {
@@ -661,6 +666,18 @@ export function getBillingMode() {
   return stripe ? "stripe" : "mock";
 }
 
+export function normalizeCheckoutUiMode(value = "") {
+  return String(value || "").trim().toLowerCase() === "embedded" ? "embedded" : "hosted";
+}
+
+export function getStripePublishableKey() {
+  return String(env.STRIPE_PUBLISHABLE_KEY || "").trim();
+}
+
+export function isEmbeddedCheckoutAvailable() {
+  return Boolean(stripe) && getBillingMode() !== "mock" && Boolean(getStripePublishableKey());
+}
+
 export function isStripeEnabled() {
   return getBillingMode() === "stripe";
 }
@@ -693,9 +710,13 @@ export async function createTenantCheckoutSession({
   billingOperator = null,
   planCode = "",
   successUrl,
-  cancelUrl
+  cancelUrl,
+  uiMode = "hosted"
 }) {
   const mode = getBillingMode();
+  // Embedded needs a publishable key and a real Stripe session; anything else
+  // falls back to the hosted redirect rather than failing the launch.
+  const embedded = normalizeCheckoutUiMode(uiMode) === "embedded" && isEmbeddedCheckoutAvailable();
   const currentBilling = resolveTenantBilling(tenant);
   const normalizedPlanCode = normalizePlanCode(
     planCode || currentBilling.billingPlan,
@@ -1004,12 +1025,24 @@ export async function createTenantCheckoutSession({
     });
   }
 
+  // Embedded Checkout renders inside the onboarding wizard, so it has no URLs
+  // to bounce through: `redirect_on_completion: "never"` hands control straight
+  // back to the page, which then confirms the session and launches in place.
+  const presentationParams = embedded
+    ? {
+        ui_mode: "embedded",
+        redirect_on_completion: "never"
+      }
+    : {
+        success_url: successUrl || env.STRIPE_SUCCESS_URL || defaultSuccessUrl(tenantForUpdate),
+        cancel_url: cancelUrl || env.STRIPE_CANCEL_URL || defaultCancelUrl(tenantForUpdate)
+      };
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
     line_items: lineItems,
-    success_url: successUrl || env.STRIPE_SUCCESS_URL || defaultSuccessUrl(tenantForUpdate),
-    cancel_url: cancelUrl || env.STRIPE_CANCEL_URL || defaultCancelUrl(tenantForUpdate),
+    ...presentationParams,
     client_reference_id: String(tenantForUpdate._id),
     allow_promotion_codes: true,
     billing_address_collection: "required",
@@ -1077,8 +1110,11 @@ export async function createTenantCheckoutSession({
   return {
     mode,
     action: "checkout_started",
+    uiMode: embedded ? "embedded" : "hosted",
     sessionId: session.id,
-    checkoutUrl: session.url,
+    checkoutUrl: session.url || "",
+    clientSecret: String(session.client_secret || ""),
+    publishableKey: embedded ? getStripePublishableKey() : "",
     planCode: catalogEntry.code,
     onboardingFeeAmount,
     tenant: updated
@@ -1614,6 +1650,87 @@ export async function processStripeEvent(event) {
     });
     throw error;
   }
+}
+
+// Embedded Checkout completes without a redirect, so the wizard asks the API to
+// confirm the session the moment Stripe reports it done. That applies exactly
+// the state the `checkout.session.completed` webhook would, which means launch
+// readiness no longer has to wait on webhook delivery. The webhook still
+// arrives and re-applies the same patch; both paths are idempotent.
+export async function confirmTenantCheckoutSession({ tenant, sessionId = "" } = {}) {
+  const tenantId = String(tenant?._id || tenant?.id || "").trim();
+  if (!tenantId) {
+    const error = new Error("Tenant ID is required to confirm checkout.");
+    error.statusCode = 400;
+    error.code = "TENANT_ID_REQUIRED";
+    throw error;
+  }
+
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedSessionId) {
+    const error = new Error("A Stripe checkout session ID is required.");
+    error.statusCode = 400;
+    error.code = "CHECKOUT_SESSION_ID_REQUIRED";
+    throw error;
+  }
+
+  if (!stripe) {
+    const error = new Error("Stripe is not configured on this environment.");
+    error.statusCode = 503;
+    error.code = "STRIPE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  const session = await stripe.checkout.sessions.retrieve(normalizedSessionId);
+
+  // The session ID reaches us from the browser, so confirm it is this tenant's
+  // before writing any billing state from it.
+  if (pickTenantIdFromPayload(session) !== tenantId) {
+    const error = new Error("That Stripe checkout session belongs to another camp.");
+    error.statusCode = 403;
+    error.code = "CHECKOUT_SESSION_TENANT_MISMATCH";
+    throw error;
+  }
+
+  const status = String(session.status || "").trim().toLowerCase();
+  const paymentStatus = String(session.payment_status || "").trim().toLowerCase();
+  const settled =
+    status === "complete" && (paymentStatus === "paid" || paymentStatus === "no_payment_required");
+
+  if (!settled) {
+    logLine("info", "billing.checkout.confirm_pending", {
+      tenantId,
+      checkoutSessionId: normalizedSessionId,
+      status,
+      paymentStatus
+    });
+    return {
+      confirmed: false,
+      status,
+      paymentStatus,
+      tenant: await TenantModel.findById(tenantId)
+    };
+  }
+
+  await handleCheckoutSessionCompleted(
+    { id: `checkout_confirm_${session.id}`, type: "checkout.session.completed" },
+    session,
+    { useTenantEventDedupe: true }
+  );
+
+  logLine("info", "billing.checkout.confirmed", {
+    tenantId,
+    checkoutSessionId: normalizedSessionId,
+    status,
+    paymentStatus
+  });
+
+  return {
+    confirmed: true,
+    status,
+    paymentStatus,
+    tenant: await TenantModel.findById(tenantId)
+  };
 }
 
 export async function constructStripeEventFromRequest(req) {

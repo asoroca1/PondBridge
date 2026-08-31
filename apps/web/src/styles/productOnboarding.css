@@ -1766,6 +1766,96 @@
   100% { transform: scale(1.8); opacity: 0; }
 }
 
+/* Stripe's embedded Checkout, mounted inside the onboarding wizard. */
+.director-checkout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 32px 16px;
+  background: rgba(36, 36, 36, 0.88);
+  animation: celebration-fade-in 0.3s ease-out;
+}
+
+.director-checkout-card {
+  width: 100%;
+  max-width: 640px;
+  padding: 32px 28px 24px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.director-checkout-head {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.director-checkout-title {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+}
+
+.director-checkout-camp {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.director-checkout-plan {
+  margin: 0;
+  color: var(--neutral-600, #5a5a5a);
+  font-size: 0.925rem;
+}
+
+.director-checkout-status {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--neutral-100, #f4f4f4);
+  color: var(--neutral-700, #3f3f3f);
+  font-size: 0.925rem;
+  text-align: center;
+}
+
+.director-checkout-error {
+  margin: 0 0 16px;
+  text-align: center;
+}
+
+/* Stripe sizes its own iframe; this only reserves room while it loads. */
+.director-checkout-frame {
+  min-height: 320px;
+}
+
+.director-checkout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.director-checkout-secure {
+  margin: 0;
+  color: var(--neutral-600, #5a5a5a);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 560px) {
+  .director-checkout-card {
+    padding: 24px 18px 18px;
+  }
+
+  .director-checkout-actions {
+    justify-content: center;
+    text-align: center;
+  }
+}
+
 .director-celebration-overlay {
   position: fixed;
   inset: 0;

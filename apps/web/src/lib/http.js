@@ -180,13 +180,14 @@ async function readBrowserClerkTokenWithSharedForceRefresh() {
   return forcedRefreshPromise;
 }
 
-async function performJsonRequest(url, { method, headers, signal, body }) {
+async function performJsonRequest(url, { method, headers, signal, body, cache }) {
   return fetch(url, {
     method,
     headers,
     credentials: "include",
     signal,
-    body
+    body,
+    ...(cache ? { cache } : {})
   });
 }
 
@@ -231,8 +232,11 @@ function buildInFlightGetRequestKey({
   ].join("::");
 }
 
-export async function requestJson(path, { method = "GET", body, token, getToken, headers = {}, signal } = {}) {
+export async function requestJson(path, { method = "GET", body, token, getToken, headers = {}, signal, cache } = {}) {
   const normalizedPath = String(path || "");
+  // `cache: "no-store"` means the caller needs server truth right now, so it
+  // skips the local GET memoization as well as the browser HTTP cache.
+  const skipResponseCache = String(cache || "") === "no-store";
   const normalizedMethod = String(method || "GET").toUpperCase();
   const isPublicApiPath = normalizedPath.startsWith("/api/public/");
   let resolvedToken = token || "";
@@ -269,17 +273,19 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
     body,
     signal: null
   });
-  const inFlightGetKey = buildInFlightGetRequestKey({
-    method: normalizedMethod,
-    path: normalizedPath,
-    token: resolvedToken,
-    headers: baseHeaders,
-    body,
-    signal
-  });
+  const inFlightGetKey = skipResponseCache
+    ? ""
+    : buildInFlightGetRequestKey({
+        method: normalizedMethod,
+        path: normalizedPath,
+        token: resolvedToken,
+        headers: baseHeaders,
+        body,
+        signal
+      });
   if (normalizedMethod !== "GET") {
     clearGetResponseCache();
-  } else if (cacheKey) {
+  } else if (cacheKey && !skipResponseCache) {
     const cached = readGetResponseCache(cacheKey);
     if (cached !== null) {
       return cached;
@@ -302,6 +308,7 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
       method: normalizedMethod,
       headers: requestHeaders,
       signal,
+      cache,
       body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined
     });
   }
@@ -344,7 +351,7 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
       throw error;
     }
 
-    if (normalizedMethod === "GET" && cacheKey) {
+    if (normalizedMethod === "GET" && cacheKey && !skipResponseCache) {
       writeGetResponseCache(cacheKey, payload);
     }
 
