@@ -22,6 +22,14 @@ function cityLabel(c) {
   return [c.city, c.state].filter(Boolean).join(", ");
 }
 
+// CARTO now watermarks its basemap tiles ("API KEY REQUIRED") for unkeyed
+// callers, so the light grey base comes from OpenFreeMap's Positron style,
+// which needs no key. The style ships its own glyphs, and MapLibre silently
+// drops any text layer whose font that glyph server does not serve — hence
+// the shared bold-font constant for the cluster counts.
+const BASEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
+const BASEMAP_BOLD_FONT = "Noto Sans Bold";
+
 const CLUSTER_SOURCE_ID = "lm-cities";
 const CLUSTER_LAYER_ID = "lm-cluster";
 const CITY_LAYER_ID = "lm-city";
@@ -531,7 +539,7 @@ export default function LocationMap() {
             [">", ["get", field], 99], "99+",
             ["to-string", ["get", field]]
           ],
-          "text-font": ["Open Sans Bold", "Noto Sans Bold"],
+          "text-font": [BASEMAP_BOLD_FONT],
           "text-size": 12,
           "text-allow-overlap": true
         },
@@ -594,30 +602,9 @@ export default function LocationMap() {
       return;
     }
 
-    const style = {
-      version: 8,
-      sources: {
-        cartoLight: {
-          type: "raster",
-          tiles: [
-            "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
-            "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
-            "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
-          ],
-          tileSize: 256,
-          attribution: "© OpenStreetMap contributors, © CARTO",
-        },
-      },
-      // A raster style carries no glyphs, and MapLibre silently drops any text
-      // layer without them — which is why the counts have to come from a font
-      // source even though the basemap is images.
-      glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
-      layers: [{ id: "cartoLight", type: "raster", source: "cartoLight" }],
-    };
-
     const map = new maplibregl.Map({
       container: el,
-      style,
+      style: BASEMAP_STYLE_URL,
       center: DEFAULT_VIEW.center,
       zoom: DEFAULT_VIEW.zoom,
       attributionControl: true,
