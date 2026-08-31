@@ -280,13 +280,25 @@ function readStoredSessionCandidate(tenantSlug = "") {
 }
 
 function LegacyAuthProvider({ children }) {
-  const initial = readAuthFromStorage();
-  const initialTenantSlug = inferTenantSlugForSessionRequest();
-  const hydrateLegacySession = NATIVE_APP || !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
-  const mismatchedCachedSession =
-    hydrateLegacySession &&
-    Boolean(initial.token) &&
-    !cachedSessionMatchesTenant(initial.user, initialTenantSlug);
+  // Read the cached session once, at mount. readAuthFromStorage() writes back
+  // into session storage, and inferTenantSlugForSessionRequest() reads the
+  // current URL, so doing this on every render made the provider's own boot
+  // state drift as the member navigated.
+  const [boot] = useState(() => {
+    const initial = readAuthFromStorage();
+    const initialTenantSlug = inferTenantSlugForSessionRequest();
+    const hydrateLegacySession = NATIVE_APP || !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
+    return {
+      initial,
+      initialTenantSlug,
+      hydrateLegacySession,
+      mismatchedCachedSession:
+        hydrateLegacySession &&
+        Boolean(initial.token) &&
+        !cachedSessionMatchesTenant(initial.user, initialTenantSlug)
+    };
+  });
+  const { initial, initialTenantSlug, hydrateLegacySession, mismatchedCachedSession } = boot;
   const [token, setToken] = useState(hydrateLegacySession && !mismatchedCachedSession ? initial.token : "");
   const [user, setUser] = useState(
     hydrateLegacySession && !mismatchedCachedSession
@@ -500,19 +512,37 @@ function getTokenExpiry(jwt) {
 function ClerkBackedAuthProvider({ children }) {
   // Hydrate cached user from localStorage on mount so returning users
   // see content immediately instead of a blank flash while Clerk loads.
-  const cachedAuth = readAuthFromStorage();
-  const initialTenantSlug = inferTenantSlugForSessionRequest();
-  const shouldHydrate = NATIVE_APP || !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
-  const mismatchedCachedSession =
-    shouldHydrate &&
-    Boolean(cachedAuth.token) &&
-    !cachedSessionMatchesTenant(cachedAuth.user, initialTenantSlug);
-  const hasHydratedSessionSnapshot = Boolean(
-    shouldHydrate &&
-    !mismatchedCachedSession &&
-    cachedAuth.token &&
-    cachedAuth.user
-  );
+  //
+  // Resolved once, at mount: readAuthFromStorage() writes back into session
+  // storage and inferTenantSlugForSessionRequest() reads the current URL, so
+  // recomputing this every render let the provider's boot state drift as the
+  // member navigated - including hasHydratedSessionSnapshot, which gates
+  // isReady and therefore whether the whole shell stays on screen.
+  const [boot] = useState(() => {
+    const cachedAuth = readAuthFromStorage();
+    const initialTenantSlug = inferTenantSlugForSessionRequest();
+    const shouldHydrate = NATIVE_APP || !FORCE_RELOGIN_ON_TAB_CLOSE || hasTabSessionAuthenticated();
+    const mismatchedCachedSession =
+      shouldHydrate &&
+      Boolean(cachedAuth.token) &&
+      !cachedSessionMatchesTenant(cachedAuth.user, initialTenantSlug);
+    return {
+      cachedAuth,
+      initialTenantSlug,
+      shouldHydrate,
+      mismatchedCachedSession,
+      hasHydratedSessionSnapshot: Boolean(
+        shouldHydrate && !mismatchedCachedSession && cachedAuth.token && cachedAuth.user
+      )
+    };
+  });
+  const {
+    cachedAuth,
+    initialTenantSlug,
+    shouldHydrate,
+    mismatchedCachedSession,
+    hasHydratedSessionSnapshot
+  } = boot;
   const [token, setToken] = useState(() =>
     shouldHydrate && !mismatchedCachedSession ? readSessionToken() : ""
   );
@@ -769,9 +799,14 @@ function ClerkBackedAuthProvider({ children }) {
           tenantSlug: String(payload?.tenant?.slug || payload?.user?.tenantSlug || "").trim().toLowerCase()
         });
         legacySessionOverrideRef.current = false;
-        setUser(normalizedUser);
+        // A session response without a usable user is a malformed answer, not a
+        // sign-out. Clearing the user here would leave the app authenticated
+        // with nobody signed in, which blanks the current page behind the
+        // branded shell and then bounces the member to the auth callback.
+        const nextUser = normalizedUser || userRef.current;
+        setUser(nextUser);
         markTabSessionAuthenticated();
-        writeAuthToStorage(clerkToken, normalizedUser);
+        writeAuthToStorage(clerkToken, nextUser);
         clearTabLoginIntent();
         setBootstrapError("");
         return payload;
@@ -915,7 +950,10 @@ function ClerkBackedAuthProvider({ children }) {
   // re-renders and visual glitching.
   useEffect(() => {
     if (!isLoaded) {
-      setSessionRefreshing(true);
+      // Only block on the first load. If Clerk re-reports "not loaded" during a
+      // session rotation, flipping isReady back to false would unmount the whole
+      // shell and flash the branded sign-in screen over a working page.
+      if (!bootstrapDoneRef.current) setSessionRefreshing(true);
       return;
     }
 

@@ -35,33 +35,6 @@ export function PublicAuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function SessionSnapshotAuthProvider({ auth, children }) {
-  const value = useMemo(() => {
-    const token = String(auth?.token || "").trim();
-    const user = auth?.user || null;
-    return {
-      token,
-      user,
-      isAuthenticated: Boolean(token && user),
-      isReady: true,
-      authProvider: AUTH_PROVIDER,
-      authConfigError: "",
-      bootstrapError: "",
-      clerkLoadTimedOut: false,
-      sessionWarningMinutes: 0,
-      dismissSessionWarning: () => {},
-      login: () => {},
-      logout: () => {},
-      getAuthToken: async () => token,
-      refreshSession: async () => null,
-      retryBootstrap: () => {},
-      setUser: () => {}
-    };
-  }, [auth]);
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");

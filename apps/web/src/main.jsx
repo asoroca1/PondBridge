@@ -1,12 +1,12 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import App from "./App.jsx";
-import { PublicAuthProvider, SessionSnapshotAuthProvider } from "./context/AuthContext.jsx";
+import { PublicAuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import { AssetUpdateNotice } from "./components/AssetUpdateNotice.jsx";
 import { clerkSdkEnabled } from "./lib/authMode.js";
+import { needsAuthRuntime } from "./lib/authRuntimeScope.js";
 import {
   attemptAutomaticChunkRecovery,
   cleanChunkRecoveryUrl,
@@ -73,73 +73,117 @@ function warmApiConnection() {
 
 warmApiConnection();
 
-const FullAuthRuntime = React.lazy(() =>
-  loadFullAuthRuntime().catch((error) => {
-    if (attemptAutomaticChunkRecovery(error)) {
-      return new Promise(() => {});
-    }
-    throw error;
-  })
-);
+// Read once, at startup: this is the session the app boots with.
+const bootAuth = readAuthFromStorage();
+const hasBootSessionSnapshot = Boolean(bootAuth.token && bootAuth.user);
 
-function isPublicLandingPath(pathname = "") {
-  const normalizedPath = String(pathname || "/").replace(/\/+$/, "") || "/";
-  return normalizedPath === "/" || /^\/t\/[^/]+$/i.test(normalizedPath);
+function runtimeRequiredFor(pathname = "") {
+  return needsAuthRuntime({
+    pathname,
+    clerkEnabled: clerkSdkEnabled(),
+    hasSessionSnapshot: hasBootSessionSnapshot
+  });
 }
 
-function AuthRuntimeBoundary() {
+const runtimeNeededAtBoot = runtimeRequiredFor(window.location.pathname);
+
+// Start the request now so awaiting it below overlaps with the rest of startup.
+const bootRuntimePromise = runtimeNeededAtBoot ? loadFullAuthRuntime() : null;
+
+/**
+ * Loads the auth runtime for a visit that started on a public landing page and
+ * has since navigated somewhere that needs a real session.
+ */
+function DeferredAuthRuntimeLoader({ onLoaded }) {
   const location = useLocation();
-  const cachedAuth = readAuthFromStorage();
-  const hasSessionSnapshot = Boolean(cachedAuth.token && cachedAuth.user);
-  const canDeferClerk =
-    clerkSdkEnabled() &&
-    isPublicLandingPath(location.pathname) &&
-    !hasSessionSnapshot;
-  if (canDeferClerk) {
+
+  useEffect(() => {
+    if (!runtimeRequiredFor(location.pathname)) return undefined;
+
+    let active = true;
+    loadFullAuthRuntime()
+      .then((module) => {
+        if (active) onLoaded(() => module.default);
+      })
+      .catch((error) => {
+        // A stale deployment is handled by the update notice; the visit stays
+        // on the public provider rather than dying here.
+        attemptAutomaticChunkRecovery(error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [location.pathname, onLoaded]);
+
+  return null;
+}
+
+/**
+ * Chooses the auth provider `<App />` renders under.
+ *
+ * The runtime is resolved *before* the first render whenever the visit needs
+ * it, so the app mounts underneath its real provider once and stays there.
+ * The old shape — a lazy runtime with `<App />` in both the Suspense fallback
+ * and the resolved children — mounted the entire application, tore it down,
+ * and mounted it again on every page load: requests discarded, page state
+ * reset, and the branded sign-in shell flashing over a screen the member had
+ * already been shown. That was the phantom reload.
+ *
+ * An anonymous visit that starts on a public landing page still skips the
+ * runtime entirely, and only pays for a remount if it later navigates
+ * somewhere that needs a session.
+ */
+function AppRoot({ initialRuntime = null }) {
+  const [AuthRuntime, setAuthRuntime] = useState(() => initialRuntime);
+
+  if (AuthRuntime) {
     return (
-      <PublicAuthProvider>
+      <AuthRuntime>
         <App />
-      </PublicAuthProvider>
+      </AuthRuntime>
     );
   }
 
   return (
-    <React.Suspense
-      fallback={
-        hasSessionSnapshot ? (
-          <SessionSnapshotAuthProvider auth={cachedAuth}>
-            <App />
-          </SessionSnapshotAuthProvider>
-        ) : (
-          <AppTransitionShell />
-        )
-      }
-    >
-      <FullAuthRuntime>
-        <App />
-      </FullAuthRuntime>
-    </React.Suspense>
+    <PublicAuthProvider>
+      <DeferredAuthRuntimeLoader onLoaded={setAuthRuntime} />
+      <App />
+    </PublicAuthProvider>
   );
 }
 
-const baseTree = (
-  <>
-    <AssetUpdateNotice />
-    <BrowserRouter>
-      <AuthRuntimeBoundary />
-    </BrowserRouter>
-  </>
-);
+function renderApp(initialRuntime) {
+  ReactDOM.createRoot(document.getElementById("root")).render(
+    <React.StrictMode>
+      <ErrorBoundary level="app">
+        <AssetUpdateNotice />
+        <BrowserRouter>
+          <AppRoot initialRuntime={initialRuntime} />
+        </BrowserRouter>
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+}
+
+async function start() {
+  let initialRuntime = null;
+  if (bootRuntimePromise) {
+    try {
+      initialRuntime = (await bootRuntimePromise).default;
+    } catch (error) {
+      // A missing chunk means the deployment moved under us; recovery reloads
+      // onto the current build rather than rendering a broken tree.
+      if (attemptAutomaticChunkRecovery(error)) return;
+      throw error;
+    }
+  }
+  renderApp(initialRuntime);
+}
 
 const canonicalPreviewUrl = canonicalTenantUrlForPreview();
 if (canonicalPreviewUrl && canonicalPreviewUrl !== window.location.href) {
   window.location.replace(canonicalPreviewUrl);
 } else {
-  ReactDOM.createRoot(document.getElementById("root")).render(
-    <React.StrictMode>
-      <ErrorBoundary level="app">
-        {baseTree}
-      </ErrorBoundary>
-    </React.StrictMode>
-  );
+  start();
 }
