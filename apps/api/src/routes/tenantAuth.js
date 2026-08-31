@@ -295,7 +295,7 @@ router.post("/signup-intent", signupIntentLimiter, requireTenant, async (req, re
 
 router.post("/access-code/verify", accessCodeVerifyLimiter, requireTenant, async (req, res) => {
   const policy = resolveTenantAccessPolicy(req.tenant);
-  if (policy.signupMode !== "code") {
+  if (policy.entryMode !== "code") {
     return res.status(409).json({
       error: {
         code: "ACCESS_CODE_NOT_REQUIRED",
@@ -354,7 +354,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
   }
 
   const policy = resolveTenantAccessPolicy(req.tenant);
-  const signupMode = policy.signupMode;
+  const signupMode = policy.entryMode;
   let matchingInvite = null;
   if (inviteToken) {
     const inviteByToken = await findInviteByOpaqueToken(req.tenant._id, inviteToken);
@@ -446,7 +446,10 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     });
   }
 
-  if (!bypassAccessControls && signupMode === "approval_queue" && !matchingInvite) {
+  const needsReview =
+    !bypassAccessControls &&
+    (policy.requireApproval || (signupMode === "approval_queue" && !matchingInvite));
+  if (needsReview) {
     const profilePayload = profileFromBody(req.body);
     const selfReportedRole = String(
       profilePayload.roleAtCamp ||

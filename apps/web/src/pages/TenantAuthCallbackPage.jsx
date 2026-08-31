@@ -254,8 +254,10 @@ function ClerkAuthCallbackPage() {
     const payload = await requestJson(`/api/t/${safeSlug}/access/decision${query}`, { token });
     const decision = payload?.decision || {};
 
+    if (decision.action === "wait_for_approval") return { pendingApproval: true };
+
     if (decision.action === "accept_invite" && inviteTokenValue) {
-      await requestJson(`/api/t/${safeSlug}/access/invite/accept`, {
+      const accepted = await requestJson(`/api/t/${safeSlug}/access/invite/accept`, {
         method: "POST",
         token,
         body: {
@@ -263,11 +265,11 @@ function ClerkAuthCallbackPage() {
           legalAgreement
         }
       });
-      return;
+      return { pendingApproval: Boolean(accepted?.pendingApproval) };
     }
 
     if (decision.action === "join_network") {
-      await requestJson(`/api/t/${safeSlug}/access/join`, {
+      const joined = await requestJson(`/api/t/${safeSlug}/access/join`, {
         method: "POST",
         token,
         body: {
@@ -276,7 +278,10 @@ function ClerkAuthCallbackPage() {
         }
       });
       clearPendingAccessGrant(safeSlug);
+      return { pendingApproval: Boolean(joined?.pendingApproval) };
     }
+
+    return { pendingApproval: false };
   }
 
   async function ensureTenantSessionSync(
@@ -293,12 +298,19 @@ function ClerkAuthCallbackPage() {
       } catch (error) {
         if (isAuthTokenPendingError(error)) continue;
         if (isAuthMembershipRequiredError(error)) {
-          await recoverMembership({
+          const recovery = await recoverMembership({
             tenantSlug: safeSlug,
             token,
             inviteTokenValue,
             legalAgreement
-          }).catch(() => {});
+          }).catch(() => ({ pendingApproval: false }));
+          // There is nothing to recover while a director still has to decide;
+          // retrying would only spin until the timeout.
+          if (recovery?.pendingApproval) {
+            const pending = new Error("Access is waiting on director approval.");
+            pending.code = "ACCESS_PENDING_APPROVAL";
+            throw pending;
+          }
           continue;
         }
         throw error;
@@ -372,7 +384,7 @@ function ClerkAuthCallbackPage() {
         } else if (decision.action === "accept_invite" && inviteToken) {
           clearDirectorBootstrapIntent(slug);
           setPhaseMessage("Accepting your invite...");
-          await requestJson(`/api/t/${slug}/access/invite/accept`, {
+          const accepted = await requestJson(`/api/t/${slug}/access/invite/accept`, {
             method: "POST",
             token,
             body: {
@@ -380,6 +392,15 @@ function ClerkAuthCallbackPage() {
               legalAgreement: pendingLegalAgreement
             }
           });
+          // Under the review gate an invitation gets someone to the form, not
+          // into the network. There is no membership to sync yet, so go
+          // straight to the waiting page instead of polling for one.
+          if (accepted?.pendingApproval) {
+            clearPendingLegalAgreement(slug);
+            redirected = true;
+            navigate(routeWithSlug(slug, "/request-access"), { replace: true });
+            return;
+          }
         } else if (decision.action === "join_network") {
           const accessGrant = readPendingAccessGrant(slug);
           if (decision.requiresAccessCode && !accessGrant) {
@@ -389,7 +410,7 @@ function ClerkAuthCallbackPage() {
           }
           clearDirectorBootstrapIntent(slug);
           setPhaseMessage("Creating your network membership...");
-          await requestJson(`/api/t/${slug}/access/join`, {
+          const joined = await requestJson(`/api/t/${slug}/access/join`, {
             method: "POST",
             token,
             body: {
@@ -398,6 +419,12 @@ function ClerkAuthCallbackPage() {
             }
           });
           clearPendingAccessGrant(slug);
+          if (joined?.pendingApproval) {
+            clearPendingLegalAgreement(slug);
+            redirected = true;
+            navigate(routeWithSlug(slug, "/request-access"), { replace: true });
+            return;
+          }
         } else if (decision.action === "request_access") {
           clearDirectorBootstrapIntent(slug);
           setPhaseMessage("Submitting your request to the camp director...");
@@ -443,6 +470,13 @@ function ClerkAuthCallbackPage() {
         navigate(next, { replace: true });
       } catch (err) {
         if (cancelled) return;
+        // Waiting on a director is a normal outcome, not a sign-in failure.
+        if (String(err?.code || "") === "ACCESS_PENDING_APPROVAL") {
+          clearPendingLegalAgreement(slug);
+          redirected = true;
+          navigate(routeWithSlug(slug, "/request-access"), { replace: true });
+          return;
+        }
         if (isAccessCodeError(err)) {
           clearPendingAccessGrant(slug);
           setAccessCodeError("That join code is no longer valid. Enter the current code from your camp director.");

@@ -485,6 +485,8 @@ export function resolveSettings(tenant) {
       settings.allowDirectoryBrowse !== undefined ? settings.allowDirectoryBrowse : true
     ),
     requireProfileCompletion: policy.requireProfileCompletion,
+    requireSignupApproval: policy.requireApproval,
+    entryMode: policy.entryMode,
     hasAccessCode: policy.hasAccessCode,
     hasMobileAppCode: Boolean(String(settings.mobileAppCodeLookup || "").trim())
   };
@@ -614,6 +616,13 @@ export function resolveDraft(tenant) {
         draftSettings.requireProfileCompletion !== undefined
           ? Boolean(draftSettings.requireProfileCompletion)
           : baseSettings.requireProfileCompletion,
+      requireSignupApproval:
+        draftSettings.requireSignupApproval !== undefined
+          ? Boolean(draftSettings.requireSignupApproval)
+          : baseSettings.requireSignupApproval,
+      // Entry mode follows whatever signup mode the draft settled on, so the
+      // wizard and the settings page describe the same network.
+      entryMode: mergedSignupMode === "approval_queue" ? "open" : mergedSignupMode,
       accessCodeHash: String(draftSettings.accessCodeHash || baseSettings.accessCodeHash || ""),
       hasAccessCode: Boolean(draftSettings.accessCodeHash || baseSettings.hasAccessCode),
       accessCodeHint: draftSettings.accessCodeHint || baseSettings.accessCodeHint || "",
@@ -922,7 +931,8 @@ export async function buildSettingsStorePayload(settingsInput = {}, previousTena
     allowedEmailDomains: normalizeDomains(validated.allowedEmailDomains || []),
     allowSearchByDefault: validated.allowSearchByDefault,
     allowDirectoryBrowse: validated.allowDirectoryBrowse,
-    requireProfileCompletion: validated.requireProfileCompletion
+    requireProfileCompletion: validated.requireProfileCompletion,
+    requireSignupApproval: Boolean(validated.requireSignupApproval)
   };
 
   const rawAccessCode = String(settingsInput.accessCode || "").trim();

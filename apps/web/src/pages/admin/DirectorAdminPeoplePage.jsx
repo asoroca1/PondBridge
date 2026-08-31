@@ -43,6 +43,14 @@ export default function DirectorAdminPeoplePage() {
     setInviteTargets(people);
   }, []);
 
+  // A bulk decision is the one action where nothing visibly changes except a
+  // page of rows disappearing, so it always says what it did.
+  const reportBulkResult = useCallback((result) => {
+    if (!result) return;
+    setNotice(result.ok ? result.message : "");
+    if (!result.ok) directory.setError(result.message);
+  }, [directory]);
+
   const emailPeople = useCallback((people = []) => {
     const ids = people.map((person) => person.profileId).filter(Boolean);
     if (!ids.length) return;
@@ -73,9 +81,10 @@ export default function DirectorAdminPeoplePage() {
           setExportSelection(keys);
           setExportOpen(true);
         }}
+        onBulkResult={reportBulkResult}
       />
     );
-  }, [actions, activeView, directory, emailPeople, navigate, openInvite, slug, stage]);
+  }, [actions, activeView, directory, emailPeople, navigate, openInvite, reportBulkResult, slug, stage]);
 
   return (
     <div className="pb-workspace">

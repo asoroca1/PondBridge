@@ -8,6 +8,7 @@ import {
   formatDateTime,
   personInitials,
   personName,
+  recognitionMeta,
   stageMeta,
   stageSummary
 } from "./peopleStages.js";
@@ -95,6 +96,16 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
       </header>
 
       <p className="pb-people-detail-summary">{stageSummary(person)}</p>
+
+      {person.stage === "request" ? (
+        // The single fact that decides most requests: did we ask this person?
+        <p className="pb-people-detail-recognition">
+          <span className={`pb-people-stage tone-${recognitionMeta(person.recognition).tone}`}>
+            {recognitionMeta(person.recognition).label}
+          </span>
+          <small>{recognitionMeta(person.recognition).blurb}</small>
+        </p>
+      ) : null}
 
       <div className="pb-people-detail-actions">
         {person.stage === "request" ? (

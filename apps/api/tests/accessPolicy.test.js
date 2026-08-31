@@ -61,3 +61,71 @@ describe("tenant access policy", () => {
     expect(accessPolicy.verifyTenantAccessCodeGrant(controlTenant, grant)).toBe(false);
   });
 });
+
+describe("signup review gate", () => {
+  test("a network with no gate lets an approved entry mode through", () => {
+    const policy = accessPolicy.resolveTenantAccessPolicy({
+      _id: "open-tenant",
+      settings: { signupMode: "open" }
+    });
+
+    expect(policy.entryMode).toBe("open");
+    expect(policy.requireApproval).toBe(false);
+    expect(policy.joinMode).toBe("open_join");
+  });
+
+  test("invitation-only and the review gate combine instead of competing", () => {
+    const policy = accessPolicy.resolveTenantAccessPolicy({
+      _id: "gated-invite-tenant",
+      settings: { signupMode: "invite_only", requireSignupApproval: true }
+    });
+
+    // The invitation still governs who reaches the form...
+    expect(policy.entryMode).toBe("invite_only");
+    // ...and the director still decides who actually gets in.
+    expect(policy.requireApproval).toBe(true);
+    expect(policy.joinMode).toBe("approval_required");
+  });
+
+  test("the gate layers onto a join code without disabling it", async () => {
+    const accessCodeHash = await hashPassword("reunion-2026");
+    const policy = accessPolicy.resolveTenantAccessPolicy({
+      _id: "gated-code-tenant",
+      settings: { signupMode: "code", accessCodeHash, requireSignupApproval: true }
+    });
+
+    expect(policy.entryMode).toBe("code");
+    expect(policy.requireApproval).toBe(true);
+    await expect(
+      accessPolicy.verifyTenantAccessCode({ _id: "gated-code-tenant", settings: { signupMode: "code", accessCodeHash } }, "reunion-2026")
+    ).resolves.toBe(true);
+  });
+
+  test("networks saved before the gate existed keep behaving identically", () => {
+    const policy = accessPolicy.resolveTenantAccessPolicy({
+      _id: "legacy-tenant",
+      settings: { signupMode: "approval_queue" }
+    });
+
+    // The old single setting meant open entry plus a director decision, and
+    // that is exactly what it still means.
+    expect(policy.entryMode).toBe("open");
+    expect(policy.requireApproval).toBe(true);
+    expect(policy.joinMode).toBe("approval_required");
+  });
+
+  test("an allowed-domain restriction still applies underneath the gate", () => {
+    const policy = accessPolicy.resolveTenantAccessPolicy({
+      _id: "gated-domain-tenant",
+      settings: {
+        signupMode: "open",
+        requireSignupApproval: true,
+        allowedEmailDomains: ["camp.org"]
+      }
+    });
+
+    expect(policy.requireApproval).toBe(true);
+    expect(accessPolicy.isEmailAllowedByPolicy(policy, "alum@camp.org")).toBe(true);
+    expect(accessPolicy.isEmailAllowedByPolicy(policy, "stranger@elsewhere.test")).toBe(false);
+  });
+});

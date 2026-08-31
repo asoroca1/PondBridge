@@ -432,6 +432,14 @@ export function buildPeopleDirectory({
     const request = index.requestMap.get(key) || null;
     const latestInvite = index.invitesByEmail.get(key)?.[0] || null;
     const stage = index.stageFor(key);
+    // Faced with hundreds of requests, the decisive question is "did we ask this
+    // person to join?". An invitation is the strongest yes; an alumni record the
+    // director uploaded is a weaker one; neither means a stranger to hand-check.
+    const recognition = index.invitesByEmail.has(key)
+      ? "invited"
+      : contact
+        ? "known"
+        : "unrecognized";
     // A member with no address keeps a synthetic key; never show it as an email.
     const email = index.emailFor(key);
     const profile = member?.profile || null;
@@ -453,6 +461,7 @@ export function buildPeopleDirectory({
       lastName,
       fullName: [firstName, lastName].filter(Boolean).join(" ").trim(),
       stage,
+      recognition,
       profileId: memberRow?.id || "",
       userId,
       contactId: String(contact?._id || contact?.id || ""),

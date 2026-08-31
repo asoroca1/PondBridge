@@ -964,3 +964,144 @@
   flex-wrap: wrap;
   margin-top: 12px;
 }
+
+/* Review queue -----------------------------------------------------------
+   Sits above the request list and answers the two questions a director has
+   when hundreds of people are waiting: how many, and which of them did we
+   actually invite. */
+.pb-review-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--neutral-200);
+  background: color-mix(in srgb, var(--pb-people-accent) 6%, transparent);
+}
+
+.pb-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pb-review-head strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--pb-people-ink);
+}
+
+.pb-review-head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--neutral-500);
+  font-size: 0.8rem;
+}
+
+.pb-review-split {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pb-review-split button {
+  border: 1px solid transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.pb-review-split button.is-selected {
+  border-color: currentColor;
+}
+
+.pb-review-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pb-review-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pb-review-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--neutral-500);
+}
+
+.pb-review-scope select {
+  padding: 4px 8px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  font: inherit;
+  color: var(--pb-people-ink);
+}
+
+.pb-review-nudge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #7a5810;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.pb-review-nudge svg {
+  width: 15px;
+  height: 15px;
+}
+
+.pb-review-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 320px;
+  padding: 10px 12px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+}
+
+.pb-review-confirm p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--pb-people-ink);
+}
+
+.pb-review-confirm > div {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pb-people-detail-recognition {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 10px;
+}
+
+.pb-people-detail-recognition .pb-people-stage {
+  align-self: flex-start;
+}
+
+.pb-people-detail-recognition small {
+  color: var(--neutral-500);
+  font-size: 0.8rem;
+}

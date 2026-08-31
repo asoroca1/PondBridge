@@ -106,3 +106,10 @@
 @media (max-width: 720px) {
   .pb-access-modes { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* A gate that is off but still holding people back needs to say so louder than
+   an ordinary hint. */
+.pb-access-hint.is-warning {
+  background: #fdf1dd;
+  color: #7a5810;
+}

@@ -107,3 +107,30 @@ export function stageSummary(person = {}) {
   if (person.stage === "on_hold") return "Excluded from invitations and campaigns";
   return person.inviteCount ? `${person.inviteCount} past invitation${person.inviteCount === 1 ? "" : "s"}` : "Never invited";
 }
+
+/**
+ * When hundreds of people are waiting, the first question a director asks is
+ * "did we ask this person to join?" — so every request row answers it before
+ * anything else.
+ */
+export const RECOGNITION = {
+  invited: {
+    label: "On your invite list",
+    tone: "success",
+    blurb: "You sent this person an invitation."
+  },
+  known: {
+    label: "Known alumni",
+    tone: "info",
+    blurb: "Matches an alumni record you uploaded, but no invitation was sent."
+  },
+  unrecognized: {
+    label: "Unrecognized",
+    tone: "warning",
+    blurb: "No invitation and no matching alumni record. Worth a closer look."
+  }
+};
+
+export function recognitionMeta(key = "") {
+  return RECOGNITION[key] || RECOGNITION.unrecognized;
+}

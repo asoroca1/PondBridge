@@ -17,8 +17,9 @@ function LegacyPendingPage() {
   return (
     <section className="app-status-shell">
       <div className="app-status-card">
-        <h1>Access request pending</h1>
-        <p>A director still needs to approve your account.</p>
+        <h1>Waiting for director approval</h1>
+        <p>Your account is created. A camp director needs to approve it before you can get in.</p>
+        <p>You will receive an email as soon as they do — there is nothing else for you to do.</p>
         <p>
           <Link to={routeWithSlug(slug, "/login")}>Back to login</Link>
         </p>
@@ -33,7 +34,6 @@ function ClerkPendingPage() {
   const { slug: contextSlug } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
-  const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -41,7 +41,6 @@ function ClerkPendingPage() {
     let active = true;
 
     async function checkStatus() {
-      setChecking(true);
       setError("");
       try {
         const token = await getToken();
@@ -57,8 +56,6 @@ function ClerkPendingPage() {
       } catch (err) {
         if (!active) return;
         setError(String(err?.message || "Could not refresh your access status."));
-      } finally {
-        if (active) setChecking(false);
       }
     }
 
@@ -73,9 +70,9 @@ function ClerkPendingPage() {
   return (
     <section className="app-status-shell">
       <div className="app-status-card">
-        <h1>Access request pending</h1>
-        <p>A camp director needs to approve your account before you can enter this network.</p>
-        {checking ? <p className="muted">Checking status...</p> : null}
+        <h1>Waiting for director approval</h1>
+        <p>Your account is created. A camp director needs to approve it before you can get in.</p>
+        <p>You will receive an email as soon as they do — there is nothing else for you to do.</p>
         {error ? <p className="error-text">{error}</p> : null}
         <p>
           <Link to={routeWithSlug(slug, "/login")}>Back to login</Link>

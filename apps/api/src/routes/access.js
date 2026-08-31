@@ -128,6 +128,15 @@ function rolesFromInvite(invite) {
   return ["user"];
 }
 
+/**
+ * An admin invitation is the director staffing their own team. Sending it
+ * through the member review queue would be circular, so it always lands
+ * directly.
+ */
+function isDirectorInvite(invite) {
+  return roleSet(rolesFromInvite(invite)).has("tenant_admin");
+}
+
 function isEmail(value = "") {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
@@ -412,11 +421,18 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
     };
   }
 
-  if (invite) {
+  const pendingRequest = email ? await findPendingRequest(tenantId, email) : null;
+
+  // Normally an invitation is the fastest way in and outranks anything else.
+  // Under the review gate an invited person still waits in the queue, so once
+  // they have submitted, "waiting on the director" is the truthful answer —
+  // otherwise they would be sent to accept the same invitation forever.
+  if (invite && !(policy.requireApproval && pendingRequest)) {
     return {
       state: "invited",
       action: "accept_invite",
       nextRoute: `${base}/create-account`,
+      reviewRequired: policy.requireApproval,
       invite: {
         id: String(invite._id),
         roleToAssign: invite.roleToAssign,
@@ -426,7 +442,6 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
     };
   }
 
-  const pendingRequest = email ? await findPendingRequest(tenantId, email) : null;
   if (pendingRequest) {
     return {
       state: "access_pending",
@@ -453,18 +468,9 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
     };
   }
 
-  if (signupMode === "approval_queue") {
-    return {
-      state: "not_member",
-      action: "request_access",
-      nextRoute: pendingRoute,
-      joinMode,
-      signupMode,
-      reason: "approval_required"
-    };
-  }
-
-  if (signupMode === "invite_only") {
+  // Invite-only is checked first: under that mode there is nothing to request,
+  // so the gate has no one to gate until an invitation exists.
+  if (policy.entryMode === "invite_only") {
     return {
       state: "not_member",
       action: "invite_required",
@@ -475,7 +481,19 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
     };
   }
 
-  if (signupMode === "open" || signupMode === "code") {
+  if (policy.requireApproval) {
+    return {
+      state: "not_member",
+      action: "request_access",
+      nextRoute: pendingRoute,
+      joinMode,
+      signupMode,
+      requiresAccessCode: policy.entryMode === "code",
+      reason: "approval_required"
+    };
+  }
+
+  if (policy.entryMode === "open" || policy.entryMode === "code") {
     if (!billingAccess.allowed) {
       return {
         state: "billing_restricted",
@@ -495,7 +513,7 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
       nextRoute: `${base}/create-account`,
       joinMode,
       signupMode,
-      requiresAccessCode: signupMode === "code"
+      requiresAccessCode: policy.entryMode === "code"
     };
   }
 
@@ -506,6 +524,103 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
     joinMode,
     signupMode
   };
+}
+
+/**
+ * Parks a signup in the director's review queue instead of granting access.
+ *
+ * Every way into a gated network funnels through here — an open signup, a code
+ * signup, and an accepted invitation all produce the same pending row, so the
+ * director reviews one queue rather than three. Re-submitting refreshes the
+ * existing row rather than stacking duplicates.
+ */
+async function submitAccessRequest({ tenant, identity, body = {}, invite = null, source = "request" }) {
+  const tenantId = tenant._id;
+  const email = normalizeEmail(identity.email || "");
+  const profilePayload = profilePayloadFromBody(body, identity);
+
+  // The agreement the person just signed has to survive the wait, or approving
+  // them would silently produce a member who never accepted the terms.
+  const legalAgreement = normalizeLegalAgreement(body);
+  if (legalAgreement?.accepted) {
+    profilePayload.socials = {
+      ...(profilePayload.socials || {}),
+      legalAgreement: {
+        accepted: true,
+        acceptedAt: legalAgreement.acceptedAt || new Date().toISOString(),
+        termsVersion: legalAgreement.termsVersion || DEFAULT_MEMBER_TERMS_VERSION,
+        privacyVersion: legalAgreement.privacyVersion || DEFAULT_MEMBER_PRIVACY_VERSION,
+        ageEligibilityConfirmed: Boolean(legalAgreement.ageEligibilityConfirmed),
+        minimumAge: MINIMUM_MEMBER_AGE,
+        agePolicyVersion: AGE_POLICY_VERSION
+      }
+    };
+  }
+
+  const selfReportedRole = String(
+    profilePayload.roleAtCamp ||
+      (Array.isArray(body?.roles) ? body.roles[0] : body?.roleAtCamp) ||
+      ""
+  ).trim();
+  const fields = {
+    firstName: profilePayload.firstName,
+    lastName: profilePayload.lastName,
+    selfReportedRole,
+    requestMessage: String(body?.requestMessage || "").trim(),
+    profilePayload,
+    status: "pending"
+  };
+
+  const existingPending = await findPendingRequest(tenantId, email);
+  let requestRow = existingPending;
+  if (existingPending) {
+    requestRow = await AccessRequestModel.update(existingPending._id, {
+      ...fields,
+      requestedAt: new Date(),
+      reviewedAt: null,
+      reviewedByUserId: null,
+      denialReason: ""
+    });
+  } else {
+    try {
+      requestRow = await AccessRequestModel.create({
+        tenantId,
+        email,
+        passwordHash: "clerk_managed",
+        requestedAt: new Date(),
+        ...fields
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const pending = await findPendingRequest(tenantId, email);
+      if (!pending) throw error;
+      requestRow = pending;
+    }
+  }
+
+  await writeTenantAudit(tenantId, null, "access_request_submitted", {
+    email,
+    source,
+    inviteId: invite ? String(invite._id) : "",
+    requestId: String(requestRow._id)
+  }).catch(() => {});
+
+  const displayName = `${profilePayload.firstName || ""} ${profilePayload.lastName || ""}`.trim();
+  await notifyTenantAdmins({
+    tenant,
+    kind: "approval_request_submitted",
+    title: "New approval request",
+    body: displayName
+      ? `${displayName} requested access to ${tenant.name || "your camp"}.`
+      : `A new member requested access to ${tenant.name || "your camp"}.`,
+    deepLink: "/admin/members",
+    data: {
+      email,
+      requestId: String(requestRow._id || "")
+    }
+  }).catch(() => {});
+
+  return { requestRow, isNew: !existingPending };
 }
 
 async function writeTenantAudit(tenantId, actorUserId, event, metadata = {}) {
@@ -682,7 +797,7 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
       }
     });
   }
-  if (policy.signupMode === "invite_only") {
+  if (policy.entryMode === "invite_only") {
     return res.status(403).json({
       error: {
         code: "INVITE_REQUIRED",
@@ -690,15 +805,7 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
       }
     });
   }
-  if (policy.signupMode === "approval_queue") {
-    return res.status(403).json({
-      error: {
-        code: "APPROVAL_REQUIRED",
-        message: "A director must approve your request before you can join this network."
-      }
-    });
-  }
-  if (policy.signupMode === "code") {
+  if (policy.entryMode === "code") {
     const codeMatched =
       verifyTenantAccessCodeGrant(req.tenant, req.body?.accessGrant) ||
       (await verifyTenantAccessCode(req.tenant, req.body?.accessCode));
@@ -719,6 +826,31 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
         message: `You must confirm that you are at least ${MINIMUM_MEMBER_AGE} and agree to Terms and Privacy before creating an account.`
       }
     });
+  }
+
+  // Everything the signup form collected is captured either way; the gate only
+  // changes whether it becomes a member now or a row the director decides on.
+  if (policy.requireApproval) {
+    const existingMember = await findTenantUserForIdentity(req.tenant._id, identity);
+    if (!existingMember || existingMember.status !== "active") {
+      const { requestRow, isNew } = await submitAccessRequest({
+        tenant: req.tenant,
+        identity,
+        body: req.body || {},
+        source: policy.entryMode === "code" ? "code_signup" : "open_signup"
+      });
+      const decision = await buildAccessDecision({ tenant: req.tenant, identity });
+      return res.status(isNew ? 202 : 200).json({
+        ok: true,
+        pendingApproval: true,
+        request: {
+          id: String(requestRow._id),
+          status: requestRow.status,
+          requestedAt: requestRow.requestedAt
+        },
+        decision
+      });
+    }
   }
 
   let member = await findTenantUserForIdentity(req.tenant._id, identity);
@@ -751,11 +883,11 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
     tenantId: req.tenant._id,
     userId: member._id,
     eventType: "signup_created",
-    metadata: { method: policy.signupMode === "code" ? "clerk_code_join" : "clerk_open_join" }
+    metadata: { method: policy.entryMode === "code" ? "clerk_code_join" : "clerk_open_join" }
   }).catch(() => {});
 
   await writeTenantAudit(req.tenant._id, member._id, "membership_created", {
-    source: policy.signupMode === "code" ? "code_join" : "open_join",
+    source: policy.entryMode === "code" ? "code_join" : "open_join",
     email
   }).catch(() => {});
 
@@ -820,74 +952,19 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
     });
   }
 
-  const existingPending = await findPendingRequest(req.tenant._id, email);
-  const profilePayload = profilePayloadFromBody(req.body || {}, identity);
-  const selfReportedRole = String(
-    profilePayload.roleAtCamp ||
-      (Array.isArray(req.body?.roles) ? req.body.roles[0] : req.body?.roleAtCamp) ||
-      ""
-  ).trim();
-  let requestRow = existingPending;
-  if (existingPending) {
-    requestRow = await AccessRequestModel.updateScoped(req.tenant._id, existingPending._id, {
-      firstName: profilePayload.firstName,
-      lastName: profilePayload.lastName,
-      selfReportedRole,
-      requestMessage: String(req.body?.requestMessage || "").trim(),
-      profilePayload,
-      status: "pending",
-      requestedAt: new Date(),
-      reviewedAt: null,
-      reviewedByUserId: null,
-      denialReason: ""
-    });
-  } else {
-    try {
-      requestRow = await AccessRequestModel.create({
-        tenantId: req.tenant._id,
-        email,
-        firstName: profilePayload.firstName,
-        lastName: profilePayload.lastName,
-        passwordHash: "clerk_managed",
-        selfReportedRole,
-        requestMessage: String(req.body?.requestMessage || "").trim(),
-        profilePayload,
-        status: "pending",
-        requestedAt: new Date()
-      });
-    } catch (error) {
-      if (!isUniqueConstraintError(error)) throw error;
-      const pending = await findPendingRequest(req.tenant._id, email);
-      if (!pending) throw error;
-      requestRow = pending;
-    }
-  }
-
-  await writeTenantAudit(req.tenant._id, null, "access_request_submitted", {
-    email,
-    requestId: String(requestRow._id)
-  }).catch(() => {});
-
-  await notifyTenantAdmins({
+  const { requestRow, isNew } = await submitAccessRequest({
     tenant: req.tenant,
-    kind: "approval_request_submitted",
-    title: "New approval request",
-    body: `${profilePayload.firstName || "A member"} ${profilePayload.lastName || ""}`.trim()
-      ? `${`${profilePayload.firstName || "A member"} ${profilePayload.lastName || ""}`.trim()} requested access to ${req.tenant.name || "your camp"}.`
-      : `A new member requested access to ${req.tenant.name || "your camp"}.`,
-    deepLink: "/admin/members",
-    data: {
-      email,
-      requestId: String(requestRow._id || "")
-    }
-  }).catch(() => {});
+    identity,
+    body: req.body || {},
+    source: "request_access"
+  });
 
   const decision = await buildAccessDecision({
     tenant: req.tenant,
     identity
   });
 
-  return res.status(existingPending ? 200 : 201).json({
+  return res.status(isNew ? 201 : 200).json({
     ok: true,
     request: {
       id: String(requestRow._id),
@@ -981,7 +1058,34 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
     });
   }
 
-  let member = await findTenantUserForIdentity(req.tenant._id, identity);
+  // An invitation says the director wanted to reach this person. With the review
+  // gate on it does not by itself say they are in — so the invite is left
+  // unused and the signup joins the queue. Nothing is spent if they are denied,
+  // and returning to the link shows "waiting" rather than "already used".
+  const policy = resolveTenantAccessPolicy(req.tenant);
+  const existingMember = await findTenantUserForIdentity(req.tenant._id, identity);
+  if (policy.requireApproval && !isDirectorInvite(invite) && (!existingMember || existingMember.status !== "active")) {
+    const { requestRow, isNew } = await submitAccessRequest({
+      tenant: req.tenant,
+      identity,
+      body: req.body || {},
+      invite,
+      source: "invite_accept"
+    });
+    const decision = await buildAccessDecision({ tenant: req.tenant, identity });
+    return res.status(isNew ? 202 : 200).json({
+      ok: true,
+      pendingApproval: true,
+      request: {
+        id: String(requestRow._id),
+        status: requestRow.status,
+        requestedAt: requestRow.requestedAt
+      },
+      decision
+    });
+  }
+
+  let member = existingMember;
   if (!member) {
     member = await createTenantMembershipFromIdentity({
       tenantId: req.tenant._id,

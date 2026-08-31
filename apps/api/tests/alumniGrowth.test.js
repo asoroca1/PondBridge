@@ -255,6 +255,42 @@ describe("unified people directory", () => {
     expect(PEOPLE_STAGES.reduce((sum, stage) => sum + counts[stage], 0)).toBe(counts.all);
   });
 
+  test("tells a director which waiting people they actually invited", () => {
+    // The question that makes a queue of hundreds decidable: was this person
+    // asked to join, merely known to us, or a total stranger?
+    const { people } = build({
+      accessRequests: [
+        { _id: "r1", status: "pending", email: "invited@example.org" },
+        { _id: "r2", status: "pending", email: "prospect@example.org" },
+        { _id: "r3", status: "pending", email: "stranger@example.org" }
+      ],
+      invites: [
+        { _id: "i1", email: "invited@example.org", roleToAssign: "user", createdAt: past, expiresAt: future }
+      ]
+    });
+    const byEmail = Object.fromEntries(people.map((person) => [person.email, person]));
+
+    expect(byEmail["invited@example.org"].recognition).toBe("invited");
+    expect(byEmail["prospect@example.org"].recognition).toBe("known");
+    expect(byEmail["stranger@example.org"].recognition).toBe("unrecognized");
+    // All three are still waiting on a decision; recognition informs it, it
+    // does not make it.
+    expect(byEmail["invited@example.org"].stage).toBe("request");
+    expect(byEmail["stranger@example.org"].stage).toBe("request");
+  });
+
+  test("an invitation outranks an alumni record when both describe the same person", () => {
+    const { people } = build({
+      accessRequests: [{ _id: "r1", status: "pending", email: "prospect@example.org" }],
+      invites: [
+        { _id: "i1", email: "prospect@example.org", roleToAssign: "user", createdAt: past, expiresAt: future }
+      ]
+    });
+    const person = people.find((item) => item.email === "prospect@example.org");
+
+    expect(person.recognition).toBe("invited");
+  });
+
   test("merges a contact and the member it became into one row", () => {
     const { people, counts } = build();
     const joined = people.filter((person) => person.email === "joined@example.org");
