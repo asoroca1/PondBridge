@@ -996,6 +996,12 @@
   min-height: 174px;
   resize: vertical;
   padding-top: 10px;
+  /* A textarea does not inherit the page font on its own; without this it
+     falls back to the UA monospace default and looks nothing like the inputs
+     beside it. */
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.6;
 }
 
 .director-quote-input {
@@ -2164,6 +2170,17 @@
 
   .director-live-preview-pulse {
     flex: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .director-review-hero,
+  .director-review-grid,
+  .director-review-kv--two,
+  .director-billing-overview-grid,
+  .director-plan-grid,
+  .director-feature-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
