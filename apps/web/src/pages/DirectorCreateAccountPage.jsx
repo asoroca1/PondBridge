@@ -391,6 +391,9 @@ function DirectorCreateAccountWizardPage() {
   const [embeddedCheckoutError, setEmbeddedCheckoutError] = useState("");
   const [embeddedCheckoutReady, setEmbeddedCheckoutReady] = useState(false);
   const [settlingPayment, setSettlingPayment] = useState(false);
+  // Once payment lands, "Back to review" would read like it discards the
+  // charge, so the panel offers a retry instead.
+  const [paymentSettled, setPaymentSettled] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [draftRestoredNotice, setDraftRestoredNotice] = useState("");
   const [saveLaterStatus, setSaveLaterStatus] = useState("");
@@ -460,6 +463,10 @@ function DirectorCreateAccountWizardPage() {
   const skipAccountHydratedRef = useRef(false);
   const postCheckoutLaunchAttemptedRef = useRef(false);
   const embeddedCheckoutNodeRef = useRef(null);
+  const embeddedCheckoutCardRef = useRef(null);
+  // Where focus was before the payment dialog took over, so closing it puts
+  // the director back where they were rather than at the top of the document.
+  const checkoutReturnFocusRef = useRef(null);
   const embeddedCheckoutInstanceRef = useRef(null);
   // The register step mints a token that context state has not published yet,
   // so the payment panel keeps the one it started checkout with.
@@ -667,6 +674,25 @@ function DirectorCreateAccountWizardPage() {
     };
   }, [authToken, isDirectorUser, slug]);
 
+  useEffect(() => {
+    if (!embeddedCheckout) return undefined;
+
+    if (typeof document !== "undefined") {
+      checkoutReturnFocusRef.current = document.activeElement;
+    }
+    // Moving focus into the dialog is what makes it announced at all; without
+    // it a screen reader stays on the review step behind the overlay.
+    embeddedCheckoutCardRef.current?.focus?.();
+
+    return () => {
+      const returnTarget = checkoutReturnFocusRef.current;
+      checkoutReturnFocusRef.current = null;
+      if (returnTarget && typeof returnTarget.focus === "function" && returnTarget.isConnected) {
+        returnTarget.focus();
+      }
+    };
+  }, [Boolean(embeddedCheckout)]);
+
   // Mounts Stripe's form once the panel is on screen, and tears the iframe down
   // on unmount so leaving the step never strands it.
   useEffect(() => {
@@ -772,24 +798,35 @@ function DirectorCreateAccountWizardPage() {
     }
   }
 
+  function handleCheckoutPanelKeyDown(event) {
+    if (event.key !== "Escape") return;
+    if (settlingPayment || paymentSettled) return;
+    event.stopPropagation();
+    closeEmbeddedCheckout();
+  }
+
   function closeEmbeddedCheckout() {
     teardownEmbeddedCheckout();
     setEmbeddedCheckout(null);
     setEmbeddedCheckoutReady(false);
     setEmbeddedCheckoutError("");
+    setPaymentSettled(false);
   }
 
   // Stripe calls this the moment payment succeeds, without navigating anywhere.
   // Confirming the session server-side applies the same state the webhook
   // would, so launch does not have to wait for webhook delivery.
-  async function handleEmbeddedCheckoutComplete() {
+  async function handleEmbeddedCheckoutComplete({ isRetry = false } = {}) {
     const token = checkoutTokenRef.current || authToken;
     const sessionId = String(embeddedCheckout?.sessionId || "");
 
     setSettlingPayment(true);
     setEmbeddedCheckoutError("");
     setSubmitError("");
-    setCheckoutReturnStatus("Payment received. Finalizing your camp now...");
+    setCheckoutReturnStatus(
+      isRetry ? "Finishing your launch..." : "Payment received. Finalizing your camp now..."
+    );
+    setPaymentSettled(true);
 
     try {
       const confirmation = await requestJson("/api/tenants/me/billing/checkout/confirm", {
@@ -813,7 +850,8 @@ function DirectorCreateAccountWizardPage() {
     } catch (error) {
       setCheckoutReturnStatus("");
       setEmbeddedCheckoutError(
-        error.message || "Payment went through, but the launch could not finish. Please try again."
+        error.message ||
+          "Your payment went through, but the launch could not finish. Your card was not charged again."
       );
     } finally {
       setSettlingPayment(false);
@@ -869,6 +907,7 @@ function DirectorCreateAccountWizardPage() {
       : hasCustomMainColor
       ? draftMainColor
       : initialBrandColor;
+  const checkoutLogoUrl = String(themeDraft.logoUrl || tenant?.theme?.logoUrl || "").trim();
   const paletteSwatches = [
     { label: "Primary", color: effectiveMainColor },
     { label: "Action", color: darkenHex(effectiveMainColor, 0.12) },
@@ -2665,6 +2704,10 @@ function DirectorCreateAccountWizardPage() {
     }
   }
 
+  // What Stripe will actually charge on this checkout: the first year plus any
+  // one-time onboarding fee.
+  const checkoutTotalAmount = selectedPlanAnnualAmount + selectedPlanOnboardingFeeAmount;
+
   if (showLaunchCelebration) {
     return (
       <div className="director-celebration-overlay">
@@ -2692,28 +2735,51 @@ function DirectorCreateAccountWizardPage() {
   if (embeddedCheckout) {
     return (
       <div className="director-checkout-overlay">
-        <div className="director-checkout-card">
+        <div
+          className="director-checkout-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="director-checkout-title"
+          aria-describedby="director-checkout-plan"
+          ref={embeddedCheckoutCardRef}
+          tabIndex={-1}
+          onKeyDown={handleCheckoutPanelKeyDown}
+        >
           <header className="director-checkout-head">
-            <h1 className="director-checkout-title">Complete your payment</h1>
+            {checkoutLogoUrl ? (
+              <img className="director-checkout-logo" src={checkoutLogoUrl} alt="" />
+            ) : null}
             <p className="director-checkout-camp">{networkDisplayNamePreview}</p>
-            <p className="director-checkout-plan">
-              {billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)} ·{" "}
-              {formatMoney(selectedPlanAnnualAmount)} / year
+            <h1 className="director-checkout-title" id="director-checkout-title">
+              Complete your payment
+            </h1>
+            {/* The charge is the most consequential thing on this screen, so it
+                is the one element sized to be read first. */}
+            <p className="director-checkout-amount">
+              <span className="director-checkout-amount-value">
+                {formatMoney(checkoutTotalAmount)}
+              </span>
+              <span className="director-checkout-amount-period">
+                {selectedPlanOnboardingFeeAmount > 0 ? "due today" : "per year"}
+              </span>
+            </p>
+            <p className="director-checkout-plan" id="director-checkout-plan">
+              {billingPlanLabel(selectedBillingPlanCode, availablePlanOptions)}
               {selectedPlanOnboardingFeeAmount > 0
-                ? ` + ${formatMoney(selectedPlanOnboardingFeeAmount)} onboarding fee`
-                : ""}
+                ? ` · ${formatMoney(selectedPlanAnnualAmount)} per year plus a one-time ${formatMoney(
+                    selectedPlanOnboardingFeeAmount
+                  )} onboarding fee`
+                : " · billed annually, no onboarding fee"}
             </p>
           </header>
 
-          {settlingPayment ? (
-            <p className="director-checkout-status" role="status">
-              Payment received. Launching your network...
-            </p>
-          ) : !embeddedCheckoutReady && !embeddedCheckoutError ? (
-            <p className="director-checkout-status" role="status">
-              Loading the secure Stripe payment form...
-            </p>
-          ) : null}
+          <div aria-live="polite">
+            {settlingPayment ? (
+              <p className="director-checkout-status">Payment received. Launching your network...</p>
+            ) : !embeddedCheckoutReady && !embeddedCheckoutError ? (
+              <p className="director-checkout-status">Loading the secure Stripe payment form...</p>
+            ) : null}
+          </div>
 
           {embeddedCheckoutError ? (
             <p className="wizard1-error director-checkout-error" role="alert">
@@ -2721,19 +2787,37 @@ function DirectorCreateAccountWizardPage() {
             </p>
           ) : null}
 
-          <div className="director-checkout-frame" ref={embeddedCheckoutNodeRef} />
+          <div
+            className={`director-checkout-frame ${
+              embeddedCheckoutReady || paymentSettled ? "is-ready" : "is-loading"
+            }`}
+            ref={embeddedCheckoutNodeRef}
+          />
 
           <div className="director-checkout-actions">
-            <button
-              type="button"
-              className="wizard1-btn-secondary"
-              onClick={closeEmbeddedCheckout}
-              disabled={settlingPayment}
-            >
-              Back to review
-            </button>
+            {paymentSettled ? (
+              <button
+                type="button"
+                className="wizard1-btn-primary"
+                onClick={() => handleEmbeddedCheckoutComplete({ isRetry: true })}
+                disabled={settlingPayment}
+              >
+                {settlingPayment ? "Launching..." : "Retry launch"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="wizard1-btn-secondary"
+                onClick={closeEmbeddedCheckout}
+                disabled={settlingPayment}
+              >
+                Back to review
+              </button>
+            )}
             <p className="director-checkout-secure">
-              Card details go straight to Stripe. PondBridge never sees them.
+              {paymentSettled
+                ? "Your payment is complete. Retrying only finishes the launch."
+                : "Card details go straight to Stripe. PondBridge never sees them."}
             </p>
           </div>
         </div>
