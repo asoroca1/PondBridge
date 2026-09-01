@@ -972,7 +972,9 @@ function DirectorCreateAccountWizardPage() {
       .trim()
       .toLowerCase() === "checkout_started";
   const onboardingFeeStatusText =
-    onboardingFeeAmount <= 0 || onboardingFeePaid
+    onboardingFeeAmount <= 0
+      ? "No onboarding fee on this plan"
+      : onboardingFeePaid
       ? "Paid or waived in Stripe"
       : checkoutInProgress
       ? "Checkout started — awaiting Stripe confirmation"
@@ -2829,7 +2831,7 @@ function DirectorCreateAccountWizardPage() {
     <section className="product-claim-page product-director-create-page">
       <div
         className={`product-claim-wrap product-director-create-wrap ${
-          step === STEP_DESIGN ? "is-design-studio" : ""
+          step === STEP_DESIGN || step === STEP_REVIEW_LAUNCH ? "is-design-studio" : ""
         }`}
       >
         <article ref={cardRef} className="product-claim-card product-director-create-card pb-cedar-page">
@@ -3344,7 +3346,8 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Choose your features</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    All features are on by default. Toggle any off to customize your network.
+                    Pick the features your network launches with. You can turn any of them on or off later
+                    from your admin settings.
                   </p>
                 </div>
               </div>
@@ -3456,7 +3459,8 @@ function DirectorCreateAccountWizardPage() {
                 <div className="director-design-intro">
                   <h1>Camp specifics</h1>
                   <p className="product-claim-body director-create-subtitle">
-                    Set your camp-specific naming for age groups and staff roles.
+                    Add your camp mailing address, then set the naming your camp uses for age groups and
+                    staff roles.
                   </p>
                 </div>
               </div>
@@ -3623,7 +3627,7 @@ function DirectorCreateAccountWizardPage() {
                       </article>
 
                       <article className="director-summary-card director-billing-highlight">
-                        <h3>Stripe checkout status</h3>
+                        <h3>Onboarding fee status</h3>
                         <p className="director-summary-main">{onboardingFeeStatusText}</p>
                         <p className="director-field-hint">
                           Stripe is the source of truth for payment, billing address, and invoice state.
@@ -3834,7 +3838,7 @@ function DirectorCreateAccountWizardPage() {
                           </dd>
                         </div>
                         <div>
-                          <dt>Status</dt>
+                          <dt>Onboarding fee status</dt>
                           <dd>{onboardingFeeStatusText}</dd>
                         </div>
                         <div>
@@ -3909,7 +3913,11 @@ function DirectorCreateAccountWizardPage() {
                       className="wizard1-btn-primary director-finish-btn"
                       disabled={finishing}
                     >
-                      {finishing ? "Saving..." : "Create account & launch network"}
+                      {finishing
+                        ? "Saving..."
+                        : accountStepRequired
+                        ? "Create account & launch network"
+                        : "Launch network"}
                     </button>
                   </div>
                 </div>
