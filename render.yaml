@@ -5,10 +5,11 @@ services:
     plan: starter
     region: oregon
     rootDir: .
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm --workspace @pondbridge/api run start
     healthCheckPath: /health
-    autoDeploy: true
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 30
     envVars:
       - key: NODE_ENV
         value: production
