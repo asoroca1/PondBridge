@@ -1766,7 +1766,9 @@
   100% { transform: scale(1.8); opacity: 0; }
 }
 
-/* Stripe's embedded Checkout, mounted inside the onboarding wizard. */
+/* Stripe's embedded Checkout, mounted inside the onboarding wizard. It picks up
+   --po-brand from the wizard so the payment step wears the camp's colours the
+   director just chose, rather than arriving as an unbranded white box. */
 .director-checkout-overlay {
   position: fixed;
   inset: 0;
@@ -1781,37 +1783,93 @@
 }
 
 .director-checkout-card {
+  position: relative;
   width: 100%;
-  max-width: 640px;
-  padding: 32px 28px 24px;
+  max-width: 560px;
+  padding: 0 0 24px;
   border-radius: 20px;
+  overflow: hidden;
   background: #fff;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: celebration-scale-in 0.4s ease-out both;
+}
+
+.director-checkout-card:focus {
+  outline: none;
 }
 
 .director-checkout-head {
-  margin-bottom: 20px;
+  padding: 28px 28px 24px;
   text-align: center;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--po-brand, var(--brand-primary, #303030)) 12%, #fff) 0%,
+    #fff 100%
+  );
+  border-bottom: 1px solid var(--neutral-200, #e9e9e9);
 }
 
-.director-checkout-title {
-  margin: 0 0 6px;
-  font-size: 1.5rem;
+.director-checkout-logo {
+  display: block;
+  height: 44px;
+  width: auto;
+  max-width: 180px;
+  margin: 0 auto 12px;
+  object-fit: contain;
 }
 
 .director-checkout-camp {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
+  color: var(--neutral-600, #5a5a5a);
+  font-size: 0.875rem;
   font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.director-checkout-title {
+  margin: 0 0 14px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--neutral-900, #1f1f1f);
+  font-family: var(--font-display, "Inter Variable", Inter, sans-serif);
+}
+
+/* The amount is the anchor: nobody should have to hunt for what they are
+   about to be charged. */
+.director-checkout-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 8px;
+}
+
+.director-checkout-amount-value {
+  font-size: clamp(2rem, 5vw, 2.6rem);
+  line-height: 1.05;
+  font-weight: 700;
+  color: var(--po-brand, var(--brand-primary, #303030));
+  font-family: var(--font-display, "Inter Variable", Inter, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.director-checkout-amount-period {
+  color: var(--neutral-600, #5a5a5a);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .director-checkout-plan {
   margin: 0;
   color: var(--neutral-600, #5a5a5a);
-  font-size: 0.925rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
 }
 
 .director-checkout-status {
-  margin: 0 0 16px;
+  margin: 16px 24px 0;
   padding: 10px 14px;
   border-radius: 10px;
   background: var(--neutral-100, #f4f4f4);
@@ -1821,38 +1879,83 @@
 }
 
 .director-checkout-error {
-  margin: 0 0 16px;
+  margin: 16px 24px 0;
   text-align: center;
 }
 
-/* Stripe sizes its own iframe; this only reserves room while it loads. */
 .director-checkout-frame {
+  margin: 20px 24px 0;
+}
+
+/* Stripe sizes its own iframe once mounted; until then this holds the space so
+   the card does not snap taller when the form arrives. */
+.director-checkout-frame.is-loading {
   min-height: 320px;
+  border-radius: 12px;
+  background: linear-gradient(
+    100deg,
+    var(--neutral-100, #f4f4f4) 30%,
+    var(--neutral-200, #e9e9e9) 50%,
+    var(--neutral-100, #f4f4f4) 70%
+  );
+  background-size: 220% 100%;
+  animation: director-checkout-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes director-checkout-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .director-checkout-frame.is-loading {
+    animation: none;
+  }
+
+  .director-checkout-card,
+  .director-checkout-overlay {
+    animation: none;
+  }
 }
 
 .director-checkout-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 20px;
+  gap: 10px;
+  margin: 22px 24px 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--neutral-200, #e9e9e9);
 }
 
 .director-checkout-secure {
   margin: 0;
+  max-width: 34ch;
   color: var(--neutral-600, #5a5a5a);
   font-size: 0.8125rem;
+  line-height: 1.45;
+  text-align: center;
 }
 
 @media (max-width: 560px) {
-  .director-checkout-card {
-    padding: 24px 18px 18px;
+  .director-checkout-overlay {
+    padding: 16px 12px;
   }
 
+  .director-checkout-head {
+    padding: 22px 20px 20px;
+  }
+
+  .director-checkout-status,
+  .director-checkout-error,
+  .director-checkout-frame,
   .director-checkout-actions {
-    justify-content: center;
-    text-align: center;
+    margin-left: 16px;
+    margin-right: 16px;
   }
 }
 
