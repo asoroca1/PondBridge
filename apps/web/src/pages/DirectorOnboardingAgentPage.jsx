@@ -574,13 +574,6 @@ export default function DirectorOnboardingAgentPage() {
                 <Button variant="secondary" onClick={refreshWorkspace} loading={refreshing}>
                   {refreshing ? "Refreshing…" : "Refresh live evidence"}
                 </Button>
-                <Link
-                  className="link-button secondary"
-                  to={`/t/${slug}/onboarding/details`}
-                  onClick={() => trackWorkspaceEvent("evidence_opened", "detailed_setup")}
-                >
-                  Open detailed setup center
-                </Link>
               </div>
             </Card>
 

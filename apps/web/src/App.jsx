@@ -64,7 +64,6 @@ const MobileCampCodeEntryPage = lazyPage(() => import("./pages/MobileCampCodeEnt
 const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage.jsx"));
 const NativeAppExperience = lazyPage(() => import("./components/NativeAppExperience.jsx"));
 
-const DirectorOnboardingCommandCenterPage = lazyPage(() => import("./pages/DirectorOnboardingCommandCenterPage.jsx"));
 const DirectorOnboardingAgentPage = lazyPage(() => import("./pages/DirectorOnboardingAgentPage.jsx"));
 const DirectorClaimPage = lazyPage(() => import("./pages/DirectorClaimPage.jsx"));
 const DirectorCreateAccountPage = lazyPage(() => import("./pages/DirectorCreateAccountPage.jsx"));
@@ -887,19 +886,16 @@ function TenantScopeRoutes() {
           path="onboarding"
           element={
             <ProtectedRoute role="tenant_admin">
-              <DirectorOnboardingAgentPage />
+              {onboardingIncomplete ? (
+                <Navigate to={directorSetupPath} replace />
+              ) : (
+                <DirectorOnboardingAgentPage />
+              )}
             </ProtectedRoute>
           }
         />
-        <Route
-          path="onboarding/details"
-          element={
-            <ProtectedRoute role="tenant_admin">
-              <DirectorOnboardingCommandCenterPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="onboarding/wizard" element={<Navigate to={slug ? `/t/${slug}/onboarding` : "/onboarding"} replace />} />
+        <Route path="onboarding/details" element={<Navigate to={directorSetupPath} replace />} />
+        <Route path="onboarding/wizard" element={<Navigate to={directorSetupPath} replace />} />
 
         <Route
           path="settings/branding"

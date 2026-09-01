@@ -380,7 +380,7 @@ export default function NavBar() {
           id: "setup",
           icon: Settings,
           label: "Setup Wizard",
-          to: pathWithCamp(slug, "/onboarding")
+          to: pathWithCamp(slug, "/director-create-account")
         });
       }
       adminItems.push({

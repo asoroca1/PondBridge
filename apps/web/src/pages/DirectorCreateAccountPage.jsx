@@ -990,7 +990,7 @@ function DirectorCreateAccountWizardPage() {
   const alumniWord = alumniPluralForCampType(selectedCampType, { capitalized: false });
   const alumniWordTitle = alumniPluralForCampType(selectedCampType, { capitalized: true });
   const networkDisplayNamePreview = defaultNetworkDisplayNameForCamp(
-    form.campName || "Your Camp",
+    form.campName || String(tenant?.name || "").trim() || "Your Camp",
     selectedCampType
   );
   const networkPreviewInitials =
@@ -2706,6 +2706,11 @@ function DirectorCreateAccountWizardPage() {
     }
   }
 
+  const visibleStepOrder = accountStepRequired
+    ? STEP_ORDER
+    : STEP_ORDER.filter((item) => item !== STEP_ACCOUNT);
+  const totalStepCount = visibleStepOrder.length;
+  const currentStepNumber = Math.max(1, visibleStepOrder.indexOf(step) + 1);
   // What Stripe will actually charge on this checkout: the first year plus any
   // one-time onboarding fee.
   const checkoutTotalAmount = selectedPlanAnnualAmount + selectedPlanOnboardingFeeAmount;
@@ -2843,6 +2848,40 @@ function DirectorCreateAccountWizardPage() {
         }`}
       >
         <article ref={cardRef} className="product-claim-card product-director-create-card pb-cedar-page">
+          {/* The wizard sits outside the app shell, so without this the only
+              thing naming the camp is the browser tab, while every other
+              director surface shows it. */}
+          <header className="director-wizard-identity">
+            <div className="director-wizard-identity-main">
+              {checkoutLogoUrl ? (
+                <img className="director-wizard-identity-logo" src={checkoutLogoUrl} alt="" />
+              ) : (
+                <span className="director-wizard-identity-mark" aria-hidden="true">
+                  {networkPreviewInitials}
+                </span>
+              )}
+              <div>
+                <p className="director-wizard-identity-kicker">Director setup</p>
+                <p className="director-wizard-identity-name">{networkDisplayNamePreview}</p>
+              </div>
+            </div>
+            <p className="director-wizard-identity-progress">
+              Step {currentStepNumber} of {totalStepCount}
+            </p>
+          </header>
+          <div
+            className="director-wizard-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={totalStepCount}
+            aria-valuenow={currentStepNumber}
+            aria-label="Setup progress"
+          >
+            <span
+              className="director-wizard-progress-fill"
+              style={{ width: `${Math.round((currentStepNumber / totalStepCount) * 100)}%` }}
+            />
+          </div>
           <div className="director-create-stepper" aria-label="Onboarding progress">
             {accountStepRequired ? (
             <button
