@@ -748,7 +748,7 @@ function DirectorCreateAccountWizardPage() {
       } else {
         navigate(launchRedirectUrl);
       }
-    }, 6000);
+    }, 12000);
     return () => clearTimeout(timer);
   }, [showLaunchCelebration, launchRedirectUrl, navigate]);
 
@@ -2713,20 +2713,28 @@ function DirectorCreateAccountWizardPage() {
   if (showLaunchCelebration) {
     return (
       <div className="director-celebration-overlay">
-        <div className="director-celebration-card">
+        <div className="director-celebration-card" role="dialog" aria-modal="true">
           <div className="director-celebration-burst" aria-hidden="true" />
+          {checkoutLogoUrl ? (
+            <img className="director-celebration-logo" src={checkoutLogoUrl} alt="" />
+          ) : null}
           <h1 className="director-celebration-title">Your network is live!</h1>
           <p className="director-celebration-camp">
             {networkDisplayNamePreview}
           </p>
           <p className="director-celebration-domain">{provisionedDomainPreview}</p>
+          {/* The button used to say "Go to Launch Center", but it has always
+              gone to the camp's own home page. */}
           <button
             type="button"
             className="wizard1-btn-primary director-celebration-cta"
             onClick={handleCelebrationContinue}
           >
-            Go to Launch Center
+            Go to your network
           </button>
+          <p className="director-celebration-autonote">
+            Taking you there automatically in a few seconds.
+          </p>
         </div>
       </div>
     );

@@ -1965,6 +1965,47 @@
   }
 }
 
+.director-claim-camp {
+  margin: 0 0 6px;
+  color: var(--po-brand, var(--brand-primary, #303030));
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.director-claim-signin {
+  margin: 14px 0 0;
+  color: var(--neutral-600, #5a5a5a);
+  font-size: 0.875rem;
+}
+
+.director-claim-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--po-brand, var(--brand-primary, #303030));
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.director-celebration-logo {
+  display: block;
+  height: 48px;
+  width: auto;
+  max-width: 190px;
+  margin: 0 auto 14px;
+  object-fit: contain;
+  position: relative;
+}
+
+.director-celebration-autonote {
+  margin: 14px 0 0;
+  color: var(--neutral-500, #6b6b6b);
+  font-size: 0.8125rem;
+  position: relative;
+}
+
 .director-celebration-overlay {
   position: fixed;
   inset: 0;

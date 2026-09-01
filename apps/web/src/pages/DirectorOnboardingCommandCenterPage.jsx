@@ -373,6 +373,25 @@ export default function DirectorOnboardingCommandCenterPage() {
   )
     .trim()
     .toLowerCase();
+  const subscriptionStatusLabel = (() => {
+    const lifecycle = String(billing?.tenant?.billingLifecycleStatus || "").trim().toLowerCase();
+    if (lifecycle === "active") return "Active";
+    if (lifecycle === "trialing") return "Active (trial)";
+    if (lifecycle === "checkout_started") return "Checkout started, awaiting Stripe";
+    if (lifecycle === "past_due") return "Payment past due";
+    if (lifecycle === "incomplete") return "Payment incomplete";
+    if (lifecycle === "canceled") return "Canceled";
+    if (lifecycle === "paused") return "Paused";
+    return "Not started";
+  })();
+  const onboardingFeeLabel = (() => {
+    const amount = Number(billing?.tenant?.onboardingFeeAmount || 0);
+    if (amount <= 0) return "None on this plan";
+    const status = String(billing?.tenant?.onboardingFeeStatus || "unpaid").trim().toLowerCase();
+    if (status === "paid") return `${formatMoney(amount)} · paid`;
+    if (status === "waived") return `${formatMoney(amount)} · waived`;
+    return `${formatMoney(amount)} · not yet paid`;
+  })();
   const billingHint = billingReadinessHint({
     lifecycleStatus: billingLifecycleStatus,
     onboardingFeeStatus,
@@ -476,7 +495,7 @@ export default function DirectorOnboardingCommandCenterPage() {
         </Card>
       ) : null}
       <Card>
-        <h1>Welcome, {payload?.tenant?.name || tenant?.name || "Your Camp"} Director</h1>
+        <h1>{`${payload?.tenant?.name || tenant?.name || "Your camp"} setup`}</h1>
         <p className="muted">
           {isLive
             ? "Review the server-confirmed launch evidence, then use the post-launch tools to grow your community."
@@ -591,21 +610,17 @@ export default function DirectorOnboardingCommandCenterPage() {
             <strong>Plan:</strong> {billingPlanLabel(activePlanCode)}
           </p>
           <p>
-            <strong>Status:</strong> {billing?.tenant?.billingStatus || "unknown"}
+            <strong>Subscription:</strong> {subscriptionStatusLabel}
           </p>
           <p>
-            <strong>Lifecycle:</strong> {billing?.tenant?.billingLifecycleStatus || "uninitialized"}
+            <strong>Onboarding fee:</strong> {onboardingFeeLabel}
           </p>
           <p>
-            <strong>Onboarding fee:</strong> {formatMoney(billing?.tenant?.onboardingFeeAmount || 0)}
+            <strong>Ready to launch:</strong> {billingReady ? "Yes" : "Not yet"}
           </p>
-          <p>
-            <strong>Onboarding fee status:</strong> {billing?.tenant?.onboardingFeeStatus || "unpaid"}
-          </p>
-          <p>
-            <strong>Readiness:</strong> {billingReady ? "Ready" : "Blocked until billing is ready"}
-          </p>
-          <p className="muted billing-readiness-hint">{billingHint}</p>
+          {/* The same hint already shows above the launch controls; repeating it
+              here just said the same sentence twice on one screen. */}
+          {billingReady ? null : <p className="muted billing-readiness-hint">{billingHint}</p>}
           {showInvoiceFinalizationWarning ? (
             <p className="error-text">
               Stripe could not finalize the latest invoice.
