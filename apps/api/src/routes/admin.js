@@ -128,11 +128,14 @@ import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js
 import { matchesMemberQuery } from "../utils/memberSearch.js";
 import {
   GROWTH_EMAIL_SEGMENTS,
+  LIVE_PROFILE_STATUS_FILTER,
+  LIVE_USER_STATUS_FILTER,
   buildAlumniGrowthSnapshot,
   buildPeopleDirectory,
   filterHeldAlumniRecipients,
   hasRequiredEmailTargetingSelection,
   isAlumniGrowthStorageUnavailable,
+  isRemovedUser,
   normalizeAlumniContactInput,
   resolveGrowthEmailSegment,
   trackInvitedAlumniContact,
@@ -3193,9 +3196,10 @@ router.get("/members", async (req, res, next) => {
       filter.roleAtCamp = { $ilike: role };
     }
 
-    if (status && status !== "all") {
-      filter.status = status;
-    }
+    // "All statuses" means every status a member can hold, not every row ever
+    // written. Removed members stay out unless they are asked for by name --
+    // otherwise someone a director deleted comes back as a mail recipient.
+    filter.status = status && status !== "all" ? status : LIVE_PROFILE_STATUS_FILTER;
 
     let mongoSort = sortForMembers(sort);
     if (completionRange || hasNestedYearFilters || campYear) {
@@ -6827,10 +6831,10 @@ async function resolveFilteredPeople(req) {
   const [contactResult, invites, users, profiles, accessRequests, analyticsEvents] = await Promise.all([
     loadAlumniContactsForGrowth(tenantId),
     InviteModel.find(tenantId, { roleToAssign: "user" }, { sort: { createdAt: -1 }, limit: 5000 }),
-    UserModel.find(tenantId, { status: { $ne: "removed" } }, {
+    UserModel.find(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
       select: ["id", "email", "status", "roles", "createdAt", "updatedAt", "lastLoginAt"]
     }),
-    ProfileModel.find(tenantId, { status: { $ne: "removed" } }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
+    ProfileModel.find(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
     AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 5000 }),
     AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
       select: ["userId", "eventType", "createdAt"],
@@ -6992,10 +6996,10 @@ router.get("/growth", async (req, res, next) => {
         sort: { createdAt: -1 },
         limit: 5000
       }),
-      UserModel.find(tenantId, { status: { $ne: "removed" } }, {
+      UserModel.find(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
         select: ["id", "email", "status", "createdAt", "updatedAt", "lastLoginAt"]
       }),
-      ProfileModel.find(tenantId, { status: { $ne: "removed" } }, {
+      ProfileModel.find(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, {
         select: [
           "id",
           "userId",
@@ -7218,8 +7222,11 @@ router.delete("/growth/people/:email/purge", async (req, res, next) => {
       });
     }
 
+    // A removed member still owns a deactivated account row. Reading that row
+    // as "they have joined" sent the director back to Members to remove someone
+    // who was already removed and no longer listed there, with no way out.
     const joinedUser = await UserModel.findOne(req.tenant._id, { email });
-    if (joinedUser) {
+    if (joinedUser && !isRemovedUser(joinedUser)) {
       return res.status(409).json({
         error: {
           code: "PERSON_ALREADY_JOINED",

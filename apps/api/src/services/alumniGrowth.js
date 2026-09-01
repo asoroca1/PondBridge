@@ -219,17 +219,56 @@ export function isMemberIdentity(key = "") {
   return String(key || "").startsWith(MEMBER_IDENTITY_PREFIX);
 }
 
+/**
+ * Removing a member writes two different words for the same event: the profile
+ * becomes "removed" and the account behind it becomes "inactive". Anything that
+ * checks only one of them sees half a removal, which is how a removed member
+ * kept their place in the People list -- their profile was filtered out, their
+ * user row was not, and the surviving row alone was enough to be called a
+ * member. These are the one place that decides what removed means.
+ */
+const REMOVED_USER_STATUSES = ["removed", "inactive"];
+
+export function isRemovedUser(user = null) {
+  return REMOVED_USER_STATUSES.includes(String(user?.status || "").trim().toLowerCase());
+}
+
+export function isRemovedProfile(profile = null) {
+  return String(profile?.status || "").trim().toLowerCase() === "removed";
+}
+
+/** Query filters that keep both halves of a removal out of a result set. */
+export const LIVE_USER_STATUS_FILTER = { $nin: [...REMOVED_USER_STATUSES] };
+export const LIVE_PROFILE_STATUS_FILTER = { $ne: "removed" };
+
 function membersByIdentity({ users = [], profiles = [] }) {
-  const usersById = new Map(users.map((user) => [String(user?._id || user?.id || ""), user]));
+  // "Members" means people who have joined and can sign in, so a removal
+  // disqualifies someone whichever half of it a caller's query let through.
+  // Filtering here rather than trusting the query keeps every caller honest.
+  const removedUserIds = new Set();
+  const liveUsers = [];
+  for (const user of users) {
+    if (!isRemovedUser(user)) {
+      liveUsers.push(user);
+      continue;
+    }
+    const removedId = String(user?._id || user?.id || "");
+    if (removedId) removedUserIds.add(removedId);
+  }
+  const liveProfiles = profiles.filter((profile) => (
+    !isRemovedProfile(profile) && !removedUserIds.has(String(profile?.userId || ""))
+  ));
+
+  const usersById = new Map(liveUsers.map((user) => [String(user?._id || user?.id || ""), user]));
   const profilesByUserId = new Map(
-    profiles.map((profile) => [String(profile?.userId || ""), profile])
+    liveProfiles.map((profile) => [String(profile?.userId || ""), profile])
   );
   const map = new Map();
   // One account is one member. Tracking the user ids we have already indexed
   // stops a profile whose email differs from its user's from being counted a
   // second time as a separate person.
   const claimedUserIds = new Set();
-  for (const user of users) {
+  for (const user of liveUsers) {
     const userId = String(user?._id || user?.id || "");
     const profile = profilesByUserId.get(userId) || null;
     const email = normalizeEmail(user?.email || profileEmail(profile));
@@ -238,7 +277,7 @@ function membersByIdentity({ users = [], profiles = [] }) {
     if (userId) claimedUserIds.add(userId);
     map.set(identity, { user, profile, email });
   }
-  for (const profile of profiles) {
+  for (const profile of liveProfiles) {
     const ownerId = String(profile?.userId || "");
     if (ownerId && claimedUserIds.has(ownerId)) continue;
     const email = profileEmail(profile);

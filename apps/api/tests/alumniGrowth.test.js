@@ -355,4 +355,53 @@ describe("unified people directory", () => {
 
     expect(counts.member).toBe(1);
   });
+
+  // Removing a member deactivates the account and marks the profile removed.
+  // The two rows never say it the same way, so each half is checked on its own.
+  test("drops a removed member whose deactivated account row survives", () => {
+    const { people, counts } = buildPeopleDirectory({
+      users: [
+        { _id: "u1", email: "stays@example.org", status: "active" },
+        { _id: "u2", email: "gone@example.org", status: "inactive" }
+      ],
+      // The caller filtered removed profiles out, as the People query does;
+      // only the deactivated user row is left to speak for the removed member.
+      profiles: [{ _id: "p1", userId: "u1", emails: ["stays@example.org"], status: "active" }]
+    });
+
+    expect(counts.member).toBe(1);
+    expect(people.map((person) => person.email)).toEqual(["stays@example.org"]);
+  });
+
+  test("drops a removed member when the removed profile is passed in too", () => {
+    const { counts } = buildPeopleDirectory({
+      users: [{ _id: "u2", email: "gone@example.org", status: "inactive" }],
+      profiles: [{ _id: "p2", userId: "u2", emails: ["gone@example.org"], status: "removed" }]
+    });
+
+    expect(counts.member).toBe(0);
+    expect(counts.all).toBe(0);
+  });
+
+  test("a removed member with an alumni record goes back to being a prospect", () => {
+    const { people, counts } = buildPeopleDirectory({
+      users: [{ _id: "u2", email: "gone@example.org", status: "inactive" }],
+      profiles: [{ _id: "p2", userId: "u2", emails: ["gone@example.org"], status: "removed" }],
+      contacts: [{ _id: "c2", email: "gone@example.org", contactStatus: "active" }]
+    });
+
+    expect(counts.member).toBe(0);
+    expect(people[0].stage).toBe("prospect");
+    // Nothing may still point at the profile that was removed.
+    expect(people[0].profileId).toBe("");
+  });
+
+  test("keeps a member whose account row carries no status at all", () => {
+    const { counts } = buildPeopleDirectory({
+      users: [{ _id: "u1", email: "legacy@example.org" }],
+      profiles: [{ _id: "p1", userId: "u1", emails: ["legacy@example.org"] }]
+    });
+
+    expect(counts.member).toBe(1);
+  });
 });
