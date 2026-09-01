@@ -17067,3 +17067,92 @@ html.is-native-app .asset-update-notice{
   gap:8px;
   flex-wrap:wrap;
 }
+
+/* Waiting-for-approval page ------------------------------------------------
+   The generic status card is sized for pages with real content in them. This
+   one holds three short lines, so at full width it read as an unfinished box
+   floating in empty space. Narrower, centred, with something to look at.
+
+   Every rule here is scoped under .app-status-card so it outranks that card's
+   own `p { margin: 0 }`, which otherwise flattens the spacing below. */
+.app-status-card.pb-pending{
+  width: min(440px, 100%);
+  justify-items: center;
+  text-align: center;
+  gap: 0;
+  padding: clamp(28px, 4vw, 40px) clamp(22px, 4vw, 34px);
+  border-radius: 18px;
+  box-shadow: 0 18px 44px rgba(32, 32, 32, .10);
+}
+
+.app-status-card.pb-pending .pb-pending-mark{
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin-bottom: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+  color: var(--brand-primary);
+}
+
+.app-status-card.pb-pending .pb-pending-mark svg{
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.6;
+}
+
+.app-status-card.pb-pending h1{
+  font-size: clamp(1.25rem, 2.4vw, 1.5rem);
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+
+.app-status-card.pb-pending .pb-pending-lede{
+  margin-top: 14px;
+  max-width: 38ch;
+  color: var(--neutral-700);
+  line-height: 1.55;
+}
+
+.app-status-card.pb-pending .pb-pending-note{
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 26px;
+  padding: 13px 15px;
+  width: 100%;
+  border-radius: 10px;
+  background: var(--neutral-50, #f7f7f8);
+  color: var(--neutral-600, #555);
+  font-size: .89rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.app-status-card.pb-pending .pb-pending-note svg{
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--brand-primary);
+}
+
+.app-status-card.pb-pending .error-text{
+  margin-top: 14px;
+  font-size: .86rem;
+}
+
+.app-status-card.pb-pending .pb-pending-back{
+  margin-top: 24px;
+  font-size: .89rem;
+  font-weight: 600;
+  color: var(--neutral-600, #555);
+  text-decoration: none;
+}
+
+.app-status-card.pb-pending .pb-pending-back:hover,
+.app-status-card.pb-pending .pb-pending-back:focus-visible{
+  color: var(--brand-primary);
+  text-decoration: underline;
+}
