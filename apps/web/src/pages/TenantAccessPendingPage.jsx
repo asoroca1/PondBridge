@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { Hourglass, Mail } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
@@ -10,28 +11,54 @@ function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
 }
 
-function LegacyPendingPage() {
-  const { slug: paramSlug = "" } = useParams();
-  const { slug: contextSlug = "" } = useTenant();
-  const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
+/**
+ * What someone sees for however long a director takes to decide.
+ *
+ * The only questions they have are whether their signup worked and whether
+ * they need to keep checking, so the page answers both and offers nothing else
+ * to poke at. Both auth modes render this, so the two cannot drift apart.
+ */
+function PendingCard({ campName = "", slug = "", error = "" }) {
+  const approver = campName ? `A director at ${campName}` : "A camp director";
+
   return (
     <section className="app-status-shell">
-      <div className="app-status-card">
+      <div className="app-status-card pb-pending">
+        <span className="pb-pending-mark" aria-hidden="true">
+          <Hourglass />
+        </span>
+
         <h1>Waiting for director approval</h1>
-        <p>Your account is created. A camp director needs to approve it before you can get in.</p>
-        <p>You will receive an email as soon as they do — there is nothing else for you to do.</p>
-        <p>
-          <Link to={routeWithSlug(slug, "/login")}>Back to login</Link>
+        <p className="pb-pending-lede">
+          Your account is set up. {approver} needs to approve it before you can sign in.
         </p>
+
+        <p className="pb-pending-note">
+          <Mail aria-hidden="true" />
+          <span>We will email you as soon as they do. Nothing else to do on your end.</span>
+        </p>
+
+        {error ? <p className="error-text" role="alert">{error}</p> : null}
+
+        <Link className="pb-pending-back" to={routeWithSlug(slug, "/login")}>
+          Back to login
+        </Link>
       </div>
     </section>
   );
 }
 
+function LegacyPendingPage() {
+  const { slug: paramSlug = "" } = useParams();
+  const { slug: contextSlug = "", tenant } = useTenant();
+  const slug = String(paramSlug || contextSlug || "").trim().toLowerCase();
+  return <PendingCard campName={String(tenant?.name || "")} slug={slug} />;
+}
+
 function ClerkPendingPage() {
   const navigate = useNavigate();
   const params = useParams();
-  const { slug: contextSlug } = useTenant();
+  const { slug: contextSlug, tenant } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const [error, setError] = useState("");
@@ -59,6 +86,9 @@ function ClerkPendingPage() {
       }
     }
 
+    // Approval usually lands while the tab is still open, so the poll saves
+    // people a manual refresh. It stays silent; the page already told them to
+    // wait for the email instead of watching this.
     checkStatus();
     const id = window.setInterval(checkStatus, 15000);
     return () => {
@@ -67,19 +97,7 @@ function ClerkPendingPage() {
     };
   }, [getToken, isLoaded, isSignedIn, navigate, slug]);
 
-  return (
-    <section className="app-status-shell">
-      <div className="app-status-card">
-        <h1>Waiting for director approval</h1>
-        <p>Your account is created. A camp director needs to approve it before you can get in.</p>
-        <p>You will receive an email as soon as they do — there is nothing else for you to do.</p>
-        {error ? <p className="error-text">{error}</p> : null}
-        <p>
-          <Link to={routeWithSlug(slug, "/login")}>Back to login</Link>
-        </p>
-      </div>
-    </section>
-  );
+  return <PendingCard campName={String(tenant?.name || "")} slug={slug} error={error} />;
 }
 
 export default function TenantAccessPendingPage() {
