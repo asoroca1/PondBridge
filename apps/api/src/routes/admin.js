@@ -56,7 +56,7 @@ import {
   sendAccessDecisionEmail
 } from "../services/email.js";
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
-import { getTenantAnalyticsSnapshot } from "../services/analytics.js";
+import { getTenantAnalyticsSnapshot, logTenantEvent } from "../services/analytics.js";
 import { createInviteRecord } from "../services/invites.js";
 import {
   buildSettingsStorePayload,
@@ -4084,6 +4084,30 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
   });
 
   await UserModel.update(user._id, { profileId: profile._id });
+
+  // Approving someone is how they join, so it has to leave the same trail an
+  // ordinary signup does. Without these the new member is real but invisible:
+  // absent from the home feed and from every count built on signup events.
+  const actorName =
+    [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() || "Someone";
+  await ActivityItemModel.create({
+    tenantId: req.tenant._id,
+    actorUserId: user._id,
+    actor: { id: toObjectIdString(user._id), name: actorName },
+    type: "user.join",
+    target: {
+      href: `/profile/${toObjectIdString(profile._id)}`,
+      label: "profile"
+    },
+    ts: new Date()
+  }).catch(() => {});
+  await logTenantEvent({
+    tenantId: req.tenant._id,
+    userId: user._id,
+    eventType: "signup_created",
+    metadata: { method: "director_approval" }
+  }).catch(() => {});
+
   await AccessRequestModel.update(request._id, {
     status: "approved",
     reviewedAt: new Date(),
