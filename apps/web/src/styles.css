@@ -2808,7 +2808,11 @@ html.is-native-app textarea{
   align-items:center;
   gap:.5rem;
 }
+/* justify-content matters only when this cluster is allowed to grow (small
+   screens) and holds no flexible child: routes without the search box (admin,
+   native member) would otherwise pack the profile + burger against the logo. */
 .navbar2-right { flex:0 0 auto; display:flex; align-items:center; gap:10px;
+                 justify-content:flex-end;
                  margin-left:auto; max-width:calc(100% - var(--left-guard)); }
 .navbar2-right > * { flex:0 0 auto; }
 .navbar2-logoLink{

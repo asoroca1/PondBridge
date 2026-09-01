@@ -84,6 +84,10 @@
     gap: var(--grid-gap);
   }
   .main-col, .side-col{ display:flex; flex-direction:column; gap: var(--grid-gap); }
+  /* Never let the side column stretch to the grid row: its measured height feeds
+     --feed-card-h, and measuring a stretched column grows the feed card by its own
+     padding on every ResizeObserver pass. */
+  .side-col{ align-self: start; }
   
   /* ---------- generic cards ---------- */
   .p1-card{
@@ -192,6 +196,9 @@
   .feed-card{
     display: flex;
     flex-direction: column;
+
+    /* --feed-card-h is the side column's border-box height, so match it exactly */
+    box-sizing: border-box;
 
     /* HARD LOCK: cannot grow beyond this height */
     height: var(--feed-card-h, auto);
@@ -315,7 +322,7 @@
   @media (max-width: 1100px){
     .content-grid{ grid-template-columns: 1fr; }
     .quick-actions{ grid-template-columns: repeat(2,1fr); }
-    .feed-card{ height:auto !important; }
+    .feed-card{ height:auto !important; max-height:none; }
     .feed-scroll{ overflow:visible; max-height:none; }
   
     /* tighten welcome block slightly for 13–14" screens */
