@@ -56,6 +56,7 @@ import {
   sendAccessDecisionEmail
 } from "../services/email.js";
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
+import { clearMemberDirectoryCaches } from "../services/memberDirectoryCache.js";
 import { getTenantAnalyticsSnapshot, logTenantEvent } from "../services/analytics.js";
 import { createInviteRecord } from "../services/invites.js";
 import {
@@ -923,9 +924,12 @@ function clearAdminDashboardCache() {
   adminDashboardResponseCache.clear();
 }
 
-function clearAdminReadCaches() {
+function clearAdminReadCaches(tenantId = "") {
   clearAdminMembersCache();
   clearAdminDashboardCache();
+  // Member writes change the headcount the member-facing home page and map
+  // show, so their caches have to go with the admin ones.
+  clearMemberDirectoryCaches(tenantId);
 }
 const MEMBER_EXPORT_FIELDS = [
   {
@@ -3616,7 +3620,7 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
     userId,
     changedFields: Object.keys(cleanPatch)
   });
-  clearAdminReadCaches();
+  clearAdminReadCaches(req.tenant._id);
 
   if (cleanPatch.status === "flagged") {
     await notifyTenantAdmins({
@@ -3722,7 +3726,7 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
     userId: toObjectIdString(updated.userId),
     changedFields: Object.keys(patch)
   });
-  clearAdminReadCaches();
+  clearAdminReadCaches(req.tenant._id);
 
   if (patch.status === "flagged") {
     await notifyTenantAdmins({
@@ -3788,7 +3792,7 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
           globalIdentityDeleted: identityCleanup.identityDeleted
         }
       });
-      clearAdminReadCaches();
+      clearAdminReadCaches(req.tenant._id);
       return res.json({
         ok: true,
         deletedProfileId: profileId,
@@ -3827,7 +3831,7 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
       userId,
       summary
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
 
     return res.json({
       ok: true,
@@ -3878,7 +3882,7 @@ router.post("/members/bulk-action", async (req, res) => {
       action,
       affected: profiles.length
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -3900,7 +3904,7 @@ router.post("/members/bulk-action", async (req, res) => {
       action,
       affected: profiles.length
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
     return res.json({ ok: true, action, affected: profiles.length });
   }
 
@@ -3915,7 +3919,7 @@ router.post("/members/bulk-action", async (req, res) => {
       action,
       affected: profiles.length
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
     await notifyTenantAdmins({
       tenant: req.tenant,
       createdByUserId: req.user.id,
@@ -4284,7 +4288,7 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
       }
     });
   }
-  clearAdminReadCaches();
+  clearAdminReadCaches(req.tenant._id);
 
   return res.json({
     ok: true,
@@ -4312,7 +4316,7 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
   }
 
   const result = await denyAccessRequest(req, pending, reason);
-  clearAdminReadCaches();
+  clearAdminReadCaches(req.tenant._id);
   return res.json({ ok: true, requestId: result.requestId });
 });
 
@@ -4381,7 +4385,7 @@ router.post("/members/approvals/bulk", async (req, res) => {
     failedCount: failed.length,
     remaining
   });
-  clearAdminReadCaches();
+  clearAdminReadCaches(req.tenant._id);
 
   return res.json({
     ok: true,
@@ -7118,7 +7122,7 @@ router.post("/growth/contacts", async (req, res, next) => {
       existingMemberCount,
       invalidCount
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
     return res.status(201).json({
       ok: true,
       submittedCount: rawContacts.length,
@@ -7172,7 +7176,7 @@ router.patch("/growth/contacts/:contactId", async (req, res, next) => {
       campYearCount: normalized.campYears.length,
       noteLength: normalized.notes.length
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
     return res.json({
       ok: true,
       contact: {
@@ -7246,7 +7250,7 @@ router.delete("/growth/people/:email/purge", async (req, res, next) => {
       inviteCount: invites.length,
       requestCount: requests.length
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
 
     return res.json({
       ok: true,
@@ -7652,7 +7656,7 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
         userId: "",
         summary: { profileDeleted: 1, userDeleted: 0 }
       });
-      clearAdminReadCaches();
+      clearAdminReadCaches(req.tenant._id);
       return res.json({ ok: true, deletedProfileId: profileId, deletedUserId: "" });
     }
 
@@ -7673,7 +7677,7 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
         userId,
         summary: { profileDeleted: 1, userDeleted: 0 }
       });
-      clearAdminReadCaches();
+      clearAdminReadCaches(req.tenant._id);
       return res.json({
         ok: true,
         deletedProfileId: profileId,
@@ -7709,7 +7713,7 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
       userId,
       summary
     });
-    clearAdminReadCaches();
+    clearAdminReadCaches(req.tenant._id);
 
     return res.json({
       ok: true,

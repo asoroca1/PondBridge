@@ -25,6 +25,14 @@ import {
   deleteObjectFromR2
 } from "../services/objectStorage.js";
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
+import {
+  citiesCacheByTenant,
+  cityPeopleCacheByTenant,
+  clearHomeStatsCaches,
+  homeStatsResponseCache,
+  invalidateMapCaches,
+  locationsStatsResponseCache
+} from "../services/memberDirectoryCache.js";
 import { buildTenantEmailBranding, sendBulkTransactionalEmail } from "../services/email.js";
 import { broadcastTemplate } from "../services/emailTemplates.js";
 import { buildEmailPalette } from "../services/brandPalette.js";
@@ -148,8 +156,6 @@ const MAP_CITY_PROFILE_SELECT = [
 ];
 const MAP_CITIES_RESPONSE_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
 const MAP_CITY_PEOPLE_RESPONSE_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=30";
-const citiesCacheByTenant = new Map(); // tenantId -> { data, expiresAt, inflight }
-const cityPeopleCacheByTenant = new Map(); // tenantId -> Map(cityKey -> { data, expiresAt, inflight })
 const geocodeQueue = new Map();
 let geocodeWorkerRunning = false;
 const parsedCityStateCache = new Map();
@@ -180,8 +186,6 @@ const CHAT_CONVERSATIONS_CACHE_CONTROL = "private, max-age=8, stale-while-revali
 const CHAT_MESSAGES_CACHE_CONTROL = "private, max-age=6, stale-while-revalidate=18";
 const FORUMS_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
 const FORUM_POSTS_CACHE_CONTROL = "private, max-age=6, stale-while-revalidate=18";
-const homeStatsResponseCache = createTtlCache({ ttlMs: 20_000, maxEntries: 250 });
-const locationsStatsResponseCache = createTtlCache({ ttlMs: 20_000, maxEntries: 250 });
 const activityResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 500 });
 const photoFeedResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 900 });
 const forumsListResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1000 });
@@ -190,11 +194,6 @@ const forumPostsResponseCache = createTtlCache({ ttlMs: 6_000, maxEntries: 1800 
 
 function tenantReadCacheKey(scope = "", tenantId = "", suffix = "") {
   return [String(scope || "").trim(), String(tenantId || "").trim(), String(suffix || "").trim()].join(":");
-}
-
-function clearHomeStatsCaches() {
-  homeStatsResponseCache.clear();
-  locationsStatsResponseCache.clear();
 }
 
 function clearHomeActivityCache() {
@@ -726,13 +725,6 @@ function setTenantPeopleCacheEntry(tenantId, key, entry) {
     const oldestKey = tenantCache.keys().next().value;
     if (oldestKey && oldestKey !== key) tenantCache.delete(oldestKey);
   }
-}
-
-function invalidateMapCaches(tenantId) {
-  const id = String(tenantId || "");
-  if (!id) return;
-  citiesCacheByTenant.delete(id);
-  cityPeopleCacheByTenant.delete(id);
 }
 
 function locationKeys({ city = "", state = "" } = {}) {

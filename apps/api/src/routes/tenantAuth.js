@@ -38,6 +38,7 @@ import {
   isMemberEligibilityComplete,
   normalizeMemberLegalAgreement as normalizeLegalAgreementFromBody
 } from "../services/memberEligibility.js";
+import { clearMemberDirectoryCaches } from "../services/memberDirectoryCache.js";
 
 const router = Router({ mergeParams: true });
 function authLimiterKey(req, { includeEmail = false } = {}) {
@@ -529,6 +530,7 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
     userId: user._id,
     ...profileFromBody(req.body)
   });
+  clearMemberDirectoryCaches(req.tenant._id);
 
   await UserModel.updateScoped(req.tenant._id, user._id, { profileId: profile._id });
   user.profileId = profile._id;

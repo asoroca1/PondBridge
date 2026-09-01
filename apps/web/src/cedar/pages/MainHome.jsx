@@ -580,11 +580,19 @@ export default function MainHome() {
     })();
   }, [navigate, slug]);
 
+  // The page loaded once and never looked again, so a member removed in the
+  // director console left the Community Pulse totals showing the old headcount
+  // for as long as this tab stayed open. Re-read them whenever the tab comes
+  // back to the foreground.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function loadBootstrap() {
       try {
-        const r = await fetch(`${API_BASE}/home/bootstrap?activityLimit=50`, { headers: authHeaders(false) });
+        const r = await fetch(`${API_BASE}/home/bootstrap?activityLimit=50`, {
+          headers: authHeaders(false),
+          cache: "no-cache"
+        });
         if (!r.ok) return;
         const data = await r.json();
         if (cancelled) return;
@@ -592,9 +600,20 @@ export default function MainHome() {
         setStats(data?.stats || null);
         setLocationsSummary(data?.locations || null);
       } catch {}
-    })();
+    }
+
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      loadBootstrap();
+    }
+
+    loadBootstrap();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, []);
 

@@ -1,4 +1,5 @@
 import { ActivityItemModel, ProfileModel, UserModel } from "../db/models/index.js";
+import { clearMemberDirectoryCaches } from "./memberDirectoryCache.js";
 
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -152,6 +153,7 @@ export async function ensureProfileForUser({ tenantId, user, identity = {} }) {
 
   await UserModel.update(user._id, { profileId: profile._id });
   user.profileId = profile._id;
+  clearMemberDirectoryCaches(tenantId);
 
   const actorName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() || "Someone";
   await ActivityItemModel.create({
