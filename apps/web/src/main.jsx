@@ -4,6 +4,7 @@ import { BrowserRouter, useLocation } from "react-router-dom";
 import App from "./App.jsx";
 import { PublicAuthProvider } from "./context/AuthContext.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { AppTransitionShell } from "./components/AppTransitionShell.jsx";
 import { AssetUpdateNotice } from "./components/AssetUpdateNotice.jsx";
 import { clerkSdkEnabled } from "./lib/authMode.js";
 import { needsAuthRuntime } from "./lib/authRuntimeScope.js";
@@ -91,35 +92,6 @@ const runtimeNeededAtBoot = runtimeRequiredFor(window.location.pathname);
 const bootRuntimePromise = runtimeNeededAtBoot ? loadFullAuthRuntime() : null;
 
 /**
- * Loads the auth runtime for a visit that started on a public landing page and
- * has since navigated somewhere that needs a real session.
- */
-function DeferredAuthRuntimeLoader({ onLoaded }) {
-  const location = useLocation();
-
-  useEffect(() => {
-    if (!runtimeRequiredFor(location.pathname)) return undefined;
-
-    let active = true;
-    loadFullAuthRuntime()
-      .then((module) => {
-        if (active) onLoaded(() => module.default);
-      })
-      .catch((error) => {
-        // A stale deployment is handled by the update notice; the visit stays
-        // on the public provider rather than dying here.
-        attemptAutomaticChunkRecovery(error);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [location.pathname, onLoaded]);
-
-  return null;
-}
-
-/**
  * Chooses the auth provider `<App />` renders under.
  *
  * The runtime is resolved *before* the first render whenever the visit needs
@@ -135,7 +107,28 @@ function DeferredAuthRuntimeLoader({ onLoaded }) {
  * somewhere that needs a session.
  */
 function AppRoot({ initialRuntime = null }) {
+  const location = useLocation();
   const [AuthRuntime, setAuthRuntime] = useState(() => initialRuntime);
+  const runtimeRequired = runtimeRequiredFor(location.pathname);
+
+  useEffect(() => {
+    if (AuthRuntime || !runtimeRequired) return undefined;
+
+    let active = true;
+    loadFullAuthRuntime()
+      .then((module) => {
+        if (active) setAuthRuntime(() => module.default);
+      })
+      .catch((error) => {
+        // A stale deployment is handled by the update notice rather than
+        // killing the visit here.
+        attemptAutomaticChunkRecovery(error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [AuthRuntime, runtimeRequired]);
 
   if (AuthRuntime) {
     return (
@@ -145,9 +138,15 @@ function AppRoot({ initialRuntime = null }) {
     );
   }
 
+  // The visit started on a public landing page and has now moved somewhere
+  // that needs a real session, but the runtime chunk is still in flight.
+  // `<App />` must not stay mounted through that gap: Login, the auth
+  // callback, and the account-creation pages all call Clerk's own hooks, and
+  // those throw when ClerkProvider is not an ancestor yet.
+  if (runtimeRequired) return <AppTransitionShell />;
+
   return (
     <PublicAuthProvider>
-      <DeferredAuthRuntimeLoader onLoaded={setAuthRuntime} />
       <App />
     </PublicAuthProvider>
   );
