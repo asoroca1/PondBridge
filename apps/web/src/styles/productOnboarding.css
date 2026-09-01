@@ -441,6 +441,91 @@
   margin-left: 4px;
 }
 
+/* Camp identity and progress, so the wizard reads as this camp's setup rather
+   than a generic PondBridge form. */
+.director-wizard-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.director-wizard-identity-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.director-wizard-identity-logo,
+.director-wizard-identity-mark {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.director-wizard-identity-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--po-brand, var(--brand-primary, #303030));
+  color: var(--brand-on-primary, #fff);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.director-wizard-identity-kicker {
+  margin: 0;
+  color: var(--neutral-500, #6b6b6b);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.director-wizard-identity-name {
+  margin: 2px 0 0;
+  color: var(--neutral-800, #2a2a2a);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.director-wizard-identity-progress {
+  margin: 0;
+  color: var(--neutral-600, #5a5a5a);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.director-wizard-progress {
+  height: 5px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: var(--neutral-200, #e9e9e9);
+  overflow: hidden;
+}
+
+.director-wizard-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--po-brand, var(--brand-primary, #303030));
+  transition: width 260ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .director-wizard-progress-fill {
+    transition: none;
+  }
+}
+
 .director-create-stepper {
   display: flex;
   align-items: center;
