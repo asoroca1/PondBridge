@@ -454,6 +454,7 @@ function DirectorCreateAccountWizardPage() {
   const [, setBillingErrors] = useState({});
   const [legalAgreementAccepted, setLegalAgreementAccepted] = useState(false);
   const [legalAgreementError, setLegalAgreementError] = useState("");
+  const [showLegalAgreement, setShowLegalAgreement] = useState(false);
   const [specificsErrors, setSpecificsErrors] = useState({});
   const [showNewsletterSettings, setShowNewsletterSettings] = useState(false);
   const campSpecificsHydratedRef = useRef(false);
@@ -471,6 +472,8 @@ function DirectorCreateAccountWizardPage() {
   // The register step mints a token that context state has not published yet,
   // so the payment panel keeps the one it started checkout with.
   const checkoutTokenRef = useRef("");
+  const legalAgreementTriggerRef = useRef(null);
+  const legalAgreementCloseRef = useRef(null);
 
   const cardRef = useRef(null);
 
@@ -479,6 +482,23 @@ function DirectorCreateAccountWizardPage() {
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   }, [step]);
+
+  useEffect(() => {
+    if (!showLegalAgreement) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setShowLegalAgreement(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.requestAnimationFrame(() => legalAgreementCloseRef.current?.focus());
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showLegalAgreement]);
+
+  function closeLegalAgreement() {
+    setShowLegalAgreement(false);
+    window.requestAnimationFrame(() => legalAgreementTriggerRef.current?.focus());
+  }
 
   useEffect(() => {
     if (!draftRestoredNotice) return;
@@ -3921,9 +3941,15 @@ function DirectorCreateAccountWizardPage() {
                     </label>
                     <p id="director-legal-agreement-hint" className="director-field-hint">
                       Required before launch. Review{" "}
-                      <Link to={`/t/${slug}/director-legal`} target="_blank" rel="noopener noreferrer">
+                      <button
+                        ref={legalAgreementTriggerRef}
+                        type="button"
+                        className="director-legal-modal-trigger"
+                        aria-haspopup="dialog"
+                        onClick={() => setShowLegalAgreement(true)}
+                      >
                         PondBridge Client Terms &amp; Privacy
-                      </Link>.
+                      </button>.
                     </p>
                     {legalAgreementError ? (
                       <p id="director-legal-agreement-error" className="wizard1-error" role="alert">
@@ -3973,6 +3999,38 @@ function DirectorCreateAccountWizardPage() {
           ) : null}
           </div>
         </article>
+        {showLegalAgreement ? (
+          <div className="director-legal-modal-backdrop" onMouseDown={closeLegalAgreement}>
+            <section
+              className="director-legal-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="director-legal-modal-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="director-legal-modal-header">
+                <div>
+                  <h2 id="director-legal-modal-title">PondBridge Client Terms &amp; Privacy</h2>
+                  <p>Review the agreements before confirming your launch.</p>
+                </div>
+                <button
+                  ref={legalAgreementCloseRef}
+                  type="button"
+                  className="director-legal-modal-close"
+                  aria-label="Close client terms and privacy"
+                  onClick={closeLegalAgreement}
+                >
+                  ×
+                </button>
+              </header>
+              <iframe
+                className="director-legal-modal-content"
+                title="PondBridge Client Terms, Director Agreement, and Privacy Notice"
+                src={`/t/${slug}/director-legal`}
+              />
+            </section>
+          </div>
+        ) : null}
       </div>
     </section>
   );
