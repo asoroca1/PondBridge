@@ -499,6 +499,8 @@ function renderVerb(type) {
   switch (type) {
     case "photo.upload":
       return "posted a photo in";
+    case "video.upload":
+      return "posted a video in";
     case "thread.new":
       return "started the thread";
     case "newsletter.publish":
