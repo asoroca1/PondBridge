@@ -441,6 +441,10 @@
   margin-left: 4px;
 }
 
+.product-director-create-card .wizard1-label small {
+  margin-left: 4px;
+}
+
 /* Camp identity and progress, so the wizard reads as this camp's setup rather
    than a generic PondBridge form. */
 .director-wizard-identity {
