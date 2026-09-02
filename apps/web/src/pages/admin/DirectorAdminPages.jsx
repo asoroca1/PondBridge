@@ -25,6 +25,7 @@ import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord, resolveCampAiName } from "../../lib/campLabels.js";
+import { HIDE_CAMP_AI, HIDE_MOBILE_APP, isHiddenCapability } from "../../lib/directorHiddenFeatures.js";
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
@@ -826,10 +827,12 @@ export function DirectorAdminDashboardPage() {
         )}
 
         <nav className="pb-today-shortcuts" aria-label="Common tasks">
-          <Link to={`/t/${slug}/onboarding`} className="is-primary">
-            <Sparkles size={16} aria-hidden="true" />
-            Ask {aiName}
-          </Link>
+          {HIDE_CAMP_AI ? null : (
+            <Link to={`/t/${slug}/onboarding`} className="is-primary">
+              <Sparkles size={16} aria-hidden="true" />
+              Ask {aiName}
+            </Link>
+          )}
           {TODAY_SHORTCUTS.map((item) => {
             const Icon = item.icon;
             return (
@@ -1088,13 +1091,22 @@ export function DirectorAdminFeaturesPage() {
     );
   }
 
-  const capabilities = Array.isArray(payload?.capabilities) ? payload.capabilities : [];
+  // Camp AI and mobile-app services stay out of the inventory for now, so the
+  // counts below are recomputed from what actually renders rather than reusing
+  // the API summary, which still counts everything.
+  const capabilities = (Array.isArray(payload?.capabilities) ? payload.capabilities : [])
+    .filter((capability) => !isHiddenCapability(capability));
   const attentionCapabilities = capabilities.filter((capability) =>
     ["setup_required", "limited"].includes(capability.status)
   );
+  const capabilitySummary = {
+    ready: capabilities.filter((capability) => capability.status === "active").length,
+    attention: attentionCapabilities.length,
+    lockedOrPilot: capabilities.filter((capability) => ["locked", "pilot"].includes(capability.status)).length
+  };
   const planTier = String(payload?.tenant?.planTier || "base").trim().toLowerCase();
   const planLabel = `${planTier.charAt(0).toUpperCase()}${planTier.slice(1)}`;
-  const totalAttention = Number(payload?.summary?.moduleAttention || 0) + Number(payload?.summary?.attention || 0);
+  const totalAttention = Number(payload?.summary?.moduleAttention || 0) + capabilitySummary.attention;
 
   function capabilityTone(capability) {
     if (capability.status === "active") return "success";
@@ -1372,15 +1384,15 @@ export function DirectorAdminFeaturesPage() {
         <div className="director-admin-service-summary" aria-label="Service status">
           <div className="is-ready">
             <CheckCircle2 size={19} aria-hidden="true" />
-            <span><strong>{payload?.summary?.ready || 0}</strong> ready</span>
+            <span><strong>{capabilitySummary.ready}</strong> ready</span>
           </div>
-          <div className={payload?.summary?.attention ? "needs-attention" : "is-ready"}>
+          <div className={capabilitySummary.attention ? "needs-attention" : "is-ready"}>
             <span className="director-admin-service-summary-mark" aria-hidden="true">!</span>
-            <span><strong>{payload?.summary?.attention || 0}</strong> need setup</span>
+            <span><strong>{capabilitySummary.attention}</strong> need setup</span>
           </div>
           <div>
             <Sparkles size={19} aria-hidden="true" />
-            <span><strong>{payload?.summary?.lockedOrPilot || 0}</strong> plan or pilot</span>
+            <span><strong>{capabilitySummary.lockedOrPilot}</strong> plan or pilot</span>
           </div>
         </div>
 
@@ -1856,26 +1868,28 @@ export function DirectorAdminSettingsNetworkPage() {
         </div>
       </Card>
 
-      <Card>
-        <h2 className="pb-section-title">iPhone app code</h2>
-        <p className="muted">
-          Families type this into the PondBridge app to find your camp. It is generated for you and cannot be changed.
-        </p>
-        <div className="pb-set-code-row">
-          <code>{mobileCode || "Generating…"}</code>
-          <div>
-            <Button type="button" variant="secondary" onClick={copyMobileAppCode} disabled={!mobileCode}>
-              {copyStatus || "Copy code"}
-            </Button>
-            <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
-              Who can join
-            </Link>
+      {HIDE_MOBILE_APP ? null : (
+        <Card>
+          <h2 className="pb-section-title">iPhone app code</h2>
+          <p className="muted">
+            Families type this into the PondBridge app to find your camp. It is generated for you and cannot be changed.
+          </p>
+          <div className="pb-set-code-row">
+            <code>{mobileCode || "Generating…"}</code>
+            <div>
+              <Button type="button" variant="secondary" onClick={copyMobileAppCode} disabled={!mobileCode}>
+                {copyStatus || "Copy code"}
+              </Button>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
+                Who can join
+              </Link>
+            </div>
           </div>
-        </div>
-        {payload?.access?.mobileAppCodeHint ? (
-          <p className="muted pb-set-code-hint">{payload.access.mobileAppCodeHint}</p>
-        ) : null}
-      </Card>
+          {payload?.access?.mobileAppCodeHint ? (
+            <p className="muted pb-set-code-hint">{payload.access.mobileAppCodeHint}</p>
+          ) : null}
+        </Card>
+      )}
 
       <Card>
         <SettingActions note="Changes go live for members as soon as you save.">

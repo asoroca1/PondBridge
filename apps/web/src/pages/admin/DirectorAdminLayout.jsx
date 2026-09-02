@@ -15,6 +15,7 @@ import {
 import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveCampAiName } from "../../lib/campLabels.js";
+import { HIDE_CAMP_AI } from "../../lib/directorHiddenFeatures.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 
 const ADMIN_NAV = [
@@ -42,6 +43,7 @@ export default function DirectorAdminLayout() {
 
   const sections = useMemo(() => {
     const base = ADMIN_NAV
+      .filter((item) => item.type === "label" || !(HIDE_CAMP_AI && item.key === "guide"))
       .filter((item) => item.type === "label" || !(demoAccessEnabled && item.key === "billing"))
       .filter((item) => item.type === "label" || item.key !== "events" || eventsEnabled)
       .filter((item) => item.type === "label" || item.key !== "giving" || givingEnabled)
