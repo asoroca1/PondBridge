@@ -202,7 +202,6 @@ export default function LocationMap() {
   const [people, setPeople] = useState([]);
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingCities, setLoadingCities] = useState(true);
-  const [pendingCityGeocodes, setPendingCityGeocodes] = useState(0);
   const [networkAlumni, setNetworkAlumni] = useState(0);
   const [mapRuntimeReady, setMapRuntimeReady] = useState(false);
   const [mapRuntimeError, setMapRuntimeError] = useState("");
@@ -250,9 +249,7 @@ export default function LocationMap() {
 
   const subtitleText =
     cities.length > 0
-      ? pendingCityGeocodes > 0
-        ? `${mappedSummary} • mapping ${pendingCityGeocodes} more`
-        : mappedSummary
+      ? mappedSummary
       : `Explore where your ${alumniWord} network lives around the world.`;
 
   const preferredMapFocus = useMemo(() => computeRegionFocus(cities), [cities]);
@@ -680,12 +677,10 @@ export default function LocationMap() {
             const ts = Number(cached?.ts || 0);
             if (Date.now() - ts <= CITIES_CACHE_TTL_MS) {
               const cachedList = normalizeCities(cached?.data || []);
-              const cachedPending = Math.max(0, Number(cached?.data?.unresolvedCityCount || 0));
               const cachedTotal = Math.max(0, Number(cached?.data?.totalAlumni || 0));
               if (cachedList.length && !cancelled) {
                 setCities(cachedList);
                 citiesRef.current = cachedList;
-                setPendingCityGeocodes(cachedPending);
                 setNetworkAlumni(cachedTotal);
                 if (loadedRef.current) renderMarkers(cachedList);
                 if (loadedRef.current && !selectedRef.current && !autoFocusedRef.current) {
@@ -717,7 +712,6 @@ export default function LocationMap() {
         const unresolvedCityCount = Math.max(0, Number(data?.unresolvedCityCount || 0));
 
         if (!cancelled) {
-          setPendingCityGeocodes(unresolvedCityCount);
           setNetworkAlumni(Math.max(0, Number(data?.totalAlumni || 0)));
 
           if (list.length === 0 && citiesRef.current.length === 0) {
@@ -754,7 +748,6 @@ export default function LocationMap() {
         if (!cancelled && citiesRef.current.length === 0) {
           setCities([]);
           citiesRef.current = [];
-          setPendingCityGeocodes(0);
           if (loadedRef.current) renderMarkers([]);
         }
       } finally {
