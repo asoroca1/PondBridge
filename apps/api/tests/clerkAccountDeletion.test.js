@@ -1,4 +1,7 @@
 import { jest } from "@jest/globals";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   clerkAccountDeletionDecision,
   deleteClerkAccountForTenantUser
@@ -77,5 +80,18 @@ describe("Clerk account deletion policy", () => {
       status: "skipped",
       reason: "remaining_network_memberships"
     });
+  });
+
+  test("routes a removed member in People through full account cleanup", async () => {
+    const testDir = path.dirname(fileURLToPath(import.meta.url));
+    const adminSource = await fs.readFile(path.resolve(testDir, "../src/routes/admin.js"), "utf8");
+    const purgeRoute = adminSource.slice(
+      adminSource.indexOf('router.delete("/growth/people/:email/purge"'),
+      adminSource.indexOf('router.get("/invites"')
+    );
+
+    expect(purgeRoute).toContain("if (joinedUser)");
+    expect(purgeRoute).toContain("removedMemberSummary = await deleteMemberFromTenant");
+    expect(purgeRoute).toContain('clerkUserId: joinedUser.clerkUserId || ""');
   });
 });

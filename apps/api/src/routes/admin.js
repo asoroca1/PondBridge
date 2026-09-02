@@ -2218,14 +2218,14 @@ async function deleteMemberFromTenant({
     let changed = false;
     const nextMembers = originalMembers
       .filter((member) => {
-        const keep = String(member?.profileId || "") !== safeProfileId;
+        const keep = !safeProfileId || String(member?.profileId || "") !== safeProfileId;
         if (!keep) changed = true;
         return keep;
       })
       .map((member) => {
         const relationships = asArray(member?.relationships);
         const nextRelationships = relationships.filter(
-          (relationship) => String(relationship?.toProfileId || "") !== safeProfileId
+          (relationship) => !safeProfileId || String(relationship?.toProfileId || "") !== safeProfileId
         );
         if (nextRelationships.length !== relationships.length) changed = true;
         return {
@@ -2326,9 +2326,13 @@ async function deleteMemberFromTenant({
     summary.resumeParseResultsDeleted += resumeParseCount;
   }
 
-  // 9) Delete profile + tenant membership row.
-  await ProfileModel.delete(safeProfileId);
-  summary.profileDeleted = 1;
+  // 9) Delete profile + tenant membership row. A legacy removed account can
+  // survive without its profile, so the People purge path may intentionally
+  // call this cleanup with no profile id.
+  if (safeProfileId) {
+    await ProfileModel.delete(safeProfileId);
+    summary.profileDeleted = 1;
+  }
   const identityCleanup = await removeTenantMembershipIdentityLink({
     tenantId,
     legacyUserId: safeUserId,
@@ -7334,10 +7338,9 @@ router.patch("/growth/contacts/:contactId", async (req, res, next) => {
 });
 
 /**
- * Erases someone who never became a member: their contact row, every invitation
- * sent to them, and any pending access request. This is deliberate and final,
- * so it refuses anyone who has actually joined -- deleting a real account goes
- * through /members/:profileId/hard-delete, which also cleans up their content.
+ * Erases a pre-member person's contact artifacts. Removed members can surface
+ * here as prospects after losing access; those rows must go through the full
+ * member cleanup so their local user and Clerk account are deleted too.
  */
 router.delete("/growth/people/:email/purge", async (req, res, next) => {
   try {
@@ -7367,30 +7370,50 @@ router.delete("/growth/people/:email/purge", async (req, res, next) => {
       AccessRequestModel.find(req.tenant._id, { email })
     ]);
 
-    if (!contacts.length && !invites.length && !requests.length) {
+    if (!joinedUser && !contacts.length && !invites.length && !requests.length) {
       return res.status(404).json({
         error: { code: "PERSON_NOT_FOUND", message: "There is nothing left to delete for this person." }
       });
     }
 
-    for (const contact of contacts) await AlumniContactModel.delete(contact._id);
-    for (const invite of invites) await InviteModel.delete(invite._id);
-    for (const request of requests) await AccessRequestModel.delete(request._id);
+    let removedMemberSummary = null;
+    if (joinedUser) {
+      const joinedUserId = toObjectIdString(joinedUser._id);
+      const removedProfile = await ProfileModel.findOne(req.tenant._id, {
+        userId: joinedUserId
+      });
+      removedMemberSummary = await deleteMemberFromTenant({
+        tenantId: req.tenant._id,
+        userId: joinedUserId,
+        profileId: toObjectIdString(removedProfile?._id),
+        email,
+        clerkUserId: joinedUser.clerkUserId || ""
+      });
+    } else {
+      for (const contact of contacts) await AlumniContactModel.delete(contact._id);
+      for (const invite of invites) await InviteModel.delete(invite._id);
+      for (const request of requests) await AccessRequestModel.delete(request._id);
+    }
 
     await writeAdminAudit(req, "admin_person_purged", {
       email,
       contactCount: contacts.length,
       inviteCount: invites.length,
-      requestCount: requests.length
+      requestCount: requests.length,
+      removedMemberUserId: joinedUser ? toObjectIdString(joinedUser._id) : "",
+      clerkAccount: removedMemberSummary?.clerkAccount || null
     });
     clearAdminReadCaches(req.tenant._id);
 
     return res.json({
       ok: true,
       deleted: {
-        contacts: contacts.length,
-        invites: invites.length,
-        requests: requests.length
+        contacts: removedMemberSummary?.alumniContactsDeleted ?? contacts.length,
+        invites: removedMemberSummary?.invitesDeleted ?? invites.length,
+        requests: removedMemberSummary?.accessRequestsDeleted ?? requests.length,
+        profile: removedMemberSummary?.profileDeleted || 0,
+        user: removedMemberSummary?.userDeleted || 0,
+        clerkAccount: removedMemberSummary?.clerkAccount || null
       }
     });
   } catch (error) {
