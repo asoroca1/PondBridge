@@ -31,6 +31,7 @@ export { EmailPreferenceModel } from "./EmailPreferenceModel.js";
 export { IdentityModel } from "./IdentityModel.js";
 export { TenantMembershipModel } from "./TenantMembershipModel.js";
 export { MemberBlockModel } from "./MemberBlockModel.js";
+export { MemberAccessTierModel } from "./MemberAccessTierModel.js";
 export { ContentReportModel } from "./ContentReportModel.js";
 export { ResumeParseResultModel } from "./ResumeParseResultModel.js";
 export { CityGeoModel } from "./CityGeoModel.js";

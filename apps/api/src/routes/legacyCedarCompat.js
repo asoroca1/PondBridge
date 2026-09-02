@@ -68,8 +68,14 @@ import {
 import {
   assertConversationDirectContactAllowed,
   assertDirectContactAllowed,
-  getMutuallyBlockedUserIds
 } from "../services/memberSafety.js";
+import {
+  assertConversationTierContactAllowed,
+  assertTierContactAllowed,
+  getHiddenUserIds,
+  hiddenUserIdSetFor,
+  resolveViewerModules
+} from "../services/memberTiers.js";
 import {
   MESSAGE_ATTACHMENT_MIME_TYPES,
   MAX_MESSAGE_ATTACHMENT_BYTES,
@@ -684,15 +690,17 @@ async function runGeocodeWorker() {
   }
 }
 
-async function aggregateCityCounts(tenantId) {
+async function aggregateCityCounts(tenantId, { hiddenUserIds = null } = {}) {
   const rows = await ProfileModel.find(
     tenantId,
     { cityState: { $ne: "" }, ...ACTIVE_ALUMNI_FILTER },
-    { select: ["cityState"] }
+    { select: ["cityState", "userId"] }
   );
 
+  const hidden = hiddenUserIds instanceof Set ? hiddenUserIds : null;
   const byKey = new Map();
   for (const row of rows) {
+    if (hidden?.has(String(row?.userId || ""))) continue;
     const parsed = parseCityState(row?.cityState || "");
     const city = norm(parsed.city);
     const state = norm(parsed.state);
@@ -709,6 +717,17 @@ async function aggregateCityCounts(tenantId) {
   }
 
   return [...byKey.values()];
+}
+
+/**
+ * The alumni total shown beside the map, minus anyone the viewer's tier hides.
+ * Kept next to aggregateCityCounts so the two figures can never disagree.
+ */
+async function aggregateVisibleAlumniCount(tenantId, hiddenUserIds) {
+  const rows = await ProfileModel.find(tenantId, { ...ACTIVE_ALUMNI_FILTER }, {
+    select: ["userId"]
+  });
+  return rows.filter((row) => !hiddenUserIds.has(String(row?.userId || ""))).length;
 }
 
 function getTenantPeopleCache(tenantId) {
@@ -798,9 +817,9 @@ function mapCityPerson(profile) {
  * Blocking is between two people, so it cannot be baked into the shared
  * per-city cache — it is applied on the way out, per viewer.
  */
-function withoutBlockedPeople(people = [], blockedUserIds = new Set()) {
+function withoutBlockedPeople(people = [], hiddenUserIds = new Set()) {
   return (Array.isArray(people) ? people : [])
-    .filter((person) => !blockedUserIds.has(String(person?.userId || "")))
+    .filter((person) => !hiddenUserIds.has(String(person?.userId || "")))
     .map(({ userId: _userId, ...person }) => person);
 }
 
@@ -1180,9 +1199,17 @@ function activityToClient(item = {}) {
   };
 }
 
-function photoToClient(photo = {}, currentUserId = "") {
-  const likes = Array.isArray(photo.likes) ? photo.likes : [];
-  const comments = Array.isArray(photo.comments) ? photo.comments : [];
+function photoToClient(photo = {}, currentUserId = "", hiddenUserIds = null) {
+  // Likes and comment counts are the quiet leak here: a viewer who cannot see a
+  // member should not be able to infer them from a tally either.
+  const allLikes = Array.isArray(photo.likes) ? photo.likes : [];
+  const allComments = Array.isArray(photo.comments) ? photo.comments : [];
+  const likes = hiddenUserIds
+    ? allLikes.filter((id) => !hiddenUserIds.has(String(id || "")))
+    : allLikes;
+  const comments = hiddenUserIds
+    ? allComments.filter((comment) => !hiddenUserIds.has(String(comment?.authorId || "")))
+    : allComments;
   const ownerId = String(photo.ownerId || photo.userId || "");
   return {
     _id: String(photo._id),
@@ -1323,9 +1350,10 @@ function conversationToClient(conversation = {}, userId = "") {
   };
 }
 
-function forumToClient(forum = {}) {
+function forumToClient(forum = {}, hiddenUserIds = null) {
   const forumId = normalizeEntityId(forum?._id || forum?.id);
   if (!forumId) return null;
+  const visible = (id) => !hiddenUserIds || !hiddenUserIds.has(normalizeEntityId(id));
   return {
     _id: forumId,
     id: forumId,
@@ -1333,10 +1361,10 @@ function forumToClient(forum = {}) {
     creatorId: normalizeEntityId(forum.creatorId || forum.createdBy || ""),
     createdBy: normalizeEntityId(forum.createdBy || forum.creatorId || ""),
     memberIds: Array.isArray(forum.memberIds)
-      ? forum.memberIds.map((id) => normalizeEntityId(id)).filter(Boolean)
+      ? forum.memberIds.map((id) => normalizeEntityId(id)).filter(Boolean).filter(visible)
       : [],
     moderators: Array.isArray(forum.moderators)
-      ? forum.moderators.map((id) => normalizeEntityId(id)).filter(Boolean)
+      ? forum.moderators.map((id) => normalizeEntityId(id)).filter(Boolean).filter(visible)
       : [],
     postsCount: Number(forum.postsCount || 0),
     lastActivityAt: forum.lastActivityAt ? new Date(forum.lastActivityAt).toISOString() : null,
@@ -1570,13 +1598,16 @@ router.get("/me", async (req, res) => {
   if (!profile) {
     return res.status(404).json({ error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" } });
   }
-  return res.json(
-    profileToLegacy(profile, {
+  return res.json({
+    ...profileToLegacy(profile, {
       identity: req.identity || {},
       fallbackEmail: user?.email || "",
       viewer: req.user
-    })
-  );
+    }),
+    // The module set this particular member gets. Identical to the camp's own
+    // module list unless tiering is on, so the client can merge it blindly.
+    viewerModules: resolveViewerModules(req.tenant, req.tierContext, req.viewerTierRank)
+  });
 });
 
 router.put("/me", async (req, res) => {
@@ -1845,8 +1876,8 @@ router.get("/suggestions", async (req, res) => {
     return res.status(404).json({ items: [], error: "Target profile not found" });
   }
 
-  const blockedUserIds = new Set(
-    await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
+  const hiddenUserIds = new Set(
+    await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })
   );
 
   // `socials` carries the camper and staff stints the scorer reads for camp-era
@@ -1859,7 +1890,7 @@ router.get("/suggestions", async (req, res) => {
     limit: SUGGESTION_CANDIDATE_LIMIT
   });
   const visibleCandidates = candidates.filter(
-    (candidate) => !blockedUserIds.has(String(candidate?.userId || ""))
+    (candidate) => !hiddenUserIds.has(String(candidate?.userId || ""))
   );
   // Past this point the pool was cut off, so some members cannot be suggested.
   // Reported rather than left silent.
@@ -1966,7 +1997,16 @@ function clampActivityLimit(raw = 50) {
   return Math.min(Math.max(Number(raw || 50), 1), 200);
 }
 
-async function readActivityPayload(tenantId = "", { limit = 50 } = {}) {
+/**
+ * The set of user ids this request must not surface, or null when the camp has
+ * no tiering and nobody is blocked. Null rather than an empty set so callers can
+ * skip filtering entirely on the common path.
+ */
+async function hiddenSetFor(req) {
+  return hiddenUserIdSetFor(req);
+}
+
+async function readActivityPayload(tenantId = "", { limit = 50, hiddenUserIds = null } = {}) {
   const resolvedLimit = clampActivityLimit(limit);
   // Membership removal is an access boundary, so activity is resolved against
   // current users for every request instead of serving a stale member snapshot.
@@ -1983,16 +2023,18 @@ async function readActivityPayload(tenantId = "", { limit = 50 } = {}) {
       )
     : [];
   return filterActivityItemsForActiveUsers(rows, users)
+    .filter((row) => !hiddenUserIds?.has(String(row?.actorUserId || "")))
     .slice(0, resolvedLimit)
     .map((row) => activityToClient(row));
 }
 
 router.get("/home/bootstrap", async (req, res) => {
   const activityLimit = clampActivityLimit(req.query.activityLimit || req.query.limit || 50);
+  const hiddenUserIds = await hiddenSetFor(req);
   const [stats, locations, activity] = await Promise.all([
     readHomeStatsPayload(req.tenant._id),
     readLocationStatsPayload(req.tenant._id),
-    readActivityPayload(req.tenant._id, { limit: activityLimit })
+    readActivityPayload(req.tenant._id, { limit: activityLimit, hiddenUserIds })
   ]);
 
   res.set("Cache-Control", ACTIVITY_CACHE_CONTROL);
@@ -2023,7 +2065,8 @@ router.get("/stats/locations", async (req, res) => {
 
 router.get("/activity", async (req, res) => {
   const limit = clampActivityLimit(req.query.limit || 50);
-  const payload = await readActivityPayload(req.tenant._id, { limit });
+  const hiddenUserIds = await hiddenSetFor(req);
+  const payload = await readActivityPayload(req.tenant._id, { limit, hiddenUserIds });
   res.set("Cache-Control", ACTIVITY_CACHE_CONTROL);
   res.set("Vary", "Authorization");
   return res.json(payload);
@@ -2147,7 +2190,11 @@ router.get("/photos", async (req, res) => {
     filter.ownerId = ownerId;
   }
 
-  const rows = await PhotoModel.find(req.tenant._id, filter);
+  const hiddenUserIds = await hiddenSetFor(req);
+  const allRows = await PhotoModel.find(req.tenant._id, filter);
+  const rows = hiddenUserIds
+    ? allRows.filter((row) => !hiddenUserIds.has(String(row?.ownerId || row?.userId || "")))
+    : allRows;
   let ordered = rows;
   if (sort === "old") {
     ordered = rows.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
@@ -2161,7 +2208,7 @@ router.get("/photos", async (req, res) => {
     ordered = rows.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }
 
-  const sliced = ordered.slice(0, limit).map((row) => photoToClient(row, req.user.id));
+  const sliced = ordered.slice(0, limit).map((row) => photoToClient(row, req.user.id, hiddenUserIds));
   const payload = {
     items: sliced,
     nextCursor: null,
@@ -2217,8 +2264,16 @@ router.get("/photos/:id/comments", async (req, res) => {
   const photo = await PhotoModel.findOne(req.tenant._id, { _id: id });
   if (!photo) return res.status(404).json({ items: [], nextCursor: null });
 
+  const hiddenUserIds = await hiddenSetFor(req);
+  // A photo whose owner is out of reach reads as missing, the same way a
+  // blocked member's photo already does.
+  if (hiddenUserIds?.has(String(photo.ownerId || photo.userId || ""))) {
+    return res.status(404).json({ items: [], nextCursor: null });
+  }
+
   const orderedComments = (photo.comments || [])
     .slice()
+    .filter((comment) => !hiddenUserIds?.has(String(comment?.authorId || "")))
     .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
 
   const authorIds = [...new Set(
@@ -2368,6 +2423,7 @@ router.post("/conversations/dm", async (req, res) => {
   }
 
   await assertDirectContactAllowed(req.tenant._id, meId, otherId);
+  await assertTierContactAllowed(req.tenant, meId, otherId, { user: req.user });
 
   const pair = [String(meId), String(otherId)].sort();
   let convo = await ConversationModel.findDm(req.tenant._id, pair);
@@ -2429,7 +2485,10 @@ router.post("/conversations/group", async (req, res) => {
   await Promise.all(
     unique
       .filter((userId) => String(userId) !== String(meId))
-      .map((userId) => assertDirectContactAllowed(req.tenant._id, meId, userId))
+      .flatMap((userId) => [
+        assertDirectContactAllowed(req.tenant._id, meId, userId),
+        assertTierContactAllowed(req.tenant, meId, userId, { user: req.user })
+      ])
   );
 
   const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 100);
@@ -2457,16 +2516,16 @@ router.post("/conversations/group", async (req, res) => {
 router.get("/conversations", async (req, res) => {
   const meId = asObjectId(req.user.id);
   if (!meId) return res.json({ items: [] });
-  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
-  const blockedSet = new Set(blockedUserIds);
+  const hiddenSet = new Set(hiddenUserIds);
   const cacheKey = tenantReadCacheKey(
     "conversations-list",
     req.tenant?._id,
     [
       String(req.user?.id || ""),
-      blockedUserIds.join(","),
+      hiddenUserIds.join(","),
       String(req.originalUrl || req.url || "")
     ].join(":")
   );
@@ -2481,7 +2540,7 @@ router.get("/conversations", async (req, res) => {
   const contactChecks = items.filter((item) => {
     if (String(item?.type || "") !== "dm") return true;
     return !(item?.participantIds || []).some(
-      (participantId) => blockedSet.has(String(participantId || ""))
+      (participantId) => hiddenSet.has(String(participantId || ""))
     );
   });
   const participantUserIds = [
@@ -2553,6 +2612,7 @@ router.get("/conversations/:id", async (req, res) => {
   }
 
   await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
+  await assertConversationTierContactAllowed(req.tenant, convo, req.user.id, { user: req.user });
 
   const payload = conversationToClient(convo, req.user.id);
   if (!payload) {
@@ -2640,6 +2700,7 @@ router.post("/conversations/:id/members", async (req, res) => {
   }
 
   await assertDirectContactAllowed(req.tenant._id, req.user.id, targetId);
+  await assertTierContactAllowed(req.tenant, req.user.id, targetId, { user: req.user });
 
   const alreadyInGroup = (convo.participantIds || []).some((entry) => String(entry) === String(targetId));
   if (!alreadyInGroup) {
@@ -2740,6 +2801,7 @@ router.get("/conversations/:id/messages", async (req, res) => {
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
   await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
+  await assertConversationTierContactAllowed(req.tenant, convo, req.user.id, { user: req.user });
 
   const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 100);
   const cacheKey = tenantReadCacheKey(
@@ -2777,6 +2839,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
   await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
+  await assertConversationTierContactAllowed(req.tenant, convo, req.user.id, { user: req.user });
 
   const kind = normalizeMessageKind(req.body?.kind);
   const text = sanitizeText(String(req.body?.text || "").trim());
@@ -2891,6 +2954,7 @@ router.get("/conversations/:id/attachments/object", async (req, res, next) => {
       });
     }
     await assertConversationDirectContactAllowed(req.tenant._id, conversation, req.user.id);
+    await assertConversationTierContactAllowed(req.tenant, conversation, req.user.id, { user: req.user });
     const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/chat/${id.toLowerCase()}/`;
     if (!key.toLowerCase().startsWith(expectedPrefix)) {
       return res.status(403).json({
@@ -3021,7 +3085,16 @@ router.get("/forums", async (req, res) => {
     items = await ForumModel.find(req.tenant._id, filter, { sort: { name: 1 }, limit: 200 });
   }
 
-  const payload = { items: items.map((item) => forumToClient(item)).filter(Boolean) };
+  const hiddenUserIds = await hiddenSetFor(req);
+  // A forum inherits its creator's tier, the same rule the rest of the content
+  // follows. Membership is not enough to reveal one: a member list can outlive
+  // a tier change.
+  const visibleItems = hiddenUserIds
+    ? items.filter((item) => !hiddenUserIds.has(String(item?.creatorId || item?.createdBy || "")))
+    : items;
+  const payload = {
+    items: visibleItems.map((item) => forumToClient(item, hiddenUserIds)).filter(Boolean)
+  };
   forumsListResponseCache.set(cacheKey, payload);
   res.set("Cache-Control", FORUMS_CACHE_CONTROL);
   res.set("Vary", "Authorization");
@@ -3047,7 +3120,11 @@ router.get("/forums/:id", async (req, res) => {
 
   const forum = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!forum) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
-  const payload = forumToClient(forum);
+  const hiddenUserIds = await hiddenSetFor(req);
+  if (hiddenUserIds?.has(String(forum?.creatorId || forum?.createdBy || ""))) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+  }
+  const payload = forumToClient(forum, hiddenUserIds);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
   forumDetailResponseCache.set(cacheKey, payload);
   res.set("Cache-Control", FORUMS_CACHE_CONTROL);
@@ -3064,10 +3141,15 @@ router.post("/forums/:id/join", async (req, res) => {
   const existing = await ForumModel.findOne(req.tenant._id, { _id: id });
   if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
 
+  const hiddenUserIds = await hiddenSetFor(req);
+  if (hiddenUserIds?.has(String(existing?.creatorId || existing?.createdBy || ""))) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+  }
+
   await ForumModel.addMember(req.tenant._id, existing._id, req.user.id);
   const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   clearForumCaches();
-  const payload = forumToClient(forum);
+  const payload = forumToClient(forum, hiddenUserIds);
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
   return res.json(payload);
 });
@@ -3085,7 +3167,7 @@ router.post("/forums/:id/leave", async (req, res) => {
   const forum = await ForumModel.updateScoped(req.tenant._id, existing._id, { lastActivityAt: new Date() });
   evictUserFromRealtimeRoom(req.user.id, `forum:${id}`);
   clearForumCaches();
-  const payload = forumToClient(forum);
+  const payload = forumToClient(forum, await hiddenSetFor(req));
   if (!payload) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
   return res.json(payload);
 });
@@ -3115,8 +3197,18 @@ router.get("/forums/:id/posts", async (req, res) => {
   const cursor = req.query.cursor ? new Date(req.query.cursor) : null;
   if (cursor && Number.isFinite(cursor.getTime())) where.createdAt = { $lt: cursor };
 
+  const hiddenUserIds = await hiddenSetFor(req);
+  if (hiddenUserIds?.has(String(forum?.creatorId || forum?.createdBy || ""))) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+  }
+
   const docs = await ForumPostModel.find(req.tenant._id, where, { sort: { createdAt: -1 }, limit });
-  const items = docs.slice().reverse().map((post) => forumPostToClient(post)).filter(Boolean);
+  const items = docs
+    .slice()
+    .reverse()
+    .filter((post) => !hiddenUserIds?.has(String(post?.authorId || "")))
+    .map((post) => forumPostToClient(post))
+    .filter(Boolean);
   const nextCursor = docs.length ? new Date(docs[docs.length - 1].createdAt).toISOString() : null;
   const payload = { items, nextCursor };
   forumPostsResponseCache.set(cacheKey, payload);
@@ -3590,7 +3682,13 @@ router.delete("/newsletters/:id", async (req, res) => {
 router.get("/map/cities", async (req, res) => {
   res.set("Cache-Control", MAP_CITIES_RESPONSE_CACHE_CONTROL);
   res.set("Vary", "Authorization");
-  const tenantId = String(req.tenant._id);
+  // Tiering makes this response viewer-dependent, so the cache key has to carry
+  // the viewer's rank; without it the first caller's counts leak downward.
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, { user: req.user });
+  const hiddenSet = hiddenUserIds.length ? new Set(hiddenUserIds.map(String)) : null;
+  const tenantId = hiddenSet
+    ? `${String(req.tenant._id)}:t${req.viewerTierRank ?? "n"}:${hiddenUserIds.length}`
+    : String(req.tenant._id);
   const now = Date.now();
   const cached = citiesCacheByTenant.get(tenantId);
   if (cached?.data && now < Number(cached.expiresAt || 0)) {
@@ -3600,8 +3698,10 @@ router.get("/map/cities", async (req, res) => {
   if (!cached?.inflight) {
     const inflight = (async () => {
       const [counts, totalAlumni] = await Promise.all([
-        aggregateCityCounts(req.tenant._id),
-        countActiveAlumni(req.tenant._id)
+        aggregateCityCounts(req.tenant._id, { hiddenUserIds: hiddenSet }),
+        hiddenSet
+          ? aggregateVisibleAlumniCount(req.tenant._id, hiddenSet)
+          : countActiveAlumni(req.tenant._id)
       ]);
       if (!counts.length) {
         return {
@@ -3766,11 +3866,11 @@ router.get("/map/city/:key", async (req, res) => {
     });
   }
 
-  const blockedUserIds = new Set(
-    await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
+  const hiddenUserIds = new Set(
+    await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })
   );
 
-  return res.json(withoutBlockedPeople(output, blockedUserIds));
+  return res.json(withoutBlockedPeople(output, hiddenUserIds));
 });
 
 export default router;

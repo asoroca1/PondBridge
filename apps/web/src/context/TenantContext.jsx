@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { normalizeHeroImagePosition, normalizeHeroImageSize, resolveTenantModules } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
+import { useOptionalAuthToken } from "./AuthContext.jsx";
 import { NEUTRAL_RAMP, brandNeutral, readableTextColorOnBrand } from "../lib/colorUtils.js";
 
 const TenantContext = createContext(null);
@@ -271,6 +272,11 @@ function preloadTenantHero(tenant = null) {
 
 export function TenantProvider({ slug = "", children }) {
   const [state, setState] = useState({ loading: true, error: "", tenant: null });
+  // The public tenant config is unauthenticated and cached, so it cannot know
+  // who is asking. When a camp runs tiered access the member's own module set
+  // has to come from an authenticated response instead, or the navigation
+  // offers pages the API will refuse.
+  const [viewerModules, setViewerModules] = useState(null);
 
   // `bypassCache` is for the moments where a stale tenant read changes what the
   // app does rather than just how it looks - launch being the big one, since the
@@ -357,6 +363,31 @@ export function TenantProvider({ slug = "", children }) {
     };
   }, [slug]);
 
+  const token = useOptionalAuthToken();
+  const tenantSlug = String(state.tenant?.slug || slug || "").trim().toLowerCase();
+
+  useEffect(() => {
+    if (!token || !tenantSlug) {
+      setViewerModules(null);
+      return undefined;
+    }
+    let active = true;
+    requestJson(`/api/t/${tenantSlug}/me`, { token })
+      .then((response) => {
+        if (!active) return;
+        const modules = response?.viewerModules;
+        setViewerModules(modules && typeof modules === "object" ? modules : null);
+      })
+      .catch(() => {
+        // A member who cannot load their own profile keeps the public module
+        // set; the API still refuses anything their tier cannot reach.
+        if (active) setViewerModules(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantSlug, token]);
+
   // Launch is the one transition the app navigates on, and the redirect it
   // triggers reloads the page before any refetch can land. Writing "live"
   // through to the payload cache means that reload paints a launched tenant
@@ -381,15 +412,30 @@ export function TenantProvider({ slug = "", children }) {
   }
 
   const value = useMemo(
-    () => ({
-      slug: String(state.tenant?.slug || slug || ""),
-      tenant: state.tenant,
-      loading: state.loading,
-      error: state.error,
-      refreshTenant: fetchTenant,
-      markTenantLive
-    }),
-    [slug, state]
+    () => {
+      const tenant = state.tenant;
+      // Merge on top of the public answer rather than replacing it, so a camp
+      // without tiering (or a member whose /me has not landed yet) keeps
+      // exactly the modules it has always had.
+      const merged =
+        tenant && viewerModules
+          ? {
+              ...tenant,
+              modules: { ...tenant.modules, ...viewerModules },
+              config: { ...tenant.config, modules: { ...tenant.config?.modules, ...viewerModules } }
+            }
+          : tenant;
+
+      return {
+        slug: String(state.tenant?.slug || slug || ""),
+        tenant: merged,
+        loading: state.loading,
+        error: state.error,
+        refreshTenant: fetchTenant,
+        markTenantLive
+      };
+    },
+    [slug, state, viewerModules]
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;

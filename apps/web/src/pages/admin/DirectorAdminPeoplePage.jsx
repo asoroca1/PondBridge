@@ -13,9 +13,10 @@ import InviteReviewDialog from "./people/InviteReviewDialog.jsx";
 import usePeopleDirectory from "./people/usePeopleDirectory.js";
 import usePersonActions from "./people/usePersonActions.js";
 import { STAGES, stageMeta } from "./people/peopleStages.js";
+import TiersWorkspace from "./tiers/TiersWorkspace.jsx";
 import "./director-admin-people.css";
 
-const VALID_VIEWS = new Set([...STAGES.map((stage) => stage.key), "add"]);
+const VALID_VIEWS = new Set([...STAGES.map((stage) => stage.key), "add", "tiers"]);
 
 export default function DirectorAdminPeoplePage() {
   const navigate = useNavigate();
@@ -23,9 +24,11 @@ export default function DirectorAdminPeoplePage() {
   const { slug, request, download } = useAdminApi();
   const { tenant } = useTenant();
   const networkName = resolveNetworkDisplayName(tenant);
+  const tieredAccessEnabled =
+    (tenant?.config?.modules?.tieredAccess ?? tenant?.modules?.tieredAccess) === true;
 
   const activeView = VALID_VIEWS.has(view) ? view : "all";
-  const stage = activeView === "add" ? "all" : activeView;
+  const stage = activeView === "add" || activeView === "tiers" ? "all" : activeView;
 
   const directory = usePeopleDirectory({ request, stage });
   const actions = usePersonActions({ request, reload: directory.reload });
@@ -58,6 +61,9 @@ export default function DirectorAdminPeoplePage() {
   }, [navigate, slug]);
 
   const body = useMemo(() => {
+    if (activeView === "tiers") {
+      return <TiersWorkspace />;
+    }
     if (activeView === "add") {
       return (
         <PeopleAddView
@@ -120,7 +126,24 @@ export default function DirectorAdminPeoplePage() {
             );
           })}
         </ul>
-        <p className="pb-people-rail-note">{stageMeta(stage).blurb}</p>
+        {tieredAccessEnabled ? (
+          <ul className="pb-people-rail-extra">
+            <li>
+              <NavLink
+                to={`/t/${slug}/admin/people/tiers`}
+                className={activeView === "tiers" ? "is-active" : ""}
+                title="Sort people into numbered tiers and choose what each one can use"
+              >
+                <span>Tiers</span>
+              </NavLink>
+            </li>
+          </ul>
+        ) : null}
+        <p className="pb-people-rail-note">
+          {activeView === "tiers"
+            ? "Numbered tiers decide who each member can see, and which features they get."
+            : stageMeta(stage).blurb}
+        </p>
       </nav>
 
       <div className="pb-people-surface">

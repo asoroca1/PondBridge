@@ -1105,3 +1105,12 @@
   color: var(--neutral-500);
   font-size: 0.8rem;
 }
+
+/* Tiers is not a stage in the funnel, so it sits below the stage list behind a
+   divider rather than pretending to be another step. */
+.pb-people-rail-extra {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--card-border);
+}

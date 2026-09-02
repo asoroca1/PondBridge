@@ -16,10 +16,10 @@ import {
 } from "../utils/location.js";
 import {
   findMemberBlockBetween,
-  getMutuallyBlockedUserIds,
   isSafetyModerator
 } from "../services/memberSafety.js";
 import { canAccessMemberProfile, isRemovedProfile } from "../services/memberVisibility.js";
+import { getHiddenUserIds, isUserHiddenByTier } from "../services/memberTiers.js";
 
 const router = Router({ mergeParams: true });
 const PROFILE_LIST_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
@@ -244,14 +244,14 @@ router.get("/", requireTenantModule("directory"), async (req, res) => {
   const view = String(req.query.view || "summary").trim().toLowerCase();
   const includeFull = view === "full";
   const limit = Math.min(Math.max(Number(req.query.limit || 30) || 30, 1), 100);
-  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
-  const blockedUserIdSet = new Set(blockedUserIds);
+  const hiddenUserIdSet = new Set(hiddenUserIds);
   const cacheKey = [
     String(req.tenant?._id || ""),
     String(req.user?.id || ""),
-    blockedUserIds.join(","),
+    hiddenUserIds.join(","),
     q,
     roleAtCamp,
     industry,
@@ -278,7 +278,7 @@ router.get("/", requireTenantModule("directory"), async (req, res) => {
   const visibleItems = items.filter(
     (profile) =>
       !isRemovedProfile(profile) &&
-      !blockedUserIdSet.has(String(profile?.userId || ""))
+      !hiddenUserIdSet.has(String(profile?.userId || ""))
   );
   const payload = {
     total: visibleItems.length,
@@ -317,7 +317,8 @@ router.get("/:profileId", requireTenantModule("directory"), async (req, res) => 
   if (
     !isSafetyModerator(req.user) &&
     profile?.userId &&
-    (await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId))
+    ((await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId)) ||
+      (await isUserHiddenByTier(req.tenant, req.user.id, profile.userId, { user: req.user })))
   ) {
     return res.status(404).json({
       error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }

@@ -4,6 +4,7 @@ import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { requireFeature } from "../middleware/requireFeature.js";
 import { FamilyTreeModel, RELATIONSHIP_TYPES, UserModel, ProfileModel } from "../db/models/index.js";
 import { sanitizeText } from "../utils/sanitize.js";
+import { hiddenProfileIdSetFor, hiddenUserIdSetFor } from "../services/memberTiers.js";
 
 const router = Router({ mergeParams: true });
 
@@ -99,8 +100,18 @@ function normalizeMembersPayload(body = {}) {
   }));
 }
 
-function serializeTreeForClient(tree, { reqUserId = "", currentUserProfileId = "", userRoles = [] } = {}) {
-  const membersSource = Array.isArray(tree?.members) ? tree.members : [];
+function serializeTreeForClient(
+  tree,
+  { reqUserId = "", currentUserProfileId = "", userRoles = [], hiddenProfileIds = null } = {}
+) {
+  const allMembers = Array.isArray(tree?.members) ? tree.members : [];
+  // Someone the viewer's tier hides drops out of the tree entirely, along with
+  // the relationship edges that pointed at them.
+  const membersSource = hiddenProfileIds
+    ? allMembers.filter(
+        (member) => !hiddenProfileIds.has(String(member?.profileId?._id || member?.profileId || member?.id || ""))
+      )
+    : allMembers;
   const members = membersSource
     .map((member) => {
       const profileObj = member?.profileId && typeof member.profileId === "object" ? member.profileId : null;
@@ -123,12 +134,15 @@ function serializeTreeForClient(tree, { reqUserId = "", currentUserProfileId = "
     })
     .filter((member) => isValidObjectId(member.profileId));
 
+  const visibleProfileIds = new Set(members.map((member) => member.profileId));
   const edges = members.flatMap((member) =>
-    (Array.isArray(member.relationships) ? member.relationships : []).map((rel) => ({
-      fromProfileId: member.profileId,
-      toProfileId: rel.toProfileId,
-      type: rel.type
-    }))
+    (Array.isArray(member.relationships) ? member.relationships : [])
+      .filter((rel) => visibleProfileIds.has(rel.toProfileId))
+      .map((rel) => ({
+        fromProfileId: member.profileId,
+        toProfileId: rel.toProfileId,
+        type: rel.type
+      }))
   );
 
   const isSuperAdmin = Array.isArray(userRoles) && userRoles.includes("super_admin");
@@ -167,12 +181,21 @@ router.get("/", async (req, res) => {
   }
 
   const trees = await FamilyTreeModel.find(req.tenant._id, filter, { sort: { name: 1 } });
+  // A tree inherits its creator's tier, and its member count is recomputed from
+  // the members the viewer is actually allowed to see.
+  const hiddenUserIds = await hiddenUserIdSetFor(req);
+  const hiddenProfileIds = await hiddenProfileIdSetFor(req);
+  const visibleTrees = hiddenUserIds
+    ? trees.filter((tree) => !hiddenUserIds.has(String(tree.createdByUserId || "")))
+    : trees;
 
   res.json({
-    items: trees.map((tree) => ({
+    items: visibleTrees.map((tree) => ({
       id: String(tree._id),
       name: tree.name,
-      memberCount: tree.members.length,
+      memberCount: (tree.members || []).filter(
+        (member) => !hiddenProfileIds?.has(String(member?.profileId || member?.id || ""))
+      ).length,
       createdByUserId: String(tree.createdByUserId)
     }))
   });
@@ -237,14 +260,24 @@ router.get("/:treeId", async (req, res) => {
     });
   }
 
+  const hiddenUserIds = await hiddenUserIdSetFor(req);
+  if (hiddenUserIds?.has(String(tree.createdByUserId || ""))) {
+    return res.status(404).json({
+      error: { code: "TREE_NOT_FOUND", message: "Family tree not found" }
+    });
+  }
+
   const currentUser = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   const serialized = serializeTreeForClient(tree, {
     reqUserId: req.user.id,
     currentUserProfileId: currentUser?.profileId,
-    userRoles: req.user.roles
+    userRoles: req.user.roles,
+    hiddenProfileIds: await hiddenProfileIdSetFor(req)
   });
 
-  res.json({ tree, ...serialized });
+  // `tree` is the raw document; it carries the members the serializer just
+  // filtered, so it must not be spread back into the response.
+  res.json({ ...serialized });
 });
 
 router.put("/:treeId", async (req, res) => {

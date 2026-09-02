@@ -6,6 +6,7 @@ import {
   GivingDonationModel,
   ProfileModel
 } from "../db/models/index.js";
+import { hiddenProfileIdSetFor } from "../services/memberTiers.js";
 import {
   buildGivingSummary,
   createGivingError,
@@ -215,9 +216,16 @@ router.get("/:causeId", async (req, res) => {
     )
   ]);
 
+  // The supporter list names people, so it follows the same visibility rule as
+  // the directory. Anonymous donations carry no profile id and are unaffected.
+  const hiddenProfileIds = await hiddenProfileIdSetFor(req);
+  const supporters = donations
+    .map(serializePublicDonation)
+    .filter((donation) => !hiddenProfileIds?.has(String(donation?.donorProfileId || "")));
+
   return res.json({
     item: serializeGivingCause(cause, { viewerUserId: req.user.id }),
-    recentSupporters: donations.map(serializePublicDonation),
+    recentSupporters: supporters,
     updates: updates.map(serializeGivingUpdate)
   });
 });

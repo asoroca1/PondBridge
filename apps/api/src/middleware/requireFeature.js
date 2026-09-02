@@ -1,5 +1,6 @@
 import { hasFeature, resolveTenantModules } from "@pondbridge/shared";
 import { resolveTenantFeatureTier } from "../services/billingState.js";
+import { tierCanUseModule } from "../services/memberTiers.js";
 
 const FEATURE_TO_MODULE = {
   familyTrees: "familyTrees",
@@ -42,15 +43,7 @@ export function requireTenantModule(moduleKey, { message = "" } = {}) {
     throw new Error("requireTenantModule requires a module key.");
   }
 
-  return function requireTenantModuleMiddleware(req, res, next) {
-    if (req.user?.roles?.includes("super_admin")) return next();
-
-    // Missing legacy settings remain enabled for existing camps. Shared
-    // dependency resolution also prevents Search/Related Profiles from
-    // bypassing a disabled Directory module.
-    const modules = resolveTenantModules(req.tenant?.modules || {});
-    if (modules[normalizedModuleKey] !== false) return next();
-
+  function moduleDisabled(res) {
     return res.status(403).json({
       error: {
         code: "MODULE_DISABLED",
@@ -58,5 +51,25 @@ export function requireTenantModule(moduleKey, { message = "" } = {}) {
         message: message || `This camp has disabled '${normalizedModuleKey}'.`
       }
     });
+  }
+
+  return function requireTenantModuleMiddleware(req, res, next) {
+    if (req.user?.roles?.includes("super_admin")) return next();
+
+    // Missing legacy settings remain enabled for existing camps. Shared
+    // dependency resolution also prevents Search/Related Profiles from
+    // bypassing a disabled Directory module.
+    const modules = resolveTenantModules(req.tenant?.modules || {});
+    if (modules[normalizedModuleKey] === false) return moduleDisabled(res);
+
+    // Every member-facing module already passes through here, which makes this
+    // the one place per-tier feature access has to be enforced. `req.tierContext`
+    // is only populated when a camp has tiering switched on, so a camp without
+    // it never reaches the check.
+    if (!tierCanUseModule(req.tierContext, req.viewerTierRank, normalizedModuleKey)) {
+      return moduleDisabled(res);
+    }
+
+    return next();
   };
 }
