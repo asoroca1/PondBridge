@@ -40,3 +40,13 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
 }
+
+/**
+ * The token, or an empty string when there is no auth provider above. Used by
+ * providers that sit at the edge of the tree and must not crash the app when
+ * they are mounted outside one.
+ */
+export function useOptionalAuthToken() {
+  const ctx = useContext(AuthContext);
+  return String(ctx?.token || "");
+}

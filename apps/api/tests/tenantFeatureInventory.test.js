@@ -32,7 +32,19 @@ describe("tenant feature inventory", () => {
   test("keeps the shared schema and onboarding catalog aligned", () => {
     expect(TENANT_MODULE_CATALOG.map((item) => item.key)).toEqual(Object.keys(DEFAULT_TENANT_MODULES));
     expect(Object.keys(DEFAULT_TENANT_MODULES)).toEqual(expect.arrayContaining(["directory", "events", "chat"]));
-    expect(Object.keys(DEFAULT_TENANT_MODULES)).toHaveLength(11);
+    expect(Object.keys(DEFAULT_TENANT_MODULES)).toHaveLength(12);
+  });
+
+  test("tiered access is the one module a camp has to opt into", () => {
+    expect(DEFAULT_TENANT_MODULES.tieredAccess).toBe(false);
+    expect(resolveTenantModules({}).tieredAccess).toBe(false);
+    expect(resolveTenantModules({ tieredAccess: true }).tieredAccess).toBe(true);
+
+    // Every other module keeps its "missing means on" default.
+    const defaultsOn = Object.entries(DEFAULT_TENANT_MODULES)
+      .filter(([key]) => key !== "tieredAccess")
+      .every(([, enabled]) => enabled === true);
+    expect(defaultsOn).toBe(true);
   });
 
   test("resolves directory dependencies without changing unrelated legacy defaults", () => {

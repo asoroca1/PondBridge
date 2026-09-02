@@ -20,10 +20,10 @@ import { createTtlCache } from "../utils/ttlCache.js";
 import { canViewProfileContact, filterProfileContactFields } from "../services/profilePrivacy.js";
 import {
   findMemberBlockBetween,
-  getMutuallyBlockedUserIds,
   isSafetyModerator
 } from "../services/memberSafety.js";
 import { canAccessMemberProfile, isRemovedProfile } from "../services/memberVisibility.js";
+import { getHiddenUserIds, isUserHiddenByTier } from "../services/memberTiers.js";
 
 const router = Router({ mergeParams: true });
 const SEARCH_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
@@ -504,7 +504,7 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     offset,
     fetchLimit
   } = parseSearchInput(query);
-  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+  const blockedUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
   const blockedUserIdSet = new Set(blockedUserIds);
@@ -787,7 +787,7 @@ router.get("/users", async (req, res) => {
 router.get("/names", async (req, res) => {
   const { q, cedarRoleTerms, roleAtCamp, industryTerms, industry, cityState } = parseSearchInput(req);
   const limit = clampLimit(req.query.limit, 10, 25);
-  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+  const blockedUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
   const blockedUserIdSet = new Set(blockedUserIds);
@@ -863,7 +863,8 @@ router.get("/user/:id", async (req, res) => {
   if (
     !isSafetyModerator(req.user) &&
     profile?.userId &&
-    (await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId))
+    ((await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId)) ||
+      (await isUserHiddenByTier(req.tenant, req.user.id, profile.userId, { user: req.user })))
   ) {
     return res.status(404).json({
       error: { code: "NOT_FOUND", message: "Profile not found" }

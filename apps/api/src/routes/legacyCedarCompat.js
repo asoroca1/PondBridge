@@ -68,8 +68,13 @@ import {
 import {
   assertConversationDirectContactAllowed,
   assertDirectContactAllowed,
-  getMutuallyBlockedUserIds
 } from "../services/memberSafety.js";
+import {
+  assertConversationTierContactAllowed,
+  assertTierContactAllowed,
+  getHiddenUserIds,
+  resolveViewerModules
+} from "../services/memberTiers.js";
 import {
   MESSAGE_ATTACHMENT_MIME_TYPES,
   MAX_MESSAGE_ATTACHMENT_BYTES,
@@ -684,15 +689,17 @@ async function runGeocodeWorker() {
   }
 }
 
-async function aggregateCityCounts(tenantId) {
+async function aggregateCityCounts(tenantId, { hiddenUserIds = null } = {}) {
   const rows = await ProfileModel.find(
     tenantId,
     { cityState: { $ne: "" }, ...ACTIVE_ALUMNI_FILTER },
-    { select: ["cityState"] }
+    { select: ["cityState", "userId"] }
   );
 
+  const hidden = hiddenUserIds instanceof Set ? hiddenUserIds : null;
   const byKey = new Map();
   for (const row of rows) {
+    if (hidden?.has(String(row?.userId || ""))) continue;
     const parsed = parseCityState(row?.cityState || "");
     const city = norm(parsed.city);
     const state = norm(parsed.state);
@@ -709,6 +716,17 @@ async function aggregateCityCounts(tenantId) {
   }
 
   return [...byKey.values()];
+}
+
+/**
+ * The alumni total shown beside the map, minus anyone the viewer's tier hides.
+ * Kept next to aggregateCityCounts so the two figures can never disagree.
+ */
+async function aggregateVisibleAlumniCount(tenantId, hiddenUserIds) {
+  const rows = await ProfileModel.find(tenantId, { ...ACTIVE_ALUMNI_FILTER }, {
+    select: ["userId"]
+  });
+  return rows.filter((row) => !hiddenUserIds.has(String(row?.userId || ""))).length;
 }
 
 function getTenantPeopleCache(tenantId) {
@@ -1570,13 +1588,16 @@ router.get("/me", async (req, res) => {
   if (!profile) {
     return res.status(404).json({ error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" } });
   }
-  return res.json(
-    profileToLegacy(profile, {
+  return res.json({
+    ...profileToLegacy(profile, {
       identity: req.identity || {},
       fallbackEmail: user?.email || "",
       viewer: req.user
-    })
-  );
+    }),
+    // The module set this particular member gets. Identical to the camp's own
+    // module list unless tiering is on, so the client can merge it blindly.
+    viewerModules: resolveViewerModules(req.tenant, req.tierContext, req.viewerTierRank)
+  });
 });
 
 router.put("/me", async (req, res) => {
@@ -1846,7 +1867,7 @@ router.get("/suggestions", async (req, res) => {
   }
 
   const blockedUserIds = new Set(
-    await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
+    await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })
   );
 
   // `socials` carries the camper and staff stints the scorer reads for camp-era
@@ -2368,6 +2389,7 @@ router.post("/conversations/dm", async (req, res) => {
   }
 
   await assertDirectContactAllowed(req.tenant._id, meId, otherId);
+  await assertTierContactAllowed(req.tenant, meId, otherId, { user: req.user });
 
   const pair = [String(meId), String(otherId)].sort();
   let convo = await ConversationModel.findDm(req.tenant._id, pair);
@@ -2429,7 +2451,10 @@ router.post("/conversations/group", async (req, res) => {
   await Promise.all(
     unique
       .filter((userId) => String(userId) !== String(meId))
-      .map((userId) => assertDirectContactAllowed(req.tenant._id, meId, userId))
+      .flatMap((userId) => [
+        assertDirectContactAllowed(req.tenant._id, meId, userId),
+        assertTierContactAllowed(req.tenant, meId, userId, { user: req.user })
+      ])
   );
 
   const name = sanitizeText(String(req.body?.name || "").trim()).slice(0, 100);
@@ -2457,7 +2482,7 @@ router.post("/conversations/group", async (req, res) => {
 router.get("/conversations", async (req, res) => {
   const meId = asObjectId(req.user.id);
   if (!meId) return res.json({ items: [] });
-  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
+  const blockedUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
   const blockedSet = new Set(blockedUserIds);
@@ -2553,6 +2578,7 @@ router.get("/conversations/:id", async (req, res) => {
   }
 
   await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
+  await assertConversationTierContactAllowed(req.tenant, convo, req.user.id, { user: req.user });
 
   const payload = conversationToClient(convo, req.user.id);
   if (!payload) {
@@ -2640,6 +2666,7 @@ router.post("/conversations/:id/members", async (req, res) => {
   }
 
   await assertDirectContactAllowed(req.tenant._id, req.user.id, targetId);
+  await assertTierContactAllowed(req.tenant, req.user.id, targetId, { user: req.user });
 
   const alreadyInGroup = (convo.participantIds || []).some((entry) => String(entry) === String(targetId));
   if (!alreadyInGroup) {
@@ -2740,6 +2767,7 @@ router.get("/conversations/:id/messages", async (req, res) => {
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
   await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
+  await assertConversationTierContactAllowed(req.tenant, convo, req.user.id, { user: req.user });
 
   const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 100);
   const cacheKey = tenantReadCacheKey(
@@ -2777,6 +2805,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
   const convo = await ConversationModel.findOne(req.tenant._id, { _id: id, participantIds: { $contains: [req.user.id] } });
   if (!convo) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
   await assertConversationDirectContactAllowed(req.tenant._id, convo, req.user.id);
+  await assertConversationTierContactAllowed(req.tenant, convo, req.user.id, { user: req.user });
 
   const kind = normalizeMessageKind(req.body?.kind);
   const text = sanitizeText(String(req.body?.text || "").trim());
@@ -2891,6 +2920,7 @@ router.get("/conversations/:id/attachments/object", async (req, res, next) => {
       });
     }
     await assertConversationDirectContactAllowed(req.tenant._id, conversation, req.user.id);
+    await assertConversationTierContactAllowed(req.tenant, conversation, req.user.id, { user: req.user });
     const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/chat/${id.toLowerCase()}/`;
     if (!key.toLowerCase().startsWith(expectedPrefix)) {
       return res.status(403).json({
@@ -3590,7 +3620,13 @@ router.delete("/newsletters/:id", async (req, res) => {
 router.get("/map/cities", async (req, res) => {
   res.set("Cache-Control", MAP_CITIES_RESPONSE_CACHE_CONTROL);
   res.set("Vary", "Authorization");
-  const tenantId = String(req.tenant._id);
+  // Tiering makes this response viewer-dependent, so the cache key has to carry
+  // the viewer's rank; without it the first caller's counts leak downward.
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, { user: req.user });
+  const hiddenSet = hiddenUserIds.length ? new Set(hiddenUserIds.map(String)) : null;
+  const tenantId = hiddenSet
+    ? `${String(req.tenant._id)}:t${req.viewerTierRank ?? "n"}:${hiddenUserIds.length}`
+    : String(req.tenant._id);
   const now = Date.now();
   const cached = citiesCacheByTenant.get(tenantId);
   if (cached?.data && now < Number(cached.expiresAt || 0)) {
@@ -3600,8 +3636,10 @@ router.get("/map/cities", async (req, res) => {
   if (!cached?.inflight) {
     const inflight = (async () => {
       const [counts, totalAlumni] = await Promise.all([
-        aggregateCityCounts(req.tenant._id),
-        countActiveAlumni(req.tenant._id)
+        aggregateCityCounts(req.tenant._id, { hiddenUserIds: hiddenSet }),
+        hiddenSet
+          ? aggregateVisibleAlumniCount(req.tenant._id, hiddenSet)
+          : countActiveAlumni(req.tenant._id)
       ]);
       if (!counts.length) {
         return {
@@ -3767,7 +3805,7 @@ router.get("/map/city/:key", async (req, res) => {
   }
 
   const blockedUserIds = new Set(
-    await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, { user: req.user })
+    await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })
   );
 
   return res.json(withoutBlockedPeople(output, blockedUserIds));

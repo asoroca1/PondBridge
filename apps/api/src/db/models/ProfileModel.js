@@ -24,6 +24,8 @@ const COLUMNS = {
   bio: "bio",
   status: "status",
   flaggedReason: "flagged_reason",
+  accessTierId: "access_tier_id",
+  accessTierRank: "access_tier_rank",
   createdAt: "created_at",
   updatedAt: "updated_at"
 };
@@ -49,7 +51,8 @@ const SEARCH_CANDIDATE_SELECT_SQL = [
   "avatar_url",
   "created_at",
   "updated_at",
-  "status"
+  "status",
+  "access_tier_rank"
 ].join(",");
 
 function clampLimit(value, fallback = 30, max = 100) {
@@ -308,6 +311,17 @@ async function fetchCandidateProfiles(tenantId, opts = {}, limit = 200) {
   if (opts.cityState) {
     query = query.ilike("city_state", `%${String(opts.cityState).trim()}%`);
   }
+  // A viewer at rank N sees rank N and every larger rank. Untagged profiles
+  // carry no rank, so they are only excluded when the camp parks untagged
+  // members above the viewer.
+  if (Number.isFinite(Number(opts.viewerTierRank))) {
+    const viewerRank = Number(opts.viewerTierRank);
+    const untaggedRank = Number(opts.untaggedTierRank);
+    query =
+      Number.isFinite(untaggedRank) && untaggedRank < viewerRank
+        ? query.gte("access_tier_rank", viewerRank)
+        : query.or(`access_tier_rank.gte.${viewerRank},access_tier_rank.is.null`);
+  }
 
   const { data, error } = await query;
   if (error) throw error;
@@ -321,7 +335,17 @@ async function runRpcSearch(tenantId, query = "", opts = {}, limit = 30) {
     p_role_at_camp: opts.roleAtCamp || null,
     p_industry: opts.industry || null,
     p_city_state: opts.cityState || null,
-    p_limit: limit
+    p_limit: limit,
+    // Only sent once a camp has switched tiering on, so an API release that
+    // lands before the migration keeps calling the original six-argument form.
+    ...(Number.isFinite(Number(opts.viewerTierRank))
+      ? {
+          p_viewer_tier_rank: Number(opts.viewerTierRank),
+          p_untagged_tier_rank: Number.isFinite(Number(opts.untaggedTierRank))
+            ? Number(opts.untaggedTierRank)
+            : null
+        }
+      : {})
   });
   if (error) throw error;
   return (data || []).map((row) => toDoc(row, COLUMNS));

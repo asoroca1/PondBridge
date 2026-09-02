@@ -21,9 +21,12 @@ import {
   MULTI_CAMP_IDENTITY_FLAG
 } from "./featureRollouts.js";
 import {
-  assertConversationDirectContactAllowed,
-  getMutuallyBlockedUserIds
+  assertConversationDirectContactAllowed
 } from "./memberSafety.js";
+import {
+  assertConversationTierContactAllowedByTenantId,
+  getHiddenUserIdsByTenantId
+} from "./memberTiers.js";
 import { isValidObjectId } from "../utils/objectId.js";
 import { sanitizeText } from "../utils/sanitize.js";
 import {
@@ -199,6 +202,7 @@ export async function authorizeRealtimeRoom({
     });
     if (!conversation) return { ok: false, status: 403, error: "Room access denied" };
     await assertConversationDirectContactAllowed(tenantId, conversation, userId);
+    await assertConversationTierContactAllowedByTenantId(tenantId, conversation, userId, { user });
     return { ok: true, ...parsed, tenantId, resource: conversation };
   }
 
@@ -268,15 +272,15 @@ async function subscribeSocketToExistingConversations(socket, user) {
   const userId = String(user?.id || "").trim();
   if (!tenantId || !userId) return;
 
-  const [conversations, blockedUserIds] = await Promise.all([
+  const [conversations, hiddenUserIds] = await Promise.all([
     ConversationModel.findByParticipant(tenantId, userId, { limit: 500 }),
-    getMutuallyBlockedUserIds(tenantId, userId, { user })
+    getHiddenUserIdsByTenantId(tenantId, userId, { user })
   ]);
-  const blocked = new Set(blockedUserIds.map(String));
+  const hidden = new Set(hiddenUserIds.map(String));
   const rooms = conversations
     .filter((conversation) => {
       if (String(conversation?.type || "") !== "dm") return true;
-      return !(conversation?.participantIds || []).some((participantId) => blocked.has(String(participantId)));
+      return !(conversation?.participantIds || []).some((participantId) => hidden.has(String(participantId)));
     })
     .map((conversation) => parseRealtimeRoom(`conversation:${String(conversation?._id || "")}`)?.room)
     .filter(Boolean);
@@ -424,6 +428,7 @@ export function attachSocketServer(httpServer) {
         }
 
         await assertConversationDirectContactAllowed(convo.tenantId, convo, user.id);
+        await assertConversationTierContactAllowedByTenantId(convo.tenantId, convo, user.id, { user });
 
         const kind = normalizeMessageKind(data?.kind);
         const text = sanitizeText(String(data?.text || "").trim());

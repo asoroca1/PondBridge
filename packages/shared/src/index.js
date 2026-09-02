@@ -86,11 +86,24 @@ export const TENANT_MODULE_CATALOG = Object.freeze([
     label: "Merch Shop",
     description: "Link members to the camp's external merchandise storefront.",
     setupField: "merchShopUrl"
+  },
+  {
+    key: "tieredAccess",
+    label: "Tiered Access",
+    description:
+      "Divide the network into numbered tiers so members only reach their own tier and the ones below it.",
+    directorPath: "/admin/people/tiers",
+    // The only module that starts off: turning it on merely reveals the setup
+    // tab, and nothing about the community changes until it is configured and
+    // switched on there as well.
+    defaultEnabled: false
   }
 ]);
 
 export const DEFAULT_TENANT_MODULES = Object.freeze(
-  Object.fromEntries(TENANT_MODULE_CATALOG.map((module) => [module.key, true]))
+  Object.fromEntries(
+    TENANT_MODULE_CATALOG.map((module) => [module.key, module.defaultEnabled !== false])
+  )
 );
 
 export function resolveTenantModules(value = {}, { applyPlatformAvailability = true } = {}) {
@@ -98,7 +111,9 @@ export function resolveTenantModules(value = {}, { applyPlatformAvailability = t
   const modules = Object.fromEntries(
     TENANT_MODULE_CATALOG.map((module) => [
       module.key,
-      source[module.key] !== false
+      module.defaultEnabled === false
+        ? source[module.key] === true
+        : source[module.key] !== false
     ])
   );
 
@@ -612,3 +627,5 @@ export function normalizeSlug(value = "") {
 
   return normalized;
 }
+
+export * from "./tiers.js";
