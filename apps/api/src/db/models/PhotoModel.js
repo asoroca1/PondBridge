@@ -8,6 +8,8 @@ const COLUMNS = {
   ownerName: "owner_name",
   imageUrl: "image_url",
   thumbUrl: "thumb_url",
+  mediaType: "media_type",
+  durationSeconds: "duration_seconds",
   caption: "caption",
   captionMentions: "caption_mentions",
   likes: "likes",

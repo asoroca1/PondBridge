@@ -177,6 +177,14 @@ const IMAGE_MIME_TYPES = new Set([
   "image/webp",
   "image/svg+xml"
 ]);
+const VIDEO_MIME_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm"
+]);
+// A phone clip is an order of magnitude heavier than a still, and the bytes go
+// straight to R2 over a presigned PUT, so the API never carries them.
+const MAX_PHOTO_STREAM_VIDEO_BYTES = 300 * 1024 * 1024;
 const PUBLIC_UPLOAD_SCOPES = new Set(["avatar"]);
 const PRIVATE_UPLOAD_SCOPES = new Set(["avatar", "branding-logo", "branding-hero", "event-cover"]);
 const PRELAUNCH_PUBLIC_BRANDING_SCOPES = new Set(["branding-logo", "branding-hero"]);
@@ -271,6 +279,45 @@ function assertImageContentType(fileType = "", fileName = "") {
   }
 
   return inferred;
+}
+
+function assertPhotoStreamContentType(fileType = "", fileName = "") {
+  const normalized = normalizeFileType(fileType);
+  if (IMAGE_MIME_TYPES.has(normalized) || VIDEO_MIME_TYPES.has(normalized)) {
+    return normalized;
+  }
+
+  const ext = ensureFileName(fileName || "file")
+    .split(".")
+    .pop()
+    ?.toLowerCase();
+  const inferred =
+    ext === "mp4"
+      ? "video/mp4"
+      : ext === "mov"
+        ? "video/quicktime"
+        : ext === "webm"
+          ? "video/webm"
+          : "";
+  if (inferred) return inferred;
+
+  // Not a clip, so fall back to the image rules and let them reject it.
+  return assertImageContentType(fileType, fileName);
+}
+
+function isVideoContentType(fileType = "") {
+  return VIDEO_MIME_TYPES.has(normalizeFileType(fileType));
+}
+
+function normalizeMediaType(value = "") {
+  return String(value || "").trim().toLowerCase() === "video" ? "video" : "image";
+}
+
+function normalizeDurationSeconds(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  // Long enough for anything a member would post, short enough to stay sane.
+  return Math.round(Math.min(parsed, 24 * 60 * 60) * 10) / 10;
 }
 
 function scopeToPrefix(scope = "avatar") {
@@ -1219,6 +1266,8 @@ function photoToClient(photo = {}, currentUserId = "", hiddenUserIds = null) {
     ownerName: photo.ownerName || "",
     imageUrl: photo.imageUrl || "",
     thumbUrl: photo.thumbUrl || photo.imageUrl || "",
+    mediaType: photo.mediaType === "video" ? "video" : "image",
+    durationSeconds: Number(photo.durationSeconds || 0),
     caption: photo.caption || "",
     captionMentions: photo.captionMentions || [],
     likes: likes.length,
@@ -2150,7 +2199,8 @@ router.patch("/activity/:id/pin", async (req, res) => {
 router.post("/photos/presign", async (req, res, next) => {
   try {
     const fileName = ensureFileName(req.body?.fileName || `photo-${Date.now()}.jpg`);
-    const fileType = assertImageContentType(req.body?.fileType || "", fileName);
+    const fileType = assertPhotoStreamContentType(req.body?.fileType || "", fileName);
+    const isVideo = isVideoContentType(fileType);
 
     const presigned = await createPresignedUpload({
       tenantSlug: req.tenant.slug,
@@ -2159,8 +2209,9 @@ router.post("/photos/presign", async (req, res, next) => {
       fileType,
       objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req),
       fileSizeBytes: req.body?.fileSize || req.body?.size || 0,
+      ...(isVideo ? { maxBytes: MAX_PHOTO_STREAM_VIDEO_BYTES } : {}),
       cacheControl: IMMUTABLE_IMAGE_CACHE_CONTROL,
-      allowedContentTypes: [...IMAGE_MIME_TYPES]
+      allowedContentTypes: [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES]
     });
 
     return res.json(presigned);
@@ -2229,12 +2280,19 @@ router.post("/photos", async (req, res) => {
   const profile = await ProfileModel.findOne(req.tenant._id, { userId: req.user.id });
   const ownerName = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || "Member";
 
+  const mediaType = normalizeMediaType(req.body?.mediaType);
+  // A clip's thumbUrl is the poster frame the uploader captured; without one
+  // the feed would try to render the video file as an <img> and show nothing.
+  const thumbUrl = String(req.body?.thumbUrl || (mediaType === "video" ? "" : imageUrl)).trim();
+
   const created = await PhotoModel.create({
     tenantId: req.tenant._id,
     ownerId: req.user.id,
     ownerName,
     imageUrl,
-    thumbUrl: String(req.body?.thumbUrl || imageUrl).trim(),
+    thumbUrl,
+    mediaType,
+    durationSeconds: mediaType === "video" ? normalizeDurationSeconds(req.body?.durationSeconds) : 0,
     caption: sanitizeText(String(req.body?.caption || "").trim()),
     captionMentions: Array.isArray(req.body?.captionMentions) ? req.body.captionMentions : []
   });
@@ -2243,7 +2301,7 @@ router.post("/photos", async (req, res) => {
     tenantId: req.tenant._id,
     actorUserId: req.user.id,
     actor: { id: String(req.user.id), name: ownerName },
-    type: "photo.upload",
+    type: mediaType === "video" ? "video.upload" : "photo.upload",
     target: {
       href: "/photo-stream",
       label: "Photo Stream"

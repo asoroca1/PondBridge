@@ -128,6 +128,39 @@
     position:relative;
   }
   .ps-media{ display:block; width:100%; height:auto; aspect-ratio:4/3; object-fit:cover; }
+  .ps-media-placeholder{
+    background:linear-gradient(140deg, var(--neutral-700) 0%, var(--neutral-900) 100%);
+  }
+  .ps-play-badge{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%, -50%);
+    display:grid;
+    place-items:center;
+    width:52px;
+    height:52px;
+    border-radius:50%;
+    color:#fff;
+    background:rgba(0, 0, 0, 0.55);
+    border:1.5px solid rgba(255, 255, 255, 0.85);
+    pointer-events:none;
+  }
+  .ps-media-wrap:has(.ps-play-badge){ cursor:pointer; }
+  .ps-media-wrap:hover .ps-play-badge{ background:rgba(0, 0, 0, 0.72); }
+  .ps-duration-pill{
+    position:absolute;
+    right:8px;
+    bottom:8px;
+    padding:2px 7px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+    color:#fff;
+    background:rgba(0, 0, 0, 0.65);
+    pointer-events:none;
+  }
 
   .ps-card-body{
     display:grid;
@@ -298,6 +331,50 @@
     justify-self:start;
     margin-top:2px;
   }
+  .ps-upload-preview-stage-video{
+    background:#000;
+    aspect-ratio:16/9;
+  }
+  .ps-upload-preview-video{
+    position:absolute;
+    inset:0;
+    display:block;
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    background:#000;
+  }
+  .ps-upload-cover-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .ps-upload-cover-thumb{
+    flex:0 0 auto;
+    width:72px;
+    height:54px;
+    border-radius:8px;
+    border:1.5px solid var(--neutral-300);
+    object-fit:cover;
+    background:var(--neutral-200);
+  }
+  .ps-upload-cover-thumb-empty{
+    display:grid;
+    place-items:center;
+    font-size:11px;
+    color:var(--neutral-600);
+  }
+  .ps-upload-cover-copy{
+    display:grid;
+    gap:2px;
+    font-size:12px;
+    color:var(--neutral-700);
+  }
+  .ps-upload-cover-duration{
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+    color:var(--neutral-600);
+  }
   .ps-upload-preview-empty{
     margin-top:10px;
     border:1.5px dashed var(--neutral-300);
@@ -369,6 +446,15 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.ps-lightbox-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #000;
 }
 
 .ps-lightbox-side {

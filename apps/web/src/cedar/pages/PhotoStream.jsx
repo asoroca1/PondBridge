@@ -12,13 +12,18 @@ import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } fr
 import InitialsMark from "../../components/InitialsMark.jsx";
 import { ModalConfirm, useDialogFocus } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
-import { Images, Heart, MessageCircle, Trash2, X, Upload } from "lucide-react";
+import { Images, Heart, MessageCircle, Trash2, X, Upload, Play } from "lucide-react";
 
 const API = API_BASE;
 const PHOTO_PREVIEW_WIDTH = 420;
 const PHOTO_PREVIEW_HEIGHT = 315;
 const PHOTO_EXPORT_WIDTH = 1600;
 const PHOTO_EXPORT_HEIGHT = 1200;
+// Matches MAX_PHOTO_STREAM_VIDEO_BYTES on the API, so an oversized clip is
+// rejected here instead of after a long upload.
+const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
+const VIDEO_POSTER_WIDTH = 1280;
+const MEDIA_ACCEPT = "image/*,video/mp4,video/quicktime,video/webm";
 const SEARCH_USER_CACHE_TTL_MS = 20_000;
 const SEARCH_USER_CACHE_MAX_ENTRIES = 600;
 const searchUserCache = new Map();
@@ -64,6 +69,74 @@ function canvasToBlob(canvas, type = "image/jpeg", quality = 0.9) {
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), type, quality);
   });
+}
+
+function isVideoFile(file) {
+  return Boolean(file) && String(file?.type || "").toLowerCase().startsWith("video/");
+}
+
+function isVideoPost(post) {
+  return String(post?.mediaType || "").toLowerCase() === "video";
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (!total) return "";
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+/**
+ * Grab the frame a <video> is currently showing as a JPEG.
+ * The source is a local blob URL, so the canvas stays untainted and readable.
+ * Returns null when the browser cannot decode the clip (HEVC .mov outside
+ * Safari, most often) — the post still goes up, just without a cover frame.
+ */
+async function captureVideoPoster(video) {
+  const width = Number(video?.videoWidth || 0);
+  const height = Number(video?.videoHeight || 0);
+  if (!width || !height) return null;
+
+  const scale = Math.min(1, VIDEO_POSTER_WIDTH / width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  try {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  } catch {
+    return null;
+  }
+
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.85);
+  if (!blob) return null;
+  return new File([blob], `cover-${Date.now()}.jpg`, { type: "image/jpeg" });
+}
+
+/** Presign, PUT to R2, and hand back the URL the post should point at. */
+async function uploadStreamFile(file) {
+  const presignRes = await fetch(`${API}/photos/presign`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      fileName: file.name,
+      fileType: file.type || "application/octet-stream",
+      fileSize: Number(file.size || 0)
+    })
+  });
+  if (!presignRes.ok) throw new Error("Presign failed");
+  const { uploadUrl, objectUrl, headers } = await presignRes.json();
+
+  const up = await fetch(uploadUrl, {
+    method: "PUT",
+    ...(headers && typeof headers === "object" ? { headers } : {}),
+    body: file
+  });
+  if (!up.ok) throw new Error("Upload failed");
+  return objectUrl;
 }
 
 function readCachedSearchUser(id = "") {
@@ -219,9 +292,14 @@ function UploadModal({ open, onClose, onPosted }) {
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [stageSize, setStageSize] = useState({ width: PHOTO_PREVIEW_WIDTH, height: PHOTO_PREVIEW_HEIGHT });
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [coverUrl, setCoverUrl] = useState("");
+  const coverFileRef = useRef(null);
   const fileInputRef = useRef(null);
   const stageRef = useRef(null);
+  const videoRef = useRef(null);
   const dialogRef = useDialogFocus(open, busy ? undefined : onClose);
+  const isVideo = isVideoFile(file);
 
   useEffect(() => {
     if (!open) {
@@ -234,6 +312,9 @@ function UploadModal({ open, onClose, onPosted }) {
       setZoom(1);
       setOffsetX(0);
       setOffsetY(0);
+      setVideoDuration(0);
+      setCoverUrl("");
+      coverFileRef.current = null;
     }
   }, [open]);
 
@@ -249,7 +330,7 @@ function UploadModal({ open, onClose, onPosted }) {
   }, [file]);
 
   useEffect(() => {
-    if (!previewUrl) return undefined;
+    if (!previewUrl || isVideo) return undefined;
     let active = true;
     const image = new Image();
     image.onload = () => {
@@ -263,14 +344,33 @@ function UploadModal({ open, onClose, onPosted }) {
     return () => {
       active = false;
     };
-  }, [previewUrl]);
+  }, [previewUrl, isVideo]);
 
   useEffect(() => {
     if (!file) return;
     setZoom(1);
     setOffsetX(0);
     setOffsetY(0);
+    setVideoDuration(0);
+    setCoverUrl("");
+    coverFileRef.current = null;
   }, [file]);
+
+  // Object URLs for the captured cover outlive the render that made them.
+  useEffect(() => {
+    if (!coverUrl) return undefined;
+    return () => URL.revokeObjectURL(coverUrl);
+  }, [coverUrl]);
+
+  const captureCover = useCallback(async () => {
+    const node = videoRef.current;
+    if (!node) return null;
+    const captured = await captureVideoPoster(node);
+    if (!captured) return null;
+    coverFileRef.current = captured;
+    setCoverUrl(URL.createObjectURL(captured));
+    return captured;
+  }, []);
 
   useEffect(() => {
     if (!open || !stageRef.current) return undefined;
@@ -358,34 +458,59 @@ function UploadModal({ open, onClose, onPosted }) {
     }
   }, [file, offsetX, offsetY, zoom]);
 
+  function handleSelectFile(nextFile) {
+    setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (nextFile && isVideoFile(nextFile) && Number(nextFile.size || 0) > MAX_VIDEO_BYTES) {
+      setFile(null);
+      setError(`Videos must be under ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))}MB.`);
+      return;
+    }
+    setFile(nextFile);
+  }
+
   async function handlePost() {
     if (!file) return;
     try {
       setBusy(true);
       setError("");
+
+      if (isVideo) {
+        // Capture the cover from whatever frame is on screen if the uploader
+        // never pressed the button themselves.
+        const cover = coverFileRef.current || (await captureCover());
+        const mediaUrl = await uploadStreamFile(file);
+        let thumbUrl = "";
+        if (cover) {
+          thumbUrl = await uploadStreamFile(cover).catch(() => "");
+        }
+
+        const c = await fetch(`${API}/photos`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            imageUrl: mediaUrl,
+            thumbUrl,
+            mediaType: "video",
+            durationSeconds: videoDuration,
+            caption,
+            captionMentions: []
+          })
+        });
+        if (!c.ok) throw new Error("Create failed");
+        const newPost = await c.json();
+        onPosted?.(newPost);
+        onClose?.();
+        return;
+      }
+
       const uploadFile = (await buildUploadFile()) || file;
-      const p = await fetch(`${API}/photos/presign`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          fileName: uploadFile.name,
-          fileType: uploadFile.type || "image/jpeg",
-          fileSize: Number(uploadFile.size || 0)
-        })
-      });
-      if (!p.ok) throw new Error("Presign failed");
-      const { uploadUrl, objectUrl, headers } = await p.json();
-      const up = await fetch(uploadUrl, {
-        method: "PUT",
-        ...(headers && typeof headers === "object" ? { headers } : {}),
-        body: uploadFile
-      });
-      if (!up.ok) throw new Error("Upload failed");
+      const objectUrl = await uploadStreamFile(uploadFile);
 
       const c = await fetch(`${API}/photos`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ imageUrl: objectUrl, caption, captionMentions: [] })
+        body: JSON.stringify({ imageUrl: objectUrl, mediaType: "image", caption, captionMentions: [] })
       });
       if (!c.ok) throw new Error("Create failed");
       const newPost = await c.json();
@@ -403,7 +528,7 @@ function UploadModal({ open, onClose, onPosted }) {
     <div className="ps-modal" onClick={() => !busy && onClose?.()} role="dialog" aria-modal="true" aria-labelledby="ps-upload-title">
       <div ref={dialogRef} className="ps-modal-card" onClick={(e) => e.stopPropagation()} tabIndex={-1}>
         <div className="ps-modal-head">
-          <h2 id="ps-upload-title" className="ps-modal-title">Add a Photo</h2>
+          <h2 id="ps-upload-title" className="ps-modal-title">Add a Photo or Video</h2>
           <button type="button" className="ps-modal-close-btn" onClick={onClose} disabled={busy} aria-label="Close">
             <X size={16} />
           </button>
@@ -417,20 +542,74 @@ function UploadModal({ open, onClose, onPosted }) {
             disabled={busy}
           >
             <Upload size={14} />
-            Choose Photo
+            Choose File
           </button>
-          <span className="ps-file-name">{file ? file.name : "JPG, PNG, or WEBP"}</span>
+          <span className="ps-file-name">{file ? file.name : "JPG, PNG, WEBP, MP4, MOV, or WEBM"}</span>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            accept={MEDIA_ACCEPT}
+            onChange={(e) => handleSelectFile(e.target.files?.[0] || null)}
             className="ps-file"
             hidden
           />
         </div>
 
-        {previewUrl ? (
+        {previewUrl && isVideo ? (
+          <div className="ps-upload-preview-wrap">
+            <div className="ps-upload-preview-stage ps-upload-preview-stage-video">
+              <video
+                ref={videoRef}
+                src={previewUrl}
+                className="ps-upload-preview-video"
+                controls
+                playsInline
+                preload="metadata"
+                onLoadedMetadata={(e) => {
+                  const node = e.currentTarget;
+                  setVideoDuration(Number.isFinite(node.duration) ? node.duration : 0);
+                  // Frame zero is often black, so open on something representative.
+                  try {
+                    node.currentTime = Math.min(1, (node.duration || 0) / 2);
+                  } catch {
+                    /* seeking is best effort */
+                  }
+                }}
+                onSeeked={() => {
+                  if (!coverFileRef.current) captureCover();
+                }}
+              />
+            </div>
+
+            <div className="ps-upload-controls" aria-label="Video cover controls">
+              <div className="ps-upload-cover-row">
+                {coverUrl ? (
+                  <img src={coverUrl} alt="Video cover frame" className="ps-upload-cover-thumb" />
+                ) : (
+                  <div className="ps-upload-cover-thumb ps-upload-cover-thumb-empty">No cover</div>
+                )}
+                <div className="ps-upload-cover-copy">
+                  <span>
+                    {coverUrl
+                      ? "This frame is the cover in the stream."
+                      : "Scrub the video, then pick the frame to use as the cover."}
+                  </span>
+                  {videoDuration ? (
+                    <span className="ps-upload-cover-duration">{formatDuration(videoDuration)}</span>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="ps-btn secondary ps-upload-reset"
+                onClick={captureCover}
+                disabled={busy}
+              >
+                Use Current Frame
+              </button>
+            </div>
+          </div>
+        ) : previewUrl ? (
           <div className="ps-upload-preview-wrap">
             <div className="ps-upload-preview-stage" ref={stageRef}>
               <img
@@ -499,7 +678,7 @@ function UploadModal({ open, onClose, onPosted }) {
             </div>
           </div>
         ) : (
-          <div className="ps-upload-preview-empty">Photo preview will appear here before posting.</div>
+          <div className="ps-upload-preview-empty">A preview will appear here before posting.</div>
         )}
 
         <textarea value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Write a caption (use @Name to tag)" maxLength={500} className="ps-textarea" />
@@ -728,16 +907,28 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
   if (!post || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="ps-lightbox" onClick={onClose} aria-modal="true" role="dialog" aria-label="Photo details">
+    <div className="ps-lightbox" onClick={onClose} aria-modal="true" role="dialog" aria-label="Post details">
       <div ref={dialogRef} className="ps-lightbox-card" onClick={(e) => e.stopPropagation()} tabIndex={-1}>
         {/* MEDIA */}
         <div className="ps-lightbox-media">
-          <img
-            className="ps-lightbox-img"
-            src={post.imageUrl}
-            alt={post.caption || "Camp photo"}
-            decoding="async"
-          />
+          {isVideoPost(post) ? (
+            <video
+              className="ps-lightbox-video"
+              src={post.imageUrl}
+              poster={post.thumbUrl || undefined}
+              controls
+              autoPlay
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            <img
+              className="ps-lightbox-img"
+              src={post.imageUrl}
+              alt={post.caption || "Camp photo"}
+              decoding="async"
+            />
+          )}
         </div>
 
         {/* SIDE PANEL */}
@@ -908,11 +1099,14 @@ export default function PhotoStream() {
     } catch (e) { console.error(e); }
   }
 
-  async function deletePhoto(id) {
+  async function deletePhoto(post) {
+    const id = post?._id;
+    if (!id) return;
+    const noun = isVideoPost(post) ? "video" : "photo";
     const accepted = await confirm({
-      title: "Delete this photo?",
-      description: "The photo and its comments will be permanently removed from the stream.",
-      confirmLabel: "Delete photo",
+      title: `Delete this ${noun}?`,
+      description: `The ${noun} and its comments will be permanently removed from the stream.`,
+      confirmLabel: `Delete ${noun}`,
     });
     if (!accepted) return;
     try {
@@ -942,11 +1136,11 @@ export default function PhotoStream() {
           className="ps-page-header"
           icon={<Images size={18} />}
           title="Photo Stream"
-          subtitle={`Share old and new camp photos with the ${campName} community. Click a photo to enlarge.`}
+          subtitle={`Share old and new camp photos and videos with the ${campName} community. Click a post to open it.`}
         >
           <div className="ps-header-right">
             <SortDropdown value={sort} onChange={setSort} />
-            <button className="ps-btn primary" onClick={() => setUploadOpen(true)}>Upload Photo</button>
+            <button className="ps-btn primary" onClick={() => setUploadOpen(true)}>Upload</button>
           </div>
         </CedarPageHeader>
 
@@ -956,14 +1150,32 @@ export default function PhotoStream() {
             const info = authorInfo[ownerId] || { name: p.ownerName, avatar: "" };
             return (
               <div key={p._id || p.id} className="ps-card">
-                <button className="ps-media-wrap" onClick={() => setViewerPost(p)} aria-label="Open photo">
-                  <img
-                    className="ps-media"
-                    src={p.thumbUrl || p.imageUrl}
-                    alt={p.caption || "Camp photo"}
-                    loading="lazy"
-                    decoding="async"
-                  />
+                <button
+                  className="ps-media-wrap"
+                  onClick={() => setViewerPost(p)}
+                  aria-label={isVideoPost(p) ? "Play video" : "Open photo"}
+                >
+                  {isVideoPost(p) && !p.thumbUrl ? (
+                    <div className="ps-media ps-media-placeholder" aria-hidden="true" />
+                  ) : (
+                    <img
+                      className="ps-media"
+                      src={p.thumbUrl || p.imageUrl}
+                      alt={p.caption || (isVideoPost(p) ? "Camp video" : "Camp photo")}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                  {isVideoPost(p) ? (
+                    <>
+                      <span className="ps-play-badge" aria-hidden="true">
+                        <Play size={20} strokeWidth={2} fill="currentColor" />
+                      </span>
+                      {formatDuration(p.durationSeconds) ? (
+                        <span className="ps-duration-pill">{formatDuration(p.durationSeconds)}</span>
+                      ) : null}
+                    </>
+                  ) : null}
                 </button>
 
                 <div className="ps-card-body">
@@ -990,7 +1202,7 @@ export default function PhotoStream() {
                   )}
 
                   <div className="ps-actions">
-                    <button className="ps-btn-icon ps-action-pill" onClick={() => toggleLike(p._id)} aria-label="Like this photo">
+                    <button className="ps-btn-icon ps-action-pill" onClick={() => toggleLike(p._id)} aria-label={isVideoPost(p) ? "Like this video" : "Like this photo"}>
                       <Heart size={16} strokeWidth={2} />
                       <span>{p.likes || 0}</span>
                     </button>
@@ -999,7 +1211,7 @@ export default function PhotoStream() {
                       <span>{p.commentsCount || 0}</span>
                     </button>
                     {p.mine && (
-                      <button className="ps-btn-icon danger ps-delete-pill" onClick={() => deletePhoto(p._id)} aria-label="Delete photo">
+                      <button className="ps-btn-icon danger ps-delete-pill" onClick={() => deletePhoto(p)} aria-label={isVideoPost(p) ? "Delete video" : "Delete photo"}>
                         <Trash2 size={15} />
                         <span>Delete</span>
                       </button>
@@ -1015,7 +1227,7 @@ export default function PhotoStream() {
         {loading && <CedarSkeleton.Lines lines={2} />}
         {actionError ? <div className="ps-inline-error" role="alert">{actionError}</div> : null}
         {!loading && items.length === 0 && (
-          <div className="ps-empty">{`📷 No photos yet - be the first to share a ${campName} memory.`}</div>
+          <div className="ps-empty">{`📷 Nothing here yet - be the first to share a ${campName} memory.`}</div>
         )}
         {((sort !== "top" && !nextCursor && items.length > 0) || (sort === "top" && !nextPage && items.length > 0)) && <div className="ps-end">You’re all caught up.</div>}
       </div>
