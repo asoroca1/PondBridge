@@ -364,15 +364,52 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
   const pendingRoute = `${base}/request-access`;
 
   if (membership && membership.status !== "active") {
+    const membershipSummary = {
+      id: String(membership._id),
+      status: membership.status,
+      roles: membership.roles || []
+    };
+
+    // Removing someone must not burn their email address forever. They can ask
+    // to come back, and because they were removed once a person decides rather
+    // than the network letting them straight back in.
+    const alreadyAsked = email ? await findPendingRequest(tenantId, email) : null;
+    if (alreadyAsked) {
+      return {
+        state: "access_pending",
+        action: "wait_for_approval",
+        nextRoute: pendingRoute,
+        joinMode,
+        signupMode,
+        membership: membershipSummary,
+        request: {
+          id: String(alreadyAsked._id),
+          status: alreadyAsked.status,
+          requestedAt: alreadyAsked.requestedAt
+        }
+      };
+    }
+
+    // An invitation-only network with no invitation has nothing to review, so
+    // there the removal still stands.
+    const canReapply = Boolean(invite) || policy.entryMode !== "invite_only";
+    if (canReapply && isEmailAllowedByPolicy(policy, email)) {
+      return {
+        state: "not_member",
+        action: "request_access",
+        nextRoute: pendingRoute,
+        joinMode,
+        signupMode,
+        membership: membershipSummary,
+        reason: "membership_inactive"
+      };
+    }
+
     return {
       state: "revoked",
       action: "contact_director",
       nextRoute: loginRoute,
-      membership: {
-        id: String(membership._id),
-        status: membership.status,
-        roles: membership.roles || []
-      }
+      membership: membershipSummary
     };
   }
 
