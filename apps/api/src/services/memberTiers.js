@@ -328,14 +328,23 @@ async function loadTenant(tenantId) {
   if (!id) return null;
   const cached = tenantCache.get(`tenant:${id}`);
   if (cached) return cached;
-  const tenant = await TenantModel.findOne({ _id: id });
-  if (tenant) tenantCache.set(`tenant:${id}`, tenant);
-  return tenant;
+  try {
+    const tenant = await TenantModel.findOne({ _id: id });
+    if (tenant) tenantCache.set(`tenant:${id}`, tenant);
+    return tenant;
+  } catch {
+    // Realtime auth must not die because a tenant read blipped. Returning null
+    // leaves the caller on its pre-tiering behaviour, which is the same answer
+    // a camp without tiering would get.
+    return null;
+  }
 }
 
 export async function getHiddenUserIdsByTenantId(tenantId, userId = "", { user = null } = {}) {
   const tenant = await loadTenant(tenantId);
-  if (!tenant) return getMutuallyBlockedUserIds(normalizeId(tenantId), userId, { user });
+  if (!tenant) {
+    return getMutuallyBlockedUserIds(normalizeId(tenantId), userId, { user }).catch(() => []);
+  }
   return getHiddenUserIds(tenant, userId, { user });
 }
 
@@ -345,6 +354,9 @@ export async function assertConversationTierContactAllowedByTenantId(
   actorUserId = "",
   { user = null } = {}
 ) {
+  // Only direct messages have a tier to check, and deciding that from the
+  // conversation in hand avoids a tenant read on every group-room join.
+  if (String(conversation?.type || "").trim().toLowerCase() !== "dm") return;
   const tenant = await loadTenant(tenantId);
   if (!tenant) return;
   await assertConversationTierContactAllowed(tenant, conversation, actorUserId, { user });
