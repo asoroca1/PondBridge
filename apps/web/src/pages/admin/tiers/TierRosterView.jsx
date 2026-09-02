@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Input, Select } from "@pondbridge/ui";
 import { Search, UserRound } from "lucide-react";
+import { tierOptionLabel } from "./tierNames.js";
 
 function initials(person = {}) {
   const name = String(person.fullName || person.email || "?").trim();
@@ -52,9 +53,11 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
     rows[next].focus();
   }, []);
 
-  async function assign(profileIds, rank) {
+  function assign(profileIds, rank) {
     if (!profileIds.length) return;
-    await actions.assign(profileIds, rank);
+    // Fire and forget: the row repaints from local state straight away and the
+    // hook reverts it if the write fails.
+    actions.assign(profileIds, rank).catch(() => {});
     setSelectedIds((ids) => ids.filter((id) => !profileIds.includes(id)));
   }
 
@@ -69,9 +72,7 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
     if (Number.isFinite(digit) && digit >= 1 && digit <= tiers.length) {
       event.preventDefault();
       assign([person.profileId], digit);
-      // In the untagged view the row disappears, so the next row slides up into
-      // this index; anywhere else, move down by one.
-      focusRow(filters.scope === "untagged" ? index : index + 1);
+      focusRow(index + 1);
       return;
     }
     if (event.key === " ") {
@@ -120,7 +121,7 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
           <option value="all">Everyone</option>
           {tiers.map((tier) => (
             <option key={tier.id} value={`tier:${tier.rank}`}>
-              Tier {tier.rank}{tier.label ? ` · ${tier.label}` : ""}
+              {tierOptionLabel(tier)}
             </option>
           ))}
         </Select>
@@ -152,7 +153,7 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
           <Select value={ruleRank} onChange={(event) => setRuleRank(event.target.value)} aria-label="Tier to assign">
             {tiers.map((tier) => (
               <option key={tier.id} value={String(tier.rank)}>
-                Tier {tier.rank}{tier.label ? ` · ${tier.label}` : ""}
+                {tierOptionLabel(tier)}
               </option>
             ))}
           </Select>
@@ -249,7 +250,9 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
                     {person.fullName || person.email || "Unknown person"}
                     {person.tierRank === null ? (
                       <em className="pb-tiers-untagged-mark">untagged</em>
-                    ) : null}
+                    ) : (
+                      <em className="pb-tiers-tagged-mark">Tier {person.tierRank}</em>
+                    )}
                   </strong>
                   <small>
                     {[person.role, person.location].filter(Boolean).join(" · ") || person.email}

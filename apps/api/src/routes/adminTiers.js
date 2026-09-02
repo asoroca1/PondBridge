@@ -273,7 +273,9 @@ router.post("/", async (req, res, next) => {
     const tier = await MemberAccessTierModel.create({
       tenantId: req.tenant._id,
       rank,
-      label: tierLabel(req.body?.label) || `Tier ${rank}`
+      // No invented label: an unnamed tier is just its number, and the UI
+      // falls back to that. Naming one "Tier 1" would read "Tier 1 · Tier 1".
+      label: tierLabel(req.body?.label)
     });
     clearTierCaches();
     await audit(req, "admin_access_tier_created", { rank, tierId: toId(tier._id) });

@@ -18,6 +18,10 @@ export default function useTierAdmin({ request }) {
   const [busy, setBusy] = useState("");
 
   const [filters, setFilters] = useState(DEFAULT_ROSTER_FILTERS);
+  // Tier changes made in this view, applied over the fetched rows. Tagging has
+  // to feel instant, and a row must not vanish the moment it is tagged or the
+  // director never sees what they just did.
+  const [overrides, setOverrides] = useState({});
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
   const [roster, setRoster] = useState(null);
@@ -56,6 +60,10 @@ export default function useTierAdmin({ request }) {
   }, [filters.q]);
 
   useEffect(() => { setPage(1); }, [debouncedQuery, filters.scope, filters.rank]);
+
+  useEffect(() => {
+    setOverrides({});
+  }, [debouncedQuery, filters.scope, filters.rank, page]);
 
   useEffect(() => {
     if (!available) return undefined;
@@ -105,26 +113,63 @@ export default function useTierAdmin({ request }) {
       setSettings: (patch) =>
         mutate("settings", "/tiers/settings", { method: "PATCH", body: patch }),
       assign: async (profileIds, rank) => {
-        const response = await mutate("assign", "/tiers/assign", {
-          method: "POST",
-          body: { profileIds, rank }
+        const ids = Array.isArray(profileIds) ? profileIds : [profileIds];
+        if (!ids.length) return null;
+
+        const previous = {};
+        setOverrides((current) => {
+          const next = { ...current };
+          for (const id of ids) {
+            previous[id] = id in current ? current[id] : undefined;
+            next[id] = rank;
+          }
+          return next;
         });
-        reloadRoster();
-        return response;
+
+        try {
+          // The overview that comes back carries the authoritative counts, so
+          // the progress meter catches up a moment after the row does.
+          return await request("/tiers/assign", {
+            method: "POST",
+            body: { profileIds: ids, rank }
+          }).then((response) => {
+            if (response?.overview) setOverview(response.overview);
+            return response;
+          });
+        } catch (requestError) {
+          setOverrides((current) => {
+            const next = { ...current };
+            for (const id of ids) {
+              if (previous[id] === undefined) delete next[id];
+              else next[id] = previous[id];
+            }
+            return next;
+          });
+          setError(requestError.message || "That tier change did not save.");
+          throw requestError;
+        }
       },
       assignByRole: async (role, rank) => {
         const response = await mutate("assign-role", "/tiers/assign-by-role", {
           method: "POST",
           body: { role, rank }
         });
+        // A rule can touch rows that are not on screen, so this one does refetch.
+        setOverrides({});
         reloadRoster();
         return response;
       }
     }),
-    [mutate, reloadRoster]
+    [mutate, reloadRoster, request, setError]
   );
 
-  const items = useMemo(() => (Array.isArray(roster?.items) ? roster.items : []), [roster]);
+  const items = useMemo(() => {
+    const rows = Array.isArray(roster?.items) ? roster.items : [];
+    if (!Object.keys(overrides).length) return rows;
+    return rows.map((row) =>
+      row.profileId in overrides ? { ...row, tierRank: overrides[row.profileId] } : row
+    );
+  }, [overrides, roster]);
   const total = Number(roster?.total || 0);
 
   return {

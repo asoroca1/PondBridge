@@ -5,6 +5,7 @@ import useAdminApi from "../useAdminApi.js";
 import useTierAdmin from "./useTierAdmin.js";
 import TierRosterView from "./TierRosterView.jsx";
 import TierFeatureGrid from "./TierFeatureGrid.jsx";
+import { tierDisplayName, tierOptionLabel } from "./tierNames.js";
 import "../director-admin-tiers.css";
 
 function TierLadder({ overview, actions, busy }) {
@@ -47,7 +48,7 @@ function TierLadder({ overview, actions, busy }) {
                     setDraftLabel(String(tier.label || ""));
                   }}
                 >
-                  {tier.label || `Tier ${tier.rank}`}
+                  {tierDisplayName(tier)}
                 </button>
               )}
               <small>
@@ -136,7 +137,7 @@ function EnableCard({ overview, actions, busy }) {
           >
             {overview.tiers.map((tier) => (
               <option key={tier.id} value={String(tier.rank)}>
-                Tier {tier.rank}{tier.label ? ` · ${tier.label}` : ""}
+                {tierOptionLabel(tier)}
               </option>
             ))}
           </select>
