@@ -11,6 +11,7 @@ export const MAX_TIERS = 6;
 export const ADMIN_TIER_RANK = 0;
 
 const tierListCache = createTtlCache({ ttlMs: 30_000, maxEntries: 500 });
+const EMPTY_HIDDEN = Object.freeze({ userIds: [], profileIds: [] });
 const hiddenIdsCache = createTtlCache({ ttlMs: 30_000, maxEntries: 2000 });
 
 function normalizeId(value = "") {
@@ -116,13 +117,13 @@ export async function getViewerTierRank(tenant = null, userId = "", { user = nul
  * (a smaller number). Shaped as a user-id list so it composes with the member
  * block list at every call site that already filters one.
  */
-export async function getTierHiddenUserIds(
+export async function getTierHiddenIdentifiers(
   tenant = null,
   userId = "",
   { user = null, context = null, viewerRank = undefined } = {}
 ) {
   const ctx = context || (await getTierContext(tenant));
-  if (!ctx.enabled) return [];
+  if (!ctx.enabled) return EMPTY_HIDDEN;
 
   const rank =
     viewerRank === undefined
@@ -130,32 +131,29 @@ export async function getTierHiddenUserIds(
       : viewerRank;
 
   // Admins and the top tier see the whole network.
-  if (rank === null || rank === ADMIN_TIER_RANK || rank <= 1) return [];
+  if (rank === null || rank === ADMIN_TIER_RANK || rank <= 1) return EMPTY_HIDDEN;
 
   const tenantId = normalizeId(tenant?._id);
   const cacheKey = `hidden:${tenantId}:${rank}:${ctx.untaggedRank}`;
   const cached = hiddenIdsCache.get(cacheKey);
   if (cached) return cached;
 
+  const select = ["id", "userId"];
   const queries = [
-    ProfileModel.find(tenantId, { accessTierRank: { $lt: rank } }, { select: ["userId"], limit: 20_000 })
+    ProfileModel.find(tenantId, { accessTierRank: { $lt: rank } }, { select, limit: 20_000 })
   ];
   // Untagged members are only hidden when the camp parks them above the viewer.
   if (ctx.untaggedRank < rank) {
-    queries.push(
-      ProfileModel.find(tenantId, { accessTierRank: null }, { select: ["userId"], limit: 20_000 })
-    );
+    queries.push(ProfileModel.find(tenantId, { accessTierRank: null }, { select, limit: 20_000 }));
   }
 
-  const results = await Promise.all(queries);
-  const hidden = [
-    ...new Set(
-      results
-        .flat()
-        .map((row) => normalizeId(row?.userId))
-        .filter(Boolean)
-    )
-  ].sort();
+  const results = (await Promise.all(queries)).flat();
+  const hidden = {
+    userIds: [...new Set(results.map((row) => normalizeId(row?.userId)).filter(Boolean))].sort(),
+    profileIds: [
+      ...new Set(results.map((row) => normalizeId(row?._id || row?.id)).filter(Boolean))
+    ].sort()
+  };
 
   hiddenIdsCache.set(cacheKey, hidden);
   return hidden;
@@ -172,9 +170,36 @@ export async function getHiddenUserIds(tenant = null, userId = "", { user = null
   const policy = resolveTenantTierPolicy(tenant);
   if (!policy.enabled) return blocked;
 
-  const tierHidden = await getTierHiddenUserIds(tenant, userId, { user });
-  if (!tierHidden.length) return blocked;
-  return [...new Set([...blocked, ...tierHidden])].sort();
+  const tierHidden = await getTierHiddenIdentifiers(tenant, userId, { user });
+  if (!tierHidden.userIds.length) return blocked;
+  return [...new Set([...blocked, ...tierHidden.userIds])].sort();
+}
+
+/**
+ * The same hidden set addressed by profile id, for the surfaces that identify
+ * people that way — family trees and the giving supporter list.
+ */
+export async function getHiddenProfileIds(tenant = null, userId = "", { user = null } = {}) {
+  const tenantId = normalizeId(tenant?._id);
+  const policy = resolveTenantTierPolicy(tenant);
+  const blocked = await getMutuallyBlockedUserIds(tenantId, userId, { user });
+
+  const tierHidden = policy.enabled
+    ? await getTierHiddenIdentifiers(tenant, userId, { user })
+    : EMPTY_HIDDEN;
+
+  // Blocks are recorded against users, so their profile ids need a lookup. The
+  // list is capped at 500 each way, so this stays a small query.
+  let blockedProfileIds = [];
+  if (blocked.length) {
+    const rows = await ProfileModel.find(tenantId, { userId: { $in: blocked } }, {
+      select: ["id"],
+      limit: 1000
+    });
+    blockedProfileIds = rows.map((row) => normalizeId(row?._id || row?.id)).filter(Boolean);
+  }
+
+  return [...new Set([...blockedProfileIds, ...tierHidden.profileIds])].sort();
 }
 
 /**
@@ -201,8 +226,7 @@ export async function assertTierContactAllowed(
     getViewerTierRank(tenant, targetId, { user: null, context: ctx })
   ]);
 
-  if (actorRank === ADMIN_TIER_RANK || actorRank === null) return;
-  if (targetRank !== null && targetRank < actorRank) {
+  if (!canViewerSeeRank(actorRank, targetRank)) {
     throw tierError(
       "That member is not available in your part of the network.",
       "MEMBER_TIER_RESTRICTED",
@@ -231,6 +255,17 @@ export async function assertConversationTierContactAllowed(
 }
 
 /**
+ * The whole visibility rule, in one place: a viewer at rank N sees rank N and
+ * every larger rank. Admins (rank 0) and a null rank — tiering off, or an
+ * unresolved viewer — see everyone.
+ */
+export function canViewerSeeRank(viewerRank = null, targetRank = null) {
+  if (viewerRank === null || viewerRank === ADMIN_TIER_RANK) return true;
+  if (targetRank === null) return true;
+  return Number(targetRank) >= Number(viewerRank);
+}
+
+/**
  * Single-profile form of the visibility rule, for the routes that fetch one
  * person by id rather than filtering a list.
  */
@@ -252,8 +287,7 @@ export async function isUserHiddenByTier(
     getViewerTierRank(tenant, viewerId, { user, context: ctx }),
     getViewerTierRank(tenant, targetId, { user: null, context: ctx })
   ]);
-  if (viewerRank === null || viewerRank === ADMIN_TIER_RANK) return false;
-  return targetRank !== null && targetRank < viewerRank;
+  return !canViewerSeeRank(viewerRank, targetRank);
 }
 
 /** Whether a viewer's tier reaches a module. True whenever tiering is off. */

@@ -20,6 +20,7 @@ import {
   normalizeSeminarMeetingUrl,
   serializeEvent
 } from "../services/events.js";
+import { getHiddenProfileIds } from "../services/memberTiers.js";
 
 const router = Router({ mergeParams: true });
 
@@ -28,12 +29,17 @@ const router = Router({ mergeParams: true });
  * themselves. Seeing who else is coming is the reward for signing up, so a
  * member who has not answered — or who declined — gets no list at all.
  */
-async function resolveViewerRoster({ tenantId, rsvps = [], myRsvp = null }) {
+async function resolveViewerRoster({ tenantId, rsvps = [], myRsvp = null, hiddenProfileIds = null }) {
   const viewerStatus = normalizeEventRsvpStatus(myRsvp?.status || "", "");
   if (!viewerStatus || viewerStatus === "not_attending") return null;
 
+  // Who else is coming is a people list like any other, so it follows the same
+  // visibility rule as the directory.
+  const visibleRsvps = hiddenProfileIds
+    ? rsvps.filter((row) => !hiddenProfileIds.has(String(row?.profileId || "")))
+    : rsvps;
   const profileIds = [...new Set(
-    rsvps.map((row) => String(row?.profileId || "")).filter(Boolean)
+    visibleRsvps.map((row) => String(row?.profileId || "")).filter(Boolean)
   )];
   const profiles = profileIds.length
     ? await ProfileModel.find(tenantId, { _id: { $in: profileIds } }, {
@@ -44,7 +50,7 @@ async function resolveViewerRoster({ tenantId, rsvps = [], myRsvp = null }) {
     profiles.map((profile) => [String(profile?._id || profile?.id || ""), profile])
   );
 
-  return buildRegistrationRoster(rsvps, profilesById);
+  return buildRegistrationRoster(visibleRsvps, profilesById);
 }
 const eventJoinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -94,7 +100,7 @@ function mapRsvpPersistenceError(error) {
   throw error;
 }
 
-async function loadEventResponseContext(tenantId, userId, events = []) {
+async function loadEventResponseContext(tenantId, userId, events = [], { hiddenProfileIds = null } = {}) {
   const eventIds = events.map((item) => String(item?._id || item?.id || "")).filter(Boolean);
   if (!eventIds.length) {
     return {
@@ -124,8 +130,13 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
   return {
     rsvpSummaryByEventId: buildRsvpSummaryMap(allRsvps),
     rsvpByEventId: new Map(myRsvps.map((item) => [String(item?.eventId || ""), item])),
+    // Events themselves stay camp-wide: a reunion invitation is meant for
+    // everyone, and a camp that wants to narrow them lowers the Events floor in
+    // the tier grid. The host is a member, though, so they follow the rule.
     hostProfileById: new Map(
-      hostProfiles.map((item) => [String(item?._id || item?.id || ""), item])
+      hostProfiles
+        .filter((item) => !hiddenProfileIds?.has(String(item?._id || item?.id || "")))
+        .map((item) => [String(item?._id || item?.id || ""), item])
     ),
     eventIdsWithMeetingLink: new Set(
       meetingDetails
@@ -148,11 +159,11 @@ router.get("/", async (req, res) => {
     hostProfileById,
     eventIdsWithMeetingLink,
     viewerProfile
-  } = await loadEventResponseContext(
-    req.tenant._id,
-    req.user.id,
-    events
-  );
+  } = await loadEventResponseContext(req.tenant._id, req.user.id, events, {
+    hiddenProfileIds: new Set(
+      (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
+    )
+  });
 
   const now = new Date();
   const items = events.map((event) =>
@@ -203,10 +214,14 @@ router.get("/:eventId", async (req, res) => {
     EventMeetingDetailModel.findOne(req.tenant._id, { eventId })
   ]);
 
+  const hiddenProfileIds = new Set(
+    (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
+  );
   const roster = await resolveViewerRoster({
     tenantId: req.tenant._id,
     rsvps,
-    myRsvp
+    myRsvp,
+    hiddenProfileIds
   });
 
   await logTenantEvent({
@@ -221,7 +236,9 @@ router.get("/:eventId", async (req, res) => {
       now: new Date(),
       rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
       myRsvp,
-      hostProfile,
+      hostProfile: hiddenProfileIds.has(String(hostProfile?._id || hostProfile?.id || ""))
+        ? null
+        : hostProfile,
       roster,
       hasMeetingLink: Boolean(String(meetingDetail?.meetingUrl || "").trim()),
       viewerProfileId: String(viewerProfile?._id || viewerProfile?.id || "")
@@ -385,10 +402,14 @@ router.put("/:eventId/rsvp", async (req, res) => {
   ]);
   // Registering is what unlocks the roster, so send it back with the response
   // that confirms it rather than making the page ask again.
+  const hiddenProfileIds = new Set(
+    (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
+  );
   const roster = await resolveViewerRoster({
     tenantId: req.tenant._id,
     rsvps,
-    myRsvp: rsvp
+    myRsvp: rsvp,
+    hiddenProfileIds
   });
   return res.json({
     ok: true,
@@ -396,7 +417,9 @@ router.put("/:eventId/rsvp", async (req, res) => {
       now: new Date(),
       rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
       myRsvp: rsvp,
-      hostProfile,
+      hostProfile: hiddenProfileIds.has(String(hostProfile?._id || hostProfile?.id || ""))
+        ? null
+        : hostProfile,
       roster,
       hasMeetingLink: Boolean(String(meetingDetail?.meetingUrl || "").trim()),
       viewerProfileId: String(profile?._id || profile?.id || "")

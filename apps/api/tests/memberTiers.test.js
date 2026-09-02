@@ -1,5 +1,6 @@
 import {
   ADMIN_TIER_RANK,
+  canViewerSeeRank,
   isTieredAccessModuleEnabled,
   resolveTenantTierPolicy,
   resolveViewerModules,
@@ -118,5 +119,32 @@ describe("floor normalization and labels", () => {
     expect(describeTierFloor(1, 4)).toBe("Tier 1 only");
     expect(describeTierFloor(3, 4)).toBe("Tiers 1-3");
     expect(describeTierFloor(4, 4)).toBe("Every tier");
+  });
+});
+
+describe("who can see whom", () => {
+  test("a viewer sees their own tier and every tier below it", () => {
+    expect(canViewerSeeRank(2, 2)).toBe(true);
+    expect(canViewerSeeRank(2, 3)).toBe(true);
+    expect(canViewerSeeRank(2, 4)).toBe(true);
+  });
+
+  test("a viewer never sees a tier above their own", () => {
+    expect(canViewerSeeRank(2, 1)).toBe(false);
+    expect(canViewerSeeRank(4, 3)).toBe(false);
+  });
+
+  test("the top tier sees everyone", () => {
+    expect(canViewerSeeRank(1, 1)).toBe(true);
+    expect(canViewerSeeRank(1, 6)).toBe(true);
+  });
+
+  test("admins and unresolved viewers see everyone", () => {
+    expect(canViewerSeeRank(ADMIN_TIER_RANK, 1)).toBe(true);
+    expect(canViewerSeeRank(null, 1)).toBe(true);
+  });
+
+  test("an untagged target is visible - the caller substitutes the camp default first", () => {
+    expect(canViewerSeeRank(3, null)).toBe(true);
   });
 });

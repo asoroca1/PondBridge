@@ -206,10 +206,16 @@ export async function authorizeRealtimeRoom({
     return { ok: true, ...parsed, tenantId, resource: conversation };
   }
 
-  // Forum content is visible tenant-wide through the REST API; realtime access
-  // follows that same policy while still enforcing the tenant boundary.
+  // Forum content is visible tenant-wide through the REST API, so realtime
+  // access follows that same policy — including the tier rule, or a member
+  // could subscribe to a room whose forum the REST API hides from them.
   const forum = await forumModel.findOne(tenantId, { _id: parsed.id });
   if (!forum) return { ok: false, status: 403, error: "Room access denied" };
+
+  const hiddenUserIds = await getHiddenUserIdsByTenantId(tenantId, userId, { user });
+  if (hiddenUserIds.includes(String(forum.creatorId || forum.createdBy || ""))) {
+    return { ok: false, status: 403, error: "Room access denied" };
+  }
   return { ok: true, ...parsed, tenantId, resource: forum };
 }
 
