@@ -2829,11 +2829,11 @@ function DirectorCreateAccountWizardPage() {
                 Back to review
               </button>
             )}
-            <p className="director-checkout-secure">
-              {paymentSettled
-                ? "Your payment is complete. Retrying only finishes the launch."
-                : "Card details go straight to Stripe. PondBridge never sees them."}
-            </p>
+            {paymentSettled ? (
+              <p className="director-checkout-secure">
+                Your payment is complete. Retrying only finishes the launch.
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
