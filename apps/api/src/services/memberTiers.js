@@ -350,6 +350,41 @@ export async function assertConversationTierContactAllowedByTenantId(
   await assertConversationTierContactAllowed(tenant, conversation, actorUserId, { user });
 }
 
+// ---------------------------------------------------------------------------
+// Per-request memoization
+//
+// The content surfaces ask "who is hidden from me" several times per request,
+// and each answer costs two block queries plus a tier query. Caching the
+// *promise* on the request dedupes concurrent callers as well as sequential
+// ones, and it expires with the request, so blocking someone still takes effect
+// on their very next page load.
+// ---------------------------------------------------------------------------
+
+export function hiddenUserIdsFor(req) {
+  if (!req.__hiddenUserIdsPromise) {
+    req.__hiddenUserIdsPromise = getHiddenUserIds(req.tenant, req.user?.id, { user: req.user });
+  }
+  return req.__hiddenUserIdsPromise;
+}
+
+export function hiddenProfileIdsFor(req) {
+  if (!req.__hiddenProfileIdsPromise) {
+    req.__hiddenProfileIdsPromise = getHiddenProfileIds(req.tenant, req.user?.id, { user: req.user });
+  }
+  return req.__hiddenProfileIdsPromise;
+}
+
+/** The same answers as Sets, or null when nothing is hidden. */
+export async function hiddenUserIdSetFor(req) {
+  const ids = await hiddenUserIdsFor(req);
+  return ids.length ? new Set(ids.map(String)) : null;
+}
+
+export async function hiddenProfileIdSetFor(req) {
+  const ids = await hiddenProfileIdsFor(req);
+  return ids.length ? new Set(ids.map(String)) : null;
+}
+
 export function clearTierCaches() {
   tierListCache.clear();
   hiddenIdsCache.clear();

@@ -244,14 +244,14 @@ router.get("/", requireTenantModule("directory"), async (req, res) => {
   const view = String(req.query.view || "summary").trim().toLowerCase();
   const includeFull = view === "full";
   const limit = Math.min(Math.max(Number(req.query.limit || 30) || 30, 1), 100);
-  const blockedUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
-  const blockedUserIdSet = new Set(blockedUserIds);
+  const hiddenUserIdSet = new Set(hiddenUserIds);
   const cacheKey = [
     String(req.tenant?._id || ""),
     String(req.user?.id || ""),
-    blockedUserIds.join(","),
+    hiddenUserIds.join(","),
     q,
     roleAtCamp,
     industry,
@@ -278,7 +278,7 @@ router.get("/", requireTenantModule("directory"), async (req, res) => {
   const visibleItems = items.filter(
     (profile) =>
       !isRemovedProfile(profile) &&
-      !blockedUserIdSet.has(String(profile?.userId || ""))
+      !hiddenUserIdSet.has(String(profile?.userId || ""))
   );
   const payload = {
     total: visibleItems.length,

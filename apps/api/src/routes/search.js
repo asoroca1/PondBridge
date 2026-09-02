@@ -504,11 +504,11 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     offset,
     fetchLimit
   } = parseSearchInput(query);
-  const blockedUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
-  const blockedUserIdSet = new Set(blockedUserIds);
-  const safetySignature = blockedUserIds.join(",");
+  const hiddenUserIdSet = new Set(hiddenUserIds);
+  const safetySignature = hiddenUserIds.join(",");
   const cacheKey = [
     "search",
     String(req.tenant?._id || ""),
@@ -544,7 +544,7 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
   });
   const rankedItems = filterAndRankSearchItems(
     rawItems
-      .filter((profile) => !blockedUserIdSet.has(String(profile?.userId || "")))
+      .filter((profile) => !hiddenUserIdSet.has(String(profile?.userId || "")))
       .map((profile) => withNickname(profile)),
     {
       cedarRoleTerms,
@@ -787,17 +787,17 @@ router.get("/users", async (req, res) => {
 router.get("/names", async (req, res) => {
   const { q, cedarRoleTerms, roleAtCamp, industryTerms, industry, cityState } = parseSearchInput(req);
   const limit = clampLimit(req.query.limit, 10, 25);
-  const blockedUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
-  const blockedUserIdSet = new Set(blockedUserIds);
+  const hiddenUserIdSet = new Set(hiddenUserIds);
   const cacheKey = buildSearchNamesCacheKey(req, {
     q,
     roleAtCamp,
     industry,
     cityState,
     limit,
-    safetySignature: blockedUserIds.join(",")
+    safetySignature: hiddenUserIds.join(",")
   });
   const cached = searchNamesResponseCache.get(cacheKey);
   if (cached) {
@@ -813,7 +813,7 @@ router.get("/names", async (req, res) => {
   const mapped = items
     .filter((profile) =>
       !isRemovedProfile(profile) &&
-      !blockedUserIdSet.has(String(profile?.userId || ""))
+      !hiddenUserIdSet.has(String(profile?.userId || ""))
     )
     .map((profile) => mapNameResult(profile));
   res.set("Cache-Control", SEARCH_CACHE_CONTROL);

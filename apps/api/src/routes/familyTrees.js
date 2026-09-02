@@ -4,7 +4,7 @@ import { requireTenantAuthScope } from "../middleware/tenantAccess.js";
 import { requireFeature } from "../middleware/requireFeature.js";
 import { FamilyTreeModel, RELATIONSHIP_TYPES, UserModel, ProfileModel } from "../db/models/index.js";
 import { sanitizeText } from "../utils/sanitize.js";
-import { getHiddenProfileIds, getHiddenUserIds } from "../services/memberTiers.js";
+import { hiddenProfileIdSetFor, hiddenUserIdSetFor } from "../services/memberTiers.js";
 
 const router = Router({ mergeParams: true });
 
@@ -183,22 +183,18 @@ router.get("/", async (req, res) => {
   const trees = await FamilyTreeModel.find(req.tenant._id, filter, { sort: { name: 1 } });
   // A tree inherits its creator's tier, and its member count is recomputed from
   // the members the viewer is actually allowed to see.
-  const hiddenUserIds = new Set(
-    (await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })).map(String)
-  );
-  const hiddenProfileIds = new Set(
-    (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
-  );
-  const visibleTrees = trees.filter(
-    (tree) => !hiddenUserIds.has(String(tree.createdByUserId || ""))
-  );
+  const hiddenUserIds = await hiddenUserIdSetFor(req);
+  const hiddenProfileIds = await hiddenProfileIdSetFor(req);
+  const visibleTrees = hiddenUserIds
+    ? trees.filter((tree) => !hiddenUserIds.has(String(tree.createdByUserId || "")))
+    : trees;
 
   res.json({
     items: visibleTrees.map((tree) => ({
       id: String(tree._id),
       name: tree.name,
       memberCount: (tree.members || []).filter(
-        (member) => !hiddenProfileIds.has(String(member?.profileId || member?.id || ""))
+        (member) => !hiddenProfileIds?.has(String(member?.profileId || member?.id || ""))
       ).length,
       createdByUserId: String(tree.createdByUserId)
     }))
@@ -264,10 +260,8 @@ router.get("/:treeId", async (req, res) => {
     });
   }
 
-  const hiddenUserIds = new Set(
-    (await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })).map(String)
-  );
-  if (hiddenUserIds.has(String(tree.createdByUserId || ""))) {
+  const hiddenUserIds = await hiddenUserIdSetFor(req);
+  if (hiddenUserIds?.has(String(tree.createdByUserId || ""))) {
     return res.status(404).json({
       error: { code: "TREE_NOT_FOUND", message: "Family tree not found" }
     });
@@ -278,9 +272,7 @@ router.get("/:treeId", async (req, res) => {
     reqUserId: req.user.id,
     currentUserProfileId: currentUser?.profileId,
     userRoles: req.user.roles,
-    hiddenProfileIds: new Set(
-      (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
-    )
+    hiddenProfileIds: await hiddenProfileIdSetFor(req)
   });
 
   // `tree` is the raw document; it carries the members the serializer just

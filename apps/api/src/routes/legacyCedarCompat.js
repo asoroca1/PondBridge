@@ -73,6 +73,7 @@ import {
   assertConversationTierContactAllowed,
   assertTierContactAllowed,
   getHiddenUserIds,
+  hiddenUserIdSetFor,
   resolveViewerModules
 } from "../services/memberTiers.js";
 import {
@@ -816,9 +817,9 @@ function mapCityPerson(profile) {
  * Blocking is between two people, so it cannot be baked into the shared
  * per-city cache — it is applied on the way out, per viewer.
  */
-function withoutBlockedPeople(people = [], blockedUserIds = new Set()) {
+function withoutBlockedPeople(people = [], hiddenUserIds = new Set()) {
   return (Array.isArray(people) ? people : [])
-    .filter((person) => !blockedUserIds.has(String(person?.userId || "")))
+    .filter((person) => !hiddenUserIds.has(String(person?.userId || "")))
     .map(({ userId: _userId, ...person }) => person);
 }
 
@@ -1875,7 +1876,7 @@ router.get("/suggestions", async (req, res) => {
     return res.status(404).json({ items: [], error: "Target profile not found" });
   }
 
-  const blockedUserIds = new Set(
+  const hiddenUserIds = new Set(
     await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })
   );
 
@@ -1889,7 +1890,7 @@ router.get("/suggestions", async (req, res) => {
     limit: SUGGESTION_CANDIDATE_LIMIT
   });
   const visibleCandidates = candidates.filter(
-    (candidate) => !blockedUserIds.has(String(candidate?.userId || ""))
+    (candidate) => !hiddenUserIds.has(String(candidate?.userId || ""))
   );
   // Past this point the pool was cut off, so some members cannot be suggested.
   // Reported rather than left silent.
@@ -2002,8 +2003,7 @@ function clampActivityLimit(raw = 50) {
  * skip filtering entirely on the common path.
  */
 async function hiddenSetFor(req) {
-  const hidden = await getHiddenUserIds(req.tenant, req.user.id, { user: req.user });
-  return hidden.length ? new Set(hidden.map(String)) : null;
+  return hiddenUserIdSetFor(req);
 }
 
 async function readActivityPayload(tenantId = "", { limit = 50, hiddenUserIds = null } = {}) {
@@ -2516,16 +2516,16 @@ router.post("/conversations/group", async (req, res) => {
 router.get("/conversations", async (req, res) => {
   const meId = asObjectId(req.user.id);
   if (!meId) return res.json({ items: [] });
-  const blockedUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, {
     user: req.user
   });
-  const blockedSet = new Set(blockedUserIds);
+  const hiddenSet = new Set(hiddenUserIds);
   const cacheKey = tenantReadCacheKey(
     "conversations-list",
     req.tenant?._id,
     [
       String(req.user?.id || ""),
-      blockedUserIds.join(","),
+      hiddenUserIds.join(","),
       String(req.originalUrl || req.url || "")
     ].join(":")
   );
@@ -2540,7 +2540,7 @@ router.get("/conversations", async (req, res) => {
   const contactChecks = items.filter((item) => {
     if (String(item?.type || "") !== "dm") return true;
     return !(item?.participantIds || []).some(
-      (participantId) => blockedSet.has(String(participantId || ""))
+      (participantId) => hiddenSet.has(String(participantId || ""))
     );
   });
   const participantUserIds = [
@@ -3866,11 +3866,11 @@ router.get("/map/city/:key", async (req, res) => {
     });
   }
 
-  const blockedUserIds = new Set(
+  const hiddenUserIds = new Set(
     await getHiddenUserIds(req.tenant, req.user.id, { user: req.user })
   );
 
-  return res.json(withoutBlockedPeople(output, blockedUserIds));
+  return res.json(withoutBlockedPeople(output, hiddenUserIds));
 });
 
 export default router;

@@ -20,7 +20,7 @@ import {
   normalizeSeminarMeetingUrl,
   serializeEvent
 } from "../services/events.js";
-import { getHiddenProfileIds } from "../services/memberTiers.js";
+import { hiddenProfileIdSetFor } from "../services/memberTiers.js";
 
 const router = Router({ mergeParams: true });
 
@@ -160,9 +160,7 @@ router.get("/", async (req, res) => {
     eventIdsWithMeetingLink,
     viewerProfile
   } = await loadEventResponseContext(req.tenant._id, req.user.id, events, {
-    hiddenProfileIds: new Set(
-      (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
-    )
+    hiddenProfileIds: await hiddenProfileIdSetFor(req)
   });
 
   const now = new Date();
@@ -214,9 +212,7 @@ router.get("/:eventId", async (req, res) => {
     EventMeetingDetailModel.findOne(req.tenant._id, { eventId })
   ]);
 
-  const hiddenProfileIds = new Set(
-    (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
-  );
+  const hiddenProfileIds = (await hiddenProfileIdSetFor(req)) || new Set();
   const roster = await resolveViewerRoster({
     tenantId: req.tenant._id,
     rsvps,
@@ -402,9 +398,7 @@ router.put("/:eventId/rsvp", async (req, res) => {
   ]);
   // Registering is what unlocks the roster, so send it back with the response
   // that confirms it rather than making the page ask again.
-  const hiddenProfileIds = new Set(
-    (await getHiddenProfileIds(req.tenant, req.user.id, { user: req.user })).map(String)
-  );
+  const hiddenProfileIds = (await hiddenProfileIdSetFor(req)) || new Set();
   const roster = await resolveViewerRoster({
     tenantId: req.tenant._id,
     rsvps,
