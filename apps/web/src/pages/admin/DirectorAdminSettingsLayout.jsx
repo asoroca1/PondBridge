@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
   UserCog
 } from "lucide-react";
+import { HIDE_MOBILE_APP } from "../../lib/directorHiddenFeatures.js";
 import "./director-admin-settings.css";
 
 // Grouped by what a director is actually trying to do, so the list reads as
@@ -73,7 +74,9 @@ const GROUPS = [
         label: "Mobile alerts",
         icon: Bell,
         blurb: "Push notification settings",
-        description: "Notifications sent to phones with the app installed. Nothing here emails anyone."
+        description: "Notifications sent to phones with the app installed. Nothing here emails anyone.",
+        // Hidden until the mobile app ships.
+        hidden: HIDE_MOBILE_APP
       },
       {
         to: "support",
@@ -94,6 +97,10 @@ const GROUPS = [
   }
 ];
 
+const VISIBLE_GROUPS = GROUPS
+  .map((group) => ({ ...group, items: group.items.filter((item) => !item.hidden) }))
+  .filter((group) => group.items.length);
+
 /**
  * Settings gets the same shape as the other workspaces: a rail that names every
  * tab and what it controls, so a director can find a setting without opening
@@ -103,7 +110,7 @@ export default function DirectorAdminSettingsLayout() {
   const location = useLocation();
   // Track the group too, so the header can say which part of Settings you are
   // in the way the other workspaces name themselves.
-  const activeGroup = GROUPS.find((group) =>
+  const activeGroup = VISIBLE_GROUPS.find((group) =>
     group.items.some((item) => location.pathname.endsWith(`/settings/${item.to}`))
   );
   const active = (activeGroup?.items || [])
@@ -112,7 +119,7 @@ export default function DirectorAdminSettingsLayout() {
   return (
     <section className="pb-settings">
       <nav className="pb-settings-rail" aria-label="Settings sections">
-        {GROUPS.map((group) => (
+        {VISIBLE_GROUPS.map((group) => (
           <div key={group.key}>
             <h2>{group.label}</h2>
             <ul>

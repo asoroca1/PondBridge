@@ -134,6 +134,45 @@ function normalizeCapacity(value) {
   return parsed;
 }
 
+export const EVENT_MAX_PRESENTERS = 12;
+
+/**
+ * Presenters arrive from the admin UI as profile ids. Order is meaningful --
+ * the first presenter is mirrored into events.host_profile_id so the existing
+ * publish checks, seminar emails, and host indexes keep working unchanged.
+ */
+export function normalizePresenterProfileIds(value) {
+  const list = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const ids = [];
+  for (const item of list) {
+    const id = sanitizeText(String(item || "").trim()).slice(0, 80);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  if (ids.length > EVENT_MAX_PRESENTERS) {
+    throw createEventError(
+      `An event can have at most ${EVENT_MAX_PRESENTERS} presenters.`,
+      "EVENT_PRESENTERS_LIMIT"
+    );
+  }
+  return ids;
+}
+
+export function serializeEventPerson(profile = null) {
+  if (!profile) return null;
+  const id = String(profile?._id || profile?.id || "").trim();
+  if (!id) return null;
+  return {
+    id,
+    fullName: `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim() || "Camp member",
+    avatarUrl: String(profile?.avatarUrl || "").trim(),
+    roleAtCamp: String(profile?.roleAtCamp || "").trim(),
+    industry: String(profile?.industry || "").trim()
+  };
+}
+
 function slugify(value = "") {
   return String(value || "")
     .trim()
@@ -352,7 +391,7 @@ export function validateEventPublishReadiness(event = {}, { meetingUrl = "" } = 
   }
   if (!String(event?.hostProfileId || "").trim()) {
     throw createEventError(
-      "Select a registered network member to host this info session.",
+      "Add at least one registered network member as a presenter for this info session.",
       "SEMINAR_HOST_REQUIRED"
     );
   }
@@ -380,6 +419,7 @@ export function assertSeminarJoinEligibility({
   event = {},
   profile = null,
   rsvp = null,
+  presenterProfileIds = [],
   now = new Date()
 } = {}) {
   if (
@@ -412,7 +452,16 @@ export function assertSeminarJoinEligibility({
   }
 
   const profileId = String(profile?._id || profile?.id || "");
-  const isHost = profileId && profileId === String(event?.hostProfileId || "");
+  // Presenters run the room, so they never need to RSVP to their own session.
+  const presenterIds = new Set(
+    [
+      ...(Array.isArray(presenterProfileIds) ? presenterProfileIds : []),
+      String(event?.hostProfileId || "")
+    ]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  );
+  const isHost = Boolean(profileId && presenterIds.has(profileId));
   if (!isHost && String(rsvp?.status || "").trim().toLowerCase() !== "attending") {
     throw createEventError(
       "RSVP “Going” before opening the info session room.",
@@ -421,7 +470,7 @@ export function assertSeminarJoinEligibility({
     );
   }
 
-  return { profileId, isHost };
+  return { profileId, isHost, isPresenter: isHost };
 }
 
 export function eventPath(eventId = "") {
@@ -508,15 +557,25 @@ export function serializeEvent(event = {}, options = {}) {
   const deliveryMode = normalizeEventDeliveryMode(event?.deliveryMode || "", "in_person");
   const isOnlineSeminar =
     eventType === "seminar" && ["online", "hybrid"].includes(deliveryMode);
+  const presenterProfiles = (Array.isArray(options.presenters) ? options.presenters : [])
+    .map((profile) => serializeEventPerson(profile))
+    .filter(Boolean);
+  // The host is simply the first presenter. Older callers that only load the
+  // host profile still get a presenter list of one.
   const hostProfile = options.hostProfile || null;
-  const isHost = Boolean(
-    options.viewerProfileId &&
-      String(options.viewerProfileId) === String(event?.hostProfileId || "")
-  );
+  const presenters = presenterProfiles.length
+    ? presenterProfiles
+    : [serializeEventPerson(hostProfile)].filter(Boolean);
+  const presenterProfileIds = presenters.length
+    ? presenters.map((person) => person.id)
+    : [String(event?.hostProfileId || "").trim()].filter(Boolean);
+  const viewerProfileId = String(options.viewerProfileId || "").trim();
+  const isPresenter = Boolean(viewerProfileId && presenterProfileIds.includes(viewerProfileId));
+  const isHost = isPresenter;
   const canRequestJoinLink = Boolean(
     isOnlineSeminar &&
       event?.status === "published" &&
-      (isHost || myRsvp?.status === "attending")
+      (isPresenter || myRsvp?.status === "attending")
   );
 
   const serialized = {
@@ -535,15 +594,9 @@ export function serializeEvent(event = {}, options = {}) {
     audience: normalizeEventAudience(event?.audience || "", "all_members"),
     meetingProvider: normalizeMeetingProvider(event?.meetingProvider || "", "", ""),
     hostProfileId: String(event?.hostProfileId || "").trim(),
-    host: hostProfile
-      ? {
-          id: String(hostProfile?._id || hostProfile?.id || "").trim(),
-          fullName: `${hostProfile?.firstName || ""} ${hostProfile?.lastName || ""}`.trim() || "Camp member",
-          avatarUrl: String(hostProfile?.avatarUrl || "").trim(),
-          roleAtCamp: String(hostProfile?.roleAtCamp || "").trim(),
-          industry: String(hostProfile?.industry || "").trim()
-        }
-      : null,
+    host: presenters[0] || null,
+    presenters,
+    presenterProfileIds,
     capacity:
       event?.capacity !== null &&
       event?.capacity !== undefined &&
@@ -577,6 +630,7 @@ export function serializeEvent(event = {}, options = {}) {
           requiresRegistration: true,
           requiresAttendingRsvp: true,
           isHost,
+          isPresenter,
           canRequestJoinLink,
           joinPath: `${eventPath(event?._id || event?.id || "")}/join`
         }

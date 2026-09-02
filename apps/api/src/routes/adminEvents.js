@@ -23,12 +23,23 @@ import {
   normalizeEventMessageKind,
   normalizeEventStatus,
   normalizeEventWritePayload,
+  normalizePresenterProfileIds,
   normalizeSeminarMeetingUrl,
   resolveEventSlug,
   serializeEvent,
   serializeEventMessage,
+  serializeEventPerson,
   validateEventPublishReadiness
 } from "../services/events.js";
+import {
+  addEventPresenter,
+  assertPresentersEligible,
+  loadPresenterProfileMap,
+  loadPresenterProfiles,
+  removeEventAttendee,
+  removeEventPresenter,
+  setEventPresenters
+} from "../services/eventPresenters.js";
 import {
   normalizeTenantMobileNotificationPrefs,
   resolveAudienceUserIds,
@@ -82,33 +93,19 @@ function fullName(profile = {}, user = {}) {
   return `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim() || String(user?.email || "Member");
 }
 
-async function validateAssignedHost(tenantId, hostProfileId = "") {
-  const profileId = toId(hostProfileId);
-  if (!profileId) return null;
-
-  const profile = await ProfileModel.findOne(tenantId, {
-    _id: profileId,
-    status: "active"
-  });
-  if (!profile) {
-    throw createEventError(
-      "Select an active registered member from this network as the seminar host.",
-      "SEMINAR_HOST_NOT_REGISTERED"
-    );
+/**
+ * The composer may send either the full presenter list or, for older clients,
+ * a single hostProfileId. Both collapse to one ordered list of profile ids
+ * whose first entry becomes the event's host.
+ */
+function resolvePresenterIdsFromBody(body = {}, fallbackIds = []) {
+  if (Object.prototype.hasOwnProperty.call(body, "presenterProfileIds")) {
+    return normalizePresenterProfileIds(body.presenterProfileIds);
   }
-
-  const user = await UserModel.findOne(tenantId, {
-    _id: toId(profile.userId),
-    status: "active"
-  });
-  if (!user) {
-    throw createEventError(
-      "The selected host no longer has an active network account.",
-      "SEMINAR_HOST_NOT_REGISTERED"
-    );
+  if (Object.prototype.hasOwnProperty.call(body, "hostProfileId")) {
+    return normalizePresenterProfileIds([body.hostProfileId]);
   }
-
-  return profile;
+  return normalizePresenterProfileIds(fallbackIds);
 }
 
 async function saveMeetingDetail({ tenantId, eventId, meetingUrl = "" }) {
@@ -154,6 +151,7 @@ async function buildAdminEventListPayload(tenantId, filter = {}) {
     eventIds.length ? EventMessageModel.find(tenantId, { eventId: { $in: eventIds } }, { sort: { createdAt: -1 } }) : []
   ]);
 
+  const presentersByEventId = await loadPresenterProfileMap(tenantId, eventIds);
   const summaryMap = buildRsvpSummaryMap(rsvps);
   const messageMap = new Map();
   for (const message of messages) {
@@ -166,7 +164,8 @@ async function buildAdminEventListPayload(tenantId, filter = {}) {
     const eventId = toId(event?._id || event?.id);
     const item = serializeEvent(event, {
       now: new Date(),
-      rsvpSummary: summaryMap.get(eventId)
+      rsvpSummary: summaryMap.get(eventId),
+      presenters: presentersByEventId.get(eventId) || []
     });
     const lastMessage = messageMap.get(eventId);
     return {
@@ -179,15 +178,16 @@ async function buildAdminEventListPayload(tenantId, filter = {}) {
 
 async function buildEventDetailPayload(tenantId, event) {
   const eventId = toId(event?._id || event?.id);
-  const [rsvps, messages, meetingDetail, joinAccessCount, hostProfile] = await Promise.all([
+  const [rsvps, messages, meetingDetail, joinAccessCount, presenterProfiles] = await Promise.all([
     EventRsvpModel.find(tenantId, { eventId }, { sort: { respondedAt: -1 } }),
     EventMessageModel.find(tenantId, { eventId }, { sort: { createdAt: -1 } }),
     EventMeetingDetailModel.findOne(tenantId, { eventId }),
     EventJoinAccessLogModel.count(tenantId, { eventId }),
-    event?.hostProfileId
-      ? ProfileModel.findOne(tenantId, { _id: toId(event.hostProfileId) })
-      : null
+    loadPresenterProfiles(tenantId, eventId)
   ]);
+  const presenterProfileIds = new Set(
+    presenterProfiles.map((item) => toId(item?._id || item?.id)).filter(Boolean)
+  );
 
   const profileIds = [...new Set(rsvps.map((item) => toId(item?.profileId)).filter(Boolean))];
   const profiles = profileIds.length
@@ -208,7 +208,7 @@ async function buildEventDetailPayload(tenantId, event) {
     item: serializeEvent(event, {
       now: new Date(),
       rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
-      hostProfile,
+      presenters: presenterProfiles,
       includePrivateMeeting: true,
       meetingUrl: meetingDetail?.meetingUrl || "",
       joinAccessCount
@@ -224,12 +224,21 @@ async function buildEventDetailPayload(tenantId, event) {
         email: String(profile?.emails?.find(Boolean) || user?.email || "").trim().toLowerCase(),
         avatarUrl: String(profile?.avatarUrl || "").trim(),
         roleAtCamp: String(profile?.roleAtCamp || "").trim(),
+        isPresenter: presenterProfileIds.has(toId(rsvp?.profileId)),
         status: String(rsvp?.status || ""),
         respondedAt: rsvp?.respondedAt ? new Date(rsvp.respondedAt).toISOString() : null
       };
     }),
     messages: messages.map((message) => serializeEventMessage(message))
   };
+}
+
+async function loadEventOrThrow(tenantId, eventId) {
+  const event = await EventModel.findOne(tenantId, { _id: toId(eventId) });
+  if (!event) {
+    throw createEventError("Event not found.", "EVENT_NOT_FOUND", 404);
+  }
+  return event;
 }
 
 async function loadEventOr404(req, res) {
@@ -263,7 +272,12 @@ router.post("/", async (req, res) => {
     req.body?.meetingUrl || "",
     payload.meetingProvider || ""
   );
-  const hostProfile = await validateAssignedHost(req.tenant._id, payload.hostProfileId);
+  const presenterProfileIds = resolvePresenterIdsFromBody(req.body || {});
+  // Checked before the insert so an unusable presenter fails with a readable
+  // message rather than a host-consistency constraint violation.
+  await assertPresentersEligible(req.tenant._id, presenterProfileIds);
+  payload.hostProfileId = presenterProfileIds[0] || null;
+
   const slug = await resolveUniqueEventSlug(req.tenant._id, payload.title);
   const created = await EventModel.create({
     tenantId: req.tenant._id,
@@ -273,23 +287,31 @@ router.post("/", async (req, res) => {
     createdByUserId: req.user.id,
     updatedByUserId: req.user.id
   });
+  const eventId = toId(created?._id || created?.id);
   await saveMeetingDetail({
     tenantId: req.tenant._id,
-    eventId: toId(created?._id || created?.id),
+    eventId,
     meetingUrl
+  });
+  const presenters = await setEventPresenters({
+    tenantId: req.tenant._id,
+    eventId,
+    profileIds: presenterProfileIds,
+    actorUserId: req.user.id
   });
 
   await writeAdminAudit(req, "admin_event_created", {
-    eventId: toId(created?._id || created?.id),
+    eventId,
     title: created.title,
-    eventType: created.eventType || "community"
+    eventType: created.eventType || "community",
+    presenterCount: presenters.length
   });
 
   return res.status(201).json({
     ok: true,
     item: serializeEvent(created, {
       now: new Date(),
-      hostProfile,
+      presenters,
       includePrivateMeeting: true,
       meetingUrl
     })
@@ -337,7 +359,13 @@ router.patch("/:eventId", async (req, res) => {
     mergedInput.meetingUrl || "",
     patch.meetingProvider || ""
   );
-  const hostProfile = await validateAssignedHost(req.tenant._id, patch.hostProfileId);
+  const existingPresenterProfiles = await loadPresenterProfiles(req.tenant._id, eventId);
+  const presenterProfileIds = resolvePresenterIdsFromBody(
+    req.body || {},
+    existingPresenterProfiles.map((item) => toId(item?._id || item?.id))
+  );
+  await assertPresentersEligible(req.tenant._id, presenterProfileIds);
+  patch.hostProfileId = presenterProfileIds[0] || null;
   const nextSlug = patch.title && patch.title !== event.title
     ? await resolveUniqueEventSlug(req.tenant._id, patch.title, toId(event?._id || event?.id))
     : String(event.slug || "").trim();
@@ -352,18 +380,25 @@ router.patch("/:eventId", async (req, res) => {
     eventId,
     meetingUrl
   });
+  const presenters = await setEventPresenters({
+    tenantId: req.tenant._id,
+    eventId,
+    profileIds: presenterProfileIds,
+    actorUserId: req.user.id
+  });
 
   await writeAdminAudit(req, "admin_event_updated", {
     eventId: toId(updated?._id || updated?.id),
     title: updated.title,
-    eventType: updated.eventType || "community"
+    eventType: updated.eventType || "community",
+    presenterCount: presenters.length
   });
 
   return res.json({
     ok: true,
     item: serializeEvent(updated, {
       now: new Date(),
-      hostProfile,
+      presenters,
       includePrivateMeeting: true,
       meetingUrl
     })
@@ -375,7 +410,7 @@ router.post("/:eventId/publish", async (req, res) => {
   if (!event) return;
   const eventId = toId(event?._id || event?.id);
   const meetingDetail = await EventMeetingDetailModel.findOne(req.tenant._id, { eventId });
-  const hostProfile = await validateAssignedHost(req.tenant._id, event.hostProfileId);
+  const presenters = await loadPresenterProfiles(req.tenant._id, eventId);
   validateEventPublishReadiness(event, {
     meetingUrl: meetingDetail?.meetingUrl || ""
   });
@@ -418,7 +453,7 @@ router.post("/:eventId/publish", async (req, res) => {
     ok: true,
     item: serializeEvent(updated, {
       now: new Date(),
-      hostProfile,
+      presenters,
       includePrivateMeeting: true,
       meetingUrl: meetingDetail?.meetingUrl || ""
     })
@@ -441,7 +476,10 @@ router.post("/:eventId/unpublish", async (req, res) => {
 
   return res.json({
     ok: true,
-    item: serializeEvent(updated, { now: new Date() })
+    item: serializeEvent(updated, {
+      now: new Date(),
+      presenters: await loadPresenterProfiles(req.tenant._id, toId(event?._id || event?.id))
+    })
   });
 });
 
@@ -479,7 +517,99 @@ router.post("/:eventId/cancel", async (req, res) => {
 
   return res.json({
     ok: true,
-    item: serializeEvent(updated, { now: new Date() })
+    item: serializeEvent(updated, {
+      now: new Date(),
+      presenters: await loadPresenterProfiles(req.tenant._id, toId(event?._id || event?.id))
+    })
+  });
+});
+
+router.get("/:eventId/presenters", async (req, res) => {
+  const event = await loadEventOr404(req, res);
+  if (!event) return;
+  const presenters = await loadPresenterProfiles(req.tenant._id, toId(event?._id || event?.id));
+  return res.json({ items: presenters.map((profile) => serializeEventPerson(profile)) });
+});
+
+// Adding a presenter also marks them as going, so directors never have to
+// chase their own speakers for an RSVP.
+router.post("/:eventId/presenters", async (req, res) => {
+  const event = await loadEventOr404(req, res);
+  if (!event) return;
+  const eventId = toId(event?._id || event?.id);
+  const profileId = toId(req.body?.profileId);
+
+  const { rsvpCreated } = await addEventPresenter({
+    tenantId: req.tenant._id,
+    eventId,
+    profileId,
+    actorUserId: req.user.id
+  });
+
+  await writeAdminAudit(req, "admin_event_presenter_added", {
+    eventId,
+    profileId,
+    rsvpCreated
+  });
+
+  return res.status(201).json({
+    ok: true,
+    rsvpCreated,
+    ...(await buildEventDetailPayload(req.tenant._id, await loadEventOrThrow(req.tenant._id, eventId)))
+  });
+});
+
+router.delete("/:eventId/presenters/:profileId", async (req, res) => {
+  const event = await loadEventOr404(req, res);
+  if (!event) return;
+  const eventId = toId(event?._id || event?.id);
+  const profileId = toId(req.params.profileId);
+
+  const { removedRsvp } = await removeEventPresenter({
+    tenantId: req.tenant._id,
+    eventId,
+    profileId,
+    actorUserId: req.user.id
+  });
+
+  await writeAdminAudit(req, "admin_event_presenter_removed", {
+    eventId,
+    profileId,
+    removedRsvp
+  });
+
+  return res.json({
+    ok: true,
+    removedRsvp,
+    ...(await buildEventDetailPayload(req.tenant._id, await loadEventOrThrow(req.tenant._id, eventId)))
+  });
+});
+
+// Takes someone off the guest list entirely — their RSVP and, if they had one,
+// their presenter slot.
+router.delete("/:eventId/attendees/:profileId", async (req, res) => {
+  const event = await loadEventOr404(req, res);
+  if (!event) return;
+  const eventId = toId(event?._id || event?.id);
+  const profileId = toId(req.params.profileId);
+
+  const { removedPresenter } = await removeEventAttendee({
+    tenantId: req.tenant._id,
+    eventId,
+    profileId,
+    actorUserId: req.user.id
+  });
+
+  await writeAdminAudit(req, "admin_event_attendee_removed", {
+    eventId,
+    profileId,
+    removedPresenter
+  });
+
+  return res.json({
+    ok: true,
+    removedPresenter,
+    ...(await buildEventDetailPayload(req.tenant._id, await loadEventOrThrow(req.tenant._id, eventId)))
   });
 });
 

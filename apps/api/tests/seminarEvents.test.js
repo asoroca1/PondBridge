@@ -142,14 +142,14 @@ describe("registered-member seminar events", () => {
         profile: memberProfile,
         rsvp: { status: "attending" }
       })
-    ).toEqual({ profileId: "member-profile", isHost: false });
+    ).toEqual({ profileId: "member-profile", isHost: false, isPresenter: false });
 
     expect(
       assertSeminarJoinEligibility({
         event: seminar(),
         profile: { id: "profile-host", status: "active" }
       })
-    ).toEqual({ profileId: "profile-host", isHost: true });
+    ).toEqual({ profileId: "profile-host", isHost: true, isPresenter: true });
 
     expect(() =>
       assertSeminarJoinEligibility({

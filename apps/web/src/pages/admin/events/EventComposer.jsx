@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Input, Select, Textarea } from "@pondbridge/ui";
+import { X } from "lucide-react";
 import { ModalDialog } from "../../../components/admin/AdminUi.jsx";
+import MemberPicker from "./MemberPicker.jsx";
 import {
   AUDIENCES,
   MEETING_PROVIDERS,
@@ -18,7 +20,7 @@ const BASE = {
   audience: "all_members",
   meetingProvider: "",
   meetingUrl: "",
-  hostProfileId: "",
+  presenterProfileIds: [],
   capacity: "",
   title: "",
   summary: "",
@@ -48,8 +50,8 @@ const COPY = {
     summaryPlaceholder: "One line members see in the list",
     detailsPlaceholder: "What to expect, what to bring, parking…",
     createLabel: "Create event",
-    hostLabel: "Organizer",
-    hostHint: "Who members should ask about this."
+    hostLabel: "Hosts",
+    hostHint: "Who members should ask about this. They are marked as going."
   },
   seminar: {
     title: "New info session",
@@ -59,8 +61,8 @@ const COPY = {
     summaryPlaceholder: "One line explaining what members will get out of it",
     detailsPlaceholder: "Agenda, who should attend, what to prepare…",
     createLabel: "Create info session",
-    hostLabel: "Presenter",
-    hostHint: "Shown to members as who is running the session."
+    hostLabel: "Presenters",
+    hostHint: "Shown to members as who is running the session. They are marked as going."
   }
 };
 
@@ -86,6 +88,15 @@ function initialForm(event, day, type) {
   };
 }
 
+// Older events carry a single host; newer ones carry the full presenter list.
+function initialPresenters(event) {
+  if (Array.isArray(event?.presenters) && event.presenters.length) {
+    return event.presenters.map((person) => ({ id: person.id, fullName: person.fullName }));
+  }
+  if (event?.host?.id) return [{ id: event.host.id, fullName: event.host.fullName }];
+  return [];
+}
+
 /**
  * One dialog, two forms. The kind is settled before this opens, so it is shown
  * as a fixed heading rather than a dropdown, and each kind only renders the
@@ -107,40 +118,14 @@ export default function EventComposer({
 
   const [form, setForm] = useState(() => initialForm(event, day, eventType));
   const [error, setError] = useState("");
-  const [hostQuery, setHostQuery] = useState("");
-  const [hostResults, setHostResults] = useState([]);
-  const [host, setHost] = useState(event?.host || null);
+  const [presenters, setPresenters] = useState(() => initialPresenters(event));
 
   useEffect(() => {
     if (!open) return;
     setForm(initialForm(event, day, eventType));
-    setHost(event?.host || null);
-    setHostQuery("");
-    setHostResults([]);
+    setPresenters(initialPresenters(event));
     setError("");
   }, [day, event, eventType, open]);
-
-  useEffect(() => {
-    const needle = hostQuery.trim();
-    if (!open || needle.length < 2) {
-      setHostResults([]);
-      return undefined;
-    }
-    let active = true;
-    const timer = window.setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({
-          page: "1", pageSize: "6", q: needle,
-          role: "all", year: "all", status: "all", completion: "all", sort: "name_asc"
-        });
-        const payload = await request(`/members?${params.toString()}`);
-        if (active) setHostResults(Array.isArray(payload?.items) ? payload.items : []);
-      } catch {
-        if (active) setHostResults([]);
-      }
-    }, 220);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [hostQuery, open, request]);
 
   // An info session can also be held in a room; an event can also be streamed.
   // Both stay possible, just never the starting assumption.
@@ -179,7 +164,7 @@ export default function EventComposer({
       startsAt: fromLocalInput(form.startsAt),
       endsAt: fromLocalInput(form.endsAt),
       rsvpDeadlineAt: fromLocalInput(form.rsvpDeadlineAt),
-      hostProfileId: host?.id || form.hostProfileId || ""
+      presenterProfileIds: presenters.map((person) => person.id)
     });
   }
 
@@ -324,40 +309,39 @@ export default function EventComposer({
           </label>
 
           <div className="pb-events-field is-full">
-            <span>{copy.hostLabel} <small>optional</small></span>
-            {host ? (
-              <span className="pb-events-host">
-                {host.fullName}
-                <button type="button" onClick={() => { setHost(null); patch({ hostProfileId: "" }); }}>Remove</button>
-              </span>
-            ) : (
-              <>
-                <Input
-                  value={hostQuery}
-                  onChange={(e) => setHostQuery(e.target.value)}
-                  placeholder={`Search members — ${copy.hostHint.toLowerCase()}`}
-                />
-                {hostResults.length ? (
-                  <ul className="pb-events-host-results">
-                    {hostResults.map((member) => (
-                      <li key={member.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setHost({ id: member.id, fullName: member.fullName });
-                            patch({ hostProfileId: member.id });
-                            setHostQuery("");
-                          }}
-                        >
-                          <strong>{member.fullName || "Member"}</strong>
-                          <small>{member.email}</small>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </>
-            )}
+            <span>
+              {copy.hostLabel} {isSeminar ? null : <small>optional</small>}
+            </span>
+            {presenters.length ? (
+              <ul className="pb-events-host-chips">
+                {presenters.map((person) => (
+                  <li key={person.id}>
+                    <span>{person.fullName || "Member"}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${person.fullName || "member"}`}
+                      onClick={() =>
+                        setPresenters((prev) => prev.filter((item) => item.id !== person.id))
+                      }
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <MemberPicker
+              request={request}
+              placeholder={`Search members — ${copy.hostHint.toLowerCase()}`}
+              excludeIds={presenters.map((person) => person.id)}
+              onSelect={(member) =>
+                setPresenters((prev) =>
+                  prev.some((item) => item.id === member.id)
+                    ? prev
+                    : [...prev, { id: member.id, fullName: member.fullName }]
+                )
+              }
+            />
           </div>
 
           <label className="pb-events-field is-full">

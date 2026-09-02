@@ -117,6 +117,9 @@ const EMPTY_ADDRESS = {
   postalCode: "",
   country: "United States"
 };
+// Presentation metadata for every plan code the API can return. Availability is
+// decided by the server catalog (GET /api/tenants/me/billing -> catalog.plans),
+// not by this list, so a plan is only ever offered when the API says it is.
 const BILLING_PLAN_OPTIONS = [
   {
     code: "flagship",
@@ -124,8 +127,16 @@ const BILLING_PLAN_OPTIONS = [
     annualAmount: 1200,
     onboardingFeeAmount: 0,
     summary: "Every PondBridge feature, billed annually with no onboarding fee."
+  },
+  {
+    code: "test",
+    title: "Internal Test Plan",
+    annualAmount: 10,
+    onboardingFeeAmount: 0,
+    summary: "Internal production validation plan. Not for customer camps."
   }
 ];
+const DEFAULT_BILLING_PLAN_OPTION = BILLING_PLAN_OPTIONS[0];
 const HERO_POSITION_LABELS = {
   "left top": "Top left",
   "center top": "Top center",
@@ -156,12 +167,40 @@ const HERO_SIZE_OPTIONS = heroImageSizePresets.map((value) => ({
 
 function normalizeBillingPlanCode(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
-  return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized) ? normalized : "flagship";
+  return BILLING_PLAN_OPTIONS.some((item) => item.code === normalized)
+    ? normalized
+    : DEFAULT_BILLING_PLAN_OPTION.code;
 }
 
 function resolveTenantBillingPlanCode(tenant = null, fallback = "") {
   const raw = String(tenant?.billingPlan || tenant?.billing?.billingPlan || "").trim().toLowerCase();
   return BILLING_PLAN_OPTIONS.some((item) => item.code === raw) ? raw : fallback;
+}
+
+// Merges the server catalog with the local presentation metadata. The server is
+// the source of truth for which plans a camp may pick and for the prices shown.
+function buildBillingPlanOptions(catalogPlans = []) {
+  const plans = Array.isArray(catalogPlans) ? catalogPlans : [];
+  const merged = plans
+    .map((plan) => {
+      const code = String(plan?.code || "").trim().toLowerCase();
+      const meta = BILLING_PLAN_OPTIONS.find((item) => item.code === code);
+      if (!meta) return null;
+      const annualAmount = Number(plan?.annualAmount);
+      const onboardingFeeAmount = Number(plan?.onboardingFeeAmount);
+      return {
+        ...meta,
+        title: String(plan?.label || "").trim() ? `${String(plan.label).trim()} Plan` : meta.title,
+        summary: String(plan?.description || "").trim() || meta.summary,
+        annualAmount: Number.isFinite(annualAmount) ? annualAmount : meta.annualAmount,
+        onboardingFeeAmount: Number.isFinite(onboardingFeeAmount)
+          ? onboardingFeeAmount
+          : meta.onboardingFeeAmount
+      };
+    })
+    .filter(Boolean);
+
+  return merged.length ? merged : [DEFAULT_BILLING_PLAN_OPTION];
 }
 
 function billingLaunchReady(billingState = {}) {
@@ -428,10 +467,12 @@ function DirectorCreateAccountWizardPage() {
   const [savingForLater, setSavingForLater] = useState(false);
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
+  const [memberHeroFileName, setMemberHeroFileName] = useState("");
   const [showLaunchCelebration, setShowLaunchCelebration] = useState(false);
   const [launchRedirectUrl, setLaunchRedirectUrl] = useState("");
   const [serverOnboardingSnapshot, setServerOnboardingSnapshot] = useState(null);
   const [serverDraftLoaded, setServerDraftLoaded] = useState(false);
+  const [billingCatalogPlans, setBillingCatalogPlans] = useState([]);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -449,6 +490,7 @@ function DirectorCreateAccountWizardPage() {
     brandPrimary: DEFAULT_SETUP_BRAND,
     logoUrl: "",
     heroImageUrl: "",
+    heroImageUrlMember: "",
     heroImagePosition: DEFAULT_HERO_IMAGE_POSITION,
     heroImageSize: DEFAULT_HERO_IMAGE_SIZE,
     heroImagePositionLanding: DEFAULT_HERO_IMAGE_POSITION,
@@ -545,6 +587,25 @@ function DirectorCreateAccountWizardPage() {
     slug,
     user?.id
   ]);
+
+  useEffect(() => {
+    if (!authToken || !slug) return;
+
+    let cancelled = false;
+    requestJson("/api/tenants/me/billing", { token: authToken })
+      .then((snapshot) => {
+        if (cancelled) return;
+        const plans = Array.isArray(snapshot?.catalog?.plans) ? snapshot.catalog.plans : [];
+        if (plans.length) setBillingCatalogPlans(plans);
+      })
+      .catch(() => {
+        // Fall back to the built-in Flagship option if the catalog is unreachable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, slug]);
 
   useEffect(() => {
     if (checkoutQueryState !== "cancel") return;
@@ -740,12 +801,18 @@ function DirectorCreateAccountWizardPage() {
     { label: "Surface", color: deriveSecondaryHex(effectiveMainColor, 0.9) }
   ];
 
+  const availablePlanOptions = useMemo(
+    () => buildBillingPlanOptions(billingCatalogPlans),
+    [billingCatalogPlans]
+  );
   const selectedBillingPlanCode = normalizeBillingPlanCode(form.billingPlanCode);
   const selectedBillingPlan =
+    availablePlanOptions.find((item) => item.code === selectedBillingPlanCode) ||
     BILLING_PLAN_OPTIONS.find((item) => item.code === selectedBillingPlanCode) ||
-    BILLING_PLAN_OPTIONS[0];
+    availablePlanOptions[0];
   const tenantBillingPlanCode = resolveTenantBillingPlanCode(tenant, selectedBillingPlanCode);
   const tenantBillingPlan =
+    availablePlanOptions.find((item) => item.code === tenantBillingPlanCode) ||
     BILLING_PLAN_OPTIONS.find((item) => item.code === tenantBillingPlanCode) ||
     selectedBillingPlan;
   const hasTenantAnnualAmount = Number.isFinite(Number(tenant?.billing?.annualAmount));
@@ -771,12 +838,16 @@ function DirectorCreateAccountWizardPage() {
       : sanitizeMoneyValue(selectedBillingPlan.onboardingFeeAmount, 0);
   const annualAmountForPlanOption = (planCode = "") => {
     if (normalizeBillingPlanCode(planCode) === tenantBillingPlanCode) return configuredAnnualAmount;
-    const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(planCode));
+    const option = availablePlanOptions.find(
+      (item) => item.code === normalizeBillingPlanCode(planCode)
+    );
     return sanitizeMoneyValue(option?.annualAmount, 0);
   };
   const onboardingFeeAmountForPlanOption = (planCode = "") => {
     if (normalizeBillingPlanCode(planCode) === tenantBillingPlanCode) return configuredOnboardingFeeAmount;
-    const option = BILLING_PLAN_OPTIONS.find((item) => item.code === normalizeBillingPlanCode(planCode));
+    const option = availablePlanOptions.find(
+      (item) => item.code === normalizeBillingPlanCode(planCode)
+    );
     return sanitizeMoneyValue(option?.onboardingFeeAmount, 0);
   };
   const billingStatus = String(tenant?.billingStatus || tenant?.billing?.billingStatus || "")
@@ -1015,6 +1086,7 @@ function DirectorCreateAccountWizardPage() {
       brandPrimary: String(hasCustomMainColor ? prev.brandPrimary : initialBrandColor),
       logoUrl: String(source.logoUrl || prev.logoUrl || ""),
       heroImageUrl: String(source.heroImageUrl || prev.heroImageUrl || ""),
+      heroImageUrlMember: String(source.heroImageUrlMember || prev.heroImageUrlMember || ""),
       heroImagePosition: normalizeHeroImagePosition(
         source.heroImagePositionLanding ||
           source.heroImagePosition ||
@@ -1080,10 +1152,23 @@ function DirectorCreateAccountWizardPage() {
 
   useEffect(() => {
     if (!tenant || planHydratedRef.current) return;
-    const billingPlanCode = resolveTenantBillingPlanCode(tenant) || "flagship";
+    const billingPlanCode =
+      resolveTenantBillingPlanCode(tenant) || DEFAULT_BILLING_PLAN_OPTION.code;
     setForm((prev) => ({ ...prev, billingPlanCode }));
     planHydratedRef.current = true;
   }, [tenant]);
+
+  // If the stored plan is not one the server currently offers this camp, fall
+  // back to the first available plan so checkout never posts a code the API
+  // would reject.
+  useEffect(() => {
+    if (!availablePlanOptions.length) return;
+    setForm((prev) => {
+      const current = normalizeBillingPlanCode(prev.billingPlanCode);
+      if (availablePlanOptions.some((item) => item.code === current)) return prev;
+      return { ...prev, billingPlanCode: availablePlanOptions[0].code };
+    });
+  }, [availablePlanOptions]);
 
   useEffect(() => {
     if (!tenant || campSpecificsHydratedRef.current) return;
@@ -1147,6 +1232,9 @@ function DirectorCreateAccountWizardPage() {
           : prev.brandPrimary,
         logoUrl: String(localDraft.themeDraft.logoUrl || prev.logoUrl || ""),
         heroImageUrl: String(localDraft.themeDraft.heroImageUrl || prev.heroImageUrl || ""),
+        heroImageUrlMember: String(
+          localDraft.themeDraft.heroImageUrlMember || prev.heroImageUrlMember || ""
+        ),
         heroImagePosition: normalizeHeroImagePosition(
           localDraft.themeDraft.heroImagePositionLanding ||
             localDraft.themeDraft.heroImagePosition ||
@@ -1439,6 +1527,7 @@ function DirectorCreateAccountWizardPage() {
         brandSecondary: deriveSecondaryHex(themeDraft.brandPrimary),
         logoUrl: themeDraft.logoUrl,
         heroImageUrl: themeDraft.heroImageUrl,
+        heroImageUrlMember: themeDraft.heroImageUrlMember,
         heroImagePosition: normalizeHeroImagePosition(
           themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
         ),
@@ -1623,14 +1712,43 @@ function DirectorCreateAccountWizardPage() {
     return firstWizardStep;
   }
 
-  function validateAccountStep() {
+  /**
+   * For a returning director the address sits on camp specifics, so it cannot
+   * block a move into a step that comes before it — the director has not been
+   * shown the field yet.
+   */
+  function mailingAddressRequiredForStep(targetStep) {
+    if (!mailingAddressOnSpecificsStep) return true;
+    return STEP_ORDER.indexOf(targetStep) > STEP_ORDER.indexOf(STEP_CAMP_SPECIFICS);
+  }
+
+  // Once the address is the only thing missing the director is standing on the
+  // camp specifics step, where "account fields" names nothing they can see.
+  function accountErrorsMessage(accountErrors, fallback) {
+    const keys = Object.keys(accountErrors);
+    const onlyAddressMissing =
+      keys.length > 0 && keys.every((key) => key.startsWith("mailingAddress."));
+    if (onlyAddressMissing && mailingAddressOnSpecificsStep) {
+      return "Please add your camp mailing address to continue.";
+    }
+    return fallback;
+  }
+
+  function accountErrorsForStep(targetStep) {
+    return validateAccountStep({
+      includeMailingAddress: mailingAddressRequiredForStep(targetStep)
+    });
+  }
+
+  function validateAccountStep({ includeMailingAddress = true } = {}) {
+    const addressErrors = includeMailingAddress ? validateMailingAddress() : {};
     const campTypeValid = CAMP_TYPE_OPTIONS.some(
       (item) => item.value === normalizeCampType(form.campType || "")
     );
     if (!accountStepRequired) {
       return {
         ...(campTypeValid ? {} : { campType: "Please choose your camp type." }),
-        ...validateMailingAddress()
+        ...addressErrors
       };
     }
 
@@ -1652,11 +1770,11 @@ function DirectorCreateAccountWizardPage() {
     if (!campTypeValid) {
       next.campType = "Please choose your camp type.";
     }
-    if (!BILLING_PLAN_OPTIONS.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
+    if (!availablePlanOptions.some((item) => item.code === normalizeBillingPlanCode(form.billingPlanCode))) {
       next.billingPlanCode = "Please choose a plan.";
     }
 
-    return { ...next, ...validateMailingAddress() };
+    return { ...next, ...addressErrors };
   }
 
   function validateDesignStep() {
@@ -1714,7 +1832,7 @@ function DirectorCreateAccountWizardPage() {
 
   function onContinueToDesign(event) {
     event.preventDefault();
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_DESIGN);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setSubmitError("Please complete the required account fields to continue.");
@@ -1727,11 +1845,16 @@ function DirectorCreateAccountWizardPage() {
 
   function onContinueToFeatures(event) {
     event.preventDefault();
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_FEATURES);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -1749,11 +1872,16 @@ function DirectorCreateAccountWizardPage() {
   function onContinueToCampSpecifics(event) {
     event.preventDefault();
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_CAMP_SPECIFICS);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -1779,11 +1907,16 @@ function DirectorCreateAccountWizardPage() {
   function onContinueToBillingPlan(event) {
     event.preventDefault();
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_BILLING_PLAN);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -1817,11 +1950,16 @@ function DirectorCreateAccountWizardPage() {
   function onContinueToReviewLaunch(event) {
     event.preventDefault();
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(STEP_REVIEW_LAUNCH);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Please complete the required account fields before moving forward.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete the required account fields before moving forward."
+        )
+      );
       return;
     }
 
@@ -1945,6 +2083,50 @@ function DirectorCreateAccountWizardPage() {
     }
   }
 
+  // Optional second photo, shown only on the logged-in member home. Leaving it
+  // empty keeps the member home on the main photo.
+  async function onMemberHeroUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setSubmitError("Member home photo upload only supports image files.");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setSubmitError("Member home photo must be under 15MB.");
+      return;
+    }
+
+    setMemberHeroFileName(file.name);
+    setSubmitError("");
+    try {
+      const optimizedHero = await optimizeImageFile(file, IMAGE_OPTIMIZATION_PRESETS.hero);
+      const finalMime = optimizedHero.type || file.type || "image/jpeg";
+      const extension = extensionForImageMime(finalMime);
+      const uploadToken = String(authToken || "").trim();
+      const memberHeroImageUrl =
+        uploadToken
+          ? await uploadBrandingAsset({
+              blob: optimizedHero,
+              fileName: `hero-member-${Date.now()}.${extension}`,
+              fileType: finalMime,
+              scope: "branding-hero",
+              token: uploadToken
+            })
+          : await blobToDataUrl(optimizedHero);
+      updateThemeField("heroImageUrlMember", memberHeroImageUrl);
+    } catch (error) {
+      setSubmitError(error.message || "Unable to process member home photo.");
+    }
+  }
+
+  function onClearMemberHero() {
+    setMemberHeroFileName("");
+    updateThemeField("heroImageUrlMember", "");
+  }
+
   function updateModule(moduleKey, enabled) {
     setModulesDraft((prev) => {
       const next = { ...prev, [moduleKey]: enabled };
@@ -2002,11 +2184,13 @@ function DirectorCreateAccountWizardPage() {
       return;
     }
 
-    const accountErrors = validateAccountStep();
+    const accountErrors = accountErrorsForStep(targetStep);
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
       setStep(stepForAccountErrors(accountErrors));
-      setSubmitError("Complete account details before continuing.");
+      setSubmitError(
+        accountErrorsMessage(accountErrors, "Complete account details before continuing.")
+      );
       return;
     }
 
@@ -2068,7 +2252,12 @@ function DirectorCreateAccountWizardPage() {
     const accountErrors = validateAccountStep();
     setErrors(accountErrors);
     if (Object.keys(accountErrors).length > 0) {
-      setSubmitError("Please complete your account details before finishing setup.");
+      setSubmitError(
+        accountErrorsMessage(
+          accountErrors,
+          "Please complete your account details before finishing setup."
+        )
+      );
       setStep(stepForAccountErrors(accountErrors));
       return;
     }
@@ -2154,6 +2343,7 @@ function DirectorCreateAccountWizardPage() {
       const finalPrimaryColor = String(themeDraft.brandPrimary || initialBrandColor);
       let finalLogoUrl = String(themeDraft.logoUrl || "");
       let finalHeroImageUrl = String(themeDraft.heroImageUrl || "");
+      let finalMemberHeroImageUrl = String(themeDraft.heroImageUrlMember || "");
 
       if (finalLogoUrl.startsWith("data:")) {
         const logoBlob = await dataUrlToBlob(finalLogoUrl);
@@ -2179,14 +2369,28 @@ function DirectorCreateAccountWizardPage() {
         });
       }
 
+      if (finalMemberHeroImageUrl.startsWith("data:")) {
+        const memberHeroBlob = await dataUrlToBlob(finalMemberHeroImageUrl);
+        const memberHeroMime = memberHeroBlob.type || "image/jpeg";
+        finalMemberHeroImageUrl = await uploadBrandingAsset({
+          blob: memberHeroBlob,
+          fileName: `hero-member-${Date.now()}.${extensionForImageMime(memberHeroMime)}`,
+          fileType: memberHeroMime,
+          scope: "branding-hero",
+          token
+        });
+      }
+
       if (
         finalLogoUrl !== String(themeDraft.logoUrl || "") ||
-        finalHeroImageUrl !== String(themeDraft.heroImageUrl || "")
+        finalHeroImageUrl !== String(themeDraft.heroImageUrl || "") ||
+        finalMemberHeroImageUrl !== String(themeDraft.heroImageUrlMember || "")
       ) {
         setThemeDraft((prev) => ({
           ...prev,
           logoUrl: finalLogoUrl,
-          heroImageUrl: finalHeroImageUrl
+          heroImageUrl: finalHeroImageUrl,
+          heroImageUrlMember: finalMemberHeroImageUrl
         }));
       }
 
@@ -2203,6 +2407,7 @@ function DirectorCreateAccountWizardPage() {
             text: String(baseTheme.text || "var(--neutral-900)"),
             card: String(baseTheme.card || "#ffffff"),
             heroImageUrl: finalHeroImageUrl,
+            heroImageUrlMember: finalMemberHeroImageUrl,
             heroImagePosition: normalizeHeroImagePosition(
               themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
             ),
@@ -2582,11 +2787,11 @@ function DirectorCreateAccountWizardPage() {
 
                   <div className="wizard1-field wizard1-span-12">
                     <label className="wizard1-label">
-                      {BILLING_PLAN_OPTIONS.length > 1 ? "Choose" : "Your"} {alumniWord} network plan
+                      {availablePlanOptions.length > 1 ? "Choose" : "Your"} {alumniWord} network plan
                       <span className="req" aria-hidden="true"> *</span>
                     </label>
                     <div className="director-plan-grid" role="radiogroup" aria-label={`Choose ${alumniWord} network plan`}>
-                      {BILLING_PLAN_OPTIONS.map((option) => (
+                      {availablePlanOptions.map((option) => (
                         <label
                           key={option.code}
                           className={`director-plan-card ${
@@ -2772,11 +2977,42 @@ function DirectorCreateAccountWizardPage() {
                     />
                   </div>
 
+                  <div className="wizard1-field wizard1-span-12">
+                    <label className="wizard1-label" htmlFor="director-member-photo-upload">
+                      Member home photo <small>optional</small>
+                    </label>
+                    <label className="director-upload-control" htmlFor="director-member-photo-upload">
+                      <span className="director-upload-button">Upload member home photo</span>
+                      <span className="director-upload-name">
+                        {memberHeroFileName ||
+                          (themeDraft.heroImageUrlMember
+                            ? "Member home photo uploaded"
+                            : "Only if you want a different photo once members log in")}
+                      </span>
+                    </label>
+                    <input
+                      id="director-member-photo-upload"
+                      type="file"
+                      accept="image/*"
+                      className="director-upload-input"
+                      onChange={onMemberHeroUpload}
+                    />
+                    <p className="wizard1-hint">
+                      Leave this empty and the logged-in home reuses your main photo.
+                    </p>
+                    {themeDraft.heroImageUrlMember ? (
+                      <button type="button" className="wizard1-btn-text" onClick={onClearMemberHero}>
+                        Use the main photo instead
+                      </button>
+                    ) : null}
+                  </div>
+
                   <aside className="wizard1-span-12 director-design-simulator" aria-label="Live site simulation">
                     <HeroImageEditor
                       label="Live site simulation"
                       variant="onboarding"
                       heroImageUrl={themeDraft.heroImageUrl}
+                      memberImageUrl={themeDraft.heroImageUrlMember}
                       landingImagePosition={themeDraft.heroImagePositionLanding}
                       landingImageSize={themeDraft.heroImageSizeLanding}
                       memberImagePosition={themeDraft.heroImagePositionMember}

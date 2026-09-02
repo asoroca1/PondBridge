@@ -134,7 +134,7 @@ export default function FamilyTreesPage() {
             })}
           </div>
 
-          <Button>Create family tree</Button>
+          <Button type="submit">Create family tree</Button>
         </form>
       </Card>
       ) : null}

@@ -2,7 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- Driven by the APS_ENVIRONMENT build setting: development for Debug,
+       production for Release. Hardcoding "development" here silently breaks
+       push on TestFlight and App Store builds. -->
   <key>aps-environment</key>
-  <string>development</string>
+  <string>$(APS_ENVIRONMENT)</string>
+  <key>com.apple.developer.associated-domains</key>
+  <array>
+    <string>applinks:app.pondbridgealumni.com</string>
+    <string>applinks:pondbridgealumni.com</string>
+  </array>
 </dict>
 </plist>

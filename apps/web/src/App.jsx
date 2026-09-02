@@ -10,6 +10,7 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { resolveCampName, resolveTenantLogoUrl } from "./lib/campLabels.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
+import { HIDE_CAMP_AI, HIDE_MOBILE_APP } from "./lib/directorHiddenFeatures.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { attemptAutomaticChunkRecovery } from "./lib/chunkRecovery.js";
 import cedarLogo from "./assets/cedar-logo.png";
@@ -51,6 +52,9 @@ const CedarFamilyTreeCreatePage = lazyPage(() => import("./cedar/pages/FamilyTre
 const CedarFamilyTreeViewPage = lazyPage(() => import("./cedar/pages/FamilyTreeView.jsx"));
 const EventsPage = lazyPage(() => import("./pages/EventsPage.jsx"));
 const EventDetailPage = lazyPage(() => import("./pages/EventDetailPage.jsx"));
+const GivingPage = lazyPage(() => import("./pages/GivingPage.jsx"));
+const GivingCausePage = lazyPage(() => import("./pages/GivingCausePage.jsx"));
+const GivingCreateCausePage = lazyPage(() => import("./pages/GivingCreateCausePage.jsx"));
 const MobileNotificationsPage = lazyPage(() => import("./pages/MobileNotificationsPage.jsx"));
 const MemberCampAiPage = lazyPage(() => import("./pages/MemberCampAiPage.jsx"));
 const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
@@ -74,6 +78,7 @@ const DirectorAdminDashboardPage = lazyPage(() =>
 );
 const DirectorAdminMailPage = lazyPage(() => import("./pages/admin/DirectorAdminMailPage.jsx"));
 const DirectorAdminEventsPage = lazyPage(() => import("./pages/admin/DirectorAdminEventsPage.jsx"));
+const DirectorAdminGivingPage = lazyPage(() => import("./pages/admin/DirectorAdminGivingPage.jsx"));
 const DirectorAdminFeaturesPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminPages.jsx").then((module) => ({ default: module.DirectorAdminFeaturesPage }))
 );
@@ -761,6 +766,36 @@ function TenantScopeRoutes() {
           }
         />
         <Route
+          path="giving"
+          element={
+            <ProtectedRoute>
+              <MemberModuleRoute moduleKey="giving">
+                <GivingPage />
+              </MemberModuleRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="giving/new"
+          element={
+            <ProtectedRoute>
+              <MemberModuleRoute moduleKey="giving">
+                <GivingCreateCausePage />
+              </MemberModuleRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="giving/:causeId"
+          element={
+            <ProtectedRoute>
+              <MemberModuleRoute moduleKey="giving">
+                <GivingCausePage />
+              </MemberModuleRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="notifications"
           element={
             <ProtectedRoute>
@@ -800,6 +835,14 @@ function TenantScopeRoutes() {
               </MemberModuleRoute>
             }
           />
+          <Route
+            path="giving"
+            element={
+              <MemberModuleRoute moduleKey="giving" fallbackPath="/admin/features">
+                <DirectorAdminGivingPage />
+              </MemberModuleRoute>
+            }
+          />
           <Route path="communications" element={<Navigate to="../email/compose" replace />} />
           <Route path="email" element={<Navigate to="compose" replace />} />
           {/* The old history route is bookmarked in older invites and emails. */}
@@ -823,18 +866,30 @@ function TenantScopeRoutes() {
             <Route path="access" element={<DirectorAdminSettingsAccessPage />} />
             <Route path="admins" element={<DirectorAdminSettingsAdminsPage />} />
             <Route path="support" element={<DirectorAdminSettingsSupportPage />} />
-            <Route path="notifications" element={<DirectorAdminSettingsNotificationsPage />} />
+            {/* Push alerts only matter once the mobile app ships. */}
+            <Route
+              path="notifications"
+              element={
+                HIDE_MOBILE_APP ? <Navigate to="../network" replace /> : <DirectorAdminSettingsNotificationsPage />
+              }
+            />
             <Route path="danger" element={<DirectorAdminSettingsDangerPage />} />
           </Route>
           <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Route>
 
+        {/* The agent page is entirely Camp AI, so while that is hidden every
+            entry point lands on the plain setup command center instead. */}
         <Route
           path="onboarding"
           element={
-            <ProtectedRoute role="tenant_admin">
-              <DirectorOnboardingAgentPage />
-            </ProtectedRoute>
+            HIDE_CAMP_AI ? (
+              <Navigate to={slug ? `/t/${slug}/onboarding/details` : "/onboarding/details"} replace />
+            ) : (
+              <ProtectedRoute role="tenant_admin">
+                <DirectorOnboardingAgentPage />
+              </ProtectedRoute>
+            )
           }
         />
         <Route

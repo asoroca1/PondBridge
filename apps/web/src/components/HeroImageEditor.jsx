@@ -72,6 +72,7 @@ function backgroundImageValue(url = "") {
 export default function HeroImageEditor({
   label = "Live preview",
   heroImageUrl = "",
+  memberImageUrl = "",
   heroImagePosition = "center center",
   heroImageSize = "cover",
   landingImagePosition = "",
@@ -102,7 +103,12 @@ export default function HeroImageEditor({
   const safeCampName = String(campName || "").trim() || "Your Camp";
   const safeWelcomeBody =
     replaceAlumniForCampType(String(welcomeBody || "").trim(), normalizedCampType) || fallbackWelcomeBody;
-  const hasHeroImage = Boolean(String(heroImageUrl || "").trim());
+  // The landing always shows the main photo; the member home shows its own
+  // photo when the director uploaded one and otherwise reuses the main photo.
+  const landingHeroUrl = String(heroImageUrl || "").trim();
+  const memberHeroUrl = String(memberImageUrl || "").trim() || landingHeroUrl;
+  const hasLandingImage = Boolean(landingHeroUrl);
+  const hasMemberImage = Boolean(memberHeroUrl);
   const landingComposition = useMemo(() => {
     const position = normalizeHeroImagePosition(
       landingImagePosition || heroImagePosition || "center center"
@@ -156,6 +162,9 @@ export default function HeroImageEditor({
   const activeComposition = activePreviewKey === PREVIEW_META.member.key
     ? memberComposition
     : landingComposition;
+  const hasActiveImage = activePreviewKey === PREVIEW_META.member.key
+    ? hasMemberImage
+    : hasLandingImage;
 
   const applyPosition = useCallback(
     (previewKey, nextCoords) => {
@@ -284,7 +293,7 @@ export default function HeroImageEditor({
 
   const onDragStart = useCallback(
     (event) => {
-      if (!hasHeroImage) return;
+      if (!hasActiveImage) return;
       dragPointerIdRef.current = event.pointerId;
       setIsDragging(true);
       event.currentTarget.focus();
@@ -292,7 +301,7 @@ export default function HeroImageEditor({
       updatePositionFromPointer(event, activePreviewKey);
       event.preventDefault();
     },
-    [hasHeroImage, updatePositionFromPointer, activePreviewKey]
+    [hasActiveImage, updatePositionFromPointer, activePreviewKey]
   );
 
   const onDragMove = useCallback(
@@ -315,17 +324,17 @@ export default function HeroImageEditor({
 
   const onPreviewWheel = useCallback(
     (event) => {
-      if (!hasHeroImage) return;
+      if (!hasActiveImage) return;
       const direction = event.deltaY < 0 ? 1 : -1;
       applyZoomDelta(activePreviewKey, direction * ZOOM_STEP);
       event.preventDefault();
     },
-    [activePreviewKey, applyZoomDelta, hasHeroImage]
+    [activePreviewKey, applyZoomDelta, hasActiveImage]
   );
 
   const onPreviewKeyDown = useCallback(
     (event) => {
-      if (!hasHeroImage) return;
+      if (!hasActiveImage) return;
       const key = String(event.key || "");
       const nudge = event.shiftKey ? 4 : 1;
       const positionCoords = activeComposition.positionCoords;
@@ -360,7 +369,7 @@ export default function HeroImageEditor({
         event.preventDefault();
       }
     },
-    [activeComposition.positionCoords, activePreviewKey, applyZoomDelta, hasHeroImage, schedulePosition]
+    [activeComposition.positionCoords, activePreviewKey, applyZoomDelta, hasActiveImage, schedulePosition]
   );
 
   const resetHeroComposition = useCallback(() => {
@@ -393,30 +402,30 @@ export default function HeroImageEditor({
 
   const landingBackgroundStyle = useMemo(
     () =>
-      hasHeroImage
+      hasLandingImage
         ? {
-            backgroundImage: backgroundImageValue(heroImageUrl),
+            backgroundImage: backgroundImageValue(landingHeroUrl),
             backgroundPosition: landingComposition.position,
             backgroundSize: landingComposition.normalizedSize
           }
         : undefined,
     [
-      hasHeroImage,
-      heroImageUrl,
+      hasLandingImage,
+      landingHeroUrl,
       landingComposition.normalizedSize,
       landingComposition.position
     ]
   );
   const memberBackgroundStyle = useMemo(
     () =>
-      hasHeroImage
+      hasMemberImage
         ? {
-            backgroundImage: backgroundImageValue(heroImageUrl),
+            backgroundImage: backgroundImageValue(memberHeroUrl),
             backgroundPosition: memberComposition.position,
             backgroundSize: memberComposition.normalizedSize
           }
         : undefined,
-    [hasHeroImage, heroImageUrl, memberComposition.normalizedSize, memberComposition.position]
+    [hasMemberImage, memberHeroUrl, memberComposition.normalizedSize, memberComposition.position]
   );
 
   const rootClassName = [
@@ -465,8 +474,8 @@ export default function HeroImageEditor({
             <button
               ref={modalSurfaceRef}
               type="button"
-              className={hasHeroImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
-              disabled={!hasHeroImage}
+              className={hasLandingImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
+              disabled={!hasLandingImage}
               onPointerDown={onDragStart}
               onPointerMove={onDragMove}
               onPointerUp={finishDrag}
@@ -476,7 +485,7 @@ export default function HeroImageEditor({
               aria-label="Adjust public landing hero image with drag and zoom"
             />
           ) : null}
-          {!hasHeroImage ? (
+          {!hasLandingImage ? (
             <p className="hero-image-editor__empty-state">
               Upload a main photo to enable interactive preview.
             </p>
@@ -530,8 +539,8 @@ export default function HeroImageEditor({
             <button
               ref={modalSurfaceRef}
               type="button"
-              className={hasHeroImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
-              disabled={!hasHeroImage}
+              className={hasMemberImage ? "hero-image-editor__drag-surface is-active" : "hero-image-editor__drag-surface"}
+              disabled={!hasMemberImage}
               onPointerDown={onDragStart}
               onPointerMove={onDragMove}
               onPointerUp={finishDrag}

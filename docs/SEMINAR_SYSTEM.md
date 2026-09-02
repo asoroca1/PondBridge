@@ -5,8 +5,8 @@
 PondBridge seminars are live career, college, financial-literacy, and
 mentorship programs hosted by a registered member of one camp network. They
 share the existing event calendar and RSVP system, but add an online meeting
-room, a program track and audience, a registered host, capacity controls, and
-audited access.
+room, a program track and audience, one or more registered presenters,
+capacity controls, and audited access.
 
 The first release supports secure HTTPS links for Zoom, Microsoft Teams,
 Google Meet, and another director-approved provider. PondBridge does not send
@@ -21,7 +21,10 @@ mobile alerts, or event email.
    description, dates, RSVP deadline, and optional registration capacity.
 4. Choose online or hybrid delivery and a meeting provider.
 5. Add the private HTTPS meeting link.
-6. Search the camp directory and select an active registered member as host.
+6. Search the camp directory and add one or more active registered members as
+   presenters. Each one is marked as going automatically, and the first is the
+   lead presenter. Presenters can also be added or removed later from the event
+   detail pane without reopening the composer.
 7. Save the draft and review the member-facing page.
 8. Publish when every required field is ready.
 9. Monitor registrations and the audited count of seminar-room opens.
@@ -29,8 +32,9 @@ mobile alerts, or event email.
     reminders, updates, or cancellation. The meeting link is never inserted
     into the generated event block.
 
-The API and database both reject a host who is inactive, unregistered, or from
-another camp.
+The API and database both reject a presenter who is inactive, unregistered, or
+from another camp. Removing a presenter also clears the RSVP that adding them
+created, but leaves an RSVP the member made themselves untouched.
 
 ## Member flow
 
@@ -38,15 +42,15 @@ another camp.
 2. The member can filter the schedule to seminars or community events.
 3. Seminar cards show the topic, provider, date, response state, and attendance
    count without exposing the meeting link.
-4. The detail page shows the program track, audience, capacity, registered
-   host, description, and RSVP controls.
+4. The detail page shows the program track, audience, capacity, every
+   registered presenter, description, and RSVP controls.
 5. The member selects **Going**.
 6. **Join seminar** becomes available.
 7. Opening the room makes a fresh authenticated API request. The API rechecks
    the member profile, seminar status, RSVP, and end time before returning the
    HTTPS provider link.
 
-The registered host can open the room without creating a separate RSVP. A
+Any registered presenter can open the room without creating a separate RSVP. A
 member who is not attending, is inactive, lacks a profile, belongs to another
 camp, or attempts to open a draft/canceled/expired seminar cannot receive the
 link.
@@ -54,12 +58,16 @@ link.
 ## Data and security model
 
 - Public program metadata is stored on `events`.
+- Presenters are stored in `event_presenters`, ordered by `sort_order`.
+  `events.host_profile_id` mirrors the first presenter so host-aware code paths
+  keep working unchanged.
 - Private meeting URLs are stored in `event_meeting_details`.
 - Room access is recorded in `event_join_access_logs`.
 - The two private tables force row-level security, grant CRUD only to
   `service_role`, and explicitly revoke `anon` and `authenticated`.
-- Tenant-consistency triggers protect seminar hosts, meeting records, join
-  actors, and RSVPs even if an API bug attempts a cross-camp write.
+- Tenant-consistency triggers protect seminar hosts, presenters, meeting
+  records, join actors, and RSVPs even if an API bug attempts a cross-camp
+  write.
 - Capacity is enforced twice: an early API check gives a friendly response,
   while a database trigger locks the event row and atomically rejects the
   over-capacity RSVP race.
@@ -84,12 +92,12 @@ Seminars are reflected in:
 ## Rollout sequence
 
 1. Apply `20260730015621_add_registered_member_seminars.sql`, followed by
-   `20260731003100_add_seminar_foreign_key_indexes.sql`, in an isolated staging
-   project.
+   `20260731003100_add_seminar_foreign_key_indexes.sql` and
+   `20260824090000_add_event_presenters.sql`, in an isolated staging project.
 2. Run the complete tenant/RLS verification suite from a clean reset.
 3. Create one synthetic Zoom seminar and one synthetic Teams seminar.
-4. Verify host, attending member, non-attending member, inactive member, and
-   cross-camp outcomes.
+4. Verify lead presenter, co-presenter, attending member, non-attending member,
+   inactive member, and cross-camp outcomes.
 5. Verify capacity with concurrent final-seat requests.
 6. Confirm list, detail, email, notification, AI, and logs never disclose the
    meeting URL.

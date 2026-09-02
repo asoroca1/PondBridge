@@ -9,11 +9,13 @@ import {
   Send,
   Settings,
   Sparkles,
+  HeartHandshake,
   Users,
 } from "lucide-react";
 import { AdminLayout, SidebarNav } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveCampAiName } from "../../lib/campLabels.js";
+import { HIDE_CAMP_AI } from "../../lib/directorHiddenFeatures.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 
 const ADMIN_NAV = [
@@ -25,6 +27,7 @@ const ADMIN_NAV = [
   { key: "people", to: "people", label: "People", icon: Users },
   { type: "label", key: "engage-label", label: "Engage" },
   { key: "events", to: "events", label: "Events & info sessions", icon: CalendarDays },
+  { key: "giving", to: "giving", label: "Giving", icon: HeartHandshake },
   // Points at the workspace root so every mail folder keeps the item highlighted.
   { key: "email", to: "email", label: "Email", icon: Send },
   { type: "label", key: "manage-label", label: "Manage" },
@@ -35,12 +38,15 @@ export default function DirectorAdminLayout() {
   const { tenant } = useTenant();
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
   const eventsEnabled = isMemberEventsModuleEnabled(tenant?.config?.modules?.events ?? tenant?.modules?.events);
+  const givingEnabled = (tenant?.config?.modules?.giving ?? tenant?.modules?.giving) !== false;
   const aiName = resolveCampAiName(tenant);
 
   const sections = useMemo(() => {
     const base = ADMIN_NAV
+      .filter((item) => item.type === "label" || !(HIDE_CAMP_AI && item.key === "guide"))
       .filter((item) => item.type === "label" || !(demoAccessEnabled && item.key === "billing"))
       .filter((item) => item.type === "label" || item.key !== "events" || eventsEnabled)
+      .filter((item) => item.type === "label" || item.key !== "giving" || givingEnabled)
       .map((item) => ({
         ...item,
         to: item.key === "guide" && tenant?.slug ? tenantRoute(tenant.slug, "/onboarding") : item.to,
@@ -57,7 +63,7 @@ export default function DirectorAdminLayout() {
     });
 
     return base;
-  }, [aiName, demoAccessEnabled, eventsEnabled, tenant?.slug]);
+  }, [aiName, demoAccessEnabled, eventsEnabled, givingEnabled, tenant?.slug]);
 
   return (
     <section className="pb-cedar-page">

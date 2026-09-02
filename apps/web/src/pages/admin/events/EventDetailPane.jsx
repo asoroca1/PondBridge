@@ -9,8 +9,10 @@ import {
   Pencil,
   Send,
   Users,
-  Video
+  Video,
+  X
 } from "lucide-react";
+import EventPresenters from "./EventPresenters.jsx";
 import {
   PROVIDER_LABELS,
   eventAccent,
@@ -36,8 +38,14 @@ function Stat({ label, value, tone = "" }) {
  */
 export default function EventDetailPane({
   event,
+  responses = [],
+  request,
   busy = "",
+  rosterBusyId = "",
   memberUrl = "",
+  onAddPresenter,
+  onRemovePresenter,
+  onRemoveAttendee,
   onEdit,
   onPublish,
   onUnpublish,
@@ -56,6 +64,9 @@ export default function EventDetailPane({
 
   const counts = event.counts || {};
   const online = isOnline(event);
+  const seminar = event.eventType === "seminar";
+  const presenters = Array.isArray(event.presenters) ? event.presenters : [];
+  const guests = Array.isArray(responses) ? responses : [];
   const canPublish = event.status === "draft";
   const canUnpublish = event.status === "published";
   const canCancel = event.status !== "canceled";
@@ -83,12 +94,6 @@ export default function EventDetailPane({
           {online ? <Video aria-hidden="true" /> : <MapPin aria-hidden="true" />}
           <span>{formatWhere(event)}</span>
         </div>
-        {event.host?.fullName ? (
-          <div>
-            <Users aria-hidden="true" />
-            <span>Hosted by {event.host.fullName}</span>
-          </div>
-        ) : null}
       </div>
 
       {online ? (
@@ -123,6 +128,15 @@ export default function EventDetailPane({
         {event.capacity ? <Stat label="Capacity" value={event.capacity} /> : null}
       </div>
 
+      <EventPresenters
+        presenters={presenters}
+        seminar={seminar}
+        request={request}
+        busyProfileId={rosterBusyId}
+        onAdd={onAddPresenter}
+        onRemove={onRemovePresenter}
+      />
+
       <div className="pb-events-detail-actions">
         <Button type="button" onClick={() => onEdit?.(event)}>
           <Pencil aria-hidden="true" />
@@ -156,6 +170,47 @@ export default function EventDetailPane({
           </Button>
         ) : null}
       </div>
+
+      {guests.length ? (
+        <section className="pb-events-roster">
+          <header>
+            <h3>
+              <Users aria-hidden="true" />
+              Guest list
+            </h3>
+            <small>{guests.length} responded</small>
+          </header>
+          <ul>
+            {guests.map((person) => (
+              <li key={person.id}>
+                <span className="pb-events-roster-name">
+                  <strong>{person.fullName}</strong>
+                  <small>{person.email}</small>
+                </span>
+                <span className={`pb-events-roster-status is-${String(person.status || "").replace("_", "-")}`}>
+                  {person.status === "attending"
+                    ? "Going"
+                    : person.status === "maybe"
+                      ? "Maybe"
+                      : "Can’t go"}
+                </span>
+                {person.isPresenter ? (
+                  <span className="pb-events-roster-tag">{seminar ? "Presenter" : "Host"}</span>
+                ) : null}
+                <button
+                  type="button"
+                  className="pb-events-roster-remove"
+                  aria-label={`Remove ${person.fullName}`}
+                  disabled={rosterBusyId === person.profileId}
+                  onClick={() => onRemoveAttendee?.(person)}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {event.summary ? <p className="pb-events-detail-summary">{event.summary}</p> : null}
       {event.bodyHtml ? (

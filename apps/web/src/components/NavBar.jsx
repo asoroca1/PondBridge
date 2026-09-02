@@ -19,7 +19,8 @@ import {
   Pencil,
   Repeat2,
   Scale,
-  Sparkles
+  Sparkles,
+  HeartHandshake
 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -127,6 +128,7 @@ function nativeMemberNavTitle(
   if (pathname === "/photo-stream") return "Photos";
   if (/^\/chat(?:-rooms)?(?:\/|$)/.test(pathname)) return "Messages";
   if (/^\/events(?:\/|$)/.test(pathname)) return pathname === "/events" ? "Events & Info Sessions" : "Event or Info Session";
+  if (/^\/giving(?:\/|$)/.test(pathname)) return "Giving";
   if (pathname === "/notifications") return "Notifications";
   if (pathname === "/location-map") return `${alumniWordTitle} Map`;
   if (pathname === "/cedar-chest") return newsletterLabel;
@@ -329,6 +331,14 @@ export default function NavBar() {
         to: pathWithCamp(slug, "/events")
       });
     }
+    if (modules.giving !== false) {
+      communityItems.push({
+        id: "giving",
+        icon: HeartHandshake,
+        label: "Giving",
+        to: pathWithCamp(slug, "/giving")
+      });
+    }
     if (modules.chat !== false) {
       communityItems.push({
         id: "chat",
@@ -409,6 +419,7 @@ export default function NavBar() {
     alumniWordTitle,
     modules.chat,
     modules.events,
+    modules.giving,
     modules.map,
     modules.photoStream,
     modules.newsletter,

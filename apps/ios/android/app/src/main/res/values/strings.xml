@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PondBridge</string>
+    <string name="title_activity_main">PondBridge</string>
+    <string name="package_name">com.pondbridge.android</string>
+    <string name="custom_url_scheme">pondbridge</string>
+    <string name="default_notification_channel_id">pondbridge_updates</string>
+    <string name="default_notification_channel_name">PondBridge updates</string>
+    <string name="default_notification_channel_description">Camp announcements, events, messages, and account alerts.</string>
+</resources>

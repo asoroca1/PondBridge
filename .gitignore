@@ -13,6 +13,12 @@ uploads
 _import
 .local-staging/
 
+# iCloud Drive writes conflict copies as "file 2.js", "file 3.js" when the same
+# checkout syncs across machines. They are never real source. Keep them out of
+# commits; `npm run clean:icloud-dups` removes them from the working tree.
+* [0-9].*
+* [0-9][0-9].*
+
 # Tenant exports and migration identity maps contain private member data.
 # Keep generated migration artifacts local and store approved backups off-repo.
 migration/cedar-existing-backup/

@@ -26,6 +26,7 @@
     "supabase:apply-member-safety": "node scripts/applyMemberSafetySchema.js",
     "supabase:apply-database-security-hardening": "node scripts/applyDatabaseSecurityHardening.js",
     "supabase:apply-database-performance-hardening": "node scripts/applyDatabasePerformanceHardening.js",
+    "supabase:apply-outreach-workspace": "node scripts/applyOutreachWorkspaceSchema.js",
     "identity:backfill": "node scripts/backfillMultiCampIdentities.js",
     "rls:audit": "node scripts/rlsCoverageReport.js",
     "db:preflight": "node scripts/dbPreflightCheck.js",

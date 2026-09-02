@@ -274,4 +274,89 @@ VALUES (
   '{"pushRequested":false,"provider":"none","status":"inbox_only"}'::jsonb
 );
 
+-- Giving marketplace rehearsal data. Totals intentionally add up to the
+-- headline shown in the member experience: $84,250 from 312 alumni.
+INSERT INTO public.giving_causes (
+  id, tenant_id, slug, title, short_description, description, why_it_matters,
+  category, created_by_user_id, created_by_profile_id, creator_name,
+  creator_affiliation, origin, status, approved_by_user_id, approved_at,
+  goal_amount_cents, amount_raised_cents, donor_count, featured,
+  fundraising_open, is_general_fund, charity_designation_id, start_date, end_date
+)
+VALUES
+  (
+    '000000000000000000000a01', 'tenant_local_cedar', 'support-cedar',
+    'Support Cedar', 'Give where Cedar needs it most.',
+    'Unrestricted gifts give Cedar the flexibility to respond to the camp community’s most important needs throughout the year.',
+    'A strong general fund keeps the places, people, and traditions alumni love ready for the next generation.',
+    'other', '000000000000000000000101', '000000000000000000000401',
+    'Camp Cedar', '', 'official', 'active', '000000000000000000000101', now(),
+    0, 3250000, 112, true, true, true, 'general-fund', current_date - 180, null
+  ),
+  (
+    '000000000000000000000a02', 'tenant_local_cedar', 'send-a-camper-to-cedar',
+    'Send a Camper to Cedar', 'Open a summer at Cedar to a family who needs a hand.',
+    'Camperships cover tuition for children whose families could not otherwise make a Cedar summer possible. Every contribution moves another camper closer to opening day.',
+    'The confidence, friendships, and belonging built at camp should not depend on a family’s ability to pay full tuition.',
+    'camperships', '000000000000000000000101', '000000000000000000000401',
+    'Camp Cedar', '', 'official', 'active', '000000000000000000000101', now(),
+    2500000, 1825000, 68, true, true, false, 'campership-fund', current_date - 90, current_date + 120
+  ),
+  (
+    '000000000000000000000a03', 'tenant_local_cedar', 'restore-the-council-ring',
+    'Restore the Council Ring', 'Help rebuild seating and lighting for evenings together.',
+    'The Council Ring has held songs, stories, awards, and last-night reflections for generations. This project will rebuild the weathered benches, improve the path, and add low-impact lighting.',
+    'Restoring the space preserves one of Cedar’s most meaningful traditions while making it safer and more welcoming after dark.',
+    'traditions', '000000000000000000000102', '000000000000000000000402',
+    'Alex Rivera', 'Counselor • 2016–2019', 'alumni_led', 'active', '000000000000000000000101', now(),
+    1250000, 845000, 47, true, true, false, 'council-ring-project', current_date - 45, current_date + 75
+  ),
+  (
+    '000000000000000000000a04', 'tenant_local_cedar', 'new-waterfront-equipment',
+    'New Waterfront Equipment', 'Refresh the boats and safety gear that keep the lake moving.',
+    'This cause will replace well-loved paddleboards, update personal flotation devices, and add adaptive waterfront equipment for campers with different mobility needs.',
+    'The waterfront is where campers learn courage one swim, paddle, and sail at a time.',
+    'programs', '000000000000000000000101', '000000000000000000000401',
+    'Camp Cedar', '', 'official', 'active', '000000000000000000000101', now(),
+    2700000, 1380000, 51, false, true, false, 'waterfront-equipment', current_date - 35, current_date + 105
+  ),
+  (
+    '000000000000000000000a05', 'tenant_local_cedar', 'arts-cabin-renewal',
+    'Arts Cabin Renewal', 'A brighter, more flexible home for making things together.',
+    'Alumni fully funded new worktables, storage, ventilation, and accessible tools for the arts cabin.',
+    'Creative spaces give every camper another way to find their voice.',
+    'facilities', '000000000000000000000101', '000000000000000000000401',
+    'Camp Cedar', '', 'official', 'completed', '000000000000000000000101', now() - interval '8 months',
+    1125000, 1125000, 34, false, false, false, 'arts-cabin-renewal', current_date - 365, current_date - 150
+  ),
+  (
+    '000000000000000000000a06', 'tenant_local_cedar', 'senior-hill-overlook',
+    'Renew the Senior Hill Overlook', 'Create a safer gathering place for the final summer group.',
+    'The overlook needs a stable path, fresh seating, and thoughtful erosion control before it can host evening gatherings again.',
+    'Senior Hill is one of the places where a final Cedar summer becomes a lifelong memory.',
+    'facilities', '000000000000000000000102', '000000000000000000000402',
+    'Alex Rivera', 'Counselor • 2016–2019', 'alumni_led', 'pending', null, null,
+    900000, 0, 0, false, true, false, '', current_date, current_date + 150
+  );
+
+INSERT INTO public.giving_donations (
+  id, tenant_id, cause_id, provider, provider_donation_id, donor_user_id,
+  donor_profile_id, donor_display_name, donor_affiliation, donor_email,
+  amount_cents, display_preference, donor_message, status, completed_at
+)
+VALUES
+  ('giving_donation_local_01', 'tenant_local_cedar', '000000000000000000000a03', 'local_mock', 'mock-council-01', '000000000000000000000103', '000000000000000000000403', 'Sam Chen', 'Camper • 2020', 'sam.chen@cedar.example.test', 100000, 'public', 'For the summers that changed my life.', 'succeeded', now() - interval '2 days'),
+  ('giving_donation_local_02', 'tenant_local_cedar', '000000000000000000000a03', 'local_mock', 'mock-council-02', null, null, 'Michael R.', 'Alumni • 1998', 'michael@example.test', 50000, 'public', '', 'succeeded', now() - interval '4 days'),
+  ('giving_donation_local_03', 'tenant_local_cedar', '000000000000000000000a03', 'local_mock', 'mock-council-03', null, null, '', '', 'anonymous@example.test', 25000, 'anonymous', 'Keep the fire bright.', 'succeeded', now() - interval '6 days'),
+  ('giving_donation_local_04', 'tenant_local_cedar', '000000000000000000000a03', 'local_mock', 'mock-council-04', null, null, 'Alex T.', 'Alumni • 2012', 'alex.t@example.test', 10000, 'hide_amount', '', 'succeeded', now() - interval '8 days'),
+  ('giving_donation_local_05', 'tenant_local_cedar', '000000000000000000000a02', 'local_mock', 'mock-campership-01', null, null, 'Sarah K.', 'Alumni • 2007', 'sarah@example.test', 100000, 'public', 'Everyone deserves a first Cedar summer.', 'succeeded', now() - interval '3 days');
+
+INSERT INTO public.giving_cause_updates (
+  id, tenant_id, cause_id, author_user_id, title, body, milestone_type, published_at
+)
+VALUES
+  ('giving_update_local_01', 'tenant_local_cedar', '000000000000000000000a03', '000000000000000000000102', 'Two-thirds of the way there', 'We crossed $8,000 this week. Thank you to everyone helping bring the Council Ring back to life.', 'percent', now() - interval '5 days'),
+  ('giving_update_local_02', 'tenant_local_cedar', '000000000000000000000a03', '000000000000000000000101', 'Plans approved', 'The camp team approved the new bench layout and low-impact path lighting. Work can begin as soon as the campaign is funded.', 'update', now() - interval '18 days'),
+  ('giving_update_local_03', 'tenant_local_cedar', '000000000000000000000a05', '000000000000000000000101', 'Funded by Cedar alumni', 'The Arts Cabin Renewal is fully funded. Installation begins after closing day.', 'completed', now() - interval '150 days');
+
 COMMIT;

@@ -1,0 +1,43 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["9RZ3X4XNLD.com.pondbridge.ios"],
+        "components": [
+          {
+            "/": "/auth/callback*",
+            "exclude": true,
+            "comment": "Clerk OAuth redirect. Hijacking it into the app breaks sign-in mid-flow."
+          },
+          {
+            "/": "/t/*/auth/callback*",
+            "exclude": true,
+            "comment": "Tenant-scoped Clerk OAuth redirect. Must complete in the browser that started it."
+          },
+          {
+            "/": "/super*",
+            "exclude": true,
+            "comment": "Platform admin. The native shell rejects these routes too."
+          },
+          {
+            "/": "/api/*",
+            "exclude": true,
+            "comment": "API traffic is never a user-facing destination."
+          },
+          {
+            "/": "/.well-known/*",
+            "exclude": true
+          },
+          {
+            "/": "/t/*",
+            "comment": "Tenant-scoped camp routes."
+          },
+          {
+            "/": "/email-preferences*",
+            "comment": "Unsubscribe and notification preference links from email."
+          }
+        ]
+      }
+    ]
+  }
+}

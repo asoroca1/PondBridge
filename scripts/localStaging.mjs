@@ -29,7 +29,11 @@ const EXPECTED_MIGRATIONS = [
   "pondbridge_member_safety",
   "pondbridge_database_performance_hardening",
   "pondbridge_database_security_hardening",
-  "add_registered_member_seminars"
+  "add_registered_member_seminars",
+  "add_seminar_foreign_key_indexes",
+  "add_outreach_workspace",
+  "add_event_presenters",
+  "add_giving_marketplace"
 ];
 
 const EXPECTED_TABLES = [
@@ -51,6 +55,9 @@ const EXPECTED_TABLES = [
   "event_messages",
   "event_meeting_details",
   "event_join_access_logs",
+  "giving_causes",
+  "giving_donations",
+  "giving_cause_updates",
   "ai_generations",
   "email_broadcasts",
   "email_preferences",

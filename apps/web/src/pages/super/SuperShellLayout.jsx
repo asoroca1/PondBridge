@@ -99,7 +99,10 @@ export default function SuperShellLayout() {
 
   const navGroups = useMemo(() => {
     if (role === "finance_admin") return FINANCE_NAV;
-    return SUPER_NAV;
+    return SUPER_NAV.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.superOnly || role === "super_admin")
+    }));
   }, [role]);
 
   useEffect(() => {

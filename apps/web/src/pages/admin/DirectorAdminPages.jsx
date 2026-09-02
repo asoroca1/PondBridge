@@ -21,6 +21,7 @@ import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveCampAiName } from "../../lib/campLabels.js";
+import { HIDE_CAMP_AI, HIDE_MOBILE_APP, isHiddenCapability } from "../../lib/directorHiddenFeatures.js";
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
@@ -822,10 +823,12 @@ export function DirectorAdminDashboardPage() {
         )}
 
         <nav className="pb-today-shortcuts" aria-label="Common tasks">
-          <Link to={`/t/${slug}/onboarding`} className="is-primary">
-            <Sparkles size={16} aria-hidden="true" />
-            Ask {aiName}
-          </Link>
+          {HIDE_CAMP_AI ? null : (
+            <Link to={`/t/${slug}/onboarding`} className="is-primary">
+              <Sparkles size={16} aria-hidden="true" />
+              Ask {aiName}
+            </Link>
+          )}
           {TODAY_SHORTCUTS.map((item) => {
             const Icon = item.icon;
             return (
@@ -1016,13 +1019,22 @@ export function DirectorAdminFeaturesPage() {
     );
   }
 
-  const capabilities = Array.isArray(payload?.capabilities) ? payload.capabilities : [];
+  // Camp AI and mobile-app services stay out of the inventory for now, so the
+  // counts below are recomputed from what actually renders rather than reusing
+  // the API summary, which still counts everything.
+  const capabilities = (Array.isArray(payload?.capabilities) ? payload.capabilities : [])
+    .filter((capability) => !isHiddenCapability(capability));
   const attentionCapabilities = capabilities.filter((capability) =>
     ["setup_required", "limited"].includes(capability.status)
   );
+  const capabilitySummary = {
+    ready: capabilities.filter((capability) => capability.status === "active").length,
+    attention: attentionCapabilities.length,
+    lockedOrPilot: capabilities.filter((capability) => ["locked", "pilot"].includes(capability.status)).length
+  };
   const planTier = String(payload?.tenant?.planTier || "base").trim().toLowerCase();
   const planLabel = `${planTier.charAt(0).toUpperCase()}${planTier.slice(1)}`;
-  const totalAttention = Number(payload?.summary?.moduleAttention || 0) + Number(payload?.summary?.attention || 0);
+  const totalAttention = Number(payload?.summary?.moduleAttention || 0) + capabilitySummary.attention;
 
   function capabilityTone(capability) {
     if (capability.status === "active") return "success";
@@ -1238,15 +1250,15 @@ export function DirectorAdminFeaturesPage() {
         <div className="director-admin-service-summary" aria-label="Service status">
           <div className="is-ready">
             <CheckCircle2 size={19} aria-hidden="true" />
-            <span><strong>{payload?.summary?.ready || 0}</strong> ready</span>
+            <span><strong>{capabilitySummary.ready}</strong> ready</span>
           </div>
-          <div className={payload?.summary?.attention ? "needs-attention" : "is-ready"}>
+          <div className={capabilitySummary.attention ? "needs-attention" : "is-ready"}>
             <span className="director-admin-service-summary-mark" aria-hidden="true">!</span>
-            <span><strong>{payload?.summary?.attention || 0}</strong> need setup</span>
+            <span><strong>{capabilitySummary.attention}</strong> need setup</span>
           </div>
           <div>
             <Sparkles size={19} aria-hidden="true" />
-            <span><strong>{payload?.summary?.lockedOrPilot || 0}</strong> plan or pilot</span>
+            <span><strong>{capabilitySummary.lockedOrPilot}</strong> plan or pilot</span>
           </div>
         </div>
 
@@ -1638,26 +1650,28 @@ export function DirectorAdminSettingsNetworkPage() {
         </div>
       </Card>
 
-      <Card>
-        <h2 className="pb-section-title">iPhone app code</h2>
-        <p className="muted">
-          Families type this into the PondBridge app to find your camp. It is generated for you and cannot be changed.
-        </p>
-        <div className="pb-set-code-row">
-          <code>{mobileCode || "Generating…"}</code>
-          <div>
-            <Button type="button" variant="secondary" onClick={copyMobileAppCode} disabled={!mobileCode}>
-              {copyStatus || "Copy code"}
-            </Button>
-            <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
-              Who can join
-            </Link>
+      {HIDE_MOBILE_APP ? null : (
+        <Card>
+          <h2 className="pb-section-title">iPhone app code</h2>
+          <p className="muted">
+            Families type this into the PondBridge app to find your camp. It is generated for you and cannot be changed.
+          </p>
+          <div className="pb-set-code-row">
+            <code>{mobileCode || "Generating…"}</code>
+            <div>
+              <Button type="button" variant="secondary" onClick={copyMobileAppCode} disabled={!mobileCode}>
+                {copyStatus || "Copy code"}
+              </Button>
+              <Link className="link-button secondary" to={`/t/${slug}/admin/settings/access`}>
+                Who can join
+              </Link>
+            </div>
           </div>
-        </div>
-        {payload?.access?.mobileAppCodeHint ? (
-          <p className="muted pb-set-code-hint">{payload.access.mobileAppCodeHint}</p>
-        ) : null}
-      </Card>
+          {payload?.access?.mobileAppCodeHint ? (
+            <p className="muted pb-set-code-hint">{payload.access.mobileAppCodeHint}</p>
+          ) : null}
+        </Card>
+      )}
 
       <Card>
         <SettingActions note="Changes go live for members as soon as you save.">
@@ -1679,14 +1693,18 @@ export function DirectorAdminSettingsBrandingPage() {
   const [section, setSection] = useState("logo");
   const [logoFileName, setLogoFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
+  const [memberHeroFileName, setMemberHeroFileName] = useState("");
   const [pendingLogoFile, setPendingLogoFile] = useState(null);
   const [pendingHeroFile, setPendingHeroFile] = useState(null);
+  const [pendingMemberHeroFile, setPendingMemberHeroFile] = useState(null);
   const [pendingLogoPreviewUrl, setPendingLogoPreviewUrl] = useState("");
   const [pendingHeroPreviewUrl, setPendingHeroPreviewUrl] = useState("");
+  const [pendingMemberHeroPreviewUrl, setPendingMemberHeroPreviewUrl] = useState("");
   const [form, setForm] = useState({
     brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
     heroImageUrl: "",
+    heroImageUrlMember: "",
     heroImagePosition: "center center",
     heroImageSize: "cover",
     heroImagePositionLanding: "center center",
@@ -1701,8 +1719,10 @@ export function DirectorAdminSettingsBrandingPage() {
     if (
       pendingLogoFile ||
       pendingHeroFile ||
+      pendingMemberHeroFile ||
       String(form.logoUrl || "").startsWith("data:") ||
-      String(form.heroImageUrl || "").startsWith("data:")
+      String(form.heroImageUrl || "").startsWith("data:") ||
+      String(form.heroImageUrlMember || "").startsWith("data:")
     ) {
       return;
     }
@@ -1710,6 +1730,7 @@ export function DirectorAdminSettingsBrandingPage() {
       brandPrimary: normalizeBrandHex(payload.branding.brandPrimary, DEFAULT_BRAND_PRIMARY),
       logoUrl: payload.branding.logoUrl || "",
       heroImageUrl: payload.branding.heroImageUrl || "",
+      heroImageUrlMember: payload.branding.heroImageUrlMember || "",
       heroImagePosition: normalizeHeroImagePosition(payload.branding.heroImagePosition || "center center"),
       heroImageSize: normalizeHeroImageSize(payload.branding.heroImageSize || "cover"),
       heroImagePositionLanding: normalizeHeroImagePosition(
@@ -1727,13 +1748,17 @@ export function DirectorAdminSettingsBrandingPage() {
     });
     setPendingLogoFile(null);
     setPendingHeroFile(null);
+    setPendingMemberHeroFile(null);
     setPendingLogoPreviewUrl("");
     setPendingHeroPreviewUrl("");
+    setPendingMemberHeroPreviewUrl("");
   }, [
     form.heroImageUrl,
+    form.heroImageUrlMember,
     form.logoUrl,
     payload?.branding,
     pendingHeroFile,
+    pendingMemberHeroFile,
     pendingLogoFile
   ]);
 
@@ -1831,6 +1856,20 @@ export function DirectorAdminSettingsBrandingPage() {
           scope: "branding-hero"
         });
       }
+      if (pendingMemberHeroFile) {
+        payloadToSave.heroImageUrlMember = await uploadBrandingBlob({
+          blob: pendingMemberHeroFile,
+          fileType: pendingMemberHeroFile.type || "image/jpeg",
+          scope: "branding-hero"
+        });
+      } else if (String(payloadToSave.heroImageUrlMember || "").startsWith("data:")) {
+        const blob = await fetch(payloadToSave.heroImageUrlMember).then((response) => response.blob());
+        payloadToSave.heroImageUrlMember = await uploadBrandingBlob({
+          blob,
+          fileType: blob.type || "image/jpeg",
+          scope: "branding-hero"
+        });
+      }
 
       await request("/settings/branding", { method: "PATCH", body: payloadToSave });
       setForm(payloadToSave);
@@ -1840,6 +1879,7 @@ export function DirectorAdminSettingsBrandingPage() {
           ...(previous.branding || {}),
           logoUrl: String(payloadToSave.logoUrl || ""),
           heroImageUrl: String(payloadToSave.heroImageUrl || ""),
+          heroImageUrlMember: String(payloadToSave.heroImageUrlMember || ""),
           heroImagePosition: String(payloadToSave.heroImagePosition || "center center"),
           heroImageSize: String(payloadToSave.heroImageSize || "cover"),
           heroImagePositionLanding: String(payloadToSave.heroImagePositionLanding || "center center"),
@@ -1855,8 +1895,10 @@ export function DirectorAdminSettingsBrandingPage() {
       });
       setPendingLogoFile(null);
       setPendingHeroFile(null);
+      setPendingMemberHeroFile(null);
       setPendingLogoPreviewUrl("");
       setPendingHeroPreviewUrl("");
+      setPendingMemberHeroPreviewUrl("");
       try {
         await refreshTenant(slug);
       } catch {
@@ -1901,6 +1943,9 @@ export function DirectorAdminSettingsBrandingPage() {
       if (field === "logoUrl") {
         setPendingLogoFile(optimizedFile);
         setPendingLogoPreviewUrl(previewDataUrl);
+      } else if (field === "heroImageUrlMember") {
+        setPendingMemberHeroFile(optimizedFile);
+        setPendingMemberHeroPreviewUrl(previewDataUrl);
       } else {
         setPendingHeroFile(optimizedFile);
         setPendingHeroPreviewUrl(previewDataUrl);
@@ -1924,6 +1969,18 @@ export function DirectorAdminSettingsBrandingPage() {
     if (field === "heroImageUrl") {
       setHeroFileName(String(file?.name || "").trim());
     }
+    if (field === "heroImageUrlMember") {
+      setMemberHeroFileName(String(file?.name || "").trim());
+    }
+  }
+
+  // Dropping the member photo sends the logged-in home back to the main photo.
+  function clearMemberHeroPhoto() {
+    setPendingMemberHeroFile(null);
+    setPendingMemberHeroPreviewUrl("");
+    setMemberHeroFileName("");
+    setForm((prev) => ({ ...prev, heroImageUrlMember: "" }));
+    setStatus("Member home photo cleared. Click Save Branding to publish this change.");
   }
 
   if (loading && !payload) return <Card><p className="muted">Loading settings...</p></Card>;
@@ -1936,12 +1993,19 @@ export function DirectorAdminSettingsBrandingPage() {
   ];
   const currentLogoUrl = String(payload?.branding?.logoUrl || "").trim();
   const currentHeroUrl = String(payload?.branding?.heroImageUrl || "").trim();
+  const currentMemberHeroUrl = String(payload?.branding?.heroImageUrlMember || "").trim();
   const draftLogoUrl = String(form.logoUrl || "").trim();
   const draftHeroUrl = String(form.heroImageUrl || "").trim();
+  const draftMemberHeroUrl = String(form.heroImageUrlMember || "").trim();
   const liveLogoPreviewUrl = pendingLogoPreviewUrl || draftLogoUrl || currentLogoUrl;
   const liveHeroPreviewUrl = pendingHeroPreviewUrl || draftHeroUrl || currentHeroUrl;
+  // Empty stays empty here: the preview has to show the fallback to the main
+  // photo, not a stale member photo the director just cleared.
+  const liveMemberHeroPreviewUrl = pendingMemberHeroPreviewUrl || draftMemberHeroUrl;
   const hasPendingLogoUpdate = Boolean(pendingLogoFile) || (Boolean(draftLogoUrl) && draftLogoUrl !== currentLogoUrl);
   const hasPendingHeroUpdate = Boolean(pendingHeroFile) || (Boolean(draftHeroUrl) && draftHeroUrl !== currentHeroUrl);
+  const hasPendingMemberHeroUpdate =
+    Boolean(pendingMemberHeroFile) || draftMemberHeroUrl !== currentMemberHeroUrl;
 
   return (
     <form onSubmit={saveBranding} className="pb-set-stack">
@@ -2033,6 +2097,49 @@ export function DirectorAdminSettingsBrandingPage() {
                 {hasPendingHeroUpdate ? <p className="muted">Saving will replace the current main photo.</p> : null}
               </div>
         </div>
+
+        <div className="pb-set-upload">
+              <h3 className="pb-set-subsection">A different photo once members log in (optional)</h3>
+              <p className="muted">
+                By default the same photo runs behind the login page and the members&apos; home page.
+                Upload a second photo here if you want the logged-in home to look different.
+              </p>
+              <label className="director-upload-control" htmlFor="director-admin-member-hero-upload">
+                <span className="director-upload-button">Upload member home photo</span>
+                <span className="director-upload-name">
+                  {memberHeroFileName || "Optional. PNG or JPG"}
+                </span>
+              </label>
+              <input
+                id="director-admin-member-hero-upload"
+                type="file"
+                accept="image/*"
+                className="director-upload-input"
+                onClick={(event) => {
+                  event.currentTarget.value = "";
+                }}
+                onChange={(event) => onFilePick("heroImageUrlMember", event.target.files?.[0] || null)}
+              />
+              <h3 className="pb-set-subsection">
+                {hasPendingMemberHeroUpdate ? "Waiting to be saved" : "Currently in use"}
+              </h3>
+              <div className="director-admin-branding-current-media">
+                {liveMemberHeroPreviewUrl ? (
+                  <img
+                    src={liveMemberHeroPreviewUrl}
+                    alt="Current member home photo"
+                    className="director-admin-branding-current-hero"
+                  />
+                ) : (
+                  <p className="muted">No separate member home photo. The main photo is used.</p>
+                )}
+                {liveMemberHeroPreviewUrl ? (
+                  <Button type="button" variant="ghost" onClick={clearMemberHeroPhoto}>
+                    Use the main photo instead
+                  </Button>
+                ) : null}
+              </div>
+        </div>
       </Card>
       ) : null}
 
@@ -2099,6 +2206,7 @@ export function DirectorAdminSettingsBrandingPage() {
             label="Live preview"
             variant="admin"
             heroImageUrl={liveHeroPreviewUrl}
+            memberImageUrl={liveMemberHeroPreviewUrl}
             landingImagePosition={form.heroImagePositionLanding}
             landingImageSize={form.heroImageSizeLanding}
             memberImagePosition={form.heroImagePositionMember}

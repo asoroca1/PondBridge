@@ -43,7 +43,12 @@ const REQUIRED_TABLES = [
   "mobile_notification_schedules",
   "resend_webhook_events",
   "stripe_webhook_events",
-  "email_suppressions"
+  "email_suppressions",
+  "outreach_accounts",
+  "outreach_contacts",
+  "outreach_interactions",
+  "outreach_conversations",
+  "outreach_messages"
 ];
 
 const REQUIRED_INDEXES = [
@@ -76,7 +81,12 @@ const REQUIRED_INDEXES = [
   "idx_event_messages_event_fk",
   "idx_mobile_notifications_user_fk",
   "idx_mobile_notification_devices_user_fk",
-  "idx_mobile_notification_preferences_user_fk"
+  "idx_mobile_notification_preferences_user_fk",
+  "idx_outreach_accounts_stage",
+  "idx_outreach_contacts_account",
+  "idx_outreach_interactions_account_occurred",
+  "idx_outreach_conversations_operator",
+  "idx_outreach_messages_conversation"
 ];
 
 const EXPECTED_FUNCTIONS = [
@@ -138,6 +148,25 @@ const ADDITIVE_MIGRATIONS = [
       "idx_member_blocks_tenant_blocker",
       "idx_content_reports_tenant_status",
       "idx_content_reports_active_dedup"
+    ]
+  },
+  {
+    id: "outreach_workspace",
+    command: "npm --workspace @pondbridge/api run supabase:apply-outreach-workspace",
+    acknowledgement: "apply-outreach-workspace-staging",
+    tables: [
+      "outreach_accounts",
+      "outreach_contacts",
+      "outreach_interactions",
+      "outreach_conversations",
+      "outreach_messages"
+    ],
+    indexes: [
+      "idx_outreach_accounts_stage",
+      "idx_outreach_contacts_account",
+      "idx_outreach_interactions_account_occurred",
+      "idx_outreach_conversations_operator",
+      "idx_outreach_messages_conversation"
     ]
   },
   {

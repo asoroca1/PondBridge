@@ -205,9 +205,10 @@ export default function EventDetailPage() {
         ? "not_ready"
         : "needs_rsvp";
   const hasBody = Boolean(String(item?.bodyHtml || "").trim());
-  const hasHostCard = Boolean(seminar && item?.host);
+  const presenters = Array.isArray(item?.presenters) ? item.presenters : [];
+  const hasHostCard = presenters.length > 0;
   const leanLayout = Boolean(item) && !hasBody && !hasHostCard;
-  const hasMainContent = hasBody || seminar || Boolean(item?.locationAddress);
+  const hasMainContent = hasBody || seminar || hasHostCard || Boolean(item?.locationAddress);
   const coverStyle = item?.coverImageUrl
     ? {
         backgroundImage: `linear-gradient(100deg, rgba(10,24,40,0.82) 0%, rgba(10,24,40,0.35) 55%, rgba(10,24,40,0.05) 100%), url(${item.coverImageUrl})`
@@ -371,20 +372,29 @@ export default function EventDetailPage() {
                   ) : null}
                 </div>
               ) : null}
-              {seminar && item.host ? (
-                <div className="ev-seminar-host-card">
-                  <div className="ev-seminar-host-avatar" aria-hidden="true">
-                    {item.host.avatarUrl ? (
-                      <img src={item.host.avatarUrl} alt="" />
-                    ) : (
-                      <UserRound size={20} />
-                    )}
-                  </div>
-                  <div>
-                    <span>Hosted by a registered member</span>
-                    <strong>{item.host.fullName}</strong>
-                    <p>{item.host.industry || item.host.roleAtCamp || "Camp community member"}</p>
-                  </div>
+              {presenters.length ? (
+                <div className="ev-seminar-hosts">
+                  <p className="ev-seminar-hosts-label">
+                    {seminar
+                      ? presenters.length > 1
+                        ? "Presented by registered members"
+                        : "Presented by a registered member"
+                      : presenters.length > 1
+                        ? "Hosted by"
+                        : "Hosted by"}
+                  </p>
+                  {presenters.map((person) => (
+                    <div className="ev-seminar-host-card" key={person.id}>
+                      <div className="ev-seminar-host-avatar" aria-hidden="true">
+                        {person.avatarUrl ? <img src={person.avatarUrl} alt="" /> : <UserRound size={20} />}
+                      </div>
+                      <div>
+                        <span>{seminar ? "Presenter" : "Host"}</span>
+                        <strong>{person.fullName}</strong>
+                        <p>{person.industry || person.roleAtCamp || "Camp community member"}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </article>

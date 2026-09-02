@@ -1,3 +1,8 @@
+# Apple requires the association file to be served as JSON with no redirect.
+# It must stay above the SPA fallback or it is answered with index.html and
+# Universal Links silently stop verifying.
+/.well-known/apple-app-site-association /.well-known/apple-app-site-association 200
+
 # Cloudflare Pages: serve built assets directly.
 # Missing files under these paths should stay 404.
 /favicon.svg /favicon.svg 200

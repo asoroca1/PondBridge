@@ -223,7 +223,7 @@ export default function SuperDashboardPage() {
             </label>
 
             <div className="inline-actions super-create-actions">
-              <Button>Create camp</Button>
+              <Button type="submit">Create camp</Button>
             </div>
           </form>
         </Card>

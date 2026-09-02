@@ -370,6 +370,8 @@ export function resolveTheme(tenant) {
     cardBorder: String(live.cardBorder || ""),
     logoUrl: String(live.logoUrl || ""),
     heroImageUrl: String(live.heroImageUrl || ""),
+    // Empty means the member home falls back to heroImageUrl.
+    heroImageUrlMember: String(live.heroImageUrlMember || ""),
     heroImagePosition: defaultPosition,
     heroImageSize: defaultSize,
     heroImagePositionLanding: normalizeHeroImagePosition(
@@ -542,6 +544,7 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
       brandSecondary: theme.brandSecondary,
       brandAccent: theme.brandAccent,
       heroImageUrl: theme.heroImageUrl,
+      heroImageUrlMember: theme.heroImageUrlMember,
       heroImagePosition: theme.heroImagePosition,
       heroImageSize: theme.heroImageSize,
       heroImagePositionLanding: theme.heroImagePositionLanding,

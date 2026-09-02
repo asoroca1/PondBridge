@@ -78,7 +78,7 @@ export default function LoginPage() {
           </label>
           {error ? <p className="error-text">{error}</p> : null}
           <div className="inline-actions">
-            <Button disabled={saving}>{saving ? "Signing in..." : "Sign in"}</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Signing in..." : "Sign in"}</Button>
           </div>
         </form>
       </Card>

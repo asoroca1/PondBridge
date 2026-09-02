@@ -18,6 +18,10 @@ import {
   normalizeSeminarMeetingUrl,
   serializeEvent
 } from "../services/events.js";
+import {
+  loadPresenterProfileMap,
+  loadPresenterProfiles
+} from "../services/eventPresenters.js";
 
 const router = Router({ mergeParams: true });
 const eventJoinLimiter = rateLimit({
@@ -74,29 +78,22 @@ async function loadEventResponseContext(tenantId, userId, events = []) {
     return {
       rsvpSummaryByEventId: new Map(),
       rsvpByEventId: new Map(),
-      hostProfileById: new Map(),
+      presentersByEventId: new Map(),
       viewerProfile: null
     };
   }
 
-  const hostProfileIds = [...new Set(
-    events.map((item) => String(item?.hostProfileId || "").trim()).filter(Boolean)
-  )];
-  const [allRsvps, myRsvps, hostProfiles, viewerProfile] = await Promise.all([
+  const [allRsvps, myRsvps, presentersByEventId, viewerProfile] = await Promise.all([
     EventRsvpModel.find(tenantId, { eventId: { $in: eventIds } }),
     EventRsvpModel.find(tenantId, { eventId: { $in: eventIds }, userId }),
-    hostProfileIds.length
-      ? ProfileModel.find(tenantId, { _id: { $in: hostProfileIds } })
-      : [],
+    loadPresenterProfileMap(tenantId, eventIds),
     ProfileModel.findByUserId(tenantId, userId)
   ]);
 
   return {
     rsvpSummaryByEventId: buildRsvpSummaryMap(allRsvps),
     rsvpByEventId: new Map(myRsvps.map((item) => [String(item?.eventId || ""), item])),
-    hostProfileById: new Map(
-      hostProfiles.map((item) => [String(item?._id || item?.id || ""), item])
-    ),
+    presentersByEventId,
     viewerProfile
   };
 }
@@ -110,7 +107,7 @@ router.get("/", async (req, res) => {
   const {
     rsvpSummaryByEventId,
     rsvpByEventId,
-    hostProfileById,
+    presentersByEventId,
     viewerProfile
   } = await loadEventResponseContext(
     req.tenant._id,
@@ -124,7 +121,7 @@ router.get("/", async (req, res) => {
       now,
       rsvpSummary: rsvpSummaryByEventId.get(String(event?._id || event?.id || "")),
       myRsvp: rsvpByEventId.get(String(event?._id || event?.id || "")),
-      hostProfile: hostProfileById.get(String(event?.hostProfileId || "")),
+      presenters: presentersByEventId.get(String(event?._id || event?.id || "")) || [],
       viewerProfileId: String(viewerProfile?._id || viewerProfile?.id || "")
     })
   );
@@ -156,13 +153,11 @@ router.get("/:eventId", async (req, res) => {
     });
   }
 
-  const [rsvps, myRsvp, viewerProfile, hostProfile] = await Promise.all([
+  const [rsvps, myRsvp, viewerProfile, presenters] = await Promise.all([
     EventRsvpModel.find(req.tenant._id, { eventId }),
     EventRsvpModel.findOne(req.tenant._id, { eventId, userId: req.user.id }),
     ProfileModel.findByUserId(req.tenant._id, req.user.id),
-    event?.hostProfileId
-      ? ProfileModel.findOne(req.tenant._id, { _id: String(event.hostProfileId) })
-      : null
+    loadPresenterProfiles(req.tenant._id, eventId)
   ]);
 
   await logTenantEvent({
@@ -177,7 +172,7 @@ router.get("/:eventId", async (req, res) => {
       now: new Date(),
       rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
       myRsvp,
-      hostProfile,
+      presenters,
       viewerProfileId: String(viewerProfile?._id || viewerProfile?.id || "")
     })
   });
@@ -193,14 +188,15 @@ router.post("/:eventId/join", eventJoinLimiter, async (req, res) => {
   }
 
   const profile = await ProfileModel.findByUserId(req.tenant._id, req.user.id);
-  const myRsvp = await EventRsvpModel.findOne(req.tenant._id, {
-    eventId,
-    userId: req.user.id
-  });
+  const [myRsvp, presenters] = await Promise.all([
+    EventRsvpModel.findOne(req.tenant._id, { eventId, userId: req.user.id }),
+    loadPresenterProfiles(req.tenant._id, eventId)
+  ]);
   const { profileId } = assertSeminarJoinEligibility({
     event,
     profile,
     rsvp: myRsvp,
+    presenterProfileIds: presenters.map((item) => String(item?._id || item?.id || "")),
     now: new Date()
   });
 
@@ -323,11 +319,9 @@ router.put("/:eventId/rsvp", async (req, res) => {
     metadata: { eventId, status }
   }).catch(() => {});
 
-  const [rsvps, hostProfile] = await Promise.all([
+  const [rsvps, presenters] = await Promise.all([
     EventRsvpModel.find(req.tenant._id, { eventId }),
-    event?.hostProfileId
-      ? ProfileModel.findOne(req.tenant._id, { _id: String(event.hostProfileId) })
-      : null
+    loadPresenterProfiles(req.tenant._id, eventId)
   ]);
   return res.json({
     ok: true,
@@ -335,7 +329,7 @@ router.put("/:eventId/rsvp", async (req, res) => {
       now: new Date(),
       rsvpSummary: buildRsvpSummaryMap(rsvps).get(eventId),
       myRsvp: rsvp,
-      hostProfile,
+      presenters,
       viewerProfileId: String(profile?._id || profile?.id || "")
     })
   });

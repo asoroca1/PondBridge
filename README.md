@@ -14,5 +14,6 @@ See:
 - `docs/PLAN_A_PLUS_PRODUCTION_2026-02-27.md` (A+ implementation plan)
 - `docs/BASELINE_A_PLUS_2026-02-27.md` (baseline metrics snapshot)
 - `docs/TENANT_CONTEXT_CONTRACT.md` (tenant resolution/scope contract)
+- `docs/OUTREACH_WORKSPACE.md` (global approval-first prospect and client workflow)
 - `docs/DB_GOVERNANCE_AND_PREFLIGHT.md` (schema parity + RLS preflight process)
 - `docs/A_PLUS_TRACKING_BOARD.md` (execution checklist by epic)

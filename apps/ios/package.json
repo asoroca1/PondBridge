@@ -5,8 +5,10 @@
   "description": "Native iOS and Android shells for PondBridge powered by the shared web build.",
   "scripts": {
     "build:web": "npm --workspace @pondbridge/web run build",
-    "copy": "npm run build:web && npx cap copy ios",
-    "sync": "npm run build:web && npx cap sync ios",
+    "clean:dups": "node ../../scripts/cleanIcloudDuplicates.mjs apps/web/dist apps/ios/ios",
+    "verify:bundle": "node ../../scripts/cleanIcloudDuplicates.mjs apps/ios/ios/App/App/public --check",
+    "copy": "npm run build:web && npm run clean:dups && npx cap copy ios && npm run verify:bundle",
+    "sync": "npm run build:web && npm run clean:dups && npx cap sync ios && npm run verify:bundle",
     "open": "npx cap open ios",
     "copy:android": "npm run build:web && npx cap copy android",
     "sync:android": "npm run build:web && npx cap sync android",

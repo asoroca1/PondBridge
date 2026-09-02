@@ -918,24 +918,35 @@ export async function runDueMobileNotificationSchedules({ now = new Date(), batc
 }
 
 let schedulerTimer = null;
+let schedulerTickPromise = null;
+
+function runMobileNotificationSchedulerTick() {
+  if (schedulerTickPromise) return schedulerTickPromise;
+
+  schedulerTickPromise = runDueMobileNotificationSchedules()
+    .catch((error) => {
+      console.error("Mobile notification scheduler tick failed", error);
+    })
+    .finally(() => {
+      schedulerTickPromise = null;
+    });
+
+  return schedulerTickPromise;
+}
 
 export function startMobileNotificationScheduler({ intervalMs = 30000 } = {}) {
   if (schedulerTimer) return;
-  const tick = async () => {
-    try {
-      await runDueMobileNotificationSchedules();
-    } catch (error) {
-      console.error("Mobile notification scheduler tick failed", error);
-    }
-  };
-  schedulerTimer = setInterval(tick, Math.max(5000, intervalMs));
+  schedulerTimer = setInterval(() => {
+    void runMobileNotificationSchedulerTick();
+  }, Math.max(5000, intervalMs));
   if (typeof schedulerTimer.unref === "function") schedulerTimer.unref();
-  tick().catch(() => {});
+  void runMobileNotificationSchedulerTick();
 }
 
-export function stopMobileNotificationScheduler() {
+export async function stopMobileNotificationScheduler() {
   if (schedulerTimer) {
     clearInterval(schedulerTimer);
     schedulerTimer = null;
   }
+  await schedulerTickPromise;
 }

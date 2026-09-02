@@ -186,7 +186,7 @@ export default function RegisterPage() {
 
           {error ? <p className="error-text">{error}</p> : null}
 
-          <Button disabled={saving || !signupEnabled}>{saving ? "Creating account..." : "Create account"}</Button>
+          <Button type="submit" disabled={saving || !signupEnabled}>{saving ? "Creating account..." : "Create account"}</Button>
         </form>
       </Card>
     </PageShell>

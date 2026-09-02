@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>PondBridge is offline</title>
+    <!--
+      Loaded by the native shells (Capacitor `server.errorPath`) when the live web
+      app cannot be reached — including a first-ever cold start with no network,
+      which would otherwise show a blank screen. Everything here must be inline:
+      the whole point is that nothing can be fetched.
+    -->
+    <style>
+      :root {
+        --pb-navy: #002b5c;
+        --pb-bg: #f5f7fa;
+        --pb-surface: #ffffff;
+        --pb-text: #0f1e30;
+        --pb-muted: #55677d;
+        --pb-border: #dde4ec;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --pb-navy: #7fb2e5;
+          --pb-bg: #0b1620;
+          --pb-surface: #132434;
+          --pb-text: #eaf1f8;
+          --pb-muted: #9fb2c6;
+          --pb-border: #22384c;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: calc(24px + env(safe-area-inset-top, 0px))
+          calc(20px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px))
+          calc(20px + env(safe-area-inset-left, 0px));
+        background: var(--pb-bg);
+        color: var(--pb-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+        line-height: 1.5;
+        -webkit-text-size-adjust: 100%;
+      }
+      .card {
+        width: 100%;
+        max-width: 380px;
+        padding: 32px 26px;
+        border: 1px solid var(--pb-border);
+        border-radius: 18px;
+        background: var(--pb-surface);
+        text-align: center;
+      }
+      .mark {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 20px;
+        color: var(--pb-navy);
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 1.3rem;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0 0 22px;
+        color: var(--pb-muted);
+        font-size: 0.97rem;
+      }
+      button {
+        width: 100%;
+        min-height: 48px;
+        padding: 13px 20px;
+        border: 0;
+        border-radius: 11px;
+        background: var(--pb-navy);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      @media (prefers-color-scheme: dark) {
+        button {
+          color: #06131f;
+        }
+      }
+      button[disabled] {
+        opacity: 0.6;
+        cursor: default;
+      }
+      button:focus-visible {
+        outline: 3px solid var(--pb-navy);
+        outline-offset: 3px;
+      }
+      .status {
+        margin: 14px 0 0;
+        min-height: 1.2em;
+        font-size: 0.85rem;
+        color: var(--pb-muted);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .retrying .mark {
+          animation: pulse 1.4s ease-in-out infinite;
+        }
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.45;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <svg
+        class="mark"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M1 1l22 22" />
+        <path d="M16.72 11.06A10.94 10.94 0 0119 12.55" />
+        <path d="M5 12.55a10.94 10.94 0 015.17-2.39" />
+        <path d="M10.71 5.05A16 16 0 0122.58 9" />
+        <path d="M1.42 9a15.91 15.91 0 014.7-2.88" />
+        <path d="M8.53 16.11a6 6 0 016.95 0" />
+        <path d="M12 20h.01" />
+      </svg>
+      <h1>You&rsquo;re offline</h1>
+      <p>
+        PondBridge needs a connection to load. We&rsquo;ll reconnect automatically as soon as
+        you&rsquo;re back.
+      </p>
+      <button id="retry" type="button">Try again</button>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </main>
+
+    <script>
+      (function () {
+        // The shell may be pointed at staging or a LAN dev server via
+        // PONDBRIDGE_APP_URL. Prefer whatever the native bridge reports so a
+        // non-production build retries against the origin it was built for, and
+        // only fall back to production when the bridge tells us nothing.
+        var FALLBACK_URL = "https://app.pondbridgealumni.com";
+
+        function appUrl() {
+          try {
+            var config =
+              window.Capacitor && typeof window.Capacitor.getConfig === "function"
+                ? window.Capacitor.getConfig()
+                : null;
+            var url = config && config.server && config.server.url;
+            if (url) return String(url);
+          } catch (error) {
+            // Bridge unavailable on this page; fall through to the default.
+          }
+          return FALLBACK_URL;
+        }
+
+        var retry = document.getElementById("retry");
+        var status = document.getElementById("status");
+        var navigating = false;
+
+        function attempt(auto) {
+          if (navigating) return;
+          navigating = true;
+          document.body.classList.add("retrying");
+          retry.disabled = true;
+          status.textContent = auto ? "Connection restored. Reloading…" : "Reconnecting…";
+          window.location.replace(appUrl());
+
+          // If the origin is still unreachable the navigation fails silently and
+          // we stay on this page, so hand control back rather than leaving a
+          // dead button behind.
+          window.setTimeout(function () {
+            navigating = false;
+            document.body.classList.remove("retrying");
+            retry.disabled = false;
+            if (navigator.onLine === false) {
+              status.textContent = "Still offline.";
+            } else {
+              status.textContent = "Couldn’t reach PondBridge. Try again in a moment.";
+            }
+          }, 6000);
+        }
+
+        retry.addEventListener("click", function () {
+          attempt(false);
+        });
+        window.addEventListener("online", function () {
+          attempt(true);
+        });
+
+        if (navigator.onLine === false) status.textContent = "No network connection.";
+      })();
+    </script>
+  </body>
+</html>

@@ -101,7 +101,7 @@ export default function MyProfilePage() {
           {status.error ? <p className="error-text">{status.error}</p> : null}
           {status.saved ? <p className="success-text">Profile saved.</p> : null}
 
-          <Button disabled={status.saving}>{status.saving ? "Saving..." : "Save profile"}</Button>
+          <Button type="submit" disabled={status.saving}>{status.saving ? "Saving..." : "Save profile"}</Button>
         </form>
       </Card>
     </PageShell>

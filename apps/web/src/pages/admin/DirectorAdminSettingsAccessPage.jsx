@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Button, Card, Input, Textarea } from "@pondbridge/ui";
 import { ClipboardCheck, DoorOpen, KeyRound, MailCheck } from "lucide-react";
 import useAdminApi from "./useAdminApi.js";
+import { HIDE_MOBILE_APP } from "../../lib/directorHiddenFeatures.js";
 import "./director-admin-access.css";
 
 // Each mode is a different experience for the person trying to join, so they
@@ -185,18 +186,20 @@ export default function DirectorAdminSettingsAccessPage() {
         </label>
       </Card>
 
-      <Card>
-        <h2 className="pb-section-title">Mobile app code</h2>
-        <p className="muted pb-access-mobile">
-          {payload?.access?.hasMobileAppCode
-            ? "Members type this code in the iPhone app to reach your camp's login."
-            : "Generated automatically for the iPhone app; it appears here once ready."}
-        </p>
-        <Input value={payload?.access?.mobileAppCode || ""} readOnly spellCheck={false} placeholder="Generating…" />
-        {payload?.access?.mobileAppCodeHint ? (
-          <small className="muted">Last updated: {payload.access.mobileAppCodeHint}</small>
-        ) : null}
-      </Card>
+      {HIDE_MOBILE_APP ? null : (
+        <Card>
+          <h2 className="pb-section-title">Mobile app code</h2>
+          <p className="muted pb-access-mobile">
+            {payload?.access?.hasMobileAppCode
+              ? "Members type this code in the iPhone app to reach your camp's login."
+              : "Generated automatically for the iPhone app; it appears here once ready."}
+          </p>
+          <Input value={payload?.access?.mobileAppCode || ""} readOnly spellCheck={false} placeholder="Generating…" />
+          {payload?.access?.mobileAppCodeHint ? (
+            <small className="muted">Last updated: {payload.access.mobileAppCodeHint}</small>
+          ) : null}
+        </Card>
+      )}
 
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       {status ? <p className="success-text" role="status">{status}</p> : null}

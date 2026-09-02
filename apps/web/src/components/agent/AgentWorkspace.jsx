@@ -57,15 +57,27 @@ function MessageLinks({ links = [], onEvidenceClick = null }) {
       ) : null}
       {actionLinks.length ? (
         <div className="agent-message-links" aria-label="Related camp links">
-          {actionLinks.map((item) => (
-            <Link
-              key={`${item.href}:${item.label}`}
-              to={item.href}
-              onClick={() => onEvidenceClick?.(item)}
-            >
-              {item.label}
-            </Link>
-          ))}
+          {actionLinks.map((item) =>
+            /^https?:\/\//i.test(item.href) ? (
+              <a
+                key={`${item.href}:${item.label}`}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => onEvidenceClick?.(item)}
+              >
+                {item.label}
+              </a>
+            ) : (
+              <Link
+                key={`${item.href}:${item.label}`}
+                to={item.href}
+                onClick={() => onEvidenceClick?.(item)}
+              >
+                {item.label}
+              </Link>
+            )
+          )}
         </div>
       ) : null}
     </>
@@ -79,7 +91,7 @@ export function AgentConversation({
   onEvidenceClick = null,
   assistantName = "Camp AI",
   emptyState = null,
-  thinkingLabel = ""
+  thinkingLabel = "",
 }) {
   const scrollRef = useRef(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -105,7 +117,8 @@ export function AgentConversation({
 
   function updateScrollButton(event) {
     const container = event.currentTarget;
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
     setShowScrollButton(distanceFromBottom > 72);
   }
 
@@ -120,7 +133,9 @@ export function AgentConversation({
       >
         {!messages.length && emptyState ? (
           <div className="agent-empty-state">
-            <span className="agent-empty-icon" aria-hidden="true"><Sparkles size={22} /></span>
+            <span className="agent-empty-icon" aria-hidden="true">
+              <Sparkles size={22} />
+            </span>
             <h2>{emptyState.title}</h2>
             {emptyState.description ? <p>{emptyState.description}</p> : null}
           </div>
@@ -130,8 +145,7 @@ export function AgentConversation({
             message.role === "assistant" &&
             !messages.slice(index + 1).some((candidate) => candidate.role === "assistant");
           const shouldShowDisclaimer =
-            Boolean(message.disclaimer) &&
-            latestDisclaimerIndex.get(message.disclaimer) === index;
+            Boolean(message.disclaimer) && latestDisclaimerIndex.get(message.disclaimer) === index;
           return (
             <article
               key={message.id}
@@ -193,7 +207,7 @@ export function AgentComposer({
   label = "What would you like help with?",
   placeholder = "Ask a question about your camp community…",
   privacyNote = "Do not enter passwords, access codes, payment details, or private member information.",
-  submitLabel = "Send"
+  submitLabel = "Send",
 }) {
   const helpId = `${id}-help`;
   const textareaRef = useRef(null);
@@ -226,7 +240,9 @@ export function AgentComposer({
         </div>
       ) : null}
       <form className="agent-composer" onSubmit={onSubmit}>
-        <label className="agent-composer-label" htmlFor={id}>{label}</label>
+        <label className="agent-composer-label" htmlFor={id}>
+          {label}
+        </label>
         <div className="agent-prompt-input">
           <Textarea
             id={id}
@@ -277,7 +293,7 @@ export default function AgentWorkspace({
   assistantName = "Camp AI",
   emptyState = null,
   thinkingLabel = "",
-  boundaryLabel = "Safety, privacy & agent limits"
+  boundaryLabel = "Safety, privacy & agent limits",
 }) {
   const hasRail = Boolean(rail);
   return (
