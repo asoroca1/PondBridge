@@ -96,6 +96,10 @@ import {
   buildCorpusStats,
   scoreSimilarity
 } from "../services/profileSimilarity.js";
+import {
+  activityActorUserIds,
+  filterActivityItemsForActiveUsers
+} from "../services/memberVisibility.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
@@ -180,13 +184,12 @@ const NEWSLETTER_COVER_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/p
 const NEWSLETTER_DIRECT_COVER_URL_TENANT_SLUGS = new Set(["cedar"]);
 const HOME_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
 const LOCATIONS_STATS_CACHE_CONTROL = "private, max-age=20, stale-while-revalidate=40";
-const ACTIVITY_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
+const ACTIVITY_CACHE_CONTROL = "private, no-store";
 const PHOTO_FEED_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
 const CHAT_CONVERSATIONS_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
 const CHAT_MESSAGES_CACHE_CONTROL = "private, max-age=6, stale-while-revalidate=18";
 const FORUMS_CACHE_CONTROL = "private, max-age=8, stale-while-revalidate=20";
 const FORUM_POSTS_CACHE_CONTROL = "private, max-age=6, stale-while-revalidate=18";
-const activityResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 500 });
 const photoFeedResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 900 });
 const forumsListResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1000 });
 const forumDetailResponseCache = createTtlCache({ ttlMs: 8_000, maxEntries: 1200 });
@@ -194,10 +197,6 @@ const forumPostsResponseCache = createTtlCache({ ttlMs: 6_000, maxEntries: 1800 
 
 function tenantReadCacheKey(scope = "", tenantId = "", suffix = "") {
   return [String(scope || "").trim(), String(tenantId || "").trim(), String(suffix || "").trim()].join(":");
-}
-
-function clearHomeActivityCache() {
-  activityResponseCache.clear();
 }
 
 function clearPhotoFeedCache() {
@@ -1969,17 +1968,23 @@ function clampActivityLimit(raw = 50) {
 
 async function readActivityPayload(tenantId = "", { limit = 50 } = {}) {
   const resolvedLimit = clampActivityLimit(limit);
-  const cacheKey = tenantReadCacheKey("activity", tenantId, String(resolvedLimit));
-  const cached = activityResponseCache.get(cacheKey);
-  if (cached) return cached;
-
+  // Membership removal is an access boundary, so activity is resolved against
+  // current users for every request instead of serving a stale member snapshot.
   const rows = await ActivityItemModel.find(tenantId, {}, {
     sort: { pinned: -1, pinnedAt: -1, ts: -1 },
-    limit: resolvedLimit
+    limit: 200
   });
-  const payload = rows.map((row) => activityToClient(row));
-  activityResponseCache.set(cacheKey, payload);
-  return payload;
+  const actorUserIds = activityActorUserIds(rows);
+  const users = actorUserIds.length > 0
+    ? await UserModel.find(
+        tenantId,
+        { _id: { $in: actorUserIds } },
+        { select: ["id", "status"] }
+      )
+    : [];
+  return filterActivityItemsForActiveUsers(rows, users)
+    .slice(0, resolvedLimit)
+    .map((row) => activityToClient(row));
 }
 
 router.get("/home/bootstrap", async (req, res) => {
@@ -2042,7 +2047,6 @@ router.post("/activity", async (req, res) => {
     ts: new Date()
   });
 
-  clearHomeActivityCache();
   return res.status(201).json(activityToClient(created));
 });
 
@@ -2064,7 +2068,6 @@ router.delete("/activity/:id", async (req, res) => {
   }
 
   await ActivityItemModel.delete(existing._id);
-  clearHomeActivityCache();
   return res.json({ ok: true });
 });
 
@@ -2098,7 +2101,6 @@ router.patch("/activity/:id/pin", async (req, res) => {
     pinnedAt: pinned ? new Date() : null
   });
 
-  clearHomeActivityCache();
   return res.json({ id: String(updated._id), pinned: Boolean(updated.pinned) });
 });
 
@@ -2201,7 +2203,6 @@ router.post("/photos", async (req, res) => {
     },
     ts: new Date()
   }).catch(() => {});
-  clearHomeActivityCache();
   clearPhotoFeedCache();
 
   return res.status(201).json(photoToClient(created, req.user.id));

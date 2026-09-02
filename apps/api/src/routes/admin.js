@@ -1991,6 +1991,18 @@ function sanitizeConversationReadBy(readBy = [], removedUserId = "") {
   );
 }
 
+async function deleteMemberActivityItems(tenantId = "", userIds = []) {
+  const safeUserIds = uniqueIdStrings(userIds);
+  if (safeUserIds.length === 0) return 0;
+
+  const filter = { actorUserId: { $in: safeUserIds } };
+  const count = await ActivityItemModel.count(tenantId, filter);
+  if (count > 0) {
+    await ActivityItemModel.deleteMany(tenantId, filter);
+  }
+  return count;
+}
+
 async function deleteMemberFromTenant({
   tenantId,
   userId,
@@ -2251,11 +2263,7 @@ async function deleteMemberFromTenant({
   }
 
   // 8) Remove user-specific analytics/activity and auth artifacts.
-  const activityItemCount = await ActivityItemModel.count(tenantId, { actorUserId: safeUserId });
-  if (activityItemCount > 0) {
-    await ActivityItemModel.deleteMany(tenantId, { actorUserId: safeUserId });
-    summary.activityItemsDeleted += activityItemCount;
-  }
+  summary.activityItemsDeleted += await deleteMemberActivityItems(tenantId, [safeUserId]);
 
   const analyticsEventCount = await AnalyticsEventModel.count(tenantId, { userId: safeUserId });
   if (analyticsEventCount > 0) {
@@ -3629,6 +3637,9 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
   if (cleanPatch.status && userId) {
     const nextUserStatus = cleanPatch.status === "removed" ? "inactive" : "active";
     await UserModel.updateScoped(req.tenant._id, userId, { status: nextUserStatus });
+    if (cleanPatch.status === "removed") {
+      await deleteMemberActivityItems(req.tenant._id, [userId]);
+    }
   }
 
   await writeAdminAudit(req, "admin_member_full_profile_updated", {
@@ -3734,6 +3745,9 @@ router.patch("/members/:profileId([a-fA-F0-9]{24})", async (req, res) => {
   if (patch.status) {
     const nextUserStatus = patch.status === "removed" ? "inactive" : "active";
     await UserModel.updateScoped(req.tenant._id, updated.userId, { status: nextUserStatus });
+    if (patch.status === "removed") {
+      await deleteMemberActivityItems(req.tenant._id, [updated.userId]);
+    }
   }
 
   const user = await UserModel.findOne(req.tenant._id, { _id: updated.userId });
@@ -3797,6 +3811,7 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
         legacyUserId: userId,
         tenantMembershipId: profile.tenantMembershipId
       });
+      await deleteMemberActivityItems(req.tenant._id, [userId]);
       await ProfileModel.delete(profile._id);
       await writeAdminAudit(req, "admin_member_hard_deleted", {
         profileId: toObjectIdString(profile._id),
@@ -3894,6 +3909,7 @@ router.post("/members/bulk-action", async (req, res) => {
         { _id: { $in: userIds } },
         { status: "inactive" }
       );
+      await deleteMemberActivityItems(req.tenant._id, userIds);
     }
     await writeAdminAudit(req, "admin_members_bulk_action", {
       action,
@@ -7788,6 +7804,7 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
 
     const user = await UserModel.findOne(req.tenant._id, { _id: userId });
     if (!user) {
+      await deleteMemberActivityItems(req.tenant._id, [userId]);
       await ProfileModel.delete(profile._id);
       await writeAdminAudit(req, "admin_member_hard_deleted", {
         profileId: toObjectIdString(profile._id),
