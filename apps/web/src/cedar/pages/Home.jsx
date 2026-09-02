@@ -28,6 +28,13 @@ function Home() {
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
   const createAccountPath = tenantRoute(slug, "/create-account");
   const loginPath = tenantRoute(slug, "/login");
+  const longestHeadlineLine = Math.max(campName.length, `${alumniWord} Network`.length);
+  const headlineLengthClass =
+    longestHeadlineLine > 28
+      ? "landing-headline--extra-long"
+      : longestHeadlineLine > 18
+        ? "landing-headline--long"
+        : "";
 
   return (
     <section
@@ -42,7 +49,7 @@ function Home() {
 
       <div className="landing-content">
         <span className="landing-preline">Welcome to the</span>
-        <h1 className="landing-headline">
+        <h1 className={`landing-headline ${headlineLengthClass}`.trim()}>
           <span className="landing-headline-camp">{campName}</span>
           <span className="landing-headline-network">{alumniWord}&nbsp;Network</span>
         </h1>
