@@ -4036,6 +4036,21 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
   const existingUser = await UserModel.findOne(req.tenant._id, { email });
 
   if (existingUser) {
+    // Someone removed earlier still has their records, just switched off.
+    // Approving them has to switch them back on, or the decision silently does
+    // nothing and they stay locked out of the network they were let into.
+    const wasInactive = String(existingUser.status || "") !== "active";
+    let restoredProfile = null;
+    if (wasInactive) {
+      await UserModel.update(existingUser._id, { status: "active" });
+      const previousProfile = await ProfileModel.findOne(req.tenant._id, { userId: existingUser._id });
+      if (previousProfile) {
+        restoredProfile = await ProfileModel.updateScoped(req.tenant._id, previousProfile._id, {
+          status: "active"
+        });
+      }
+    }
+
     await AccessRequestModel.update(request._id, {
       status: "approved",
       reviewedAt: new Date(),
@@ -4046,17 +4061,80 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
       await writeAdminAudit(req, "admin_access_request_approved", {
         requestId: toObjectIdString(request._id),
         approvedUserId: toObjectIdString(existingUser._id),
-        existingUser: true
+        existingUser: true,
+        reactivated: wasInactive
       });
     }
+
     const userId = toObjectIdString(existingUser._id);
+    // Coming back counts as joining, same as arriving for the first time.
+    if (wasInactive) {
+      const profileForFeed = restoredProfile || null;
+      const returningName =
+        [profileForFeed?.firstName, profileForFeed?.lastName].filter(Boolean).join(" ").trim() ||
+        [request.firstName, request.lastName].filter(Boolean).join(" ").trim() ||
+        "Someone";
+      await ActivityItemModel.create({
+        tenantId: req.tenant._id,
+        actorUserId: existingUser._id,
+        actor: { id: userId, name: returningName },
+        type: "user.join",
+        target: profileForFeed
+          ? { href: `/profile/${toObjectIdString(profileForFeed._id)}`, label: "profile" }
+          : {},
+        ts: new Date()
+      }).catch(() => {});
+      await logTenantEvent({
+        tenantId: req.tenant._id,
+        userId: existingUser._id,
+        eventType: "signup_created",
+        metadata: { method: "director_approval", reactivated: true }
+      }).catch(() => {});
+    }
+
     if (collector) {
       collector.approvedUserIds.push(userId);
       collector.requestIds.push(toObjectIdString(request._id));
+      if (wasInactive) {
+        const email = normalizeEmail(request.email || existingUser.email || "");
+        const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
+        if (isEmail(email)) {
+          collector.emails.push(() =>
+            sendAccessDecisionEmail({ tenant: req.tenant, email, firstName, approved: true })
+          );
+        }
+      }
     } else {
       await notifyAccessApproved(req, [userId], toObjectIdString(request._id));
+      // A returning member is told the same way a new one is. Someone who was
+      // already active never asked, so they get nothing.
+      if (wasInactive) {
+        const email = normalizeEmail(request.email || existingUser.email || "");
+        const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
+        if (isEmail(email)) {
+          await sendAccessDecisionEmail({
+            tenant: req.tenant,
+            email,
+            firstName,
+            approved: true
+          }).catch((error) => {
+            console.warn("[email] approval notification failed", {
+              tenantId: String(req.tenant._id || ""),
+              email,
+              message: String(error?.message || "")
+            });
+          });
+        }
+      }
     }
-    return { ok: true, requestId: toObjectIdString(request._id), existingUser: true, userId };
+
+    return {
+      ok: true,
+      requestId: toObjectIdString(request._id),
+      existingUser: true,
+      reactivated: wasInactive,
+      userId
+    };
   }
 
   const randomPassword = crypto.randomBytes(18).toString("hex");
