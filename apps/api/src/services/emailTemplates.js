@@ -566,7 +566,14 @@ export function verificationCodeTemplate({
 // 5. Access approved template
 // ---------------------------------------------------------------------------
 
-export function accessApprovedTemplate({ tenantName, firstName, loginUrl }) {
+export function accessApprovedTemplate({
+  tenantName,
+  firstName,
+  loginUrl,
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
+  const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const safeName = escapeHtml(firstName || "there");
 
@@ -580,14 +587,19 @@ export function accessApprovedTemplate({ tenantName, firstName, loginUrl }) {
     loginUrl ? `Log in here: ${loginUrl}` : ""
   ].filter(Boolean).join("\n");
 
-  const html = wrapLayout(`
-    <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">You're In!</h1>
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:${P.text};letter-spacing:-0.02em;">You're In!</h1>
     <p style="margin:0 0 12px;">Hi ${safeName},</p>
     <p style="margin:0 0 12px;">Great news&mdash;your request to join <strong>${safeTenant}</strong> has been approved!</p>
     <p style="margin:0 0 12px;">You can now log in and start exploring the network.</p>
-    ${loginUrl ? ctaButton(loginUrl, "Log In to Your Network") : ""}
-    ${loginUrl ? `<p style="margin:0;font-size:13px;color:${BRAND.muted};word-break:break-all;"><a href="${escapeHtml(loginUrl)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(loginUrl)}</a></p>` : ""}
-  `, { contextName: tenantName });
+    ${loginUrl ? ctaButton(loginUrl, "Log In to Your Network", { backgroundColor: brandPrimary }) : ""}
+    ${loginUrl ? `<p style="margin:0;font-size:13px;color:${BRAND.muted};word-break:break-all;"><a href="${escapeHtml(loginUrl)}" style="color:${P.primary};text-decoration:underline;">${escapeHtml(loginUrl)}</a></p>` : ""}
+  `, {
+    contextName: tenantName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Membership approved"
+  });
 
   return { subject, text, html };
 }
@@ -596,7 +608,14 @@ export function accessApprovedTemplate({ tenantName, firstName, loginUrl }) {
 // 6. Access denied template
 // ---------------------------------------------------------------------------
 
-export function accessDeniedTemplate({ tenantName, firstName, reason }) {
+export function accessDeniedTemplate({
+  tenantName,
+  firstName,
+  reason,
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
+  const P = buildEmailPalette(brandPrimary);
   const safeTenant = escapeHtml(tenantName);
   const safeName = escapeHtml(firstName || "there");
   const safeReason = escapeHtml(reason || "");
@@ -612,13 +631,18 @@ export function accessDeniedTemplate({ tenantName, firstName, reason }) {
     "You can reach out to the camp director for details."
   ].filter(Boolean).join("\n");
 
-  const html = wrapLayout(`
-    <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.primary};">Access Request Update</h1>
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:36px;font-weight:700;line-height:1.2;color:${P.text};letter-spacing:-0.02em;">Access Request Update</h1>
     <p style="margin:0 0 12px;">Hi ${safeName},</p>
     <p style="margin:0 0 12px;">Unfortunately, your request to join <strong>${safeTenant}</strong> was not approved at this time.</p>
-    ${safeReason ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0;"><tr><td style="padding:12px 16px;background-color:${BRAND.bg};border-radius:6px;border-left:4px solid ${BRAND.secondary};font-family:${BRAND.fontStack};font-size:14px;color:#3b3b3b;"><strong>Reason:</strong> ${safeReason}</td></tr></table>` : ""}
+    ${safeReason ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0;"><tr><td style="padding:12px 16px;background-color:${P.wash};border-radius:6px;border:1px solid ${P.border};border-left:4px solid ${P.primary};font-family:${BRAND.fontStack};font-size:14px;color:${P.text};"><strong>Reason:</strong> ${safeReason}</td></tr></table>` : ""}
     <p style="margin:0;font-size:14px;color:${BRAND.muted};">If you have questions, please reach out to the camp director for more details.</p>
-  `, { contextName: tenantName });
+  `, {
+    contextName: tenantName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Membership request update"
+  });
 
   return { subject, text, html };
 }

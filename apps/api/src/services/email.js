@@ -1408,7 +1408,9 @@ export async function sendAccessDecisionEmail({ tenant, email, firstName, approv
     const { subject, text, html } = accessApprovedTemplate({
       tenantName: branding.networkName,
       firstName,
-      loginUrl: resolvedLoginUrl
+      loginUrl: resolvedLoginUrl,
+      brandPrimary: branding.brandPrimary,
+      logoUrl: branding.logoUrl
     });
     return sendTransactionalEmail({
       from: branding.from,
@@ -1427,7 +1429,9 @@ export async function sendAccessDecisionEmail({ tenant, email, firstName, approv
   const { subject, text, html } = accessDeniedTemplate({
     tenantName: branding.networkName,
     firstName,
-    reason
+    reason,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
   });
   return sendTransactionalEmail({
     from: branding.from,
