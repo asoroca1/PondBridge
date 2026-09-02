@@ -8563,6 +8563,17 @@ html.is-native-app textarea{
   background: #fff;
 }
 
+/* The four home-page button slots, side by side on desktop. */
+.pb-cedar-page .director-admin-home-buttons{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 14px;
+  background: #fff;
+}
+
 .pb-cedar-page .director-admin-module-row{
   padding: 16px 18px;
   border-bottom: 1px solid var(--neutral-200);

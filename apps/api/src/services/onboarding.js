@@ -4,6 +4,7 @@ import {
   normalizeCampType,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
+  normalizeHomeQuickActions,
   onboardingPatchSchema,
   replaceAlumniForCampType,
   resolveTenantModules,
@@ -448,6 +449,7 @@ export function resolveContent(tenant) {
     ageGroups: normalizeLabelList(live.ageGroups, defaultAgeGroups),
     staffRoles: normalizeLabelList(live.staffRoles, defaultStaffRoles),
     merchShopUrl: String(live.merchShopUrl || ""),
+    homeQuickActions: normalizeHomeQuickActions(live.homeQuickActions),
     aboutText: replaceAlumniForCampType(String(live.aboutText || ""), campType),
     contactEmail: String(live.contactEmail || ""),
     supportUrl: String(live.supportUrl || ""),
@@ -564,6 +566,7 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
       ageGroups: content.ageGroups,
       staffRoles: content.staffRoles,
       merchShopUrl: content.merchShopUrl,
+      homeQuickActions: content.homeQuickActions,
       aboutText: content.aboutText,
       contactEmail: content.contactEmail,
       footerLinks: content.footerLinks

@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   defaultNetworkDisplayNameForCamp,
+  HOME_QUICK_ACTION_CATALOG,
+  HOME_QUICK_ACTION_SLOTS,
   normalizeCampType,
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
-  replaceAlumniForCampType
+  replaceAlumniForCampType,
+  resolveTenantModules
 } from "@pondbridge/shared";
 import { Badge, Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import {
@@ -21,7 +24,7 @@ import {
 import { requestBlob, requestJson } from "../../lib/http.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
-import { resolveCampAiName } from "../../lib/campLabels.js";
+import { resolveAlumniWord, resolveCampAiName } from "../../lib/campLabels.js";
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
@@ -927,6 +930,22 @@ function modulePreviewPath(slug, key) {
   return map[key] || `/t/${slug}/home`;
 }
 
+// The saved list is a compact array of chosen keys; the editor wants one value
+// per slot, with "" standing for a slot the director has left on automatic.
+function toQuickActionSlots(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  return Array.from({ length: HOME_QUICK_ACTION_SLOTS }, (_, index) =>
+    String(source[index] || "")
+  );
+}
+
+// Mirrors the two labels the member home page customises per camp.
+function quickActionOptionLabel(action, { alumniWordTitle, newsletterLabel }) {
+  if (action.key === "map") return `${alumniWordTitle} Map`;
+  if (action.key === "newsletter") return newsletterLabel;
+  return action.label;
+}
+
 const MODULE_LAYOUT_HINTS = {
   newsletter: {
     row: "bottom"
@@ -947,7 +966,13 @@ export function DirectorAdminFeaturesPage() {
   const [moduleDisplayNames, setModuleDisplayNames] = useState({ newsletter: "Newsletter" });
   const [moduleSettings, setModuleSettings] = useState({ merchShopUrl: "" });
   const [showAllCapabilities, setShowAllCapabilities] = useState(false);
+  // One entry per home-page button slot; "" means "let PondBridge choose".
+  const [homeQuickActions, setHomeQuickActions] = useState(() =>
+    Array(HOME_QUICK_ACTION_SLOTS).fill("")
+  );
+  const [savingQuickActions, setSavingQuickActions] = useState(false);
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
+  const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
 
   const loadFeatures = useCallback(async () => {
     setError("");
@@ -956,6 +981,7 @@ export function DirectorAdminFeaturesPage() {
       setPayload(response);
       setModuleDisplayNames(response.moduleDisplayNames || { newsletter: "Newsletter" });
       setModuleSettings(response.moduleSettings || { merchShopUrl: "" });
+      setHomeQuickActions(toQuickActionSlots(response.homeQuickActions));
     } catch (requestError) {
       setError(requestError.message || "Failed to load features.");
     }
@@ -996,6 +1022,47 @@ export function DirectorAdminFeaturesPage() {
       setSaving(false);
     }
   }
+
+  async function saveHomeQuickActions() {
+    setSavingQuickActions(true);
+    setError("");
+    setStatus("");
+    try {
+      const response = await request("/features", {
+        method: "PATCH",
+        body: { homeQuickActions: homeQuickActions.filter(Boolean) }
+      });
+      setHomeQuickActions(toQuickActionSlots(response.homeQuickActions));
+      setStatus("Home page buttons updated.");
+      // The member home reads this off the cached tenant config, so the refresh
+      // has to skip that cache or the director keeps seeing the old buttons.
+      await refreshTenant?.(undefined, { bypassCache: true });
+    } catch (requestError) {
+      setError(requestError.message || "Failed to update home page buttons.");
+      await loadFeatures();
+    } finally {
+      setSavingQuickActions(false);
+    }
+  }
+
+  const quickActionOptions = useMemo(() => {
+    const modules = resolveTenantModules(
+      Object.fromEntries((payload?.modules || []).map((item) => [item.key, item.enabled]))
+    );
+    const merchShopUrl = String(moduleSettings.merchShopUrl || "").trim();
+
+    return HOME_QUICK_ACTION_CATALOG.filter((action) => {
+      if (action.moduleKey && modules[action.moduleKey] === false) return false;
+      if (action.key === "merchShop" && !merchShopUrl) return false;
+      return true;
+    }).map((action) => ({
+      key: action.key,
+      label: quickActionOptionLabel(action, {
+        alumniWordTitle,
+        newsletterLabel: String(moduleDisplayNames.newsletter || "").trim() || "Newsletter"
+      })
+    }));
+  }, [payload?.modules, moduleSettings.merchShopUrl, moduleDisplayNames.newsletter, alumniWordTitle]);
 
   const orderedModules = useMemo(() => {
     const source = Array.isArray(payload?.modules) ? payload.modules : [];
@@ -1232,6 +1299,68 @@ export function DirectorAdminFeaturesPage() {
           <div className="director-admin-module-list">
             {orderedModules.map((module) => renderModuleRow(module))}
           </div>
+        </section>
+        <section className="director-admin-feature-section" aria-labelledby="home-buttons-heading">
+          <div className="director-admin-section-heading">
+            <div>
+              <p className="director-admin-section-kicker">Member home</p>
+              <h2 id="home-buttons-heading">Home page buttons</h2>
+              <p>
+                Choose the four shortcuts members see under the welcome banner. Leave a slot on
+                automatic and PondBridge fills it with the next available page.
+              </p>
+            </div>
+            <Badge tone="neutral">{HOME_QUICK_ACTION_SLOTS} buttons</Badge>
+          </div>
+          <div className="director-admin-home-buttons">
+            {homeQuickActions.map((selectedKey, index) => {
+              const takenElsewhere = new Set(
+                homeQuickActions.filter((key, slot) => key && slot !== index)
+              );
+              const options = quickActionOptions.filter(
+                (option) => option.key === selectedKey || !takenElsewhere.has(option.key)
+              );
+              const isStale = Boolean(selectedKey) && !options.some((o) => o.key === selectedKey);
+
+              return (
+                <SettingField
+                  key={`home-button-${index}`}
+                  label={`Button ${index + 1}`}
+                  hint={isStale ? "This page is turned off, so the button falls back to automatic." : ""}
+                >
+                  <Select
+                    value={isStale ? "" : selectedKey}
+                    onChange={(event) => {
+                      const nextKey = event.target.value;
+                      setHomeQuickActions((prev) =>
+                        prev.map((key, slot) => (slot === index ? nextKey : key))
+                      );
+                    }}
+                    disabled={savingQuickActions}
+                  >
+                    <option value="">Automatic</option>
+                    {options.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </SettingField>
+              );
+            })}
+          </div>
+          <SettingActions note="Members see the new buttons the next time they open the home page.">
+            <Button
+              variant="secondary"
+              onClick={() => setHomeQuickActions(Array(HOME_QUICK_ACTION_SLOTS).fill(""))}
+              disabled={savingQuickActions || homeQuickActions.every((key) => !key)}
+            >
+              Reset to automatic
+            </Button>
+            <Button onClick={saveHomeQuickActions} disabled={savingQuickActions}>
+              {savingQuickActions ? "Saving…" : "Save buttons"}
+            </Button>
+          </SettingActions>
         </section>
       </Card>
       <Card className="director-admin-capabilities-card director-admin-services-card">

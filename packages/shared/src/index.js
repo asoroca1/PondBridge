@@ -112,6 +112,86 @@ export function resolveTenantModules(value = {}, { applyPlatformAvailability = t
   return modules;
 }
 
+// The member home page shows a row of shortcut buttons under the hero.
+// Directors pick which pages fill the four slots; the catalog below is the
+// menu they choose from, and every entry that names a module disappears once
+// that module is turned off.
+export const HOME_QUICK_ACTION_SLOTS = 4;
+
+export const HOME_QUICK_ACTION_CATALOG = Object.freeze([
+  { key: "search", label: "Advanced Search", memberPath: "/search", moduleKey: "search" },
+  { key: "map", label: "Location Map", memberPath: "/location-map", moduleKey: "map" },
+  { key: "chat", label: "Chats & Forums", memberPath: "/chat-rooms?tab=personal", moduleKey: "chat" },
+  { key: "newsletter", label: "Newsletter", memberPath: "/newsletter", moduleKey: "newsletter" },
+  { key: "photoStream", label: "Photo Stream", memberPath: "/photo-stream", moduleKey: "photoStream" },
+  { key: "familyTrees", label: "Family Trees", memberPath: "/family-trees", moduleKey: "familyTrees" },
+  { key: "events", label: "Events", memberPath: "/events", moduleKey: "events" },
+  { key: "giving", label: "Giving", memberPath: "/giving", moduleKey: "giving" },
+  { key: "merchShop", label: "Merch Shop", moduleKey: "merchShop", external: true },
+  { key: "myProfile", label: "My Profile", memberPath: "/my-profile" }
+]);
+
+// The order the home page falls back to: it fills any slot the director left
+// unset, and covers for a chosen page whose module has since been hidden.
+export const DEFAULT_HOME_QUICK_ACTIONS = Object.freeze([
+  "search",
+  "map",
+  "chat",
+  "newsletter",
+  "photoStream",
+  "familyTrees",
+  "myProfile"
+]);
+
+export function normalizeHomeQuickActions(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const known = new Set(HOME_QUICK_ACTION_CATALOG.map((action) => action.key));
+  const seen = new Set();
+  const keys = [];
+
+  for (const raw of source) {
+    const key = String(raw || "").trim();
+    if (!known.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+    if (keys.length >= HOME_QUICK_ACTION_SLOTS) break;
+  }
+
+  return keys;
+}
+
+/**
+ * Turns the director's saved choice into the buttons a member actually sees.
+ * Anything whose module is off (or, for the merch shop, whose storefront URL is
+ * missing) drops out, and the default order tops the row back up so the home
+ * page never renders a short or empty strip.
+ */
+export function resolveHomeQuickActions(selected = [], modules = {}, { merchShopUrl = "" } = {}) {
+  const resolvedModules = resolveTenantModules(modules);
+  const storefront = String(merchShopUrl || "").trim();
+  const byKey = new Map(HOME_QUICK_ACTION_CATALOG.map((action) => [action.key, action]));
+  const chosen = [];
+  const used = new Set();
+
+  function available(action) {
+    if (action.moduleKey && resolvedModules[action.moduleKey] === false) return false;
+    if (action.key === "merchShop" && !storefront) return false;
+    return true;
+  }
+
+  function push(key) {
+    if (used.has(key) || chosen.length >= HOME_QUICK_ACTION_SLOTS) return;
+    const action = byKey.get(key);
+    if (!action || !available(action)) return;
+    used.add(key);
+    chosen.push(action.external ? { ...action, href: storefront } : { ...action });
+  }
+
+  normalizeHomeQuickActions(selected).forEach(push);
+  DEFAULT_HOME_QUICK_ACTIONS.forEach(push);
+  return chosen;
+}
+
 export const onboardingStatuses = ["not_started", "in_progress", "live"];
 export const onboardingStepIds = [
   "name_branding",
@@ -461,6 +541,10 @@ export const tenantContentSchema = z.object({
   ageGroups: z.array(z.string().trim().min(1).max(60)).max(20).default(defaultCampAgeGroups),
   staffRoles: z.array(z.string().trim().min(1).max(60)).max(20).default(defaultCampStaffRoles),
   merchShopUrl: z.string().trim().url().or(z.literal("")).default(""),
+  homeQuickActions: z
+    .array(z.string())
+    .default([])
+    .transform((value) => normalizeHomeQuickActions(value)),
   aboutText: z.string().trim().max(2000).default(""),
   contactEmail: z.string().trim().email().or(z.literal("")).default(""),
   supportUrl: z.string().trim().url().or(z.literal("")).default(""),

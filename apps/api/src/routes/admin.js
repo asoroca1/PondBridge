@@ -13,6 +13,7 @@ import {
   TENANT_MODULE_CATALOG as MODULE_CATALOG,
   listFeaturesForPlan,
   normalizeCampType,
+  normalizeHomeQuickActions,
   replaceAlumniForCampType,
   resolveTenantModules
 } from "@pondbridge/shared";
@@ -94,6 +95,7 @@ import { hashPassword } from "../utils/auth.js";
 import { sanitizeText, sanitizeHtmlContent } from "../utils/sanitize.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { ensureTenantMobileAppCode } from "../utils/mobileAppCode.js";
+import { invalidatePublicTenantCache } from "../utils/publicResponseCache.js";
 import { createTtlCache } from "../utils/ttlCache.js";
 import {
   listRecentMobileNotificationBatches,
@@ -5512,7 +5514,8 @@ router.get("/features", async (req, res) => {
     },
     moduleSettings: {
       merchShopUrl: content.merchShopUrl || ""
-    }
+    },
+    homeQuickActions: content.homeQuickActions
   });
 });
 
@@ -5527,6 +5530,7 @@ router.patch("/features", async (req, res) => {
   const incomingSettings = req.body?.moduleSettings && typeof req.body.moduleSettings === "object"
     ? req.body.moduleSettings
     : {};
+  const hasIncomingQuickActions = Array.isArray(req.body?.homeQuickActions);
 
   const current = resolveModules(req.tenant, { applyPlanGating: false });
   const nextModules = { ...current };
@@ -5571,6 +5575,11 @@ router.patch("/features", async (req, res) => {
     contentChanged = true;
   }
 
+  if (hasIncomingQuickActions) {
+    nextContent.homeQuickActions = normalizeHomeQuickActions(req.body.homeQuickActions);
+    contentChanged = true;
+  }
+
   const update = {
     modules: nextModules,
     ...(contentChanged ? { content: nextContent } : {}),
@@ -5584,6 +5593,9 @@ router.patch("/features", async (req, res) => {
   };
 
   const tenant = await TenantModel.update(req.tenant._id, update);
+  // Members read modules, labels and the home buttons off the public tenant
+  // config, which would otherwise serve the pre-save answer for another minute.
+  invalidatePublicTenantCache(tenant || req.tenant);
   const moduleChanges = MODULE_CATALOG
     .map((module) => ({
       key: module.key,
@@ -5603,7 +5615,15 @@ router.patch("/features", async (req, res) => {
     moduleSettingChanges:
       String(currentContent.merchShopUrl || "") === String(resolveContent(tenant).merchShopUrl || "")
         ? []
-        : [{ key: "merchShopUrl", configured: Boolean(resolveContent(tenant).merchShopUrl) }]
+        : [{ key: "merchShopUrl", configured: Boolean(resolveContent(tenant).merchShopUrl) }],
+    homeQuickActionChange:
+      (currentContent.homeQuickActions || []).join(",") ===
+      (resolveContent(tenant).homeQuickActions || []).join(",")
+        ? null
+        : {
+            before: currentContent.homeQuickActions || [],
+            after: resolveContent(tenant).homeQuickActions || []
+          }
   });
 
   const inventory = await buildTenantFeatureInventory(tenant);
@@ -5618,7 +5638,8 @@ router.patch("/features", async (req, res) => {
     },
     moduleSettings: {
       merchShopUrl: resolveContent(tenant).merchShopUrl || ""
-    }
+    },
+    homeQuickActions: resolveContent(tenant).homeQuickActions
   });
 });
 

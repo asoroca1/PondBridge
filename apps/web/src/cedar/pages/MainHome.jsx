@@ -1,7 +1,11 @@
 // src/pages/MainHome.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { normalizeHeroImagePosition, normalizeHeroImageSize } from "@pondbridge/shared";
+import {
+  normalizeHeroImagePosition,
+  normalizeHeroImageSize,
+  resolveHomeQuickActions
+} from "@pondbridge/shared";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import {
@@ -26,7 +30,10 @@ import {
   MessageSquare,
   ChevronRight,
   BookOpen,
+  CalendarDays,
+  HeartHandshake,
   Image,
+  Shirt,
   TreePine,
   User,
   Pin as PinIcon,
@@ -151,6 +158,27 @@ function hasDirectorPrivileges(...sources) {
     }
   }
   return false;
+}
+
+/* ============= Home quick actions ============= */
+const QUICK_ACTION_ICONS = {
+  search: Users,
+  map: MapPin,
+  chat: MessageSquare,
+  newsletter: BookOpen,
+  photoStream: Image,
+  familyTrees: TreePine,
+  events: CalendarDays,
+  giving: HeartHandshake,
+  merchShop: Shirt,
+  myProfile: User
+};
+
+// Two buttons carry camp-specific wording the shared catalog cannot know about.
+function quickActionLabel(action, { alumniWordTitle, newsletterLabel }) {
+  if (action.key === "map") return `${alumniWordTitle} Map`;
+  if (action.key === "newsletter") return newsletterLabel;
+  return action.label;
 }
 
 /* ============= Related Profiles ============= */
@@ -689,64 +717,19 @@ export default function MainHome() {
   }, [authUser, currentUserId, me, profilePromptSeenKey]);
 
   const locCount = resolveLocations(stats, locationsSummary);
-  const quickActions = useMemo(() => {
-    const preferred = [
-      { key: "search", to: "/search", label: "Advanced Search", icon: Users, enabled: true },
-      {
-        key: "map",
-        to: "/location-map",
-        label: `${alumniWordTitle} Map`,
-        icon: MapPin,
-        enabled: modules.map !== false
-      },
-      {
-        key: "chat",
-        to: "/chat-rooms?tab=personal",
-        label: "Chats & Forums",
-        icon: MessageSquare,
-        enabled: modules.chat !== false
-      },
-      {
-        key: "newsletter",
-        to: "/newsletter",
-        label: newsletterLabel,
-        icon: BookOpen,
-        enabled: modules.newsletter !== false
-      }
-    ];
-    const fallback = [
-      {
-        key: "photo-stream",
-        to: "/photo-stream",
-        label: "Photo Stream",
-        icon: Image,
-        enabled: modules.photoStream !== false
-      },
-      {
-        key: "family-trees",
-        to: "/family-trees",
-        label: "Family Trees",
-        icon: TreePine,
-        enabled: modules.familyTrees !== false
-      },
-      { key: "my-profile", to: "/my-profile", label: "My Profile", icon: User, enabled: true }
-    ];
-
-    const selected = preferred.filter((action) => action.enabled);
-    for (const action of fallback) {
-      if (selected.length >= 4) break;
-      if (action.enabled) selected.push(action);
-    }
-    return selected;
-  }, [
-    modules.chat,
-    modules.familyTrees,
-    modules.map,
-    modules.newsletter,
-    modules.photoStream,
-    alumniWordTitle,
-    newsletterLabel
-  ]);
+  // Directors choose these four buttons in Settings → Features; the shared
+  // resolver drops anything whose module is off and fills the gap.
+  const quickActions = useMemo(
+    () =>
+      resolveHomeQuickActions(content.homeQuickActions, modules, {
+        merchShopUrl: content.merchShopUrl
+      }).map((action) => ({
+        ...action,
+        icon: QUICK_ACTION_ICONS[action.key] || ChevronRight,
+        label: quickActionLabel(action, { alumniWordTitle, newsletterLabel })
+      })),
+    [content.homeQuickActions, content.merchShopUrl, modules, alumniWordTitle, newsletterLabel]
+  );
 
   // newest-first (API already returns pinned first, then newest)
   const activitySorted = useMemo(() => {
@@ -872,12 +855,9 @@ export default function MainHome() {
         {quickActions.map((action) => {
           const Icon = action.icon;
           const isChat = action.key === "chat";
-          return (
-            <Link
-              key={action.key}
-              to={tenantRoute(slug, action.to)}
-              className={`qa-btn ${isChat ? "has-badge" : ""}`.trim()}
-            >
+          const className = `qa-btn ${isChat ? "has-badge" : ""}`.trim();
+          const body = (
+            <>
               <Icon /> {action.label}
               {isChat ? (
                 <NotificationBadge
@@ -888,6 +868,26 @@ export default function MainHome() {
                   ariaLabel={`${unreadChats} unread chats`}
                 />
               ) : null}
+            </>
+          );
+
+          if (action.external) {
+            return (
+              <a
+                key={action.key}
+                href={action.href}
+                target="_blank"
+                rel="noreferrer"
+                className={className}
+              >
+                {body}
+              </a>
+            );
+          }
+
+          return (
+            <Link key={action.key} to={tenantRoute(slug, action.memberPath)} className={className}>
+              {body}
             </Link>
           );
         })}

@@ -35,6 +35,7 @@ module.exports = {
     "**/tests/seminarEvents.test.js",
     "**/tests/infoSessionRegistration.test.js",
     "**/tests/geocodeBackoff.test.js",
+    "**/tests/homeQuickActions.test.js",
     "**/tests/profileSimilarity.test.js",
     "**/tests/suggestions.test.js",
     "**/tests/superCopilot.test.js",
