@@ -22,6 +22,7 @@ module.exports = {
     "**/tests/memberDirectoryCache.test.js",
     "**/tests/memberVisibility.test.js",
     "**/tests/memberSafety.test.js",
+    "**/tests/adminTiersRoutes.test.js",
     "**/tests/memberTiers.test.js",
     "**/tests/memberSearch.test.js",
     "**/tests/messaging.test.js",

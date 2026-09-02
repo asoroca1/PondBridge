@@ -116,6 +116,7 @@ export default function useTierAdmin({ request }) {
         const ids = Array.isArray(profileIds) ? profileIds : [profileIds];
         if (!ids.length) return null;
 
+        setError("");
         const previous = {};
         setOverrides((current) => {
           const next = { ...current };
@@ -192,7 +193,17 @@ export default function useTierAdmin({ request }) {
       loading: rosterLoading,
       filters,
       setFilters,
-      resetFilters: () => setFilters(DEFAULT_ROSTER_FILTERS),
+      resetFilters: () => {
+        setFilters(DEFAULT_ROSTER_FILTERS);
+        setPage(1);
+        setError("");
+      },
+      isDefaultFilters:
+        filters.q === DEFAULT_ROSTER_FILTERS.q &&
+        filters.scope === DEFAULT_ROSTER_FILTERS.scope &&
+        Number(filters.rank || 0) === DEFAULT_ROSTER_FILTERS.rank,
+      showTier: (rank) =>
+        setFilters((prev) => ({ ...prev, scope: "tier", rank: Number(rank) || 0 })),
       reload: reloadRoster
     }
   };

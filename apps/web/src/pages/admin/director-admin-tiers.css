@@ -154,11 +154,36 @@
   font-size: var(--text-xs);
 }
 
-.pb-tiers-ladder-row b {
+/* The count is the way into a tier, so it has to look pressable without
+   turning the rail into a wall of buttons. */
+.pb-tiers-ladder-count {
+  font: inherit;
   font-weight: 500;
   font-size: var(--text-sm);
-  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  min-width: 34px;
+}
+
+.pb-tiers-ladder-count:hover {
+  border-color: var(--card-border);
+  color: var(--text);
+}
+
+.pb-tiers-ladder-count[aria-pressed="true"] {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--brand-on-primary);
+}
+
+.pb-tiers-ladder-row.is-open {
+  border-color: var(--brand-primary-veil);
+  background: var(--brand-primary-wash);
 }
 
 .pb-tiers-ladder-remove {
@@ -444,6 +469,33 @@
   background: var(--brand-primary);
   border-color: var(--brand-primary);
   color: var(--brand-on-primary);
+}
+
+/* Sits slightly apart from the tier numbers: it is the opposite action, not
+   another tier. Always rendered so the row never reflows on tagging. */
+.pb-tiers-chip-clear {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-height: 29px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.pb-tiers-chip-clear:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.pb-tiers-chip-clear:disabled {
+  opacity: 0;
+  cursor: default;
+  pointer-events: none;
 }
 
 .pb-tiers-placeholder,
