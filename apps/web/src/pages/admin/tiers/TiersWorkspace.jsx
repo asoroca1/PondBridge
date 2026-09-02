@@ -8,7 +8,7 @@ import TierFeatureGrid from "./TierFeatureGrid.jsx";
 import { tierDisplayName, tierOptionLabel } from "./tierNames.js";
 import "../director-admin-tiers.css";
 
-function TierLadder({ overview, actions, busy }) {
+function TierLadder({ overview, actions, busy, roster }) {
   const [editingId, setEditingId] = useState("");
   const [draftLabel, setDraftLabel] = useState("");
   const tiers = overview?.tiers || [];
@@ -23,8 +23,15 @@ function TierLadder({ overview, actions, busy }) {
     <div className="pb-tiers-ladder">
       <p className="pb-tiers-rail-title">Tiers · 1 is the top</p>
       <ul>
-        {tiers.map((tier) => (
-          <li key={tier.id} className="pb-tiers-ladder-row" data-rank={tier.rank}>
+        {tiers.map((tier) => {
+          const isOpen =
+            roster.filters.scope === "tier" && Number(roster.filters.rank) === tier.rank;
+          return (
+          <li
+            key={tier.id}
+            className={`pb-tiers-ladder-row ${isOpen ? "is-open" : ""}`.trim()}
+            data-rank={tier.rank}
+          >
             <i aria-hidden="true">{tier.rank}</i>
             <span>
               {editingId === tier.id ? (
@@ -59,7 +66,16 @@ function TierLadder({ overview, actions, busy }) {
                     : `Sees tiers ${tier.seesFrom}–${tier.seesTo}`}
               </small>
             </span>
-            <b>{tier.memberCount.toLocaleString()}</b>
+            <button
+              type="button"
+              className="pb-tiers-ladder-count"
+              aria-pressed={isOpen}
+              title={`Show the ${tier.memberCount} in Tier ${tier.rank}`}
+              aria-label={`Show the ${tier.memberCount} people in Tier ${tier.rank}`}
+              onClick={() => roster.showTier(tier.rank)}
+            >
+              {tier.memberCount.toLocaleString()}
+            </button>
             {tier.isBottom && tiers.length > overview.limits.min ? (
               <button
                 type="button"
@@ -72,7 +88,8 @@ function TierLadder({ overview, actions, busy }) {
               </button>
             ) : null}
           </li>
-        ))}
+          );
+        })}
       </ul>
       {tiers.length < overview.limits.max ? (
         <Button
@@ -87,8 +104,8 @@ function TierLadder({ overview, actions, busy }) {
         </Button>
       ) : null}
       <p className="pb-tiers-rail-note">
-        Click a name to rename it. Members never see the number or the name — it is only how you
-        keep track.
+        Click a count to see who is in that tier and move them. Click a name to rename it —
+        members never see the number or the name.
       </p>
     </div>
   );
@@ -178,7 +195,12 @@ export default function TiersWorkspace() {
       <div className="pb-tiers-side">
         <EnableCard overview={overview} actions={tiers.actions} busy={tiers.busy} />
         <Card>
-          <TierLadder overview={overview} actions={tiers.actions} busy={tiers.busy} />
+          <TierLadder
+            overview={overview}
+            actions={tiers.actions}
+            busy={tiers.busy}
+            roster={tiers.roster}
+          />
         </Card>
       </div>
 

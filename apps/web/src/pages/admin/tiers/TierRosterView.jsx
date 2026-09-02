@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Input, Select } from "@pondbridge/ui";
-import { Search, UserRound } from "lucide-react";
+import { Search, UserRound, X } from "lucide-react";
 import { tierOptionLabel } from "./tierNames.js";
 
 function initials(person = {}) {
@@ -125,7 +125,18 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
             </option>
           ))}
         </Select>
-        <Button type="button" variant="ghost" size="sm" onClick={roster.resetFilters}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={roster.isDefaultFilters}
+          title={
+            roster.isDefaultFilters
+              ? "Nothing to reset — this is the default view"
+              : "Clear the search and show untagged people again"
+          }
+          onClick={roster.resetFilters}
+        >
           Reset
         </Button>
       </div>
@@ -219,12 +230,18 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
           <li className="pb-tiers-empty">
             <UserRound aria-hidden="true" />
             <strong>
-              {filters.scope === "untagged" ? "Everyone has a tier." : "Nobody matches that."}
+              {filters.scope === "untagged"
+                ? "Everyone has a tier."
+                : filters.scope === "tier"
+                  ? `Nobody is in Tier ${filters.rank} yet.`
+                  : "Nobody matches that."}
             </strong>
             <span>
               {filters.scope === "untagged"
                 ? "Switch to Everyone to review or change what you have already tagged."
-                : "Try a different search or filter."}
+                : filters.scope === "tier"
+                  ? "Tag people from Untagged only, or move them here from another tier."
+                  : "Try a different search or filter."}
             </span>
           </li>
         ) : (
@@ -266,15 +283,27 @@ export default function TierRosterView({ overview, roster, actions, busy }) {
                       className="pb-tiers-chip"
                       data-rank={tier.rank}
                       aria-pressed={person.tierRank === tier.rank}
-                      title={`Tier ${tier.rank}${tier.label ? ` · ${tier.label}` : ""}`}
+                      title={`Move to ${tierOptionLabel(tier)}`}
                       aria-label={`Tier ${tier.rank} for ${person.fullName || person.email}`}
-                      onClick={() =>
-                        assign([person.profileId], person.tierRank === tier.rank ? null : tier.rank)
-                      }
+                      onClick={() => assign([person.profileId], tier.rank)}
                     >
                       {tier.rank}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className="pb-tiers-chip-clear"
+                    disabled={person.tierRank === null}
+                    title={
+                      person.tierRank === null
+                        ? "Not in a tier"
+                        : `Take out of Tier ${person.tierRank}`
+                    }
+                    aria-label={`Remove ${person.fullName || person.email} from their tier`}
+                    onClick={() => assign([person.profileId], null)}
+                  >
+                    <X size={13} aria-hidden="true" />
+                  </button>
                 </span>
               </div>
             </li>

@@ -288,6 +288,68 @@ router.post("/", async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Settings — the enforcement switch, the untagged default, feature floors
+//
+// Declared before the "/:tierId" routes below: Express matches in registration
+// order, so a later "/settings" would be swallowed as a tier id and every
+// settings write would fail with "Invalid tier id."
+// ---------------------------------------------------------------------------
+
+router.patch("/settings", async (req, res, next) => {
+  try {
+    const tiers = await listTenantTiers(req.tenant._id);
+    const bottomRank = tiers.length ? tiers[tiers.length - 1].rank : 0;
+    const patch = {};
+
+    if ("untaggedRank" in (req.body || {})) {
+      const rank = Number(req.body.untaggedRank);
+      if (!Number.isFinite(rank) || rank < 1 || rank > bottomRank) {
+        throw tierError("Choose a tier for untagged members.", "INVALID_UNTAGGED_TIER");
+      }
+      patch.untaggedRank = Math.trunc(rank);
+    }
+
+    if ("tierModules" in (req.body || {})) {
+      const floors = normalizeTierModuleFloors(req.body.tierModules);
+      // Search and related profiles cannot outrun the directory they read from,
+      // which resolveTenantModules would otherwise silently override.
+      const directoryFloor = "directory" in floors ? floors.directory : bottomRank;
+      for (const key of ["search", "relatedProfiles"]) {
+        if (key in floors) floors[key] = Math.min(floors[key], directoryFloor);
+      }
+      patch.tierModules = floors;
+    }
+
+    if ("enabled" in (req.body || {})) {
+      const enabled = req.body.enabled === true;
+      if (enabled) {
+        const overview = await buildOverview(req);
+        if (!overview.canEnable) {
+          throw tierError(overview.reason, "TIER_NOT_READY");
+        }
+      }
+      patch.enabled = enabled;
+    }
+
+    if (!Object.keys(patch).length) {
+      throw tierError("Nothing to update.", "TIER_SETTINGS_EMPTY");
+    }
+
+    await saveTierSettings(req, patch);
+    await audit(req, "admin_access_tier_settings_updated", {
+      changed: Object.keys(patch),
+      enabled: patch.enabled
+    });
+    return res.json(await buildOverview(req));
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: { code: error.code, message: error.message } });
+    }
+    return next(error);
+  }
+});
+
 router.patch("/:tierId", async (req, res, next) => {
   try {
     const tierId = toId(req.params.tierId);
@@ -348,64 +410,6 @@ router.delete("/:tierId", async (req, res, next) => {
       tierId,
       rank: tier.rank,
       movedMembers: Array.isArray(moved) ? moved.length : 0
-    });
-    return res.json(await buildOverview(req));
-  } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: { code: error.code, message: error.message } });
-    }
-    return next(error);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Settings — the enforcement switch, the untagged default, feature floors
-// ---------------------------------------------------------------------------
-
-router.patch("/settings", async (req, res, next) => {
-  try {
-    const tiers = await listTenantTiers(req.tenant._id);
-    const bottomRank = tiers.length ? tiers[tiers.length - 1].rank : 0;
-    const patch = {};
-
-    if ("untaggedRank" in (req.body || {})) {
-      const rank = Number(req.body.untaggedRank);
-      if (!Number.isFinite(rank) || rank < 1 || rank > bottomRank) {
-        throw tierError("Choose a tier for untagged members.", "INVALID_UNTAGGED_TIER");
-      }
-      patch.untaggedRank = Math.trunc(rank);
-    }
-
-    if ("tierModules" in (req.body || {})) {
-      const floors = normalizeTierModuleFloors(req.body.tierModules);
-      // Search and related profiles cannot outrun the directory they read from,
-      // which resolveTenantModules would otherwise silently override.
-      const directoryFloor = "directory" in floors ? floors.directory : bottomRank;
-      for (const key of ["search", "relatedProfiles"]) {
-        if (key in floors) floors[key] = Math.min(floors[key], directoryFloor);
-      }
-      patch.tierModules = floors;
-    }
-
-    if ("enabled" in (req.body || {})) {
-      const enabled = req.body.enabled === true;
-      if (enabled) {
-        const overview = await buildOverview(req);
-        if (!overview.canEnable) {
-          throw tierError(overview.reason, "TIER_NOT_READY");
-        }
-      }
-      patch.enabled = enabled;
-    }
-
-    if (!Object.keys(patch).length) {
-      throw tierError("Nothing to update.", "TIER_SETTINGS_EMPTY");
-    }
-
-    await saveTierSettings(req, patch);
-    await audit(req, "admin_access_tier_settings_updated", {
-      changed: Object.keys(patch),
-      enabled: patch.enabled
     });
     return res.json(await buildOverview(req));
   } catch (error) {
