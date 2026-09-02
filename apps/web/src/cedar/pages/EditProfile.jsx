@@ -690,7 +690,6 @@ export default function EditProfile() {
   const [resumeUploading, setResumeUploading] = useState(false);
   const [resumeUploadStatus, setResumeUploadStatus] = useState("");
   const [resumeUploadKey, setResumeUploadKey] = useState(0);
-  const [resumeProcessingConsent, setResumeProcessingConsent] = useState(false);
   const [profilePdfType, setProfilePdfType] = useState("auto");
   const [resumeReview, setResumeReview] = useState(null);
   const [saveError, setSaveError] = useState("");
@@ -826,15 +825,6 @@ export default function EditProfile() {
         return;
       }
 
-      if (!resumeProcessingConsent) {
-        setErrors((current) => ({
-          ...current,
-          resumeUpload: "Confirm the resume-processing disclosure before choosing a PDF."
-        }));
-        setResumeUploadKey((value) => value + 1);
-        return;
-      }
-
       setResumeUploadStatus("");
       setResumeReview(null);
       setErrors((current) => {
@@ -853,7 +843,6 @@ export default function EditProfile() {
 
         const data = new FormData();
         data.append("resume", file);
-        data.append("aiConsent", "true");
         data.append("documentType", profilePdfType);
 
         const response = await fetch(`${API_BASE}/resume/parse`, {
@@ -894,7 +883,7 @@ export default function EditProfile() {
         setResumeUploading(false);
       }
     },
-    [API_BASE, canUseResumeParsing, form, profilePdfType, resolveAuthToken, resumeProcessingConsent]
+    [API_BASE, canUseResumeParsing, form, profilePdfType, resolveAuthToken]
   );
 
   // load current profile
@@ -1386,19 +1375,6 @@ export default function EditProfile() {
                       <strong>Fill details from LinkedIn or a résumé</strong>
                       <span>Optional</span>
                     </div>
-                    <label className="inline-check edit-profile-import-consent">
-                      <input
-                        type="checkbox"
-                        checked={resumeProcessingConsent}
-                        onChange={(event) => {
-                          setResumeProcessingConsent(event.target.checked);
-                          setResumeReview(null);
-                        }}
-                      />
-                      <span>
-                        I consent to PDF text extraction. If AI parsing is configured, the extracted text is sent to OpenAI for this request. PondBridge does not retain the uploaded PDF or extracted text in this flow, and no suggestion is saved until I apply it and save my profile.
-                      </span>
-                    </label>
                     <div className="wizard1-profile-import-controls">
                       <label className="wizard1-field" htmlFor="edit-profile-pdf-type">
                         <span className="wizard1-label">I’m uploading</span>
@@ -1427,7 +1403,7 @@ export default function EditProfile() {
                           type="file"
                           accept=".pdf,application/pdf"
                           onChange={handleResumeAutofillUpload}
-                          disabled={resumeUploading || !resumeProcessingConsent}
+                          disabled={resumeUploading}
                           className="wizard1-file-input"
                         />
                       </label>

@@ -300,28 +300,6 @@
   text-transform: uppercase;
 }
 
-.edit-profile-page .edit-profile-import-consent {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 0 0 14px;
-  padding: 11px 12px;
-  border: 1px solid var(--neutral-200);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--neutral-600);
-  font-size: 0.84rem;
-  line-height: 1.48;
-}
-
-.edit-profile-page .edit-profile-import-consent input {
-  flex: 0 0 auto;
-  width: 17px;
-  height: 17px;
-  margin-top: 2px;
-  accent-color: var(--brand-primary);
-}
-
 .edit-profile-page .wizard1-profile-import-controls {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto;
@@ -654,10 +632,6 @@
 
   .edit-profile-page .edit-profile-import-heading {
     align-items: flex-start;
-  }
-
-  .edit-profile-page .edit-profile-import-consent {
-    font-size: 0.8rem;
   }
 
   .edit-profile-page .edit-profile-actions {

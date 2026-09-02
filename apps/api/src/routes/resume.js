@@ -71,18 +71,6 @@ router.post(
     });
   }
 
-  const consent = String(req.body?.aiConsent || req.headers["x-resume-processing-consent"] || "")
-    .trim()
-    .toLowerCase();
-  if (!["1", "true", "yes", "on"].includes(consent)) {
-    return res.status(400).json({
-      error: {
-        code: "RESUME_PROCESSING_CONSENT_REQUIRED",
-        message: "Confirm resume-processing consent before uploading a PDF."
-      }
-    });
-  }
-
   const parsedPdf = await pdfParse(req.file.buffer);
   const pageCount = Math.max(0, Math.trunc(Number(parsedPdf?.numpages || 0)));
   if (pageCount > 40) {

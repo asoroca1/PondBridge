@@ -112,7 +112,7 @@ export default function RegisterPage() {
         ) : null}
         {canUseResumeParsing ? (
           <p className="muted">
-            After creating your account, you can use the consent-gated resume assistant in Edit Profile and review every suggested field before saving.
+            After creating your account, you can use the resume assistant in Edit Profile and review every suggested field before saving.
           </p>
         ) : (
           <p className="muted">Resume autofill is available on the Premium plan.</p>
