@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { ModalConfirm, ModalDialog } from "../../../components/admin/AdminUi.jsx";
 import DirectorEmailAgentPanel from "../../../components/admin/DirectorEmailAgentPanel.jsx";
+import { HIDE_COMMS_AI } from "../../../lib/directorHiddenFeatures.js";
 import MailRichTextEditor from "./MailRichTextEditor.jsx";
 import RecipientField from "./RecipientField.jsx";
 import { buildTargetingFromChips, chipsToGroupRules, describeChips } from "./mailAudience.js";
@@ -391,10 +392,12 @@ export default function MailComposeView({
                 </div>
               ) : null}
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setAiOpen((open) => !open)} aria-expanded={aiOpen}>
-              <Sparkles aria-hidden="true" />
-              {aiOpen ? "Hide AI" : "Draft with AI"}
-            </Button>
+            {HIDE_COMMS_AI ? null : (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setAiOpen((open) => !open)} aria-expanded={aiOpen}>
+                <Sparkles aria-hidden="true" />
+                {aiOpen ? "Hide AI" : "Draft with AI"}
+              </Button>
+            )}
             <Button type="button" variant="ghost" size="sm" onClick={onOpenSignature}>
               <Signature aria-hidden="true" />
               Signature
@@ -422,7 +425,7 @@ export default function MailComposeView({
           </div>
         </div>
 
-        {aiOpen ? (
+        {aiOpen && !HIDE_COMMS_AI ? (
           <div className="pb-mail-ai">
             <DirectorEmailAgentPanel
               request={request}
