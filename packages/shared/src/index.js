@@ -628,4 +628,5 @@ export function normalizeSlug(value = "") {
   return normalized;
 }
 
+export { INDUSTRIES } from "./industries.js";
 export * from "./tiers.js";

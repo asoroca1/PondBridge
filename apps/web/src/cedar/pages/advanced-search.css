@@ -1188,3 +1188,113 @@ select.as2-input {
     width: 100%;
   }
 }
+
+/* ---- Phase 2-4 additions ---- */
+
+/* Per-option result counts in the filter pickers */
+.as2-option-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--as2-muted, #6b7280);
+  padding-left: 8px;
+}
+
+/* Why a profile matched: chips echoing the filter that selected them */
+.as2-why {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.as2-why-chip {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--as2-accent-soft, #eef2ff);
+  color: var(--as2-accent-strong, #3730a3);
+  border: 1px solid var(--as2-accent-border, #c7d2fe);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "Not included: 96 with no graduation year on file." */
+.as2-exclusion {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--as2-muted, #6b7280);
+}
+
+/* Copy-link / save-search actions in the results header */
+.as2-results-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Saved searches strip */
+.as2-saved {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.as2-saved-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--as2-muted, #6b7280);
+}
+
+.as2-saved-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--as2-border, #e5e7eb);
+  border-radius: 999px;
+  background: var(--as2-card, #fff);
+  overflow: hidden;
+}
+
+.as2-saved-chip > button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  padding: 3px 4px 3px 10px;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as2-saved-chip > button:hover { text-decoration: underline; }
+
+.as2-saved-chip > .x {
+  padding: 3px 8px 3px 2px;
+  color: var(--as2-muted, #6b7280);
+  line-height: 1;
+}
+
+.as2-saved-chip > .x:hover { color: #dc2626; text-decoration: none; }
+
+/* Keep the previous results readable while the next query loads, instead of
+   swapping the whole grid for skeletons on every keystroke. */
+.as2-grid.is-refreshing {
+  opacity: 0.55;
+  transition: opacity 140ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .as2-grid.is-refreshing { transition: none; }
+}

@@ -292,7 +292,53 @@ function fuzzyRankProfiles(items = [], query = "", limit = 30) {
   return ranked.slice(0, limit).map((entry) => entry.profile);
 }
 
+// PostgREST .or() takes a comma/paren-delimited string, so terms carrying those
+// characters would corrupt the filter expression. They are structural, never meaningful
+// inside a single term (the caller already split on commas), so drop them.
+function sanitizeFilterTerm(value = "") {
+  return String(value || "").replace(/[,()"*\\]/g, " ").trim();
+}
+
+function normalizeTermList(single, list) {
+  const terms = Array.isArray(list) && list.length ? list : single ? [single] : [];
+  return terms.map((term) => sanitizeFilterTerm(term)).filter(Boolean);
+}
+
+// Repeated .or() calls become separate PostgREST params, which are ANDed - so each
+// field stays its own OR group.
+function applyTermFilter(query, column, terms = []) {
+  if (!terms.length) return query;
+  if (terms.length === 1) return query.ilike(column, `%${terms[0]}%`);
+  return query.or(terms.map((term) => `${column}.ilike.%${term}%`).join(","));
+}
+
+const CANDIDATE_PAGE_SIZE = 1000;
+export const CANDIDATE_POOL_CEILING = 25_000;
+
+// A single .limit() capped the pool at 1000 rows ordered by last name, so past that
+// size everyone late in the alphabet became invisible to any filter matched in JS.
+// Page through instead, up to `limit`.
 async function fetchCandidateProfiles(tenantId, opts = {}, limit = 200) {
+  return paginateCandidates(
+    (from, to) => fetchCandidateProfilePage(tenantId, opts, from, to),
+    limit
+  );
+}
+
+// Exported for tests: the paging loop is where an off-by-one would silently drop
+// members, so it is verified against a stub rather than only against the database.
+export async function paginateCandidates(fetchPage, limit = 200, pageSize = CANDIDATE_PAGE_SIZE) {
+  const rows = [];
+  for (let from = 0; from < limit; from += pageSize) {
+    const to = Math.min(from + pageSize, limit) - 1;
+    const page = await fetchPage(from, to);
+    rows.push(...page);
+    if (page.length < to - from + 1) break; // tenant exhausted
+  }
+  return rows;
+}
+
+async function fetchCandidateProfilePage(tenantId, opts = {}, from = 0, to = 999) {
   let query = getSupabaseAdmin()
     .from("profiles")
     .select(SEARCH_CANDIDATE_SELECT_SQL)
@@ -300,16 +346,20 @@ async function fetchCandidateProfiles(tenantId, opts = {}, limit = 200) {
     .neq("status", "removed")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true })
+    .range(from, to);
 
-  if (opts.roleAtCamp) {
-    query = query.ilike("role_at_camp", `%${String(opts.roleAtCamp).trim()}%`);
-  }
-  if (opts.industry) {
-    query = query.ilike("industry", `%${String(opts.industry).trim()}%`);
-  }
-  if (opts.cityState) {
-    query = query.ilike("city_state", `%${String(opts.cityState).trim()}%`);
+  query = applyTermFilter(query, "role_at_camp", normalizeTermList(opts.roleAtCamp, opts.roleAtCampTerms));
+  query = applyTermFilter(query, "industry", normalizeTermList(opts.industry, opts.industryTerms));
+
+  // Stored locations are "City, ST", so city and state match as separate predicates
+  // rather than one joined substring.
+  const city = sanitizeFilterTerm(opts.city);
+  const stateCode = sanitizeFilterTerm(opts.stateCode);
+  if (city) query = query.ilike("city_state", `%${city}%`);
+  if (stateCode) query = query.ilike("city_state", `%${stateCode}`);
+  if (!city && !stateCode && opts.cityState) {
+    query = query.ilike("city_state", `%${sanitizeFilterTerm(opts.cityState)}%`);
   }
   // A viewer at rank N sees rank N and every larger rank. Untagged profiles
   // carry no rank, so they are only excluded when the camp parks untagged
@@ -332,8 +382,16 @@ async function runRpcSearch(tenantId, query = "", opts = {}, limit = 30) {
   const { data, error } = await getSupabaseAdmin().rpc("search_profiles", {
     p_tenant_id: tenantId,
     p_query: query || "",
-    p_role_at_camp: opts.roleAtCamp || null,
-    p_industry: opts.industry || null,
+    // The RPC takes one scalar per field, so only narrow there when a single term was
+    // chosen; otherwise the JS filter pass would never see the other terms' matches.
+    p_role_at_camp: (() => {
+      const terms = normalizeTermList(opts.roleAtCamp, opts.roleAtCampTerms);
+      return terms.length === 1 ? terms[0] : null;
+    })(),
+    p_industry: (() => {
+      const terms = normalizeTermList(opts.industry, opts.industryTerms);
+      return terms.length === 1 ? terms[0] : null;
+    })(),
     p_city_state: opts.cityState || null,
     p_limit: limit,
     // Only sent once a camp has switched tiering on, so an API release that
@@ -367,7 +425,9 @@ export const ProfileModel = {
   COLUMNS,
 
   async search(tenantId, query, opts = {}) {
-    const maxLimit = clampLimit(opts.maxLimit || 100, 100, 1000);
+    // Ceiling raised past one page so a large tenant's candidate pool can be paged
+    // through in full rather than truncated alphabetically.
+    const maxLimit = clampLimit(opts.maxLimit || 100, 100, CANDIDATE_POOL_CEILING);
     const limit = clampLimit(opts.limit || 30, 30, maxLimit);
     const normalizedQuery = normalizeText(query || "");
     const strictLimit = normalizedQuery ? Math.max(limit, 60) : limit;

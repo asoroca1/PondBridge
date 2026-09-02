@@ -25,6 +25,8 @@ module.exports = {
     "**/tests/adminTiersRoutes.test.js",
     "**/tests/memberTiers.test.js",
     "**/tests/memberSearch.test.js",
+    "**/tests/searchLocationAndSort.test.js",
+    "**/tests/searchCandidatePaging.test.js",
     "**/tests/messaging.test.js",
     "**/tests/memberEligibility.test.js",
     "**/tests/mobileNotifications.test.js",

@@ -19,6 +19,7 @@ import { tenantRoute } from "../../lib/tenantRouting.js";
 import { useUnsavedChangesGuard } from "../../lib/useUnsavedChangesGuard.js";
 import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
 import "./edit-profile.css";
+import { INDUSTRIES } from "@pondbridge/shared";
 
 /* Data */
 const US_STATES = [
@@ -38,16 +39,6 @@ const US_STATE_NAMES = {
   WI: "Wisconsin", WY: "Wyoming"
 };
 
-const INDUSTRIES = [
-  "Accounting", "Advertising", "Aerospace", "Agriculture",
-  "Architecture", "Arts", "Automotive", "Banking",
-  "Biotechnology", "Consulting", "Consumer Goods", "Education",
-  "Energy", "Engineering", "Entertainment", "Fashion", "Finance", "Food", "Government",
-  "Healthcare", "Hospitality", "Insurance", "Journalism", "Legal", "Logistics",
-  "Manufacturing", "Marketing", "Media", "Non-Profit", "Pharmaceuticals",
-  "Private Equity", "Real Estate", "Retail", "Sports", "Student", "Technology",
-  "Telecommunications", "Transportation", "Venture Capital", "Other"
-];
 
 function normalizeErrorMessage(payload, fallback) {
   if (!payload) return fallback;

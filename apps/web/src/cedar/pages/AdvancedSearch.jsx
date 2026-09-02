@@ -20,6 +20,8 @@ import {
 
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { INDUSTRIES } from "@pondbridge/shared";
+
 import { requestJson } from "../../lib/http.js";
 import { resolveAlumniWord, resolveCampAiName, resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
@@ -28,53 +30,84 @@ import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./advanced-search.css";
 
+// The search API returns exactly one job shape: `currentJobs`, an array of
+// { role, company } from mapSearchSummary. The previous version also parsed
+// "Role @ Company" strings and read `jobs` / `employment` / six field aliases -
+// none of which this endpoint has ever sent.
 function pickCurrentJob(profile = {}) {
-  if (profile.currentJob) {
-    if (typeof profile.currentJob === "string") {
-      const [rawRole, rawCompany] = profile.currentJob.split("@").map((value) => value?.trim());
-      return { role: rawRole || "", company: rawCompany || "" };
-    }
-    if (typeof profile.currentJob === "object" && profile.currentJob !== null) {
-      const role =
-        profile.currentJob.role || profile.currentJob.title || profile.currentJob.jobTitle || "";
-      const company =
-        profile.currentJob.company ||
-        profile.currentJob.organization ||
-        profile.currentJob.org ||
-        "";
-      if (role || company) return { role, company };
-    }
-  }
-
-  const singleRole =
-    profile.currentJobTitle || profile.jobTitle || profile.title || profile.currentRole || "";
-  const singleCompany = profile.currentCompany || profile.company || "";
-  const arr =
-    (Array.isArray(profile.currentJobs) && profile.currentJobs) ||
-    (Array.isArray(profile.jobs) && profile.jobs) ||
-    (Array.isArray(profile.employment) && profile.employment) ||
-    [];
-  const job = arr.find((entry) => entry?.isCurrent || entry?.current) ?? arr[0] ?? null;
-  const arrayRole = job?.role || job?.title || "";
-  const arrayCompany = job?.company || job?.organization || job?.org || "";
-
-  return { role: singleRole || arrayRole || "", company: singleCompany || arrayCompany || "" };
+  const jobs = Array.isArray(profile.currentJobs) ? profile.currentJobs : [];
+  const job = jobs.find((entry) => entry?.isCurrent || entry?.current) ?? jobs[0] ?? null;
+  return {
+    role: String(job?.role || job?.title || "").trim(),
+    company: String(job?.company || job?.organization || "").trim()
+  };
 }
 
 const DEBOUNCE = 400;
+// Locations are stored as "City, ST", so the state filter offers the codes that can
+// actually match rather than accepting free text that never will.
+const US_STATES = Object.freeze([
+  ["AL", "Alabama"], ["AK", "Alaska"], ["AZ", "Arizona"], ["AR", "Arkansas"],
+  ["CA", "California"], ["CO", "Colorado"], ["CT", "Connecticut"], ["DE", "Delaware"],
+  ["DC", "District of Columbia"], ["FL", "Florida"], ["GA", "Georgia"], ["HI", "Hawaii"],
+  ["ID", "Idaho"], ["IL", "Illinois"], ["IN", "Indiana"], ["IA", "Iowa"],
+  ["KS", "Kansas"], ["KY", "Kentucky"], ["LA", "Louisiana"], ["ME", "Maine"],
+  ["MD", "Maryland"], ["MA", "Massachusetts"], ["MI", "Michigan"], ["MN", "Minnesota"],
+  ["MS", "Mississippi"], ["MO", "Missouri"], ["MT", "Montana"], ["NE", "Nebraska"],
+  ["NV", "Nevada"], ["NH", "New Hampshire"], ["NJ", "New Jersey"], ["NM", "New Mexico"],
+  ["NY", "New York"], ["NC", "North Carolina"], ["ND", "North Dakota"], ["OH", "Ohio"],
+  ["OK", "Oklahoma"], ["OR", "Oregon"], ["PA", "Pennsylvania"], ["PR", "Puerto Rico"],
+  ["RI", "Rhode Island"], ["SC", "South Carolina"], ["SD", "South Dakota"],
+  ["TN", "Tennessee"], ["TX", "Texas"], ["UT", "Utah"], ["VT", "Vermont"],
+  ["VA", "Virginia"], ["WA", "Washington"], ["WV", "West Virginia"],
+  ["WI", "Wisconsin"], ["WY", "Wyoming"]
+]);
+// Older shared links may carry a full state name from when this was a free-text field.
+// Map it onto the code the picker uses so the selection shows correctly.
+function normalizeStateParam(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const upper = raw.toUpperCase();
+  if (US_STATES.some(([code]) => code === upper)) return upper;
+  const match = US_STATES.find(([, name]) => name.toLowerCase() === raw.toLowerCase());
+  return match ? match[0] : raw;
+}
+
 const AI_SEARCH_PROMPTS = Object.freeze([
   "Former counselors in Boston who work in healthcare",
   "People from camp who work in technology",
   "Members who attended the same college as me"
 ]);
 
-function useDebounced(value, delay = DEBOUNCE) {
-  const [debounced, setDebounced] = useState(value);
+// Only free-text fields need debouncing. Paging, sorting and the pickers are discrete
+// intents and should fire immediately.
+const TEXT_FIELDS = Object.freeze([
+  "q", "industries", "city", "state", "college", "role", "company",
+  "gradMin", "gradMax", "camperMin", "camperMax"
+]);
+
+function useDebouncedForm(form, delay = DEBOUNCE) {
+  const textSignature = TEXT_FIELDS.map((key) => String(form[key] ?? "")).join("\u0000");
+  const formRef = useRef(form);
+  formRef.current = form;
+  const [settledText, setSettledText] = useState(() =>
+    Object.fromEntries(TEXT_FIELDS.map((key) => [key, form[key]]))
+  );
+
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
+    const t = setTimeout(() => {
+      setSettledText(Object.fromEntries(TEXT_FIELDS.map((key) => [key, formRef.current[key]])));
+    }, delay);
     return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
+  }, [textSignature, delay]);
+
+  const { cedarRoles, sort, offset, limit, browseAll } = form;
+
+  // Discrete fields take effect immediately; text fields lag by `delay`.
+  return useMemo(
+    () => ({ ...formRef.current, ...settledText }),
+    [cedarRoles, sort, offset, limit, browseAll, settledText]
+  );
 }
 
 const parseList = (value) =>
@@ -122,10 +155,27 @@ function buildPageItems(page, pages) {
   return items;
 }
 
-export function RolesMultiSelect({ options, value, onChange }) {
+// Options may be plain strings or {value, count} from /search/facets. When counts are
+// present each row shows how many members it would return, so a member can tell a
+// too-narrow filter from an empty directory before running it.
+export function RolesMultiSelect({
+  options,
+  value,
+  onChange,
+  placeholder = "Select roles...",
+  label = "Former or current role at camp",
+  optionsId = "camp-role-options"
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const selected = parseList(value);
+  const normalized = useMemo(
+    () =>
+      (Array.isArray(options) ? options : []).map((option) =>
+        typeof option === "string" ? { value: option, count: null } : option
+      ),
+    [options]
+  );
 
   useEffect(() => {
     const onDocClick = (event) => {
@@ -148,8 +198,8 @@ export function RolesMultiSelect({ options, value, onChange }) {
         className={`as2-mselect ${open ? "is-open" : ""}`}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-controls="camp-role-options"
-        aria-label="Former or current role at camp"
+        aria-controls={optionsId}
+        aria-label={label}
       >
         {selected.length ? (
           <div className="as2-tags">
@@ -158,14 +208,19 @@ export function RolesMultiSelect({ options, value, onChange }) {
             ))}
           </div>
         ) : (
-          <span className="as2-placeholder">Select roles...</span>
+          <span className="as2-placeholder">{placeholder}</span>
         )}
         <ChevronDown size={14} className="as2-caret" aria-hidden="true" />
       </button>
 
       {open && (
-        <div id="camp-role-options" className="as2-menu" role="group" aria-label="Camp roles">
-          {options.map((option) => (
+        <div id={optionsId} className="as2-menu" role="group" aria-label={label}>
+          {normalized.length === 0 && (
+            <p className="as2-help" style={{ padding: "6px 10px", margin: 0 }}>
+              No options yet.
+            </p>
+          )}
+          {normalized.map(({ value: option, count }) => (
             <label key={option} className="as2-option">
               <input
                 type="checkbox"
@@ -173,11 +228,12 @@ export function RolesMultiSelect({ options, value, onChange }) {
                 onChange={() => toggle(option)}
               />
               <span>{option}</span>
+              {Number.isFinite(count) && <span className="as2-option-count">{count}</span>}
             </label>
           ))}
           {selected.length > 0 && (
             <button type="button" className="as2-menu-clear" onClick={() => onChange("")}>
-              Clear roles
+              Clear
             </button>
           )}
         </div>
@@ -235,7 +291,7 @@ export default function AdvancedSearch() {
     cedarRoles: params.get("cedarRoles") || "",
     industries: params.get("industries") || "",
     city: params.get("city") || "",
-    state: params.get("state") || "",
+    state: normalizeStateParam(params.get("state") || ""),
     college: params.get("college") || "",
     gradMin: params.get("gradMin") || "",
     gradMax: params.get("gradMax") || "",
@@ -243,7 +299,8 @@ export default function AdvancedSearch() {
     camperMax: params.get("camperMax") || "",
     role: params.get("role") || "",
     company: params.get("company") || "",
-    sort: params.get("sort") || "name",
+    sort: params.get("sort") || "relevance",
+    browseAll: params.get("browseAll") === "1" ? "1" : "",
     offset: parseInt(params.get("offset") || "0", 10),
     limit: parseInt(params.get("limit") || "24", 10),
   }));
@@ -264,22 +321,30 @@ export default function AdvancedSearch() {
 
   const [state, setState] = useState({
     loading: false,
+    settled: false,
     items: [],
     total: 0,
     error: null,
   });
+  const [facets, setFacets] = useState(null);
+  const [savedSearches, setSavedSearches] = useState([]);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [nameSuggestions, setNameSuggestions] = useState([]);
   const [aiCapability, setAiCapability] = useState(null);
   const [aiQuery, setAiQuery] = useState("");
   const [aiSearching, setAiSearching] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiMeta, setAiMeta] = useState(null);
 
+  // Set when smart search has already applied a plan and fetched its results, so the
+  // debounced effect does not immediately refetch the same query and overwrite them.
+  const skipNextFetchRef = useRef(false);
   const nameInputRef = useRef(null);
   const resultsRef = useRef(null);
   const authTokenRef = useRef(token || "");
   const getAuthTokenRef = useRef(getAuthToken);
 
-  const debounced = useDebounced(form);
+  const debounced = useDebouncedForm(form);
 
   useEffect(() => {
     authTokenRef.current = token || "";
@@ -321,6 +386,71 @@ export default function AdvancedSearch() {
     };
   }, [authReady, slug]);
 
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+    if (!authReady || !slug) {
+      setFacets(null);
+      return () => {
+        alive = false;
+        controller.abort();
+      };
+    }
+    requestJson(`/api/t/${slug}/search/facets`, {
+      token: authTokenRef.current,
+      getToken: async ({ forceRefresh = false } = {}) => {
+        if (typeof getAuthTokenRef.current === "function") {
+          return (await getAuthTokenRef.current({ forceRefresh })) || authTokenRef.current;
+        }
+        return authTokenRef.current;
+      },
+      signal: controller.signal
+    })
+      .then((payload) => {
+        if (alive) setFacets(payload || null);
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError" && alive) setFacets(null);
+      });
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [authReady, slug]);
+
+  // Name typeahead, from the same endpoint the navbar and people-picker already use.
+  useEffect(() => {
+    const term = String(debounced.q || "").trim();
+    if (!authReady || !slug || term.length < 2) {
+      setNameSuggestions([]);
+      return undefined;
+    }
+    let alive = true;
+    const controller = new AbortController();
+    requestJson(`/api/t/${slug}/search/names?q=${encodeURIComponent(term)}&limit=8`, {
+      token: authTokenRef.current,
+      getToken: async ({ forceRefresh = false } = {}) => {
+        if (typeof getAuthTokenRef.current === "function") {
+          return (await getAuthTokenRef.current({ forceRefresh })) || authTokenRef.current;
+        }
+        return authTokenRef.current;
+      },
+      signal: controller.signal
+    })
+      .then((payload) => {
+        if (!alive) return;
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        setNameSuggestions(items.map((item) => String(item?.name || "").trim()).filter(Boolean));
+      })
+      .catch(() => {
+        if (alive) setNameSuggestions([]);
+      });
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [authReady, slug, debounced.q]);
+
   const hasActiveFilters = useMemo(() => {
     const {
       q,
@@ -336,6 +466,8 @@ export default function AdvancedSearch() {
       role,
       company,
     } = debounced;
+
+    if (String(debounced.browseAll || "") === "1") return true;
 
     return [
       q,
@@ -355,6 +487,38 @@ export default function AdvancedSearch() {
 
   const industriesList = useMemo(() => parseList(form.industries), [form.industries]);
 
+  // Every picker is driven by what this camp's directory actually contains, so an
+  // option can never be offered that returns nobody. The configured lists are the
+  // fallback for a camp whose facets have not loaded yet.
+  const industryOptions = useMemo(() => {
+    if (facets?.industries?.length) return facets.industries;
+    return INDUSTRIES.map((value) => ({ value, count: null }));
+  }, [facets]);
+
+  const campRoleOptions = useMemo(() => {
+    if (facets?.campRoles?.length) {
+      const known = new Set(staffRoleOptions.map((role) => role.toLowerCase()));
+      // Configured roles first, then anything else the directory turned up.
+      const configured = facets.campRoles.filter((entry) => known.has(entry.value.toLowerCase()));
+      const extra = facets.campRoles.filter((entry) => !known.has(entry.value.toLowerCase()));
+      return [...configured, ...extra];
+    }
+    return staffRoleOptions.map((value) => ({ value, count: null }));
+  }, [facets, staffRoleOptions]);
+
+  const stateOptions = useMemo(() => {
+    const byCode = new Map(US_STATES);
+    if (facets?.states?.length) {
+      const present = facets.states
+        .filter(({ value }) => byCode.has(value))
+        .map(({ value, count }) => [value, byCode.get(value), count]);
+      if (present.length) {
+        return present.sort((left, right) => String(left[1]).localeCompare(String(right[1])));
+      }
+    }
+    return US_STATES.map(([code, name]) => [code, name, null]);
+  }, [facets]);
+
   const sectionActive = useMemo(
     () => ({
       name: Boolean(form.q.trim()),
@@ -365,7 +529,7 @@ export default function AdvancedSearch() {
       camperYears: Boolean(form.camperMin || form.camperMax),
       location: Boolean(form.city.trim() || form.state.trim()),
       company: Boolean(form.company.trim()),
-      display: Boolean(form.sort !== "name" || Number(form.limit) !== 24),
+      display: Boolean(form.sort !== "relevance" || Number(form.limit) !== 24),
     }),
     [form]
   );
@@ -400,7 +564,9 @@ export default function AdvancedSearch() {
     const controller = new AbortController();
 
     if (!authReady || !slug) {
-      setState((curr) => ({ ...curr, loading: false }));
+      // Auth is still resolving. Stay unsettled so a shared ?q= link renders skeletons
+      // instead of the "No matches" empty state.
+      setState((curr) => ({ ...curr, loading: false, settled: false }));
       return () => {
         alive = false;
         controller.abort();
@@ -408,7 +574,16 @@ export default function AdvancedSearch() {
     }
 
     if (!hasActiveFilters) {
-      setState({ loading: false, items: [], total: 0, error: null });
+      setState({ loading: false, settled: true, items: [], total: 0, error: null });
+      return () => {
+        alive = false;
+        controller.abort();
+      };
+    }
+
+    if (skipNextFetchRef.current) {
+      // Smart search already fetched exactly this query.
+      skipNextFetchRef.current = false;
       return () => {
         alive = false;
         controller.abort();
@@ -439,14 +614,16 @@ export default function AdvancedSearch() {
 
         setState({
           loading: false,
+          settled: true,
           items: Array.isArray(data.items) ? data.items : [],
           total: Number.isFinite(data.total) ? data.total : data.items?.length || 0,
+          excluded: data.excluded && typeof data.excluded === "object" ? data.excluded : {},
           error: null,
         });
       } catch (error) {
         if (error?.name === "AbortError") return;
         if (!alive) return;
-        setState({ loading: false, items: [], total: 0, error: "Failed to load results." });
+        setState({ loading: false, settled: true, items: [], total: 0, error: "Failed to load results." });
       }
     })();
 
@@ -456,18 +633,26 @@ export default function AdvancedSearch() {
     };
   }, [authReady, debounced, hasActiveFilters, slug]);
 
+  // Any user-initiated form change invalidates a pending smart-search skip, so the
+  // flag can never swallow an unrelated fetch such as a page change.
+  const updateForm = (updater) => {
+    skipNextFetchRef.current = false;
+    setForm(updater);
+  };
+
   const onField = (key) => (event) => {
     const value = event?.target?.value ?? event;
     setAiMeta(null);
-    setForm((curr) => ({ ...curr, [key]: value, offset: 0 }));
+    updateForm((curr) => ({ ...curr, [key]: value, offset: 0 }));
   };
 
   const setFields = (updates = {}) => {
     setAiMeta(null);
-    setForm((curr) => ({ ...curr, ...updates, offset: 0 }));
+    updateForm((curr) => ({ ...curr, ...updates, offset: 0 }));
   };
 
   const clearAll = () => {
+    skipNextFetchRef.current = false;
     setForm({
       q: "",
       cedarRoles: "",
@@ -481,11 +666,12 @@ export default function AdvancedSearch() {
       camperMax: "",
       role: "",
       company: "",
-      sort: "name",
+      sort: "relevance",
+      browseAll: "",
       offset: 0,
       limit: 24,
     });
-    setState({ loading: false, items: [], total: 0, error: null });
+    setState({ loading: false, settled: true, items: [], total: 0, error: null });
     setAiMeta(null);
     setAiError("");
   };
@@ -510,9 +696,11 @@ export default function AdvancedSearch() {
         body: JSON.stringify({ query: requestedQuery, limit: form.limit, sort: form.sort })
       });
       const plan = data?.plan && typeof data.plan === "object" ? data.plan : {};
+      skipNextFetchRef.current = true;
       setForm((current) => ({ ...current, ...planToFormFields(plan) }));
       setState({
         loading: false,
+        settled: true,
         items: Array.isArray(data?.items) ? data.items : [],
         total: Number.isFinite(data?.total) ? data.total : data?.items?.length || 0,
         error: null
@@ -524,6 +712,7 @@ export default function AdvancedSearch() {
       });
       requestAnimationFrame(scrollToResults);
     } catch (error) {
+      skipNextFetchRef.current = false;
       setAiError(error?.message || "Smart search could not interpret that request. Try the filters instead.");
     } finally {
       setAiSearching(false);
@@ -534,7 +723,7 @@ export default function AdvancedSearch() {
     const next = industriesList.filter(
       (entry) => entry.toLowerCase() !== String(value).toLowerCase()
     );
-    setForm((curr) => ({ ...curr, industries: next.join(", "), offset: 0 }));
+    updateForm((curr) => ({ ...curr, industries: next.join(", "), offset: 0 }));
   };
 
   const toggle = (key) => {
@@ -558,7 +747,7 @@ export default function AdvancedSearch() {
 
   const gotoPage = (nextPage) => {
     if (nextPage < 1 || nextPage > pages || nextPage === page) return;
-    setForm((curr) => ({ ...curr, offset: (nextPage - 1) * curr.limit }));
+    updateForm((curr) => ({ ...curr, offset: (nextPage - 1) * curr.limit }));
     scrollToResults();
   };
 
@@ -592,6 +781,90 @@ export default function AdvancedSearch() {
 
     return chips;
   }, [form]);
+
+  // A filter on an optional field silently drops everyone missing that field. Say so.
+  const exclusionNotice = useMemo(() => {
+    const excluded = state.excluded || {};
+    const labels = {
+      college: "no college on file",
+      gradYear: "no graduation year on file",
+      camperYears: "no camper years on file",
+      industry: "no industry on file",
+      location: "no location on file",
+      campRole: "no camp role on file"
+    };
+    const parts = Object.entries(labels)
+      .filter(([key]) => Number(excluded[key]) > 0)
+      .map(([key, label]) => `${excluded[key]} with ${label}`);
+    if (!parts.length) return "";
+    const joined =
+      parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    return `Not included: ${joined}.`;
+  }, [state.excluded]);
+
+  // Saved searches live in this browser only. That keeps them free of a schema change,
+  // at the cost of not following a member to another device - the copy-link button
+  // covers that case.
+  const savedSearchKey = `pb.savedSearches.${slug || "unknown"}`;
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(savedSearchKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setSavedSearches(Array.isArray(parsed) ? parsed.slice(0, 12) : []);
+    } catch {
+      setSavedSearches([]);
+    }
+  }, [savedSearchKey]);
+
+  const persistSavedSearches = (next) => {
+    setSavedSearches(next);
+    try {
+      window.localStorage.setItem(savedSearchKey, JSON.stringify(next));
+    } catch {
+      // A browser with storage blocked still searches fine; it just cannot remember.
+    }
+  };
+
+  const saveCurrentSearch = () => {
+    const name = activeFilterChips.map((chip) => chip.label).join(" · ") || "All members";
+    const query = new URLSearchParams();
+    Object.entries(form).forEach(([key, value]) => {
+      if (value !== "" && value !== null && value !== undefined) query.set(key, String(value));
+    });
+    const entry = { id: `${Date.now()}`, name: name.slice(0, 80), query: query.toString() };
+    persistSavedSearches([entry, ...savedSearches.filter((s) => s.query !== entry.query)].slice(0, 12));
+  };
+
+  const applySavedSearch = (entry) => {
+    const next = new URLSearchParams(entry?.query || "");
+    skipNextFetchRef.current = false;
+    setAiMeta(null);
+    setForm((curr) => {
+      const merged = { ...curr };
+      Object.keys(curr).forEach((key) => {
+        merged[key] = next.get(key) ?? "";
+      });
+      merged.offset = parseInt(next.get("offset") || "0", 10);
+      merged.limit = parseInt(next.get("limit") || "24", 10);
+      merged.sort = next.get("sort") || "relevance";
+      return merged;
+    });
+  };
+
+  const removeSavedSearch = (id) => {
+    persistSavedSearches(savedSearches.filter((entry) => entry.id !== id));
+  };
+
+  const copySearchLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      window.setTimeout(() => setCopiedLink(false), 1800);
+    } catch {
+      setCopiedLink(false);
+    }
+  };
 
   const removeFilterChip = (key) => {
     if (key === "gradRange") return setFields({ gradMin: "", gradMax: "" });
@@ -675,7 +948,14 @@ export default function AdvancedSearch() {
                     onChange={onField("q")}
                     placeholder="e.g., Henry"
                     aria-label="Member name"
+                    list="advanced-search-name-options"
+                    autoComplete="off"
                   />
+                  <datalist id="advanced-search-name-options">
+                    {nameSuggestions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
             </section>
@@ -691,9 +971,11 @@ export default function AdvancedSearch() {
               <div className="as2-sec-body">
                 <div className="as2-sec-inner">
                   <RolesMultiSelect
-                    options={staffRoleOptions}
+                    options={campRoleOptions}
                     value={form.cedarRoles}
-                    onChange={(v) => setForm((curr) => ({ ...curr, cedarRoles: v, offset: 0 }))}
+                    onChange={(v) => updateForm((curr) => ({ ...curr, cedarRoles: v, offset: 0 }))}
+                    placeholder="Select roles..."
+                    label="Former or current role at camp"
                   />
                 </div>
               </div>
@@ -753,14 +1035,20 @@ export default function AdvancedSearch() {
               />
               <div className="as2-sec-body">
                 <div className="as2-sec-inner">
-                  <input
-                    className="as2-input"
+                  <RolesMultiSelect
+                    options={industryOptions}
                     value={form.industries}
-                    onChange={onField("industries")}
-                    placeholder="e.g., Finance, Law"
-                    aria-label="Industries"
+                    onChange={(v) => updateForm((curr) => ({ ...curr, industries: v, offset: 0 }))}
+                    placeholder="Select industries..."
+                    label="Industries"
+                    optionsId="industry-options"
                   />
-                  <p className="as2-help">Separate multiple industries with commas.</p>
+                  <p className="as2-help">
+                    Picking more than one matches any of them.
+                    {facets?.missing?.industry
+                      ? ` ${facets.missing.industry} members have no industry on file.`
+                      : ""}
+                  </p>
 
                   {!!industriesList.length && (
                     <div className="as2-chips">
@@ -820,7 +1108,14 @@ export default function AdvancedSearch() {
                     onChange={onField("company")}
                     placeholder="e.g., KX Bank"
                     aria-label="Company"
+                    list="advanced-search-company-options"
+                    autoComplete="off"
                   />
+                  <datalist id="advanced-search-company-options">
+                    {(facets?.companies || []).slice(0, 200).map(({ value }) => (
+                      <option key={value} value={value} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
             </section>
@@ -841,7 +1136,14 @@ export default function AdvancedSearch() {
                     onChange={onField("college")}
                     placeholder="e.g., UCLA"
                     aria-label="College"
+                    list="advanced-search-college-options"
+                    autoComplete="off"
                   />
+                  <datalist id="advanced-search-college-options">
+                    {(facets?.colleges || []).slice(0, 200).map(({ value }) => (
+                      <option key={value} value={value} />
+                    ))}
+                  </datalist>
 
                   <div className="as2-row">
                     <div className="as2-col">
@@ -895,13 +1197,19 @@ export default function AdvancedSearch() {
                       placeholder="City"
                       aria-label="City"
                     />
-                    <input
+                    <select
                       className="as2-input"
                       value={form.state}
                       onChange={onField("state")}
-                      placeholder="State / Country"
-                      aria-label="State or Country"
-                    />
+                      aria-label="State"
+                    >
+                      <option value="">Any state</option>
+                      {stateOptions.map(([code, name, count]) => (
+                        <option key={code} value={code}>
+                          {Number.isFinite(count) ? `${name} (${count})` : name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -920,6 +1228,7 @@ export default function AdvancedSearch() {
                     <div className="as2-col">
                       <label className="as2-label" htmlFor="advanced-search-sort">Sort</label>
                       <select id="advanced-search-sort" className="as2-input" value={form.sort} onChange={onField("sort")}>
+                        <option value="relevance">Best match</option>
                         <option value="name">Name (A-Z)</option>
                         <option value="recent">Recently Added</option>
                       </select>
@@ -931,7 +1240,7 @@ export default function AdvancedSearch() {
                         className="as2-input"
                         value={form.limit}
                         onChange={(event) =>
-                          setForm((curr) => ({
+                          updateForm((curr) => ({
                             ...curr,
                             limit: parseInt(event.target.value, 10),
                             offset: 0,
@@ -1019,13 +1328,49 @@ export default function AdvancedSearch() {
               <div className="as2-results-head">
                 <div className="lhs">
                   <h1 className="as2-title">{header}</h1>
-                  {!state.loading && (
-                    <div className="as2-sub">
-                      Showing {fromN}-{toN} of {state.total}
-                    </div>
-                  )}
+                  <div className="as2-sub" role="status" aria-live="polite">
+                    {!state.loading && state.settled
+                      ? `Showing ${fromN}-${toN} of ${state.total}`
+                      : "Searching\u2026"}
+                  </div>
+                </div>
+
+                <div className="as2-results-actions">
+                  <button type="button" className="as2-btn as2-btn-ghost" onClick={copySearchLink}>
+                    {copiedLink ? "Link copied" : "Copy link"}
+                  </button>
+                  <button type="button" className="as2-btn as2-btn-ghost" onClick={saveCurrentSearch}>
+                    Save search
+                  </button>
                 </div>
               </div>
+            )}
+
+            {!!savedSearches.length && (
+              <div className="as2-saved" aria-label="Saved searches">
+                <span className="as2-saved-label">Saved</span>
+                {savedSearches.map((entry) => (
+                  <span key={entry.id} className="as2-saved-chip">
+                    <button type="button" onClick={() => applySavedSearch(entry)}>
+                      {entry.name}
+                    </button>
+                    <button
+                      type="button"
+                      className="x"
+                      onClick={() => removeSavedSearch(entry.id)}
+                      aria-label={`Delete saved search ${entry.name}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {exclusionNotice && (
+              <p className="as2-exclusion" role="status">
+                {exclusionNotice}
+              </p>
             )}
 
             {!!activeFilterChips.length && (
@@ -1084,13 +1429,27 @@ export default function AdvancedSearch() {
                     >
                       Start with a name search
                     </button>
+                    <button
+                      className="as2-btn as2-btn-outline"
+                      type="button"
+                      onClick={() =>
+                        updateForm((curr) => ({
+                          ...curr,
+                          browseAll: "1",
+                          sort: "recent",
+                          offset: 0
+                        }))
+                      }
+                    >
+                      {`Browse all ${alumniWord}`}
+                    </button>
                   </div>
                 </div>
               </div>
             ) : (
               <>
-                {state.loading && (
-                  <div className="as2-grid">
+                {(state.loading || !state.settled) && !state.items.length && (
+                  <div className="as2-grid" aria-busy="true">
                     {Array.from({ length: skeletonCount }).map((_, index) => (
                       <div
                         className="as2-card as2-skel"
@@ -1111,7 +1470,7 @@ export default function AdvancedSearch() {
                   </div>
                 )}
 
-                {!state.loading && state.error && (
+                {!state.loading && state.settled && state.error && (
                   <div className="as2-emptywrap">
                     <div className="as2-emptycard">
                       <div
@@ -1130,7 +1489,7 @@ export default function AdvancedSearch() {
                   </div>
                 )}
 
-                {!state.loading && !state.error && (
+                {state.settled && !state.error && (
                   <>
                     {state.items.length === 0 ? (
                       <div className="as2-emptywrap">
@@ -1149,7 +1508,10 @@ export default function AdvancedSearch() {
                       </div>
                     ) : (
                       <>
-                        <div className="as2-grid">
+                        <div
+                          className={`as2-grid${state.loading ? " is-refreshing" : ""}`}
+                          aria-busy={state.loading ? "true" : "false"}
+                        >
                           {state.items.map((profile, index) => {
                             const id = String(
                               profile.id || profile._id || profile.profileId || profile.userId || ""
@@ -1232,6 +1594,16 @@ export default function AdvancedSearch() {
                                   </div>
                                 )}
 
+                                {Array.isArray(profile.matchReasons) && profile.matchReasons.length > 0 && (
+                                  <div className="as2-why">
+                                    {profile.matchReasons.map((reason) => (
+                                      <span key={`${reason.kind}-${reason.label}`} className="as2-why-chip">
+                                        {reason.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
                                 {!hasMeta && (
                                   <div className="as2-loc as2-empty-meta">No details available</div>
                                 )}
@@ -1273,6 +1645,8 @@ export default function AdvancedSearch() {
                                     key={item}
                                     type="button"
                                     className={`as2-btn as2-pagebtn${item === page ? " is-current" : ""}`}
+                                    aria-current={item === page ? "page" : undefined}
+                                    aria-label={`Page ${item}`}
                                     onClick={() => gotoPage(item)}
                                   >
                                     {item}

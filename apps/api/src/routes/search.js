@@ -27,8 +27,11 @@ import { getHiddenUserIds, isUserHiddenByTier } from "../services/memberTiers.js
 
 const router = Router({ mergeParams: true });
 const SEARCH_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
+const SEARCH_POOL_DEFAULT = 25_000;
 const searchResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 500 });
 const searchNamesResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 800 });
+// Facets scan the whole directory, so they are cached longer than a result page.
+const searchFacetsResponseCache = createTtlCache({ ttlMs: 120_000, maxEntries: 200 });
 
 const searchRateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -126,6 +129,75 @@ function normalizeYearBounds(minValue, maxValue) {
     minYear: minYear ?? maxYear,
     maxYear: maxYear ?? minYear
   };
+}
+
+const US_STATE_CODES_BY_NAME = Object.freeze({
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", "district of columbia": "DC",
+  florida: "FL", georgia: "GA", hawaii: "HI", idaho: "ID", illinois: "IL",
+  indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA",
+  maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI", minnesota: "MN",
+  mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV",
+  "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+  "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK",
+  oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC",
+  "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT",
+  virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI",
+  wyoming: "WY", "puerto rico": "PR", "virgin islands": "VI", guam: "GU"
+});
+
+const US_STATE_CODE_SET = new Set(Object.values(US_STATE_CODES_BY_NAME));
+
+// Stored locations are "City, ST". Resolve a typed state to that 2-letter form so
+// "Massachusetts" matches "Boston, MA"; return "" when it is not a US state so the
+// caller can fall back to a free-text match (international locations).
+function resolveStateCode(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const upper = raw.toUpperCase();
+  if (upper.length === 2 && US_STATE_CODE_SET.has(upper)) return upper;
+  const byName = US_STATE_CODES_BY_NAME[raw.toLowerCase().replace(/\s+/g, " ")];
+  return byName || "";
+}
+
+function splitStoredLocation(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return { city: "", state: "" };
+  const idx = raw.lastIndexOf(",");
+  if (idx === -1) return { city: raw, state: "" };
+  return { city: raw.slice(0, idx).trim(), state: raw.slice(idx + 1).trim() };
+}
+
+// City and state are matched as independent predicates. Previously they were joined
+// into one substring ("Boston, Massachusetts"), which could never match stored data.
+function matchesLocation(profile = {}, { city = "", stateCode = "", stateText = "" } = {}) {
+  if (!city && !stateCode && !stateText) return { matched: true, score: 0 };
+  const stored = String(profile?.cityState || "").trim();
+  if (!stored) return { matched: false, score: 0 };
+  const parts = splitStoredLocation(stored);
+  let score = 0;
+
+  if (city) {
+    const cityHaystack = parts.city || stored;
+    if (!matchTextValue(cityHaystack, city)) return { matched: false, score: 0 };
+    score += 60;
+  }
+
+  if (stateCode) {
+    const storedCode = resolveStateCode(parts.state);
+    if (storedCode) {
+      if (storedCode !== stateCode) return { matched: false, score: 0 };
+    } else if (!matchTextValue(stored, stateCode)) {
+      return { matched: false, score: 0 };
+    }
+    score += 40;
+  } else if (stateText) {
+    // Not a US state (e.g. a country) - fall back to matching the whole location.
+    if (!matchTextValue(stored, stateText)) return { matched: false, score: 0 };
+    score += 40;
+  }
+
+  return { matched: true, score };
 }
 
 function extractProfileSocials(profile = {}) {
@@ -277,7 +349,9 @@ function filterAndRankSearchItems(items = [], filters = {}) {
   const {
     cedarRoleTerms = [],
     industryTerms = [],
-    cityState = "",
+    city = "",
+    stateCode = "",
+    stateText = "",
     roleTitle = "",
     company = "",
     college = "",
@@ -303,10 +377,9 @@ function filterAndRankSearchItems(items = [], filters = {}) {
         filterScore += 80 + industryMatch.score;
       }
 
-      if (cityState) {
-        if (!matchTextValue(profile?.cityState || "", cityState)) return null;
-        filterScore += 60;
-      }
+      const locationMatch = matchesLocation(profile, { city, stateCode, stateText });
+      if (!locationMatch.matched) return null;
+      filterScore += locationMatch.score;
 
       if (company) {
         const currentCompanyMatch = matchJobs(profile?.currentJobs || [], company, "company");
@@ -359,6 +432,7 @@ function parseSearchInput(reqOrQuery) {
   const city = normalizeSearchText(query.city, 80);
   const state = normalizeSearchText(query.state, 40);
   const cityState = normalizeSearchText(query.cityState || [city, state].filter(Boolean).join(", "), 120);
+  const stateCode = resolveStateCode(state);
   const roleTitle = normalizeSearchText(query.role, 120);
   const company = normalizeSearchText(query.company, 120);
   const college = normalizeSearchText(query.college, 120);
@@ -370,16 +444,23 @@ function parseSearchInput(reqOrQuery) {
     query.camperMin,
     query.camperMax
   );
-  const sort = String(query.sort || "name").trim().toLowerCase() === "recent" ? "recent" : "name";
+  const requestedSort = String(query.sort || "").trim().toLowerCase();
+  const sort = requestedSort === "recent" || requestedSort === "name" ? requestedSort : "relevance";
   const limit = clampLimit(query.limit, 24, 100);
   const offset = clampOffset(query.offset, 0);
-  const fetchLimit = clampLimit(query.fetchLimit, 300, 1000);
+  // Pool size is the server's decision; a client-supplied fetchLimit can only shrink
+  // it. Defaults high enough that filter-only searches cover the whole tenant, and the
+  // candidate fetch stops early once the tenant is exhausted, so small camps cost one page.
+  const fetchLimit = clampLimit(query.fetchLimit, SEARCH_POOL_DEFAULT, SEARCH_POOL_DEFAULT);
   return {
     q,
     cedarRoleTerms,
     roleAtCamp,
     industryTerms,
     industry,
+    city,
+    state,
+    stateCode,
     cityState,
     roleTitle,
     company,
@@ -393,6 +474,73 @@ function parseSearchInput(reqOrQuery) {
     offset,
     fetchLimit
   };
+}
+
+// Why this profile matched. The card can then show "UCLA '12" or "formerly Acme"
+// instead of asking the member to trust the filter and open each profile to check.
+function buildMatchReasons(profile = {}, filters = {}) {
+  const { college, gradMinYear, gradMaxYear, camperMinYear, camperMaxYear, company, roleTitle } = filters;
+  const reasons = [];
+
+  if (college) {
+    const matched = (Array.isArray(profile?.colleges) ? profile.colleges : []).find((value) =>
+      matchTextValue(value, college)
+    );
+    if (matched) {
+      const years = extractYearNumbers(profile?.collegeYears || []);
+      reasons.push({ kind: "college", label: years.length ? `${matched} '${String(years[years.length - 1]).slice(-2)}` : matched });
+    }
+  }
+
+  if (gradMinYear !== null && gradMinYear !== undefined) {
+    const years = extractYearNumbers(profile?.collegeYears || []).filter(
+      (year) => year >= (gradMinYear ?? gradMaxYear) && year <= (gradMaxYear ?? gradMinYear)
+    );
+    if (years.length) reasons.push({ kind: "gradYear", label: `Class of ${years[years.length - 1]}` });
+  }
+
+  if (camperMinYear !== null && camperMinYear !== undefined) {
+    const stints = normalizeYearStints(resolveCamperYearsSource(profile));
+    const hit = stints.find((stint) =>
+      rangesOverlap(stint.startYear, stint.endYear, camperMinYear ?? camperMaxYear, camperMaxYear ?? camperMinYear)
+    );
+    if (hit) {
+      reasons.push({
+        kind: "camperYears",
+        label: hit.startYear === hit.endYear ? `Camper ${hit.startYear}` : `Camper ${hit.startYear}-${hit.endYear}`
+      });
+    }
+  }
+
+  if (company) {
+    const current = (Array.isArray(profile?.currentJobs) ? profile.currentJobs : []).find((job) =>
+      jobFieldValues(job, "company").some((value) => matchTextValue(value, company))
+    );
+    const past = (Array.isArray(profile?.pastJobs) ? profile.pastJobs : []).find((job) =>
+      jobFieldValues(job, "company").some((value) => matchTextValue(value, company))
+    );
+    const hit = current || past;
+    if (hit) {
+      const name = jobFieldValues(hit, "company")[0] || "";
+      reasons.push({ kind: "company", label: current ? name : `formerly ${name}` });
+    }
+  }
+
+  if (roleTitle) {
+    const current = (Array.isArray(profile?.currentJobs) ? profile.currentJobs : []).find((job) =>
+      jobFieldValues(job, "role").some((value) => matchTextValue(value, roleTitle))
+    );
+    const past = (Array.isArray(profile?.pastJobs) ? profile.pastJobs : []).find((job) =>
+      jobFieldValues(job, "role").some((value) => matchTextValue(value, roleTitle))
+    );
+    const hit = current || past;
+    if (hit) {
+      const name = jobFieldValues(hit, "role")[0] || "";
+      if (name) reasons.push({ kind: "role", label: current ? name : `formerly ${name}` });
+    }
+  }
+
+  return reasons;
 }
 
 function mapSearchSummary(profile = {}) {
@@ -484,6 +632,20 @@ function compareProfiles(left, right, sort = "name") {
   return rightTs - leftTs;
 }
 
+// "relevance" ranks by match quality first; an explicit name/recent choice wins
+// outright, with match score only breaking ties.
+function buildRankedComparator(sort = "relevance") {
+  return (left, right) => {
+    if (sort === "relevance") {
+      if (right.filterScore !== left.filterScore) return right.filterScore - left.filterScore;
+      return compareProfiles(left.profile, right.profile, "name");
+    }
+    const chosen = compareProfiles(left.profile, right.profile, sort);
+    if (chosen !== 0) return chosen;
+    return right.filterScore - left.filterScore;
+  };
+}
+
 async function runSearch(req, { query = req.query, analytics = {} } = {}) {
   const {
     q,
@@ -491,6 +653,9 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     roleAtCamp,
     industryTerms,
     industry,
+    city,
+    state,
+    stateCode,
     cityState,
     roleTitle,
     company,
@@ -517,6 +682,9 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     q,
     roleAtCamp,
     industry,
+    city,
+    state,
+    stateCode,
     cityState,
     roleTitle,
     company,
@@ -536,11 +704,13 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
   }
 
   const rawItems = await ProfileModel.search(req.tenant._id, q, {
-    roleAtCamp: cedarRoleTerms.length === 1 ? cedarRoleTerms[0] : null,
-    industry: industryTerms.length === 1 ? industryTerms[0] : null,
+    roleAtCampTerms: cedarRoleTerms,
+    industryTerms,
+    city: city || null,
+    stateCode: stateCode || null,
     cityState: cityState || null,
     limit: fetchLimit,
-    maxLimit: 1000
+    maxLimit: SEARCH_POOL_DEFAULT
   });
   const rankedItems = filterAndRankSearchItems(
     rawItems
@@ -549,7 +719,9 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     {
       cedarRoleTerms,
       industryTerms,
-      cityState,
+      city,
+      stateCode,
+      stateText: stateCode ? "" : state,
       roleTitle,
       company,
       college,
@@ -559,14 +731,60 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
       camperMaxYear
     }
   )
-    .sort((left, right) => {
-      if (right.filterScore !== left.filterScore) return right.filterScore - left.filterScore;
-      return compareProfiles(left.profile, right.profile, sort);
-    });
+    .sort(buildRankedComparator(sort));
   const total = rankedItems.length;
+  const matchFilters = {
+    college,
+    gradMinYear,
+    gradMaxYear,
+    camperMinYear,
+    camperMaxYear,
+    company,
+    roleTitle
+  };
   const items = rankedItems
     .slice(offset, offset + limit)
-    .map((entry) => mapSearchSummary(entry.profile));
+    .map((entry) => ({
+      ...mapSearchSummary(entry.profile),
+      matchReasons: buildMatchReasons(entry.profile, matchFilters)
+    }));
+
+  // Members a filter could never match because they have no value for that field.
+  // Reported so a narrow result set is explicable rather than looking like an empty camp.
+  const poolForCounts = rawItems.filter(
+    (profile) => !hiddenUserIdSet.has(String(profile?.userId || ""))
+  );
+  const excluded = {};
+  if (college || gradMinYear !== null || gradMaxYear !== null) {
+    excluded.college = poolForCounts.filter(
+      (profile) => !(Array.isArray(profile?.colleges) && profile.colleges.length)
+    ).length;
+  }
+  if (gradMinYear !== null || gradMaxYear !== null) {
+    excluded.gradYear = poolForCounts.filter(
+      (profile) => !extractYearNumbers(profile?.collegeYears || []).length
+    ).length;
+  }
+  if (camperMinYear !== null || camperMaxYear !== null) {
+    excluded.camperYears = poolForCounts.filter(
+      (profile) => !normalizeYearStints(resolveCamperYearsSource(profile)).length
+    ).length;
+  }
+  if (industryTerms.length) {
+    excluded.industry = poolForCounts.filter(
+      (profile) => !String(profile?.industry || "").trim()
+    ).length;
+  }
+  if (city || stateCode || (!stateCode && state)) {
+    excluded.location = poolForCounts.filter(
+      (profile) => !String(profile?.cityState || "").trim()
+    ).length;
+  }
+  if (cedarRoleTerms.length) {
+    excluded.campRole = poolForCounts.filter(
+      (profile) => !resolveCampRoleValues(profile).length
+    ).length;
+  }
 
   if (q || analytics.recordWhenEmpty) {
     await logTenantEvent({
@@ -585,6 +803,9 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     q,
     roleAtCamp,
     industry,
+    city,
+    state,
+    stateCode,
     cityState,
     roleTitle,
     company,
@@ -597,6 +818,8 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     limit,
     offset,
     total,
+    excluded,
+    poolSize: poolForCounts.length,
     items
   };
   searchResponseCache.set(cacheKey, payload);
@@ -647,12 +870,94 @@ function planToSearchQuery(plan = {}, input = {}) {
     gradMax: plan.gradMax ?? "",
     camperMin: plan.camperMin ?? "",
     camperMax: plan.camperMax ?? "",
-    sort: String(input?.sort || "name"),
+    sort: String(input?.sort || "relevance"),
     limit: clampLimit(input?.limit, 24, 48),
     offset: clampOffset(input?.offset, 0),
     fetchLimit: 1000
   };
 }
+
+// Which values this camp's directory actually contains, with counts. Drives the
+// industry/role pickers and the college/company suggestions, so every option offered
+// can return at least one member.
+router.get("/facets", async (req, res) => {
+  const hiddenUserIds = await getHiddenUserIds(req.tenant, req.user.id, { user: req.user });
+  const hiddenUserIdSet = new Set(hiddenUserIds);
+  const cacheKey = [
+    "search-facets",
+    String(req.tenant?._id || ""),
+    String(req.user?.id || ""),
+    hiddenUserIds.join(",")
+  ].join(":");
+
+  const cached = searchFacetsResponseCache.get(cacheKey);
+  if (cached) {
+    res.set("Cache-Control", SEARCH_CACHE_CONTROL);
+    return res.json(cached);
+  }
+
+  const rows = (
+    await ProfileModel.search(req.tenant._id, "", {
+      limit: SEARCH_POOL_DEFAULT,
+      maxLimit: SEARCH_POOL_DEFAULT
+    })
+  ).filter((profile) => !hiddenUserIdSet.has(String(profile?.userId || "")));
+
+  const tally = (values) => {
+    const counts = new Map();
+    values.forEach((value) => {
+      const label = String(value || "").trim();
+      if (!label) return;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
+  };
+
+  const payload = {
+    total: rows.length,
+    industries: tally(rows.map((profile) => profile?.industry)),
+    campRoles: tally(rows.flatMap((profile) => resolveCampRoleValues(profile))),
+    colleges: tally(
+      rows.flatMap((profile) => (Array.isArray(profile?.colleges) ? profile.colleges : []))
+    ),
+    companies: tally(
+      rows.flatMap((profile) =>
+        [
+          ...(Array.isArray(profile?.currentJobs) ? profile.currentJobs : []),
+          ...(Array.isArray(profile?.pastJobs) ? profile.pastJobs : [])
+        ].flatMap((job) => jobFieldValues(job, "company"))
+      )
+    ),
+    states: tally(
+      rows
+        .map((profile) => splitStoredLocation(profile?.cityState).state)
+        .map((value) => resolveStateCode(value) || value)
+    ),
+    // How many members carry no value for each optional field. Filtering on one of
+    // these excludes them outright, and that used to be invisible.
+    missing: {
+      industry: rows.filter((profile) => !String(profile?.industry || "").trim()).length,
+      location: rows.filter((profile) => !String(profile?.cityState || "").trim()).length,
+      campRole: rows.filter((profile) => !resolveCampRoleValues(profile).length).length,
+      college: rows.filter(
+        (profile) => !(Array.isArray(profile?.colleges) && profile.colleges.length)
+      ).length,
+      gradYear: rows.filter((profile) => !extractYearNumbers(profile?.collegeYears || []).length).length,
+      camperYears: rows.filter(
+        (profile) => !normalizeYearStints(resolveCamperYearsSource(profile)).length
+      ).length,
+      currentJob: rows.filter(
+        (profile) => !(Array.isArray(profile?.currentJobs) && profile.currentJobs.length)
+      ).length
+    }
+  };
+
+  searchFacetsResponseCache.set(cacheKey, payload);
+  res.set("Cache-Control", SEARCH_CACHE_CONTROL);
+  return res.json(payload);
+});
 
 router.get("/ai/capabilities", async (req, res, next) => {
   try {
@@ -805,8 +1110,8 @@ router.get("/names", async (req, res) => {
     return res.json(cached);
   }
   const items = await ProfileModel.search(req.tenant._id, q, {
-    roleAtCamp: cedarRoleTerms.length === 1 ? cedarRoleTerms[0] : null,
-    industry: industryTerms.length === 1 ? industryTerms[0] : null,
+    roleAtCampTerms: cedarRoleTerms,
+    industryTerms,
     cityState: cityState || null,
     limit
   });
@@ -891,3 +1196,15 @@ router.get("/user/:id", async (req, res) => {
 });
 
 export default router;
+
+// Exported for unit tests; these are pure helpers with no request or database access.
+export const __testables = {
+  resolveStateCode,
+  splitStoredLocation,
+  matchesLocation,
+  parseSearchInput,
+  filterAndRankSearchItems,
+  compareProfiles,
+  buildRankedComparator,
+  buildMatchReasons
+};
