@@ -127,6 +127,7 @@ import {
 import { emitRealtime } from "../services/socketServer.js";
 import { buildTenantFeatureInventory } from "../services/tenantFeatureInventory.js";
 import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js";
+import { deleteClerkAccountForTenantUser } from "../services/clerkAccountDeletion.js";
 import { matchesMemberQuery } from "../utils/memberSearch.js";
 import {
   GROWTH_EMAIL_SEGMENTS,
@@ -1994,7 +1995,8 @@ async function deleteMemberFromTenant({
   tenantId,
   userId,
   profileId,
-  email = ""
+  email = "",
+  clerkUserId = ""
 }) {
   const summary = {
     profileDeleted: 0,
@@ -2020,12 +2022,20 @@ async function deleteMemberFromTenant({
     adminAuditLogsDeleted: 0,
     resumeParseResultsDeleted: 0,
     tenantMembershipDeleted: 0,
-    globalIdentityDeleted: 0
+    globalIdentityDeleted: 0,
+    clerkAccount: { status: "skipped", reason: "missing_clerk_user_id" }
   };
 
   const safeUserId = String(userId || "").trim();
   const safeProfileId = String(profileId || "").trim();
   const safeEmail = normalizeEmail(email);
+
+  // Remove the login first so a Clerk failure leaves the local account intact
+  // and the director can safely retry the deletion.
+  summary.clerkAccount = await deleteClerkAccountForTenantUser({
+    clerkUserId,
+    targetUserId: safeUserId
+  });
 
   // 1) Remove authored messages first.
   const authoredMessageCount = await MessageModel.count(tenantId, { senderId: safeUserId });
@@ -3830,7 +3840,8 @@ router.delete("/members/:profileId([a-fA-F0-9]{24})/hard-delete", async (req, re
       tenantId: req.tenant._id,
       userId,
       profileId: toObjectIdString(profile._id),
-      email: profile?.emails?.[0] || user?.email || ""
+      email: profile?.emails?.[0] || user?.email || "",
+      clerkUserId: user?.clerkUserId || ""
     });
     await writeAdminAudit(req, "admin_member_hard_deleted", {
       profileId: toObjectIdString(profile._id),
@@ -7812,7 +7823,8 @@ router.delete("/profiles/:profileId", async (req, res, next) => {
       tenantId: req.tenant._id,
       userId,
       profileId: toObjectIdString(profile._id),
-      email: profile?.emails?.[0] || user?.email || ""
+      email: profile?.emails?.[0] || user?.email || "",
+      clerkUserId: user?.clerkUserId || ""
     });
     await writeAdminAudit(req, "admin_member_hard_deleted", {
       profileId: toObjectIdString(profile._id),
