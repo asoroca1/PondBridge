@@ -19,6 +19,7 @@ import {
   getMutuallyBlockedUserIds,
   isSafetyModerator
 } from "../services/memberSafety.js";
+import { canAccessMemberProfile, isRemovedProfile } from "../services/memberVisibility.js";
 
 const router = Router({ mergeParams: true });
 const PROFILE_LIST_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
@@ -275,7 +276,9 @@ router.get("/", requireTenantModule("directory"), async (req, res) => {
   });
 
   const visibleItems = items.filter(
-    (profile) => !blockedUserIdSet.has(String(profile?.userId || ""))
+    (profile) =>
+      !isRemovedProfile(profile) &&
+      !blockedUserIdSet.has(String(profile?.userId || ""))
   );
   const payload = {
     total: visibleItems.length,
@@ -301,7 +304,11 @@ router.get("/:profileId", requireTenantModule("directory"), async (req, res) => 
   }
 
   const profile = await ProfileModel.findOne(req.tenant._id, { _id: profileId });
-  if (!profile) {
+  const profileUser = profile?.userId
+    ? await UserModel.findOne(req.tenant._id, { _id: profile.userId })
+    : null;
+
+  if (!canAccessMemberProfile({ profile, user: profileUser })) {
     return res.status(404).json({
       error: { code: "PROFILE_NOT_FOUND", message: "Profile not found" }
     });

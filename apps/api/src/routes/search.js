@@ -23,12 +23,12 @@ import {
   getMutuallyBlockedUserIds,
   isSafetyModerator
 } from "../services/memberSafety.js";
+import { canAccessMemberProfile, isRemovedProfile } from "../services/memberVisibility.js";
 
 const router = Router({ mergeParams: true });
 const SEARCH_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
 const searchResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 500 });
 const searchNamesResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 800 });
-const searchUserResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 1200 });
 
 const searchRateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -467,17 +467,6 @@ function buildSearchNamesCacheKey(req, { q, roleAtCamp, industry, cityState, lim
   ].join(":");
 }
 
-function buildSearchUserCacheKey(req, id = "", safetySignature = "") {
-  return [
-    "search-user",
-    String(req.tenant?._id || ""),
-    String(req.user?.id || ""),
-    [...(req.user?.roles || [])].sort().join(","),
-    safetySignature,
-    normalizeEntityId(id)
-  ].join(":");
-}
-
 function compareProfiles(left, right, sort = "name") {
   if (sort === "recent") {
     const leftTs = new Date(left?.createdAt || left?.updatedAt || 0).getTime();
@@ -822,7 +811,10 @@ router.get("/names", async (req, res) => {
     limit
   });
   const mapped = items
-    .filter((profile) => !blockedUserIdSet.has(String(profile?.userId || "")))
+    .filter((profile) =>
+      !isRemovedProfile(profile) &&
+      !blockedUserIdSet.has(String(profile?.userId || ""))
+    )
     .map((profile) => mapNameResult(profile));
   res.set("Cache-Control", SEARCH_CACHE_CONTROL);
 
@@ -841,17 +833,6 @@ router.get("/user/:id", async (req, res) => {
     return res.status(400).json({
       error: { code: "INVALID_ID", message: "Invalid id" }
     });
-  }
-
-  const blockedUserIds = await getMutuallyBlockedUserIds(req.tenant._id, req.user.id, {
-    user: req.user
-  });
-  const safetySignature = blockedUserIds.join(",");
-  const cacheKey = buildSearchUserCacheKey(req, id, safetySignature);
-  const cached = searchUserResponseCache.get(cacheKey);
-  if (cached) {
-    res.set("Cache-Control", SEARCH_CACHE_CONTROL);
-    return res.json(cached);
   }
 
   let profile = await ProfileModel.findOne(req.tenant._id, { _id: id });
@@ -873,17 +854,17 @@ router.get("/user/:id", async (req, res) => {
     user = await UserModel.findOne(req.tenant._id, { _id: profile.userId });
   }
 
-  if (
-    !isSafetyModerator(req.user) &&
-    profile?.userId &&
-    (await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId))
-  ) {
+  if (!canAccessMemberProfile({ profile, user })) {
     return res.status(404).json({
       error: { code: "NOT_FOUND", message: "Profile not found" }
     });
   }
 
-  if (!profile) {
+  if (
+    !isSafetyModerator(req.user) &&
+    profile?.userId &&
+    (await findMemberBlockBetween(req.tenant._id, req.user.id, profile.userId))
+  ) {
     return res.status(404).json({
       error: { code: "NOT_FOUND", message: "Profile not found" }
     });
@@ -904,18 +885,7 @@ router.get("/user/:id", async (req, res) => {
     }
   };
 
-  // Cache by requested id and by canonical profile/user ids to collapse repeated lookups.
-  searchUserResponseCache.set(cacheKey, payload);
-  const canonicalProfileId = normalizeEntityId(mapped?._id || mapped?.id);
-  if (canonicalProfileId && canonicalProfileId !== id) {
-    searchUserResponseCache.set(buildSearchUserCacheKey(req, canonicalProfileId, safetySignature), payload);
-  }
-  const canonicalUserId = normalizeEntityId(mapped?.userId || user?._id);
-  if (canonicalUserId && canonicalUserId !== id && canonicalUserId !== canonicalProfileId) {
-    searchUserResponseCache.set(buildSearchUserCacheKey(req, canonicalUserId, safetySignature), payload);
-  }
-
-  res.set("Cache-Control", SEARCH_CACHE_CONTROL);
+  res.set("Cache-Control", "private, no-store");
   return res.json(payload);
 });
 
