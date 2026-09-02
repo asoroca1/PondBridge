@@ -1,4 +1,6 @@
 import {
+  classifyClerkEmail,
+  enforceVerificationBrandIsolation,
   extractVerificationRouteHint,
   extractVerificationSignUpHint
 } from "../src/services/clerkWebhooks.js";
@@ -60,5 +62,39 @@ describe("Clerk verification email helpers", () => {
     expect(template.subject).toContain("123456");
     expect(template.text).toContain("PondBridge director account");
     expect(template.html).toContain("Director onboarding verification");
+  });
+
+  test("never uses an existing camp association to brand a new-account code", () => {
+    const cedar = { _id: "tenant_cedar", slug: "cedar", name: "Camp Cedar Alumni Network" };
+    const verificationKind = classifyClerkEmail(
+      { slug: "verification_code" },
+      { hasOtpCode: true }
+    );
+
+    expect(
+      enforceVerificationBrandIsolation(
+        { tenant: cedar, audience: "member", source: "email_association" },
+        verificationKind
+      )
+    ).toEqual({
+      tenant: null,
+      audience: "member",
+      source: "email_association_neutralized"
+    });
+  });
+
+  test("keeps authoritative signup intent while isolating director branding", () => {
+    const newCamp = { _id: "tenant_new", slug: "new-camp", name: "New Camp" };
+    const verificationKind = classifyClerkEmail(
+      { slug: "verification_code" },
+      { hasOtpCode: true }
+    );
+    const context = {
+      tenant: newCamp,
+      audience: "director",
+      source: "signup_intent"
+    };
+
+    expect(enforceVerificationBrandIsolation(context, verificationKind)).toBe(context);
   });
 });

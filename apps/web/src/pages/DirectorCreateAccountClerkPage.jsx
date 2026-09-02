@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { resolveNetworkDisplayName } from "../lib/campLabels.js";
 import { buildClerkSignupContext } from "../lib/clerkSignupContext.js";
+import { requestJson } from "../lib/http.js";
 
 function routeWithSlug(slug, path, useSlugPrefix = true) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -86,6 +87,25 @@ export default function DirectorCreateAccountClerkPage() {
     } finally {
       bootstrapInFlightRef.current = false;
     }
+  }
+
+  function handleDirectorSignUpSubmitCapture(event) {
+    if (!slug) return;
+    const form = event.target?.closest?.("form") || event.target;
+    const email = String(
+      form?.querySelector?.('input[name="emailAddress"]')?.value ||
+      form?.querySelector?.('input[type="email"]')?.value ||
+      ""
+    ).trim();
+    if (!email.includes("@")) return;
+
+    // The Clerk email.created webhook has no dependable tenant/audience field.
+    // Record this explicit director action before Clerk emits the code so the
+    // webhook never infers branding from an older camp membership.
+    requestJson(`/api/t/${slug}/auth/signup-intent`, {
+      method: "POST",
+      body: { email, audience: "director" }
+    }).catch(() => {});
   }
 
   if (bootstrapError && clerkLoadTimedOut) {
@@ -169,7 +189,8 @@ export default function DirectorCreateAccountClerkPage() {
           ) : null}
 
           {!showAccountSwitchPrompt && !(isLoaded && isSignedIn) ? (
-            <SignUp
+            <div onSubmitCapture={handleDirectorSignUpSubmitCapture}>
+              <SignUp
               path={signUpPath}
               routing="path"
               unsafeMetadata={signupContext}
@@ -302,7 +323,8 @@ export default function DirectorCreateAccountClerkPage() {
                 }
               }}
               unsafe_disableDevelopmentModeWarnings
-            />
+              />
+            </div>
           ) : null}
         </article>
       </div>

@@ -443,7 +443,11 @@ async function resolveVerificationContext(emailResource = {}) {
   if (intentHint?.tenantSlug) {
     const intentTenant = await resolveTenantFromHint(intentHint);
     if (intentTenant) {
-      return { tenant: intentTenant, audience: intentHint.audience === "director" ? "director" : "member" };
+      return {
+        tenant: intentTenant,
+        audience: intentHint.audience === "director" ? "director" : "member",
+        source: "signup_intent"
+      };
     }
     logLine("warn", "clerk.verification.intent_tenant_missing", { tenantSlug: intentHint.tenantSlug });
   }
@@ -462,13 +466,38 @@ async function resolveVerificationContext(emailResource = {}) {
 
   const primaryHint = signUpAttemptHint || routeHint || associationHint || {};
   const secondaryHint = signUpAttemptHint ? {} : routeHint ? associationHint || {} : {};
-  const tenant = await resolveTenantFromHint(primaryHint) || await resolveTenantFromHint(secondaryHint);
+  const primaryTenant = await resolveTenantFromHint(primaryHint);
+  const secondaryTenant = primaryTenant ? null : await resolveTenantFromHint(secondaryHint);
+  const tenant = primaryTenant || secondaryTenant;
   const audienceHint = signUpAttemptHint || primaryHint || secondaryHint || associationHint || {};
   const audience = safeString(audienceHint?.audience || "").toLowerCase() === "director"
     ? "director"
     : "member";
+  const source = signUpAttemptHint
+    ? "signup_attempt"
+    : routeHint && primaryTenant
+      ? "route"
+      : associationHint && tenant
+        ? "email_association"
+        : "none";
 
-  return { tenant, audience };
+  return { tenant, audience, source };
+}
+
+// An email address is a global identity, not tenant context. It can belong to
+// Cedar today and be used to create a completely different camp tomorrow.
+// Memberships, invites, and access requests are therefore useful fallbacks for
+// account notices, but they must never choose the brand for a new-account OTP.
+export function enforceVerificationBrandIsolation(context = {}, kind = "") {
+  if (kind !== CLERK_EMAIL_KIND.VERIFICATION_CODE || context?.source !== "email_association") {
+    return context;
+  }
+  return {
+    ...context,
+    tenant: null,
+    audience: "member",
+    source: "email_association_neutralized"
+  };
 }
 
 export async function processClerkWebhookRequest(req) {
@@ -514,7 +543,10 @@ export async function processClerkWebhookRequest(req) {
     });
   }
 
-  const context = await resolveVerificationContext(emailResource);
+  const context = enforceVerificationBrandIsolation(
+    await resolveVerificationContext(emailResource),
+    kind
+  );
   const signUpAttemptId = firstSignUpAttemptId(emailResource?.data || {});
   if (signUpAttemptId && context.audience !== "director" && !context.tenant) {
     throw createWebhookError(
