@@ -110,6 +110,7 @@ const EmailPreferencesPage = lazyPage(() => import("./pages/EmailPreferencesPage
 const SuperShellLayout = lazyPage(() => import("./pages/super/SuperShellLayout.jsx"));
 const SuperOperationsAgentPage = lazyPage(() => import("./pages/super/SuperOperationsAgentPage.jsx"));
 const SuperStatusPage = lazyPage(() => import("./pages/super/SuperStatusPage.jsx"));
+const SuperCampProfilePage = lazyPage(() => import("./pages/super/SuperCampProfilePage.jsx"));
 const SuperBillingFailedPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingFailedPage }))
 );
@@ -1082,6 +1083,7 @@ export default function App() {
                   <Route path="status" element={<SuperStatusPage />} />
                   <Route path="pulse" element={<Navigate to="/super/status" replace />} />
                   <Route path="tenants/create" element={<SuperTenantCreatePage />} />
+                  <Route path="tenants/:tenantId" element={<SuperCampProfilePage />} />
                   <Route path="tenants" element={<SuperTenantsPage />} />
 
                   <Route path="email/transactional" element={<SuperEmailTransactionalPage />} />

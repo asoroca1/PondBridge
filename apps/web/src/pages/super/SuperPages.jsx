@@ -551,7 +551,11 @@ export function SuperTenantsPage() {
             <tbody>
               {items.map((camp) => (
                 <tr key={camp._id}>
-                  <td>{camp.name}</td>
+                  <td>
+                    <Link className="super-camp-link" to={`/super/tenants/${camp._id}`}>
+                      {camp.name}
+                    </Link>
+                  </td>
                   <td>{camp.customDomain || `${camp.slug}.pondbridgealumni.com`}</td>
                   <td>{camp.slug}</td>
                   <td>
@@ -564,6 +568,9 @@ export function SuperTenantsPage() {
                     <details className="super-row-actions">
                       <summary aria-label={`Manage ${camp.name}`}>Manage</summary>
                       <div className="super-row-actions-menu">
+                        <Link className="pb-btn pb-btn-secondary pb-btn-md" to={`/super/tenants/${camp._id}`}>
+                          Open Profile
+                        </Link>
                         <Button variant="secondary" onClick={() => toggleTenant(camp)} disabled={!canMutate(role)}>
                           {camp.status === "active" ? "Disable Camp" : "Enable Camp"}
                         </Button>
@@ -688,6 +695,7 @@ export function SuperTenantCreatePage() {
       const planOption = billingPlanOptionByCode(selectedBillingPlan);
 
       setCreateResult({
+        tenantId: String(payload?.tenant?._id || payload?.tenant?.id || ""),
         campName: payload?.tenant?.name || form.name,
         slug: payload?.tenant?.slug || form.slug,
         billingPlan: selectedBillingPlan,
@@ -857,6 +865,13 @@ export function SuperTenantCreatePage() {
                 <code>{`/t/${createResult.slug}/director-claim`}</code> as fallback.
               </p>
             )}
+
+            {createResult.tenantId ? (
+              <p className="super-create-result-note">
+                This link is saved on the camp&apos;s profile, so you can always come back for it:{" "}
+                <Link to={`/super/tenants/${createResult.tenantId}`}>Open camp profile</Link>
+              </p>
+            ) : null}
 
             {createResult.provisioningReason ? (
               <p className="super-create-result-note">

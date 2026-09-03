@@ -33,4 +33,24 @@ describe("super console search role boundary", () => {
       href: "/super/tenants?search=pine"
     });
   });
+
+  // Support lands on the camp's own profile when the record carries an id; the
+  // filtered list stays the fallback for lookups that only selected a slug.
+  test("support search opens the camp profile when the record carries an id", () => {
+    expect(
+      buildSuperSearchTenantItem(
+        { _id: "tenant-42", name: "Camp Pine", slug: "pine", customDomain: "alumni.pine.org" },
+        "support_admin"
+      )
+    ).toMatchObject({ href: "/super/tenants/tenant-42" });
+  });
+
+  test("finance search still cannot reach a camp profile", () => {
+    expect(
+      buildSuperSearchTenantItem(
+        { _id: "tenant-42", name: "Camp Pine", slug: "pine" },
+        "finance_admin"
+      )
+    ).toMatchObject({ href: "/super/billing/tenants?search=pine" });
+  });
 });
