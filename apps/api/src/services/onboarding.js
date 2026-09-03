@@ -81,7 +81,7 @@ function normalizeEmailFooterPresetName(value = "") {
   return String(value || "").trim().slice(0, 72);
 }
 
-const EMAIL_AUDIENCE_RULE_MODES = new Set(["all", "role", "year", "segment", "custom"]);
+const EMAIL_AUDIENCE_RULE_MODES = new Set(["all", "role", "year", "industry", "segment", "custom"]);
 
 function normalizeStringList(value = [], { maxItems = 30, maxLength = 60 } = {}) {
   if (!Array.isArray(value)) return [];
@@ -104,6 +104,7 @@ function normalizeEmailAudienceRule(value = {}) {
     mode: EMAIL_AUDIENCE_RULE_MODES.has(mode) ? mode : "all",
     roles: normalizeStringList(source.roles, { maxItems: 30, maxLength: 60 }),
     years: normalizeStringList(source.years, { maxItems: 80, maxLength: 10 }),
+    industries: normalizeStringList(source.industries, { maxItems: 100, maxLength: 120 }),
     profileIds: normalizeStringList(source.profileIds, { maxItems: 2000, maxLength: 90 }),
     segment: String(source.segment || "").trim().toLowerCase().slice(0, 40)
   };

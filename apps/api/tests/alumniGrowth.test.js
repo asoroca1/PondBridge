@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildAlumniGrowthSnapshot,
   filterHeldAlumniRecipients,
+  filterProfilesByIndustry,
   buildPeopleDirectory,
   hasRequiredEmailTargetingSelection,
   PEOPLE_STAGES,
@@ -64,9 +65,23 @@ describe("alumni growth contact safety", () => {
   test("fails targeted email modes closed when their selection is missing", () => {
     expect(hasRequiredEmailTargetingSelection({ mode: "all" })).toBe(true);
     expect(hasRequiredEmailTargetingSelection({ mode: "role", roles: [] })).toBe(false);
+    expect(hasRequiredEmailTargetingSelection({ mode: "industry", industries: [] })).toBe(false);
+    expect(hasRequiredEmailTargetingSelection({ mode: "industry", industries: ["Education"] })).toBe(true);
     expect(hasRequiredEmailTargetingSelection({ mode: "custom", profileIds: [] })).toBe(false);
     expect(hasRequiredEmailTargetingSelection({ mode: "segment", segment: "unknown" })).toBe(false);
     expect(hasRequiredEmailTargetingSelection({ mode: "segment", segment: "inactive_30" })).toBe(true);
+  });
+
+  test("selects only members carrying the requested industry tag", () => {
+    const profiles = [
+      completeProfile({ _id: "education", industry: "Education" }),
+      completeProfile({ _id: "healthcare", industry: "Healthcare" }),
+      completeProfile({ _id: "blank", industry: "" })
+    ];
+
+    expect(filterProfilesByIndustry(profiles, ["education"]).map((profile) => profile._id))
+      .toEqual(["education"]);
+    expect(filterProfilesByIndustry(profiles, [])).toEqual([]);
   });
 
   test("accepts a composite audience only when one of its rules is usable", () => {

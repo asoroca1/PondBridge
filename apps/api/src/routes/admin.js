@@ -136,6 +136,7 @@ import {
   buildAlumniGrowthSnapshot,
   buildPeopleDirectory,
   filterHeldAlumniRecipients,
+  filterProfilesByIndustry,
   hasRequiredEmailTargetingSelection,
   isAlumniGrowthStorageUnavailable,
   isRemovedUser,
@@ -2431,8 +2432,8 @@ function asArray(value) {
 function normalizeTargeting(input = {}, { allowComposite = true } = {}) {
   const mode = String(input.mode || "all").trim().toLowerCase();
   const allowedModes = allowComposite
-    ? ["all", "role", "year", "custom", "segment", "composite"]
-    : ["all", "role", "year", "custom", "segment"];
+    ? ["all", "role", "year", "industry", "custom", "segment", "composite"]
+    : ["all", "role", "year", "industry", "custom", "segment"];
   const safeMode = allowedModes.includes(mode) ? mode : "all";
   const requestedSegment = String(input.segment || "").trim().toLowerCase();
   const groups = safeMode === "composite"
@@ -2445,6 +2446,11 @@ function normalizeTargeting(input = {}, { allowComposite = true } = {}) {
     mode: safeMode,
     roles: asArray(input.roles).map((item) => String(item || "").trim()).filter(Boolean),
     years: asArray(input.years).map((item) => String(item || "").trim()).filter(Boolean),
+    industries: [...new Set(
+      asArray(input.industries)
+        .map((item) => sanitizeText(String(item || "").trim()).slice(0, 120))
+        .filter(Boolean)
+    )].slice(0, 100),
     profileIds: parseIds(input.profileIds || []),
     segment: GROWTH_EMAIL_SEGMENTS.has(requestedSegment) ? requestedSegment : "",
     groups,
@@ -2551,6 +2557,10 @@ async function resolveProfilesForTargeting(tenantId, normalized) {
     profiles = profiles.filter((p) =>
       lowerRoles.includes((p.roleAtCamp || "").toLowerCase())
     );
+  }
+
+  if (normalized.mode === "industry" && normalized.industries.length > 0) {
+    profiles = filterProfilesByIndustry(profiles, normalized.industries);
   }
 
   return profiles;
@@ -4772,6 +4782,22 @@ router.get("/email/available-roles", async (req, res) => {
   return res.json({ roles });
 });
 
+router.get("/email/available-industries", async (req, res) => {
+  const profiles = await ProfileModel.find(req.tenant._id, { status: { $ne: "removed" } }, {
+    select: ["industry"]
+  });
+  const byKey = new Map();
+  for (const profile of profiles) {
+    const industry = sanitizeText(String(profile?.industry || "").trim()).slice(0, 120);
+    const key = industry.toLowerCase();
+    if (industry && !byKey.has(key)) byKey.set(key, industry);
+  }
+  const industries = [...byKey.values()].sort((left, right) =>
+    left.localeCompare(right, undefined, { sensitivity: "base" })
+  );
+  return res.json({ industries });
+});
+
 // Writes a partial patch onto both live content and the onboarding draft so a
 // tenant still in setup keeps the same values once it goes live.
 async function saveTenantContentFields(req, fields = {}) {
@@ -4790,8 +4816,10 @@ async function saveTenantContentFields(req, fields = {}) {
 
 // Saved groups only ever carry leaf rules; the composer unions them at send time.
 function toAudienceRule(value = {}) {
-  const { mode, roles, years, profileIds, segment } = normalizeTargeting(value, { allowComposite: false });
-  return { mode, roles, years, profileIds, segment };
+  const { mode, roles, years, industries, profileIds, segment } = normalizeTargeting(value, {
+    allowComposite: false
+  });
+  return { mode, roles, years, industries, profileIds, segment };
 }
 
 function serializeRecipientGroup(group = {}) {

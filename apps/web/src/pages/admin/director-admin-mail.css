@@ -302,7 +302,8 @@
 }
 
 .pb-mail-chip.is-segment,
-.pb-mail-chip.is-year {
+.pb-mail-chip.is-year,
+.pb-mail-chip.is-industry {
   background: var(--neutral-100);
   color: var(--brand-primary);
 }

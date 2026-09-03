@@ -112,10 +112,23 @@ export function filterHeldAlumniRecipients(recipients = [], contacts = []) {
   };
 }
 
+export function filterProfilesByIndustry(profiles = [], industries = []) {
+  const selected = new Set(
+    (Array.isArray(industries) ? industries : [])
+      .map((industry) => String(industry || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (!selected.size) return [];
+  return (Array.isArray(profiles) ? profiles : []).filter((profile) =>
+    selected.has(String(profile?.industry || "").trim().toLowerCase())
+  );
+}
+
 export function hasRequiredEmailTargetingSelection(targeting = {}) {
   const mode = String(targeting?.mode || "all").trim().toLowerCase();
   if (mode === "role") return Array.isArray(targeting.roles) && targeting.roles.length > 0;
   if (mode === "year") return Array.isArray(targeting.years) && targeting.years.length > 0;
+  if (mode === "industry") return Array.isArray(targeting.industries) && targeting.industries.length > 0;
   if (mode === "custom") return Array.isArray(targeting.profileIds) && targeting.profileIds.length > 0;
   if (mode === "segment") return GROWTH_EMAIL_SEGMENTS.has(String(targeting.segment || ""));
   // A composite audience is the union of its rules, so one usable rule is enough.
