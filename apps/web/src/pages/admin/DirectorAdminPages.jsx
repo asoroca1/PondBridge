@@ -45,7 +45,7 @@ import {
   optimizeImageFile,
   renderAppIconPng
 } from "../../lib/imageOptimization.js";
-import { APP_ICON_SIZES } from "../../lib/tenantBrandAssets.js";
+import { APP_ICON_SIZES, campNetworkTitle } from "../../lib/tenantBrandAssets.js";
 import "./director-admin-today.css";
 
 function getNiceTickStep(maxValue = 1, targetTickCount = 5) {
@@ -1904,7 +1904,7 @@ export function DirectorAdminSettingsNetworkPage() {
 
 export function DirectorAdminSettingsBrandingPage() {
   const { request, slug, token } = useAdminApi();
-  const { refreshTenant } = useTenant();
+  const { refreshTenant, tenant } = useTenant();
   const { payload, setPayload, loading, error, load } = useSettingsLoader();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
@@ -1912,17 +1912,24 @@ export function DirectorAdminSettingsBrandingPage() {
   const [uploadingField, setUploadingField] = useState("");
   const [section, setSection] = useState("logo");
   const [logoFileName, setLogoFileName] = useState("");
+  const [faviconFileName, setFaviconFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
   const [memberHeroFileName, setMemberHeroFileName] = useState("");
   const [pendingLogoFile, setPendingLogoFile] = useState(null);
+  const [pendingFaviconFile, setPendingFaviconFile] = useState(null);
   const [pendingHeroFile, setPendingHeroFile] = useState(null);
   const [pendingMemberHeroFile, setPendingMemberHeroFile] = useState(null);
   const [pendingLogoPreviewUrl, setPendingLogoPreviewUrl] = useState("");
+  const [pendingFaviconPreviewUrl, setPendingFaviconPreviewUrl] = useState("");
+  // The tab icon is judged at 16px against whatever the browser chrome is, so the
+  // preview has to be switchable rather than fixed to one background.
+  const [iconPreviewTheme, setIconPreviewTheme] = useState("light");
   const [pendingHeroPreviewUrl, setPendingHeroPreviewUrl] = useState("");
   const [pendingMemberHeroPreviewUrl, setPendingMemberHeroPreviewUrl] = useState("");
   const [form, setForm] = useState({
     brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
+    faviconUrl: "",
     heroImageUrl: "",
     heroImageUrlMember: "",
     heroImagePosition: "center center",
@@ -1938,9 +1945,11 @@ export function DirectorAdminSettingsBrandingPage() {
     // Do not clobber in-progress local media edits with background payload refresh.
     if (
       pendingLogoFile ||
+      pendingFaviconFile ||
       pendingHeroFile ||
       pendingMemberHeroFile ||
       String(form.logoUrl || "").startsWith("data:") ||
+      String(form.faviconUrl || "").startsWith("data:") ||
       String(form.heroImageUrl || "").startsWith("data:") ||
       String(form.heroImageUrlMember || "").startsWith("data:")
     ) {
@@ -1949,6 +1958,7 @@ export function DirectorAdminSettingsBrandingPage() {
     setForm({
       brandPrimary: normalizeBrandHex(payload.branding.brandPrimary, DEFAULT_BRAND_PRIMARY),
       logoUrl: payload.branding.logoUrl || "",
+      faviconUrl: payload.branding.faviconUrl || "",
       heroImageUrl: payload.branding.heroImageUrl || "",
       heroImageUrlMember: payload.branding.heroImageUrlMember || "",
       heroImagePosition: normalizeHeroImagePosition(payload.branding.heroImagePosition || "center center"),
@@ -1967,16 +1977,20 @@ export function DirectorAdminSettingsBrandingPage() {
       )
     });
     setPendingLogoFile(null);
+    setPendingFaviconFile(null);
     setPendingHeroFile(null);
     setPendingMemberHeroFile(null);
     setPendingLogoPreviewUrl("");
+    setPendingFaviconPreviewUrl("");
     setPendingHeroPreviewUrl("");
     setPendingMemberHeroPreviewUrl("");
   }, [
+    form.faviconUrl,
     form.heroImageUrl,
     form.heroImageUrlMember,
     form.logoUrl,
     payload?.branding,
+    pendingFaviconFile,
     pendingHeroFile,
     pendingMemberHeroFile,
     pendingLogoFile
@@ -2031,7 +2045,7 @@ export function DirectorAdminSettingsBrandingPage() {
    * at a logo that no longer exists — returning {} makes the edge fall back to the
    * logo that was just uploaded.
    */
-  async function uploadAppIcons(sourceFile) {
+  async function uploadAppIcons(sourceFile, { required = false } = {}) {
     try {
       const entries = await Promise.all(
         APP_ICON_SIZES.map(async (size) => [
@@ -2045,6 +2059,12 @@ export function DirectorAdminSettingsBrandingPage() {
       );
       return Object.fromEntries(entries);
     } catch {
+      // A dedicated tab icon upload has to report its own failure; when the icons are
+      // a by-product of a logo save, the edge falls back to the logo and the director
+      // should not be blocked on it.
+      if (required) {
+        throw new Error("That image could not be turned into a tab icon. Try a PNG or JPG.");
+      }
       return {};
     }
   }
@@ -2072,13 +2092,42 @@ export function DirectorAdminSettingsBrandingPage() {
       // Backward-compatible shared fields mirror the landing framing.
       payloadToSave.heroImagePosition = payloadToSave.heroImagePositionLanding;
       payloadToSave.heroImageSize = payloadToSave.heroImageSizeLanding;
+      // The tab icon is resolved before the logo, because whether the camp has one
+      // decides if the logo is allowed to regenerate the icon derivatives below.
+      // Carrying the saved derivatives forward keeps a branding save that never
+      // touched the icon (a new hero photo, say) from wiping them.
+      payloadToSave.iconUrls = payload?.branding?.iconUrls || {};
+      const faviconSource =
+        pendingFaviconFile ||
+        (String(payloadToSave.faviconUrl || "").startsWith("data:")
+          ? await fetch(payloadToSave.faviconUrl).then((response) => response.blob())
+          : null);
+      const clearedFavicon =
+        Boolean(String(payload?.branding?.faviconUrl || "").trim()) &&
+        !String(payloadToSave.faviconUrl || "").trim();
+
+      if (faviconSource) {
+        const iconUrls = await uploadAppIcons(faviconSource, { required: true });
+        payloadToSave.iconUrls = iconUrls;
+        payloadToSave.faviconUrl = iconUrls["512"] || iconUrls["192"] || "";
+      } else if (clearedFavicon) {
+        // Dropping the derivatives too sends the edge back to the logo rather than
+        // leaving it serving the icon the director just removed.
+        payloadToSave.faviconUrl = "";
+        payloadToSave.iconUrls = {};
+      }
+
+      // A camp that has chosen its own tab icon keeps it when they later swap their
+      // logo; only camps riding on the logo let a new logo regenerate the icons.
+      const keepsCustomIcon = Boolean(String(payloadToSave.faviconUrl || "").trim());
+
       if (pendingLogoFile) {
         payloadToSave.logoUrl = await uploadBrandingBlob({
           blob: pendingLogoFile,
           fileType: pendingLogoFile.type || "image/jpeg",
           scope: "branding-logo"
         });
-        payloadToSave.iconUrls = await uploadAppIcons(pendingLogoFile);
+        if (!keepsCustomIcon) payloadToSave.iconUrls = await uploadAppIcons(pendingLogoFile);
       } else if (String(payloadToSave.logoUrl || "").startsWith("data:")) {
         const blob = await fetch(payloadToSave.logoUrl).then((response) => response.blob());
         payloadToSave.logoUrl = await uploadBrandingBlob({
@@ -2086,7 +2135,7 @@ export function DirectorAdminSettingsBrandingPage() {
           fileType: blob.type || "image/jpeg",
           scope: "branding-logo"
         });
-        payloadToSave.iconUrls = await uploadAppIcons(blob);
+        if (!keepsCustomIcon) payloadToSave.iconUrls = await uploadAppIcons(blob);
       }
       if (pendingHeroFile) {
         payloadToSave.heroImageUrl = await uploadBrandingBlob({
@@ -2124,6 +2173,8 @@ export function DirectorAdminSettingsBrandingPage() {
         const nextBranding = {
           ...(previous.branding || {}),
           logoUrl: String(payloadToSave.logoUrl || ""),
+          faviconUrl: String(payloadToSave.faviconUrl || ""),
+          iconUrls: payloadToSave.iconUrls || {},
           heroImageUrl: String(payloadToSave.heroImageUrl || ""),
           heroImageUrlMember: String(payloadToSave.heroImageUrlMember || ""),
           heroImagePosition: String(payloadToSave.heroImagePosition || "center center"),
@@ -2140,9 +2191,11 @@ export function DirectorAdminSettingsBrandingPage() {
         };
       });
       setPendingLogoFile(null);
+      setPendingFaviconFile(null);
       setPendingHeroFile(null);
       setPendingMemberHeroFile(null);
       setPendingLogoPreviewUrl("");
+      setPendingFaviconPreviewUrl("");
       setPendingHeroPreviewUrl("");
       setPendingMemberHeroPreviewUrl("");
       try {
@@ -2165,12 +2218,15 @@ export function DirectorAdminSettingsBrandingPage() {
       setUploadError("Only image files are supported for branding uploads.");
       return;
     }
-    const maxBytes = field === "logoUrl" ? 12 * 1024 * 1024 : 15 * 1024 * 1024;
+    const maxBytes =
+      field === "faviconUrl" ? 5 * 1024 * 1024 : field === "logoUrl" ? 12 * 1024 * 1024 : 15 * 1024 * 1024;
     if (Number(file.size || 0) > maxBytes) {
       setUploadError(
-        field === "logoUrl"
-          ? "Logo file must be under 12MB."
-          : "Main photo file must be under 15MB."
+        field === "faviconUrl"
+          ? "Tab icon file must be under 5MB."
+          : field === "logoUrl"
+            ? "Logo file must be under 12MB."
+            : "Main photo file must be under 15MB."
       );
       return;
     }
@@ -2179,6 +2235,22 @@ export function DirectorAdminSettingsBrandingPage() {
     setUploadingField(field);
 
     try {
+      // The tab icon skips the shared optimizer: that produces a WebP, which iOS
+      // refuses as an apple-touch-icon. Square PNG straight away, and the preview is
+      // then exactly the file that gets served.
+      if (field === "faviconUrl") {
+        const squarePng = await renderAppIconPng(file, 512);
+        const previewDataUrl = await fileToDataUrl(squarePng);
+        // The original is kept for upload so every size is drawn from full resolution
+        // rather than resampled out of the 512 preview.
+        setPendingFaviconFile(file);
+        setPendingFaviconPreviewUrl(previewDataUrl);
+        setForm((prev) => ({ ...prev, faviconUrl: previewDataUrl }));
+        setFaviconFileName(String(file?.name || "").trim());
+        setStatus("Tab icon ready. Click Save Branding to publish this change.");
+        return;
+      }
+
       const preset =
         field === "logoUrl"
           ? IMAGE_OPTIMIZATION_PRESETS.logo
@@ -2220,6 +2292,15 @@ export function DirectorAdminSettingsBrandingPage() {
     }
   }
 
+  // Dropping the tab icon sends every icon surface back to the camp logo.
+  function clearFavicon() {
+    setPendingFaviconFile(null);
+    setPendingFaviconPreviewUrl("");
+    setFaviconFileName("");
+    setForm((prev) => ({ ...prev, faviconUrl: "" }));
+    setStatus("Tab icon cleared. Click Save Branding to go back to your logo.");
+  }
+
   // Dropping the member photo sends the logged-in home back to the main photo.
   function clearMemberHeroPhoto() {
     setPendingMemberHeroFile(null);
@@ -2238,9 +2319,13 @@ export function DirectorAdminSettingsBrandingPage() {
     { label: "Surface", color: deriveSecondaryHex(previewBrandPrimary, 0.9) }
   ];
   const currentLogoUrl = String(payload?.branding?.logoUrl || "").trim();
+  const currentFaviconUrl = String(payload?.branding?.faviconUrl || "").trim();
   const currentHeroUrl = String(payload?.branding?.heroImageUrl || "").trim();
   const currentMemberHeroUrl = String(payload?.branding?.heroImageUrlMember || "").trim();
   const draftLogoUrl = String(form.logoUrl || "").trim();
+  // Empty stays empty: a cleared icon has to preview as the logo fallback, not as the
+  // icon the director just removed.
+  const draftFaviconUrl = String(form.faviconUrl || "").trim();
   const draftHeroUrl = String(form.heroImageUrl || "").trim();
   const draftMemberHeroUrl = String(form.heroImageUrlMember || "").trim();
   const liveLogoPreviewUrl = pendingLogoPreviewUrl || draftLogoUrl || currentLogoUrl;
@@ -2249,6 +2334,13 @@ export function DirectorAdminSettingsBrandingPage() {
   // photo, not a stale member photo the director just cleared.
   const liveMemberHeroPreviewUrl = pendingMemberHeroPreviewUrl || draftMemberHeroUrl;
   const hasPendingLogoUpdate = Boolean(pendingLogoFile) || (Boolean(draftLogoUrl) && draftLogoUrl !== currentLogoUrl);
+  const liveFaviconPreviewUrl = pendingFaviconPreviewUrl || draftFaviconUrl;
+  const hasPendingFaviconUpdate = Boolean(pendingFaviconFile) || draftFaviconUrl !== currentFaviconUrl;
+  // What the tab actually shows: the camp's own icon when they have set one, their
+  // logo when they have not, and the platform mark when they have neither.
+  const effectiveIconUrl = liveFaviconPreviewUrl || liveLogoPreviewUrl;
+  const usingLogoAsIcon = !liveFaviconPreviewUrl && Boolean(liveLogoPreviewUrl);
+  const iconPreviewTabTitle = campNetworkTitle(tenant?.name || "");
   const hasPendingHeroUpdate = Boolean(pendingHeroFile) || (Boolean(draftHeroUrl) && draftHeroUrl !== currentHeroUrl);
   const hasPendingMemberHeroUpdate =
     Boolean(pendingMemberHeroFile) || draftMemberHeroUrl !== currentMemberHeroUrl;
@@ -2262,6 +2354,7 @@ export function DirectorAdminSettingsBrandingPage() {
       <SettingTabs
         tabs={[
           { key: "logo", label: "Logo" },
+          { key: "icon", label: "Tab icon" },
           { key: "photo", label: "Main photo" },
           { key: "color", label: "Color" },
           { key: "preview", label: "Preview" }
@@ -2303,6 +2396,122 @@ export function DirectorAdminSettingsBrandingPage() {
                 )}
                 {hasPendingLogoUpdate ? <p className="muted">Saving will replace the current logo.</p> : null}
               </div>
+        </div>
+      </Card>
+      ) : null}
+
+      {section === "icon" ? (
+      <Card>
+        <h2 className="pb-section-title">Your tab icon</h2>
+        <p className="muted">
+          The small square that shows in the browser tab, in bookmarks, and on a phone home
+          screen. Optional &mdash; leave it empty and your logo is used instead. A wide logo gets
+          squeezed into a 16-pixel square, so a simple square mark usually reads better.
+        </p>
+        <div className="pb-set-upload">
+          <h3 className="pb-set-subsection">Upload a tab icon</h3>
+          <label className="director-upload-control" htmlFor="director-admin-favicon-upload">
+            <span className="director-upload-button">Upload tab icon</span>
+            <span className="director-upload-name">
+              {faviconFileName || "Square PNG or JPG"}
+            </span>
+          </label>
+          <input
+            id="director-admin-favicon-upload"
+            type="file"
+            accept="image/*"
+            className="director-upload-input"
+            onClick={(event) => {
+              event.currentTarget.value = "";
+            }}
+            onChange={(event) => onFilePick("faviconUrl", event.target.files?.[0] || null)}
+          />
+
+          <h3 className="pb-set-subsection">
+            {hasPendingFaviconUpdate ? "Waiting to be saved" : "How it looks"}
+          </h3>
+
+          {effectiveIconUrl ? (
+            <>
+              <div
+                className="pb-icon-preview"
+                data-theme={iconPreviewTheme}
+              >
+                <div className="pb-icon-preview__chrome">
+                  <div className="pb-icon-preview__tab">
+                    <img src={effectiveIconUrl} alt="" className="pb-icon-preview__tab-icon" />
+                    <span className="pb-icon-preview__tab-title">{iconPreviewTabTitle}</span>
+                    <span className="pb-icon-preview__tab-close" aria-hidden="true">&times;</span>
+                  </div>
+                  <div className="pb-icon-preview__tab pb-icon-preview__tab--idle" aria-hidden="true">
+                    <span className="pb-icon-preview__tab-ghost" />
+                    <span className="pb-icon-preview__tab-title" />
+                  </div>
+                </div>
+                <div className="pb-icon-preview__bar" aria-hidden="true">
+                  <span className="pb-icon-preview__bar-dot" />
+                  <span className="pb-icon-preview__bar-url" />
+                </div>
+              </div>
+
+              <div className="pb-icon-preview__sizes">
+                <figure className="pb-icon-preview__size">
+                  <img src={effectiveIconUrl} alt="" width="16" height="16" />
+                  <figcaption>16px &middot; tab</figcaption>
+                </figure>
+                <figure className="pb-icon-preview__size">
+                  <img src={effectiveIconUrl} alt="" width="32" height="32" />
+                  <figcaption>32px &middot; bookmark</figcaption>
+                </figure>
+                <figure className="pb-icon-preview__size">
+                  <img
+                    src={effectiveIconUrl}
+                    alt=""
+                    width="60"
+                    height="60"
+                    className="pb-icon-preview__tile"
+                  />
+                  <figcaption>Home screen</figcaption>
+                </figure>
+              </div>
+
+              {/* A separate control from the page's section tabs on purpose: two
+                  identical tab bars on one screen read as one broken control. */}
+              <div className="pb-icon-preview__controls" role="group" aria-label="Preview background">
+                {[
+                  { key: "light", label: "Light tabs" },
+                  { key: "dark", label: "Dark tabs" }
+                ].map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={iconPreviewTheme === option.key ? "is-active" : ""}
+                    aria-pressed={iconPreviewTheme === option.key}
+                    onClick={() => setIconPreviewTheme(option.key)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <p className="muted">
+                {usingLogoAsIcon
+                  ? "This is your logo, squared off. Upload a tab icon above if it looks cramped."
+                  : "Your uploaded tab icon."}
+              </p>
+
+              {liveFaviconPreviewUrl ? (
+                <Button type="button" variant="secondary" onClick={clearFavicon}>
+                  Use my logo instead
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <p className="muted">
+              No logo or tab icon set yet, so tabs show the PondBridge mark. Upload either one to
+              change it.
+            </p>
+          )}
         </div>
       </Card>
       ) : null}

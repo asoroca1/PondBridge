@@ -4,6 +4,7 @@ import {
   buildTenantManifest,
   campNetworkTitle,
   resolveApiBaseUrl,
+  resolveTenantFaviconUrl,
   resolveTenantIconUrl,
   resolveTenantLogoUrl
 } from "./tenantBrandAssets.js";
@@ -110,5 +111,49 @@ describe("buildTenantManifest", () => {
     expect(manifest.name).toBe("PondBridge");
     expect(manifest.short_name).toBe("PondBridge");
     expect(manifest.theme_color).toBe("#404040");
+  });
+});
+
+describe("director-supplied tab icon", () => {
+  it("reads faviconUrl from the public config and from the raw theme", () => {
+    expect(
+      resolveTenantFaviconUrl({ config: { branding: { faviconUrl: "https://cdn.example.com/a.png" } } })
+    ).toBe("https://cdn.example.com/a.png");
+    expect(resolveTenantFaviconUrl({ theme: { faviconUrl: "https://cdn.example.com/b.png" } })).toBe(
+      "https://cdn.example.com/b.png"
+    );
+  });
+
+  it("ignores a faviconUrl that is not a usable absolute http(s) URL", () => {
+    expect(resolveTenantFaviconUrl({ theme: { faviconUrl: "/icons/local.png" } })).toBe("");
+    expect(resolveTenantFaviconUrl({ theme: { faviconUrl: "data:image/png;base64,AAAA" } })).toBe("");
+    expect(resolveTenantFaviconUrl({})).toBe("");
+  });
+
+  it("prefers the camp's own square icon over its logo when no derivatives exist", () => {
+    const withFavicon = tenant({
+      theme: {
+        logoUrl: "https://cdn.example.com/cedar/logo.webp",
+        faviconUrl: "https://cdn.example.com/cedar/icon.png"
+      }
+    });
+    expect(resolveTenantIconUrl(withFavicon, 32)).toBe("https://cdn.example.com/cedar/icon.png");
+    expect(resolveTenantIconUrl(withFavicon, 180)).toBe("https://cdn.example.com/cedar/icon.png");
+  });
+
+  it("still falls back to the logo for camps that never set an icon", () => {
+    expect(resolveTenantIconUrl(tenant(), 32)).toBe("https://cdn.example.com/cedar/logo.webp");
+  });
+
+  it("uses the generated derivatives ahead of both", () => {
+    const branded = tenant({
+      theme: {
+        logoUrl: "https://cdn.example.com/cedar/logo.webp",
+        faviconUrl: "https://cdn.example.com/cedar/icon.png",
+        iconUrls: ICONS
+      }
+    });
+    expect(resolveTenantIconUrl(branded, 32)).toBe(ICONS[32]);
+    expect(resolveTenantIconUrl(branded, 180)).toBe(ICONS[180]);
   });
 });

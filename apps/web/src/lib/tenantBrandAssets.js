@@ -68,9 +68,22 @@ export function resolveTenantLogoUrl(tenant) {
 }
 
 /**
+ * The square source a director uploaded specifically to be the tab icon. It is
+ * optional: a camp that never sets one keeps using its logo, which is why this is
+ * a separate field rather than an overwrite of logoUrl.
+ */
+export function resolveTenantFaviconUrl(tenant) {
+  return (
+    normalizeAssetUrl(tenant?.config?.branding?.faviconUrl) ||
+    normalizeAssetUrl(tenant?.theme?.faviconUrl)
+  );
+}
+
+/**
  * Picks the closest generated icon at or above the requested size so the browser
  * never scales a 32px source up into a home-screen tile. Camps branded before the
- * derivatives existed only have the raw logo, which still beats the platform "P".
+ * derivatives existed fall back to their own square icon, then their logo, both of
+ * which beat the platform "P".
  */
 export function resolveTenantIconUrl(tenant, size = 32) {
   const icons = readIconUrls(tenant);
@@ -79,7 +92,9 @@ export function resolveTenantIconUrl(tenant, size = 32) {
     const atLeast = available.find((candidate) => candidate >= size);
     return icons[atLeast ?? available[available.length - 1]];
   }
-  return resolveTenantLogoUrl(tenant);
+  // Derivatives are generated on upload, so only camps branded before they existed
+  // reach here. Their own square icon beats their logo, and the logo beats the "P".
+  return resolveTenantFaviconUrl(tenant) || resolveTenantLogoUrl(tenant);
 }
 
 export function campNetworkTitle(campName = "") {

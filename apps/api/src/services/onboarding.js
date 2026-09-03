@@ -395,6 +395,8 @@ export function resolveTheme(tenant) {
     textMuted: String(live.textMuted || ""),
     cardBorder: String(live.cardBorder || ""),
     logoUrl: String(live.logoUrl || ""),
+    // Optional. Empty means the tab icon is derived from the logo instead.
+    faviconUrl: String(live.faviconUrl || ""),
     iconUrls: normalizeIconUrls(live.iconUrls),
     heroImageUrl: String(live.heroImageUrl || ""),
     // Empty means the member home falls back to heroImageUrl.
@@ -570,6 +572,7 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
   return {
     branding: {
       logoUrl: theme.logoUrl,
+      faviconUrl: theme.faviconUrl,
       iconUrls: theme.iconUrls,
       brandPrimary: theme.brandPrimary,
       brandSecondary: theme.brandSecondary,
