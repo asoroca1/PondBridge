@@ -1481,7 +1481,7 @@ export function DirectorAdminFeaturesPage() {
 
 
 /**
- * A named list a director maintains — age groups, staff roles. These used to be
+ * A named list a director maintains — age groups, roles at camp. These used to be
  * collapsed accordions, which meant a validation error had to force one open to
  * be readable. They are short lists; showing them costs nothing.
  */
@@ -1856,8 +1856,8 @@ export function DirectorAdminSettingsNetworkPage() {
             onReorder={(from, to) => reorderLabel("ageGroups", from, to)}
           />
           <LabelListEditor
-            label="Staff roles"
-            hint="Used on profiles and in the People filters."
+            label="Roles at camp"
+            hint="Camper, counselor, and any staff roles. Used on profiles and in the People filters."
             placeholder="Waterfront Director"
             values={form.staffRoles}
             draft={staffRoleDraft}

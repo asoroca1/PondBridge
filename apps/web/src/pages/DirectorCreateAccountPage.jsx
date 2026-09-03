@@ -1946,7 +1946,7 @@ function DirectorCreateAccountWizardPage() {
       next.ageGroupsText = "Add at least one age group name.";
     }
     if (!staffRoles.length) {
-      next.staffRolesText = "Add at least one staff role name.";
+      next.staffRolesText = "Add at least one role at camp.";
     }
     if (!homepageQuote) {
       next.homepageQuote = "Add the quote shown on your pre-login homepage.";
@@ -3529,7 +3529,7 @@ function DirectorCreateAccountWizardPage() {
                   <h1>Camp specifics</h1>
                   <p className="product-claim-body director-create-subtitle">
                     Add your camp mailing address, then set the naming your camp uses for age groups and
-                    staff roles.
+                    roles at camp.
                   </p>
                 </div>
               </div>
@@ -3557,14 +3557,14 @@ function DirectorCreateAccountWizardPage() {
 
                   <div className="wizard1-field wizard1-span-6">
                     <label className="wizard1-label" htmlFor="director-staff-roles">
-                      Staff role names<span className="req" aria-hidden="true"> *</span>
+                      Role at camp names<span className="req" aria-hidden="true"> *</span>
                     </label>
                     <textarea
                       id="director-staff-roles"
                       className={`wizard1-input director-multiline ${specificsErrors.staffRolesText ? "has-error" : ""}`}
                       value={campSpecifics.staffRolesText}
                       onChange={(event) => updateCampSpecificsField("staffRolesText", event.target.value)}
-                      placeholder={"Counselor\nJC\nCIT\nAdmin"}
+                      placeholder={"Camper\nCounselor\nJC\nCIT\nAdmin"}
                     />
                     <p className="director-field-hint">One per line. Use names that match your camp structure.</p>
                     {specificsErrors.staffRolesText ? (
@@ -3876,7 +3876,7 @@ function DirectorCreateAccountWizardPage() {
                           <dd>{reviewAgeGroups.join(", ") || "Not set"}</dd>
                         </div>
                         <div>
-                          <dt>Staff roles</dt>
+                          <dt>Roles at camp</dt>
                           <dd>{reviewStaffRoles.join(", ") || "Not set"}</dd>
                         </div>
                         <div>
