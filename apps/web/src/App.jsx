@@ -111,6 +111,7 @@ const SuperShellLayout = lazyPage(() => import("./pages/super/SuperShellLayout.j
 const SuperOperationsAgentPage = lazyPage(() => import("./pages/super/SuperOperationsAgentPage.jsx"));
 const SuperStatusPage = lazyPage(() => import("./pages/super/SuperStatusPage.jsx"));
 const SuperCampProfilePage = lazyPage(() => import("./pages/super/SuperCampProfilePage.jsx"));
+const SuperOperatingCostsPage = lazyPage(() => import("./pages/super/SuperOperatingCostsPage.jsx"));
 const SuperBillingFailedPage = lazyPage(() =>
   import("./pages/super/SuperPages.jsx").then((module) => ({ default: module.SuperBillingFailedPage }))
 );
@@ -1028,6 +1029,7 @@ export default function App() {
                   <Route path="billing" element={<Navigate to="/super/billing/tenants" replace />} />
                   <Route path="billing/tenants" element={<SuperBillingTenantsPage />} />
                   <Route path="billing/failed" element={<SuperBillingFailedPage />} />
+                  <Route path="finance/costs" element={<SuperOperatingCostsPage />} />
 
                   <Route path="settings" element={<SuperSettingsPage />} />
                   <Route path="*" element={<Navigate to="/super/dashboard" replace />} />

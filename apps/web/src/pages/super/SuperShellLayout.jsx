@@ -25,7 +25,8 @@ const SUPER_NAV = [
     label: "Records",
     items: [
       { to: "/super/tenants", label: "Camps", icon: "camp" },
-      { to: "/super/billing/tenants", label: "Billing", icon: "billing" }
+      { to: "/super/billing/tenants", label: "Billing", icon: "billing" },
+      { to: "/super/finance/costs", label: "Operating costs", icon: "costs" }
     ]
   },
   {
@@ -48,7 +49,8 @@ const FINANCE_NAV = [
     label: "Billing",
     items: [
       { to: "/super/billing/tenants", label: "Billing status", icon: "billing" },
-      { to: "/super/billing/failed", label: "Failed payments", icon: "alert" }
+      { to: "/super/billing/failed", label: "Failed payments", icon: "alert" },
+      { to: "/super/finance/costs", label: "Operating costs", icon: "costs" }
     ]
   }
 ];
@@ -65,6 +67,9 @@ function NavIcon({ kind }) {
   }
   if (kind === "billing") {
     return <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2" /><path d="M2.5 8h15M6 12h3" /></svg>;
+  }
+  if (kind === "costs") {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" /><path d="M12.2 7.6a2.6 2.6 0 0 0-4.4 1.5c0 2.2 4.4 1 4.4 3.2a2.6 2.6 0 0 1-4.4 1.1M10 5.5v9" /></svg>;
   }
   if (kind === "add") {
     return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14" /></svg>;
@@ -95,7 +100,8 @@ export default function SuperShellLayout() {
   const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
   const allowed = role === "super_admin" || role === "support_admin" || role === "finance_admin";
   const financeRouteAllowed =
-    location.pathname === "/super/dashboard" || /^\/super\/billing(\/|$)/.test(location.pathname || "");
+    location.pathname === "/super/dashboard" ||
+    /^\/super\/(billing|finance)(\/|$)/.test(location.pathname || "");
 
   const navGroups = useMemo(() => {
     if (role === "finance_admin") return FINANCE_NAV;

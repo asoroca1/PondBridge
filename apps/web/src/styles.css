@@ -12932,6 +12932,162 @@ button.super-stat-card {
   margin-bottom: 0;
 }
 
+/* Operating costs (super admin > operational finances) */
+.super-cost-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.super-cost-head h2 {
+  margin: 0 0 4px;
+}
+
+.super-cost-head p {
+  margin: 0;
+  max-width: 62ch;
+}
+
+.super-cost-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 18px 0 6px;
+}
+
+.super-cost-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.super-cost-stat-label {
+  font-size: 0.86rem;
+  color: var(--neutral-600);
+}
+
+.super-cost-stat-value {
+  font-size: 1.32rem;
+  line-height: 1.2;
+  color: var(--neutral-900);
+}
+
+.super-cost-stat-sub {
+  font-size: 0.8rem;
+  color: var(--neutral-500);
+}
+
+.super-cost-stat.tone-positive .super-cost-stat-value {
+  color: var(--success-700, #15803d);
+}
+
+.super-cost-stat.tone-negative .super-cost-stat-value {
+  color: var(--danger-700, #b91c1c);
+}
+
+.super-cost-breakdown {
+  margin: 18px 0 22px;
+}
+
+.super-cost-breakdown h3 {
+  font-size: 0.95rem;
+  margin: 0 0 8px;
+  color: var(--neutral-700);
+}
+
+.super-cost-breakdown ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.super-cost-breakdown li {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 22px;
+  font-size: 0.92rem;
+  color: var(--neutral-700);
+}
+
+.super-cost-breakdown-bar {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--neutral-100);
+  overflow: hidden;
+}
+
+.super-cost-breakdown-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand-500, #2563eb);
+}
+
+.super-cost-breakdown-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--neutral-900);
+}
+
+.super-cost-vendor,
+.super-cost-note {
+  display: block;
+  color: var(--neutral-500);
+  font-size: 0.82rem;
+}
+
+.super-cost-note {
+  margin-top: 2px;
+  max-width: 42ch;
+}
+
+.super-cost-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.super-cost-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+  color: var(--neutral-700);
+}
+
+.super-cost-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.super-cost-modal {
+  max-width: 620px;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .super-cost-breakdown li {
+    grid-template-columns: 1fr auto;
+  }
+
+  .super-cost-breakdown-bar {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+}
+
 .super-table-wrap {
   margin-top: 10px;
   width: 100%;

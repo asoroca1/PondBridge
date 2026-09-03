@@ -33,6 +33,7 @@ module.exports = {
     "**/tests/mobileNotifications.test.js",
     "**/tests/multiCampIdentityMigration.test.js",
     "**/tests/newsletterEmailing.test.js",
+    "**/tests/operatingCosts.test.js",
     "**/tests/operationalTelemetry.test.js",
     "**/tests/outreach.test.js",
     "**/tests/profilePrivacy.test.js",

@@ -18,8 +18,18 @@ import {
   PlatformAdminAuditLogModel,
   ResendWebhookEventModel,
   EmailSuppressionModel,
-  StripeWebhookEventModel
+  StripeWebhookEventModel,
+  PlatformOperatingCostModel
 } from "../db/models/index.js";
+import {
+  COST_BILLING_CYCLES,
+  COST_CATEGORIES,
+  COST_STATUSES,
+  OperatingCostInputError,
+  normalizeOperatingCostInput,
+  serializeOperatingCost,
+  summarizeOperatingCosts
+} from "../services/operatingCosts.js";
 import { createTenantCheckoutSession, getBillingMode } from "../services/billing.js";
 import { normalizeBillingPlan, resolveTenantBilling } from "../services/billingState.js";
 import { createDefaultChecklist } from "../services/onboarding.js";
@@ -1846,6 +1856,143 @@ router.post("/billing/failed/:tenantId/grace", requireSuperMutation, async (req,
   await writeAudit(tenant._id, req.user.id, "super_billing_grace_extended", { days });
 
   return res.json({ ok: true, tenant: updatedTenant });
+});
+
+// --- Operational finances -------------------------------------------------
+// What PondBridge itself pays to run: Supabase, Resend, domains, and so on.
+// Hand-entered, because there is no single provider to sync from.
+
+async function loadOperatingCosts() {
+  const rows = await PlatformOperatingCostModel.find({}, { sort: { name: 1 } });
+  return rows.map(serializeOperatingCost);
+}
+
+async function platformMrrCents() {
+  const tenants = await TenantModel.find({});
+  return Math.round(tenants.reduce((sum, tenant) => sum + tenantMrr(tenant), 0) * 100);
+}
+
+function operatingCostErrorResponse(res, error) {
+  if (error instanceof OperatingCostInputError) {
+    return res.status(400).json({
+      error: {
+        code: "OPERATING_COST_INVALID",
+        message: error.message,
+        details: { field: error.field }
+      }
+    });
+  }
+  return null;
+}
+
+router.get("/finance/costs", requireRole("support_admin", "finance_admin"), async (_req, res) => {
+  const items = await loadOperatingCosts();
+  const summary = summarizeOperatingCosts(items);
+  const mrrCents = await platformMrrCents();
+
+  res.json({
+    asOf: nowIso(),
+    items,
+    summary,
+    options: {
+      categories: COST_CATEGORIES,
+      billingCycles: COST_BILLING_CYCLES,
+      statuses: COST_STATUSES
+    },
+    revenue: {
+      mrrCents,
+      // Only meaningful when costs and revenue are both in USD, which is what
+      // Stripe bills in; a non-USD primary means the comparison is skipped.
+      comparable: summary.primaryCurrency === "USD",
+      netMonthlyCents: mrrCents - summary.monthlyCents
+    }
+  });
+});
+
+router.post("/finance/costs", requireSuperMutation, async (req, res, next) => {
+  try {
+    const normalized = normalizeOperatingCostInput(req.body || {});
+    const created = await PlatformOperatingCostModel.create({
+      ...normalized,
+      createdByUserId: String(req.user?.id || "") || null,
+      updatedByUserId: String(req.user?.id || "") || null
+    });
+
+    await PlatformAdminAuditLogModel.create({
+      actorUserId: String(req.user?.id || "") || null,
+      event: "operating_cost_created",
+      metadata: {
+        requestId: String(req.requestId || ""),
+        costId: String(created?._id || ""),
+        name: normalized.name,
+        amountCents: normalized.amountCents,
+        billingCycle: normalized.billingCycle
+      }
+    });
+
+    return res.status(201).json({ ok: true, cost: serializeOperatingCost(created) });
+  } catch (error) {
+    return operatingCostErrorResponse(res, error) || next(error);
+  }
+});
+
+router.patch("/finance/costs/:costId", requireSuperMutation, async (req, res, next) => {
+  try {
+    const existing = await PlatformOperatingCostModel.findById(req.params.costId);
+    if (!existing) {
+      return res.status(404).json({
+        error: { code: "OPERATING_COST_NOT_FOUND", message: "That cost no longer exists." }
+      });
+    }
+
+    const patch = normalizeOperatingCostInput(req.body || {}, { partial: true });
+    const updated = await PlatformOperatingCostModel.update(existing._id, {
+      ...patch,
+      // `update` does not stamp updatedAt on its own.
+      updatedAt: nowIso(),
+      updatedByUserId: String(req.user?.id || "") || null
+    });
+
+    await PlatformAdminAuditLogModel.create({
+      actorUserId: String(req.user?.id || "") || null,
+      event: "operating_cost_updated",
+      metadata: {
+        requestId: String(req.requestId || ""),
+        costId: String(existing._id || ""),
+        changed: Object.keys(patch)
+      }
+    });
+
+    return res.json({ ok: true, cost: serializeOperatingCost(updated) });
+  } catch (error) {
+    return operatingCostErrorResponse(res, error) || next(error);
+  }
+});
+
+router.delete("/finance/costs/:costId", requireSuperMutation, async (req, res, next) => {
+  try {
+    const existing = await PlatformOperatingCostModel.findById(req.params.costId);
+    if (!existing) {
+      return res.status(404).json({
+        error: { code: "OPERATING_COST_NOT_FOUND", message: "That cost no longer exists." }
+      });
+    }
+
+    await PlatformOperatingCostModel.delete(existing._id);
+    await PlatformAdminAuditLogModel.create({
+      actorUserId: String(req.user?.id || "") || null,
+      event: "operating_cost_deleted",
+      metadata: {
+        requestId: String(req.requestId || ""),
+        costId: String(existing._id || ""),
+        name: existing.name || ""
+      }
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.get("/analytics/engagement", requireRole("support_admin"), async (_req, res) => {

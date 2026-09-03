@@ -44,3 +44,4 @@ export { MobileNotificationScheduleModel } from "./MobileNotificationScheduleMod
 export { ResendWebhookEventModel } from "./ResendWebhookEventModel.js";
 export { StripeWebhookEventModel } from "./StripeWebhookEventModel.js";
 export { EmailSuppressionModel } from "./EmailSuppressionModel.js";
+export { PlatformOperatingCostModel } from "./PlatformOperatingCostModel.js";
