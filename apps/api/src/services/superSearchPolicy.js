@@ -17,11 +17,16 @@ export function buildSuperSearchTenantItem(
       href: `/super/billing/tenants?search=${encodeURIComponent(slug)}`
     };
   }
+  // Land straight on the camp's profile when the record carries an id; the
+  // filtered list stays the fallback for callers that only selected a slug.
+  const tenantId = String(tenant?._id || tenant?.id || "").trim();
   return {
     id: `tenant_${slug}`,
     type: "tenant",
     label: tenant.name,
     meta: tenant.customDomain || `${slug}.${appBaseDomain}`,
-    href: `/super/tenants?search=${encodeURIComponent(slug)}`
+    href: tenantId
+      ? `/super/tenants/${encodeURIComponent(tenantId)}`
+      : `/super/tenants?search=${encodeURIComponent(slug)}`
   };
 }

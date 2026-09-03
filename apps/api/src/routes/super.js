@@ -51,6 +51,13 @@ import {
   saveFeatureRollout
 } from "../services/featureRollouts.js";
 import { purgeTenantRows } from "../services/tenantPurge.js";
+import {
+  buildSettingsWithCampProfile,
+  hasCampProfilePatch,
+  normalizeCampProfilePatch,
+  readCampProfile,
+  resolveDirectorClaimLinks
+} from "../services/superCampProfile.js";
 
 const router = Router();
 const superSearchLimiter = rateLimit({
@@ -656,12 +663,15 @@ router.get("/search", superSearchLimiter, async (req, res) => {
     ...directors.map((director) => {
       const tenant = tenantMap.get(toObjectIdString(director.tenantId));
       if (!tenant || (!includeHidden && isTestOrSandboxTenant(tenant))) return null;
+      const tenantId = toObjectIdString(tenant._id);
       return {
         id: `director_${director._id}`,
         type: "director",
         label: director.email,
         meta: tenant ? `${tenant.name}` : "Director",
-        href: `/super/tenants?search=${encodeURIComponent(director.email)}`
+        href: tenantId
+          ? `/super/tenants/${encodeURIComponent(tenantId)}`
+          : `/super/tenants?search=${encodeURIComponent(director.email)}`
       };
     }).filter(Boolean)
   ];
@@ -802,6 +812,81 @@ router.get("/tenants", requireRole("support_admin"), async (req, res) => {
   }
 
   res.json({ items });
+});
+
+// One camp's full client record. The tenants table answers "which camps exist";
+// this answers "everything I need to look after this one client".
+router.get("/tenants/:tenantId", requireRole("support_admin"), async (req, res) => {
+  const tenant = await TenantModel.findById(req.params.tenantId);
+  if (!tenant) {
+    return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
+  }
+
+  const [userCount, profileCount, directors, activity] = await Promise.all([
+    UserModel.count({ tenantId: tenant._id }),
+    ProfileModel.count({ tenantId: tenant._id }),
+    UserModel.find(
+      { tenantId: tenant._id, roles: { $contains: ["tenant_admin"] } },
+      { select: ["id", "email", "roles", "status", "lastLoginAt", "createdAt"], sort: { createdAt: 1 }, limit: 25 }
+    ),
+    TenantAdminAuditLogModel.find(
+      { tenantId: tenant._id },
+      { select: ["id", "event", "actorUserId", "metadata", "createdAt"], sort: { createdAt: -1 }, limit: 15 }
+    )
+  ]);
+
+  const billing = resolveTenantBilling(tenant);
+  const payment = paymentMethodSummary(tenant);
+  const network = buildTenantUrls(tenant);
+  const campProfile = readCampProfile(tenant);
+
+  res.json({
+    tenant: {
+      ...tenant,
+      ...tenantBillingPlanSummary(tenant),
+      counts: { users: userCount, profiles: profileCount, directors: directors.length }
+    },
+    campProfile,
+    directorClaim: resolveDirectorClaimLinks(tenant),
+    network,
+    domain: {
+      host: network.domain,
+      isDefault: network.domain === defaultTenantDomain(tenant.slug)
+    },
+    billing: {
+      ...tenantBillingPlanSummary(tenant),
+      status: billingStatusLabel(tenant),
+      lifecycleStatus: billing.lifecycleStatus || "",
+      currentPeriodEnd: billing.currentPeriodEnd || null,
+      mrr: tenantMrr(tenant),
+      paymentMethodStatus: payment.status,
+      paymentMethodLabel: payment.label,
+      stripeCustomerId: tenant.stripeCustomerId || "",
+      onboardingFeeAmount: Number(tenant.onboardingFeeAmount || 0),
+      onboardingFeePaid: Boolean(tenant.onboardingFeePaid)
+    },
+    onboarding: {
+      status: tenant.onboardingStatus || "not_started",
+      stage: inferOnboardingStage(tenant),
+      step: tenant.onboardingStep || "",
+      stepLabel: mapOnboardingStepLabel(tenant.onboardingStep),
+      checklist: tenant.onboardingChecklist || null
+    },
+    directors: directors.map((director) => ({
+      id: toObjectIdString(director._id),
+      email: director.email,
+      roles: director.roles || [],
+      status: director.status || "",
+      lastLoginAt: director.lastLoginAt || null,
+      createdAt: director.createdAt || null
+    })),
+    activity: activity.map((entry) => ({
+      id: toObjectIdString(entry._id),
+      event: entry.event,
+      actorUserId: entry.actorUserId ? toObjectIdString(entry.actorUserId) : "",
+      createdAt: entry.createdAt || null
+    }))
+  });
 });
 
 router.post("/tenants", requireSuperMutation, async (req, res) => {
@@ -967,6 +1052,26 @@ router.post("/tenants", requireSuperMutation, async (req, res) => {
       }
     : null;
 
+  // Store the claim link and director contact on the camp record itself, so the
+  // camp profile can hand them back later without the operator keeping a copy.
+  try {
+    const settingsWithProfile = buildSettingsWithCampProfile(
+      tenant,
+      {
+        directorEmail: directorEmail || "",
+        directorClaimUrl: networkDirectorClaimLink,
+        directorClaimPath: inviteLink
+      },
+      { createdByUserId: req.user.id, updatedByUserId: req.user.id }
+    );
+    const tenantWithProfile = await TenantModel.update(tenant._id, { settings: settingsWithProfile });
+    if (tenantWithProfile) tenant = tenantWithProfile;
+  } catch {
+    // The claim link is derived from the camp domain, so the camp profile can
+    // always recompute it. Never fail the create over this write — the operator
+    // would retry and only collide on the now-taken slug.
+  }
+
   await writeAudit(tenant._id, req.user.id, "super_tenant_created", {
     slug: tenant.slug,
     planTier: tenant.planTier,
@@ -1071,6 +1176,15 @@ router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
     }
   }
 
+  // The camp's client record (director contact, notes, captured claim link)
+  // lives inside the settings JSON, so it is written as a whole merged object.
+  const campProfilePatch = hasCampProfilePatch(req.body) ? normalizeCampProfilePatch(req.body) : null;
+  if (campProfilePatch) {
+    update.settings = buildSettingsWithCampProfile(existingTenant, campProfilePatch, {
+      updatedByUserId: req.user.id
+    });
+  }
+
   let tenant = null;
   try {
     tenant = await TenantModel.update(req.params.tenantId, update);
@@ -1101,9 +1215,15 @@ router.patch("/tenants/:tenantId", requireSuperMutation, async (req, res) => {
     }
   }
 
-  await writeAudit(tenant._id, req.user.id, "super_tenant_updated", { update });
+  // Notes can run to thousands of characters; the audit records which profile
+  // fields moved, not a copy of the whole settings blob on every edit.
+  const { settings: _settings, ...auditableUpdate } = update;
+  await writeAudit(tenant._id, req.user.id, "super_tenant_updated", {
+    update: auditableUpdate,
+    ...(campProfilePatch ? { campProfileFields: Object.keys(campProfilePatch) } : {})
+  });
 
-  res.json({ tenant, domainProvisioning });
+  res.json({ tenant, domainProvisioning, campProfile: readCampProfile(tenant) });
 });
 
 router.delete("/tenants/:tenantId/hard-delete", requireSuperMutation, async (req, res) => {
