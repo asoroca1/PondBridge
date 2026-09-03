@@ -53,6 +53,7 @@ describe("admin tier route registration", () => {
     expect(literals.map((route) => route.path).sort()).toEqual([
       "/assign",
       "/assign-by-role",
+      "/preview",
       "/roster",
       "/settings"
     ]);

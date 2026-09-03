@@ -3,11 +3,16 @@ import {
   TENANT_MODULE_CATALOG,
   describeTierFloor,
   normalizeTierModuleFloors,
+  resolveModulesForTier,
   resolveTenantModules
 } from "@pondbridge/shared";
 import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
 import {
+  ActivityItemModel,
+  FamilyTreeModel,
+  ForumModel,
   MemberAccessTierModel,
+  PhotoModel,
   ProfileModel,
   TenantAdminAuditLogModel,
   TenantModel
@@ -18,6 +23,7 @@ import {
   clearTierCaches,
   isTieredAccessModuleEnabled,
   listTenantTiers,
+  previewHiddenIdentifiers,
   resolveTenantTierPolicy,
   tierError
 } from "../services/memberTiers.js";
@@ -214,6 +220,91 @@ router.get("/", async (req, res, next) => {
   try {
     return res.json(await buildOverview(req));
   } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * A dry run of a tier. Turning tiering on to find out whether Tier 3 sees the
+ * right slice of the network means experimenting on real members, so this
+ * answers the same question with nothing switched on.
+ */
+router.get("/preview", async (req, res, next) => {
+  try {
+    const rank = Number(req.query.rank);
+    const preview = await previewHiddenIdentifiers(req.tenant, rank);
+    const tier = preview.tiers.find((entry) => entry.rank === rank);
+    if (!tier) throw tierError("That tier does not exist.", "TIER_NOT_FOUND", 404);
+
+    const hiddenUserIds = new Set(preview.userIds);
+    const hiddenProfileIds = new Set(preview.profileIds);
+    const tenantId = req.tenant._id;
+
+    const [profiles, photos, forums, activity, trees] = await Promise.all([
+      ProfileModel.find(tenantId, { status: { $ne: "removed" } }, {
+        select: ["id", "userId", "firstName", "lastName", "accessTierRank"],
+        limit: 20_000
+      }),
+      PhotoModel.find(tenantId, {}, { select: ["id", "ownerId"], limit: 20_000 }).catch(() => []),
+      ForumModel.find(tenantId, {}, { select: ["id", "creatorId", "createdBy"], limit: 5_000 }).catch(() => []),
+      ActivityItemModel.find(tenantId, {}, { select: ["id", "actorUserId"], limit: 5_000 }).catch(() => []),
+      FamilyTreeModel.find(tenantId, {}, { select: ["id", "createdByUserId"], limit: 5_000 }).catch(() => [])
+    ]);
+
+    const countVisible = (rows, pick) =>
+      rows.filter((row) => !hiddenUserIds.has(String(pick(row) || ""))).length;
+
+    const visiblePeople = profiles.filter(
+      (row) => !hiddenProfileIds.has(String(row?._id || row?.id || ""))
+    );
+
+    // Naming a few of the people who would disappear turns an abstract count
+    // into something a director can actually check against what they intended.
+    const hiddenSample = profiles
+      .filter((row) => hiddenProfileIds.has(String(row?._id || row?.id || "")))
+      .slice(0, 6)
+      .map((row) =>
+        [row.firstName, row.lastName].filter(Boolean).join(" ").trim() || "Unnamed member"
+      );
+
+    const campModules = resolveTenantModules(req.tenant?.modules || {});
+    const tierModules = resolveTenantTierPolicy(req.tenant).tierModules;
+    const viewerModules = resolveModulesForTier(campModules, tierModules, rank);
+    const features = TIERABLE_MODULES.filter((module) => campModules[module.key] !== false).map(
+      (module) => ({
+        key: module.key,
+        label: module.label,
+        available: viewerModules[module.key] !== false
+      })
+    );
+
+    return res.json({
+      rank,
+      label: tier.label,
+      isTop: rank <= 1,
+      untaggedRank: preview.untaggedRank,
+      people: { visible: visiblePeople.length, total: profiles.length },
+      photos: { visible: countVisible(photos, (row) => row.ownerId), total: photos.length },
+      forums: {
+        visible: countVisible(forums, (row) => row.creatorId || row.createdBy),
+        total: forums.length
+      },
+      activity: {
+        visible: countVisible(activity, (row) => row.actorUserId),
+        total: activity.length
+      },
+      familyTrees: {
+        visible: countVisible(trees, (row) => row.createdByUserId),
+        total: trees.length
+      },
+      hiddenSample,
+      hiddenTotal: preview.profileIds.length,
+      features
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: { code: error.code, message: error.message } });
+    }
     return next(error);
   }
 });

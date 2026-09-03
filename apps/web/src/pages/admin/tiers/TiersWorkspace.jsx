@@ -5,6 +5,7 @@ import useAdminApi from "../useAdminApi.js";
 import useTierAdmin from "./useTierAdmin.js";
 import TierRosterView from "./TierRosterView.jsx";
 import TierFeatureGrid from "./TierFeatureGrid.jsx";
+import TierPreview from "./TierPreview.jsx";
 import { tierDisplayName, tierOptionLabel } from "./tierNames.js";
 import "../director-admin-tiers.css";
 
@@ -236,6 +237,14 @@ export default function TiersWorkspace() {
         >
           Feature access
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "preview"}
+          onClick={() => setView("preview")}
+        >
+          Preview
+        </button>
       </div>
 
       {tiers.error ? <p className="error-text" role="alert">{tiers.error}</p> : null}
@@ -247,8 +256,10 @@ export default function TiersWorkspace() {
           actions={tiers.actions}
           busy={tiers.busy}
         />
-      ) : (
+      ) : view === "features" ? (
         <TierFeatureGrid overview={overview} actions={tiers.actions} busy={tiers.busy} />
+      ) : (
+        <TierPreview overview={overview} request={request} />
       )}
     </Card>
   );
