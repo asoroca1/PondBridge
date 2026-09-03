@@ -6149,6 +6149,10 @@ router.patch("/settings/branding", async (req, res) => {
     }
   });
 
+  // The public site reads its logo and hero imagery from tenant-config. Drop
+  // the pre-save response so the refresh triggered by the dashboard sees the
+  // new branding immediately.
+  invalidatePublicTenantCache(tenant || req.tenant);
   return res.json({ ok: true, branding: resolveDraft(tenant).theme });
 });
 

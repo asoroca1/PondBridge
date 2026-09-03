@@ -2118,7 +2118,7 @@ export function DirectorAdminSettingsBrandingPage() {
       setPendingHeroPreviewUrl("");
       setPendingMemberHeroPreviewUrl("");
       try {
-        await refreshTenant(slug);
+        await refreshTenant(slug, { bypassCache: true });
       } catch {
         // Branding save already succeeded; skip blocking UI on tenant-config refresh.
       }

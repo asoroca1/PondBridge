@@ -45,10 +45,12 @@ function tenantAllowsSharedCaching(tenant = null) {
   return String(tenant?.onboardingStatus || "").trim().toLowerCase() === "live";
 }
 
-function applyPublicTenantCacheHeaders(res, tenant = null) {
+function applyPublicTenantCacheHeaders(res, tenant = null, { allowSharedCache = true } = {}) {
   res.set(
     "Cache-Control",
-    tenantAllowsSharedCaching(tenant) ? PUBLIC_TENANT_CACHE_CONTROL : PRIVATE_TENANT_CACHE_CONTROL
+    allowSharedCache && tenantAllowsSharedCaching(tenant)
+      ? PUBLIC_TENANT_CACHE_CONTROL
+      : PRIVATE_TENANT_CACHE_CONTROL
   );
 }
 
@@ -303,7 +305,11 @@ router.get("/address-suggest", publicAddressLimiter, async (req, res, next) => {
 
 router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
   try {
-    applyPublicTenantCacheHeaders(res);
+    // Branding and other director-managed presentation settings must be visible
+    // on the next site load. Keep the small in-process cache (write endpoints
+    // explicitly invalidate it), but do not let browsers or the CDN retain a
+    // tenant config after it has changed.
+    applyPublicTenantCacheHeaders(res, null, { allowSharedCache: false });
     const requestedSlug = String(req.query.slug || "").trim().toLowerCase();
     const requestedHost = String(req.query.host || "").trim().toLowerCase();
     const cacheLookup = requestedSlug ? "slug" : requestedHost ? "host" : "";
@@ -311,7 +317,7 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
     const cacheKey = publicResponseCacheKey("tenant-config", cacheLookup, cacheLookupValue);
     const cached = readPublicResponseCache(cacheKey);
     if (cached) {
-      applyPublicTenantCacheHeaders(res, cached);
+      applyPublicTenantCacheHeaders(res, cached, { allowSharedCache: false });
       return res.json(cached);
     }
 
@@ -380,7 +386,7 @@ router.get("/tenant-config", publicLookupLimiter, async (req, res, next) => {
       features: listFeaturesForPlan(planTier, tenant.addOns || [])
     };
 
-    applyPublicTenantCacheHeaders(res, tenant);
+    applyPublicTenantCacheHeaders(res, tenant, { allowSharedCache: false });
     if (cacheKey && tenantAllowsSharedCaching(tenant)) {
       writePublicResponseCache(cacheKey, payload);
     }

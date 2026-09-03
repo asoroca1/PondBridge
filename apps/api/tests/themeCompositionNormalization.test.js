@@ -147,6 +147,32 @@ describe("Hero image normalization through API routes", () => {
     expect(updatedTenant.theme.heroImageSize).toBe("132%");
   });
 
+  test("branding changes invalidate the public tenant config immediately", async () => {
+    const tenant = await createTenantRecord({
+      slug: "branding-cache-camp",
+      onboardingStatus: "live"
+    });
+    await createTenantAdmin(tenant._id);
+    const token = await loginTenant("branding-cache-camp");
+
+    const before = await request(app).get("/api/public/tenant-config?slug=branding-cache-camp");
+    expect(before.status).toBe(200);
+    expect(before.headers["cache-control"]).toBe("no-store");
+    expect(before.body.theme.logoUrl).toBe("");
+
+    const update = await request(app)
+      .patch("/api/t/branding-cache-camp/admin/settings/branding")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ logoUrl: "https://example.com/new-logo.png" });
+
+    expect(update.status).toBe(200);
+
+    const after = await request(app).get("/api/public/tenant-config?slug=branding-cache-camp");
+    expect(after.status).toBe(200);
+    expect(after.headers["cache-control"]).toBe("no-store");
+    expect(after.body.theme.logoUrl).toBe("https://example.com/new-logo.png");
+  });
+
   test("PATCH /api/tenants/me/theme clamps freeform position and falls back invalid size", async () => {
     const tenant = await createTenantRecord({
       slug: "onboarding-theme-normalize-camp",
