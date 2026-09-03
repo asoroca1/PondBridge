@@ -63,6 +63,16 @@ describe("AdvancedSearch first paint", () => {
     expect(html).toContain('id="advanced-search-company-options"');
   });
 
+  // Regression: the role picker was built only from the roles the directory already
+  // contained, so a role a director had just configured was not selectable until a
+  // member had filled it in and the facets cache had aged out.
+  it("offers every role the director configured, before any facets load", () => {
+    const html = render();
+    expect(html).toContain("Camper");
+    expect(html).toContain("Counselor");
+    expect(html).toContain("CIT");
+  });
+
   it("no longer tells members to comma-separate industries", () => {
     expect(render()).not.toContain("Separate multiple industries with commas");
   });

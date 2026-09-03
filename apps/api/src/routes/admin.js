@@ -97,6 +97,7 @@ import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import { ensureTenantMobileAppCode } from "../utils/mobileAppCode.js";
 import { invalidatePublicTenantCache } from "../utils/publicResponseCache.js";
 import { createTtlCache } from "../utils/ttlCache.js";
+import { clearSearchCaches } from "../services/searchCache.js";
 import {
   listRecentMobileNotificationBatches,
   normalizeTenantMobileNotificationPrefs,
@@ -6083,6 +6084,10 @@ router.patch("/settings/identity", async (req, res) => {
       updatedByUserId: req.user.id
     }
   });
+
+  // The roles a director just configured drive the advanced-search picker, so drop
+  // the facets the picker reads instead of making them wait out its TTL.
+  clearSearchCaches(req.tenant._id);
 
   const stripeContactSync = await syncStripeCustomerContact(tenant, req.user).catch(() => ({
     synced: false,

@@ -16,7 +16,11 @@ import {
   runCampAiSearchPlanner
 } from "../services/campAiSearch.js";
 import { isValidObjectId } from "../utils/objectId.js";
-import { createTtlCache } from "../utils/ttlCache.js";
+import {
+  searchFacetsResponseCache,
+  searchNamesResponseCache,
+  searchResponseCache
+} from "../services/searchCache.js";
 import { canViewProfileContact, filterProfileContactFields } from "../services/profilePrivacy.js";
 import {
   findMemberBlockBetween,
@@ -27,11 +31,10 @@ import { getHiddenUserIds, isUserHiddenByTier } from "../services/memberTiers.js
 
 const router = Router({ mergeParams: true });
 const SEARCH_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=45";
+// Facets are invalidated on write now, so the browser copy is the only thing that can
+// hide a role a director just added. Keep its window short.
+const SEARCH_FACETS_CACHE_CONTROL = "private, max-age=5, stale-while-revalidate=10";
 const SEARCH_POOL_DEFAULT = 25_000;
-const searchResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 500 });
-const searchNamesResponseCache = createTtlCache({ ttlMs: 15_000, maxEntries: 800 });
-// Facets scan the whole directory, so they are cached longer than a result page.
-const searchFacetsResponseCache = createTtlCache({ ttlMs: 120_000, maxEntries: 200 });
 
 const searchRateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -892,7 +895,7 @@ router.get("/facets", async (req, res) => {
 
   const cached = searchFacetsResponseCache.get(cacheKey);
   if (cached) {
-    res.set("Cache-Control", SEARCH_CACHE_CONTROL);
+    res.set("Cache-Control", SEARCH_FACETS_CACHE_CONTROL);
     return res.json(cached);
   }
 
@@ -955,7 +958,7 @@ router.get("/facets", async (req, res) => {
   };
 
   searchFacetsResponseCache.set(cacheKey, payload);
-  res.set("Cache-Control", SEARCH_CACHE_CONTROL);
+  res.set("Cache-Control", SEARCH_FACETS_CACHE_CONTROL);
   return res.json(payload);
 });
 

@@ -1,4 +1,5 @@
 import { createTtlCache } from "../utils/ttlCache.js";
+import { clearSearchCaches } from "./searchCache.js";
 
 /**
  * The member-facing caches that hold a headcount: the home page's Community
@@ -42,4 +43,5 @@ export function invalidateMapCaches(tenantId = "") {
 export function clearMemberDirectoryCaches(tenantId = "") {
   clearHomeStatsCaches();
   invalidateMapCaches(tenantId);
+  clearSearchCaches(tenantId);
 }
