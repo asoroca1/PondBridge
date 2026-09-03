@@ -31,6 +31,7 @@ export default function useMailWorkspace({ request, slug, tenant, user }) {
   const [groups, setGroups] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [availableRoles, setAvailableRoles] = useState(DEFAULT_STAFF_ROLES);
+  const [availableIndustries, setAvailableIndustries] = useState([]);
   const [footerPresets, setFooterPresets] = useState([]);
   const [defaultFooterPresetId, setDefaultFooterPresetId] = useState("");
   const [activeFooter, setActiveFooter] = useState(null);
@@ -48,9 +49,10 @@ export default function useMailWorkspace({ request, slug, tenant, user }) {
       request("/email/groups"),
       request("/email/templates"),
       request("/email/available-roles"),
+      request("/email/available-industries"),
       request("/email/footer-presets")
     ])
-      .then(([groupsResult, templatesResult, rolesResult, footerResult]) => {
+      .then(([groupsResult, templatesResult, rolesResult, industriesResult, footerResult]) => {
         if (!active) return;
 
         const loadedGroups = groupsResult.status === "fulfilled" && Array.isArray(groupsResult.value?.groups)
@@ -64,6 +66,9 @@ export default function useMailWorkspace({ request, slug, tenant, user }) {
 
         if (rolesResult.status === "fulfilled" && Array.isArray(rolesResult.value?.roles) && rolesResult.value.roles.length) {
           setAvailableRoles(rolesResult.value.roles);
+        }
+        if (industriesResult.status === "fulfilled" && Array.isArray(industriesResult.value?.industries)) {
+          setAvailableIndustries(industriesResult.value.industries);
         }
 
         const footerPayload = footerResult.status === "fulfilled" ? footerResult.value : null;
@@ -207,6 +212,7 @@ export default function useMailWorkspace({ request, slug, tenant, user }) {
     groups,
     templates,
     availableRoles,
+    availableIndustries,
     footerPresets,
     defaultFooterPresetId,
     fallbackFooter,

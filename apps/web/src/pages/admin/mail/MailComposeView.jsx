@@ -62,7 +62,15 @@ export default function MailComposeView({
   const draftIdRef = useRef(compose.draftId || "");
   const savingDraftRef = useRef(false);
 
-  const { activeFooter, availableRoles, groups, templates, saveGroups, saveTemplates } = workspace;
+  const {
+    activeFooter,
+    availableIndustries,
+    availableRoles,
+    groups,
+    templates,
+    saveGroups,
+    saveTemplates
+  } = workspace;
 
   const chips = compose.chips || [];
   const targeting = useMemo(() => buildTargetingFromChips(chips), [chips]);
@@ -452,6 +460,7 @@ export default function MailComposeView({
             request={request}
             savedGroups={groups}
             availableRoles={availableRoles}
+            availableIndustries={availableIndustries}
             recipientCount={recipientPreview.count || 0}
             countLoading={previewLoading}
           />
@@ -464,7 +473,7 @@ export default function MailComposeView({
                   ? `${recipientPreview.count.toLocaleString()} will receive this${recipientPreview.excludedCount ? ` · ${recipientPreview.excludedCount} excluded by email preferences` : ""}`
                   : chips.length
                     ? "No eligible recipients match this selection."
-                    : "Add a group, role, class year, or member above."}
+                    : "Add a group, role, class year, industry, or member above."}
             </span>
             <button
               type="button"

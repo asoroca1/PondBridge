@@ -34,9 +34,12 @@ export function normalizeRule(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const mode = String(source.mode || "all").trim().toLowerCase();
   return {
-    mode: ["all", "role", "year", "segment", "custom"].includes(mode) ? mode : "all",
+    mode: ["all", "role", "year", "industry", "segment", "custom"].includes(mode) ? mode : "all",
     roles: Array.isArray(source.roles) ? source.roles.map((item) => String(item || "").trim()).filter(Boolean) : [],
     years: Array.isArray(source.years) ? source.years.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    industries: Array.isArray(source.industries)
+      ? source.industries.map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
     profileIds: normalizeIdList(source.profileIds || []),
     segment: String(source.segment || "").trim().toLowerCase()
   };
@@ -46,6 +49,7 @@ export function isUsableRule(rule = {}) {
   const normalized = normalizeRule(rule);
   if (normalized.mode === "role") return normalized.roles.length > 0;
   if (normalized.mode === "year") return normalized.years.length > 0;
+  if (normalized.mode === "industry") return normalized.industries.length > 0;
   if (normalized.mode === "custom") return normalized.profileIds.length > 0;
   if (normalized.mode === "segment") {
     return GROWTH_SEGMENT_OPTIONS.some((item) => item.value === normalized.segment);
@@ -65,6 +69,7 @@ export function ruleKey(rule = {}) {
     normalized.mode,
     [...normalized.roles].sort().join("|"),
     [...normalized.years].sort().join("|"),
+    [...normalized.industries].sort().join("|"),
     [...normalized.profileIds].sort().join("|"),
     normalized.segment
   ].join("::");
@@ -99,6 +104,17 @@ export function yearChip(year = "") {
     kind: "year",
     label: `Class of ${value}`,
     rules: [{ mode: "year", years: [value] }]
+  };
+}
+
+export function industryChip(industry = "") {
+  const value = String(industry || "").trim();
+  return {
+    key: `industry:${value.toLowerCase()}`,
+    kind: "industry",
+    label: value,
+    detail: "Industry",
+    rules: [{ mode: "industry", industries: [value] }]
   };
 }
 
@@ -163,6 +179,7 @@ export function describeRule(rule = {}) {
       ? `${normalized.years.length} class years`
       : normalized.years.map((year) => `Class of ${year}`).join(", ");
   }
+  if (normalized.mode === "industry") return normalized.industries.join(", ");
   if (normalized.mode === "segment") {
     return GROWTH_SEGMENT_OPTIONS.find((item) => item.value === normalized.segment)?.label || "Engagement group";
   }
@@ -198,6 +215,7 @@ export function buildTargeting(rules = [], label = "") {
 
   const roles = new Set();
   const years = new Set();
+  const industries = new Set();
   const profileIds = new Set();
   const segments = new Set();
   let includesEveryone = false;
@@ -206,6 +224,7 @@ export function buildTargeting(rules = [], label = "") {
     if (rule.mode === "all") includesEveryone = true;
     else if (rule.mode === "role") rule.roles.forEach((role) => roles.add(role));
     else if (rule.mode === "year") rule.years.forEach((year) => years.add(year));
+    else if (rule.mode === "industry") rule.industries.forEach((industry) => industries.add(industry));
     else if (rule.mode === "custom") rule.profileIds.forEach((id) => profileIds.add(id));
     else if (rule.mode === "segment" && rule.segment) segments.add(rule.segment);
   }
@@ -216,6 +235,7 @@ export function buildTargeting(rules = [], label = "") {
   const merged = [];
   if (roles.size) merged.push({ mode: "role", roles: [...roles] });
   if (years.size) merged.push({ mode: "year", years: [...years] });
+  if (industries.size) merged.push({ mode: "industry", industries: [...industries] });
   if (profileIds.size) merged.push({ mode: "custom", profileIds: [...profileIds] });
   for (const segment of segments) merged.push({ mode: "segment", segment });
 
@@ -258,6 +278,9 @@ export function chipsFromTargeting(targeting = {}, { groups = [], memberById = {
     if (rule.mode === "all") chips.push(everyoneChip());
     else if (rule.mode === "role") rule.roles.forEach((role) => chips.push(roleChip(role)));
     else if (rule.mode === "year") rule.years.forEach((year) => chips.push(yearChip(year)));
+    else if (rule.mode === "industry") {
+      rule.industries.forEach((industry) => chips.push(industryChip(industry)));
+    }
     else if (rule.mode === "segment") chips.push(segmentChip(rule.segment));
     else if (rule.mode === "custom") {
       rule.profileIds.forEach((id) => chips.push(personChip({ id, ...(memberById[id] || {}) })));

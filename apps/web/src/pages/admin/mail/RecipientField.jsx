@@ -6,6 +6,7 @@ import {
   everyoneChip,
   generateYearRange,
   groupChip,
+  industryChip,
   personChip,
   roleChip,
   segmentChip,
@@ -17,6 +18,7 @@ const KIND_LABEL = {
   group: "Group",
   role: "Role",
   year: "Class year",
+  industry: "Industry",
   segment: "Engagement",
   person: "Member"
 };
@@ -36,6 +38,7 @@ export default function RecipientField({
   request,
   savedGroups = [],
   availableRoles = DEFAULT_STAFF_ROLES,
+  availableIndustries = [],
   recipientCount = 0,
   countLoading = false
 }) {
@@ -110,6 +113,9 @@ export default function RecipientField({
     for (const role of availableRoles) {
       if (!trimmedQuery || matches(role, trimmedQuery)) push(roleChip(role));
     }
+    for (const industry of availableIndustries) {
+      if (!trimmedQuery || matches(industry, trimmedQuery)) push(industryChip(industry));
+    }
     if (trimmedQuery) {
       for (const year of generateYearRange()) {
         if (matches(`class of ${year}`, trimmedQuery) || year.includes(trimmedQuery)) push(yearChip(year));
@@ -122,7 +128,7 @@ export default function RecipientField({
       push(personChip(member));
     }
     return items.slice(0, 12);
-  }, [availableRoles, memberResults, savedGroups, selectedKeys, trimmedQuery]);
+  }, [availableIndustries, availableRoles, memberResults, savedGroups, selectedKeys, trimmedQuery]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -203,7 +209,7 @@ export default function RecipientField({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder={chips.length ? "" : "Add a group, role, class year, or member…"}
+          placeholder={chips.length ? "" : "Add a group, role, class year, industry, or member…"}
           aria-labelledby="pb-mail-to-label"
           aria-expanded={open}
           aria-autocomplete="list"
