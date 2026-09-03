@@ -673,3 +673,123 @@
   .pb-tiers-switch span,
   .pb-tiers-progress-bar span { transition: none; }
 }
+
+/* ----- preview ----- */
+
+.pb-tiers-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.pb-tiers-preview-head svg { color: var(--text-muted); flex: none; }
+.pb-tiers-preview-picks { display: flex; gap: 4px; }
+
+.pb-tiers-preview-head small {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.pb-tiers-preview-note {
+  margin: 0 0 14px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* A row of counts rather than a chart: the question is "how much of the
+   network does this tier lose", which is five numbers. */
+.pb-tiers-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.pb-tiers-stat {
+  padding: 12px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.pb-tiers-stat.is-reduced { border-color: var(--warning); }
+
+.pb-tiers-stat strong {
+  display: block;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.pb-tiers-stat strong span {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.pb-tiers-stat small {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.pb-tiers-stat em {
+  display: block;
+  margin-top: 6px;
+  font-style: normal;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--warning-text);
+}
+
+.pb-tiers-preview-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.pb-tiers-preview-cols h3 {
+  margin: 0 0 8px;
+  font-size: var(--text-xs);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pb-tiers-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.pb-tiers-preview-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.pb-tiers-preview-list svg { color: var(--warning-text); flex: none; }
+
+.pb-tiers-preview-ok {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--success-text);
+}
+
+.pb-tiers-preview-more { margin: 8px 0 0; font-size: var(--text-xs); }

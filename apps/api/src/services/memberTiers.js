@@ -133,8 +133,16 @@ export async function getTierHiddenIdentifiers(
   // Admins and the top tier see the whole network.
   if (rank === null || rank === ADMIN_TIER_RANK || rank <= 1) return EMPTY_HIDDEN;
 
-  const tenantId = normalizeId(tenant?._id);
-  const cacheKey = `hidden:${tenantId}:${rank}:${ctx.untaggedRank}`;
+  return queryHiddenIdentifiers(normalizeId(tenant?._id), rank, ctx.untaggedRank);
+}
+
+/**
+ * Everyone a viewer at `rank` cannot see, by both id shapes. Split out from the
+ * gated path so the preview can ask the same question about a tier that is not
+ * being enforced yet.
+ */
+async function queryHiddenIdentifiers(tenantId, rank, untaggedRank) {
+  const cacheKey = `hidden:${tenantId}:${rank}:${untaggedRank}`;
   const cached = hiddenIdsCache.get(cacheKey);
   if (cached) return cached;
 
@@ -143,7 +151,7 @@ export async function getTierHiddenIdentifiers(
     ProfileModel.find(tenantId, { accessTierRank: { $lt: rank } }, { select, limit: 20_000 })
   ];
   // Untagged members are only hidden when the camp parks them above the viewer.
-  if (ctx.untaggedRank < rank) {
+  if (untaggedRank < rank) {
     queries.push(ProfileModel.find(tenantId, { accessTierRank: null }, { select, limit: 20_000 }));
   }
 
@@ -157,6 +165,29 @@ export async function getTierHiddenIdentifiers(
 
   hiddenIdsCache.set(cacheKey, hidden);
   return hidden;
+}
+
+/**
+ * A dry run: what a member at this rank would be unable to see, computed
+ * whether or not enforcement is currently on. The point of the preview is to
+ * answer that question *before* the switch is flipped.
+ */
+export async function previewHiddenIdentifiers(tenant = null, rank = 0) {
+  const tenantId = normalizeId(tenant?._id);
+  const tiers = await listTenantTiers(tenantId);
+  if (!tiers.length) return { ...EMPTY_HIDDEN, tiers, bottomRank: 0, untaggedRank: 0 };
+
+  const bottomRank = tiers[tiers.length - 1].rank;
+  const policy = resolveTenantTierPolicy(tenant);
+  const untaggedRank = Math.min(Math.max(policy.untaggedRank || bottomRank, 1), bottomRank);
+
+  const viewerRank = Number(rank);
+  if (!Number.isFinite(viewerRank) || viewerRank <= 1) {
+    return { ...EMPTY_HIDDEN, tiers, bottomRank, untaggedRank };
+  }
+
+  const hidden = await queryHiddenIdentifiers(tenantId, viewerRank, untaggedRank);
+  return { ...hidden, tiers, bottomRank, untaggedRank };
 }
 
 /**
