@@ -4,7 +4,8 @@
  * to defend here — the burger stays the nav below that width.
  */
 :root{
-  --side-nav-w: 232px;
+  /* Wide enough for "Events & Info Sessions", the longest built-in label. */
+  --side-nav-w: 256px;
   --side-nav-collapsed-w: 64px;
 }
 
@@ -17,7 +18,7 @@
   z-index: 900;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: color-mix(in srgb, var(--brand-primary) 4%, #fbfbfc);
   border-right: 1px solid var(--neutral-200);
   box-shadow: 2px 0 18px rgba(29, 29, 29, .06);
   transition: width .16s ease;
@@ -84,18 +85,30 @@
 
 .side-nav.is-collapsed .side-nav-item,
 .side-nav.is-collapsed .side-nav-collapse{ justify-content: center; padding: 8px 0; }
-.side-nav.is-collapsed .side-nav-item-label{ display: none; }
+.side-nav.is-collapsed .side-nav-item-label{
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 
 .side-nav-item:hover,
 .side-nav-collapse:hover{
-  background: color-mix(in srgb, var(--brand-primary) 12%, #ffffff);
+  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
   color: var(--brand-primary-hover);
 }
 .side-nav-item:hover svg,
 .side-nav-collapse:hover svg{ color: var(--brand-primary); }
 
 .side-nav-item.is-current{
-  background: color-mix(in srgb, var(--brand-primary) 14%, #ffffff);
+  background: #ffffff;
+  box-shadow: inset 2px 0 0 var(--brand-primary), 0 1px 3px rgba(29, 29, 29, .08);
   color: var(--brand-primary);
   font-weight: 700;
 }

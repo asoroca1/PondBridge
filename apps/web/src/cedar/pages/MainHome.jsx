@@ -25,6 +25,7 @@ import { API_BASE, getMe } from "../lib/api";
 import { authHeaders, initialsOf, displayName, avatarUrl, getToken } from "../lib/helpers.js";
 import { useUnreadChatsCount } from "../lib/unreadChats.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
+import { useSideNavActive } from "../../hooks/useMemberNav.js";
 import {
   Users,
   MapPin,
@@ -725,6 +726,7 @@ export default function MainHome() {
   const locCount = resolveLocations(stats, locationsSummary);
   // Directors choose these four buttons in Settings → Features; the shared
   // resolver drops anything whose module is off and fills the gap.
+  const sideNavActive = useSideNavActive();
   const quickActions = useMemo(
     () =>
       resolveHomeQuickActions(content.homeQuickActions, modules, {
@@ -857,6 +859,11 @@ export default function MainHome() {
       </section>
 
       {/* ====== QUICK ACTIONS ====== */}
+      {/* The rail already lists every one of these a few hundred pixels away.
+          These buttons existed as the escape hatch from a nav hidden behind the
+          burger, so when the rail is carrying that job they are a duplicate
+          sitting in the best space on the page. */}
+      {sideNavActive ? null : (
       <section className="quick-actions">
         {quickActions.map((action) => {
           const Icon = action.icon;
@@ -898,6 +905,7 @@ export default function MainHome() {
           );
         })}
       </section>
+      )}
 
       {/* ====== CONTENT ====== */}
       <main className="content-grid">

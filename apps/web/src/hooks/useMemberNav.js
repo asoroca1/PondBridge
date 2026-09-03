@@ -33,8 +33,10 @@ import {
 } from "../lib/campLabels.js";
 
 // The sidebar only earns its keep when there is room for it beside the page
-// content; below this the burger stays the single member nav.
-export const SIDE_NAV_MIN_WIDTH = 1080;
+// content. The member home already runs a feed plus a right-hand column, so
+// below this the three of them squeeze each other and the burger stays the
+// single member nav.
+export const SIDE_NAV_MIN_WIDTH = 1200;
 const SIDE_NAV_COLLAPSED_KEY = "pondbridgeSideNavCollapsed";
 
 export function pathWithCamp(slug, path) {
@@ -196,9 +198,10 @@ export function useMemberNavSections() {
       });
     }
     if (adminItems.length) sections.push({ id: "admin-tools", title: "Director", items: adminItems });
+    // Untitled: a single legal link does not earn a section header beside
+    // Account and Community. The burger renders it the same way.
     sections.push({
       id: "policy",
-      title: "Policy",
       items: [{ id: "legal", icon: Scale, label: "Terms & Privacy", to: pathWithCamp(slug, "/legal") }]
     });
 
