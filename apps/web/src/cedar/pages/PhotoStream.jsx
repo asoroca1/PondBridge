@@ -9,6 +9,7 @@ import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./photo-stream.css";
 import { API_BASE } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
+import { isVideoFile, isVideoPost, formatDuration } from "../lib/photoMedia.js";
 import InitialsMark from "../../components/InitialsMark.jsx";
 import { ModalConfirm, useDialogFocus } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
@@ -69,22 +70,6 @@ function canvasToBlob(canvas, type = "image/jpeg", quality = 0.9) {
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), type, quality);
   });
-}
-
-function isVideoFile(file) {
-  return Boolean(file) && String(file?.type || "").toLowerCase().startsWith("video/");
-}
-
-function isVideoPost(post) {
-  return String(post?.mediaType || "").toLowerCase() === "video";
-}
-
-function formatDuration(seconds) {
-  const total = Math.max(0, Math.round(Number(seconds) || 0));
-  if (!total) return "";
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
 /**
