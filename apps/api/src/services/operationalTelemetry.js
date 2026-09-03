@@ -4,7 +4,7 @@ const MODULE_CATALOG = [
   { key: "directory", name: "Directory", eventTypes: ["directory_search"] },
   { key: "search", name: "Advanced Search", eventTypes: ["directory_search"] },
   { key: "events", name: "Events", eventTypes: ["event_detail_viewed", "event_rsvp_updated"] },
-  { key: "photoStream", name: "Photo Stream", eventTypes: [] },
+  { key: "photoStream", name: "Media Stream", eventTypes: [] },
   { key: "chat", name: "Messaging", eventTypes: [] },
   { key: "map", name: "Location Map", eventTypes: [] },
   { key: "familyTrees", name: "Family Trees", eventTypes: [] },

@@ -1607,7 +1607,7 @@ router.use("/suggestions", requireTenantModule("relatedProfiles", {
   message: "Related profile suggestions are disabled for this camp."
 }));
 router.use("/photos", requireTenantModule("photoStream", {
-  message: "The photo stream is disabled for this camp."
+  message: "The media stream is disabled for this camp."
 }));
 router.use("/conversations", requireTenantModule("chat", {
   message: "Messaging is disabled for this camp."
@@ -2304,7 +2304,7 @@ router.post("/photos", async (req, res) => {
     type: mediaType === "video" ? "video.upload" : "photo.upload",
     target: {
       href: "/photo-stream",
-      label: "Photo Stream"
+      label: "Media Stream"
     },
     ts: new Date()
   }).catch(() => {});

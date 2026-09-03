@@ -5,6 +5,7 @@ import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { useMobileNotifications } from "../context/MobileNotificationsContext.jsx";
+import { resolveMediaStreamLabel } from "../lib/campLabels.js";
 import { tenantHasFeature } from "../lib/features.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 
@@ -43,6 +44,7 @@ export default function NativeMemberTabBar() {
   const canChat = modules.chat !== false;
   const canEvents = modules.events !== false;
   const canPhotos = modules.photoStream !== false;
+  const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const canFamilyTrees = modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees");
   const roles = new Set(
     (Array.isArray(user?.roles) ? user.roles : user?.roles ? [user.roles] : [])
@@ -85,7 +87,7 @@ export default function NativeMemberTabBar() {
     if (nextTabs.length < 4 && canPhotos) {
       nextTabs.push({
         id: "photos",
-        label: "Photos",
+        label: mediaStreamLabel,
         icon: Image,
         to: tenantRoute(slug, "/photo-stream"),
         matchers: ["/photo-stream"]
@@ -132,7 +134,7 @@ export default function NativeMemberTabBar() {
     }
 
     return nextTabs;
-  }, [canChat, canEvents, canFamilyTrees, canPhotos, isCampDirector, slug, unreadCount]);
+  }, [canChat, canEvents, canFamilyTrees, canPhotos, isCampDirector, mediaStreamLabel, slug, unreadCount]);
 
   return (
     <nav className="native-member-tabbar" aria-label="App navigation">

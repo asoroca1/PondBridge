@@ -11,6 +11,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import {
   resolveAlumniWord,
   resolveNewsletterLabel,
+  resolveMediaStreamLabel,
   resolveTenantContent,
   withCampAlumniTerms
 } from "../../lib/campLabels.js";
@@ -175,8 +176,9 @@ const QUICK_ACTION_ICONS = {
 };
 
 // Two buttons carry camp-specific wording the shared catalog cannot know about.
-function quickActionLabel(action, { alumniWordTitle, newsletterLabel }) {
+function quickActionLabel(action, { alumniWordTitle, newsletterLabel, mediaStreamLabel }) {
   if (action.key === "map") return `${alumniWordTitle} Map`;
+  if (action.key === "photoStream") return mediaStreamLabel;
   if (action.key === "newsletter") return newsletterLabel;
   return action.label;
 }
@@ -278,9 +280,10 @@ function RelatedProfilesCard({ targetUserId }) {
   );
 }
 
-/* ============= Photo Stream (latest two) ============= */
+/* ============= Media Stream (latest two) ============= */
 function PhotosPreviewCard() {
-  const { slug } = useTenant();
+  const { slug, tenant } = useTenant();
+  const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const [items, setItems] = useState([]);
 
   useEffect(() => {
@@ -299,7 +302,7 @@ function PhotosPreviewCard() {
   return (
     <div className="p1-card">
       <div className="card-head">
-        <h3>Photo Stream</h3>
+        <h3>{mediaStreamLabel}</h3>
         <Link to={tenantRoute(slug, "/photo-stream")} className="link-subtle">
           Open photos <ChevronRight size={16} />
         </Link>
@@ -575,6 +578,7 @@ export default function MainHome() {
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const modules = tenant?.config?.modules || tenant?.modules || {};
   const newsletterLabel = resolveNewsletterLabel(tenant);
+  const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const heroBranding = tenant?.config?.branding || tenant?.theme || {};
   // Directors can upload a second photo just for the logged-in masthead; when
   // they haven't, the member home reuses the main photo.
@@ -728,9 +732,9 @@ export default function MainHome() {
       }).map((action) => ({
         ...action,
         icon: QUICK_ACTION_ICONS[action.key] || ChevronRight,
-        label: quickActionLabel(action, { alumniWordTitle, newsletterLabel })
+        label: quickActionLabel(action, { alumniWordTitle, newsletterLabel, mediaStreamLabel })
       })),
-    [content.homeQuickActions, content.merchShopUrl, modules, alumniWordTitle, newsletterLabel]
+    [content.homeQuickActions, content.merchShopUrl, modules, alumniWordTitle, newsletterLabel, mediaStreamLabel]
   );
 
   // newest-first (API already returns pinned first, then newest)

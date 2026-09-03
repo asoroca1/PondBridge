@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
+import { resolveMediaStreamLabel } from "../../lib/campLabels.js";
 import CedarBackground from "../components/CedarBackground";
 import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
@@ -256,7 +257,7 @@ function SortDropdown({ value, onChange }) {
   return (
     <label className="ps-sort-wrap">
       <span className="ps-sort-label">Sort</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="ps-select" aria-label="Sort photo stream">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="ps-select" aria-label="Sort media stream">
         <option value="new">Newest</option>
         <option value="old">Oldest</option>
         <option value="top">Most Liked</option>
@@ -980,6 +981,7 @@ export default function PhotoStream() {
   // cache of poster info: { userId: { name, avatar } }
   const [authorInfo, setAuthorInfo] = useState({});
   const campName = String(tenant?.name || "camp").trim() || "camp";
+  const mediaStreamLabel = resolveMediaStreamLabel(tenant);
 
   // prevent duplicate "initial" fetches in React 18 StrictMode
   const didInitialForSort = useRef(new Set());
@@ -1120,7 +1122,7 @@ export default function PhotoStream() {
         <CedarPageHeader
           className="ps-page-header"
           icon={<Images size={18} />}
-          title="Photo Stream"
+          title={mediaStreamLabel}
           subtitle={`Share old and new camp photos and videos with the ${campName} community. Click a post to open it.`}
         >
           <div className="ps-header-right">

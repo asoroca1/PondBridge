@@ -3,7 +3,7 @@ import { Badge, PageShell } from "@pondbridge/ui";
 import AgentWorkspace from "../components/agent/AgentWorkspace.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
-import { resolveCampAiName, resolveNewsletterLabel } from "../lib/campLabels.js";
+import { resolveCampAiName, resolveMediaStreamLabel, resolveNewsletterLabel } from "../lib/campLabels.js";
 import { requestJson } from "../lib/http.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import "./member-camp-ai.css";
@@ -139,6 +139,7 @@ export function buildMemberGuideAnswer({ question, slug, tenant }) {
   const normalized = normalizedQuestion(question);
   const modules = tenant?.config?.modules || tenant?.modules || {};
   const newsletterLabel = resolveNewsletterLabel(tenant);
+  const mediaStreamLabel = resolveMediaStreamLabel(tenant);
 
   if (/\b(message|messages|chat|forum|contact|reach out)\b/.test(normalized)) {
     return modules.chat === false
@@ -167,12 +168,12 @@ export function buildMemberGuideAnswer({ question, slug, tenant }) {
   if (/\b(photo|photos|picture|pictures|album)\b/.test(normalized)) {
     return modules.photoStream === false
       ? {
-          content: "The photo stream is not currently enabled for this camp community.",
+          content: `${mediaStreamLabel} is not currently enabled for this camp community.`,
           links: []
         }
       : {
-          content: "The Photo Stream is where members share and revisit camp photos.",
-          links: [{ label: "Open Photo Stream", href: tenantRoute(slug, "/photo-stream") }]
+          content: `${mediaStreamLabel} is where members share and revisit camp photos and videos.`,
+          links: [{ label: `Open ${mediaStreamLabel}`, href: tenantRoute(slug, "/photo-stream") }]
         };
   }
 

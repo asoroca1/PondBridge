@@ -35,6 +35,7 @@ import {
   resolveCampAiName,
   resolveNetworkDisplayName,
   resolveNewsletterLabel,
+  resolveMediaStreamLabel,
   resolveTenantLogoUrl,
   resolveTenantContent
 } from "../lib/campLabels.js";
@@ -116,7 +117,12 @@ function tenantRelativePath(pathname = "") {
 
 function nativeMemberNavTitle(
   pathname = "",
-  { newsletterLabel = "Newsletter", alumniWordTitle = "Alumni", aiName = "Camp AI" } = {}
+  {
+    newsletterLabel = "Newsletter",
+    alumniWordTitle = "Alumni",
+    aiName = "Camp AI",
+    mediaStreamLabel = "Media Stream"
+  } = {}
 ) {
   if (pathname === "/" || pathname === "/home") return "Home";
   if (pathname === "/ai") return aiName;
@@ -124,7 +130,7 @@ function nativeMemberNavTitle(
   if (pathname === "/edit-profile") return "Edit Profile";
   if (pathname === "/search" || pathname === "/search-results") return "Search";
   if (/^\/profile\/[^/]+$/.test(pathname)) return "Profile";
-  if (pathname === "/photo-stream") return "Photos";
+  if (pathname === "/photo-stream") return mediaStreamLabel;
   if (/^\/chat(?:-rooms)?(?:\/|$)/.test(pathname)) return "Messages";
   if (/^\/events(?:\/|$)/.test(pathname)) return pathname === "/events" ? "Events & Info Sessions" : "Event or Info Session";
   if (/^\/giving(?:\/|$)/.test(pathname)) return "Giving";
@@ -238,6 +244,7 @@ export default function NavBar() {
   const title = resolveNetworkDisplayName(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const newsletterLabel = resolveNewsletterLabel(tenant);
+  const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const aiName = resolveCampAiName(tenant);
   const content = resolveTenantContent(tenant);
   const merchShopUrl =
@@ -292,7 +299,7 @@ export default function NavBar() {
   const useNativeMemberRoute = nativeApp && showPrivateTools && !onAdminModeRoute;
   const showSearch = canSearch && !usePublicNav && !onAdminModeRoute && !useNativeMemberRoute;
   const navTitle = useNativeMemberRoute
-    ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle, aiName })
+    ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle, aiName, mediaStreamLabel })
     : title;
 
   const menuSections = useMemo(() => {
@@ -317,7 +324,7 @@ export default function NavBar() {
       communityItems.push({
         id: "photos",
         icon: Image,
-        label: "Photo Stream",
+        label: mediaStreamLabel,
         to: pathWithCamp(slug, "/photo-stream")
       });
     }
@@ -420,6 +427,7 @@ export default function NavBar() {
     modules.giving,
     modules.map,
     modules.photoStream,
+    mediaStreamLabel,
     modules.newsletter,
     canFamilyTrees,
     modules.merchShop,

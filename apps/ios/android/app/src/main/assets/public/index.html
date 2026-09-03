@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="PondBridge — Camp network management for camps and organizations" />
+    <meta name="theme-color" content="#002b5c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="PondBridge" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet" />
+    <title>PondBridge</title>
+    <script type="module" crossorigin src="/assets/index-BkZSyVx6.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-clerk-Co_BJnFT.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-D03cZ5S1.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (function restoreDeepLinkFrom404() {
+        var currentUrl = new URL(window.location.href);
+        var forwardedPath = currentUrl.searchParams.get("__pb_path");
+        if (!forwardedPath) return;
+
+        currentUrl.searchParams.delete("__pb_path");
+        var cleaned = currentUrl.pathname + (currentUrl.search || "") + (currentUrl.hash || "");
+
+        if (!/^\/(?!\/)/.test(forwardedPath)) {
+          window.history.replaceState(null, "", cleaned);
+          return;
+        }
+
+        window.history.replaceState(null, "", forwardedPath);
+      })();
+    </script>
+  </body>
+</html>

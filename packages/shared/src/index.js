@@ -45,8 +45,8 @@ export const TENANT_MODULE_CATALOG = Object.freeze([
   },
   {
     key: "photoStream",
-    label: "Photo Stream",
-    description: "Shared gallery where members upload and browse camp photos.",
+    label: "Media Stream",
+    description: "Shared gallery where members upload and browse camp photos and videos.",
     memberPath: "/photo-stream"
   },
   {
@@ -138,7 +138,7 @@ export const HOME_QUICK_ACTION_CATALOG = Object.freeze([
   { key: "map", label: "Location Map", memberPath: "/location-map", moduleKey: "map" },
   { key: "chat", label: "Chats & Forums", memberPath: "/chat-rooms?tab=personal", moduleKey: "chat" },
   { key: "newsletter", label: "Newsletter", memberPath: "/newsletter", moduleKey: "newsletter" },
-  { key: "photoStream", label: "Photo Stream", memberPath: "/photo-stream", moduleKey: "photoStream" },
+  { key: "photoStream", label: "Media Stream", memberPath: "/photo-stream", moduleKey: "photoStream" },
   { key: "familyTrees", label: "Family Trees", memberPath: "/family-trees", moduleKey: "familyTrees" },
   { key: "events", label: "Events", memberPath: "/events", moduleKey: "events" },
   { key: "giving", label: "Giving", memberPath: "/giving", moduleKey: "giving" },

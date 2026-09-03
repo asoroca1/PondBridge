@@ -110,6 +110,11 @@ export function resolveNewsletterLabel(tenant) {
   return String(content.newsletterName || "").trim() || "Newsletter";
 }
 
+export function resolveMediaStreamLabel(tenant) {
+  const content = resolveTenantContent(tenant);
+  return String(content.photoStreamName || "").trim() || "Media Stream";
+}
+
 export function resolveStaffRoleOptions(tenant) {
   const content = resolveTenantContent(tenant);
   return normalizeLabelList(content.staffRoles, DEFAULT_STAFF_ROLES);

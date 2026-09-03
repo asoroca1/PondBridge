@@ -945,7 +945,8 @@ function toQuickActionSlots(value = []) {
 }
 
 // Mirrors the two labels the member home page customises per camp.
-function quickActionOptionLabel(action, { alumniWordTitle, newsletterLabel }) {
+function quickActionOptionLabel(action, { alumniWordTitle, newsletterLabel, mediaStreamLabel }) {
+  if (action.key === "photoStream") return mediaStreamLabel;
   if (action.key === "map") return `${alumniWordTitle} Map`;
   if (action.key === "newsletter") return newsletterLabel;
   return action.label;
@@ -968,7 +969,10 @@ export function DirectorAdminFeaturesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [moduleDisplayNames, setModuleDisplayNames] = useState({ newsletter: "Newsletter" });
+  const [moduleDisplayNames, setModuleDisplayNames] = useState({
+    newsletter: "Newsletter",
+    photoStream: "Media Stream"
+  });
   const [moduleSettings, setModuleSettings] = useState({ merchShopUrl: "" });
   const [showAllCapabilities, setShowAllCapabilities] = useState(false);
   // One entry per home-page button slot; "" means "let PondBridge choose".
@@ -984,7 +988,9 @@ export function DirectorAdminFeaturesPage() {
     try {
       const response = await request("/features");
       setPayload(response);
-      setModuleDisplayNames(response.moduleDisplayNames || { newsletter: "Newsletter" });
+      setModuleDisplayNames(
+        response.moduleDisplayNames || { newsletter: "Newsletter", photoStream: "Media Stream" }
+      );
       setModuleSettings(response.moduleSettings || { merchShopUrl: "" });
       setHomeQuickActions(toQuickActionSlots(response.homeQuickActions));
     } catch (requestError) {
@@ -1064,10 +1070,17 @@ export function DirectorAdminFeaturesPage() {
       key: action.key,
       label: quickActionOptionLabel(action, {
         alumniWordTitle,
-        newsletterLabel: String(moduleDisplayNames.newsletter || "").trim() || "Newsletter"
+        newsletterLabel: String(moduleDisplayNames.newsletter || "").trim() || "Newsletter",
+        mediaStreamLabel: String(moduleDisplayNames.photoStream || "").trim() || "Media Stream"
       })
     }));
-  }, [payload?.modules, moduleSettings.merchShopUrl, moduleDisplayNames.newsletter, alumniWordTitle]);
+  }, [
+    payload?.modules,
+    moduleSettings.merchShopUrl,
+    moduleDisplayNames.newsletter,
+    moduleDisplayNames.photoStream,
+    alumniWordTitle
+  ]);
 
   const orderedModules = useMemo(() => {
     const source = Array.isArray(payload?.modules) ? payload.modules : [];
@@ -1217,6 +1230,32 @@ export function DirectorAdminFeaturesPage() {
                   setModuleDisplayNames((prev) => ({ ...prev, newsletter: event.target.value }))
                 }
                 placeholder="Newsletter"
+              />
+            </label>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const nextModules = Object.fromEntries(
+                  payload.modules.map((item) => [item.key, item.enabled])
+                );
+                saveModules(nextModules, moduleDisplayNames);
+              }}
+              disabled={saving}
+            >
+              Save name
+            </Button>
+          </div>
+        ) : null}
+        {module.key === "photoStream" && !module.locked ? (
+          <div className="director-admin-module-settings">
+            <label>
+              Media Stream display name
+              <Input
+                value={moduleDisplayNames.photoStream || ""}
+                onChange={(event) =>
+                  setModuleDisplayNames((prev) => ({ ...prev, photoStream: event.target.value }))
+                }
+                placeholder="Media Stream"
               />
             </label>
             <Button

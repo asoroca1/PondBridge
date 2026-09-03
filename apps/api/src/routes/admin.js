@@ -5647,7 +5647,8 @@ router.get("/features", async (req, res) => {
     capabilities: inventory.capabilities,
     summary: inventory.summary,
     moduleDisplayNames: {
-      newsletter: content.newsletterName || "Newsletter"
+      newsletter: content.newsletterName || "Newsletter",
+      photoStream: content.photoStreamName || "Media Stream"
     },
     moduleSettings: {
       merchShopUrl: content.merchShopUrl || ""
@@ -5697,6 +5698,12 @@ router.patch("/features", async (req, res) => {
     contentChanged = true;
   }
 
+  if (Object.prototype.hasOwnProperty.call(incomingNames, "photoStream")) {
+    nextContent.photoStreamName =
+      sanitizeText(String(incomingNames.photoStream || "").trim()) || "Media Stream";
+    contentChanged = true;
+  }
+
   if (Object.prototype.hasOwnProperty.call(incomingSettings, "merchShopUrl")) {
     const rawMerchShopUrl = String(incomingSettings.merchShopUrl || "").trim();
     const merchShopUrl = normalizeHttpUrl(rawMerchShopUrl);
@@ -5740,15 +5747,23 @@ router.patch("/features", async (req, res) => {
       after: Boolean(nextModules[module.key])
     }))
     .filter((change) => change.before !== change.after);
-  const previousNewsletterName = currentContent.newsletterName || "Newsletter";
-  const nextNewsletterName = resolveContent(tenant).newsletterName || "Newsletter";
+  const savedContent = resolveContent(tenant);
+  const displayNameChanges = [
+    {
+      key: "newsletter",
+      before: currentContent.newsletterName || "Newsletter",
+      after: savedContent.newsletterName || "Newsletter"
+    },
+    {
+      key: "photoStream",
+      before: currentContent.photoStreamName || "Media Stream",
+      after: savedContent.photoStreamName || "Media Stream"
+    }
+  ].filter((change) => change.before !== change.after);
 
   await writeAdminAudit(req, "admin_features_updated", {
     moduleChanges,
-    moduleDisplayNameChanges:
-      previousNewsletterName === nextNewsletterName
-        ? []
-        : [{ key: "newsletter", before: previousNewsletterName, after: nextNewsletterName }],
+    moduleDisplayNameChanges: displayNameChanges,
     moduleSettingChanges:
       String(currentContent.merchShopUrl || "") === String(resolveContent(tenant).merchShopUrl || "")
         ? []
@@ -5771,7 +5786,8 @@ router.patch("/features", async (req, res) => {
     capabilities: inventory.capabilities,
     summary: inventory.summary,
     moduleDisplayNames: {
-      newsletter: resolveContent(tenant).newsletterName
+      newsletter: resolveContent(tenant).newsletterName,
+      photoStream: resolveContent(tenant).photoStreamName || "Media Stream"
     },
     moduleSettings: {
       merchShopUrl: resolveContent(tenant).merchShopUrl || ""

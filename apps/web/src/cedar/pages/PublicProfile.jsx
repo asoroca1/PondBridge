@@ -10,6 +10,7 @@ import { authHeaders, displayName, initialsOf, avatarUrl, getToken } from "../li
 import "./my-profile.css";
 import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { resolveMediaStreamLabel } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { readAuthFromStorage } from "../../lib/storage.js";
 
@@ -248,7 +249,8 @@ function normalizeProfile(src = {}) {
 
 /** === Photos mosaic === */
 function PhotosMosaic({ userId }) {
-  const { slug } = useTenant();
+  const { slug, tenant } = useTenant();
+  const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -290,7 +292,7 @@ function PhotosMosaic({ userId }) {
               key={p._id || p.id}
               to={tenantRoute(slug, "/photo-stream")}
               className="p1-mosaic-link"
-              title={p.caption || "View in Photo Stream"}
+              title={p.caption || `View in ${mediaStreamLabel}`}
             >
               <img
                 className="p1-mosaic-img"
