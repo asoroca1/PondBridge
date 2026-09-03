@@ -19,6 +19,8 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../lib/authMode.js";
 import { readWizardDraft, writeWizardDraft, clearWizardDraft } from "../lib/storage.js";
+import DirectorLegalContent, { LEGAL_LAST_UPDATED } from "../components/DirectorLegalContent.jsx";
+import "./director-legal.css";
 import HeroImageEditor from "../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../components/BrandImageColorPicker.jsx";
 import DirectorCreateAccountClerkPage from "./DirectorCreateAccountClerkPage.jsx";
@@ -4023,11 +4025,14 @@ function DirectorCreateAccountWizardPage() {
                   ×
                 </button>
               </header>
-              <iframe
-                className="director-legal-modal-content"
-                title="PondBridge Client Terms, Director Agreement, and Privacy Notice"
-                src={`/t/${slug}/director-legal`}
-              />
+              <div className="director-legal-modal-content">
+                <div className="director-legal-modal-body">
+                  <p className="director-legal-modal-updated">
+                    Last Updated: <strong>{LEGAL_LAST_UPDATED}</strong>
+                  </p>
+                  <DirectorLegalContent networkName={networkDisplayNamePreview} linkMode="scroll" />
+                </div>
+              </div>
             </section>
           </div>
         ) : null}

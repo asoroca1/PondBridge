@@ -53,7 +53,8 @@
   gap: 10px;
 }
 
-.director-legal-toc a {
+.director-legal-toc a,
+.director-legal-toc button {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -65,8 +66,16 @@
   text-decoration: none;
 }
 
+.director-legal-toc button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
 .director-legal-toc a:hover,
-.director-legal-toc a:focus-visible {
+.director-legal-toc a:focus-visible,
+.director-legal-toc button:hover,
+.director-legal-toc button:focus-visible {
   border-color: var(--brand-primary);
   outline: none;
 }
