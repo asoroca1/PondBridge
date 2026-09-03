@@ -53,6 +53,13 @@ import {
 import { purgeTenantRows } from "../services/tenantPurge.js";
 import { loadCampCounts } from "../services/superCampCounts.js";
 import {
+  applyTenantKindFilter,
+  isDemoTenant,
+  normalizeTenantKindFilter,
+  summarizeTenantKinds,
+  tenantKind
+} from "../services/superTenantKind.js";
+import {
   buildSettingsWithCampProfile,
   hasCampProfilePatch,
   normalizeCampProfilePatch,
@@ -179,20 +186,8 @@ function canAutoDeleteTenantDomain(domain = "") {
   return true;
 }
 
-function isTestOrSandboxTenant(tenant = {}) {
-  const slug = String(tenant?.slug || "").trim().toLowerCase();
-  const name = String(tenant?.name || "").trim().toLowerCase();
-  const domain = normalizeDomain(tenant?.customDomain || "");
-  const status = String(tenant?.status || "").trim().toLowerCase();
-
-  if (status === "sandbox") return true;
-  if (domain.endsWith(".pondbridge.test")) return true;
-  return (
-    HIDDEN_TENANT_PATTERN.test(slug) ||
-    HIDDEN_TENANT_PATTERN.test(name) ||
-    HIDDEN_TENANT_PATTERN.test(domain)
-  );
-}
+// Same rule, now shared with the console's client/demo split.
+const isTestOrSandboxTenant = isDemoTenant;
 
 function hasPrivilegedGlobalRole(roles = []) {
   const set = new Set((Array.isArray(roles) ? roles : []).map((role) => String(role || "").trim()));
@@ -550,6 +545,8 @@ async function loadTenantsWithCounts(filter = {}, { includeHidden = false } = {}
       ]);
       return {
         ...tenant,
+        kind: tenantKind(tenant),
+        isDemo: isDemoTenant(tenant),
         counts: { ...campCounts, users: userCount }
       };
     })
@@ -681,21 +678,43 @@ router.get("/search", superSearchLimiter, async (req, res) => {
 });
 
 router.get("/dashboard", requireRole("support_admin"), async (_req, res) => {
-  const [tenantCount, userCount, profileCount, memberCount, directorCount] = await Promise.all([
-    TenantModel.count({}),
+  const tenants = await TenantModel.find(
+    {},
+    { select: ["id", "slug", "name", "status", "customDomain"] }
+  );
+  const kindSummary = summarizeTenantKinds(tenants);
+  // Demo camps hold more than four times the profiles the real clients do, so
+  // a platform total that mixes them in describes the sales demos, not the book
+  // of business. Members and directors are counted across clients only.
+  const clientIds = tenants
+    .filter((tenant) => !isDemoTenant(tenant))
+    .map((tenant) => toObjectIdString(tenant._id))
+    .filter(Boolean);
+
+  const [memberCount, directorCount, userCount, profileCount] = await Promise.all([
+    clientIds.length
+      ? ProfileModel.acrossTenants().count({ tenantId: { $in: clientIds }, status: "active" })
+      : 0,
+    clientIds.length
+      ? UserModel.acrossTenants().count({
+          tenantId: { $in: clientIds },
+          roles: { $contains: ["tenant_admin"] }
+        })
+      : 0,
     UserModel.acrossTenants().count({}),
-    ProfileModel.acrossTenants().count({}),
-    ProfileModel.acrossTenants().count({ status: "active" }),
-    UserModel.acrossTenants().count({ roles: { $contains: ["tenant_admin"] } })
+    ProfileModel.acrossTenants().count({})
   ]);
 
   res.json({
     counts: {
-      tenants: tenantCount,
+      tenants: kindSummary.total,
+      clients: kindSummary.clients,
+      demos: kindSummary.demos,
       members: memberCount,
       directors: directorCount,
       // Every user row owns a profile row, so these two are always the same
-      // number. Kept for older callers; new surfaces read members/directors.
+      // number, and both include demos. Kept for older callers; new surfaces
+      // read clients/members/directors.
       users: userCount,
       profiles: profileCount
     }
@@ -803,6 +822,7 @@ router.get("/tenants", requireRole("support_admin"), async (req, res) => {
   const status = String(req.query.status || "").trim();
   const plan = String(req.query.plan || "").trim();
   const billingStatus = String(req.query.billingStatus || "").trim();
+  const kind = normalizeTenantKindFilter(req.query.kind);
 
   const filter = {};
   if (status) filter.status = status;
@@ -814,6 +834,11 @@ router.get("/tenants", requireRole("support_admin"), async (req, res) => {
     ...tenantBillingPlanSummary(tenant)
   }));
 
+  // Counted before the kind filter, so the console can say how many demos it
+  // is holding back rather than leaving them silently missing.
+  const kindSummary = summarizeTenantKinds(items);
+  items = applyTenantKindFilter(items, kind);
+
   const planFilter = requestedBillingPlanFilter(plan);
   if (planFilter) {
     items = items.filter((tenant) => tenant.billingPlan === planFilter);
@@ -824,7 +849,7 @@ router.get("/tenants", requireRole("support_admin"), async (req, res) => {
     items = items.filter((tenant) => rx.test(tenant.name) || rx.test(tenant.slug) || rx.test(tenant.customDomain || ""));
   }
 
-  res.json({ items });
+  res.json({ items, kind, kindSummary });
 });
 
 // One camp's full client record. The tenants table answers "which camps exist";
@@ -856,6 +881,8 @@ router.get("/tenants/:tenantId", requireRole("support_admin"), async (req, res) 
     tenant: {
       ...tenant,
       ...tenantBillingPlanSummary(tenant),
+      kind: tenantKind(tenant),
+      isDemo: isDemoTenant(tenant),
       counts: { ...campCounts, directors: directors.length }
     },
     campProfile,

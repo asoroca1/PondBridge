@@ -274,6 +274,7 @@ export default function SuperCampProfilePage() {
             </p>
           </div>
           <div className="super-camp-profile-header-badges">
+            {tenant.isDemo ? <Badge tone="warning">Demo camp</Badge> : null}
             <Badge tone={tenant.status === "active" ? "success" : "neutral"}>{humanize(tenant.status)}</Badge>
             <Badge tone="info">{billingPlanLabel(tenant.billingPlan)}</Badge>
             <Badge tone={toneForBillingStatus(billing.status)}>

@@ -66,6 +66,50 @@ describe("app transition branding", () => {
     ).toBe("PondBridge");
   });
 
+  // The super console has no camp behind it. It used to inherit the last camp
+  // this browser visited, so refreshing the console showed that camp's name and
+  // logo in the top left - sometimes a camp that no longer existed.
+  it("does not brand the super console with the remembered camp", () => {
+    const storage = createStorage({
+      pondbridgeTenantSlug: "test29",
+      "pondbridgeTenantConfig:test29": JSON.stringify({
+        cachedAt: Date.now(),
+        payload: {
+          name: "Camp test29",
+          config: { branding: { logoUrl: "https://assets.example/test29.webp" } }
+        }
+      })
+    });
+
+    expect(
+      readTransitionBranding({
+        locationLike: { hostname: "super.pondbridgealumni.com", pathname: "/super/tenants" },
+        storage
+      })
+    ).toEqual({ slug: "", networkName: "PondBridge", logoUrl: "" });
+  });
+
+  it("does not brand a /super path served from another host", () => {
+    const storage = createStorage({ pondbridgeTenantSlug: "test29" });
+
+    expect(
+      inferTransitionSlug(
+        { hostname: "www.pondbridgealumni.com", pathname: "/super/dashboard" },
+        storage
+      )
+    ).toBe("");
+  });
+
+  // A camp visit must still pick the remembered camp up, or every reload of a
+  // custom-domain camp would flash the neutral shell.
+  it("still remembers the camp on a non-console page", () => {
+    const storage = createStorage({ pondbridgeTenantSlug: "cedar" });
+
+    expect(
+      inferTransitionSlug({ hostname: "alumni.campcedar.org", pathname: "/home" }, storage)
+    ).toBe("cedar");
+  });
+
   it("uses the camp theme logo when cached config branding is empty", () => {
     const storage = createStorage({
       "pondbridgeTenantConfig:cedar": JSON.stringify({
