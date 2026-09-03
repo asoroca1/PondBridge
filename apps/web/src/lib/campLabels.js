@@ -115,6 +115,11 @@ export function resolveMediaStreamLabel(tenant) {
   return String(content.photoStreamName || "").trim() || "Media Stream";
 }
 
+export function resolveSideNavEnabled(tenant) {
+  const content = resolveTenantContent(tenant);
+  return Boolean(content.sideNavEnabled);
+}
+
 export function resolveStaffRoleOptions(tenant) {
   const content = resolveTenantContent(tenant);
   return normalizeLabelList(content.staffRoles, DEFAULT_STAFF_ROLES);

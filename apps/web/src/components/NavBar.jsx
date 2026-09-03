@@ -1,31 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { isMemberEventsModuleEnabled } from "@pondbridge/shared";
-import {
-  BookOpen,
-  Bell,
-  CalendarDays,
-  Home,
-  Image,
-  LogOut,
-  Map,
-  MessageSquare,
-  Shirt,
-  Search,
-  Settings,
-  Shield,
-  TreePine,
-  User,
-  Pencil,
-  Repeat2,
-  Scale,
-  HeartHandshake
-} from "lucide-react";
+import { Bell, LogOut, Search, Repeat2 } from "lucide-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useMobileNotifications } from "../context/MobileNotificationsContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
-import { tenantHasFeature } from "../lib/features.js";
 import { openExternalUrl } from "../lib/externalLinks.js";
 import { readAuthFromStorage } from "../lib/storage.js";
 import { avatarUrl, initialsOf } from "../cedar/lib/helpers.js";
@@ -36,16 +15,16 @@ import {
   resolveNetworkDisplayName,
   resolveNewsletterLabel,
   resolveMediaStreamLabel,
-  resolveTenantLogoUrl,
-  resolveTenantContent
+  resolveTenantLogoUrl
 } from "../lib/campLabels.js";
-import { inferCampSlugFromHost, isPotentialCustomTenantHost } from "../lib/domain.js";
 import { isNativeApp } from "../lib/nativeApp.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import cedarLogo from "../assets/cedar-logo.png";
 import NotificationBadge from "./NotificationBadge.jsx";
 import { preloadFullAuthRuntime } from "../lib/authRuntimePreload.js";
 import { preloadRouteForPath } from "../lib/routePreload.js";
+import { useMemberNavSections, pathWithCamp } from "../hooks/useMemberNav.js";
+import { useEndSession } from "../hooks/useEndSession.js";
 
 const MIN_SEARCH_CHARS = 1;
 
@@ -99,15 +78,6 @@ function fullNameFrom(user = {}) {
   );
 }
 
-function pathWithCamp(slug, path) {
-  const nextPath = String(path || "/").startsWith("/") ? path : `/${path}`;
-  const hostScopedTenant = Boolean(inferCampSlugFromHost() || isPotentialCustomTenantHost());
-  if (hostScopedTenant) {
-    return nextPath;
-  }
-  return `/t/${slug}${nextPath}`;
-}
-
 function tenantRelativePath(pathname = "") {
   const normalizedPath = String(pathname || "").trim() || "/";
   const tenantMatch = normalizedPath.match(/^\/t\/[^/]+(\/.*)?$/);
@@ -153,17 +123,6 @@ function searchSubtitleFrom(entry = {}) {
   return "View profile";
 }
 
-function normalizedRoleSet(user = {}) {
-  const rawRoles = Array.isArray(user?.roles)
-    ? user.roles
-    : user?.roles
-      ? [user.roles]
-      : user?.role
-        ? [user.role]
-        : [];
-  return new Set(rawRoles.map((role) => String(role || "").trim().toLowerCase()).filter(Boolean));
-}
-
 function SmartAvatar({ src = "", initials = "?", alt = "", className = "", fallbackClassName = "" }) {
   const [errored, setErrored] = useState(false);
   const normalizedSrc = String(src || "").trim();
@@ -205,13 +164,13 @@ function ListAvatar({ person }) {
   );
 }
 
-export default function NavBar() {
+export default function NavBar({ hideBurger = false }) {
   const params = useParams();
   const { slug: contextSlug, tenant } = useTenant();
   const slug = params.slug || contextSlug || "cedar";
   const location = useLocation();
   const navigate = useNavigate();
-  const { token, user, isAuthenticated, logout, getAuthToken } = useAuth();
+  const { token, user, isAuthenticated, getAuthToken } = useAuth();
   const { unreadCount } = useMobileNotifications();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -232,24 +191,13 @@ export default function NavBar() {
   const config = tenant?.config || {};
   const configuredLogoUrl = resolveTenantLogoUrl(tenant);
   useEffect(() => setLogoError(false), [slug, configuredLogoUrl]);
-  const modules = {
-    ...(config.modules || tenant?.modules || {}),
-    events: isMemberEventsModuleEnabled(config?.modules?.events ?? tenant?.modules?.events)
-  };
-  const roleSet = normalizedRoleSet(user);
-
-  const isCampDirector = roleSet.has("tenant_admin") || roleSet.has("super_admin") || roleSet.has("admin");
-  const needsOnboarding = tenant?.onboardingStatus !== "live";
+  const modules = config.modules || tenant?.modules || {};
 
   const title = resolveNetworkDisplayName(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const aiName = resolveCampAiName(tenant);
-  const content = resolveTenantContent(tenant);
-  const merchShopUrl =
-    String(content.merchShopUrl || "").trim() ||
-    (slug === "camp-cedar" || slug === "cedar" ? "https://thecampspot.com/camphome.aspx" : "");
   const nativeApp = isNativeApp();
   const cedarFallback = slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "";
   const resolvedLogoUrl = configuredLogoUrl || cedarFallback;
@@ -265,18 +213,10 @@ export default function NavBar() {
     ? explicitProfileInitials
     : initialsFrom(fullNameFrom(user) || String(user?.email || "").split("@")[0] || "Member");
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
-  const canFamilyTrees = Boolean(modules.familyTrees !== false && tenantHasFeature(tenant, "familyTrees"));
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
-  const rememberedTenantSlug =
-    typeof window !== "undefined"
-      ? String(localStorage.getItem("pondbridgeTenantSlug") || "").trim().toLowerCase()
-      : "";
   const loginPath = pathWithCamp(slug, "/login");
   const createAccountPath = pathWithCamp(slug, "/create-account");
   const homePath = pathWithCamp(slug, isAuthenticated ? "/home" : "/");
-  const loggedOutLandingPath = nativeApp
-    ? pathWithCamp(rememberedTenantSlug || slug, "/login")
-    : pathWithCamp(slug, demoAccessEnabled ? "/" : "/login");
 
   const currentPath = location.pathname || "";
   const onLoginRoute = /\/login\/?$/.test(currentPath);
@@ -302,141 +242,8 @@ export default function NavBar() {
     ? nativeMemberNavTitle(currentTenantPath, { newsletterLabel, alumniWordTitle, aiName, mediaStreamLabel })
     : title;
 
-  const menuSections = useMemo(() => {
-    if (!isAuthenticated) return [];
-
-    const accountItems = [
-      { id: "home", icon: Home, label: "Home", to: pathWithCamp(slug, "/home") },
-      { id: "profile", icon: User, label: "My Profile", to: pathWithCamp(slug, "/my-profile") },
-      { id: "edit", icon: Pencil, label: "Edit Profile", to: pathWithCamp(slug, "/edit-profile") }
-    ];
-    if (canSearch) {
-      accountItems.push({
-        id: "search",
-        icon: Search,
-        label: "Advanced Search",
-        to: pathWithCamp(slug, "/search")
-      });
-    }
-
-    const communityItems = [];
-    if (modules.photoStream !== false) {
-      communityItems.push({
-        id: "photos",
-        icon: Image,
-        label: mediaStreamLabel,
-        to: pathWithCamp(slug, "/photo-stream")
-      });
-    }
-    if (modules.events !== false) {
-      communityItems.push({
-        id: "events",
-        icon: CalendarDays,
-        label: "Events & Info Sessions",
-        to: pathWithCamp(slug, "/events")
-      });
-    }
-    if (modules.giving !== false) {
-      communityItems.push({
-        id: "giving",
-        icon: HeartHandshake,
-        label: "Giving",
-        to: pathWithCamp(slug, "/giving")
-      });
-    }
-    if (modules.chat !== false) {
-      communityItems.push({
-        id: "chat",
-        icon: MessageSquare,
-        label: "Chats and Forums",
-        to: pathWithCamp(slug, "/chat-rooms?tab=personal")
-      });
-    }
-    if (modules.map !== false) {
-      communityItems.push({
-        id: "map",
-        icon: Map,
-        label: `${alumniWordTitle} Map`,
-        to: pathWithCamp(slug, "/location-map")
-      });
-    }
-    if (canFamilyTrees) {
-      communityItems.push({
-        id: "trees",
-        icon: TreePine,
-        label: "Family Trees",
-        to: pathWithCamp(slug, "/family-trees")
-      });
-    }
-    if (modules.newsletter !== false) {
-      communityItems.push({
-        id: "chest",
-        icon: BookOpen,
-        label: newsletterLabel,
-        to: pathWithCamp(slug, "/newsletter")
-      });
-    }
-    if (modules.merchShop !== false && merchShopUrl) {
-      communityItems.push({ id: "merch", icon: Shirt, label: "Merch Shop", href: merchShopUrl });
-    }
-
-    const adminItems = [];
-    if (isCampDirector) {
-      if (needsOnboarding) {
-        adminItems.push({
-          id: "setup",
-          icon: Settings,
-          label: "Setup Wizard",
-          to: pathWithCamp(slug, "/director-create-account")
-        });
-      }
-      adminItems.push({
-        id: "admin",
-        icon: Shield,
-        label: "Director Dashboard",
-        to: pathWithCamp(slug, "/admin")
-      });
-    }
-
-    const sections = [];
-    if (accountItems.length) sections.push({ id: "account", title: "Account", items: accountItems });
-    if (communityItems.length) sections.push({ id: "community", title: "Community", items: communityItems });
-    if (nativeApp) {
-      sections.push({
-        id: "mobile",
-        title: "Mobile",
-        items: [{ id: "notifications", icon: Bell, label: "Notifications", to: pathWithCamp(slug, "/notifications") }]
-      });
-    }
-    if (adminItems.length) sections.push({ id: "admin-tools", title: "Director", items: adminItems });
-    sections.push({
-      id: "policy",
-      title: "Policy",
-      items: [{ id: "legal", icon: Scale, label: "Terms & Privacy", to: pathWithCamp(slug, "/legal") }]
-    });
-
-    return sections;
-  }, [
-    isAuthenticated,
-    slug,
-    canSearch,
-    aiName,
-    alumniWordTitle,
-    modules.chat,
-    modules.events,
-    modules.giving,
-    modules.map,
-    modules.photoStream,
-    mediaStreamLabel,
-    modules.newsletter,
-    canFamilyTrees,
-    modules.merchShop,
-    newsletterLabel,
-    merchShopUrl,
-    nativeApp,
-    isCampDirector,
-    needsOnboarding
-  ]);
+  const menuSections = useMemberNavSections();
+  const endSession = useEndSession({ onBeforeNavigate: () => closeMenus() });
 
   function closeMenus() {
     setMenuOpen(false);
@@ -627,31 +434,6 @@ export default function NavBar() {
     }
   }
 
-  async function endSession({ forgetCamp = false } = {}) {
-    const raceTimeout = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-    try {
-      // Race against a timeout so logout doesn't hang when the API is
-      // unreachable (CORS / network failure, especially on Safari).
-      await Promise.race([
-        requestJson(`/api/t/${slug}/auth/logout`, { method: "POST", token }),
-        raceTimeout(2200)
-      ]);
-    } catch {
-      // No-op: clear local auth regardless.
-    } finally {
-      closeMenus();
-      logout();
-      if (forgetCamp && typeof window !== "undefined") {
-        try {
-          window.localStorage.removeItem("pondbridgeTenantSlug");
-        } catch {
-          // Ignore storage failures and still return to the app entry route.
-        }
-      }
-      navigate(forgetCamp ? "/" : loggedOutLandingPath, { replace: true });
-    }
-  }
-
   async function handleLogout() {
     return endSession();
   }
@@ -818,6 +600,7 @@ export default function NavBar() {
               />
             </button>
 
+            {hideBurger ? null : (
             <div className="navbar2-menuWrap">
               <button
                 ref={toggleRef}
@@ -879,6 +662,7 @@ export default function NavBar() {
                 </div>
               ) : null}
             </div>
+            )}
           </>
         ) : null}
       </div>

@@ -1,0 +1,122 @@
+/*
+ * Left member rail. Only mounted when the director has enabled it and the
+ * viewport is wide enough (see useSideNavActive), so there is no mobile case
+ * to defend here — the burger stays the nav below that width.
+ */
+:root{
+  --side-nav-w: 232px;
+  --side-nav-collapsed-w: 64px;
+}
+
+.side-nav{
+  position: fixed;
+  top: var(--nav-total-h);
+  left: 0;
+  bottom: 0;
+  width: var(--side-nav-w);
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-right: 1px solid var(--neutral-200);
+  box-shadow: 2px 0 18px rgba(29, 29, 29, .06);
+  transition: width .16s ease;
+}
+
+.side-nav.is-collapsed{ width: var(--side-nav-collapsed-w); }
+
+.side-nav-scroll{
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 10px 8px 4px;
+}
+
+.side-nav-section{ padding: 6px 0; border-top: 1px solid rgba(29, 29, 29, .09); }
+.side-nav-section:first-child{ border-top: 0; padding-top: 0; }
+
+.side-nav-section-title{
+  margin: 0 10px 4px;
+  color: color-mix(in srgb, var(--brand-primary) 58%, var(--neutral-800));
+  font-size: .64rem;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.side-nav.is-collapsed .side-nav-section-title{
+  /* Keep the grouping rhythm without a label that cannot fit. */
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.side-nav-item,
+.side-nav-collapse{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--neutral-900);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.side-nav-item svg,
+.side-nav-collapse svg{ color: var(--neutral-700); flex: 0 0 auto; }
+
+.side-nav-item-label{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-nav.is-collapsed .side-nav-item,
+.side-nav.is-collapsed .side-nav-collapse{ justify-content: center; padding: 8px 0; }
+.side-nav.is-collapsed .side-nav-item-label{ display: none; }
+
+.side-nav-item:hover,
+.side-nav-collapse:hover{
+  background: color-mix(in srgb, var(--brand-primary) 12%, #ffffff);
+  color: var(--brand-primary-hover);
+}
+.side-nav-item:hover svg,
+.side-nav-collapse:hover svg{ color: var(--brand-primary); }
+
+.side-nav-item.is-current{
+  background: color-mix(in srgb, var(--brand-primary) 14%, #ffffff);
+  color: var(--brand-primary);
+  font-weight: 700;
+}
+.side-nav-item.is-current svg{ color: var(--brand-primary); }
+
+.side-nav-item:focus-visible,
+.side-nav-collapse:focus-visible{
+  outline: 2px solid color-mix(in srgb, var(--brand-primary) 45%, transparent);
+  outline-offset: -2px;
+}
+
+.side-nav-footer{
+  flex: 0 0 auto;
+  padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(29, 29, 29, .09);
+}
+
+/* Shift the page out from under the fixed rail. */
+.app-shell.has-side-nav .app-shell-main{ padding-left: var(--side-nav-w); }
+.app-shell.has-side-nav.side-nav-collapsed .app-shell-main{ padding-left: var(--side-nav-collapsed-w); }
+
+@media (prefers-reduced-motion: reduce){
+  .side-nav{ transition: none; }
+}

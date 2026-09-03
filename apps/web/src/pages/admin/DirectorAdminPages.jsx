@@ -973,7 +973,7 @@ export function DirectorAdminFeaturesPage() {
     newsletter: "Newsletter",
     photoStream: "Media Stream"
   });
-  const [moduleSettings, setModuleSettings] = useState({ merchShopUrl: "" });
+  const [moduleSettings, setModuleSettings] = useState({ merchShopUrl: "", sideNavEnabled: false });
   const [showAllCapabilities, setShowAllCapabilities] = useState(false);
   // One entry per home-page button slot; "" means "let PondBridge choose".
   const [homeQuickActions, setHomeQuickActions] = useState(() =>
@@ -991,7 +991,7 @@ export function DirectorAdminFeaturesPage() {
       setModuleDisplayNames(
         response.moduleDisplayNames || { newsletter: "Newsletter", photoStream: "Media Stream" }
       );
-      setModuleSettings(response.moduleSettings || { merchShopUrl: "" });
+      setModuleSettings(response.moduleSettings || { merchShopUrl: "", sideNavEnabled: false });
       setHomeQuickActions(toQuickActionSlots(response.homeQuickActions));
     } catch (requestError) {
       setError(requestError.message || "Failed to load features.");
@@ -1414,6 +1414,58 @@ export function DirectorAdminFeaturesPage() {
               {savingQuickActions ? "Saving…" : "Save buttons"}
             </Button>
           </SettingActions>
+        </section>
+        <section className="director-admin-feature-section" aria-labelledby="member-navigation-heading">
+          <div className="director-admin-section-heading">
+            <div>
+              <p className="director-admin-section-kicker">Member navigation</p>
+              <h2 id="member-navigation-heading">Sidebar navigation</h2>
+              <p>
+                Show every feature in a permanent bar down the left of the page instead of hiding
+                them behind the menu button. Members on phones and narrow windows keep the menu
+                button either way, and can collapse the bar to icons.
+              </p>
+            </div>
+            <Badge tone="neutral">Wide screens only</Badge>
+          </div>
+          <div className="director-admin-module-list">
+            <article className={`director-admin-module-row ${moduleSettings.sideNavEnabled ? "is-enabled" : ""}`.trim()}>
+              <div className="director-admin-module-main">
+                <div className="director-admin-module-copy">
+                  <div className="director-admin-module-title-row">
+                    <h3>Left sidebar</h3>
+                    <span className={`director-admin-module-state status-${moduleSettings.sideNavEnabled ? "active" : "off"}`}>
+                      {moduleSettings.sideNavEnabled ? "Live" : "Off"}
+                    </span>
+                  </div>
+                  <p>
+                    The sidebar lists the same pages as the menu button and follows the features you
+                    turned on above, so nothing needs to be configured twice.
+                  </p>
+                </div>
+                <label className="director-admin-switch">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(moduleSettings.sideNavEnabled)}
+                    aria-label={`Sidebar navigation: ${moduleSettings.sideNavEnabled ? "on" : "off"}`}
+                    onChange={(event) => {
+                      const nextSettings = {
+                        ...moduleSettings,
+                        sideNavEnabled: Boolean(event.target.checked)
+                      };
+                      setModuleSettings(nextSettings);
+                      const nextModules = Object.fromEntries(
+                        payload.modules.map((item) => [item.key, item.enabled])
+                      );
+                      saveModules(nextModules, moduleDisplayNames, nextSettings);
+                    }}
+                    disabled={saving}
+                  />
+                  <span>{moduleSettings.sideNavEnabled ? "On" : "Off"}</span>
+                </label>
+              </div>
+            </article>
+          </div>
         </section>
       </Card>
       <Card className="director-admin-capabilities-card director-admin-services-card">

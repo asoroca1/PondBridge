@@ -5651,7 +5651,8 @@ router.get("/features", async (req, res) => {
       photoStream: content.photoStreamName || "Media Stream"
     },
     moduleSettings: {
-      merchShopUrl: content.merchShopUrl || ""
+      merchShopUrl: content.merchShopUrl || "",
+      sideNavEnabled: Boolean(content.sideNavEnabled)
     },
     homeQuickActions: content.homeQuickActions
   });
@@ -5719,6 +5720,11 @@ router.patch("/features", async (req, res) => {
     contentChanged = true;
   }
 
+  if (Object.prototype.hasOwnProperty.call(incomingSettings, "sideNavEnabled")) {
+    nextContent.sideNavEnabled = Boolean(incomingSettings.sideNavEnabled);
+    contentChanged = true;
+  }
+
   if (hasIncomingQuickActions) {
     nextContent.homeQuickActions = normalizeHomeQuickActions(req.body.homeQuickActions);
     contentChanged = true;
@@ -5764,10 +5770,14 @@ router.patch("/features", async (req, res) => {
   await writeAdminAudit(req, "admin_features_updated", {
     moduleChanges,
     moduleDisplayNameChanges: displayNameChanges,
-    moduleSettingChanges:
-      String(currentContent.merchShopUrl || "") === String(resolveContent(tenant).merchShopUrl || "")
+    moduleSettingChanges: [
+      ...(String(currentContent.merchShopUrl || "") === String(savedContent.merchShopUrl || "")
         ? []
-        : [{ key: "merchShopUrl", configured: Boolean(resolveContent(tenant).merchShopUrl) }],
+        : [{ key: "merchShopUrl", configured: Boolean(savedContent.merchShopUrl) }]),
+      ...(Boolean(currentContent.sideNavEnabled) === Boolean(savedContent.sideNavEnabled)
+        ? []
+        : [{ key: "sideNavEnabled", configured: Boolean(savedContent.sideNavEnabled) }])
+    ],
     homeQuickActionChange:
       (currentContent.homeQuickActions || []).join(",") ===
       (resolveContent(tenant).homeQuickActions || []).join(",")
@@ -5790,7 +5800,8 @@ router.patch("/features", async (req, res) => {
       photoStream: resolveContent(tenant).photoStreamName || "Media Stream"
     },
     moduleSettings: {
-      merchShopUrl: resolveContent(tenant).merchShopUrl || ""
+      merchShopUrl: resolveContent(tenant).merchShopUrl || "",
+      sideNavEnabled: Boolean(resolveContent(tenant).sideNavEnabled)
     },
     homeQuickActions: resolveContent(tenant).homeQuickActions
   });

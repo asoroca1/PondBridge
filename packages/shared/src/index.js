@@ -556,6 +556,7 @@ export const tenantContentSchema = z.object({
   ageGroups: z.array(z.string().trim().min(1).max(60)).max(20).default(defaultCampAgeGroups),
   staffRoles: z.array(z.string().trim().min(1).max(60)).max(20).default(defaultCampStaffRoles),
   merchShopUrl: z.string().trim().url().or(z.literal("")).default(""),
+  sideNavEnabled: z.boolean().default(false),
   homeQuickActions: z
     .array(z.string())
     .default([])

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import NavBar from "./NavBar.jsx";
 import NativeMemberTabBar from "./NativeMemberTabBar.jsx";
+import SideNav from "./SideNav.jsx";
 import ProductHeader from "./ProductHeader.jsx";
 import SessionWarningBanner from "./SessionWarningBanner.jsx";
 import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { isNativeApp } from "../lib/nativeApp.js";
+import { useSideNavActive, useSideNavCollapsed } from "../hooks/useMemberNav.js";
 
 const STANDARD_OFFSET_MATCHERS = ["/admin", "/onboarding", "/settings", "/super"];
 const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account", "/director-legal"];
@@ -48,6 +50,9 @@ export default function AppShell({ children }) {
     },
     [location.pathname, location.search, isTenantRoot, onboardingIncomplete]
   );
+  const sideNavAvailable = useSideNavActive();
+  const [sideNavCollapsed, setSideNavCollapsed] = useSideNavCollapsed();
+
   const useNativeMemberShell = useMemo(
     () =>
       nativeApp &&
@@ -60,6 +65,15 @@ export default function AppShell({ children }) {
       !/\/legal\/?$/.test(currentPath),
     [currentPath, isAuthenticated, nativeApp, useNativeAuthLayout, useProductLayout]
   );
+
+  // The rail is a signed-in member tool: auth screens and the public entry
+  // page keep the plain header so a logged-out visitor never sees member links.
+  const onAuthRoute =
+    /\/login\/?$/.test(currentPath) ||
+    /\/create-account\/?$/.test(currentPath) ||
+    /\/forgot-password\/?$/.test(currentPath) ||
+    /\/auth\/callback\/?$/.test(currentPath);
+  const showSideNav = sideNavAvailable && !onAuthRoute && !isTenantRoot;
 
   useEffect(() => {
     if (previousPathRef.current === currentPath) return undefined;
@@ -83,13 +97,19 @@ export default function AppShell({ children }) {
 
   return (
     <div
-      className={`app-shell alumni-app-shell ${useNativeAuthLayout ? "app-shell-native-auth" : ""} ${useNativeMemberShell ? "is-native-member-shell" : ""}`.trim()}
+      className={`app-shell alumni-app-shell ${useNativeAuthLayout ? "app-shell-native-auth" : ""} ${useNativeMemberShell ? "is-native-member-shell" : ""} ${showSideNav ? "has-side-nav" : ""} ${showSideNav && sideNavCollapsed ? "side-nav-collapsed" : ""}`.trim()}
     >
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <SessionWarningBanner />
       <CedarBackground behavior="fixed" opacity={0.9} zIndex={0} />
       <div className={`app-shell-content ${useNativeAuthLayout ? "app-shell-content-native-auth" : ""}`.trim()}>
-        {useNativeAuthLayout ? null : <NavBar />}
+        {useNativeAuthLayout ? null : <NavBar hideBurger={showSideNav} />}
+        {showSideNav ? (
+          <SideNav
+            collapsed={sideNavCollapsed}
+            onToggleCollapsed={() => setSideNavCollapsed((prev) => !prev)}
+          />
+        ) : null}
         <main
           id="main-content"
           tabIndex={-1}
