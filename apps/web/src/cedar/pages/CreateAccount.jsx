@@ -2,12 +2,8 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveStaffRoleOptions } from "../../lib/campLabels.js";
 import Navbar1 from "../components/Navbar1";
-const industryOptions = [
-  "Technology","Finance","Healthcare","Education","Law",
-  "Arts & Media","Sports","Nonprofit","Consulting","Real Estate",
-  "Engineering","Government","Hospitality & Travel","Retail & E-commerce",
-  "Science & Research","Marketing & Advertising","Other"
-];
+import { INDUSTRIES } from "@pondbridge/shared";
+const industryOptions = INDUSTRIES;
 
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
