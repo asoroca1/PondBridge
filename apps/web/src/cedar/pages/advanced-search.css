@@ -929,7 +929,26 @@ select.as2-input {
 }
 
 .as2-empty-actions {
-  margin-top: 14px;
+  /* Written when this held a single button; a second one sat flush against it,
+     separated only by the collapsed whitespace between the JSX elements. */
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.as2-empty-actions .as2-btn {
+  padding: 10px 18px;
+}
+
+/* Side by side until they would crowd, then full width rather than a ragged row. */
+@media (max-width: 420px) {
+  .as2-empty-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .as2-pager {

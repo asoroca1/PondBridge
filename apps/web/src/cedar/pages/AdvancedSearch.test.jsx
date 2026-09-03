@@ -111,3 +111,23 @@ describe("filter dropdown stacking", () => {
     expect(css).toMatch(/\.as2-sec:has\(\.as2-mwrap\.is-open\)[\s\S]*?z-index:\s*30/);
   });
 });
+
+describe("empty-state actions layout", () => {
+  // Regression: this container was written for a single button. Adding the browse-all
+  // button left the two sitting flush, separated only by collapsed JSX whitespace.
+  it("lays the buttons out as a spaced row", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const css = await readFile(new URL("./advanced-search.css", import.meta.url), "utf8");
+    const rule = css.match(/\.as2-empty-actions\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule[0]).toMatch(/display:\s*flex/);
+    expect(rule[0]).toMatch(/gap:\s*10px/);
+  });
+
+  it("renders both actions in that container", () => {
+    const html = render();
+    expect(html).toContain("as2-empty-actions");
+    expect(html).toContain("Start with a name search");
+    expect(html).toContain("Browse all");
+  });
+});
