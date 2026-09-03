@@ -1298,3 +1298,23 @@ select.as2-input {
 @media (prefers-reduced-motion: reduce) {
   .as2-grid.is-refreshing { transition: none; }
 }
+
+/* ---- dropdown stacking ----
+   Every .as2-sec is its own stacking context (position: relative + z-index), so a
+   menu's own z-index cannot lift it above a sibling section. Two fixes, both needed:
+
+   1. Display Options is permanently `.open`, which gave it the same z-index: 3 as a
+      section holding a live dropdown. Being later in the DOM, it won the tie and
+      painted over the menu. It has no dropdown of its own, so it drops back to the
+      resting layer.
+   2. Any section whose multi-select is open is lifted above every sibling, so the
+      menu is never covered regardless of section order. */
+.as2-sec.as2-sec-display,
+.as2-sec.open.as2-sec-display {
+  z-index: 1;
+}
+
+.as2-sec:has(.as2-mwrap.is-open),
+.as2-sec.open:has(.as2-mwrap.is-open) {
+  z-index: 30;
+}

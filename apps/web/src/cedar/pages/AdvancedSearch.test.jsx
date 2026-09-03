@@ -93,3 +93,21 @@ describe("a shared search link before auth resolves", () => {
     expect(render("/?state=NY")).toMatch(/<option value="NY" selected="">?/);
   });
 });
+
+describe("filter dropdown stacking", () => {
+  // Regression: every .as2-sec is its own stacking context, and Display Options is
+  // permanently `.open`, so it shared z-index 3 with a section holding a live dropdown
+  // and — being later in the DOM — painted over the open menu.
+  it("marks Display Options so it drops below a section with an open menu", () => {
+    expect(render()).toContain("as2-sec-display");
+  });
+
+  it("keeps the stacking rules that make the fix work", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const css = await readFile(new URL("./advanced-search.css", import.meta.url), "utf8");
+    // The menu's own z-index cannot lift it out of its section's stacking context,
+    // so the fix has to act on the sections themselves.
+    expect(css).toMatch(/\.as2-sec\.as2-sec-display[\s\S]*?z-index:\s*1/);
+    expect(css).toMatch(/\.as2-sec:has\(\.as2-mwrap\.is-open\)[\s\S]*?z-index:\s*30/);
+  });
+});

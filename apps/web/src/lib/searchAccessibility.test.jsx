@@ -37,3 +37,15 @@ describe("Camp Search accessibility semantics", () => {
     expect(html).not.toContain("aria-expanded");
   });
 });
+
+describe("multi-select open-state hook", () => {
+  // The CSS lifts the whole section via :has(.as2-mwrap.is-open), so the wrapper must
+  // carry that class only while the menu is open.
+  it("does not mark the wrapper open when the menu is closed", () => {
+    const html = renderToStaticMarkup(
+      <RolesMultiSelect options={["Camper"]} value="" onChange={() => {}} />
+    );
+    expect(html).toContain('class="as2-mwrap"');
+    expect(html).not.toContain("is-open");
+  });
+});

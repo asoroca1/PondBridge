@@ -192,7 +192,7 @@ export function RolesMultiSelect({
   };
 
   return (
-    <div className="as2-mwrap" ref={ref}>
+    <div className={`as2-mwrap${open ? " is-open" : ""}`} ref={ref}>
       <button
         type="button"
         className={`as2-mselect ${open ? "is-open" : ""}`}
@@ -1215,7 +1215,7 @@ export default function AdvancedSearch() {
               </div>
             </section>
 
-            <section className="as2-sec open">
+            <section className="as2-sec open as2-sec-display">
               <SectionHead
                 icon={SlidersHorizontal}
                 label="Display Options"
