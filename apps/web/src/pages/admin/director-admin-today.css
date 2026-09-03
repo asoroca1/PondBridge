@@ -267,3 +267,179 @@
   background: #fbfcfe;
   box-shadow: none;
 }
+
+/* ---- Tab icon preview -------------------------------------------------- */
+/* A mock of the browser chrome the icon actually lands in. The point is the
+   16px reading: a wide logo looks fine in the upload box and turns to mush in
+   the tab, and this is where the director gets to see that before saving.
+   Scoped under .pb-cedar-page because that page styles bare elements, which
+   would otherwise win over single-class rules here. */
+
+.pb-cedar-page .pb-icon-preview {
+  --icon-preview-chrome: var(--neutral-200);
+  --icon-preview-surface: #ffffff;
+  --icon-preview-ink: var(--neutral-700);
+  --icon-preview-ghost: var(--neutral-300);
+  margin: 12px 0 0;
+  border: 1px solid var(--neutral-200);
+  border-radius: 12px;
+  background: var(--icon-preview-chrome);
+  padding: 8px 8px 0;
+  overflow: hidden;
+}
+
+.pb-cedar-page .pb-icon-preview[data-theme="dark"] {
+  --icon-preview-chrome: #202124;
+  --icon-preview-surface: #35363a;
+  --icon-preview-ink: #e8eaed;
+  --icon-preview-ghost: #5f6368;
+  border-color: #202124;
+}
+
+.pb-cedar-page .pb-icon-preview__chrome {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.pb-cedar-page .pb-icon-preview__tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 260px;
+  flex: 1 1 auto;
+  border-radius: 8px 8px 0 0;
+  background: var(--icon-preview-surface);
+  padding: 8px 10px;
+}
+
+.pb-cedar-page .pb-icon-preview__tab--idle {
+  flex: 0 0 96px;
+  opacity: .55;
+}
+
+/* Deliberately not scaled up: 16px is the size the browser draws it at. */
+.pb-cedar-page .pb-icon-preview__tab-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.pb-cedar-page .pb-icon-preview__tab-ghost {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--icon-preview-ghost);
+}
+
+.pb-cedar-page .pb-icon-preview__tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--icon-preview-ink);
+  font-size: .78rem;
+}
+
+.pb-cedar-page .pb-icon-preview__tab--idle .pb-icon-preview__tab-title {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--icon-preview-ghost);
+}
+
+.pb-cedar-page .pb-icon-preview__tab-close {
+  flex: none;
+  color: var(--icon-preview-ink);
+  font-size: .9rem;
+  line-height: 1;
+  opacity: .6;
+}
+
+.pb-cedar-page .pb-icon-preview__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--icon-preview-surface);
+  padding: 10px;
+}
+
+.pb-cedar-page .pb-icon-preview__bar-dot,
+.pb-cedar-page .pb-icon-preview__bar-url {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--icon-preview-ghost);
+}
+
+.pb-cedar-page .pb-icon-preview__bar-dot {
+  width: 10px;
+  flex: none;
+}
+
+.pb-cedar-page .pb-icon-preview__bar-url {
+  flex: 1 1 auto;
+}
+
+.pb-cedar-page .pb-icon-preview__sizes {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 16px 0 0;
+}
+
+.pb-cedar-page .pb-icon-preview__size {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.pb-cedar-page .pb-icon-preview__size img {
+  object-fit: contain;
+}
+
+/* iOS masks the home-screen icon rather than letting it bleed to the corners. */
+.pb-cedar-page .pb-icon-preview__tile {
+  border-radius: 22%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+}
+
+.pb-cedar-page .pb-icon-preview__size figcaption {
+  color: var(--neutral-500);
+  font-size: .74rem;
+  white-space: nowrap;
+}
+
+.pb-cedar-page .pb-icon-preview__controls {
+  display: inline-flex;
+  gap: 4px;
+  margin: 16px 0 0;
+  border: 1px solid var(--neutral-200);
+  border-radius: 999px;
+  background: var(--neutral-100, #f4f4f5);
+  padding: 3px;
+}
+
+.pb-cedar-page .pb-icon-preview__controls button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 5px 12px;
+  color: var(--neutral-600);
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pb-cedar-page .pb-icon-preview__controls button.is-active {
+  background: #ffffff;
+  color: var(--neutral-800);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+}

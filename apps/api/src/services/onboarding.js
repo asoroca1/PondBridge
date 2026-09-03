@@ -354,6 +354,30 @@ export function getCurrentStepFromChecklist(checklist = [], fallback = "name_bra
   return current?.id || fallback;
 }
 
+// Square PNG derivatives of the camp logo: 32 for the browser tab, 180 for iOS
+// home screens, 192/512 for the web manifest. Served per host by the /brand/* edge
+// function so the icon is right in the HTML rather than swapped in from React.
+export const APP_ICON_SIZES = Object.freeze([32, 180, 192, 512]);
+
+function normalizeIconUrls(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const icons = {};
+
+  for (const size of APP_ICON_SIZES) {
+    const raw = String(source[size] ?? source[String(size)] ?? "").trim();
+    if (!raw) continue;
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+      icons[String(size)] = url.toString();
+    } catch {
+      // Skip anything that is not a usable absolute URL.
+    }
+  }
+
+  return icons;
+}
+
 export function resolveTheme(tenant) {
   const live = deepClone(tenant?.theme || {});
   const fontToken = normalizeFontToken(live.fontToken || "cedar_default");
@@ -371,6 +395,9 @@ export function resolveTheme(tenant) {
     textMuted: String(live.textMuted || ""),
     cardBorder: String(live.cardBorder || ""),
     logoUrl: String(live.logoUrl || ""),
+    // Optional. Empty means the tab icon is derived from the logo instead.
+    faviconUrl: String(live.faviconUrl || ""),
+    iconUrls: normalizeIconUrls(live.iconUrls),
     heroImageUrl: String(live.heroImageUrl || ""),
     // Empty means the member home falls back to heroImageUrl.
     heroImageUrlMember: String(live.heroImageUrlMember || ""),
@@ -545,6 +572,8 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
   return {
     branding: {
       logoUrl: theme.logoUrl,
+      faviconUrl: theme.faviconUrl,
+      iconUrls: theme.iconUrls,
       brandPrimary: theme.brandPrimary,
       brandSecondary: theme.brandSecondary,
       brandAccent: theme.brandAccent,

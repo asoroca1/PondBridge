@@ -9,9 +9,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="PondBridge" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- Resolved per camp at the edge by functions/brand/[[route]].js. These must be
+         correct in the served HTML: a favicon swapped in from React lands after the
+         browser has already committed to an icon, and Safari never re-reads it. -->
+    <link rel="icon" sizes="32x32" href="/brand/icon-32.png" />
+    <link rel="icon" sizes="192x192" href="/brand/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/icon-180.png" />
+    <link rel="manifest" href="/brand/manifest.webmanifest" />
     <title>PondBridge</title>
   </head>
   <body>

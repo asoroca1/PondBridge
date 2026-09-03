@@ -6085,6 +6085,7 @@ router.patch("/settings/branding", async (req, res) => {
       ...req.body,
       brandPrimary: String(req.body?.brandPrimary ?? (theme.brandPrimary || "")).trim(),
       logoUrl: String(req.body?.logoUrl ?? (theme.logoUrl || "")).trim(),
+      faviconUrl: String(req.body?.faviconUrl ?? (theme.faviconUrl || "")).trim(),
       heroImageUrl: String(req.body?.heroImageUrl ?? (theme.heroImageUrl || "")).trim(),
       heroImageUrlMember: String(
         req.body?.heroImageUrlMember ?? (theme.heroImageUrlMember || "")
@@ -6120,6 +6121,8 @@ router.patch("/settings/branding", async (req, res) => {
       ...currentTheme,
       brandPrimary: next.brandPrimary || theme.brandPrimary,
       logoUrl: next.logoUrl,
+      faviconUrl: next.faviconUrl,
+      iconUrls: next.iconUrls,
       heroImageUrl: next.heroImageUrl,
       heroImageUrlMember: next.heroImageUrlMember,
       heroImagePosition: next.heroImagePosition,
@@ -6135,6 +6138,8 @@ router.patch("/settings/branding", async (req, res) => {
         ...draft.theme,
         brandPrimary: next.brandPrimary || theme.brandPrimary,
         logoUrl: next.logoUrl,
+        faviconUrl: next.faviconUrl,
+        iconUrls: next.iconUrls,
         heroImageUrl: next.heroImageUrl,
         heroImageUrlMember: next.heroImageUrlMember,
         heroImagePosition: next.heroImagePosition,
@@ -8124,6 +8129,10 @@ router.put("/branding", async (req, res) => {
       text: String(theme.text || currentTheme.text),
       card: String(theme.card || currentTheme.card),
       logoUrl: String(theme.logoUrl || currentTheme.logoUrl),
+      // resolveTheme fills an absent faviconUrl with "", so fall back the way every
+      // other field here does or an onboarding save would clear a chosen tab icon.
+      faviconUrl: String(theme.faviconUrl || currentTheme.faviconUrl || ""),
+      iconUrls: Object.keys(theme.iconUrls).length ? theme.iconUrls : currentTheme.iconUrls || {},
       heroImageUrl: String(theme.heroImageUrl || currentTheme.heroImageUrl),
       heroImageUrlMember: String(theme.heroImageUrlMember || currentTheme.heroImageUrlMember || ""),
       heroImagePosition: String(theme.heroImagePosition || currentTheme.heroImagePosition),
