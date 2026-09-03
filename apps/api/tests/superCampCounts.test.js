@@ -24,7 +24,7 @@ const CEDAR = [
 describe("super console camp counts", () => {
   test("members excludes removed profiles, matching the camp's own dashboard", async () => {
     const counts = await loadCampCounts("cedar", { profileModel: fakeProfileModel(CEDAR) });
-    expect(counts).toEqual({ members: 358, removed: 2, profiles: 360 });
+    expect(counts).toEqual({ members: 358, profiles: 360 });
   });
 
   // The console must not grow a second definition of "how many members": it
@@ -36,11 +36,13 @@ describe("super console camp counts", () => {
     expect(profileModel.calls).toContainEqual({ tenantId: "cedar", ...ACTIVE_ALUMNI_FILTER });
   });
 
-  test("removed is counted explicitly rather than inferred from the raw total", async () => {
+  // The console shows members only, so nothing should pay for a removed count.
+  test("does not query for a count no surface displays", async () => {
     const profileModel = fakeProfileModel(CEDAR);
     await loadCampCounts("cedar", { profileModel });
 
-    expect(profileModel.calls).toContainEqual({ tenantId: "cedar", status: "removed" });
+    expect(profileModel.calls).toHaveLength(2);
+    expect(profileModel.calls).not.toContainEqual({ tenantId: "cedar", status: "removed" });
   });
 
   test("every count is scoped to the camp asked for", async () => {
@@ -57,6 +59,6 @@ describe("super console camp counts", () => {
 
   test("a camp with no members reports zeroes, not undefined", async () => {
     const counts = await loadCampCounts("empty", { profileModel: fakeProfileModel([]) });
-    expect(counts).toEqual({ members: 0, removed: 0, profiles: 0 });
+    expect(counts).toEqual({ members: 0, profiles: 0 });
   });
 });
