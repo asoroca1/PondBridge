@@ -474,6 +474,7 @@ export function resolveContent(tenant) {
       campType
     ),
     newsletterName: String(live.newsletterName || "Newsletter"),
+    photoStreamName: String(live.photoStreamName || "Media Stream"),
     ageGroups: normalizeLabelList(live.ageGroups, defaultAgeGroups),
     staffRoles: normalizeLabelList(live.staffRoles, defaultStaffRoles),
     merchShopUrl: String(live.merchShopUrl || ""),
@@ -594,6 +595,7 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
       welcomeHeadline: content.welcomeHeadline,
       welcomeBody: content.welcomeBody,
       newsletterName: content.newsletterName,
+      photoStreamName: content.photoStreamName,
       ageGroups: content.ageGroups,
       staffRoles: content.staffRoles,
       merchShopUrl: content.merchShopUrl,

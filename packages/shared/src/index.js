@@ -553,6 +553,7 @@ export const tenantContentSchema = z.object({
   welcomeHeadline: z.string().trim().max(120).default("Welcome to your alumni network"),
   welcomeBody: z.string().trim().max(1200).default("Connect with your camp alumni community."),
   newsletterName: z.string().trim().max(80).default("Newsletter"),
+  photoStreamName: z.string().trim().max(80).default("Media Stream"),
   ageGroups: z.array(z.string().trim().min(1).max(60)).max(20).default(defaultCampAgeGroups),
   staffRoles: z.array(z.string().trim().min(1).max(60)).max(20).default(defaultCampStaffRoles),
   merchShopUrl: z.string().trim().url().or(z.literal("")).default(""),

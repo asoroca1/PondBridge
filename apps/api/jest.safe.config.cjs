@@ -56,7 +56,7 @@ module.exports = {
     "**/tests/tenantFeatureInventory.test.js",
     "**/tests/tenantPurgeCoverage.test.js",
     "**/tests/tenantSchemaHardening.test.js",
-    "**/tests/tenantSideNavContent.test.js",
+    "**/tests/tenantContentFields.test.js",
     "**/tests/tenantIsolation.test.js"
   ]
 };
