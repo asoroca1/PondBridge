@@ -47,6 +47,7 @@ module.exports = {
     "**/tests/suggestions.test.js",
     "**/tests/superCampProfile.test.js",
     "**/tests/superCampCounts.test.js",
+    "**/tests/superTenantKind.test.js",
     "**/tests/superCopilot.test.js",
     "**/tests/superSearchRole.test.js",
     "**/tests/supabaseConfig.test.js",

@@ -13349,6 +13349,11 @@ button.super-stat-card {
   text-decoration: none;
 }
 
+.super-demo-badge {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .super-camp-profile-breadcrumb {
   margin: 0 0 10px;
   font-size: 0.84rem;
@@ -13527,6 +13532,9 @@ button.super-stat-card {
   background: var(--neutral-50);
   padding: 11px;
   gap: 10px;
+  /* Five controls here, not the shared four. The narrower breakpoints below
+     still collapse this to two columns and then one. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .super-filter-grid-tenants-inline label {

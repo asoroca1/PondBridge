@@ -354,7 +354,9 @@ export function SuperTenantsPage() {
   const [deletingTenantId, setDeletingTenantId] = useState("");
   const [wipeTarget, setWipeTarget] = useState(null);
   const [wipeConfirmation, setWipeConfirmation] = useState("");
-  const [filters, setFilters] = useState({ search: "", status: "", plan: "", billingStatus: "" });
+  const [kindSummary, setKindSummary] = useState(null);
+  // The console is a client book first: demos are one control away, not mixed in.
+  const [filters, setFilters] = useState({ search: "", status: "", plan: "", billingStatus: "", kind: "client" });
 
   async function loadData() {
     const query = new URLSearchParams();
@@ -362,6 +364,7 @@ export function SuperTenantsPage() {
     if (filters.status) query.set("status", filters.status);
     if (filters.plan) query.set("plan", filters.plan);
     if (filters.billingStatus) query.set("billingStatus", filters.billingStatus);
+    if (filters.kind) query.set("kind", filters.kind);
 
     try {
       setError("");
@@ -371,6 +374,7 @@ export function SuperTenantsPage() {
       ]);
       setSummary(dashboard.counts);
       setItems(tenants.items || []);
+      setKindSummary(tenants.kindSummary || null);
     } catch (loadError) {
       setError(loadError.message || "Could not load tenants.");
     } finally {
@@ -385,7 +389,7 @@ export function SuperTenantsPage() {
     if (!token) return;
     setLoading(true);
     loadData();
-  }, [token, filters.search, filters.status, filters.plan, filters.billingStatus]);
+  }, [token, filters.search, filters.status, filters.plan, filters.billingStatus, filters.kind]);
 
   async function toggleTenant(camp) {
     try {
@@ -480,9 +484,14 @@ export function SuperTenantsPage() {
         <PanelHeader title="Tenants" subtitle="Create and manage camp tenants." />
         {summary ? (
           <div className="super-tenant-metric-grid">
-            <TenantMetricCard label="Camps" value={summary.tenants || 0} subtext="Total tenant records" kind="camps" />
-            <TenantMetricCard label="Members" value={summary.members || 0} subtext="Across all camps" kind="users" />
-            <TenantMetricCard label="Directors" value={summary.directors || 0} subtext="Camp admins" kind="profiles" />
+            <TenantMetricCard
+              label="Clients"
+              value={summary.clients || 0}
+              subtext={`${summary.demos || 0} demo camp${(summary.demos || 0) === 1 ? "" : "s"} besides`}
+              kind="camps"
+            />
+            <TenantMetricCard label="Members" value={summary.members || 0} subtext="Across client camps" kind="users" />
+            <TenantMetricCard label="Directors" value={summary.directors || 0} subtext="Across client camps" kind="profiles" />
           </div>
         ) : null}
         {error ? <p className="error-text">{error}</p> : null}
@@ -493,10 +502,24 @@ export function SuperTenantsPage() {
         <header className="super-tenant-list-head">
           <div>
             <h2 className="pb-section-title">Tenant List</h2>
-            <p className="super-tenant-list-subtitle">Filter camps by status, billing plan, and billing state.</p>
+            <p className="super-tenant-list-subtitle">
+              {filters.kind === "client" && kindSummary?.demos
+                ? `${kindSummary.clients} client camp${kindSummary.clients === 1 ? "" : "s"}. ${kindSummary.demos} demo camp${kindSummary.demos === 1 ? "" : "s"} hidden — switch Showing to see them.`
+                : filters.kind === "demo"
+                  ? "Demo camps only. These are sales and test networks, not clients."
+                  : "Filter camps by status, billing plan, and billing state."}
+            </p>
           </div>
         </header>
         <div className="super-filter-grid super-filter-grid-tenants super-filter-grid-tenants-inline">
+          <label>
+            Showing
+            <Select value={filters.kind} onChange={(event) => setFilters((prev) => ({ ...prev, kind: event.target.value }))}>
+              <option value="client">Clients</option>
+              <option value="demo">Demo camps</option>
+              <option value="all">Clients and demos</option>
+            </Select>
+          </label>
           <label>
             Search
             <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
@@ -554,6 +577,7 @@ export function SuperTenantsPage() {
                     <Link className="super-camp-link" to={`/super/tenants/${camp._id}`}>
                       {camp.name}
                     </Link>
+                    {camp.isDemo ? <Badge tone="warning" className="super-demo-badge">Demo</Badge> : null}
                   </td>
                   <td>{camp.customDomain || `${camp.slug}.pondbridgealumni.com`}</td>
                   <td>{camp.slug}</td>

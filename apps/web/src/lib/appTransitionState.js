@@ -2,6 +2,13 @@ function normalizeValue(value = "") {
   return String(value || "").trim();
 }
 
+const NON_TENANT_SUBDOMAINS = ["www", "app", "api", "super"];
+
+// The super console belongs to no camp, so there is nothing to brand it with.
+function isSuperConsole(pathname = "", subdomain = "") {
+  return subdomain === "super" || /^\/super(\/|$)/i.test(pathname);
+}
+
 export function inferTransitionSlug(locationLike = globalThis?.location, storage = globalThis?.localStorage) {
   const pathname = normalizeValue(locationLike?.pathname || "/");
   const pathMatch = pathname.match(/^\/t\/([^/]+)/i);
@@ -9,10 +16,16 @@ export function inferTransitionSlug(locationLike = globalThis?.location, storage
 
   const hostname = normalizeValue(locationLike?.hostname).toLowerCase();
   const baseDomain = normalizeValue(import.meta.env.VITE_APP_BASE_DOMAIN || "pondbridgealumni.com").toLowerCase();
+  let subdomain = "";
   if (baseDomain && hostname.endsWith(`.${baseDomain}`)) {
-    const candidate = hostname.slice(0, -1 * (baseDomain.length + 1)).split(".")[0] || "";
-    if (candidate && !["www", "app", "api", "super"].includes(candidate)) return candidate;
+    subdomain = hostname.slice(0, -1 * (baseDomain.length + 1)).split(".")[0] || "";
+    if (subdomain && !NON_TENANT_SUBDOMAINS.includes(subdomain)) return subdomain;
   }
+
+  // Without this the loading screen fell back to the last camp this browser
+  // visited and painted that camp's name and logo over the super console —
+  // often a camp that had since been deleted.
+  if (isSuperConsole(pathname, subdomain)) return "";
 
   try {
     return normalizeValue(storage?.getItem?.("pondbridgeTenantSlug")).toLowerCase();
