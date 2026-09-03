@@ -216,9 +216,9 @@ function PhotosMosaic({ userId }) {
 
   return (
     <aside className="p1-card p1-photos-card">
-      <h2 className="p1-h2">Photos Posted</h2>
+      <h2 className="p1-h2">Media Posted</h2>
       {loading && <CedarSkeleton.Lines lines={3} />}
-      {!loading && items.length === 0 && <div className="p1-empty">No photos yet.</div>}
+      {!loading && items.length === 0 && <div className="p1-empty">Nothing posted yet.</div>}
       {!!items.length && (
         <div className="p1-mosaic">
           {items.map((p) => (
@@ -231,7 +231,7 @@ function PhotosMosaic({ userId }) {
               <img
                 className="p1-mosaic-img"
                 src={p.thumbUrl || p.imageUrl}
-                alt={p.caption || "Camp photo"}
+                alt={p.caption || "Camp memory"}
                 loading="lazy"
               />
             </Link>

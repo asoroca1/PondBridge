@@ -304,11 +304,11 @@ function PhotosPreviewCard() {
       <div className="card-head">
         <h3>{mediaStreamLabel}</h3>
         <Link to={tenantRoute(slug, "/photo-stream")} className="link-subtle">
-          Open photos <ChevronRight size={16} />
+          Open all <ChevronRight size={16} />
         </Link>
       </div>
       {!items.length ? (
-        <div className="p1-empty">Be the first to post a photo.</div>
+        <div className="p1-empty">Be the first to post a photo or video.</div>
       ) : (
         <div className="photos-mini">
           {items.map((p) => (
@@ -316,11 +316,11 @@ function PhotosPreviewCard() {
               key={p._id || p.id}
               to={tenantRoute(slug, "/photo-stream")}
               className="photos-mini-item"
-              title={p.caption || "Camp photo"}
+              title={p.caption || "Camp memory"}
             >
               <img
                 src={p.thumbUrl || p.imageUrl}
-                alt={p.caption || "Camp photo"}
+                alt={p.caption || "Camp memory"}
                 loading="lazy"
                 decoding="async"
               />
@@ -383,7 +383,7 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
     return (
       <EmptyHint
         title="No announcements yet"
-        desc="When members post photos, join threads, or newsletters are added, they’ll show up here."
+        desc="When members post photos or videos, join threads, or newsletters are added, they’ll show up here."
       />
     );
   }
