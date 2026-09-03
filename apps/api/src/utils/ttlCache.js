@@ -46,8 +46,19 @@ export function createTtlCache({ ttlMs = 15_000, maxEntries = 300 } = {}) {
       });
     },
 
-    clear() {
-      store.clear();
+    /**
+     * With no argument every entry goes. Pass a predicate over the key to drop
+     * only the entries it matches — callers use it to clear one tenant without
+     * throwing away every other tenant's warm entries.
+     */
+    clear(matches = null) {
+      if (typeof matches !== "function") {
+        store.clear();
+        return;
+      }
+      for (const key of [...store.keys()]) {
+        if (matches(key)) store.delete(key);
+      }
     }
   };
 }

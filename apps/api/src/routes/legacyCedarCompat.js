@@ -60,6 +60,7 @@ import {
   sendMobileNotificationBatch
 } from "../services/mobileNotifications.js";
 import { createTtlCache } from "../utils/ttlCache.js";
+import { clearSearchCaches } from "../services/searchCache.js";
 import {
   canViewProfileContact,
   filterProfileContactFields,
@@ -1791,6 +1792,7 @@ router.put("/me", async (req, res) => {
   const updatedProfile = await ProfileModel.updateScoped(req.tenant._id, profile._id, update);
   invalidateMapCaches(req.tenant?._id);
   clearHomeStatsCaches();
+  clearSearchCaches(req.tenant?._id);
 
   const updatedUser = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   if (updatedUser) {

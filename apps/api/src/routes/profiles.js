@@ -7,6 +7,7 @@ import { UserModel, ProfileModel } from "../db/models/index.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { sanitizeText } from "../utils/sanitize.js";
 import { createTtlCache } from "../utils/ttlCache.js";
+import { clearSearchCaches } from "../services/searchCache.js";
 import { filterProfileContactFields, normalizeProfilePrivacy } from "../services/profilePrivacy.js";
 import {
   canonicalizeCityName,
@@ -225,6 +226,7 @@ router.put("/me", profileUpdateLimiter, async (req, res) => {
 
   const profile = await ProfileModel.updateScoped(req.tenant._id, existing._id, cleanUpdate);
   profileListResponseCache.clear();
+  clearSearchCaches(req.tenant._id);
 
   await logTenantEvent({
     tenantId: req.tenant._id,

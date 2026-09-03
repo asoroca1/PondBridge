@@ -495,15 +495,23 @@ export default function AdvancedSearch() {
     return INDUSTRIES.map((value) => ({ value, count: null }));
   }, [facets]);
 
+  // Every role the director has configured is always offered, even at a count of
+  // zero: a role added today has to be selectable before anyone has filled it in,
+  // and dropping it made a brand-new role look broken. Anything else the directory
+  // turned up (a role since renamed or removed) follows.
   const campRoleOptions = useMemo(() => {
-    if (facets?.campRoles?.length) {
-      const known = new Set(staffRoleOptions.map((role) => role.toLowerCase()));
-      // Configured roles first, then anything else the directory turned up.
-      const configured = facets.campRoles.filter((entry) => known.has(entry.value.toLowerCase()));
-      const extra = facets.campRoles.filter((entry) => !known.has(entry.value.toLowerCase()));
-      return [...configured, ...extra];
-    }
-    return staffRoleOptions.map((value) => ({ value, count: null }));
+    const counts = new Map(
+      (facets?.campRoles || []).map((entry) => [String(entry.value).toLowerCase(), entry.count])
+    );
+    const configured = staffRoleOptions.map((value) => ({
+      value,
+      count: facets ? counts.get(value.toLowerCase()) ?? 0 : null
+    }));
+    const known = new Set(staffRoleOptions.map((role) => role.toLowerCase()));
+    const extra = (facets?.campRoles || []).filter(
+      (entry) => !known.has(String(entry.value).toLowerCase())
+    );
+    return [...configured, ...extra];
   }, [facets, staffRoleOptions]);
 
   const stateOptions = useMemo(() => {
