@@ -225,6 +225,32 @@ export function useMemberNavSections() {
   ]);
 }
 
+// Areas that bring their own chrome: the director and super consoles carry a
+// two-level nav of their own, and a member rail beside them would be a third
+// competing column of links. Mirrors AppShell's standard-offset list.
+const CONSOLE_PATH_PARTS = ["/admin", "/onboarding", "/settings", "/super"];
+
+/**
+ * Whether the rail belongs on this route at all, independent of the tenant
+ * setting and the viewport. Auth screens and the public entry page must never
+ * show member links; the consoles have their own nav.
+ */
+export function sideNavAllowedForPath(pathname = "") {
+  const path = String(pathname || "/");
+
+  const onAuthRoute =
+    /\/login\/?$/.test(path) ||
+    /\/create-account\/?$/.test(path) ||
+    /\/forgot-password\/?$/.test(path) ||
+    /\/auth\/callback\/?$/.test(path);
+  if (onAuthRoute) return false;
+
+  const isTenantRoot = path === "/" || /^\/t\/[^/]+\/?$/.test(path);
+  if (isTenantRoot) return false;
+
+  return !CONSOLE_PATH_PARTS.some((part) => path.includes(part));
+}
+
 /**
  * Whether the left rail is the active member nav right now. The director's
  * tenant setting decides whether it exists at all; the viewport decides whether

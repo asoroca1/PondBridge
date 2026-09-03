@@ -9,7 +9,11 @@ import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { isNativeApp } from "../lib/nativeApp.js";
-import { useSideNavActive, useSideNavCollapsed } from "../hooks/useMemberNav.js";
+import {
+  sideNavAllowedForPath,
+  useSideNavActive,
+  useSideNavCollapsed
+} from "../hooks/useMemberNav.js";
 
 const STANDARD_OFFSET_MATCHERS = ["/admin", "/onboarding", "/settings", "/super"];
 const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account", "/director-legal"];
@@ -66,14 +70,7 @@ export default function AppShell({ children }) {
     [currentPath, isAuthenticated, nativeApp, useNativeAuthLayout, useProductLayout]
   );
 
-  // The rail is a signed-in member tool: auth screens and the public entry
-  // page keep the plain header so a logged-out visitor never sees member links.
-  const onAuthRoute =
-    /\/login\/?$/.test(currentPath) ||
-    /\/create-account\/?$/.test(currentPath) ||
-    /\/forgot-password\/?$/.test(currentPath) ||
-    /\/auth\/callback\/?$/.test(currentPath);
-  const showSideNav = sideNavAvailable && !onAuthRoute && !isTenantRoot;
+  const showSideNav = sideNavAvailable && sideNavAllowedForPath(currentPath);
 
   useEffect(() => {
     if (previousPathRef.current === currentPath) return undefined;
