@@ -51,6 +51,7 @@ import {
   saveFeatureRollout
 } from "../services/featureRollouts.js";
 import { purgeTenantRows } from "../services/tenantPurge.js";
+import { loadCampCounts } from "../services/superCampCounts.js";
 import {
   buildSettingsWithCampProfile,
   hasCampProfilePatch,
@@ -543,13 +544,13 @@ async function loadTenantsWithCounts(filter = {}, { includeHidden = false } = {}
 
   const withCounts = await Promise.all(
     tenants.map(async (tenant) => {
-      const [userCount, profileCount] = await Promise.all([
-        UserModel.count({ tenantId: tenant._id }),
-        ProfileModel.count({ tenantId: tenant._id })
+      const [campCounts, userCount] = await Promise.all([
+        loadCampCounts(tenant._id),
+        UserModel.count({ tenantId: tenant._id })
       ]);
       return {
         ...tenant,
-        counts: { users: userCount, profiles: profileCount }
+        counts: { ...campCounts, users: userCount }
       };
     })
   );
@@ -680,13 +681,25 @@ router.get("/search", superSearchLimiter, async (req, res) => {
 });
 
 router.get("/dashboard", requireRole("support_admin"), async (_req, res) => {
-  const [tenantCount, userCount, profileCount] = await Promise.all([
+  const [tenantCount, userCount, profileCount, memberCount, directorCount] = await Promise.all([
     TenantModel.count({}),
     UserModel.acrossTenants().count({}),
-    ProfileModel.acrossTenants().count({})
+    ProfileModel.acrossTenants().count({}),
+    ProfileModel.acrossTenants().count({ status: "active" }),
+    UserModel.acrossTenants().count({ roles: { $contains: ["tenant_admin"] } })
   ]);
 
-  res.json({ counts: { tenants: tenantCount, users: userCount, profiles: profileCount } });
+  res.json({
+    counts: {
+      tenants: tenantCount,
+      members: memberCount,
+      directors: directorCount,
+      // Every user row owns a profile row, so these two are always the same
+      // number. Kept for older callers; new surfaces read members/directors.
+      users: userCount,
+      profiles: profileCount
+    }
+  });
 });
 
 router.get("/platform-pulse", requireRole("support_admin"), async (_req, res) => {
@@ -822,9 +835,8 @@ router.get("/tenants/:tenantId", requireRole("support_admin"), async (req, res) 
     return res.status(404).json({ error: { code: "TENANT_NOT_FOUND", message: "Tenant not found" } });
   }
 
-  const [userCount, profileCount, directors, activity] = await Promise.all([
-    UserModel.count({ tenantId: tenant._id }),
-    ProfileModel.count({ tenantId: tenant._id }),
+  const [campCounts, directors, activity] = await Promise.all([
+    loadCampCounts(tenant._id),
     UserModel.find(
       { tenantId: tenant._id, roles: { $contains: ["tenant_admin"] } },
       { select: ["id", "email", "roles", "status", "lastLoginAt", "createdAt"], sort: { createdAt: 1 }, limit: 25 }
@@ -844,7 +856,7 @@ router.get("/tenants/:tenantId", requireRole("support_admin"), async (req, res) 
     tenant: {
       ...tenant,
       ...tenantBillingPlanSummary(tenant),
-      counts: { users: userCount, profiles: profileCount, directors: directors.length }
+      counts: { ...campCounts, directors: directors.length }
     },
     campProfile,
     directorClaim: resolveDirectorClaimLinks(tenant),
