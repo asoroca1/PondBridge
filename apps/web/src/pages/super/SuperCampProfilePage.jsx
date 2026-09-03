@@ -330,8 +330,8 @@ export default function SuperCampProfilePage() {
         <div className="super-camp-profile-fact-grid">
           <Fact label="Slug">{tenant.slug}</Fact>
           <Fact label="Domain">{network.domain || "—"}</Fact>
-          <Fact label="Members">{counts.users || 0}</Fact>
-          <Fact label="Profiles">{counts.profiles || 0}</Fact>
+          <Fact label="Members">{counts.members || 0}</Fact>
+          <Fact label="Removed">{counts.removed || 0}</Fact>
           <Fact label="Directors">{counts.directors || 0}</Fact>
           <Fact label="Onboarding">{onboarding.stage || humanize(onboarding.status)}</Fact>
           <Fact label="Current step">{onboarding.stepLabel || "—"}</Fact>

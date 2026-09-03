@@ -481,8 +481,8 @@ export function SuperTenantsPage() {
         {summary ? (
           <div className="super-tenant-metric-grid">
             <TenantMetricCard label="Camps" value={summary.tenants || 0} subtext="Total tenant records" kind="camps" />
-            <TenantMetricCard label="Users" value={summary.users || 0} subtext="Across all camps" kind="users" />
-            <TenantMetricCard label="Profiles" value={summary.profiles || 0} subtext="Member profiles" kind="profiles" />
+            <TenantMetricCard label="Members" value={summary.members || 0} subtext="Across all camps" kind="users" />
+            <TenantMetricCard label="Directors" value={summary.directors || 0} subtext="Camp admins" kind="profiles" />
           </div>
         ) : null}
         {error ? <p className="error-text">{error}</p> : null}
@@ -543,8 +543,7 @@ export function SuperTenantsPage() {
                 <th>Slug</th>
                 <th>Status</th>
                 <th>Plan</th>
-                <th>Users</th>
-                <th>Profiles</th>
+                <th>Members</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -562,8 +561,7 @@ export function SuperTenantsPage() {
                     <StatusBadge status={camp.status} />
                   </td>
                   <td>{billingPlanLabel(camp.billingPlan)}</td>
-                  <td>{camp.counts?.users || 0}</td>
-                  <td>{camp.counts?.profiles || 0}</td>
+                  <td>{camp.counts?.members || 0}</td>
                   <td>
                     <details className="super-row-actions">
                       <summary aria-label={`Manage ${camp.name}`}>Manage</summary>
