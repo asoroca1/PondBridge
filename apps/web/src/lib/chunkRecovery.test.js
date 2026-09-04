@@ -72,6 +72,26 @@ describe("chunk update stability", () => {
     expect(isLikelyMissingChunkError(new Error("The API request failed"))).toBe(false);
   });
 
+  it("recognizes the link-time errors browsers raise for a stale module graph", () => {
+    // WebKit, when a cached chunk imports a binding a redeployed sibling dropped.
+    expect(
+      isLikelyMissingChunkError(new SyntaxError("Importing binding name 'S' is not found."))
+    ).toBe(true);
+    // Chromium's wording for the same mismatch.
+    expect(
+      isLikelyMissingChunkError(
+        new SyntaxError("The requested module './x.js' does not provide an export named 'S'")
+      )
+    ).toBe(true);
+    // A dropped chunk answered by the SPA fallback HTML.
+    expect(
+      isLikelyMissingChunkError(
+        new TypeError("Failed to load module script: 'text/html' is not a valid JavaScript MIME type")
+      )
+    ).toBe(true);
+    expect(isLikelyMissingChunkError(new SyntaxError("Unexpected token }"))).toBe(false);
+  });
+
   it("reports a missing chunk without reloading or navigating the document", () => {
     const events = [];
     window.addEventListener(CHUNK_UPDATE_EVENT, (event) => events.push(event.detail));
