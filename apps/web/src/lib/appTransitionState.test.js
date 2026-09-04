@@ -89,6 +89,27 @@ describe("app transition branding", () => {
     ).toEqual({ slug: "", networkName: "PondBridge", logoUrl: "" });
   });
 
+  it.each([
+    { hostname: "super.pondbridgealumni.com", pathname: "/" },
+    { hostname: "app.pondbridgealumni.com", pathname: "/super/dashboard" },
+    { hostname: "cedar.pondbridgealumni.com", pathname: "/super/dashboard" }
+  ])("ignores hostname branding caches on the console at $hostname$pathname", (locationLike) => {
+    const storage = createStorage({
+      pondbridgeTenantSlug: "test32",
+      [`pondbridgeTenantConfig:${locationLike.hostname}`]: JSON.stringify({
+        payload: { name: "Test 32" }
+      }),
+      [`pondbridgeTenantTheme:${locationLike.hostname}`]: JSON.stringify({
+        logoUrl: "https://assets.example/test32.webp"
+      })
+    });
+
+    expect(readTransitionBranding({ locationLike, storage })).toEqual({
+      slug: "", networkName: "PondBridge", logoUrl: ""
+    });
+    expect(inferTransitionSlug(locationLike, storage)).toBe("");
+  });
+
   it("does not brand a /super path served from another host", () => {
     const storage = createStorage({ pondbridgeTenantSlug: "test29" });
 
