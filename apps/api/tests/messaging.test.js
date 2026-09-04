@@ -4,6 +4,7 @@ import {
   buildConversationNotification,
   clampReadAt,
   hasConversationMessage,
+  isVideoAttachmentMime,
   normalizeStoredMessageMedia
 } from "../src/services/messaging.js";
 import {
@@ -101,6 +102,50 @@ describe("messaging safety and delivery helpers", () => {
     expect(
       hasConversationMessage({ lastMessage: { senderId: USER_ID, text: "Hello", createdAt: new Date() } })
     ).toBe(true);
+  });
+
+  test("marks a video attachment as awaiting an encode, and leaves others alone", () => {
+    const context = {
+      tenantSlug: "camp",
+      scope: "chat",
+      entityId: CONVERSATION_ID,
+      objectProxyBaseUrl: "https://api.example/api/t/camp/uploads/object",
+      kind: "file"
+    };
+
+    const clip = normalizeStoredMessageMedia(
+      {
+        key: `camp/chat/${CONVERSATION_ID}/1234-IMG_6854.MOV`,
+        mime: "video/quicktime",
+        name: "IMG_6854.MOV",
+        size: 2048
+      },
+      context
+    );
+    // Until the encode lands the bubble shows a download link, so the status
+    // has to say the clip is not playable inline yet rather than being absent.
+    expect(clip.streamStatus).toBe("pending");
+    expect(clip.streamUid).toBe("");
+
+    const doc = normalizeStoredMessageMedia(
+      {
+        key: `camp/chat/${CONVERSATION_ID}/1234-file.pdf`,
+        mime: "application/pdf",
+        name: "schedule.pdf",
+        size: 1024
+      },
+      context
+    );
+    expect(doc.streamStatus).toBeUndefined();
+    expect(doc.streamUid).toBeUndefined();
+  });
+
+  test("recognises the attachments worth re-encoding", () => {
+    expect(isVideoAttachmentMime("video/quicktime")).toBe(true);
+    expect(isVideoAttachmentMime("VIDEO/MP4")).toBe(true);
+    expect(isVideoAttachmentMime("image/jpeg")).toBe(false);
+    expect(isVideoAttachmentMime("application/pdf")).toBe(false);
+    expect(isVideoAttachmentMime("")).toBe(false);
   });
 
   test("canonicalizes attachment URLs and rejects cross-scope keys", () => {

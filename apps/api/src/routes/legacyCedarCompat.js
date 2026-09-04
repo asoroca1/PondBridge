@@ -28,6 +28,7 @@ import {
   STREAM_STATUS,
   getVideo as getStreamVideo,
   ingestFromUrl as ingestStreamFromUrl,
+  createPlaybackToken as createStreamPlaybackToken,
   deleteVideo as deleteStreamVideo,
   streamEnabled
 } from "../services/cloudflareStream.js";
@@ -92,6 +93,7 @@ import {
   clampReadAt,
   hasConversationMessage,
   normalizeStoredMessageMedia,
+  isVideoAttachmentMime,
   notifyConversationParticipants
 } from "../services/messaging.js";
 import {
@@ -393,6 +395,85 @@ async function reconcilePhotoStream(tenantId, photo) {
       message: error?.message
     });
     return photo;
+  }
+}
+
+/**
+ * Turn an already-authorised video attachment into a Stream playback token.
+ *
+ * The caller must have run the same access checks the download proxy runs --
+ * this deliberately takes the attachment's stored media rather than a uid from
+ * the query string, so a member cannot name someone else's video.
+ */
+async function issueAttachmentPlaybackToken(media) {
+  if (!streamEnabled()) {
+    const error = new Error("Video playback is not configured.");
+    error.statusCode = 503;
+    error.code = "STREAM_NOT_CONFIGURED";
+    throw error;
+  }
+  const uid = String(media?.streamUid || "").trim();
+  if (!uid) {
+    const error = new Error("This video is still being prepared.");
+    error.statusCode = 409;
+    error.code = "STREAM_NOT_READY";
+    throw error;
+  }
+
+  // Also teaches the process its playback subdomain, which is only ever
+  // reported on a video, and confirms the encode is actually watchable.
+  const state = await getStreamVideo(uid);
+  if (state.streamStatus !== STREAM_STATUS.READY) {
+    const error = new Error(
+      state.streamStatus === STREAM_STATUS.ERROR
+        ? "This video could not be processed."
+        : "This video is still being prepared."
+    );
+    error.statusCode = 409;
+    error.code = state.streamStatus === STREAM_STATUS.ERROR ? "STREAM_FAILED" : "STREAM_NOT_READY";
+    throw error;
+  }
+
+  return createStreamPlaybackToken(uid, { expiresInSeconds: 3600 });
+}
+
+/**
+ * Send a chat or forum video attachment through the same encode the media
+ * stream uses, so it plays outside Safari.
+ *
+ * These attachments are private: the bucket is not public and every read goes
+ * through an access check. The encode is created with `requireSignedURLs` so it
+ * inherits that -- holding the Stream id is not enough to watch it.
+ *
+ * A failure leaves the attachment exactly as it was, a download link, which is
+ * how it behaved before any of this existed.
+ */
+async function startAttachmentStreamIngest(tenantId, model, doc) {
+  const media = doc?.media;
+  if (!streamEnabled() || !media?.key || !isVideoAttachmentMime(media.mime)) return doc;
+
+  try {
+    // Stream fetches the file itself, so it needs a URL it can read without our
+    // auth. A presigned link is short-lived and single-purpose.
+    const { downloadUrl } = await createPresignedDownloadUrl({
+      key: media.key,
+      expiresInSeconds: 3600
+    });
+    const state = await ingestStreamFromUrl(downloadUrl, {
+      name: media.name || `attachment-${doc._id}`,
+      meta: { attachmentId: String(doc._id), tenantId: String(tenantId) },
+      requireSignedURLs: true
+    });
+    const updated = await model.updateScoped(tenantId, doc._id, {
+      media: { ...media, streamUid: state.streamUid, streamStatus: state.streamStatus }
+    });
+    return updated || doc;
+  } catch (error) {
+    logLine("error", "attachment_stream_ingest_failed", {
+      attachmentId: String(doc._id),
+      message: error?.message
+    });
+    return doc;
   }
 }
 
@@ -3089,7 +3170,9 @@ router.post("/conversations/:id/messages", async (req, res) => {
   });
 
   clearConversationCaches();
-  const payload = messageToClient(created);
+  // A clip needs re-encoding before anything but Safari can play it inline.
+  const withStream = await startAttachmentStreamIngest(req.tenant._id, MessageModel, created);
+  const payload = messageToClient(withStream);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create message" } });
   }
@@ -3152,6 +3235,58 @@ router.get("/conversations/:id/attachments/object", async (req, res, next) => {
     const signed = await createPresignedDownloadUrl({ key, expiresInSeconds: 600 });
     res.set("Cache-Control", "private, no-store");
     return res.json(signed);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * A playback token for a video attachment in this conversation.
+ *
+ * Runs exactly the checks the download proxy above runs -- membership, the
+ * direct-contact and tier policies, and the key prefix -- because a Stream
+ * token is as good as the file itself to whoever holds it.
+ */
+router.get("/conversations/:id/attachments/stream-token", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    const key = String(req.query?.key || "").trim();
+    if (!isValidObjectId(id) || !key) {
+      return res.status(400).json({
+        error: { code: "INVALID_ATTACHMENT", message: "Valid conversation and attachment key required" }
+      });
+    }
+    const conversation = await ConversationModel.findOne(req.tenant._id, {
+      _id: id,
+      participantIds: { $contains: [req.user.id] }
+    });
+    if (!conversation) {
+      return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
+    }
+    await assertConversationDirectContactAllowed(req.tenant._id, conversation, req.user.id);
+    await assertConversationTierContactAllowed(req.tenant, conversation, req.user.id, { user: req.user });
+    const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/chat/${id.toLowerCase()}/`;
+    if (!key.toLowerCase().startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: { code: "ATTACHMENT_SCOPE_DENIED", message: "Attachment is outside this conversation" }
+      });
+    }
+
+    // The uid comes off the stored message, never off the request, so a member
+    // cannot ask for a token to a video that is not in this conversation. The
+    // message is addressed by id and re-scoped to this conversation, so a valid
+    // id from another chat finds nothing.
+    const messageId = String(req.query?.messageId || "").trim();
+    const message = isValidObjectId(messageId)
+      ? await MessageModel.findOne(req.tenant._id, { _id: messageId, conversationId: id })
+      : null;
+    if (!message?.media?.streamUid || String(message.media.key || "") !== key) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "No video for this attachment" } });
+    }
+
+    const playback = await issueAttachmentPlaybackToken(message.media);
+    res.set("Cache-Control", "private, no-store");
+    return res.json(playback);
   } catch (error) {
     return next(error);
   }
@@ -3491,7 +3626,9 @@ router.post("/forums/:id/posts", async (req, res) => {
   });
 
   clearForumCaches();
-  const payload = forumPostToClient(created);
+  // A clip needs re-encoding before anything but Safari can play it inline.
+  const withStream = await startAttachmentStreamIngest(req.tenant._id, ForumPostModel, created);
+  const payload = forumPostToClient(withStream);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create post" } });
   }
@@ -3554,6 +3691,47 @@ router.get("/forums/:id/attachments/object", async (req, res, next) => {
     const signed = await createPresignedDownloadUrl({ key, expiresInSeconds: 600 });
     res.set("Cache-Control", "private, no-store");
     return res.json(signed);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * A playback token for a video attached to a post in this forum. Mirrors the
+ * download proxy's checks, because a Stream token is as good as the file to
+ * whoever holds it.
+ */
+router.get("/forums/:id/attachments/stream-token", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    const key = String(req.query?.key || "").trim();
+    if (!isValidObjectId(id) || !key) {
+      return res.status(400).json({
+        error: { code: "INVALID_ATTACHMENT", message: "Valid forum and attachment key required" }
+      });
+    }
+    const forum = await ForumModel.findOne(req.tenant._id, { _id: id });
+    if (!forum) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+    }
+    const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/forums/${id.toLowerCase()}/`;
+    if (!key.toLowerCase().startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: { code: "ATTACHMENT_SCOPE_DENIED", message: "Attachment is outside this forum" }
+      });
+    }
+
+    const postId = String(req.query?.postId || "").trim();
+    const post = isValidObjectId(postId)
+      ? await ForumPostModel.findOne(req.tenant._id, { _id: postId, forumId: id })
+      : null;
+    if (!post?.media?.streamUid || String(post.media.key || "") !== key) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "No video for this attachment" } });
+    }
+
+    const playback = await issueAttachmentPlaybackToken(post.media);
+    res.set("Cache-Control", "private, no-store");
+    return res.json(playback);
   } catch (error) {
     return next(error);
   }

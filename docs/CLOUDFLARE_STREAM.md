@@ -79,3 +79,30 @@ A clip stuck in `pending` means the ingest call is failing — check the API log
 for `photo_stream_ingest_failed`. One stuck in `processing` with no webhook
 traffic means the subscription or its secret is wrong; look for
 `cloudflare_stream_webhook_rejected`.
+
+## Chat and forum video
+
+Media-stream clips are public: anyone who can see the feed can see the video,
+so their encodes are public too.
+
+Chat and forum attachments are not. Every read runs a chain of checks —
+conversation membership, the direct-contact policy, the tier policy, and a key
+prefix — before a short-lived download URL is issued. A Stream video is public
+by default, and putting a private attachment on one as-is would hand anyone
+holding the id a way around all of that.
+
+So attachment encodes are created with `requireSignedURLs`, and playback goes
+through `GET /conversations/:id/attachments/stream-token` (or the forum
+equivalent). That endpoint re-runs the identical checks, reads the Stream uid
+off the stored message rather than the query string, and only then mints a
+one-hour token. A token is as good as the file to whoever holds it, which is
+why it is issued on exactly the same terms as the file itself.
+
+Tokens come from Stream's `/token` endpoint rather than a locally held signing
+key. Cloudflare suggests a signing key past roughly a thousand tokens a day;
+camp chat traffic is far below that, and this avoids storing and rotating a
+private key. If a camp ever does outgrow it, that is the thing to change.
+
+Until an encode finishes — and if it fails — the attachment stays the download
+link it has always been, which works on every platform even when the browser
+cannot decode the file.

@@ -108,15 +108,51 @@ export function toStreamState(video = {}) {
  * browser's upload path untouched -- the bytes still go straight to R2 over a
  * presigned PUT, and Stream fetches them from there.
  */
-export async function ingestFromUrl(url, { name = "", meta = {} } = {}) {
+export async function ingestFromUrl(url, { name = "", meta = {}, requireSignedURLs = false } = {}) {
   const source = String(url || "").trim();
   if (!source) throw new Error("A source URL is required");
 
   const video = await streamRequest("POST", "/copy", {
     url: source,
-    meta: { name: name || source.split("/").pop() || "video", ...meta }
+    meta: { name: name || source.split("/").pop() || "video", ...meta },
+    // A chat attachment is private, so its encode must not be watchable by
+    // anyone holding the Stream id. Playback then needs a token per view.
+    ...(requireSignedURLs ? { requireSignedURLs: true } : {})
   });
   return toStreamState(video);
+}
+
+/**
+ * Mint a short-lived playback token for a video that requires signed URLs.
+ *
+ * The caller is responsible for deciding the viewer is allowed to watch --
+ * this only turns that decision into something Stream will honour.
+ *
+ * Uses Stream's own /token endpoint rather than a locally held signing key.
+ * Cloudflare suggests a signing key past roughly a thousand tokens a day; a
+ * camp's chat traffic is nowhere near that, and this avoids us storing and
+ * rotating a private key.
+ */
+export async function createPlaybackToken(uid, { expiresInSeconds = 3600 } = {}) {
+  const id = String(uid || "").trim();
+  if (!id) throw new Error("A video uid is required");
+
+  // Stream caps a token's life at 24h from signing.
+  const ttl = Math.min(Math.max(Number(expiresInSeconds) || 3600, 60), 86_400);
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+
+  const result = await streamRequest("POST", `/${encodeURIComponent(id)}/token`, { exp });
+  const token = String(result?.token || "");
+  if (!token) throw new Error("Cloudflare Stream returned no playback token");
+
+  const host = customerSubdomain();
+  return {
+    token,
+    expiresAt: new Date(exp * 1000).toISOString(),
+    // Without a known subdomain the caller cannot build a URL; surfacing an
+    // empty string is clearer than guessing one that 404s.
+    manifestUrl: host ? `https://${host}/${token}/manifest/video.m3u8` : ""
+  };
 }
 
 export async function getVideo(uid) {

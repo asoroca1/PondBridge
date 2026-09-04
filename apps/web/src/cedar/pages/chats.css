@@ -784,6 +784,15 @@
   line-height: 1.35;
 }
 
+/* An inline clip sits in the bubble like an image attachment does. */
+.cf-attachment-video {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  border-radius: 10px;
+  background: #000;
+}
+
 /* Re-encoding a full-size HEIC takes a beat on a phone, so the composer says so
    rather than looking frozen. */
 .mc-status {

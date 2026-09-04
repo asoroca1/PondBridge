@@ -570,6 +570,7 @@ function MessageBubble({ me, msg, nameLookup, userLookup }) {
                     kind="file"
                     scope="conversation"
                     resourceId={msg.conversationId}
+                    messageId={msg._id}
                   />
                 </div>
               )}
@@ -2795,6 +2796,7 @@ function ForumsTab({ socket }) {
                           kind="file"
                           scope="forum"
                           resourceId={p.forumId || active._id}
+                          messageId={p._id}
                         />
                       </div>
                     )}

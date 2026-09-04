@@ -141,8 +141,16 @@ export function normalizeStoredMessageMedia(
     key,
     mime,
     name: String(media.name || "attachment").trim().slice(0, 240) || "attachment",
-    size: Math.trunc(size)
+    size: Math.trunc(size),
+    // A clip gets re-encoded so browsers other than Safari can play it. The uid
+    // is filled in after the send; until then the attachment is a download link,
+    // which is what it has always been.
+    ...(isVideoAttachmentMime(mime) ? { streamUid: "", streamStatus: "pending" } : {})
   };
+}
+
+export function isVideoAttachmentMime(mimeType = "") {
+  return String(mimeType || "").trim().toLowerCase().startsWith("video/");
 }
 
 export function buildConversationNotification({ conversation = {}, senderName = "", message = {} } = {}) {
