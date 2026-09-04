@@ -1,4 +1,5 @@
-import { API_BASE as ROOT_API_BASE } from "../../lib/http.js";
+import { API_BASE as ROOT_API_BASE, requestJson } from "../../lib/http.js";
+import { getToken } from "./helpers.js";
 
 function normalizeBase(raw) {
   let b = String(raw || "").replace(/\/+$/, "");
@@ -14,12 +15,22 @@ function tenantSlugFromPath() {
   return localStorage.getItem("pondbridgeTenantSlug") || "";
 }
 
-function resolveApiBase() {
+function resolveTenantApiPath() {
   const slug = tenantSlugFromPath();
-  const base = normalizeBase(ROOT_API_BASE);
-  return slug
-    ? `${base}/api/t/${slug}`
-    : `${base}/api/t`;
+  return slug ? `/api/t/${slug}` : "/api/t";
+}
+
+function resolveApiBase() {
+  return `${normalizeBase(ROOT_API_BASE)}${resolveTenantApiPath()}`;
+}
+
+// Use the shared client's session cookies and one-time token refresh for
+// mutations made after a page has been open long enough for its JWT to expire.
+export function requestTenantJson(path, options = {}) {
+  return requestJson(`${resolveTenantApiPath()}${path}`, {
+    ...options,
+    token: options.token || getToken()
+  });
 }
 
 // Keep API_BASE call-sites unchanged while resolving tenant slug dynamically.

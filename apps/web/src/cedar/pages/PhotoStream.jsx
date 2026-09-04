@@ -8,7 +8,7 @@ import CedarBackground from "../components/CedarBackground";
 import CedarSkeleton from "../components/CedarSkeleton.jsx";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./photo-stream.css";
-import { API_BASE } from "../lib/api";
+import { API_BASE, requestTenantJson } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
 import { isVideoFile, isVideoPost, formatDuration } from "../lib/photoMedia.js";
 import InitialsMark from "../../components/InitialsMark.jsx";
@@ -799,11 +799,9 @@ function CommentsPanel({ photoId, canModerate }) {
     setActionError("");
     setItems((p) => p.filter((c) => c._id !== id));
     try {
-      const r = await fetch(`${API}/photos/${photoId}/comments/${id}`, {
+      await requestTenantJson(`/photos/${photoId}/comments/${id}`, {
         method: "DELETE",
-        headers: authHeaders(),
       });
-      if (!r.ok) throw new Error("Delete failed");
     } catch (e) {
       setItems(prev); // revert
       setActionError(e.message || "Could not delete comment");
@@ -1098,8 +1096,7 @@ export default function PhotoStream() {
     if (!accepted) return;
     try {
       setActionError("");
-      const r = await fetch(`${API}/photos/${id}`, { method: "DELETE", headers: authHeaders() });
-      if (!r.ok) throw new Error("Delete failed");
+      await requestTenantJson(`/photos/${id}`, { method: "DELETE" });
       setItems(p => p.filter(x => x._id !== id));
       setViewerPost(v => v && v._id === id ? null : v);
     } catch (e) {
