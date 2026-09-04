@@ -20,6 +20,19 @@ const maxRouteJsGzipKb = Number(
 const maxLargestAssetRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_ASSET_MB || 2.0);
 const maxLargestImageRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_IMAGE_MB || 1.0);
 
+/**
+ * Vendor libraries that are imported at the moment a feature is used, not as
+ * part of any route's bundle.
+ *
+ * The route budget exists to stop a page costing too much to open. A chunk
+ * nobody downloads until they open the map, or press play on a video, does not
+ * make any page heavier -- it would just make the budget unmeetable for a
+ * feature that cannot be built smaller.
+ */
+function isOnDemandVendorChunk(file = "") {
+  return /^(?:vendor-)?maplibre(?:-gl)?-/i.test(file) || /^(?:vendor-)?hls-/i.test(file);
+}
+
 function formatKb(bytes = 0) {
   return `${(bytes / 1024).toFixed(1)}KB`;
 }
@@ -75,9 +88,7 @@ async function run() {
   );
   const largestRouteJs =
     jsAssets.find(
-      (row) =>
-        row.file !== entryScriptName &&
-        !/^(?:vendor-)?maplibre(?:-gl)?-/i.test(row.file)
+      (row) => row.file !== entryScriptName && !isOnDemandVendorChunk(row.file)
     ) || null;
   const largestAsset = [...assetRows].sort((a, b) => b.rawBytes - a.rawBytes)[0] || null;
   const largestImage = [...assetRows]
