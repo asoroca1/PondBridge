@@ -69,9 +69,47 @@ export function preloadRouteForPath(pathname = "") {
     });
 }
 
-export function preloadAuthenticatedCoreRoutes() {
+/**
+ * Whether it is reasonable to download a route the user has not asked for.
+ *
+ * Warming `/home` and `/my-profile` after login is a good trade on a laptop on
+ * wifi and a bad one everywhere else: it spent a member's cellular data, and
+ * competed for bandwidth with the page they were actually waiting for, on the
+ * connections least able to afford it. Guessing is a luxury, so it is now
+ * gated on the browser saying the guess is affordable.
+ *
+ * Anything the user has actually shown intent toward — hovering or focusing a
+ * link — is not speculation and is deliberately not gated here.
+ */
+export function shouldSpeculativelyPreload({
+  connection = typeof navigator === "undefined" ? null : navigator.connection,
+  visibilityState = typeof document === "undefined" ? "visible" : document.visibilityState,
+  online = typeof navigator === "undefined" ? true : navigator.onLine !== false
+} = {}) {
+  // Nothing speculative is worth doing for a tab nobody is looking at, or for
+  // a browser that is not going to complete the request anyway.
+  if (visibilityState === "hidden") return false;
+  if (!online) return false;
+
+  // No Network Information API (Safari, Firefox) means no evidence either way.
+  // Preloading has been the behaviour there all along, so keep it.
+  if (!connection) return true;
+
+  // Data Saver is the user asking, in as many words, not to spend their data
+  // on things they did not request.
+  if (connection.saveData === true) return false;
+
+  const effectiveType = String(connection.effectiveType || "").toLowerCase();
+  if (effectiveType === "slow-2g" || effectiveType === "2g") return false;
+
+  return true;
+}
+
+export function preloadAuthenticatedCoreRoutes(options = {}) {
+  if (!shouldSpeculativelyPreload(options)) return false;
   preloadRouteForPath("/home");
   preloadRouteForPath("/my-profile");
+  return true;
 }
 
 export function installRouteIntentPreloading() {

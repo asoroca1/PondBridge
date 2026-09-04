@@ -6,19 +6,47 @@ const rootDir = process.cwd();
 const distAssetsDir = path.resolve(rootDir, "apps/web/dist/assets");
 const distIndexPath = path.resolve(rootDir, "apps/web/dist/index.html");
 
+/**
+ * Budgets are ratchets, not aspirations.
+ *
+ * These were set far enough above the real build that most of them could not
+ * fail: the route budget had 19KB of slack, the largest-asset budget over a
+ * megabyte. A budget with that much room does not catch a regression, it
+ * records one after the fact — the build can double a route's cost and still
+ * go green.
+ *
+ * Each number below now sits just above what the build actually produces, so
+ * a real increase has to be argued for rather than absorbed. Measured
+ * 2026-09-04:
+ *
+ *   entry JS gzip     111.2KB
+ *   initial CSS gzip   58.0KB
+ *   largest route JS   31.2KB gzip
+ *   largest asset       0.97MB raw (maplibre, lazy)
+ *   largest image       0.76MB raw
+ *
+ * Two of these are still well short of the audit's stretch targets — entry JS
+ * wants 100KB and initial CSS wants 45KB — and initial CSS is the tight one:
+ * it has about 1KB of headroom, so the next stylesheet added to the global
+ * bundle will fail this check. That is the intended behaviour, and splitting
+ * CSS by route is the work that buys the room back.
+ *
+ * Lower a number when the build gets smaller. Raising one is a decision, and
+ * the comment above should say why.
+ */
 const maxEntryJsGzipKb = Number(
   process.env.PONDBRIDGE_MAX_ENTRY_JS_GZIP_KB ||
     process.env.PONDBRIDGE_MAX_MAIN_JS_GZIP_KB ||
-    125
+    115
 );
 const maxInitialCssGzipKb = Number(
-  process.env.PONDBRIDGE_MAX_INITIAL_CSS_GZIP_KB || 60
+  process.env.PONDBRIDGE_MAX_INITIAL_CSS_GZIP_KB || 59
 );
 const maxRouteJsGzipKb = Number(
-  process.env.PONDBRIDGE_MAX_ROUTE_JS_GZIP_KB || 50
+  process.env.PONDBRIDGE_MAX_ROUTE_JS_GZIP_KB || 35
 );
-const maxLargestAssetRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_ASSET_MB || 2.0);
-const maxLargestImageRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_IMAGE_MB || 1.0);
+const maxLargestAssetRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_ASSET_MB || 1.1);
+const maxLargestImageRawMb = Number(process.env.PONDBRIDGE_MAX_LARGEST_IMAGE_MB || 0.8);
 
 /**
  * Vendor libraries that are imported at the moment a feature is used, not as

@@ -39,6 +39,7 @@ import { attachRequestLogging } from "./middleware/requestLogging.js";
 import { augmentErrorResponses } from "./middleware/responseErrorAugment.js";
 import { patchExpressAsyncErrors } from "./utils/patchExpressAsyncErrors.js";
 import { getEmailServiceStatus } from "./services/email.js";
+import { createReadinessProbe } from "./services/readiness.js";
 import { getR2ServiceStatus } from "./services/objectStorage.js";
 
 patchExpressAsyncErrors();
@@ -108,6 +109,11 @@ const authLimiter = rateLimit({
     ].join(":")
 });
 
+const checkReadiness = createReadinessProbe();
+
+// Kept for anything already pointing at it. It reports configuration, which is
+// a different question from whether this process can serve a request — use
+// /livez and /readyz for that.
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -115,6 +121,30 @@ app.get("/health", (_req, res) => {
     integrations: {
       email: getEmailServiceStatus(),
       r2: getR2ServiceStatus()
+    }
+  });
+});
+
+// Liveness: the event loop is turning. Never touches the database, so a slow
+// or unreachable database cannot get a healthy process killed and restarted.
+app.get("/livez", (_req, res) => {
+  res.json({ ok: true, service: "pondbridge-api", uptimeSeconds: Math.round(process.uptime()) });
+});
+
+// Readiness: this process can actually answer. Fails with 503 so the platform
+// stops routing to it, without restarting it.
+app.get("/readyz", async (_req, res) => {
+  const database = await checkReadiness();
+  const ok = database.ready;
+  res.status(ok ? 200 : 503).json({
+    ok,
+    service: "pondbridge-api",
+    checks: {
+      database: {
+        ready: database.ready,
+        durationMs: database.durationMs,
+        ...(database.error ? { error: database.error } : {})
+      }
     }
   });
 });

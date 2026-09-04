@@ -593,6 +593,83 @@ function userAllowsPush(preferences = {}, category = "announcements") {
   return Boolean(normalized.pushEnabled && normalized.categories[normalizeCategory(category)]);
 }
 
+/**
+ * How many provider calls may be in flight at once for a single notification.
+ * High enough that a member's two or three devices overlap completely, low
+ * enough that a camp-wide broadcast does not open an unbounded number of
+ * sockets to APNs/FCM and earn a rate limit.
+ */
+export const PUSH_FANOUT_CONCURRENCY = 8;
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function runner() {
+    for (;;) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, runner)
+  );
+  return results;
+}
+
+/**
+ * Write the delivery outcome for every device in as few statements as the
+ * outcomes allow.
+ *
+ * This used to be one UPDATE per device, so a broadcast cost a database round
+ * trip per recipient device on top of the provider call. In practice every
+ * device shares one of a handful of outcomes — delivered, or failed with the
+ * same provider error — so grouping by outcome turns N writes into two or
+ * three regardless of how large the camp is.
+ */
+async function recordDeviceOutcomes({ tenantId, devices, results }) {
+  const groups = new Map();
+
+  devices.forEach((device, index) => {
+    const result = results[index] || { ok: false, error: "", permanent: false };
+    const patch = {
+      lastDeliveredAt: result.ok ? new Date() : device.lastDeliveredAt || null,
+      lastError: result.ok ? "" : result.error || "",
+      isActive: result.permanent ? false : device.isActive
+    };
+    // Devices whose previous state differs still need their own statement,
+    // because the patch carries that previous state forward.
+    const key = JSON.stringify([
+      result.ok,
+      patch.lastError,
+      patch.isActive,
+      result.ok ? "" : String(patch.lastDeliveredAt || "")
+    ]);
+    const group = groups.get(key);
+    if (group) group.ids.push(device._id);
+    else groups.set(key, { patch, ids: [device._id] });
+  });
+
+  const scope = String(tenantId || "").trim();
+  await Promise.all(
+    [...groups.values()].map(({ patch, ids }) => {
+      // A set-based write on a tenant-scoped table has to name its tenant, so
+      // without one fall back to per-id writes rather than silently skipping
+      // the bookkeeping.
+      if (ids.length === 1 || !scope) {
+        return Promise.all(
+          ids.map((id) => MobileNotificationDeviceModel.update(id, patch).catch(() => {}))
+        );
+      }
+      return MobileNotificationDeviceModel.updateMany(scope, { _id: { $in: ids } }, patch).catch(
+        () => {}
+      );
+    })
+  );
+}
+
 async function deliverNotificationToUser({
   notification,
   devices = [],
@@ -628,11 +705,16 @@ async function deliverNotificationToUser({
 
   delivery.devicesAttempted = devices.length;
 
-  for (const device of devices) {
+  // One device at a time meant a member with a phone and a tablet waited for
+  // two full provider round trips, and a broadcast waited for that times every
+  // recipient. The provider calls are independent, so they overlap now — but
+  // only PUSH_FANOUT_CONCURRENCY at a time, because an unbounded fan-out is
+  // how a large camp gets itself rate-limited by APNs or FCM.
+  const results = await mapWithConcurrency(devices, PUSH_FANOUT_CONCURRENCY, (device) => {
     const platform = String(device?.platform || "ios").trim().toLowerCase();
     const isAndroid = platform === "android" || platform === "fcm";
     const sender = isAndroid ? sendFcmAlert : sendApnsAlert;
-    const result = await sender({
+    return sender({
       token: device.token,
       title: notification.title,
       body: notification.body,
@@ -651,13 +733,11 @@ async function deliverNotificationToUser({
       error: String(error?.message || "Push send failed"),
       permanent: false
     }));
+  });
 
-    await MobileNotificationDeviceModel.update(device._id, {
-      lastDeliveredAt: result.ok ? new Date() : device.lastDeliveredAt || null,
-      lastError: result.ok ? "" : result.error || "",
-      isActive: result.permanent ? false : device.isActive
-    }).catch(() => {});
-
+  // Folded in device order, not completion order, so the reported status does
+  // not depend on which provider happened to answer first.
+  for (const result of results) {
     if (result.ok) {
       delivery.devicesDelivered += 1;
       delivery.pushStatus = "delivered";
@@ -667,6 +747,8 @@ async function deliverNotificationToUser({
       delivery.pushError = result.error || "";
     }
   }
+
+  await recordDeviceOutcomes({ tenantId: notification.tenantId, devices, results });
 
   return updateNotificationDelivery(notification._id, delivery);
 }
@@ -845,7 +927,39 @@ export async function resolveAudienceUserIds(tenantId, audience = "all_active_me
     .filter(Boolean);
 }
 
+/**
+ * A job left in `sending` by a process that died would otherwise sit there
+ * forever, because nothing but a pending row is ever claimed. After the lease
+ * expires the row is handed back to the pool; the claim itself is guarded on
+ * the row still being `sending` with the same stale timestamp, so a worker
+ * that is merely slow cannot have its job stolen twice over.
+ */
+export const SCHEDULE_LEASE_MS = 10 * 60 * 1000;
+
+async function reclaimExpiredSchedules({ now = new Date(), limit = 25 } = {}) {
+  const expiredBefore = new Date(now.getTime() - SCHEDULE_LEASE_MS);
+  const stuck = await MobileNotificationScheduleModel.acrossTenants().find(
+    { status: "sending", attemptedAt: { $lte: expiredBefore } },
+    { sort: { attemptedAt: 1 }, limit }
+  );
+
+  let reclaimed = 0;
+  for (const schedule of stuck) {
+    const won = await MobileNotificationScheduleModel.claimOne(
+      schedule._id,
+      { status: "sending", attemptedAt: schedule.attemptedAt },
+      { status: "pending" }
+    );
+    if (won) reclaimed += 1;
+  }
+  return reclaimed;
+}
+
 export async function runDueMobileNotificationSchedules({ now = new Date(), batchLimit = 25 } = {}) {
+  const limit = Math.max(1, Math.min(Number(batchLimit || 25), 200));
+
+  await reclaimExpiredSchedules({ now, limit });
+
   const due = await MobileNotificationScheduleModel.acrossTenants().find(
     {
       status: "pending",
@@ -853,18 +967,25 @@ export async function runDueMobileNotificationSchedules({ now = new Date(), batc
     },
     {
       sort: { runAt: 1 },
-      limit: Math.max(1, Math.min(Number(batchLimit || 25), 200))
+      limit
     }
   );
 
   const results = [];
   for (const schedule of due) {
-    try {
-      await MobileNotificationScheduleModel.update(schedule._id, {
-        status: "sending",
-        attemptedAt: new Date()
-      });
+    // Reading a row and then marking it `sending` is two statements, so two
+    // API replicas polling this table both saw the same pending job and both
+    // sent it — every member got the broadcast twice. The precondition now
+    // lives inside the UPDATE, so exactly one replica can win the row and the
+    // losers skip it.
+    const claimed = await MobileNotificationScheduleModel.claimOne(
+      schedule._id,
+      { status: "pending" },
+      { status: "sending", attemptedAt: new Date() }
+    );
+    if (!claimed) continue;
 
+    try {
       const tenant = await TenantModel.findById(schedule.tenantId);
       if (!tenant) {
         await MobileNotificationScheduleModel.update(schedule._id, {
@@ -950,3 +1071,12 @@ export async function stopMobileNotificationScheduler() {
   }
   await schedulerTickPromise;
 }
+
+// Delivery fan-out is internal, but its concurrency and write-batching are
+// behaviour worth pinning. `apps/api`'s integration suites need a real
+// database, so these are reached directly instead.
+export const __testables = {
+  deliverNotificationToUser,
+  recordDeviceOutcomes,
+  mapWithConcurrency
+};

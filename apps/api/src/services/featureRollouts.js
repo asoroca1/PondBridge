@@ -142,11 +142,62 @@ export async function evaluateFeatureRollout(featureKey, tenant) {
   };
 }
 
+/**
+ * Read every rollout the console needs in one query instead of one per flag.
+ *
+ * `listFeatureRollouts` called `getFeatureRollout` in a loop, so a cold cache
+ * meant a sequential round trip per feature — a cost that grew every time
+ * someone added a flag, on a page that shows all of them at once. Cached keys
+ * are still served from the cache; only the misses are fetched, together.
+ */
+async function loadSupportedRollouts() {
+  const keys = Object.keys(SUPPORTED_FEATURE_ROLLOUTS);
+  const statuses = new Map();
+  const missing = [];
+
+  for (const key of keys) {
+    const cached = rolloutCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) statuses.set(key, cached.value);
+    else missing.push(key);
+  }
+
+  if (!missing.length) return statuses;
+
+  try {
+    const records = await FeatureRolloutModel.find({ featureKey: { $in: missing } });
+    const byKey = new Map(records.map((record) => [String(record.featureKey || ""), record]));
+    const expiresAt = Date.now() + CACHE_TTL_MS;
+    for (const key of missing) {
+      const record = byKey.get(key) || null;
+      const value = {
+        record,
+        controlAvailable: true,
+        reason: record ? "configured" : "not_configured"
+      };
+      rolloutCache.set(key, { value, expiresAt });
+      statuses.set(key, value);
+    }
+  } catch (error) {
+    if (!isMissingRolloutSchema(error)) throw error;
+    // A missing table is not cached: the migration may land at any moment.
+    for (const key of missing) {
+      statuses.set(key, { record: null, controlAvailable: false, reason: "schema_unavailable" });
+    }
+  }
+
+  return statuses;
+}
+
 export async function listFeatureRollouts() {
   const items = [];
   let controlAvailable = true;
+  const statuses = await loadSupportedRollouts();
   for (const [featureKey, definition] of Object.entries(SUPPORTED_FEATURE_ROLLOUTS)) {
-    const status = await getFeatureRollout(featureKey);
+    const status = statuses.get(featureKey) || {
+      record: null,
+      controlAvailable: false,
+      reason: "unsupported_feature"
+    };
     controlAvailable = controlAvailable && status.controlAvailable;
     const record = status.record;
     items.push({

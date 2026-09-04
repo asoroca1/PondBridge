@@ -1,5 +1,6 @@
 // src/lib/unreadChats.js
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_POLL_INTERVAL_MS, createPollPlanner } from "../../lib/pollPlanner.js";
 import { API_BASE } from "./api";
 import { authHeaders, getToken } from "./helpers";
 
@@ -128,6 +129,15 @@ export function useUnreadChatsCount({ pollMs = 25000 } = {}) {
   const [count, setCount] = useState(0);
   const token = useMemo(() => getToken() || "", []);
 
+  const plannerRef = useRef(null);
+  if (!plannerRef.current) {
+    plannerRef.current = createPollPlanner({
+      intervalMs: pollMs > 0 ? pollMs : DEFAULT_POLL_INTERVAL_MS,
+      isVisible: () => typeof document === "undefined" || document.visibilityState === "visible",
+      isOnline: () => typeof navigator === "undefined" || navigator.onLine !== false
+    });
+  }
+
   const refresh = useCallback(async () => {
     if (!getToken()) {
       setCount(0);
@@ -135,35 +145,65 @@ export function useUnreadChatsCount({ pollMs = 25000 } = {}) {
     }
     try {
       const res = await fetch(`${API_BASE}/conversations`, { headers: authHeaders() });
-      if (!res.ok) return;
+      if (!res.ok) {
+        plannerRef.current.noteRun(false);
+        return;
+      }
       const data = await res.json();
       const items = Array.isArray(data.items) ? data.items : [];
       setCount(computeUnreadCount(items));
+      plannerRef.current.noteRun(true);
     } catch {
-      // silent
+      // A failed poll still counts as an attempt, so an unreachable API is
+      // asked less often rather than at full rate for as long as it is down.
+      plannerRef.current.noteRun(false);
     }
   }, []);
 
   useEffect(() => {
-    refresh();
+    const planner = plannerRef.current;
+    let timer = null;
+
+    // This used to run every 25 seconds whether or not anyone was looking, so
+    // a tab left open in the background kept a phone's radio and the API busy
+    // all day for a number nobody could see. Offline was no different: the
+    // fetch still went out, still failed, and still went out again on time.
+    const tick = () => {
+      if (!planner.shouldRun()) return;
+      void refresh();
+      reschedule();
+    };
+
+    function reschedule() {
+      if (timer) window.clearTimeout(timer);
+      if (pollMs <= 0) return;
+      timer = window.setTimeout(tick, planner.delayMs());
+    }
+
+    // Waking up only costs a request if the answer could actually have gone
+    // stale, so flicking between tabs does not become its own traffic.
+    const wake = () => {
+      if (!planner.shouldRun()) return;
+      if (planner.isStale()) void refresh();
+      reschedule();
+    };
 
     const onRead = () => refresh();
-    const onVis = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
+
+    if (planner.shouldRun()) void refresh();
+    reschedule();
 
     window.addEventListener("cedar:chat-read", onRead);
     window.addEventListener("cedar:chat-message", onRead);
-    document.addEventListener("visibilitychange", onVis);
-
-    let timer = null;
-    if (pollMs > 0) timer = window.setInterval(refresh, pollMs);
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
 
     return () => {
       window.removeEventListener("cedar:chat-read", onRead);
       window.removeEventListener("cedar:chat-message", onRead);
-      document.removeEventListener("visibilitychange", onVis);
-      if (timer) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
+      if (timer) window.clearTimeout(timer);
     };
   }, [refresh, pollMs, token]);
 

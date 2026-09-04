@@ -4534,7 +4534,8 @@ router.get("/email/history", async (req, res) => {
   const items = await EmailBroadcastModel.find(req.tenant._id, filter, {
     sort: { createdAt: -1 },
     limit,
-    offset
+    offset,
+    count: true
   });
   return res.json({
     total: items._count || items.length,
@@ -4567,7 +4568,8 @@ router.get("/email/drafts", async (req, res) => {
   const limit = Math.min(30, Math.max(1, Number(req.query.limit || 30) || 30));
   const items = await EmailBroadcastModel.find(req.tenant._id, { status: "draft" }, {
     sort: { updatedAt: -1 },
-    limit
+    limit,
+    count: true
   });
   return res.json({
     total: items._count || items.length,
@@ -4743,7 +4745,8 @@ router.get("/email/suppressions", async (req, res) => {
   const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100) || 100));
   const items = await EmailSuppressionModel.find(req.tenant._id, { status: "active" }, {
     sort: { lastSeenAt: -1 },
-    limit
+    limit,
+    count: true
   });
   return res.json({
     total: items._count || items.length,

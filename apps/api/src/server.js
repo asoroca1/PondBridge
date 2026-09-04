@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { applyServerTimeouts } from "./services/serverTimeouts.js";
 import app from "./app.js";
 import { env } from "./config/env.js";
 import { connectToDatabase } from "./db/connect.js";
@@ -24,6 +25,7 @@ async function start() {
   await connectToDatabase();
 
   const server = createServer(app);
+  applyServerTimeouts(server, process.env);
   const socketServer = attachSocketServer(server);
   let shutdownPromise = null;
 

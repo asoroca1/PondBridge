@@ -12,6 +12,7 @@ import {
   clerkModeRequested,
   clerkUiEnabled
 } from "../lib/authMode.js";
+import { ACTIVITY_CHECK_INTERVAL_MS, createIdleWatcher } from "../lib/idleActivity.js";
 
 const IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
 const TAB_AUTH_SESSION_KEY = "pondbridgeTabAuthSession";
@@ -144,39 +145,14 @@ function hasTabLoginIntent() {
 
 function useIdleLogout({ enabled, isAuthenticated, onLogout, onSessionWarning }) {
   const timeoutRef = useRef(null);
-  const warningRef = useRef(null);
   const logoutInFlightRef = useRef(false);
 
   const clearTimer = useCallback(() => {
     if (timeoutRef.current) {
-      window.clearTimeout(timeoutRef.current);
+      window.clearInterval(timeoutRef.current);
       timeoutRef.current = null;
     }
-    if (warningRef.current) {
-      window.clearTimeout(warningRef.current);
-      warningRef.current = null;
-    }
   }, []);
-
-  const schedule = useCallback(() => {
-    if (!enabled || !isAuthenticated || AUTO_LOGOUT_TIMEOUT_MS <= 0) return;
-    clearTimer();
-
-    // Schedule a warning before the actual logout.
-    if (SESSION_WARNING_TIMEOUT_MS > 0 && onSessionWarning) {
-      warningRef.current = window.setTimeout(() => {
-        onSessionWarning(SESSION_WARNING_MINUTES);
-      }, SESSION_WARNING_TIMEOUT_MS);
-    }
-
-    timeoutRef.current = window.setTimeout(() => {
-      if (logoutInFlightRef.current) return;
-      logoutInFlightRef.current = true;
-      Promise.resolve(onLogout?.()).finally(() => {
-        logoutInFlightRef.current = false;
-      });
-    }, AUTO_LOGOUT_TIMEOUT_MS);
-  }, [clearTimer, enabled, isAuthenticated, onLogout, onSessionWarning]);
 
   useEffect(() => {
     if (!enabled || !isAuthenticated || AUTO_LOGOUT_TIMEOUT_MS <= 0) {
@@ -184,12 +160,32 @@ function useIdleLogout({ enabled, isAuthenticated, onLogout, onSessionWarning })
       return undefined;
     }
 
-    const onActivity = () => schedule();
-    schedule();
+    const watcher = createIdleWatcher({
+      timeoutMs: AUTO_LOGOUT_TIMEOUT_MS,
+      warningMs: SESSION_WARNING_TIMEOUT_MS,
+      onWarn: () => onSessionWarning?.(SESSION_WARNING_MINUTES),
+      onTimeout: () => {
+        if (logoutInFlightRef.current) return;
+        logoutInFlightRef.current = true;
+        Promise.resolve(onLogout?.()).finally(() => {
+          logoutInFlightRef.current = false;
+        });
+      }
+    });
+
+    // Every input event used to clear and recreate two timers. A moving cursor
+    // alone produced hundreds of timer teardowns a second to express one fact:
+    // the user is still here. That fact is a timestamp now, so activity costs
+    // one assignment and a single interval decides when anything is due.
+    const onActivity = () => watcher.noteActivity();
     for (const eventName of IDLE_EVENTS) {
       window.addEventListener(eventName, onActivity, { passive: true });
     }
-    document.addEventListener("visibilitychange", onActivity);
+    document.addEventListener("visibilitychange", onActivity, { passive: true });
+
+    timeoutRef.current = window.setInterval(() => {
+      watcher.check();
+    }, ACTIVITY_CHECK_INTERVAL_MS);
 
     return () => {
       clearTimer();
@@ -198,7 +194,7 @@ function useIdleLogout({ enabled, isAuthenticated, onLogout, onSessionWarning })
       }
       document.removeEventListener("visibilitychange", onActivity);
     };
-  }, [clearTimer, enabled, isAuthenticated, schedule]);
+  }, [clearTimer, enabled, isAuthenticated, onLogout, onSessionWarning]);
 }
 
 function normalizeUserShape(user) {

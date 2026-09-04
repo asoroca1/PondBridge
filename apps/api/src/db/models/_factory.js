@@ -6,6 +6,36 @@ const ALLOW_UNSCOPED_DELETES = String(process.env.PONDBRIDGE_ALLOW_UNSCOPED_DELE
   .trim()
   .toLowerCase() === "1";
 
+/**
+ * A filter key the model does not recognise used to be dropped silently. That
+ * turned a typo, or a field someone forgot to add to the column map, into a
+ * query over every row the tenant scope allowed — wrong results and a runaway
+ * read at the same time. Filters now fail closed.
+ *
+ * Outside production the mistake throws, so it surfaces in development and CI
+ * where it is cheap to fix. In production the clause is dropped and logged
+ * instead: a live request degrading is better than a 500, and the log names
+ * the exact table and key to fix.
+ */
+const STRICT_FILTERS = NODE_ENV !== "production";
+
+export class UnknownFilterError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UnknownFilterError";
+    this.code = "UNKNOWN_FILTER";
+    // Routes that pass client-supplied filters straight through should answer
+    // 400 rather than 500 — the caller asked for something that cannot exist.
+    this.status = 400;
+  }
+}
+
+function rejectUnknownFilter(tableName, detail) {
+  const message = `Unknown filter on table "${tableName || "?"}": ${detail}.`;
+  if (STRICT_FILTERS) throw new UnknownFilterError(message);
+  console.warn(`[model] ${message} Clause ignored.`);
+}
+
 function normalizeId(value = "") {
   return String(value || "").trim();
 }
@@ -110,7 +140,7 @@ function normalizeFilterOperand(value) {
 // Filter translation — converts Mongoose-style filters to Supabase query
 // ---------------------------------------------------------------------------
 
-function applyFilter(query, filter, colMap) {
+function applyFilter(query, filter, colMap, tableName = "") {
   for (const [key, value] of Object.entries(filter)) {
     if (key === "_id") {
       if (typeof value === "object" && !Array.isArray(value) && !(value instanceof Date) && value !== null) {
@@ -128,6 +158,7 @@ function applyFilter(query, filter, colMap) {
               query = query.neq("id", operand);
               break;
             default:
+              rejectUnknownFilter(tableName, `operator "${op}" is not supported on _id`);
               break;
           }
         }
@@ -145,7 +176,10 @@ function applyFilter(query, filter, colMap) {
     if (key.includes(".")) {
       const parts = key.split(".");
       const baseCol = colMap[parts[0]];
-      if (!baseCol) continue;
+      if (!baseCol) {
+        rejectUnknownFilter(tableName, `"${key}" has no column for base field "${parts[0]}"`);
+        continue;
+      }
       const jsonbPath = parts.slice(1).reduce((path, seg) => `${path}->${seg}`, baseCol);
 
       if (value === null || value === undefined) {
@@ -161,7 +195,9 @@ function applyFilter(query, filter, colMap) {
             case "$gte": query = query.filter(jsonbPath, "gte", normalizedOperand); break;
             case "$lt":  query = query.filter(jsonbPath, "lt", normalizedOperand);  break;
             case "$lte": query = query.filter(jsonbPath, "lte", normalizedOperand); break;
-            default: break;
+            default:
+              rejectUnknownFilter(tableName, `operator "${op}" is not supported on "${key}"`);
+              break;
           }
         }
       } else {
@@ -171,7 +207,10 @@ function applyFilter(query, filter, colMap) {
     }
 
     const col = colMap[key];
-    if (!col) continue;
+    if (!col) {
+      rejectUnknownFilter(tableName, `"${key}" is not a mapped field`);
+      continue;
+    }
 
     if (value === null || value === undefined) {
       query = query.is(col, null);
@@ -212,6 +251,7 @@ function applyFilter(query, filter, colMap) {
             query = query.ilike(col, normalizedOperand);
             break;
           default:
+            rejectUnknownFilter(tableName, `operator "${op}" is not supported on "${key}"`);
             break;
         }
       }
@@ -271,10 +311,16 @@ export function createModel(tableName, colMap) {
             .join(",")
         : "*";
 
-      let query = sb().from(tableName).select(selectCols, { count: "exact" });
+      // An exact count is a second pass over the matching rows. It used to run
+      // on every find, including the great majority that only read `docs` — so
+      // ordinary reads paid for a total nobody looked at. Callers that need a
+      // total now ask for it with `{ count: true }`, or call `Model.count()`.
+      let query = actualOpts.count
+        ? sb().from(tableName).select(selectCols, { count: "exact" })
+        : sb().from(tableName).select(selectCols);
 
       if (tenantId) query = query.eq("tenant_id", tenantId);
-      query = applyFilter(query, actualFilter, colMap);
+      query = applyFilter(query, actualFilter, colMap, tableName);
       query = applySort(query, actualOpts.sort, colMap);
 
       if (actualOpts.limit) query = query.limit(actualOpts.limit);
@@ -288,8 +334,80 @@ export function createModel(tableName, colMap) {
       const { data, error, count } = await query;
       if (error) throw error;
       const docs = toDocs(data, colMap);
-      docs._count = count;
+      // Left undefined when uncounted, so `_count ?? fallback` stays honest
+      // rather than reporting a page length as a total.
+      if (actualOpts.count) docs._count = count;
       return docs;
+    },
+
+    /**
+     * Read every matching row, in pages, without ever asking for "all" at once.
+     *
+     * PostgREST caps an uncapped select (1,000 rows by default) and says
+     * nothing when it truncates, so `find()` with no limit quietly returned a
+     * partial answer on any table that outgrew the cap — imports, analytics,
+     * deletion cleanup and notification fan-out all read that way. Pages here
+     * are keyset-walked on the primary key rather than offset-walked, so a row
+     * inserted mid-scan cannot shift the window and hide its neighbour, and
+     * the cost of page N does not grow with N.
+     *
+     * Yields arrays of docs. Memory stays O(batchSize), not O(table).
+     */
+    async *findAllBatched(tenantIdOrFilter = {}, filter = {}, options = {}) {
+      let tenantId, actualFilter, actualOpts;
+
+      if (typeof tenantIdOrFilter === "string") {
+        tenantId = tenantIdOrFilter;
+        actualFilter = filter;
+        actualOpts = options;
+      } else {
+        tenantId = null;
+        actualFilter = tenantIdOrFilter;
+        actualOpts = filter;
+      }
+
+      if (enforceScope && isTenantScoped) {
+        assertTenantScope({ tableName, tenantId, method: "findAllBatched", filter: actualFilter });
+      }
+
+      const batchSize = Math.min(1000, Math.max(1, Number(actualOpts.batchSize) || 500));
+      // A runaway scan should fail loudly rather than read a table forever.
+      const maxRows = Number(actualOpts.maxRows) || 1_000_000;
+      const selectCols = actualOpts.select
+        ? actualOpts.select
+            .map((c) => (c === "_id" ? "id" : colMap[c] || c))
+            .join(",")
+        : "*";
+
+      let cursor = null;
+      let seen = 0;
+
+      for (;;) {
+        let query = sb().from(tableName).select(selectCols);
+        if (tenantId) query = query.eq("tenant_id", tenantId);
+        query = applyFilter(query, actualFilter, colMap, tableName);
+        if (cursor) query = query.gt("id", cursor);
+        query = query.order("id", { ascending: true }).limit(batchSize);
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) return;
+
+        seen += data.length;
+        if (seen > maxRows) {
+          throw new Error(
+            `findAllBatched on "${tableName}" exceeded maxRows (${maxRows}). ` +
+              `Narrow the filter or raise maxRows deliberately.`
+          );
+        }
+
+        yield toDocs(data, colMap);
+
+        // A short page means the table had nothing more to give.
+        if (data.length < batchSize) return;
+        cursor = data[data.length - 1]?.id;
+        if (!cursor) return;
+      }
     },
 
     async findOne(tenantIdOrFilter = {}, filter = {}) {
@@ -306,7 +424,7 @@ export function createModel(tableName, colMap) {
       if (enforceScope && isTenantScoped) assertTenantScope({ tableName, tenantId, method: "findOne", filter: actualFilter });
       let query = sb().from(tableName).select("*");
       if (tenantId) query = query.eq("tenant_id", tenantId);
-      query = applyFilter(query, actualFilter, colMap);
+      query = applyFilter(query, actualFilter, colMap, tableName);
       query = query.limit(1).maybeSingle();
 
       const { data, error } = await query;
@@ -422,6 +540,31 @@ export function createModel(tableName, colMap) {
       return toDoc(data, colMap);
     },
 
+    /**
+     * Take ownership of one row, but only if it still looks the way the caller
+     * expects — the job-queue claim.
+     *
+     * Reading a row and then updating it is two statements, so two replicas
+     * polling the same table both see the same pending job and both proceed
+     * with it. Folding the precondition into the UPDATE's own WHERE clause
+     * makes the database the arbiter: exactly one writer matches, and everyone
+     * else gets zero rows back and moves on. Returns the claimed doc, or null
+     * if somebody else got there first.
+     */
+    async claimOne(id, guardFilter = {}, patch = {}) {
+      const normalizedId = normalizeId(id);
+      if (!normalizedId) return null;
+      const row = toRow(patch, colMap);
+      delete row.id;
+
+      let query = sb().from(tableName).update(row).eq("id", normalizedId);
+      query = applyFilter(query, guardFilter, colMap, tableName);
+
+      const { data, error } = await query.select("*").maybeSingle();
+      if (error) throw error;
+      return toDoc(data, colMap);
+    },
+
     async updateMany(tenantIdOrFilter, filterOrPatch, maybePatch) {
       let tenantId, actualFilter, patch;
 
@@ -441,7 +584,7 @@ export function createModel(tableName, colMap) {
 
       let query = sb().from(tableName).update(row);
       if (tenantId) query = query.eq("tenant_id", tenantId);
-      query = applyFilter(query, actualFilter, colMap);
+      query = applyFilter(query, actualFilter, colMap, tableName);
 
       const { data, error } = await query.select("*");
       if (error) throw error;
@@ -482,7 +625,7 @@ export function createModel(tableName, colMap) {
 
       let query = sb().from(tableName).delete();
       if (safeTenantId) query = query.eq("tenant_id", safeTenantId);
-      query = applyFilter(query, actualFilter, colMap);
+      query = applyFilter(query, actualFilter, colMap, tableName);
 
       const { error } = await query;
       if (error) throw error;
@@ -506,7 +649,7 @@ export function createModel(tableName, colMap) {
         .from(tableName)
         .select("id", { count: "exact", head: true });
       if (tenantId) query = query.eq("tenant_id", tenantId);
-      query = applyFilter(query, actualFilter, colMap);
+      query = applyFilter(query, actualFilter, colMap, tableName);
 
       const { count, error } = await query;
       if (error) throw error;
