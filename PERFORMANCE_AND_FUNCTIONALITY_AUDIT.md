@@ -623,6 +623,37 @@ Still outstanding on that item: `API_JSON_LIMIT` remains 15 MB globally in
 `render.yaml`. Narrowing it belongs with route-specific limits and
 direct-to-R2 uploads.
 
+### Phase 2 — started
+
+Phase 2 splits cleanly on this workstation. Items 1, 2 and 4 (`pg_stat_statements`
+fingerprints, index/expression alignment, analytics rollups) all need
+production-like data and query plans, and cannot be honestly done or verified
+here. Item 5 is ordinary code, and is where the work went.
+
+**Phase 2 item 5 (N+1 to set-based) — two of the four named loops are done.**
+
+- *Device update.* Push delivery walked devices one at a time — await the
+  provider, await a database write, next device — so a broadcast's latency
+  scaled with total device count rather than with the slowest single call, and
+  the database cost scaled with it too. Provider calls now overlap eight at a
+  time (bounded, because a socket per device is how a large camp earns an APNs
+  or FCM rate limit), results are folded in device order so the reported status
+  does not depend on which provider answered first, and per-device outcomes are
+  grouped into `updateMany` writes.
+- *Feature rollout.* The console's flag listing read one flag per query in a
+  loop. Cache misses are now fetched together; a missing table is still
+  uncached and a real database error still surfaces rather than being flattened
+  into "all flags off".
+
+Still outstanding on item 5: the tenant-resolution and relationship-cleanup
+loops. Relationship cleanup overlaps Phase 1 item 4 (transactional deletion)
+and is best done with it.
+
+Item 6 is partly done already — `/readyz` and server deadlines landed with
+REL-API-06 and REL-API-07. Shared rate limiting, request backpressure and
+graceful overload responses remain, and shared rate limiting needs a shared
+store (Redis or equivalent) that the platform does not yet have.
+
 **Still open from Phase 1:** items 3, 4 and 6 (SQL-side listing contracts,
 transactional deletion, queued email/webhook/parsing work), plus moving the
 schedulers out of the API process.
@@ -631,7 +662,7 @@ schedulers out of the API process.
 
 - `npm run lint`: passes; 0 errors, 2 pre-existing `no-unused-vars` warnings in
   `scripts/seedDemoGiving.js` and `src/services/billing.js`.
-- API `jest.safe.config.cjs` suite: 59 suites, 422 tests, all passing.
+- API `jest.safe.config.cjs` suite: 61 suites, 431 tests, all passing.
 - Web `vitest run`: 39 files, 251 tests, all passing.
 - `npm audit --omit=dev --audit-level=moderate`: completed; five moderate production advisories.
 - `npm run build`: not yet run from a worktree; the Node/Vite version warning
