@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeHeroImagePosition, normalizeHeroImageSize, resolveTenantModules } from "@pondbridge/shared";
 import { requestJson } from "../lib/http.js";
 import { useOptionalAuthToken } from "./AuthContext.jsx";
@@ -162,11 +162,11 @@ function tenantThemeCacheKey({ slug = "", host = "" } = {}) {
   return key ? `${TENANT_THEME_CACHE_PREFIX}${key}` : "";
 }
 
-function readCachedThemeConfig({ slug = "", host = "" } = {}) {
+function readCachedThemeConfig({ slug = "", host = "", storage = globalThis?.localStorage } = {}) {
   const key = tenantThemeCacheKey({ slug, host });
   if (!key) return null;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = storage?.getItem?.(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : null;
@@ -175,11 +175,11 @@ function readCachedThemeConfig({ slug = "", host = "" } = {}) {
   }
 }
 
-function writeCachedThemeConfig({ slug = "", host = "", config = null } = {}) {
+function writeCachedThemeConfig({ slug = "", host = "", config = null, storage = globalThis?.localStorage } = {}) {
   const key = tenantThemeCacheKey({ slug, host });
   if (!key || !config || typeof config !== "object") return;
   try {
-    localStorage.setItem(key, JSON.stringify(config));
+    storage?.setItem?.(key, JSON.stringify(config));
   } catch {
     // Ignore storage quota/private mode errors.
   }
@@ -216,11 +216,11 @@ function normalizeTenantPayload(tenant = null, fallbackSlug = "") {
   };
 }
 
-function readCachedTenantPayloadEntry({ slug = "", host = "" } = {}) {
+function readCachedTenantPayloadEntry({ slug = "", host = "", storage = globalThis?.localStorage } = {}) {
   const key = tenantConfigCacheKey({ slug, host });
   if (!key) return null;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = storage?.getItem?.(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const cachedAt = Number(parsed?.cachedAt || 0);
@@ -233,11 +233,11 @@ function readCachedTenantPayloadEntry({ slug = "", host = "" } = {}) {
   }
 }
 
-function writeCachedTenantPayload({ slug = "", host = "", payload = null } = {}) {
+function writeCachedTenantPayload({ slug = "", host = "", payload = null, storage = globalThis?.localStorage } = {}) {
   const key = tenantConfigCacheKey({ slug, host });
   if (!key || !payload || typeof payload !== "object") return;
   try {
-    localStorage.setItem(
+    storage?.setItem?.(
       key,
       JSON.stringify({
         cachedAt: Date.now(),
@@ -270,22 +270,45 @@ function preloadTenantHero(tenant = null) {
   preloadCriticalTenantImage(branding?.heroImageUrl || "");
 }
 
-export function TenantProvider({ slug = "", children }) {
-  const [state, setState] = useState({ loading: true, error: "", tenant: null });
-  // The public tenant config is unauthenticated and cached, so it cannot know
-  // who is asking. When a camp runs tiered access the member's own module set
-  // has to come from an authenticated response instead, or the navigation
-  // offers pages the API will refuse.
-  const [viewerModules, setViewerModules] = useState(null);
+/**
+ * The tenant fetch, lifted out of the component so the race it used to lose is
+ * testable. `apps/web` has no jsdom, so an effect-driven test cannot run; this
+ * takes its collaborators by injection instead.
+ *
+ * Every fetch takes a generation number and only the newest one may write.
+ * Navigating from camp A to camp B faster than A's response arrives used to let
+ * A land last and overwrite B — not only in React state but in `applyTheme`,
+ * the host-keyed payload cache and `pondbridgeTenantSlug`, so the wrong camp's
+ * branding survived a reload. The provider's old `cancelled` flag could not
+ * catch that: it was read after the fetch resolved, by which point every one of
+ * those writes had already happened.
+ *
+ * An AbortController would also save the wasted bytes, but `requestJson` drops
+ * out of its shared in-flight GET memo whenever a signal is present, and
+ * AuthProviderRuntime asks for this same tenant-config URL on the same load —
+ * so aborting would buy a duplicate request on every page load to avoid a
+ * response nobody reads. The generation guard is what makes it correct.
+ */
+export function createTenantFetcher({
+  setState,
+  request = requestJson,
+  theme = applyTheme,
+  preloadHero = preloadTenantHero,
+  storage = globalThis?.localStorage,
+  getHost = () => globalThis?.location?.hostname || ""
+} = {}) {
+  let generation = 0;
 
   // `bypassCache` is for the moments where a stale tenant read changes what the
   // app does rather than just how it looks - launch being the big one, since the
   // router sends a director whose tenant still reads "not live" back into the
   // onboarding wizard. It skips the local paint, the in-memory GET memo, and the
   // browser/CDN copy (the cache buster makes it a URL no shared cache holds).
-  async function fetchTenant(requestedSlug = slug, { bypassCache = false } = {}) {
+  async function fetchTenant(requestedSlug = "", { bypassCache = false } = {}) {
+    const myGeneration = ++generation;
+    const isCurrent = () => myGeneration === generation;
     const normalizedSlug = String(requestedSlug || "").trim().toLowerCase();
-    const host = window.location.hostname || "";
+    const host = getHost();
     const query = normalizedSlug
       ? `slug=${encodeURIComponent(normalizedSlug)}`
       : `host=${encodeURIComponent(host)}`;
@@ -294,7 +317,7 @@ export function TenantProvider({ slug = "", children }) {
       : `/api/public/tenant-config?${query}`;
     const requestOptions = bypassCache ? { cache: "no-store" } : undefined;
 
-    const cachedEntry = readCachedTenantPayloadEntry({ slug: normalizedSlug, host });
+    const cachedEntry = readCachedTenantPayloadEntry({ slug: normalizedSlug, host, storage });
     const cachedPayload = cachedEntry?.payload || null;
     const freshCachedPayload = Boolean(cachedEntry && !cachedEntry.expired);
     if (bypassCache) {
@@ -303,13 +326,13 @@ export function TenantProvider({ slug = "", children }) {
     } else if (cachedPayload) {
       const cachedTenant = normalizeTenantPayload(cachedPayload, normalizedSlug);
       const cachedConfig = cachedTenant?.config || {};
-      preloadTenantHero(cachedTenant);
-      applyTheme(cachedConfig);
+      preloadHero(cachedTenant);
+      theme(cachedConfig);
       setState({ loading: false, error: "", tenant: cachedTenant });
     } else {
-      const cachedConfig = readCachedThemeConfig({ slug: normalizedSlug, host });
+      const cachedConfig = readCachedThemeConfig({ slug: normalizedSlug, host, storage });
       if (cachedConfig) {
-        applyTheme(cachedConfig);
+        theme(cachedConfig);
       }
       setState((prev) => {
         const previousTenantSlug = String(prev?.tenant?.slug || "").trim().toLowerCase();
@@ -322,19 +345,24 @@ export function TenantProvider({ slug = "", children }) {
     }
 
     try {
-      const tenant = await requestJson(requestPath, requestOptions);
+      const tenant = await request(requestPath, requestOptions);
+      // A newer tenant has been asked for since this request went out, so this
+      // answer describes a camp the user has already left.
+      if (!isCurrent()) return;
       const normalizedTenant = normalizeTenantPayload(tenant, normalizedSlug);
       const config = normalizedTenant?.config || {};
       const resolvedSlug = String(normalizedTenant?.slug || normalizedSlug).trim().toLowerCase();
-      preloadTenantHero(normalizedTenant);
-      applyTheme(config);
-      writeCachedThemeConfig({ slug: resolvedSlug, config });
-      writeCachedThemeConfig({ host, config });
-      writeCachedTenantPayload({ slug: resolvedSlug, payload: tenant });
-      writeCachedTenantPayload({ host, payload: tenant });
-      if (resolvedSlug) localStorage.setItem("pondbridgeTenantSlug", resolvedSlug);
+      preloadHero(normalizedTenant);
+      theme(config);
+      writeCachedThemeConfig({ slug: resolvedSlug, config, storage });
+      writeCachedThemeConfig({ host, config, storage });
+      writeCachedTenantPayload({ slug: resolvedSlug, payload: tenant, storage });
+      writeCachedTenantPayload({ host, payload: tenant, storage });
+      if (resolvedSlug) storage?.setItem?.("pondbridgeTenantSlug", resolvedSlug);
       setState({ loading: false, error: "", tenant: normalizedTenant });
     } catch (error) {
+      // A stale failure must not clear the tenant the user is now looking at.
+      if (!isCurrent()) return;
       if (cachedPayload || freshCachedPayload) {
         setState((prev) => ({ ...prev, loading: false, error: "" }));
       } else {
@@ -350,16 +378,37 @@ export function TenantProvider({ slug = "", children }) {
     }
   }
 
+  // Retiring the generation is the cancellation: any response still in flight
+  // for the slug we are leaving can no longer write.
+  function retire() {
+    generation += 1;
+  }
+
+  return { fetchTenant, retire };
+}
+
+export function TenantProvider({ slug = "", children }) {
+  const [state, setState] = useState({ loading: true, error: "", tenant: null });
+  // The public tenant config is unauthenticated and cached, so it cannot know
+  // who is asking. When a camp runs tiered access the member's own module set
+  // has to come from an authenticated response instead, or the navigation
+  // offers pages the API will refuse.
+  const [viewerModules, setViewerModules] = useState(null);
+
+  const fetcherRef = useRef(null);
+  if (!fetcherRef.current) fetcherRef.current = createTenantFetcher({ setState });
+
+  function fetchTenant(requestedSlug = slug, options = {}) {
+    return fetcherRef.current.fetchTenant(requestedSlug, options);
+  }
+
   useEffect(() => {
-    let cancelled = false;
     if (slug) localStorage.setItem("pondbridgeTenantSlug", String(slug || ""));
 
-    fetchTenant(slug).then(() => {
-      if (cancelled) return;
-    });
+    fetchTenant(slug);
 
     return () => {
-      cancelled = true;
+      fetcherRef.current.retire();
     };
   }, [slug]);
 
