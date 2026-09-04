@@ -146,6 +146,28 @@
     border:1.5px solid rgba(255, 255, 255, 0.85);
     pointer-events:none;
   }
+  /* A clip Cloudflare Stream has not finished encoding yet. It reuses the play
+     badge's geometry so the tile does not shift when the encode lands. */
+  .ps-processing-badge{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%, -50%);
+    display:grid;
+    place-items:center;
+    width:52px;
+    height:52px;
+    border-radius:50%;
+    color:#fff;
+    background:rgba(0, 0, 0, 0.55);
+    border:1.5px solid rgba(255, 255, 255, 0.85);
+    pointer-events:none;
+  }
+  .ps-processing-badge svg{ animation:ps-spin 1s linear infinite; }
+  @keyframes ps-spin{ to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion:reduce){
+    .ps-processing-badge svg{ animation:none; }
+  }
   .ps-media-wrap:has(.ps-play-badge){ cursor:pointer; }
   .ps-media-wrap:hover .ps-play-badge{ background:rgba(0, 0, 0, 0.72); }
   .ps-duration-pill{
@@ -446,6 +468,26 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+/* Shown in place of the player while an encode is still running. */
+.ps-media-processing {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 240px;
+  padding: 32px 20px;
+  text-align: center;
+  color: #fff;
+  background: #000;
+}
+
+.ps-media-processing small { opacity: .72; }
+
+.ps-media-processing-spinner { animation: ps-spin 1s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-media-processing-spinner { animation: none; }
 }
 
 .ps-lightbox-video {

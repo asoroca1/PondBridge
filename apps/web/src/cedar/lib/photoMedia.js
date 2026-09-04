@@ -36,3 +36,32 @@ export function formatDuration(seconds) {
   const secs = total % 60;
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
+
+/**
+ * Where a clip should actually play from.
+ *
+ * The Stream encode is the only source every browser can decode, so it wins
+ * whenever it exists. The original upload is the fallback: it is still the
+ * right answer for a post made before Stream was wired up, and for the Safari
+ * viewer watching their own clip while the encode is still running.
+ */
+export function videoSources(post) {
+  const playbackUrl = String(post?.playbackUrl || "").trim();
+  const originalUrl = String(post?.imageUrl || "").trim();
+  return {
+    hlsUrl: playbackUrl,
+    originalUrl,
+    // Nothing to play yet, and nothing to fall back to either.
+    isProcessing: !playbackUrl && isProcessingPost(post) && !originalUrl
+  };
+}
+
+export function isProcessingPost(post) {
+  if (!isVideoPost(post)) return false;
+  const status = String(post?.streamStatus || "").toLowerCase();
+  return status === "pending" || status === "processing";
+}
+
+export function isStreamErrorPost(post) {
+  return isVideoPost(post) && String(post?.streamStatus || "").toLowerCase() === "error";
+}

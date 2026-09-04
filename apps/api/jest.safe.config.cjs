@@ -7,6 +7,7 @@ module.exports = {
     "**/tests/brandingFaviconField.test.js",
     "**/tests/clerkVerificationEmail.test.js",
     "**/tests/clerkAccountDeletion.test.js",
+    "**/tests/cloudflareStream.test.js",
     "**/tests/campAiSearch.test.js",
     "**/tests/copilotAudit.test.js",
     "**/tests/copilotEvals.test.js",
