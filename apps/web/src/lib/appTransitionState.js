@@ -5,11 +5,15 @@ function normalizeValue(value = "") {
 const NON_TENANT_SUBDOMAINS = ["www", "app", "api", "super"];
 
 // The super console belongs to no camp, so there is nothing to brand it with.
-function isSuperConsole(pathname = "", subdomain = "") {
-  return subdomain === "super" || /^\/super(\/|$)/i.test(pathname);
+function isSuperConsole(locationLike) {
+  const pathname = normalizeValue(locationLike?.pathname || "/");
+  const hostname = normalizeValue(locationLike?.hostname).toLowerCase();
+  const baseDomain = normalizeValue(import.meta.env.VITE_APP_BASE_DOMAIN || "pondbridgealumni.com").toLowerCase();
+  return hostname === `super.${baseDomain}` || /^\/super(\/|$)/i.test(pathname);
 }
 
 export function inferTransitionSlug(locationLike = globalThis?.location, storage = globalThis?.localStorage) {
+  if (isSuperConsole(locationLike)) return "";
   const pathname = normalizeValue(locationLike?.pathname || "/");
   const pathMatch = pathname.match(/^\/t\/([^/]+)/i);
   if (pathMatch?.[1]) return normalizeValue(pathMatch[1]).toLowerCase();
@@ -21,11 +25,6 @@ export function inferTransitionSlug(locationLike = globalThis?.location, storage
     subdomain = hostname.slice(0, -1 * (baseDomain.length + 1)).split(".")[0] || "";
     if (subdomain && !NON_TENANT_SUBDOMAINS.includes(subdomain)) return subdomain;
   }
-
-  // Without this the loading screen fell back to the last camp this browser
-  // visited and painted that camp's name and logo over the super console —
-  // often a camp that had since been deleted.
-  if (isSuperConsole(pathname, subdomain)) return "";
 
   try {
     return normalizeValue(storage?.getItem?.("pondbridgeTenantSlug")).toLowerCase();
@@ -50,6 +49,10 @@ export function readTransitionBranding({
   locationLike = globalThis?.location,
   storage = globalThis?.localStorage
 } = {}) {
+  // Skip all camp caches, including hostname-keyed config and theme entries.
+  if (isSuperConsole(locationLike)) {
+    return { slug: "", networkName: "PondBridge", logoUrl: "" };
+  }
   const slug = inferTransitionSlug(locationLike, storage);
   const hostname = normalizeValue(locationLike?.hostname).toLowerCase();
   const cacheKeys = [
