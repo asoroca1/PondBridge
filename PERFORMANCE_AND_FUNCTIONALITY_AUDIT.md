@@ -610,6 +610,19 @@ Moving it to a dedicated worker is the remainder.
 `claimOne` is the reusable primitive for the rest of the queue work in
 PERF-JOB-03 and REL-JOB-04.
 
+**REL-API-07 is half fixed.** The HTTP server had no explicit timeouts, so
+Node's defaults applied — 60 s to send headers, 300 s to send a body. Headers,
+request and keep-alive timeouts are now explicit, bounded and env-overridable.
+The ordering constraint is enforced in code rather than left to whoever sets
+the environment: `keepAliveTimeout` must exceed the load balancer's idle
+window or Node closes sockets the balancer still trusts (unexplained 502s),
+and `headersTimeout` must in turn exceed `keepAliveTimeout`. An inverted
+configuration is repaired, not rejected.
+
+Still outstanding on that item: `API_JSON_LIMIT` remains 15 MB globally in
+`render.yaml`. Narrowing it belongs with route-specific limits and
+direct-to-R2 uploads.
+
 **Still open from Phase 1:** items 3, 4 and 6 (SQL-side listing contracts,
 transactional deletion, queued email/webhook/parsing work), plus moving the
 schedulers out of the API process.
@@ -618,7 +631,7 @@ schedulers out of the API process.
 
 - `npm run lint`: passes; 0 errors, 2 pre-existing `no-unused-vars` warnings in
   `scripts/seedDemoGiving.js` and `src/services/billing.js`.
-- API `jest.safe.config.cjs` suite: 58 suites, 416 tests, all passing.
+- API `jest.safe.config.cjs` suite: 59 suites, 422 tests, all passing.
 - Web `vitest run`: 39 files, 251 tests, all passing.
 - `npm audit --omit=dev --audit-level=moderate`: completed; five moderate production advisories.
 - `npm run build`: not yet run from a worktree; the Node/Vite version warning
