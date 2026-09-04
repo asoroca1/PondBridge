@@ -44,6 +44,10 @@ function assertSafeTestDatabaseRuntime() {
   }
 }
 
+// Enough rows to tell one database from another in a log, not enough to make
+// boot cost scale with the number of camps.
+const TENANT_LOG_SAMPLE_SIZE = 10;
+
 function buildRecoveryHint() {
   return [
     "Recovery:",
@@ -59,9 +63,14 @@ export async function connectToDatabase() {
     assertSafeTestDatabaseRuntime();
 
     const sb = getSupabaseAdmin();
-    const { data: tenantRows, count, error } = await sb
+    // Boot used to select every column of every tenant just to print them.
+    // That made process start cost grow with the platform, and on a large
+    // install it buried the log in one line per camp. The floor check only
+    // needs the number, so ask for the number; the inventory log only needs
+    // enough rows to recognise which database this is.
+    const { count, error } = await sb
       .from("tenants")
-      .select("id, slug, name, status", { count: "exact" });
+      .select("id", { count: "exact", head: true });
     if (error) {
       const wrapped = new Error(`Supabase connection check failed: ${error.message}`);
       wrapped.code = error.code || "SUPABASE_CONNECTION_CHECK_FAILED";
@@ -76,10 +85,16 @@ export async function connectToDatabase() {
     // Always log tenant inventory on startup (skip in test to reduce noise).
     if (!isTest) {
       console.log(`[db] Tenant inventory: ${tenantCount} tenant(s) found.`);
-      if (tenantRows && tenantRows.length > 0) {
-        for (const t of tenantRows) {
-          console.log(`[db]   - "${t.slug}" (${t.name}) [${t.status}] id=${t.id}`);
-        }
+      const { data: sampleRows } = await sb
+        .from("tenants")
+        .select("id, slug, name, status")
+        .order("created_at", { ascending: true })
+        .limit(TENANT_LOG_SAMPLE_SIZE);
+      for (const t of sampleRows || []) {
+        console.log(`[db]   - "${t.slug}" (${t.name}) [${t.status}] id=${t.id}`);
+      }
+      if (tenantCount > (sampleRows?.length || 0)) {
+        console.log(`[db]   ... and ${tenantCount - (sampleRows?.length || 0)} more.`);
       }
     }
 

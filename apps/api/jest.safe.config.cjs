@@ -38,6 +38,7 @@ module.exports = {
     "**/tests/operatingCosts.test.js",
     "**/tests/operationalTelemetry.test.js",
     "**/tests/profilePrivacy.test.js",
+    "**/tests/readinessProbe.test.js",
     "**/tests/publicTenantCache.test.js",
     "**/tests/profilePdfImport.test.js",
     "**/tests/platformAuditMigrationSafety.test.js",
