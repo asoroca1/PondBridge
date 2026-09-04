@@ -16,6 +16,7 @@ module.exports = {
     "**/tests/domainProvisioning.test.js",
     "**/tests/embeddedCheckout.test.js",
     "**/tests/directorCopilot.test.js",
+    "**/tests/featureRolloutBatching.test.js",
     "**/tests/featureRollouts.test.js",
     "**/tests/fcmHttpV1.test.js",
     "**/tests/accessPolicy.test.js",
