@@ -24,6 +24,14 @@ import {
   createPresignedDownloadUrl,
   deleteObjectFromR2
 } from "../services/objectStorage.js";
+import {
+  STREAM_STATUS,
+  getVideo as getStreamVideo,
+  ingestFromUrl as ingestStreamFromUrl,
+  deleteVideo as deleteStreamVideo,
+  streamEnabled
+} from "../services/cloudflareStream.js";
+import { logLine } from "../services/logger.js";
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
 import {
   citiesCacheByTenant,
@@ -312,6 +320,103 @@ function isVideoContentType(fileType = "") {
 
 function normalizeMediaType(value = "") {
   return String(value || "").trim().toLowerCase() === "video" ? "video" : "image";
+}
+
+// How long a clip may sit in one Stream state before a feed read stops trusting
+// it and asks Stream directly. The webhook is the fast path; this is the net
+// under it for a delivery that never arrived.
+const STREAM_RECONCILE_AFTER_MS = 30_000;
+
+/**
+ * Ask Stream to pull the freshly uploaded clip out of R2 and re-encode it.
+ *
+ * A failure here is deliberately not fatal: the post is already saved, and the
+ * original upload still plays for the Safari viewer who made it. The feed's
+ * reconcile pass retries a post left sitting in `pending`.
+ */
+async function startPhotoStreamIngest(tenantId, photo) {
+  if (!streamEnabled() || !photo?.imageUrl) return photo;
+  try {
+    const state = await ingestStreamFromUrl(photo.imageUrl, {
+      name: `photo-stream-${photo._id}`,
+      meta: { photoId: String(photo._id), tenantId: String(tenantId) }
+    });
+    const updated = await PhotoModel.updateScoped(tenantId, photo._id, {
+      streamUid: state.streamUid,
+      streamStatus: state.streamStatus,
+      streamPlaybackUrl: state.streamPlaybackUrl,
+      ...(state.durationSeconds ? { durationSeconds: state.durationSeconds } : {})
+    });
+    return updated || photo;
+  } catch (error) {
+    logLine("error", "photo_stream_ingest_failed", {
+      photoId: String(photo._id),
+      message: error?.message
+    });
+    return photo;
+  }
+}
+
+/**
+ * Bring a clip's stored state back in line with Stream's.
+ *
+ * Only ever called for a post that is still unplayable and has stopped looking
+ * fresh, so a healthy feed makes no outbound calls at all.
+ */
+async function reconcilePhotoStream(tenantId, photo) {
+  if (!streamEnabled() || photo?.mediaType !== "video") return photo;
+
+  const status = String(photo.streamStatus || "");
+  if (status === STREAM_STATUS.READY || status === STREAM_STATUS.ERROR) return photo;
+
+  const touchedAt = new Date(photo.updatedAt || photo.createdAt || 0).getTime();
+  if (Number.isFinite(touchedAt) && Date.now() - touchedAt < STREAM_RECONCILE_AFTER_MS) return photo;
+
+  // No uid means the ingest call itself failed; try again rather than leaving
+  // the post stuck as processing forever.
+  if (!photo.streamUid) return startPhotoStreamIngest(tenantId, photo);
+
+  try {
+    const state = await getStreamVideo(photo.streamUid);
+    if (state.streamStatus === status && state.streamPlaybackUrl === (photo.streamPlaybackUrl || "")) {
+      return photo;
+    }
+    const updated = await PhotoModel.updateScoped(tenantId, photo._id, {
+      streamStatus: state.streamStatus,
+      streamPlaybackUrl: state.streamPlaybackUrl,
+      ...(state.durationSeconds ? { durationSeconds: state.durationSeconds } : {})
+    });
+    return updated || photo;
+  } catch (error) {
+    logLine("warn", "photo_stream_reconcile_failed", {
+      photoId: String(photo._id),
+      message: error?.message
+    });
+    return photo;
+  }
+}
+
+/**
+ * Reconcile every clip in a page of the feed that still looks unfinished.
+ * Runs them together because they are independent network calls, and a feed
+ * rarely has more than one or two in flight.
+ */
+async function reconcilePhotoStreams(tenantId, photos = []) {
+  if (!streamEnabled()) return photos;
+  const pending = photos.some(
+    (photo) =>
+      photo?.mediaType === "video" &&
+      photo?.streamStatus &&
+      photo.streamStatus !== STREAM_STATUS.READY &&
+      photo.streamStatus !== STREAM_STATUS.ERROR
+  );
+  if (!pending) return photos;
+
+  return Promise.all(
+    photos.map((photo) =>
+      photo?.mediaType === "video" ? reconcilePhotoStream(tenantId, photo) : photo
+    )
+  );
 }
 
 function normalizeDurationSeconds(value) {
@@ -1269,6 +1374,10 @@ function photoToClient(photo = {}, currentUserId = "", hiddenUserIds = null) {
     thumbUrl: photo.thumbUrl || photo.imageUrl || "",
     mediaType: photo.mediaType === "video" ? "video" : "image",
     durationSeconds: Number(photo.durationSeconds || 0),
+    // A clip plays from its Stream encode; imageUrl stays the original upload so
+    // a Safari viewer still has something to watch while the encode is running.
+    streamStatus: photo.mediaType === "video" ? String(photo.streamStatus || "") : "",
+    playbackUrl: photo.mediaType === "video" ? String(photo.streamPlaybackUrl || "") : "",
     caption: photo.caption || "",
     captionMentions: photo.captionMentions || [],
     likes: likes.length,
@@ -2261,13 +2370,21 @@ router.get("/photos", async (req, res) => {
     ordered = rows.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }
 
-  const sliced = ordered.slice(0, limit).map((row) => photoToClient(row, req.user.id, hiddenUserIds));
+  // Only the page being returned is reconciled, and only when something on it
+  // still looks unfinished -- a feed of stills never touches Stream.
+  const page = await reconcilePhotoStreams(req.tenant._id, ordered.slice(0, limit));
+  const sliced = page.map((row) => photoToClient(row, req.user.id, hiddenUserIds));
   const payload = {
     items: sliced,
     nextCursor: null,
     nextPage: null
   };
-  photoFeedResponseCache.set(cacheKey, payload);
+  // A clip still encoding will look different in a few seconds, so it must not
+  // sit in the shared feed cache for the full TTL.
+  const hasPendingVideo = sliced.some(
+    (item) => item.mediaType === "video" && item.streamStatus && item.streamStatus !== "ready" && item.streamStatus !== "error"
+  );
+  if (!hasPendingVideo) photoFeedResponseCache.set(cacheKey, payload);
   res.set("Cache-Control", PHOTO_FEED_CACHE_CONTROL);
   res.set("Vary", "Authorization");
   return res.json(payload);
@@ -2294,10 +2411,18 @@ router.post("/photos", async (req, res) => {
     imageUrl,
     thumbUrl,
     mediaType,
+    // A clip is unplayable outside Safari until Stream re-encodes it, so it
+    // starts life pending and the feed shows it as still processing.
+    streamStatus: mediaType === "video" && streamEnabled() ? STREAM_STATUS.PENDING : null,
     durationSeconds: mediaType === "video" ? normalizeDurationSeconds(req.body?.durationSeconds) : 0,
     caption: sanitizeText(String(req.body?.caption || "").trim()),
     captionMentions: Array.isArray(req.body?.captionMentions) ? req.body.captionMentions : []
   });
+
+  // Hand the upload to Stream now that the row exists to hang the uid on. The
+  // encode itself is asynchronous -- the webhook fills in the playback URL, and
+  // the feed reconciles anything the webhook misses.
+  const withStream = mediaType === "video" ? await startPhotoStreamIngest(req.tenant._id, created) : created;
 
   await ActivityItemModel.create({
     tenantId: req.tenant._id,
@@ -2312,7 +2437,7 @@ router.post("/photos", async (req, res) => {
   }).catch(() => {});
   clearPhotoFeedCache();
 
-  return res.status(201).json(photoToClient(created, req.user.id));
+  return res.status(201).json(photoToClient(withStream, req.user.id));
 });
 
 router.get("/photos/:id/comments", async (req, res) => {
@@ -2456,6 +2581,9 @@ router.delete("/photos/:id", async (req, res) => {
   }
 
   await PhotoModel.delete(photo._id);
+  // Stream bills for stored minutes, so a deleted post must not leave its
+  // encode behind. The post is already gone either way if this fails.
+  if (photo.streamUid) await deleteStreamVideo(photo.streamUid);
   clearPhotoFeedCache();
   return res.json({ ok: true });
 });
