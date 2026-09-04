@@ -654,6 +654,78 @@ REL-API-06 and REL-API-07. Shared rate limiting, request backpressure and
 graceful overload responses remain, and shared rate limiting needs a shared
 store (Redis or equivalent) that the platform does not yet have.
 
+### Phase 3 — three items done
+
+- **PERF-WEB-08 (idle activity).** Idle logout cleared and recreated two timers
+  on every mousemove, mousedown, keydown, scroll and touch. Activity is a
+  timestamp now — one assignment, no timer work — and a single interval decides
+  when the warning or logout is due. Cost goes from "per input event" to "one
+  interval". The trade is that both land within one check interval of their
+  exact moment, which against a session timeout in tens of minutes is
+  imperceptible.
+- **PERF-WEB-07 (chat polling), partly.** The unread count refetched the whole
+  conversation list every 25 s regardless of visibility or connectivity. It now
+  polls only while visible and online, resumes on `visibilitychange`/`online`,
+  and only spends a request on wake if the answer could actually be stale.
+  Failures widen the gap (capped at five minutes) and one success clears it.
+  The decision half is a reusable planner with no timers or globals, because
+  the audit found several other intervals with the same problem. Still
+  outstanding: replacing the poll with socket deltas and a compact unread
+  endpoint, which needs an API change.
+- **PERF-WEB-09 (speculative preload).** Warming `/home` and `/my-profile` after
+  login is now gated on the browser saying the guess is affordable: off under
+  Data Saver, on slow-2g/2g, for a hidden tab, and while offline. Browsers with
+  no Network Information API keep preloading, since absence of evidence is not
+  evidence of a bad connection. Intent-driven preloading on hover/focus is
+  untouched — a member reaching for a link is not speculation.
+
+### Phase 4 — baseline captured, budgets ratcheted
+
+**The baseline build the audit could not produce now exists**, built from a
+worktree in 5 s. Measured 2026-09-04:
+
+| Metric | Measured | Old budget | New budget | Audit target |
+| --- | --- | --- | --- | --- |
+| Entry JS gzip | 111.2 KB | 125 | 115 | 100 |
+| Initial CSS gzip | 58.0 KB | 60 | 59 | 45 |
+| Largest route JS gzip | 31.2 KB | 50 | 35 | 40 |
+| Largest asset raw | 0.97 MB | 2.0 | 1.1 | — |
+| Largest image raw | 0.76 MB | 1.0 | 0.8 | 0.25 |
+
+Phase 4 item 3 was closer to done than the audit implied — CI already runs
+`perf:check-web`, and it already covers entry JS, initial CSS, route JS,
+largest asset and largest image. The problem was slack: the route budget had
+19 KB of room and the asset budget over a megabyte, so a route could double in
+cost and still pass. Every number now sits just above the real build.
+
+Initial CSS is deliberately the tight one, with roughly 1 KB of headroom: the
+next stylesheet added to the global bundle will fail the check. Splitting CSS
+by route (Phase 3 item 2) is the work that buys that room back, and it is also
+what closes the 13 KB gap to the audit's target. The largest image is 3x its
+target and wants responsive modern formats.
+
+**Phase 4 item 6 (vulnerable dependencies) — attempted, mostly blocked.**
+Production advisories are 5, in three groups:
+
+- `sanitize-html` (the one that matters — stored XSS via SVG, and `javascript:`
+  URIs through `action`/`formaction`/`poster`/`background`). The fix is 2.17.7,
+  a patch inside the declared `^2.17.4` range. **It cannot be adopted yet:**
+  2.17.7 depends on `htmlparser2` 12, which is ESM-only, and Jest's CJS module
+  runtime cannot require it — twelve API suites fail to load. Pinning
+  `htmlparser2` back is not an option because 2.17.7 requires `^12.0.0`. The
+  unblock is a Jest transform for that dependency chain, or moving the API
+  suite to Vitest. Worth doing: this is the only advisory here with a plausible
+  attack path through user-supplied content.
+- `qs` / `body-parser` / `express` — needs Express 5, a breaking migration, and
+  is Phase 4 item 6's own line in the plan.
+- `@xmldom/xmldom` — an `overrides` entry did not take effect against the
+  parent's pin; left alone rather than forced.
+
+Separately worth a decision: the repo's own `overrides` block pins
+`js-yaml` to `5.2.1`, which the advisory database flags as high severity
+(exponential parse time, DoS). It is a dev-only path via `@eslint/eslintrc`,
+and the pin looks deliberate, so it is reported rather than changed.
+
 **Still open from Phase 1:** items 3, 4 and 6 (SQL-side listing contracts,
 transactional deletion, queued email/webhook/parsing work), plus moving the
 schedulers out of the API process.
@@ -663,8 +735,9 @@ schedulers out of the API process.
 - `npm run lint`: passes; 0 errors, 2 pre-existing `no-unused-vars` warnings in
   `scripts/seedDemoGiving.js` and `src/services/billing.js`.
 - API `jest.safe.config.cjs` suite: 61 suites, 431 tests, all passing.
-- Web `vitest run`: 39 files, 251 tests, all passing.
-- `npm audit --omit=dev --audit-level=moderate`: completed; five moderate production advisories.
+- Web `vitest run`: 42 files, 271 tests, all passing.
+- `npm audit --omit=dev --audit-level=moderate`: five moderate production advisories in three groups; see Phase 4 above for why each is or is not actionable.
+- `npm run build` + `npm run perf:check-web`: both pass from a worktree; build takes ~5 s.
 - `npm run build`: not yet run from a worktree; the Node/Vite version warning
   in the original attempt was spurious — Node 22.17.0 already satisfies the
   declared `^20.19.0 || >=22.12.0` engine range, so Phase 0 step 2 needs no work.
