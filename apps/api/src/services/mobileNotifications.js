@@ -845,7 +845,39 @@ export async function resolveAudienceUserIds(tenantId, audience = "all_active_me
     .filter(Boolean);
 }
 
+/**
+ * A job left in `sending` by a process that died would otherwise sit there
+ * forever, because nothing but a pending row is ever claimed. After the lease
+ * expires the row is handed back to the pool; the claim itself is guarded on
+ * the row still being `sending` with the same stale timestamp, so a worker
+ * that is merely slow cannot have its job stolen twice over.
+ */
+export const SCHEDULE_LEASE_MS = 10 * 60 * 1000;
+
+async function reclaimExpiredSchedules({ now = new Date(), limit = 25 } = {}) {
+  const expiredBefore = new Date(now.getTime() - SCHEDULE_LEASE_MS);
+  const stuck = await MobileNotificationScheduleModel.acrossTenants().find(
+    { status: "sending", attemptedAt: { $lte: expiredBefore } },
+    { sort: { attemptedAt: 1 }, limit }
+  );
+
+  let reclaimed = 0;
+  for (const schedule of stuck) {
+    const won = await MobileNotificationScheduleModel.claimOne(
+      schedule._id,
+      { status: "sending", attemptedAt: schedule.attemptedAt },
+      { status: "pending" }
+    );
+    if (won) reclaimed += 1;
+  }
+  return reclaimed;
+}
+
 export async function runDueMobileNotificationSchedules({ now = new Date(), batchLimit = 25 } = {}) {
+  const limit = Math.max(1, Math.min(Number(batchLimit || 25), 200));
+
+  await reclaimExpiredSchedules({ now, limit });
+
   const due = await MobileNotificationScheduleModel.acrossTenants().find(
     {
       status: "pending",
@@ -853,18 +885,25 @@ export async function runDueMobileNotificationSchedules({ now = new Date(), batc
     },
     {
       sort: { runAt: 1 },
-      limit: Math.max(1, Math.min(Number(batchLimit || 25), 200))
+      limit
     }
   );
 
   const results = [];
   for (const schedule of due) {
-    try {
-      await MobileNotificationScheduleModel.update(schedule._id, {
-        status: "sending",
-        attemptedAt: new Date()
-      });
+    // Reading a row and then marking it `sending` is two statements, so two
+    // API replicas polling this table both saw the same pending job and both
+    // sent it — every member got the broadcast twice. The precondition now
+    // lives inside the UPDATE, so exactly one replica can win the row and the
+    // losers skip it.
+    const claimed = await MobileNotificationScheduleModel.claimOne(
+      schedule._id,
+      { status: "pending" },
+      { status: "sending", attemptedAt: new Date() }
+    );
+    if (!claimed) continue;
 
+    try {
       const tenant = await TenantModel.findById(schedule.tenantId);
       if (!tenant) {
         await MobileNotificationScheduleModel.update(schedule._id, {

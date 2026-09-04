@@ -43,6 +43,7 @@ module.exports = {
     "**/tests/profilePdfImport.test.js",
     "**/tests/platformAuditMigrationSafety.test.js",
     "**/tests/requireTenantModule.test.js",
+    "**/tests/scheduleClaiming.test.js",
     "**/tests/seminarEvents.test.js",
     "**/tests/infoSessionRegistration.test.js",
     "**/tests/geocodeBackoff.test.js",

@@ -540,6 +540,31 @@ export function createModel(tableName, colMap) {
       return toDoc(data, colMap);
     },
 
+    /**
+     * Take ownership of one row, but only if it still looks the way the caller
+     * expects — the job-queue claim.
+     *
+     * Reading a row and then updating it is two statements, so two replicas
+     * polling the same table both see the same pending job and both proceed
+     * with it. Folding the precondition into the UPDATE's own WHERE clause
+     * makes the database the arbiter: exactly one writer matches, and everyone
+     * else gets zero rows back and moves on. Returns the claimed doc, or null
+     * if somebody else got there first.
+     */
+    async claimOne(id, guardFilter = {}, patch = {}) {
+      const normalizedId = normalizeId(id);
+      if (!normalizedId) return null;
+      const row = toRow(patch, colMap);
+      delete row.id;
+
+      let query = sb().from(tableName).update(row).eq("id", normalizedId);
+      query = applyFilter(query, guardFilter, colMap, tableName);
+
+      const { data, error } = await query.select("*").maybeSingle();
+      if (error) throw error;
+      return toDoc(data, colMap);
+    },
+
     async updateMany(tenantIdOrFilter, filterOrPatch, maybePatch) {
       let tenantId, actualFilter, patch;
 
