@@ -594,15 +594,31 @@ endpoint. Repointing them at `/readyz` is what makes the split take effect in
 production, and it is a deploy-behaviour change that should be made
 knowingly — a failing `/readyz` will pull the instance out of rotation.
 
-**Still open from Phase 1:** items 3-6 (SQL-side listing contracts,
-transactional deletion, atomic job claiming, queued email/webhook/parsing
-work).
+**REL-JOB-01 (Phase 1 item 5) is half fixed.** Claiming is now atomic: the
+model factory gained `claimOne`, which folds the precondition into the UPDATE
+(`update ... where id = ? and status = 'pending'`) and returns the row only if
+it matched, so exactly one replica can win a job. Crashed workers are covered
+too — a row stuck in `sending` past a ten-minute lease is handed back, itself
+via a guarded claim on the same stale timestamp, so a slow worker cannot be
+robbed and two reclaimers cannot both win. Tests run two workers against one
+shared table; reinstating the old read-then-update fails them.
+
+Still outstanding on that item: the scheduler runs on an interval inside the
+API process, so this work continues to compete with web request latency.
+Moving it to a dedicated worker is the remainder.
+
+`claimOne` is the reusable primitive for the rest of the queue work in
+PERF-JOB-03 and REL-JOB-04.
+
+**Still open from Phase 1:** items 3, 4 and 6 (SQL-side listing contracts,
+transactional deletion, queued email/webhook/parsing work), plus moving the
+schedulers out of the API process.
 
 ## Validation log
 
 - `npm run lint`: passes; 0 errors, 2 pre-existing `no-unused-vars` warnings in
   `scripts/seedDemoGiving.js` and `src/services/billing.js`.
-- API `jest.safe.config.cjs` suite: 57 suites, 411 tests, all passing.
+- API `jest.safe.config.cjs` suite: 58 suites, 416 tests, all passing.
 - Web `vitest run`: 39 files, 251 tests, all passing.
 - `npm audit --omit=dev --audit-level=moderate`: completed; five moderate production advisories.
 - `npm run build`: not yet run from a worktree; the Node/Vite version warning
