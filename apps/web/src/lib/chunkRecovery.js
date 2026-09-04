@@ -91,7 +91,17 @@ export function isLikelyMissingChunkError(errorLike) {
     message.includes("importing a module script failed") ||
     message.includes("error loading dynamically imported module") ||
     message.includes("loading chunk") ||
-    message.includes("chunkloaderror")
+    message.includes("chunkloaderror") ||
+    // WebKit reports a stale module graph as a link-time SyntaxError rather
+    // than a fetch failure: a cached chunk asks a redeployed sibling for an
+    // export it no longer has. Safari users used to fall through to the
+    // generic error screen because none of the messages above matched.
+    message.includes("importing binding name") ||
+    message.includes("does not provide an export named") ||
+    // A chunk the deployment dropped is answered by the SPA fallback, so the
+    // browser parses index.html as a module.
+    message.includes("is not a valid javascript mime type") ||
+    message.includes("expected a javascript module script")
   );
 }
 
