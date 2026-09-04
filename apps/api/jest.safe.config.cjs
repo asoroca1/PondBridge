@@ -45,6 +45,7 @@ module.exports = {
     "**/tests/requireTenantModule.test.js",
     "**/tests/scheduleClaiming.test.js",
     "**/tests/seminarEvents.test.js",
+    "**/tests/serverTimeouts.test.js",
     "**/tests/infoSessionRegistration.test.js",
     "**/tests/geocodeBackoff.test.js",
     "**/tests/homeQuickActions.test.js",
