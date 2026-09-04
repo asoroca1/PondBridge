@@ -74,6 +74,9 @@
   transition: background-color .15s ease, color .15s ease;
 }
 
+.side-nav-item + .side-nav-item,
+.side-nav-item + .side-nav-collapse{ margin-top: 3px; }
+
 .side-nav-item svg,
 .side-nav-collapse svg{ color: var(--neutral-700); flex: 0 0 auto; }
 
@@ -100,8 +103,17 @@
 
 .side-nav-item:hover,
 .side-nav-collapse:hover{
-  background: color-mix(in srgb, var(--brand-primary) 10%, #ffffff);
+  /* The current row is a raised white card, so hover distinguishes itself by
+     going darker than the rail ground rather than by being faint. */
+  background: color-mix(in srgb, var(--brand-primary) 11%, #ffffff);
   color: var(--brand-primary-hover);
+}
+
+/* The current row is already a raised white card; a hover tint on top of it
+   would only mute it. Keep the lift and let the cursor be the affordance. */
+.side-nav-item.is-current:hover{
+  background: #ffffff;
+  color: var(--brand-primary);
 }
 .side-nav-item:hover svg,
 .side-nav-collapse:hover svg{ color: var(--brand-primary); }
