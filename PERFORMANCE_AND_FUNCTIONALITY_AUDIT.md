@@ -564,16 +564,46 @@ suite had been quietly running one fewer file than its own list claimed. This
 is a small instance of the Section E problem — the gates do not verify
 themselves.
 
-**Still open from Phase 1:** items 3-7 (SQL-side listing contracts,
+**Phase 1 item 7 (tenant-bootstrap race) is fixed.** FUNC-WEB-06 was worse
+than recorded: `TenantProvider`'s `cancelled` flag was read in a `.then()`
+after the fetch resolved, by which point the fetch had already written React
+state, run `applyTheme`, written both the slug- and host-keyed payload caches
+and set `pondbridgeTenantSlug`. A slow camp A therefore overwrote camp B in
+all of them, and the poisoned host-keyed cache meant a reload repainted the
+wrong camp. Fixed with per-request generations; the fetch moved to a
+module-level `createTenantFetcher` taking its collaborators by injection,
+because `apps/web` has no jsdom and an effect-driven test cannot run. Removing
+the guard fails 4 of the 5 new tests.
+
+An AbortController was considered and deliberately not used: `requestJson`
+drops out of its shared in-flight GET memo whenever a signal is present, and
+`AuthProviderRuntime` requests the same tenant-config URL on the same load, so
+aborting would add a duplicate request on every page load to avoid a response
+nobody reads.
+
+**PERF-API-05 and REL-API-06 are fixed.** Boot no longer selects every column
+of every tenant with an exact count — a head-only count plus a bounded
+ten-row sample for the log. `/livez` and `/readyz` now split liveness from
+readiness; the readiness check is a head-only count with a hard deadline, a
+5 s result cache and in-flight collapsing. `/health` is unchanged and still
+served.
+
+One deliberate non-change: `render.yaml` (`healthCheckPath: /health`) and
+`fly.api.toml` (`path = "/health"`) still point at the configuration-only
+endpoint. Repointing them at `/readyz` is what makes the split take effect in
+production, and it is a deploy-behaviour change that should be made
+knowingly — a failing `/readyz` will pull the instance out of rotation.
+
+**Still open from Phase 1:** items 3-6 (SQL-side listing contracts,
 transactional deletion, atomic job claiming, queued email/webhook/parsing
-work, tenant-bootstrap race).
+work).
 
 ## Validation log
 
 - `npm run lint`: passes; 0 errors, 2 pre-existing `no-unused-vars` warnings in
   `scripts/seedDemoGiving.js` and `src/services/billing.js`.
-- API `jest.safe.config.cjs` suite: 56 suites, 406 tests, all passing.
-- Web `vitest run`: 38 files, 246 tests, all passing.
+- API `jest.safe.config.cjs` suite: 57 suites, 411 tests, all passing.
+- Web `vitest run`: 39 files, 251 tests, all passing.
 - `npm audit --omit=dev --audit-level=moderate`: completed; five moderate production advisories.
 - `npm run build`: not yet run from a worktree; the Node/Vite version warning
   in the original attempt was spurious — Node 22.17.0 already satisfies the
