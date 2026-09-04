@@ -1,6 +1,10 @@
 // src/components/chat/MessageComposer.jsx
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Paperclip, Send, X } from "lucide-react";
+import {
+  isUnrenderableImageType,
+  transcodeUnrenderableImage
+} from "../../../lib/imageOptimization.js";
 
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const ATTACHMENT_MIME_TYPES = new Set([
@@ -100,6 +104,9 @@ export default function MessageComposer({
 }) {
   const [text, setText] = useState(() => readDraft(draftKey, maxLength));
   const [busy, setBusy] = useState(false);
+  // Converting a HEIC decodes and re-encodes a full-size photo, which is slow
+  // enough on a phone to need saying out loud.
+  const [busyConverting, setBusyConverting] = useState(false);
   const [error, setError] = useState("");
 
   // Pending attachment (preview before upload)
@@ -165,18 +172,36 @@ export default function MessageComposer({
         return;
       }
 
-      // Make/replace preview; don't upload yet
-      setAttach((prev) => {
-        if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-        const next = {
-          kind: kind === "image" ? "image" : "file",
-          file: f,
-          mime,
-          previewUrl: kind === "image" ? URL.createObjectURL(f) : undefined,
-        };
-        return next;
-      });
-      attachmentRequestIdRef.current = "";
+      // An iPhone photo is HEIC, which only Safari can render. Convert it here,
+      // on the device that can still decode it, so neither the preview below nor
+      // the recipient's browser is left with an image it cannot show.
+      void (async () => {
+        let picked = f;
+        if (kind === "image" && isUnrenderableImageType(mime)) {
+          setBusyConverting(true);
+          try {
+            picked = await transcodeUnrenderableImage(f);
+          } catch (conversionError) {
+            setError(conversionError?.message || "Could not convert this image.");
+            return;
+          } finally {
+            setBusyConverting(false);
+          }
+        }
+
+        // Make/replace preview; don't upload yet
+        setAttach((prev) => {
+          if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+          const next = {
+            kind: kind === "image" ? "image" : "file",
+            file: picked,
+            mime: picked === f ? mime : "image/jpeg",
+            previewUrl: kind === "image" ? URL.createObjectURL(picked) : undefined,
+          };
+          return next;
+        });
+        attachmentRequestIdRef.current = "";
+      })();
 
       input.value = "";
     };
@@ -269,17 +294,20 @@ export default function MessageComposer({
     }
   }
 
-  const canSend = (!!text.trim() || !!attach) && !busy;
+  const canSend = (!!text.trim() || !!attach) && !busy && !busyConverting;
 
   return (
     <div className="mc-wrap">
       {error ? <div className="mc-error" role="alert">{error}</div> : null}
+      {busyConverting ? (
+        <div className="mc-status" role="status">Converting image…</div>
+      ) : null}
       <button
         type="button"
         className="mc-icon"
         title="Add image"
         onClick={() => openPicker("image")}
-        disabled={busy}
+        disabled={busy || busyConverting}
         aria-label="Add image"
       >
         <ImageIcon size={18} />
@@ -290,7 +318,7 @@ export default function MessageComposer({
         className="mc-icon"
         title="Add file"
         onClick={() => openPicker("file")}
-        disabled={busy}
+        disabled={busy || busyConverting}
         aria-label="Add file"
       >
         <Paperclip size={18} />
