@@ -49,6 +49,22 @@ export function shouldPreserveOriginalImageType(mimeType = "") {
   return normalized === "image/svg+xml" || normalized === "image/gif";
 }
 
+/**
+ * Formats a browser will happily accept from a file picker but cannot render.
+ *
+ * HEIC is what an iPhone produces by default. Safari decodes it, so a member on
+ * an Apple device sees their own attachment fine -- and everyone on Chrome or
+ * Firefox sees a broken image. Converting on the way in is what keeps the two
+ * ends agreeing.
+ */
+export const UNRENDERABLE_IMAGE_MIME_TYPES = Object.freeze(
+  new Set(["image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"])
+);
+
+export function isUnrenderableImageType(mimeType = "") {
+  return UNRENDERABLE_IMAGE_MIME_TYPES.has(String(mimeType || "").trim().toLowerCase());
+}
+
 export function extensionForImageMime(mimeType = "") {
   const normalized = String(mimeType || "").trim().toLowerCase();
   if (normalized === "image/png") return "png";
@@ -283,5 +299,56 @@ export async function optimizeImageFile(file, options = {}) {
     decoded.release();
     canvas.width = 1;
     canvas.height = 1;
+  }
+}
+
+
+/**
+ * Re-encode an image the browser cannot display into a JPEG it can.
+ *
+ * Decoding is the part that can fail: only a device that understands the format
+ * can read it, which in practice means the Apple device the HEIC came from.
+ * A picker on Chrome can still hand over a .heic from disk, and there is no way
+ * to convert it there -- so this reports the failure rather than passing an
+ * unviewable file through to storage.
+ *
+ * Anything already renderable is returned untouched.
+ */
+export async function transcodeUnrenderableImage(file, { quality = 0.9 } = {}) {
+  if (!file || !isUnrenderableImageType(file.type)) return file;
+
+  let decoded = null;
+  try {
+    decoded = await decodeImage(file);
+  } catch {
+    const error = new Error(
+      "This browser cannot read HEIC images. Please convert it to JPEG first, or send it from your phone."
+    );
+    error.code = "IMAGE_DECODE_UNSUPPORTED";
+    throw error;
+  }
+
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, decoded.width);
+    canvas.height = Math.max(1, decoded.height);
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("no 2d context");
+    context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
+
+    const blob = await canvasToBlob(canvas, "image/jpeg", quality);
+    if (!blob) throw new Error("encode produced nothing");
+
+    const baseName = String(file.name || "image").replace(/\.[^.]+$/, "");
+    return new File([blob], `${baseName}.jpg`, {
+      type: "image/jpeg",
+      lastModified: file.lastModified || Date.now()
+    });
+  } catch {
+    const error = new Error("Could not convert this image. Please try a JPEG or PNG.");
+    error.code = "IMAGE_ENCODE_FAILED";
+    throw error;
+  } finally {
+    decoded?.release?.();
   }
 }

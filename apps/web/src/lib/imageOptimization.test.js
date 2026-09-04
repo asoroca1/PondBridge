@@ -3,7 +3,9 @@ import {
   IMAGE_OPTIMIZATION_PRESETS,
   calculateContainDimensions,
   extensionForImageMime,
-  shouldPreserveOriginalImageType
+  isUnrenderableImageType,
+  shouldPreserveOriginalImageType,
+  transcodeUnrenderableImage
 } from "./imageOptimization.js";
 
 describe("tenant branding image optimization", () => {
@@ -35,5 +37,27 @@ describe("tenant branding image optimization", () => {
     expect(IMAGE_OPTIMIZATION_PRESETS.logo.maxBytes).toBeLessThan(
       IMAGE_OPTIMIZATION_PRESETS.hero.maxBytes
     );
+  });
+});
+
+describe("images a browser accepts but cannot draw", () => {
+  it("recognises the formats an iPhone produces", () => {
+    expect(isUnrenderableImageType("image/heic")).toBe(true);
+    expect(isUnrenderableImageType("image/heif")).toBe(true);
+    expect(isUnrenderableImageType("IMAGE/HEIC")).toBe(true);
+    expect(isUnrenderableImageType("image/heic-sequence")).toBe(true);
+  });
+
+  it("leaves the formats every browser already renders alone", () => {
+    expect(isUnrenderableImageType("image/jpeg")).toBe(false);
+    expect(isUnrenderableImageType("image/png")).toBe(false);
+    expect(isUnrenderableImageType("image/webp")).toBe(false);
+    expect(isUnrenderableImageType("")).toBe(false);
+  });
+
+  it("passes a renderable file straight through without touching a canvas", async () => {
+    const jpeg = { name: "photo.jpg", type: "image/jpeg", size: 1024 };
+    await expect(transcodeUnrenderableImage(jpeg)).resolves.toBe(jpeg);
+    await expect(transcodeUnrenderableImage(null)).resolves.toBe(null);
   });
 });

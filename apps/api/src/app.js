@@ -26,6 +26,7 @@ import tenantsRoutes from "./routes/tenants.js";
 import stripeWebhookRoutes from "./routes/stripeWebhook.js";
 import resendWebhookRoutes from "./routes/resendWebhook.js";
 import clerkWebhookRoutes from "./routes/clerkWebhook.js";
+import cloudflareStreamWebhookRoutes from "./routes/cloudflareStreamWebhook.js";
 import legacyCedarCompatRoutes from "./routes/legacyCedarCompat.js";
 import memberSafetyRoutes from "./routes/memberSafety.js";
 import directorCopilotRoutes from "./routes/directorCopilot.js";
@@ -85,6 +86,11 @@ app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripe
 app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRoutes);
 app.use("/api/webhooks/resend", express.raw({ type: "application/json" }), resendWebhookRoutes);
 app.use("/api/webhooks/clerk", express.raw({ type: "application/json" }), clerkWebhookRoutes);
+app.use(
+  "/api/webhooks/cloudflare-stream",
+  express.raw({ type: "application/json" }),
+  cloudflareStreamWebhookRoutes
+);
 app.use(express.json({ limit: env.API_JSON_LIMIT }));
 app.use(csrfProtection);
 

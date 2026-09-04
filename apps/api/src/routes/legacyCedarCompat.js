@@ -24,6 +24,15 @@ import {
   createPresignedDownloadUrl,
   deleteObjectFromR2
 } from "../services/objectStorage.js";
+import {
+  STREAM_STATUS,
+  getVideo as getStreamVideo,
+  ingestFromUrl as ingestStreamFromUrl,
+  createPlaybackToken as createStreamPlaybackToken,
+  deleteVideo as deleteStreamVideo,
+  streamEnabled
+} from "../services/cloudflareStream.js";
+import { logLine } from "../services/logger.js";
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
 import {
   citiesCacheByTenant,
@@ -84,6 +93,7 @@ import {
   clampReadAt,
   hasConversationMessage,
   normalizeStoredMessageMedia,
+  isVideoAttachmentMime,
   notifyConversationParticipants
 } from "../services/messaging.js";
 import {
@@ -312,6 +322,182 @@ function isVideoContentType(fileType = "") {
 
 function normalizeMediaType(value = "") {
   return String(value || "").trim().toLowerCase() === "video" ? "video" : "image";
+}
+
+// How long a clip may sit in one Stream state before a feed read stops trusting
+// it and asks Stream directly. The webhook is the fast path; this is the net
+// under it for a delivery that never arrived.
+const STREAM_RECONCILE_AFTER_MS = 30_000;
+
+/**
+ * Ask Stream to pull the freshly uploaded clip out of R2 and re-encode it.
+ *
+ * A failure here is deliberately not fatal: the post is already saved, and the
+ * original upload still plays for the Safari viewer who made it. The feed's
+ * reconcile pass retries a post left sitting in `pending`.
+ */
+async function startPhotoStreamIngest(tenantId, photo) {
+  if (!streamEnabled() || !photo?.imageUrl) return photo;
+  try {
+    const state = await ingestStreamFromUrl(photo.imageUrl, {
+      name: `photo-stream-${photo._id}`,
+      meta: { photoId: String(photo._id), tenantId: String(tenantId) }
+    });
+    const updated = await PhotoModel.updateScoped(tenantId, photo._id, {
+      streamUid: state.streamUid,
+      streamStatus: state.streamStatus,
+      streamPlaybackUrl: state.streamPlaybackUrl,
+      ...(state.durationSeconds ? { durationSeconds: state.durationSeconds } : {})
+    });
+    return updated || photo;
+  } catch (error) {
+    logLine("error", "photo_stream_ingest_failed", {
+      photoId: String(photo._id),
+      message: error?.message
+    });
+    return photo;
+  }
+}
+
+/**
+ * Bring a clip's stored state back in line with Stream's.
+ *
+ * Only ever called for a post that is still unplayable and has stopped looking
+ * fresh, so a healthy feed makes no outbound calls at all.
+ */
+async function reconcilePhotoStream(tenantId, photo) {
+  if (!streamEnabled() || photo?.mediaType !== "video") return photo;
+
+  const status = String(photo.streamStatus || "");
+  if (status === STREAM_STATUS.READY || status === STREAM_STATUS.ERROR) return photo;
+
+  const touchedAt = new Date(photo.updatedAt || photo.createdAt || 0).getTime();
+  if (Number.isFinite(touchedAt) && Date.now() - touchedAt < STREAM_RECONCILE_AFTER_MS) return photo;
+
+  // No uid means the ingest call itself failed; try again rather than leaving
+  // the post stuck as processing forever.
+  if (!photo.streamUid) return startPhotoStreamIngest(tenantId, photo);
+
+  try {
+    const state = await getStreamVideo(photo.streamUid);
+    if (state.streamStatus === status && state.streamPlaybackUrl === (photo.streamPlaybackUrl || "")) {
+      return photo;
+    }
+    const updated = await PhotoModel.updateScoped(tenantId, photo._id, {
+      streamStatus: state.streamStatus,
+      streamPlaybackUrl: state.streamPlaybackUrl,
+      ...(state.durationSeconds ? { durationSeconds: state.durationSeconds } : {})
+    });
+    return updated || photo;
+  } catch (error) {
+    logLine("warn", "photo_stream_reconcile_failed", {
+      photoId: String(photo._id),
+      message: error?.message
+    });
+    return photo;
+  }
+}
+
+/**
+ * Turn an already-authorised video attachment into a Stream playback token.
+ *
+ * The caller must have run the same access checks the download proxy runs --
+ * this deliberately takes the attachment's stored media rather than a uid from
+ * the query string, so a member cannot name someone else's video.
+ */
+async function issueAttachmentPlaybackToken(media) {
+  if (!streamEnabled()) {
+    const error = new Error("Video playback is not configured.");
+    error.statusCode = 503;
+    error.code = "STREAM_NOT_CONFIGURED";
+    throw error;
+  }
+  const uid = String(media?.streamUid || "").trim();
+  if (!uid) {
+    const error = new Error("This video is still being prepared.");
+    error.statusCode = 409;
+    error.code = "STREAM_NOT_READY";
+    throw error;
+  }
+
+  // Also teaches the process its playback subdomain, which is only ever
+  // reported on a video, and confirms the encode is actually watchable.
+  const state = await getStreamVideo(uid);
+  if (state.streamStatus !== STREAM_STATUS.READY) {
+    const error = new Error(
+      state.streamStatus === STREAM_STATUS.ERROR
+        ? "This video could not be processed."
+        : "This video is still being prepared."
+    );
+    error.statusCode = 409;
+    error.code = state.streamStatus === STREAM_STATUS.ERROR ? "STREAM_FAILED" : "STREAM_NOT_READY";
+    throw error;
+  }
+
+  return createStreamPlaybackToken(uid, { expiresInSeconds: 3600 });
+}
+
+/**
+ * Send a chat or forum video attachment through the same encode the media
+ * stream uses, so it plays outside Safari.
+ *
+ * These attachments are private: the bucket is not public and every read goes
+ * through an access check. The encode is created with `requireSignedURLs` so it
+ * inherits that -- holding the Stream id is not enough to watch it.
+ *
+ * A failure leaves the attachment exactly as it was, a download link, which is
+ * how it behaved before any of this existed.
+ */
+async function startAttachmentStreamIngest(tenantId, model, doc) {
+  const media = doc?.media;
+  if (!streamEnabled() || !media?.key || !isVideoAttachmentMime(media.mime)) return doc;
+
+  try {
+    // Stream fetches the file itself, so it needs a URL it can read without our
+    // auth. A presigned link is short-lived and single-purpose.
+    const { downloadUrl } = await createPresignedDownloadUrl({
+      key: media.key,
+      expiresInSeconds: 3600
+    });
+    const state = await ingestStreamFromUrl(downloadUrl, {
+      name: media.name || `attachment-${doc._id}`,
+      meta: { attachmentId: String(doc._id), tenantId: String(tenantId) },
+      requireSignedURLs: true
+    });
+    const updated = await model.updateScoped(tenantId, doc._id, {
+      media: { ...media, streamUid: state.streamUid, streamStatus: state.streamStatus }
+    });
+    return updated || doc;
+  } catch (error) {
+    logLine("error", "attachment_stream_ingest_failed", {
+      attachmentId: String(doc._id),
+      message: error?.message
+    });
+    return doc;
+  }
+}
+
+/**
+ * Reconcile every clip in a page of the feed that still looks unfinished.
+ * Runs them together because they are independent network calls, and a feed
+ * rarely has more than one or two in flight.
+ */
+async function reconcilePhotoStreams(tenantId, photos = []) {
+  if (!streamEnabled()) return photos;
+  const pending = photos.some(
+    (photo) =>
+      photo?.mediaType === "video" &&
+      photo?.streamStatus &&
+      photo.streamStatus !== STREAM_STATUS.READY &&
+      photo.streamStatus !== STREAM_STATUS.ERROR
+  );
+  if (!pending) return photos;
+
+  return Promise.all(
+    photos.map((photo) =>
+      photo?.mediaType === "video" ? reconcilePhotoStream(tenantId, photo) : photo
+    )
+  );
 }
 
 function normalizeDurationSeconds(value) {
@@ -1269,6 +1455,10 @@ function photoToClient(photo = {}, currentUserId = "", hiddenUserIds = null) {
     thumbUrl: photo.thumbUrl || photo.imageUrl || "",
     mediaType: photo.mediaType === "video" ? "video" : "image",
     durationSeconds: Number(photo.durationSeconds || 0),
+    // A clip plays from its Stream encode; imageUrl stays the original upload so
+    // a Safari viewer still has something to watch while the encode is running.
+    streamStatus: photo.mediaType === "video" ? String(photo.streamStatus || "") : "",
+    playbackUrl: photo.mediaType === "video" ? String(photo.streamPlaybackUrl || "") : "",
     caption: photo.caption || "",
     captionMentions: photo.captionMentions || [],
     likes: likes.length,
@@ -2261,13 +2451,21 @@ router.get("/photos", async (req, res) => {
     ordered = rows.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }
 
-  const sliced = ordered.slice(0, limit).map((row) => photoToClient(row, req.user.id, hiddenUserIds));
+  // Only the page being returned is reconciled, and only when something on it
+  // still looks unfinished -- a feed of stills never touches Stream.
+  const page = await reconcilePhotoStreams(req.tenant._id, ordered.slice(0, limit));
+  const sliced = page.map((row) => photoToClient(row, req.user.id, hiddenUserIds));
   const payload = {
     items: sliced,
     nextCursor: null,
     nextPage: null
   };
-  photoFeedResponseCache.set(cacheKey, payload);
+  // A clip still encoding will look different in a few seconds, so it must not
+  // sit in the shared feed cache for the full TTL.
+  const hasPendingVideo = sliced.some(
+    (item) => item.mediaType === "video" && item.streamStatus && item.streamStatus !== "ready" && item.streamStatus !== "error"
+  );
+  if (!hasPendingVideo) photoFeedResponseCache.set(cacheKey, payload);
   res.set("Cache-Control", PHOTO_FEED_CACHE_CONTROL);
   res.set("Vary", "Authorization");
   return res.json(payload);
@@ -2294,10 +2492,18 @@ router.post("/photos", async (req, res) => {
     imageUrl,
     thumbUrl,
     mediaType,
+    // A clip is unplayable outside Safari until Stream re-encodes it, so it
+    // starts life pending and the feed shows it as still processing.
+    streamStatus: mediaType === "video" && streamEnabled() ? STREAM_STATUS.PENDING : null,
     durationSeconds: mediaType === "video" ? normalizeDurationSeconds(req.body?.durationSeconds) : 0,
     caption: sanitizeText(String(req.body?.caption || "").trim()),
     captionMentions: Array.isArray(req.body?.captionMentions) ? req.body.captionMentions : []
   });
+
+  // Hand the upload to Stream now that the row exists to hang the uid on. The
+  // encode itself is asynchronous -- the webhook fills in the playback URL, and
+  // the feed reconciles anything the webhook misses.
+  const withStream = mediaType === "video" ? await startPhotoStreamIngest(req.tenant._id, created) : created;
 
   await ActivityItemModel.create({
     tenantId: req.tenant._id,
@@ -2312,7 +2518,7 @@ router.post("/photos", async (req, res) => {
   }).catch(() => {});
   clearPhotoFeedCache();
 
-  return res.status(201).json(photoToClient(created, req.user.id));
+  return res.status(201).json(photoToClient(withStream, req.user.id));
 });
 
 router.get("/photos/:id/comments", async (req, res) => {
@@ -2456,6 +2662,9 @@ router.delete("/photos/:id", async (req, res) => {
   }
 
   await PhotoModel.delete(photo._id);
+  // Stream bills for stored minutes, so a deleted post must not leave its
+  // encode behind. The post is already gone either way if this fails.
+  if (photo.streamUid) await deleteStreamVideo(photo.streamUid);
   clearPhotoFeedCache();
   return res.json({ ok: true });
 });
@@ -2961,7 +3170,9 @@ router.post("/conversations/:id/messages", async (req, res) => {
   });
 
   clearConversationCaches();
-  const payload = messageToClient(created);
+  // A clip needs re-encoding before anything but Safari can play it inline.
+  const withStream = await startAttachmentStreamIngest(req.tenant._id, MessageModel, created);
+  const payload = messageToClient(withStream);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create message" } });
   }
@@ -3024,6 +3235,58 @@ router.get("/conversations/:id/attachments/object", async (req, res, next) => {
     const signed = await createPresignedDownloadUrl({ key, expiresInSeconds: 600 });
     res.set("Cache-Control", "private, no-store");
     return res.json(signed);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * A playback token for a video attachment in this conversation.
+ *
+ * Runs exactly the checks the download proxy above runs -- membership, the
+ * direct-contact and tier policies, and the key prefix -- because a Stream
+ * token is as good as the file itself to whoever holds it.
+ */
+router.get("/conversations/:id/attachments/stream-token", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    const key = String(req.query?.key || "").trim();
+    if (!isValidObjectId(id) || !key) {
+      return res.status(400).json({
+        error: { code: "INVALID_ATTACHMENT", message: "Valid conversation and attachment key required" }
+      });
+    }
+    const conversation = await ConversationModel.findOne(req.tenant._id, {
+      _id: id,
+      participantIds: { $contains: [req.user.id] }
+    });
+    if (!conversation) {
+      return res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a conversation member" } });
+    }
+    await assertConversationDirectContactAllowed(req.tenant._id, conversation, req.user.id);
+    await assertConversationTierContactAllowed(req.tenant, conversation, req.user.id, { user: req.user });
+    const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/chat/${id.toLowerCase()}/`;
+    if (!key.toLowerCase().startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: { code: "ATTACHMENT_SCOPE_DENIED", message: "Attachment is outside this conversation" }
+      });
+    }
+
+    // The uid comes off the stored message, never off the request, so a member
+    // cannot ask for a token to a video that is not in this conversation. The
+    // message is addressed by id and re-scoped to this conversation, so a valid
+    // id from another chat finds nothing.
+    const messageId = String(req.query?.messageId || "").trim();
+    const message = isValidObjectId(messageId)
+      ? await MessageModel.findOne(req.tenant._id, { _id: messageId, conversationId: id })
+      : null;
+    if (!message?.media?.streamUid || String(message.media.key || "") !== key) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "No video for this attachment" } });
+    }
+
+    const playback = await issueAttachmentPlaybackToken(message.media);
+    res.set("Cache-Control", "private, no-store");
+    return res.json(playback);
   } catch (error) {
     return next(error);
   }
@@ -3363,7 +3626,9 @@ router.post("/forums/:id/posts", async (req, res) => {
   });
 
   clearForumCaches();
-  const payload = forumPostToClient(created);
+  // A clip needs re-encoding before anything but Safari can play it inline.
+  const withStream = await startAttachmentStreamIngest(req.tenant._id, ForumPostModel, created);
+  const payload = forumPostToClient(withStream);
   if (!payload) {
     return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unable to create post" } });
   }
@@ -3426,6 +3691,47 @@ router.get("/forums/:id/attachments/object", async (req, res, next) => {
     const signed = await createPresignedDownloadUrl({ key, expiresInSeconds: 600 });
     res.set("Cache-Control", "private, no-store");
     return res.json(signed);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * A playback token for a video attached to a post in this forum. Mirrors the
+ * download proxy's checks, because a Stream token is as good as the file to
+ * whoever holds it.
+ */
+router.get("/forums/:id/attachments/stream-token", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    const key = String(req.query?.key || "").trim();
+    if (!isValidObjectId(id) || !key) {
+      return res.status(400).json({
+        error: { code: "INVALID_ATTACHMENT", message: "Valid forum and attachment key required" }
+      });
+    }
+    const forum = await ForumModel.findOne(req.tenant._id, { _id: id });
+    if (!forum) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Forum not found" } });
+    }
+    const expectedPrefix = `${String(req.tenant.slug || "").trim().toLowerCase()}/forums/${id.toLowerCase()}/`;
+    if (!key.toLowerCase().startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: { code: "ATTACHMENT_SCOPE_DENIED", message: "Attachment is outside this forum" }
+      });
+    }
+
+    const postId = String(req.query?.postId || "").trim();
+    const post = isValidObjectId(postId)
+      ? await ForumPostModel.findOne(req.tenant._id, { _id: postId, forumId: id })
+      : null;
+    if (!post?.media?.streamUid || String(post.media.key || "") !== key) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "No video for this attachment" } });
+    }
+
+    const playback = await issueAttachmentPlaybackToken(post.media);
+    res.set("Cache-Control", "private, no-store");
+    return res.json(playback);
   } catch (error) {
     return next(error);
   }

@@ -10,11 +10,12 @@ import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import "./photo-stream.css";
 import { API_BASE, requestTenantJson } from "../lib/api";
 import { getToken, authHeaders, displayName, initialsOf, avatarUrl, fmtDate } from "../lib/helpers.js";
-import { isVideoFile, isVideoPost, formatDuration } from "../lib/photoMedia.js";
+import { isVideoFile, isVideoPost, isProcessingPost, formatDuration } from "../lib/photoMedia.js";
+import StreamVideo from "../components/StreamVideo.jsx";
 import InitialsMark from "../../components/InitialsMark.jsx";
 import { ModalConfirm, useDialogFocus } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
-import { Images, Heart, MessageCircle, Trash2, X, Upload, Play } from "lucide-react";
+import { Images, Heart, MessageCircle, Trash2, X, Upload, Play, Loader2 } from "lucide-react";
 
 const API = API_BASE;
 const PHOTO_PREVIEW_WIDTH = 420;
@@ -896,15 +897,22 @@ function Lightbox({ post, onClose, onToggleLike, authorInfo }) {
         {/* MEDIA */}
         <div className="ps-lightbox-media">
           {isVideoPost(post) ? (
-            <video
-              className="ps-lightbox-video"
-              src={post.imageUrl}
-              poster={post.thumbUrl || undefined}
-              controls
-              autoPlay
-              playsInline
-              preload="metadata"
-            />
+            isProcessingPost(post) && !post.playbackUrl ? (
+              <div className="ps-media-processing" role="status">
+                <Loader2 className="ps-media-processing-spinner" size={28} aria-hidden="true" />
+                <span>Still processing this video&hellip;</span>
+                <small>It will play here as soon as it is ready.</small>
+              </div>
+            ) : (
+              <StreamVideo
+                className="ps-lightbox-video"
+                hlsUrl={post.playbackUrl}
+                fallbackSrc={post.imageUrl}
+                poster={post.thumbUrl}
+                controls
+                autoPlay
+              />
+            )
           ) : (
             <img
               className="ps-lightbox-img"
@@ -1152,10 +1160,22 @@ export default function PhotoStream() {
                   )}
                   {isVideoPost(p) ? (
                     <>
-                      <span className="ps-play-badge" aria-hidden="true">
-                        <Play size={20} strokeWidth={2} fill="currentColor" />
+                      {/* A clip mid-encode gets a spinner instead of a play
+                          badge, so the tile does not invite a click that would
+                          open a player with nothing to play. */}
+                      <span
+                        className={isProcessingPost(p) ? "ps-processing-badge" : "ps-play-badge"}
+                        aria-hidden="true"
+                      >
+                        {isProcessingPost(p) ? (
+                          <Loader2 size={20} strokeWidth={2} />
+                        ) : (
+                          <Play size={20} strokeWidth={2} fill="currentColor" />
+                        )}
                       </span>
-                      {formatDuration(p.durationSeconds) ? (
+                      {isProcessingPost(p) ? (
+                        <span className="ps-duration-pill">Processing</span>
+                      ) : formatDuration(p.durationSeconds) ? (
                         <span className="ps-duration-pill">{formatDuration(p.durationSeconds)}</span>
                       ) : null}
                     </>

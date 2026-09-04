@@ -331,6 +331,20 @@ export const env = {
   CLOUDFLARE_ACCOUNT_ID: cloudflareAccountId,
   CLOUDFLARE_API_TOKEN: String(process.env.CLOUDFLARE_API_TOKEN || "").trim(),
   CLOUDFLARE_ZONE_ID: String(process.env.CLOUDFLARE_ZONE_ID || "").trim(),
+  // Stream is billed separately from the rest of the Cloudflare account, so it
+  // takes its own token: an operator can grant Stream:Edit to a narrow token
+  // without widening the one that edits DNS and Pages.
+  CLOUDFLARE_STREAM_API_TOKEN: String(
+    process.env.CLOUDFLARE_STREAM_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN || ""
+  ).trim(),
+  CLOUDFLARE_STREAM_WEBHOOK_SECRET: String(
+    process.env.CLOUDFLARE_STREAM_WEBHOOK_SECRET || ""
+  ).trim(),
+  // Playback lives on a per-account subdomain that the Stream API reports back
+  // with the first video. Pinning it here saves a lookup on cold start.
+  CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN: String(
+    process.env.CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN || ""
+  ).trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, ""),
   CLOUDFLARE_PAGES_PROJECT_NAME: String(process.env.CLOUDFLARE_PAGES_PROJECT_NAME || "").trim(),
   CLOUDFLARE_WEB_CNAME_TARGET: String(process.env.CLOUDFLARE_WEB_CNAME_TARGET || "").trim(),
   CLOUDFLARE_WEB_PROXIED: String(cloudflareWebProxied),
