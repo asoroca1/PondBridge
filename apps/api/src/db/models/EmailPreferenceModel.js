@@ -1,5 +1,6 @@
 import { createModel, toDoc } from "./_factory.js";
 import { getSupabaseAdmin } from "../supabaseAdmin.js";
+import { chunkForInClause } from "../queryLimits.js";
 
 const COLUMNS = {
   id: "id",
@@ -52,15 +53,21 @@ export const EmailPreferenceModel = {
       .map(normalizeEmail)
       .filter(Boolean))];
     if (!tenantId || normalizedEmails.length === 0) return [];
-    const { data, error } = await getSupabaseAdmin()
-      .from("email_preferences")
-      .select("*")
-      .eq("tenant_id", String(tenantId).trim())
-      .eq("topic_key", normalizeTopicKey(topicKey))
-      .eq("status", "unsubscribed")
-      .in("email", normalizedEmails);
-    if (error) throw error;
-    return (data || []).map((row) => toDoc(row, COLUMNS));
+    // Batched for the same reason as EmailSuppressionModel.findActiveByEmails: the
+    // address list rides in the URL and a whole-tenant audience overflows it.
+    const rows = [];
+    for (const batch of chunkForInClause(normalizedEmails)) {
+      const { data, error } = await getSupabaseAdmin()
+        .from("email_preferences")
+        .select("*")
+        .eq("tenant_id", String(tenantId).trim())
+        .eq("topic_key", normalizeTopicKey(topicKey))
+        .eq("status", "unsubscribed")
+        .in("email", batch);
+      if (error) throw error;
+      rows.push(...(data || []));
+    }
+    return rows.map((row) => toDoc(row, COLUMNS));
   },
 
   async setStatus({

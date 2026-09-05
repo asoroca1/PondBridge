@@ -473,7 +473,14 @@ export default function NavBar({ hideBurger = false }) {
             </div>
           )}
         </Link>
-        <span className={`navbar2-title ${useNativeMemberRoute ? "is-native-page-title" : ""}`.trim()}>{navTitle}</span>
+        {/* The camp name ellipsises at narrower widths; without a title the full name is
+            unrecoverable. Matches what the events calendar chips already do. */}
+        <span
+          className={`navbar2-title ${useNativeMemberRoute ? "is-native-page-title" : ""}`.trim()}
+          title={typeof navTitle === "string" ? navTitle : undefined}
+        >
+          {navTitle}
+        </span>
       </div>
 
       <div className="navbar2-right">
@@ -620,31 +627,38 @@ export default function NavBar({ hideBurger = false }) {
                     {menuSections.map((section) => (
                       <div key={section.id} className="dropdown-section">
                         {section.title ? <p className="dropdown-section-title">{section.title}</p> : null}
-                        {section.items.map((item) => (
-                          <button
-                            key={item.id}
-                            onPointerEnter={() => {
-                              if (!item.href) preloadRouteForPath(item.to);
-                            }}
-                            onFocus={() => {
-                              if (!item.href) preloadRouteForPath(item.to);
-                            }}
-                            onTouchStart={() => {
-                              if (!item.href) preloadRouteForPath(item.to);
-                            }}
-                            onClick={() => {
-                              closeMenus();
-                              if (item.href) {
+                        {section.items.map((item) =>
+                          // Internal destinations are links, not buttons. As buttons they
+                          // had no href, so nothing in this menu could be opened in a new
+                          // tab, middle-clicked, copied as a link, or announced as a link
+                          // by a screen reader — and no section of the app had a URL a
+                          // member could share. External items keep the button, because
+                          // openExternalUrl() is what routes them correctly in the native app.
+                          item.href ? (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                closeMenus();
                                 openExternalUrl(item.href).catch(() => {});
-                                return;
-                              }
-                              navigate(item.to);
-                            }}
-                            role="menuitem"
-                          >
-                            <item.icon size={16} /> {item.label}
-                          </button>
-                        ))}
+                              }}
+                              role="menuitem"
+                            >
+                              <item.icon size={16} /> {item.label}
+                            </button>
+                          ) : (
+                            <Link
+                              key={item.id}
+                              to={item.to}
+                              onPointerEnter={() => preloadRouteForPath(item.to)}
+                              onFocus={() => preloadRouteForPath(item.to)}
+                              onTouchStart={() => preloadRouteForPath(item.to)}
+                              onClick={() => closeMenus()}
+                              role="menuitem"
+                            >
+                              <item.icon size={16} /> {item.label}
+                            </Link>
+                          )
+                        )}
                       </div>
                     ))}
                     <div className="dropdown-section">

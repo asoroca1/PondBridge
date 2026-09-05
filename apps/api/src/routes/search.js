@@ -876,7 +876,9 @@ function planToSearchQuery(plan = {}, input = {}) {
     sort: String(input?.sort || "relevance"),
     limit: clampLimit(input?.limit, 24, 48),
     offset: clampOffset(input?.offset, 0),
-    fetchLimit: 1000
+    // Match the pool every other search path uses. A literal 1000 here capped smart
+    // search to the first 1,000 candidates of a larger network.
+    fetchLimit: SEARCH_POOL_DEFAULT
   };
 }
 

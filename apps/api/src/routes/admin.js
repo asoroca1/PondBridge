@@ -130,6 +130,7 @@ import { buildTenantFeatureInventory } from "../services/tenantFeatureInventory.
 import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js";
 import { deleteClerkAccountForTenantUser } from "../services/clerkAccountDeletion.js";
 import { matchesMemberQuery } from "../utils/memberSearch.js";
+import { chunkForInClause } from "../db/queryLimits.js";
 import {
   GROWTH_EMAIL_SEGMENTS,
   LIVE_PROFILE_STATUS_FILTER,
@@ -2522,7 +2523,10 @@ async function resolveProfilesForTargeting(tenantId, normalized) {
     filter._id = { $in: normalized.profileIds };
   }
 
-  let profiles = await ProfileModel.find(tenantId, filter);
+  // The role / industry / segment filters below are applied in JS, so this has to be
+  // the whole tenant. An unlimited find() stops at PostgREST's 1,000 rows, which made
+  // "Counselor" resolve to 250 of 717 and the composer report 250 as the audience.
+  let profiles = await ProfileModel.findAll(tenantId, filter);
 
   if (normalized.mode === "segment" && normalized.segment) {
     const userIds = [...new Set(
@@ -2530,7 +2534,7 @@ async function resolveProfilesForTargeting(tenantId, normalized) {
     )];
     const [users, analyticsEvents] = userIds.length
       ? await Promise.all([
-          UserModel.find(tenantId, { _id: { $in: userIds } }, {
+          UserModel.findAll(tenantId, { _id: { $in: userIds } }, {
             select: ["id", "createdAt", "lastLoginAt"]
           }),
           normalized.segment.startsWith("inactive_")
@@ -2582,10 +2586,16 @@ async function resolveRecipientsForTargeting(tenantId, targeting) {
   let heldRecipients = [];
   if (matchedRecipients.length) {
     try {
-      const heldContacts = await AlumniContactModel.find(tenantId, {
-        email: { $in: matchedRecipients },
-        contactStatus: "do_not_contact"
-      }, { select: ["email"] });
+      // Same URL-length ceiling as the suppression and preference lookups: the whole
+      // address list cannot ride in one `.in()`.
+      const heldContacts = [];
+      for (const batch of chunkForInClause(matchedRecipients)) {
+        const rows = await AlumniContactModel.find(tenantId, {
+          email: { $in: batch },
+          contactStatus: "do_not_contact"
+        }, { select: ["email"], limit: batch.length });
+        heldContacts.push(...rows);
+      }
       heldRecipients = [...new Set(
         heldContacts.map((item) => normalizeEmail(item.email)).filter(Boolean)
       )];
@@ -7030,10 +7040,15 @@ async function resolveFilteredPeople(req) {
   const [contactResult, invites, users, profiles, accessRequests, analyticsEvents] = await Promise.all([
     loadAlumniContactsForGrowth(tenantId),
     InviteModel.find(tenantId, { roleToAssign: "user" }, { sort: { createdAt: -1 }, limit: 5000 }),
-    UserModel.find(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
+    // Both of these need the whole tenant: the directory, its stage counts and the
+    // CSV export are all derived from them. Without an explicit limit PostgREST caps
+    // them at 1,000 silently, which reported 1,028 people for a 3,003-person camp.
+    UserModel.findAll(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
       select: ["id", "email", "status", "roles", "createdAt", "updatedAt", "lastLoginAt"]
     }),
-    ProfileModel.find(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
+    ProfileModel.findAll(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, {
+      select: ADMIN_MEMBER_PROFILE_SELECT
+    }),
     AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 5000 }),
     AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
       select: ["userId", "eventType", "createdAt"],
@@ -7195,7 +7210,7 @@ router.get("/growth", async (req, res, next) => {
         sort: { createdAt: -1 },
         limit: 5000
       }),
-      UserModel.find(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
+      UserModel.findAll(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
         select: ["id", "email", "status", "createdAt", "updatedAt", "lastLoginAt"]
       }),
       ProfileModel.find(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, {

@@ -14313,6 +14313,16 @@ button.super-stat-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* Three cards in a two-column grid leave the last one stranded beside an empty
+     cell. Let an odd final card use the full width instead. */
+  .super-tenant-metric-grid > *:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .super-stat-grid.three-up > *:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
   .super-visual-card {
     min-height: 250px;
   }
@@ -17540,4 +17550,33 @@ html.is-native-app .asset-update-notice{
 .app-status-card.pb-pending .pb-pending-back:focus-visible{
   color: var(--brand-primary);
   text-decoration: underline;
+}
+
+/* Jump straight to a page. Only rendered once the pager is windowed (>7 pages), where
+   stepping one page at a time stops being practical. */
+.as2-pagejump {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.as2-pagejump label {
+  font-size: 13px;
+  color: var(--pb-muted, #5b6470);
+}
+
+.as2-pagejump input {
+  width: 72px;
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 14px;
+  border: 1px solid var(--pb-border, #d7dce3);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.as2-pagejump input:focus-visible {
+  outline: 2px solid var(--brand-primary, #16305c);
+  outline-offset: 1px;
 }

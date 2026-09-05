@@ -925,7 +925,9 @@ async function runGeocodeWorker() {
 }
 
 async function aggregateCityCounts(tenantId, { hiddenUserIds = null } = {}) {
-  const rows = await ProfileModel.find(
+  // Every pin's count is tallied from these rows, so a truncated read understates the
+  // map. TODO: this is a GROUP BY the database should be doing, not JS over 3k rows.
+  const rows = await ProfileModel.findAll(
     tenantId,
     { cityState: { $ne: "" }, ...ACTIVE_ALUMNI_FILTER },
     { select: ["cityState", "userId"] }
@@ -958,7 +960,7 @@ async function aggregateCityCounts(tenantId, { hiddenUserIds = null } = {}) {
  * Kept next to aggregateCityCounts so the two figures can never disagree.
  */
 async function aggregateVisibleAlumniCount(tenantId, hiddenUserIds) {
-  const rows = await ProfileModel.find(tenantId, { ...ACTIVE_ALUMNI_FILTER }, {
+  const rows = await ProfileModel.findAll(tenantId, { ...ACTIVE_ALUMNI_FILTER }, {
     select: ["userId"]
   });
   return rows.filter((row) => !hiddenUserIds.has(String(row?.userId || ""))).length;
@@ -2181,13 +2183,18 @@ async function readHomeStatsPayload(tenantId = "") {
   const cached = homeStatsResponseCache.get(cacheKey);
   if (cached) return cached;
 
-  const profiles = await ProfileModel.find(
-    tenantId,
-    ACTIVE_ALUMNI_FILTER,
-    { select: ["roleAtCamp", "collegeYears"] }
-  );
+  // The headline total comes from the one definition of it, not from the length of
+  // whatever this query happened to return — an unlimited find is capped at 1,000, so
+  // `profiles.length` rendered "1k Alumni" for a 2,871-member network.
+  const [profiles, totalAlumni] = await Promise.all([
+    ProfileModel.findAll(
+      tenantId,
+      ACTIVE_ALUMNI_FILTER,
+      { select: ["roleAtCamp", "collegeYears"] }
+    ),
+    countActiveAlumni(tenantId)
+  ]);
 
-  const totalAlumni = profiles.length;
   const totalStaff = profiles.filter((profile) =>
     /(staff|director|counselor|admin)/i.test(String(profile?.roleAtCamp || ""))
   ).length;

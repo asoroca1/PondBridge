@@ -645,8 +645,15 @@ function priorityLabel(priority) {
 function deltaHint(delta) {
   if (delta === null || delta === undefined) return "In your network";
   const value = Number(delta);
-  if (!value) return "No change in 30 days";
-  return `${value > 0 ? "Up" : "Down"} ${Math.abs(value)}% in 30 days`;
+  if (!Number.isFinite(value) || !value) return "No change in 30 days";
+  const magnitude = Math.abs(value);
+  const direction = value > 0 ? "Up" : "Down";
+  // A camp importing its back catalogue grows by thousands of percent, and "Up 7659%"
+  // tells a director nothing. Past 10x, a multiple is the readable form.
+  if (magnitude >= 1000) {
+    return `${direction} ${Math.round(magnitude / 100)}x in 30 days`;
+  }
+  return `${direction} ${Math.round(magnitude)}% in 30 days`;
 }
 
 export function DirectorAdminDashboardPage() {

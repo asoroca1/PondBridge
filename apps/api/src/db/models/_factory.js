@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "../supabaseAdmin.js";
 import { generateObjectId } from "../../utils/objectId.js";
+import { POSTGREST_MAX_ROWS, TENANT_SCAN_LIMIT } from "../queryLimits.js";
 
 const NODE_ENV = String(process.env.NODE_ENV || "").trim().toLowerCase();
 const ALLOW_UNSCOPED_DELETES = String(process.env.PONDBRIDGE_ALLOW_UNSCOPED_DELETES || "")
@@ -289,7 +290,55 @@ export function createModel(tableName, colMap) {
       if (error) throw error;
       const docs = toDocs(data, colMap);
       docs._count = count;
+      // A find with no explicit limit is capped by PostgREST at 1,000 rows and says
+      // nothing about it, which is how several surfaces came to report 1,000 members
+      // for a 3,000-member network. `count` is the true total, so a short read with no
+      // limit asked for is silent truncation. Surface it rather than returning a lie.
+      if (!actualOpts.limit && Number.isFinite(count) && count > docs.length) {
+        console.warn(
+          `[db] ${tableName}.find() returned ${docs.length} of ${count} rows with no limit — ` +
+            "silently truncated. Pass an explicit limit, or use count() if you only need a total."
+        );
+      }
       return docs;
+    },
+
+    /**
+     * Every row matching the filter, fetched a page at a time.
+     *
+     * `find()` cannot do this: PostgREST caps a response at POSTGREST_MAX_ROWS and a
+     * bigger `limit` is silently ignored, so `find()` returns 1,000 rows and the caller
+     * has no way to tell that more exist. Deriving a total from `rows.length` after an
+     * unlimited `find()` is what made one 2,871-member network read as 1,000 on the
+     * home page, 1,000 on the map and 1,028 in the director's People list.
+     *
+     * If you only need a total, use `count()` — it is one cheap query. Use this when
+     * you genuinely need the rows (aggregating in JS, building a directory, exporting).
+     */
+    async findAll(tenantIdOrFilter = {}, filter = {}, options = {}) {
+      const takesTenant = typeof tenantIdOrFilter === "string";
+      const opts = takesTenant ? options : filter;
+      const ceiling = Number(opts?.maxRows) || TENANT_SCAN_LIMIT;
+
+      const rows = [];
+      let offset = 0;
+      for (;;) {
+        const pageOpts = { ...opts, limit: POSTGREST_MAX_ROWS, offset };
+        const page = takesTenant
+          ? await this.find(tenantIdOrFilter, filter, pageOpts)
+          : await this.find(tenantIdOrFilter, pageOpts);
+        rows.push(...page);
+        if (page.length < POSTGREST_MAX_ROWS) break;
+        offset += POSTGREST_MAX_ROWS;
+        if (offset >= ceiling) {
+          console.warn(
+            `[db] ${tableName}.findAll() stopped at the ${ceiling}-row ceiling. ` +
+              "The result is incomplete — this table needs a database-side aggregate."
+          );
+          break;
+        }
+      }
+      return rows;
     },
 
     async findOne(tenantIdOrFilter = {}, filter = {}) {
