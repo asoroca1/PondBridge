@@ -36,6 +36,11 @@
     "staging:local:dev": "node scripts/localStaging.mjs dev",
     "staging:local:status": "node scripts/localStaging.mjs status",
     "staging:local:stop": "node scripts/localStaging.mjs stop",
+    "staging:remote:status": "node scripts/remoteStaging.mjs status",
+    "staging:remote:setup": "node scripts/remoteStaging.mjs setup",
+    "staging:remote:push": "node scripts/remoteStaging.mjs push",
+    "staging:remote:seed": "node scripts/remoteStaging.mjs seed",
+    "staging:remote:verify": "node scripts/remoteStaging.mjs verify",
     "format": "prettier --write .",
     "security:check-env": "node scripts/checkTrackedEnv.mjs"
   },
