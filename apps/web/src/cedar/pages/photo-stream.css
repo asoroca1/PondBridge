@@ -750,6 +750,10 @@
     gap: 12px;
     padding: 12px;
     border-radius: 18px;
+    /* .ps-header-right goes to width:100% below, which only drops onto its own line if
+       the header is allowed to wrap. Without this the two children share one row and the
+       title/description column collapses — measured 134px wide by 132px tall at 870px. */
+    flex-wrap: wrap;
   }
 
   .ps-page-header .cedar-ph-title{

@@ -130,6 +130,7 @@ import { buildTenantFeatureInventory } from "../services/tenantFeatureInventory.
 import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js";
 import { deleteClerkAccountForTenantUser } from "../services/clerkAccountDeletion.js";
 import { matchesMemberQuery } from "../utils/memberSearch.js";
+import { chunkForInClause, collectAll } from "../db/queryLimits.js";
 import {
   GROWTH_EMAIL_SEGMENTS,
   LIVE_PROFILE_STATUS_FILTER,
@@ -2522,7 +2523,10 @@ async function resolveProfilesForTargeting(tenantId, normalized) {
     filter._id = { $in: normalized.profileIds };
   }
 
-  let profiles = await ProfileModel.find(tenantId, filter);
+  // The role / industry / segment filters below are applied in JS, so this has to be
+  // the whole tenant. An unlimited find() stops at PostgREST's 1,000 rows, which made
+  // "Counselor" resolve to 250 of 717 and the composer report 250 as the audience.
+  let profiles = await collectAll(ProfileModel.findAllBatched(tenantId, filter));
 
   if (normalized.mode === "segment" && normalized.segment) {
     const userIds = [...new Set(
@@ -2530,9 +2534,9 @@ async function resolveProfilesForTargeting(tenantId, normalized) {
     )];
     const [users, analyticsEvents] = userIds.length
       ? await Promise.all([
-          UserModel.find(tenantId, { _id: { $in: userIds } }, {
+          collectAll(UserModel.findAllBatched(tenantId, { _id: { $in: userIds } }, {
             select: ["id", "createdAt", "lastLoginAt"]
-          }),
+          })),
           normalized.segment.startsWith("inactive_")
             ? AnalyticsEventModel.find(tenantId, {
                 userId: { $in: userIds },
@@ -2582,10 +2586,15 @@ async function resolveRecipientsForTargeting(tenantId, targeting) {
   let heldRecipients = [];
   if (matchedRecipients.length) {
     try {
-      const heldContacts = await AlumniContactModel.find(tenantId, {
-        email: { $in: matchedRecipients },
-        contactStatus: "do_not_contact"
-      }, { select: ["email"] });
+      // Same URL-length ceiling as the suppression and preference lookups.
+      const heldContacts = [];
+      for (const batch of chunkForInClause(matchedRecipients)) {
+        const rows = await AlumniContactModel.find(tenantId, {
+          email: { $in: batch },
+          contactStatus: "do_not_contact"
+        }, { select: ["email"], limit: batch.length });
+        heldContacts.push(...rows);
+      }
       heldRecipients = [...new Set(
         heldContacts.map((item) => normalizeEmail(item.email)).filter(Boolean)
       )];
@@ -7033,10 +7042,14 @@ async function resolveFilteredPeople(req) {
   const [contactResult, invites, users, profiles, accessRequests, analyticsEvents] = await Promise.all([
     loadAlumniContactsForGrowth(tenantId),
     InviteModel.find(tenantId, { roleToAssign: "user" }, { sort: { createdAt: -1 }, limit: 5000 }),
-    UserModel.find(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
+    // The directory, its stage counts and the CSV export are all derived from these,
+    // so a capped read reported 1,028 people for a 3,003-person camp.
+    collectAll(UserModel.findAllBatched(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
       select: ["id", "email", "status", "roles", "createdAt", "updatedAt", "lastLoginAt"]
-    }),
-    ProfileModel.find(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, { select: ADMIN_MEMBER_PROFILE_SELECT }),
+    })),
+    collectAll(ProfileModel.findAllBatched(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, {
+      select: ADMIN_MEMBER_PROFILE_SELECT
+    })),
     AccessRequestModel.find(tenantId, { status: "pending" }, { sort: { requestedAt: -1 }, limit: 5000 }),
     AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
       select: ["userId", "eventType", "createdAt"],
@@ -7198,10 +7211,10 @@ router.get("/growth", async (req, res, next) => {
         sort: { createdAt: -1 },
         limit: 5000
       }),
-      UserModel.find(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
+      collectAll(UserModel.findAllBatched(tenantId, { status: LIVE_USER_STATUS_FILTER }, {
         select: ["id", "email", "status", "createdAt", "updatedAt", "lastLoginAt"]
-      }),
-      ProfileModel.find(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, {
+      })),
+      collectAll(ProfileModel.findAllBatched(tenantId, { status: LIVE_PROFILE_STATUS_FILTER }, {
         select: [
           "id",
           "userId",
@@ -7214,7 +7227,7 @@ router.get("/growth", async (req, res, next) => {
           "roleAtCamp",
           "createdAt"
         ]
-      }),
+      })),
       AnalyticsEventModel.find(tenantId, { createdAt: { $gte: ninetyDaysAgo } }, {
         select: ["userId", "eventType", "createdAt"],
         limit: 10000
@@ -7560,7 +7573,22 @@ router.post("/invites/preview", inviteUpload.single("file"), async (req, res) =>
     });
   }
   const textRows = parseInviteRowsFromText(req.body.emails || "");
-  const validInputCount = recipientsFromPayload.length + textRows.length + csvAnalysis.rows.length;
+  // Rows typed or pasted into the box are validated nowhere else: mergeInviteRows()
+  // silently drops anything that is not an address, and the shortfall used to be
+  // reported as duplicates. A director pasting a list with two typos saw
+  // "2 duplicates, 0 invalid" and never learned which addresses were dropped.
+  const typedRows = [...recipientsFromPayload, ...textRows];
+  const invalidTypedRows = typedRows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => !isEmail(normalizeEmail(row?.email || "")))
+    .map(({ row, index }) => ({
+      rowNumber: index + 1,
+      email: String(row?.email || "").slice(0, 200),
+      code: "INVALID_EMAIL",
+      message: "Email address is invalid."
+    }));
+  const validInputCount =
+    typedRows.length - invalidTypedRows.length + csvAnalysis.rows.length;
   const recipients = mergeInviteRows(recipientsFromPayload, textRows, csvAnalysis.rows);
   if (recipients.length === 0) {
     return res.status(400).json({
@@ -7631,10 +7659,10 @@ router.post("/invites/preview", inviteUpload.single("file"), async (req, res) =>
       existingMemberCount: existingEmails.size,
       pendingInviteCount: pendingEmails.size,
       contactOnHoldCount: heldEmails.size,
-      invalidCount: csvAnalysis.errors.length
+      invalidCount: csvAnalysis.errors.length + invalidTypedRows.length
     },
     items: items.slice(0, 100),
-    excludedRows: csvAnalysis.errors.slice(0, 100)
+    excludedRows: [...csvAnalysis.errors, ...invalidTypedRows].slice(0, 100)
   });
 });
 

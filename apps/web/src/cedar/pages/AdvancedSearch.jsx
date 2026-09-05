@@ -605,7 +605,6 @@ export default function AdvancedSearch() {
         Object.entries(debounced).forEach(([key, value]) => {
           if (value !== "" && value !== null && value !== undefined) qs.set(key, String(value));
         });
-        qs.set("fetchLimit", "1000");
 
         const data = await requestJson(`/api/t/${slug}/search/users?${qs.toString()}`, {
           token: authTokenRef.current,
@@ -746,6 +745,9 @@ export default function AdvancedSearch() {
 
   const page = Math.floor((form.offset || 0) / (form.limit || 24)) + 1;
   const pages = Math.max(1, Math.ceil((state.total || 0) / (form.limit || 24)));
+  // A 3,000-member camp paginates to 126 pages, and the windowed pager only reaches the
+  // first, the last, and one either side of where you are — page 60 was 58 clicks away.
+  const [pageJump, setPageJump] = useState("");
   const fromN = state.total ? form.offset + 1 : 0;
   const toN = state.total ? Math.min(form.offset + form.limit, state.total) : 0;
 
@@ -1675,6 +1677,34 @@ export default function AdvancedSearch() {
                             >
                               Next
                             </button>
+
+                            {pages > 7 ? (
+                              <form
+                                className="as2-pagejump"
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  const requested = Number.parseInt(pageJump, 10);
+                                  if (!Number.isFinite(requested)) return;
+                                  gotoPage(Math.min(Math.max(requested, 1), pages));
+                                  setPageJump("");
+                                }}
+                              >
+                                <label htmlFor="as2-page-jump">Go to page</label>
+                                <input
+                                  id="as2-page-jump"
+                                  type="number"
+                                  min="1"
+                                  max={pages}
+                                  inputMode="numeric"
+                                  value={pageJump}
+                                  placeholder={String(page)}
+                                  onChange={(event) => setPageJump(event.target.value)}
+                                />
+                                <button className="as2-btn as2-btn-outline" type="submit">
+                                  Go
+                                </button>
+                              </form>
+                            ) : null}
 
                             <div className="as2-pagecount">
                               Showing {fromN}-{toN} of {state.total}

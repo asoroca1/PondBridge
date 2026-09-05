@@ -69,8 +69,10 @@ jest.unstable_mockModule("../src/db/models/index.js", () => ({
   MobileNotificationDeviceModel: {},
   MobileNotificationModel: {},
   MobileNotificationPreferenceModel: {},
-  ProfileModel: { find: async () => [] },
-  UserModel: { find: async () => [] }
+  // resolveAudienceUserIds() reads the whole tenant through findAllBatched(), because a
+  // plain find() is capped at 1,000 rows and would silently shrink a push audience.
+  ProfileModel: { find: async () => [], findAllBatched: async function* () {} },
+  UserModel: { find: async () => [], findAllBatched: async function* () {} }
 }));
 
 const { runDueMobileNotificationSchedules, SCHEDULE_LEASE_MS } = await import(

@@ -447,15 +447,21 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
                       ? normalizeActorName(it.actor?.name)
                       : it.actor?.name) || "Someone"}
                   </span>{" "}
-                  {renderVerb(it.type)}{" "}
-                  <Link
-                    to={String(it.target?.href || "").startsWith("/")
-                      ? tenantRoute(slug, it.target.href)
-                      : it.target?.href || "#"}
-                    className="activity-target"
-                  >
-                    {it.target?.label || it.target?.title || it.target?.name || "the app"}
-                  </Link>
+                  {activityPhrase(it) || (
+                    <>
+                      {renderVerb(it.type)}{" "}
+                      {activityTargetLabel(it) ? (
+                        <Link
+                          to={String(it.target?.href || "").startsWith("/")
+                            ? tenantRoute(slug, it.target.href)
+                            : it.target?.href || "#"}
+                          className="activity-target"
+                        >
+                          {activityTargetLabel(it)}
+                        </Link>
+                      ) : null}
+                    </>
+                  )}
                 </>
               )}
             </div>        
@@ -497,6 +503,26 @@ function ActivityList({ items = [], currentUserId = "", isAdmin, onChanged }) {
       <ModalConfirm {...confirmDialogProps} />
     </>
   );
+}
+
+/**
+ * The written phrase the server already sent for this item ("added a photo",
+ * "posted in General"), if there is one.
+ *
+ * renderVerb below only knows dotted type names (`photo.upload`), but the activity
+ * feed emits snake_case ones (`photo_added`, `forum_post`, `event_rsvp`), so every
+ * real item fell through to "did something in" and then linked to a target that did
+ * not exist — the whole feed read as "Finley Yamamoto did something in the app".
+ * Trust the server's own copy first and keep the verb map as the fallback.
+ */
+function activityPhrase(item) {
+  return String(item?.message || "").trim();
+}
+
+/** A target worth linking to, or "" when the item has none. Never invent "the app". */
+function activityTargetLabel(item) {
+  const target = item?.target || {};
+  return String(target.label || target.title || target.name || "").trim();
 }
 
 function renderVerb(type) {
@@ -715,13 +741,18 @@ export default function MainHome() {
     const completion = completionPercentForProfile(me, authUser);
     setProfileCompletion(completion);
     if (completion >= 100 || !profilePromptSeenKey) return;
+    // Wait for the page behind it. The profile object arrives before the home bootstrap
+    // does, so without this the prompt opens over a screen of grey skeletons — the first
+    // thing a member sees after signing in is a dialog on top of nothing. `stats` is set
+    // from the bootstrap response, so it is the signal that the page has content.
+    if (!stats) return;
     try {
       if (localStorage.getItem(profilePromptSeenKey) === "1") return;
     } catch {
       // ignore private mode/storage quota issues
     }
     setShowProfilePrompt(true);
-  }, [authUser, currentUserId, me, profilePromptSeenKey]);
+  }, [authUser, currentUserId, me, profilePromptSeenKey, stats]);
 
   const locCount = resolveLocations(stats, locationsSummary);
   // Directors choose these four buttons in Settings → Features; the shared
