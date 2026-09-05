@@ -743,15 +743,16 @@ export default function MainHome() {
     if (completion >= 100 || !profilePromptSeenKey) return;
     // Wait for the page behind it. The profile object arrives before the home bootstrap
     // does, so without this the prompt opens over a screen of grey skeletons — the first
-    // thing a member sees after signing in is a dialog on top of nothing.
-    if (loading) return;
+    // thing a member sees after signing in is a dialog on top of nothing. `stats` is set
+    // from the bootstrap response, so it is the signal that the page has content.
+    if (!stats) return;
     try {
       if (localStorage.getItem(profilePromptSeenKey) === "1") return;
     } catch {
       // ignore private mode/storage quota issues
     }
     setShowProfilePrompt(true);
-  }, [authUser, currentUserId, loading, me, profilePromptSeenKey]);
+  }, [authUser, currentUserId, me, profilePromptSeenKey, stats]);
 
   const locCount = resolveLocations(stats, locationsSummary);
   // Directors choose these four buttons in Settings → Features; the shared
