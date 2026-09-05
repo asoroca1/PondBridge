@@ -6909,18 +6909,60 @@ router.get("/overview", async (req, res) => {
   });
 });
 
+const ADMIN_PROFILES_PAGE_SIZE = 50;
+const ADMIN_PROFILES_MAX_PAGE_SIZE = 200;
+
+function byMemberName(a, b) {
+  const last = String(a?.lastName || "").localeCompare(String(b?.lastName || ""), undefined, {
+    sensitivity: "base"
+  });
+  if (last !== 0) return last;
+  return String(a?.firstName || "").localeCompare(String(b?.firstName || ""), undefined, {
+    sensitivity: "base"
+  });
+}
+
+/**
+ * One page of the camp's profiles.
+ *
+ * This used to read the table with no limit and return every row, which meant two
+ * things at once: PostgREST capped it at 1,000 so `total` was wrong for any camp past
+ * that, and the response was already 765 KB for 3,000 members — a page nobody can read
+ * and a payload nobody should send.
+ */
 router.get("/profiles", async (req, res) => {
   const q = String(req.query.q || "").trim();
+  const page = Math.max(1, Number(req.query.page || 1) || 1);
+  const pageSize = Math.min(
+    ADMIN_PROFILES_MAX_PAGE_SIZE,
+    Math.max(1, Number(req.query.pageSize || ADMIN_PROFILES_PAGE_SIZE) || ADMIN_PROFILES_PAGE_SIZE)
+  );
+  const offset = (page - 1) * pageSize;
 
-  let profiles = await ProfileModel.find(req.tenant._id, {}, {
-    sort: { lastName: 1, firstName: 1 }
-  });
-
+  // matchesMemberQuery() spans names, emails and camp fields with its own normalisation,
+  // so the filter cannot be pushed into the query. A search walks the tenant and filters
+  // here; without a search the database does the paging and count().
   if (q) {
-    profiles = profiles.filter((p) => matchesMemberQuery(p, q));
+    const all = await collectAll(ProfileModel.findAllBatched(req.tenant._id, {}));
+    const matched = all.filter((profile) => matchesMemberQuery(profile, q)).sort(byMemberName);
+    return res.json({
+      total: matched.length,
+      page,
+      pageSize,
+      items: matched.slice(offset, offset + pageSize)
+    });
   }
 
-  res.json({ total: profiles.length, items: profiles });
+  const [total, items] = await Promise.all([
+    ProfileModel.count(req.tenant._id),
+    ProfileModel.find(req.tenant._id, {}, {
+      sort: { lastName: 1, firstName: 1 },
+      limit: pageSize,
+      offset
+    })
+  ]);
+
+  return res.json({ total, page, pageSize, items });
 });
 
 router.get("/analytics", async (req, res, next) => {

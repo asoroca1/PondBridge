@@ -25,6 +25,9 @@ export default function TenantAdminPage() {
 
   const [overview, setOverview] = useState(null);
   const [profiles, setProfiles] = useState([]);
+  // The endpoint returns one page now. Without these the page would quietly show the
+  // first 50 members as though that were the whole camp.
+  const [profilePage, setProfilePage] = useState({ page: 1, pageSize: 50, total: 0 });
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [banner, setBanner] = useState("");
@@ -37,16 +40,26 @@ export default function TenantAdminPage() {
     card: "#ffffff"
   });
   const canExportPdf = tenantHasFeature(tenant, "pdfExport");
+  const profilePageCount = Math.max(1, Math.ceil(profilePage.total / (profilePage.pageSize || 50)));
+  const profileRangeStart = profilePage.total === 0 ? 0 : (profilePage.page - 1) * profilePage.pageSize + 1;
+  const profileRangeEnd = Math.min(profilePage.page * profilePage.pageSize, profilePage.total);
 
-  async function loadData() {
+  async function loadData(page = profilePage.page) {
     setError("");
     try {
       const [overviewPayload, profilesPayload] = await Promise.all([
         requestJson(`/api/t/${slug}/admin/overview`, { token }),
-        requestJson(`/api/t/${slug}/admin/profiles`, { token })
+        requestJson(`/api/t/${slug}/admin/profiles?page=${page}&pageSize=${profilePage.pageSize}`, {
+          token
+        })
       ]);
       setOverview(overviewPayload);
       setProfiles(profilesPayload.items || []);
+      setProfilePage((curr) => ({
+        page: Number(profilesPayload.page) || page,
+        pageSize: Number(profilesPayload.pageSize) || curr.pageSize,
+        total: Number(profilesPayload.total) || 0
+      }));
       setAccessSettings({
         signupMode:
           overviewPayload.tenant?.settings?.signupMode ||
@@ -310,6 +323,27 @@ export default function TenantAdminPage() {
             </article>
           ))}
         </div>
+        {profilePage.total > profiles.length ? (
+          <div className="directory-pager">
+            <Button
+              variant="secondary"
+              disabled={profilePage.page <= 1}
+              onClick={() => loadData(profilePage.page - 1)}
+            >
+              Previous
+            </Button>
+            <span>
+              {profileRangeStart}-{profileRangeEnd} of {profilePage.total}
+            </span>
+            <Button
+              variant="secondary"
+              disabled={profilePage.page >= profilePageCount}
+              onClick={() => loadData(profilePage.page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        ) : null}
       </Card>
       <ModalConfirm {...confirmDialogProps} />
     </PageShell>
