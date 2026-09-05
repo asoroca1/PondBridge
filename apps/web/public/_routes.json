@@ -1,10 +1,15 @@
 {
   "version": 1,
   "include": [
-    "/",
-    "/robots.txt",
-    "/sitemap.xml",
-    "/brand/*"
+    "/*"
   ],
-  "exclude": []
+  "exclude": [
+    "/assets/*",
+    "/cities/*",
+    "/favicon.svg",
+    "/manifest.json",
+    "/chunk-missing-reload.js",
+    "/icon-192.png",
+    "/icon-512.png"
+  ]
 }
