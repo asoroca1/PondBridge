@@ -229,7 +229,15 @@ export default function GivingPage() {
                   <p className="giving-section-eyebrow">Choose your impact</p>
                   <h2 id="active-causes-title">Active causes</h2>
                 </div>
-                <span>{filtered.length} {filtered.length === 1 ? "cause" : "causes"}</span>
+                {/* The hero counts every active cause; this grid excludes the general fund,
+                    which has its own card above. Reporting the grid's length here made one
+                    screen say "4 active causes" and "3 causes" a few hundred pixels apart.
+                    Count the same set as the hero, and say "N of M" once a filter narrows it. */}
+                <span>
+                  {filter === "all"
+                    ? `${activeCauses.length} ${activeCauses.length === 1 ? "cause" : "causes"}`
+                    : `${filtered.length} of ${activeCauses.length}`}
+                </span>
               </div>
 
               <div className="giving-filters" role="group" aria-label="Filter causes by category">

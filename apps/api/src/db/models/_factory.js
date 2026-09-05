@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "../supabaseAdmin.js";
 import { generateObjectId } from "../../utils/objectId.js";
+import { POSTGREST_MAX_ROWS } from "../queryLimits.js";
 
 const NODE_ENV = String(process.env.NODE_ENV || "").trim().toLowerCase();
 const ALLOW_UNSCOPED_DELETES = String(process.env.PONDBRIDGE_ALLOW_UNSCOPED_DELETES || "")
@@ -337,6 +338,15 @@ export function createModel(tableName, colMap) {
       // Left undefined when uncounted, so `_count ?? fallback` stays honest
       // rather than reporting a page length as a total.
       if (actualOpts.count) docs._count = count;
+      // A find with no limit is capped by PostgREST at POSTGREST_MAX_ROWS and says
+      // nothing about it, which is how surfaces came to report 1,000 members for a
+      // 3,003-member network. Landing exactly on the ceiling is the tell.
+      if (!actualOpts.limit && !actualOpts.offset && docs.length === POSTGREST_MAX_ROWS) {
+        console.warn(
+          `[db] ${tableName}.find() returned exactly ${POSTGREST_MAX_ROWS} rows with no limit — ` +
+            "almost certainly truncated. Use findAllBatched() for every row, or count() for a total."
+        );
+      }
       return docs;
     },
 

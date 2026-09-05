@@ -284,7 +284,7 @@ function PhotosMosaic({ userId }) {
     <aside className="p1-card p1-photos-card">
       <h2 className="p1-h2">Media Posted</h2>
       {loading && <div className="p1-empty">Loading…</div>}
-      {!loading && items.length === 0 && <div className="p1-empty">Nothing posted yet.</div>}
+      {!loading && items.length === 0 && <div className="p1-empty">No media yet.</div>}
       {!!items.length && (
         <div className="p1-mosaic">
           {items.map((p) => (
@@ -652,7 +652,7 @@ export default function PublicProfile() {
                           {[job.company, job.years].filter(Boolean).join(" • ")}
                         </div>
                       </div>
-                    )) : <div className="p1-empty">No experience added yet.</div>}
+                    )) : <div className="p1-empty">No experience yet.</div>}
                   </div>
                 </div>
 
@@ -672,7 +672,7 @@ export default function PublicProfile() {
                       </div>
                     )}
                     {!profile.highSchool && educationList.length === 0 && (
-                      <div className="p1-empty">No education added yet.</div>
+                      <div className="p1-empty">No education yet.</div>
                     )}
                   </div>
                 </div>
@@ -684,7 +684,7 @@ export default function PublicProfile() {
                 <aside className="p1-card p1-camper-card">
                   <h2 className="p1-h2">Camper Years</h2>
                   {camperStints.length === 0 ? (
-                    <div className="p1-empty">Not added yet.</div>
+                    <div className="p1-empty">No camper years yet.</div>
                   ) : (
                     <div className="p1-edu-grid">
                       {camperStints.map((stint, idx) => (

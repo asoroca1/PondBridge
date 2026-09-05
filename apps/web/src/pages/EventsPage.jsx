@@ -46,8 +46,27 @@ function formatTimePart(item = {}) {
     timeZone: timezone
   });
   const start = timeFormatter.format(startsAt);
-  const end = endsAt && !Number.isNaN(endsAt.getTime()) ? timeFormatter.format(endsAt) : "";
-  return end ? `${start} – ${end}` : start;
+  if (!endsAt || Number.isNaN(endsAt.getTime())) return start;
+
+  // An event that runs past midnight ends on a different day, and "9:33 PM – 1:33 AM"
+  // does not say so. Name the day when it changes, in the event's own timezone.
+  const dayFormatter = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    timeZone: timezone
+  });
+  const end = timeFormatter.format(endsAt);
+  if (dayFormatter.format(startsAt) === dayFormatter.format(endsAt)) {
+    return `${start} – ${end}`;
+  }
+  const endDay = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: timezone
+  }).format(endsAt);
+  return `${start} – ${end} (${endDay})`;
 }
 
 function dateBadge(item = {}) {
@@ -254,7 +273,9 @@ export default function EventsPage() {
     () => payload.past.filter((item) => typeFilter === "all" || item?.eventType === typeFilter),
     [payload.past, typeFilter]
   );
-  const featured = filteredUpcoming[0] || null;
+  // The hero is a recommendation ("NEXT UP"), so it must not promote something nobody
+  // can attend. A cancelled event still belongs in the list below with its badge.
+  const featured = filteredUpcoming.find((item) => item?.status !== "canceled") || null;
   const upcomingCards = useMemo(() => {
     if (!featured) return filteredUpcoming;
     return filteredUpcoming.filter((item) => item.id !== featured.id);

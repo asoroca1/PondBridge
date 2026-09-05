@@ -481,7 +481,7 @@ export function SuperTenantsPage() {
   return (
     <div className="super-panel-stack">
       <Card className="super-tenants-summary-card">
-        <PanelHeader title="Tenants" subtitle="Create and manage camp tenants." />
+        <PanelHeader title="Camps" subtitle="Create and manage camps." />
         {summary ? (
           <div className="super-tenant-metric-grid">
             <TenantMetricCard
@@ -501,7 +501,7 @@ export function SuperTenantsPage() {
       <Card className="super-tenants-table-card">
         <header className="super-tenant-list-head">
           <div>
-            <h2 className="pb-section-title">Tenant List</h2>
+            <h2 className="pb-section-title">All camps</h2>
             <p className="super-tenant-list-subtitle">
               {filters.kind === "client" && kindSummary?.demos
                 ? `${kindSummary.clients} client camp${kindSummary.clients === 1 ? "" : "s"}. ${kindSummary.demos} demo camp${kindSummary.demos === 1 ? "" : "s"} hidden — switch Showing to see them.`

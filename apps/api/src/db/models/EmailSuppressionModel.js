@@ -1,5 +1,6 @@
 import { createModel, toDoc } from "./_factory.js";
 import { getSupabaseAdmin } from "../supabaseAdmin.js";
+import { chunkForInClause } from "../queryLimits.js";
 
 const COLUMNS = {
   id: "id",
@@ -109,13 +110,19 @@ export const EmailSuppressionModel = {
       .filter(Boolean))];
     if (unique.length === 0) return [];
 
-    const { data, error } = await getSupabaseAdmin()
-      .from("email_suppressions")
-      .select("*")
-      .eq("status", "active")
-      .in("email", unique);
-    if (error) throw error;
-    return (data || []).map((row) => toDoc(row, COLUMNS));
+    // `.in()` travels in the URL, so the whole list cannot go in one request — ~700
+    // addresses produced a 28.8 KB URL and a 400. Ask in batches.
+    const rows = [];
+    for (const batch of chunkForInClause(unique)) {
+      const { data, error } = await getSupabaseAdmin()
+        .from("email_suppressions")
+        .select("*")
+        .eq("status", "active")
+        .in("email", batch);
+      if (error) throw error;
+      rows.push(...(data || []));
+    }
+    return rows.map((row) => toDoc(row, COLUMNS));
   },
 
   async isSuppressed(email = "") {

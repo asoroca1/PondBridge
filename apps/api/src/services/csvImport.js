@@ -5,6 +5,7 @@ import { z } from "zod";
 import { UserModel, ProfileModel, ImportReportModel } from "../db/models/index.js";
 import { hashPassword } from "../utils/auth.js";
 import { composeCityState, parseCityStateDetailed } from "../utils/location.js";
+import { collectAll } from "../db/queryLimits.js";
 
 const acceptedColumns = [
   "firstName",
@@ -344,8 +345,11 @@ export async function runTenantCsvImport({
     throw csvError;
   }
 
-  const existingProfiles = await ProfileModel.find(tenantId);
-  const existingUsers = await UserModel.find(tenantId);
+  // These build the dedupe maps for the whole import. A capped read makes every member
+  // past the first 1,000 look new, so importing into a large camp would create duplicates
+  // instead of updating people who are already there.
+  const existingProfiles = await collectAll(ProfileModel.findAllBatched(tenantId));
+  const existingUsers = await collectAll(UserModel.findAllBatched(tenantId));
   const mapState = buildExistingMaps(existingProfiles, existingUsers);
 
   const errors = [];

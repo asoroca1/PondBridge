@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import http2 from "http2";
 import { env } from "../config/env.js";
+import { collectAll } from "../db/queryLimits.js";
 import {
   hasFcmHttpV1Configuration,
   sendFcmHttpV1Message
@@ -892,9 +893,11 @@ export async function resolveAudienceUserIds(tenantId, audience = "all_active_me
     return users.map((user) => String(user._id || user.id || "")).filter(Boolean);
   }
 
-  const users = await UserModel.find(tenantId, { status: "active" }, {
+  // The push audience for "all active members" is filtered from these rows, so a capped
+  // read silently drops everyone past the first 1,000.
+  const users = await collectAll(UserModel.findAllBatched(tenantId, { status: "active" }, {
     select: ["id", "roles", "status", "email"]
-  });
+  }));
 
   if (safeAudience === "admins") {
     return users
