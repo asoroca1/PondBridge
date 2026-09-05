@@ -17580,3 +17580,14 @@ html.is-native-app .asset-update-notice{
   outline: 2px solid var(--brand-primary, #16305c);
   outline-offset: 1px;
 }
+
+/* Pager under the tenant admin profile list. */
+.directory-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--pb-muted, #5b6470);
+}
