@@ -46,6 +46,13 @@ module.exports = [
     }
   },
   {
+    // Pages Functions run on the Workers runtime, which supplies HTMLRewriter
+    // ambiently. Without this, every edge function that rewrites HTML reads as a
+    // no-undef error.
+    files: ["functions/**/*.js"],
+    languageOptions: { globals: { HTMLRewriter: "readonly" } }
+  },
+  {
     // API tests run under Jest, which supplies describe/test/expect ambiently.
     files: ["apps/api/tests/**/*.js", "**/*.test.js"],
     languageOptions: { globals: { ...globals.jest } }

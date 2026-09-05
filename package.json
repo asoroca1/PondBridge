@@ -22,7 +22,7 @@
     "android:open": "npm --workspace @pondbridge/ios run open:android",
     "cloudflare:setup": "node scripts/cloudflareSetup.mjs",
     "cloudflare:setup:dry": "node scripts/cloudflareSetup.mjs --dry-run",
-    "lint": "npm run lint --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present && eslint functions",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "perf:check-web": "node scripts/checkWebBuildBudget.mjs",
