@@ -706,3 +706,71 @@ The findings that survived were the ones where I compared a number in the UI aga
 database. That check is cheap, mechanical, and was right every time. The ones that failed
 were where I judged from a screenshot. Worth weighting accordingly when reading anything
 above — and worth building rule 3 out of.
+
+---
+
+# Round 7 — director functionality, end to end
+
+All 29 director read endpoints return 200. Write flows exercised on staging with
+`EMAIL_MODE=mock`: invite preview and send, email draft create/edit/delete, test send,
+CSV export, notification audience preview.
+
+## The find() warning earned its keep immediately
+
+Hitting the admin endpoints printed this, unprompted, for code I had never opened:
+
+    [db] profiles.find() returned 1000 of 3003 rows with no limit — silently truncated.
+    [db] users.find() returned 1000 of 3003 rows with no limit — silently truncated.
+
+A scan then found **108 `Model.find()` calls with no explicit limit** across the API.
+Most are bounded in practice by an `$in` list or a small table. Five were whole-tenant
+reads with real consequences, four of which are now fixed:
+
+| Where | Consequence | Status |
+|---|---|---|
+| `csvImport.js` dedupe maps | members past #1,000 look new, so an import **creates duplicates** instead of updating them | fixed |
+| `mobileNotifications.js` `resolveAudienceUserIds` | push to "all active members" reaches at most 1,000 | fixed |
+| `legacyCedarCompat.js` `resolveNetworkRecipientEmails` | the **newsletter** reaches at most 1,000 | fixed |
+| `analytics.js` average completion | "Profiles filled in" averaged the first 1,000 and reported it as the network figure | fixed |
+| `admin.js` `GET /profiles` | reports `total: 1000` for 3,003 | **left alone** |
+
+`GET /admin/profiles` is left deliberately: it returns every profile to the client and is
+already a 765 KB response, so `findAll()` would make it 2.3 MB. It needs pagination, which
+changes its contract with `TenantAdminPage.jsx` — a bigger change than belongs in this pass.
+
+The csvImport one is the most serious of the four. It is silent, it corrupts data rather
+than just displaying a wrong number, and it only appears once a camp passes 1,000 members.
+
+## UI-28 — Invite preview counted malformed addresses as duplicates — P1, FIXED
+
+**Where:** Director -> People -> Add people, and `POST /admin/invites/preview`
+
+Pasting `newperson1@…, member0001@…, not-an-email, bad@@example, another.good@…,
+newperson1@…` returned:
+
+    validInputCount 6   duplicateInputCount 3   invalidCount 0   excludedRows []
+
+`invalidCount` only ever counted errors from an uploaded **CSV**. Addresses typed or
+pasted into the box were never validated: `mergeInviteRows()` drops anything that is not
+an address, and the shortfall was reported as `validInputCount - uniqueCount`, i.e. as
+duplicates. A director pasting a list from a spreadsheet saw "3 duplicates, 0 invalid"
+and never learned which addresses had been dropped or why.
+
+Now:
+
+    validInputCount 4   duplicateInputCount 1   invalidCount 2
+    excludedRows [("not-an-email","INVALID_EMAIL"), ("bad@@example","INVALID_EMAIL")]
+
+## Verified working
+
+- **People CSV export returns 3,006 lines** — 3,005 people plus a header. This was the
+  time-sensitive question from the first review, and the export is not truncated.
+- **Notification audience** reports 2,874 recipients, matching active members (it would
+  have been 1,000 before the fix above).
+- **Invite send** created the invite with a seven-day expiry and reported
+  `attemptedCount 1, createdCount 1, sentCount 1`.
+- **Email test send is correctly blocked** with `EMAIL_COMPLIANCE_BLOCKED` — "Complete the
+  camp mailing address in Billing before sending" — which is the right guard to have, not
+  a defect.
+
+API suite: 56/56 suites, 400/400 tests.

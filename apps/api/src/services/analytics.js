@@ -162,7 +162,9 @@ export async function getTenantAnalyticsSnapshot({ tenantId }) {
     ...activeLoginUsers.map((user) => String(user._id))
   ]);
 
-  const profiles = await ProfileModel.find(tenantId);
+  // Average completion across the network, so it has to be the whole network — a capped
+  // read averages the first 1,000 profiles and reports it as the tenant's figure.
+  const profiles = await ProfileModel.findAll(tenantId);
   const completionPercents = profiles.map((profile) => completionPercentForProfile(profile));
   const averageCompletionPercent = completionPercents.length
     ? Math.round(

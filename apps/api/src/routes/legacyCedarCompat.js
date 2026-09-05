@@ -830,9 +830,11 @@ export function buildNewsletterAnnouncementEmail({
 }
 
 async function resolveNetworkRecipientEmails(tenantId) {
+  // Newsletter recipients for the whole network — a capped read means the newsletter
+  // reaches at most 1,000 members without saying so.
   const [users, profiles] = await Promise.all([
-    UserModel.find(tenantId, {}, { select: ["id", "email", "status"] }),
-    ProfileModel.find(tenantId, {}, { select: ["id", "userId", "emails", "status"] })
+    UserModel.findAll(tenantId, {}, { select: ["id", "email", "status"] }),
+    ProfileModel.findAll(tenantId, {}, { select: ["id", "userId", "emails", "status"] })
   ]);
 
   return collectTenantNewsletterRecipients({ users, profiles });

@@ -344,8 +344,11 @@ export async function runTenantCsvImport({
     throw csvError;
   }
 
-  const existingProfiles = await ProfileModel.find(tenantId);
-  const existingUsers = await UserModel.find(tenantId);
+  // These build the dedupe maps for the whole import. A capped read makes every member
+  // past the first 1,000 look new, so importing into a large camp would create duplicates
+  // instead of updating people who are already there.
+  const existingProfiles = await ProfileModel.findAll(tenantId);
+  const existingUsers = await UserModel.findAll(tenantId);
   const mapState = buildExistingMaps(existingProfiles, existingUsers);
 
   const errors = [];

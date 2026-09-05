@@ -7572,7 +7572,22 @@ router.post("/invites/preview", inviteUpload.single("file"), async (req, res) =>
     });
   }
   const textRows = parseInviteRowsFromText(req.body.emails || "");
-  const validInputCount = recipientsFromPayload.length + textRows.length + csvAnalysis.rows.length;
+  // Rows typed or pasted into the box are validated nowhere else: mergeInviteRows()
+  // silently drops anything that is not an address, and the shortfall used to be
+  // reported as duplicates. A director pasting a list with two typos saw
+  // "2 duplicates, 0 invalid" and never learned which addresses were dropped.
+  const typedRows = [...recipientsFromPayload, ...textRows];
+  const invalidTypedRows = typedRows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => !isEmail(normalizeEmail(row?.email || "")))
+    .map(({ row, index }) => ({
+      rowNumber: index + 1,
+      email: String(row?.email || "").slice(0, 200),
+      code: "INVALID_EMAIL",
+      message: "Email address is invalid."
+    }));
+  const validInputCount =
+    typedRows.length - invalidTypedRows.length + csvAnalysis.rows.length;
   const recipients = mergeInviteRows(recipientsFromPayload, textRows, csvAnalysis.rows);
   if (recipients.length === 0) {
     return res.status(400).json({
@@ -7643,10 +7658,10 @@ router.post("/invites/preview", inviteUpload.single("file"), async (req, res) =>
       existingMemberCount: existingEmails.size,
       pendingInviteCount: pendingEmails.size,
       contactOnHoldCount: heldEmails.size,
-      invalidCount: csvAnalysis.errors.length
+      invalidCount: csvAnalysis.errors.length + invalidTypedRows.length
     },
     items: items.slice(0, 100),
-    excludedRows: csvAnalysis.errors.slice(0, 100)
+    excludedRows: [...csvAnalysis.errors, ...invalidTypedRows].slice(0, 100)
   });
 });
 

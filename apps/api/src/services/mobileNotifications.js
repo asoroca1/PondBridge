@@ -810,7 +810,10 @@ export async function resolveAudienceUserIds(tenantId, audience = "all_active_me
     return users.map((user) => String(user._id || user.id || "")).filter(Boolean);
   }
 
-  const users = await UserModel.find(tenantId, { status: "active" }, {
+  // The push audience for "all active members" is filtered from these rows, so a capped
+  // read silently drops everyone past the first 1,000 — the same failure the email
+  // composer had.
+  const users = await UserModel.findAll(tenantId, { status: "active" }, {
     select: ["id", "roles", "status", "email"]
   });
 
