@@ -6,7 +6,11 @@ function isTrackedEnvFile(filePath = "") {
   if (!normalized) return false;
   const base = path.basename(normalized).toLowerCase();
   if (base === ".env") return true;
-  if (base.startsWith(".env.") && base !== ".env.example") return true;
+  // `.example` is the template marker this check already exists to permit — its own
+  // error message says "keep only template files like .env.example in git". Allow the
+  // suffix rather than the single literal filename, so a per-environment template
+  // (.env.staging.example) is possible while .env.staging itself stays blocked.
+  if (base.startsWith(".env.") && !base.endsWith(".example")) return true;
   return false;
 }
 
