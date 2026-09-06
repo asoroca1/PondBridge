@@ -4,9 +4,16 @@
 
 .pb-access-modes {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Three mutually exclusive choices, so they go three across or one under the
+     other — never two and an orphan, which is what a 2-column grid did to them
+     and which reads as though the third is a different kind of thing. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-top: 4px;
+}
+
+@media (max-width: 1300px) {
+  .pb-access-modes { grid-template-columns: minmax(0, 1fr); }
 }
 
 .pb-access-modes button {
@@ -102,10 +109,6 @@
 .pb-access-check small { font-size: 0.8rem; color: var(--director-admin-ink-soft, var(--neutral-500)); }
 
 .pb-access-actions { display: flex; justify-content: flex-end; }
-
-@media (max-width: 720px) {
-  .pb-access-modes { grid-template-columns: minmax(0, 1fr); }
-}
 
 /* A gate that is off but still holding people back needs to say so louder than
    an ordinary hint. */
