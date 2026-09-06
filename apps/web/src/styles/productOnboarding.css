@@ -1,3 +1,12 @@
+/*
+ * Director signup, checkout, celebration, and legal styling.
+ *
+ * This is imported by the routes that use it rather than from main.jsx: it is
+ * roughly 8KB gzip, and a member opening their camp home page never renders a
+ * single one of these rules. The handful of rules the shell does need on every
+ * route were split out into productShell.css.
+ */
+
 :root {
   --po-bg: var(--bg, var(--neutral-100));
   --po-surface: var(--card, #ffffff);
@@ -9,49 +18,6 @@
   --po-brand-strong: var(--brand-primary-hover, var(--brand-primary-hover));
   --po-radius-card: var(--radius-lg);
   --po-radius-btn: var(--radius-sm);
-}
-
-.product-app-shell {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  background: var(--po-bg);
-  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
-}
-
-.product-app-main {
-  flex: 1 1 auto;
-  display: flex;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.product-header {
-  position: sticky;
-  top: 0;
-  z-index: 1200;
-  min-height: 72px;
-  display: flex;
-  align-items: center;
-  background: var(--po-brand);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
-}
-
-.product-header-inner {
-  width: 100%;
-  margin: 0;
-  padding: 0 24px;
-}
-
-.product-header-brand {
-  color: var(--brand-on-primary, #ffffff);
-  margin: 0;
-  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
-  font-weight: 700;
-  font-size: clamp(1.6rem, 2.3vw, 2rem);
-  letter-spacing: 0.01em;
 }
 
 .product-claim-page {
@@ -231,6 +197,7 @@
 }
 
 /* Alumni auth pages should sit lower + centered under the network header. */
+
 .product-director-create-page.alumni-create-clerk-page {
   --alumni-auth-top: calc(var(--nav-h, 91px) + env(safe-area-inset-top, 0px));
   min-height: calc(100dvh - var(--alumni-auth-top));
@@ -443,6 +410,7 @@
 
 /* Camp identity and progress, so the wizard reads as this camp's setup rather
    than a generic PondBridge form. */
+
 .director-wizard-identity {
   display: flex;
   align-items: center;
@@ -548,7 +516,10 @@
   letter-spacing: 0.01em;
   padding: 4px 10px;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .director-step-pill.active {
@@ -631,13 +602,12 @@
   width: 100%;
   border: 1px solid color-mix(in srgb, var(--po-brand) 24%, var(--neutral-200));
   border-radius: 14px;
-  background:
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--po-brand) 9%, #ffffff) 0%,
-      #ffffff 52%,
-      var(--neutral-50) 100%
-    );
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--po-brand) 9%, #ffffff) 0%,
+    #ffffff 52%,
+    var(--neutral-50) 100%
+  );
   padding: 16px 18px;
 }
 
@@ -768,13 +738,12 @@
 .director-review-hero {
   border: 1px solid color-mix(in srgb, var(--po-brand) 24%, var(--neutral-200));
   border-radius: 14px;
-  background:
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--po-brand) 9%, #ffffff) 0%,
-      #ffffff 52%,
-      var(--neutral-50) 100%
-    );
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--po-brand) 9%, #ffffff) 0%,
+    #ffffff 52%,
+    var(--neutral-50) 100%
+  );
   padding: 14px;
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(230px, 1fr);
@@ -1041,7 +1010,10 @@
   cursor: pointer;
 }
 
-.product-director-create-card .director-review-legal-card .director-inline-checkbox input[type="checkbox"] {
+.product-director-create-card
+  .director-review-legal-card
+  .director-inline-checkbox
+  input[type="checkbox"] {
   margin: 2px 0 0;
   width: 18px;
   height: 18px;
@@ -1276,6 +1248,7 @@
 
 /* The suggestion list overlays the fields beneath it, so the block that holds
    it cannot clip its own overflow. */
+
 .pb-address-autocomplete {
   position: relative;
   width: 100%;
@@ -1379,18 +1352,6 @@
   grid-auto-rows: 1fr;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 .director-feature-item {
   display: flex;
   align-items: flex-start;
@@ -1403,7 +1364,6 @@
   min-height: 120px;
   height: 100%;
 }
-
 
 .director-feature-copy {
   display: grid;
@@ -1429,8 +1389,6 @@
   line-height: 1.45;
 }
 
-
-
 .director-feature-item input[type="checkbox"] {
   width: 18px;
   height: 18px;
@@ -1438,7 +1396,6 @@
   accent-color: var(--po-brand);
   flex: 0 0 auto;
 }
-
 
 .director-feature-note {
   margin: 6px 0 0;
@@ -1608,8 +1565,7 @@
   align-items: flex-end;
   background-image:
     linear-gradient(180deg, rgba(22, 22, 22, 0.06) 0%, rgba(22, 22, 22, 0.36) 100%),
-    var(--preview-hero, none),
-    linear-gradient(180deg, var(--neutral-50) 0%, var(--neutral-50) 100%);
+    var(--preview-hero, none), linear-gradient(180deg, var(--neutral-50) 0%, var(--neutral-50) 100%);
   background-size: cover, cover, cover;
   background-position: center, center, center;
   background-repeat: no-repeat, no-repeat, no-repeat;
@@ -1641,7 +1597,9 @@
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .director-upload-control:hover {
@@ -1961,8 +1919,12 @@
 /* ── Launch celebration (Feature 5) ── */
 
 @keyframes celebration-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes celebration-scale-in {
@@ -1977,14 +1939,24 @@
 }
 
 @keyframes celebration-burst {
-  0% { transform: scale(0); opacity: 0.7; }
-  50% { transform: scale(1.2); opacity: 0.3; }
-  100% { transform: scale(1.8); opacity: 0; }
+  0% {
+    transform: scale(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
 }
 
 /* Stripe's embedded Checkout, mounted inside the onboarding wizard. It picks up
    --po-brand from the wizard so the payment step wears the camp's colours the
    director just chose, rather than arriving as an unbranded white box. */
+
 .director-checkout-overlay {
   position: fixed;
   inset: 0;
@@ -2052,6 +2024,7 @@
 
 /* The amount is the anchor: nobody should have to hunt for what they are
    about to be charged. */
+
 .director-checkout-amount {
   display: flex;
   flex-direction: column;
@@ -2105,6 +2078,7 @@
 
 /* Stripe sizes its own iframe once mounted; until then this holds the space so
    the card does not snap taller when the form arrives. */
+
 .director-checkout-frame.is-loading {
   min-height: 320px;
   border-radius: 12px;
@@ -2282,20 +2256,7 @@
   position: relative;
 }
 
-/* ── Responsive ── */
-
 @media (max-width: 900px) {
-  .product-header-inner,
-  .product-footer-inner,
-  .product-footer-bottom {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .product-header-brand {
-    font-size: clamp(1.3rem, 5vw, 1.65rem);
-  }
-
   .product-footer-inner {
     grid-template-columns: 1fr;
     gap: 10px;
@@ -2324,10 +2285,14 @@
   }
 
   .product-director-create-page.alumni-create-clerk-page {
-    min-height: calc(100dvh - var(--alumni-auth-top, calc(var(--nav-h, 91px) + env(safe-area-inset-top, 0px))));
+    min-height: calc(
+      100dvh - var(--alumni-auth-top, calc(var(--nav-h, 91px) + env(safe-area-inset-top, 0px)))
+    );
     align-items: center;
     justify-content: center;
-    padding-top: calc(var(--alumni-auth-top, calc(var(--nav-h, 91px) + env(safe-area-inset-top, 0px))) + 8px);
+    padding-top: calc(
+      var(--alumni-auth-top, calc(var(--nav-h, 91px) + env(safe-area-inset-top, 0px))) + 8px
+    );
     padding-bottom: clamp(16px, 3vh, 28px);
   }
 

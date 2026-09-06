@@ -1,0 +1,81 @@
+/*
+ * The few product-layout rules the app shell paints on every route: the shell
+ * itself, its main column, and the header that sits above the director signup
+ * pages.
+ *
+ * These stay in the global bundle because AppShell wraps every tenant page --
+ * loading them lazily would only trade a byte of budget for a flash of
+ * unstyled shell. The rest of the onboarding styles live in
+ * productOnboarding.css, which the director routes import for themselves.
+ */
+
+:root {
+  --po-bg: var(--bg, var(--neutral-100));
+  --po-surface: var(--card, #ffffff);
+  --po-border: var(--card-border, var(--neutral-200));
+  --po-shadow: var(--shadow-sm);
+  --po-text: var(--text, var(--neutral-800));
+  --po-muted: var(--text-muted, var(--neutral-500));
+  --po-brand: var(--brand-primary);
+  --po-brand-strong: var(--brand-primary-hover, var(--brand-primary-hover));
+  --po-radius-card: var(--radius-lg);
+  --po-radius-btn: var(--radius-sm);
+}
+
+.product-app-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--po-bg);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
+}
+
+.product-app-main {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.product-header {
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  background: var(--po-brand);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: var(--font-body, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
+}
+
+.product-header-inner {
+  width: 100%;
+  margin: 0;
+  padding: 0 24px;
+}
+
+.product-header-brand {
+  color: var(--brand-on-primary, #ffffff);
+  margin: 0;
+  font-family: var(--font-display, "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif);
+  font-weight: 700;
+  font-size: clamp(1.6rem, 2.3vw, 2rem);
+  letter-spacing: 0.01em;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 900px) {
+  .product-header-inner,
+  .product-footer-inner,
+  .product-footer-bottom {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .product-header-brand {
+    font-size: clamp(1.3rem, 5vw, 1.65rem);
+  }
+}

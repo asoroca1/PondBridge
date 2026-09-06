@@ -7,6 +7,7 @@ import { useTenant } from "../context/TenantContext.jsx";
 import { clerkUiEnabled } from "../lib/authMode.js";
 import { resolveAlumniWord } from "../lib/campLabels.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
+import "../styles/productOnboarding.css";
 
 function DirectorClaimPageContent() {
   const { slug: paramSlug } = useParams();

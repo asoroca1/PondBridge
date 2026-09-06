@@ -17,19 +17,24 @@ const distIndexPath = path.resolve(rootDir, "apps/web/dist/index.html");
  *
  * Each number below now sits just above what the build actually produces, so
  * a real increase has to be argued for rather than absorbed. Measured
- * 2026-09-04:
+ * 2026-09-06:
  *
- *   entry JS gzip     111.2KB
- *   initial CSS gzip   58.0KB
+ *   entry JS gzip     111.3KB
+ *   initial CSS gzip   51.8KB
  *   largest route JS   31.2KB gzip
  *   largest asset       0.97MB raw (maplibre, lazy)
  *   largest image       0.76MB raw
  *
- * Two of these are still well short of the audit's stretch targets — entry JS
- * wants 100KB and initial CSS wants 45KB — and initial CSS is the tight one:
- * it has about 1KB of headroom, so the next stylesheet added to the global
- * bundle will fail this check. That is the intended behaviour, and splitting
- * CSS by route is the work that buys the room back.
+ * Initial CSS used to sit about 1KB under its ceiling, which meant the next
+ * stylesheet added anywhere in the global bundle failed the build. The room
+ * came back by route-splitting rather than by raising the number: the director
+ * signup, checkout, celebration and legal styles moved out of main.jsx into
+ * the four routes that render them, so a member opening their camp home page
+ * no longer downloads them. The ceiling came down from 59KB to 54KB in the
+ * same change — a tighter budget than before, with real working room under it.
+ *
+ * Entry JS is still well short of the audit's 100KB stretch target, and
+ * initial CSS of its 45KB one.
  *
  * Lower a number when the build gets smaller. Raising one is a decision, and
  * the comment above should say why.
@@ -40,7 +45,7 @@ const maxEntryJsGzipKb = Number(
     115
 );
 const maxInitialCssGzipKb = Number(
-  process.env.PONDBRIDGE_MAX_INITIAL_CSS_GZIP_KB || 59
+  process.env.PONDBRIDGE_MAX_INITIAL_CSS_GZIP_KB || 54
 );
 const maxRouteJsGzipKb = Number(
   process.env.PONDBRIDGE_MAX_ROUTE_JS_GZIP_KB || 35

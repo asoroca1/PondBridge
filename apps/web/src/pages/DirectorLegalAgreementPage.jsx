@@ -4,6 +4,7 @@ import { useTenant } from "../context/TenantContext.jsx";
 import { resolveNetworkDisplayName } from "../lib/campLabels.js";
 import DirectorLegalContent, { LEGAL_LAST_UPDATED } from "../components/DirectorLegalContent.jsx";
 import "./director-legal.css";
+import "../styles/productOnboarding.css";
 
 export default function DirectorLegalAgreementPage() {
   const location = useLocation();
