@@ -22,6 +22,7 @@ module.exports = {
     "**/tests/accessPolicy.test.js",
     "**/tests/alumniGrowth.test.js",
     "**/tests/emailScheduling.test.js",
+    "**/tests/memberCountConsistency.test.js",
     "**/tests/memberDirectoryCache.test.js",
     "**/tests/memberVisibility.test.js",
     "**/tests/memberSafety.test.js",
