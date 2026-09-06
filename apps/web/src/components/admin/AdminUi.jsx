@@ -428,3 +428,75 @@ export function useToast() {
   }
   return ctx;
 }
+
+/**
+ * A label with its explanation folded away behind an ⓘ.
+ *
+ * Settings pages had grown a paragraph under every control. The words were
+ * useful the first time a director met a feature and noise on every visit after,
+ * and twelve of them turned a list of switches into three screens of prose. The
+ * explanation still exists — it just waits to be asked for.
+ *
+ * Only put things here that a director reads once. Anything that changes what
+ * they are allowed to do, like a dependency on another feature, belongs on the
+ * row where they can see it without clicking.
+ */
+// Opening one hint closes any other. Two of these open at once overlap each
+// other and leave a director wondering which row they are reading about.
+const openHints = new Set();
+
+export function InfoHint({ label, children, className = "" }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const panelId = useId();
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = () => setOpen(false);
+    for (const other of [...openHints]) other();
+    openHints.add(close);
+    return () => {
+      openHints.delete(close);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onPointerDown(event) {
+      if (!wrapRef.current?.contains(event.target)) setOpen(false);
+    }
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        // Send focus back to the trigger, or the close lands nowhere.
+        wrapRef.current?.querySelector("button")?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <span className={classNames("pb-info-hint", className)} ref={wrapRef}>
+      <button
+        type="button"
+        className="pb-info-hint-trigger"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-label={label ? `About ${label}` : "More information"}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span aria-hidden="true">i</span>
+      </button>
+      {open ? (
+        <span className="pb-info-hint-panel" id={panelId} role="note">
+          {children}
+        </span>
+      ) : null}
+    </span>
+  );
+}

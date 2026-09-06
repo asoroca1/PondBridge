@@ -29,6 +29,7 @@ import { HIDE_CAMP_AI, HIDE_MOBILE_APP, isHiddenCapability } from "../../lib/dir
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
+  InfoHint,
   LoadingSkeleton,
   ModalConfirm,
   WorkspaceHeader
@@ -637,6 +638,8 @@ function TopProfileBreakdownCard({
   );
 }
 
+const MODULE_STATUS_SHOWN_BY_TOGGLE = new Set(["active", "disabled"]);
+
 const TODAY_SHORTCUTS = [
   { key: "invite", to: "admin/people/add", icon: UserPlus, label: "Add people" },
   { key: "email", to: "admin/email/compose", icon: Send, label: "Write an email" },
@@ -1166,28 +1169,37 @@ export function DirectorAdminFeaturesPage() {
           <div className="director-admin-module-copy">
             <div className="director-admin-module-title-row">
               <h3>{module.label}</h3>
-              <span className={`director-admin-module-state status-${module.status}`}>
-                {module.status === "active" ? "Live" : module.statusLabel}
-              </span>
-            </div>
-            <p>{module.description}</p>
-            <div className="director-admin-module-meta">
-              {module.externalHref ? (
-                <a
-                  className="director-admin-inline-link"
-                  href={module.externalHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open storefront <ArrowUpRight size={14} aria-hidden="true" />
-                </a>
-              ) : !module.platformDisabled ? (
-                <Link className="director-admin-inline-link" to={module.href || modulePreviewPath(slug, module.key)}>
-                  Preview in network <ArrowUpRight size={14} aria-hidden="true" />
-                </Link>
+              {/* What a feature *is* is read once; the ⓘ keeps it available
+                  without spending a paragraph of the page on it every visit. */}
+              <InfoHint label={module.label}>
+                <span className="director-admin-module-about">{module.description}</span>
+                {module.externalHref ? (
+                  <a
+                    className="director-admin-inline-link"
+                    href={module.externalHref}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open storefront <ArrowUpRight size={14} aria-hidden="true" />
+                  </a>
+                ) : !module.platformDisabled ? (
+                  <Link className="director-admin-inline-link" to={module.href || modulePreviewPath(slug, module.key)}>
+                    Preview in network <ArrowUpRight size={14} aria-hidden="true" />
+                  </Link>
+                ) : null}
+              </InfoHint>
+              {/* Only the statuses a switch cannot express are badged. From
+                  services/tenantFeatureInventory.js the vocabulary is active/On,
+                  disabled/Off, locked/Premium, unavailable/Unavailable and
+                  setup_required/Setup required — the first two are what the
+                  toggle already shows, so badging them says it twice. */}
+              {!MODULE_STATUS_SHOWN_BY_TOGGLE.has(module.status) ? (
+                <span className={`director-admin-module-state status-${module.status}`}>
+                  {module.statusLabel}
+                </span>
               ) : null}
               {Array.isArray(module.dependsOn) && module.dependsOn.length ? (
-                <span>
+                <span className="director-admin-module-depends">
                   Requires {module.dependsOn.map((key) => payload.modules.find((item) => item.key === key)?.label || key).join(", ")}
                 </span>
               ) : null}
@@ -1234,7 +1246,6 @@ export function DirectorAdminFeaturesPage() {
                 }}
                 disabled={saving}
               />
-              <span>{module.enabled ? "Live" : "Hidden"}</span>
             </label>
           )}
         </div>
@@ -1438,11 +1449,6 @@ export function DirectorAdminFeaturesPage() {
             <div>
               <p className="director-admin-section-kicker">Member navigation</p>
               <h2 id="member-navigation-heading">Sidebar navigation</h2>
-              <p>
-                Show every feature in a permanent bar down the left of the page instead of hiding
-                them behind the menu button. Members on phones and narrow windows keep the menu
-                button either way, and can collapse the bar to icons.
-              </p>
             </div>
             <Badge tone="neutral">Wide screens only</Badge>
           </div>
@@ -1452,14 +1458,20 @@ export function DirectorAdminFeaturesPage() {
                 <div className="director-admin-module-copy">
                   <div className="director-admin-module-title-row">
                     <h3>Left sidebar</h3>
-                    <span className={`director-admin-module-state status-${moduleSettings.sideNavEnabled ? "active" : "off"}`}>
-                      {moduleSettings.sideNavEnabled ? "Live" : "Off"}
-                    </span>
+                    {/* This was two paragraphs and a badge for one switch. Both
+                        paragraphs are here; the switch says which way it is set. */}
+                    <InfoHint label="Left sidebar">
+                      <span className="director-admin-module-about">
+                        Show every feature in a permanent bar down the left of the page instead of
+                        hiding them behind the menu button. Members on phones and narrow windows keep
+                        the menu button either way, and can collapse the bar to icons.
+                      </span>
+                      <span className="director-admin-module-about">
+                        It lists the same pages as the menu button and follows the features you
+                        turned on above, so nothing needs to be configured twice.
+                      </span>
+                    </InfoHint>
                   </div>
-                  <p>
-                    The sidebar lists the same pages as the menu button and follows the features you
-                    turned on above, so nothing needs to be configured twice.
-                  </p>
                 </div>
                 <label className="director-admin-switch">
                   <input
@@ -1479,7 +1491,6 @@ export function DirectorAdminFeaturesPage() {
                     }}
                     disabled={saving}
                   />
-                  <span>{moduleSettings.sideNavEnabled ? "On" : "Off"}</span>
                 </label>
               </div>
             </article>

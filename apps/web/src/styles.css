@@ -8606,10 +8606,16 @@ html.is-native-app textarea{
 
 .pb-cedar-page .director-admin-section-heading{
   display: flex;
-  align-items: flex-end;
+  /* Aligned to the heading, not to the last line of the paragraph beside it —
+     flex-end left the badge floating level with the description text. */
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 12px;
+}
+
+.pb-cedar-page .director-admin-section-heading > :last-child{
+  flex-shrink: 0;
 }
 
 .pb-cedar-page .director-admin-section-kicker{
@@ -8655,7 +8661,9 @@ html.is-native-app textarea{
 }
 
 .pb-cedar-page .director-admin-module-row{
-  padding: 16px 18px;
+  /* One line per feature: name, an ⓘ, whatever the toggle cannot say, and the
+     toggle. The description used to sit here and made each row a paragraph. */
+  padding: 10px 18px;
   border-bottom: 1px solid var(--neutral-200);
   background: #fff;
   transition: background-color .16s ease;
@@ -17643,4 +17651,80 @@ html.is-native-app .asset-update-notice{
   margin-top: 16px;
   font-size: 14px;
   color: var(--pb-muted, #5b6470);
+}
+
+
+/* ========= INFO HINT ========= */
+/* Explanation that waits to be asked for. Used on settings rows where a
+   permanent paragraph under every control turned a list into an essay. */
+.pb-info-hint{
+  position: relative;
+  display: inline-flex;
+}
+
+.pb-info-hint-trigger{
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--neutral-400);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--neutral-500);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  font-family: Georgia, "Times New Roman", serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color .14s ease, color .14s ease, background-color .14s ease;
+}
+
+.pb-info-hint-trigger:hover,
+.pb-info-hint-trigger[aria-expanded="true"]{
+  border-color: var(--brand-primary);
+  background: var(--brand-primary);
+  color: var(--brand-on-primary, #fff);
+}
+
+.pb-info-hint-panel{
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  left: -8px;
+  width: max-content;
+  max-width: 320px;
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(23, 23, 23, .14);
+  color: var(--neutral-600);
+  font-size: .86rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+}
+
+/* Near the right edge the panel would otherwise run off the card. */
+.pb-cedar-page .director-admin-module-title-row .pb-info-hint-panel{
+  left: auto;
+  right: auto;
+}
+
+.director-admin-module-about{
+  display: block;
+}
+
+/* A dependency is not an aside: it says what the director may not turn on yet. */
+.pb-cedar-page .director-admin-module-depends{
+  color: var(--neutral-500);
+  font-size: .78rem;
 }
