@@ -2717,20 +2717,31 @@ router.get("/dashboard", async (req, res, next) => {
           createdAt: { $gte: sevenDaysAgo }
         }),
         AccessRequestModel.count(tenantId, { status: "pending" }),
-        ProfileModel.find(tenantId, { status: { $ne: "removed" } }, {
-          select: [
-            "userId",
-            "firstName",
-            "lastName",
-            "emails",
-            "phones",
-            "cityState",
-            "roleAtCamp",
-            "highSchool",
-            "colleges",
-            "currentJobs"
-          ]
-        }),
+        // Every profile, not the first page of them. This drives three figures on
+        // Today — where members live, what they did at camp, and the average
+        // profile completion — and a plain find() stops at PostgREST's 1,000-row
+        // ceiling. Camp Cedar has 3,003 profiles, so each of those three was
+        // computed from a third of the camp and understated by about 3x.
+        collectAll(
+          ProfileModel.findAllBatched(
+            tenantId,
+            { status: { $ne: "removed" } },
+            {
+              select: [
+                "userId",
+                "firstName",
+                "lastName",
+                "emails",
+                "phones",
+                "cityState",
+                "roleAtCamp",
+                "highSchool",
+                "colleges",
+                "currentJobs"
+              ]
+            }
+          )
+        ),
         EmailBroadcastModel.find(tenantId, {}, {
           sort: { sentAt: -1, createdAt: -1 },
           limit: 1

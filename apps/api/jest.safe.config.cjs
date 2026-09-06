@@ -25,6 +25,7 @@ module.exports = {
     "**/tests/emailScheduling.test.js",
     "**/tests/memberCountConsistency.test.js",
     "**/tests/cityCountsGrouping.test.js",
+    "**/tests/findAllBatchedSelect.test.js",
     "**/tests/memberDirectoryCache.test.js",
     "**/tests/memberVisibility.test.js",
     "**/tests/memberSafety.test.js",

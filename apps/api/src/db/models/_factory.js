@@ -383,10 +383,18 @@ export function createModel(tableName, colMap) {
       const batchSize = Math.min(1000, Math.max(1, Number(actualOpts.batchSize) || 500));
       // A runaway scan should fail loudly rather than read a table forever.
       const maxRows = Number(actualOpts.maxRows) || 1_000_000;
+      // The walk cursors on `id`, so `id` has to come back whether or not the
+      // caller asked for it. A select without it left `cursor` undefined and the
+      // loop stopped after one page — silently, and with a plausible-looking
+      // partial answer. That is the same failure this method exists to prevent,
+      // so it cannot be the caller's job to remember.
       const selectCols = actualOpts.select
-        ? actualOpts.select
-            .map((c) => (c === "_id" ? "id" : colMap[c] || c))
-            .join(",")
+        ? [
+            "id",
+            ...actualOpts.select
+              .map((c) => (c === "_id" ? "id" : colMap[c] || c))
+              .filter((c) => c !== "id")
+          ].join(",")
         : "*";
 
       let cursor = null;
@@ -416,7 +424,14 @@ export function createModel(tableName, colMap) {
         // A short page means the table had nothing more to give.
         if (data.length < batchSize) return;
         cursor = data[data.length - 1]?.id;
-        if (!cursor) return;
+        if (!cursor) {
+          // A full page whose last row has no id means the walk cannot advance.
+          // Stopping here would hand back a partial answer that looks whole.
+          throw new Error(
+            `findAllBatched on "${tableName}" cannot page: the last row of a full ` +
+              "batch had no id to continue from."
+          );
+        }
       }
     },
 
