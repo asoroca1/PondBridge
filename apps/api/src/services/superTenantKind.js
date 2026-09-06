@@ -28,7 +28,9 @@ export function isDemoTenant(tenant = {}) {
   const name = String(tenant?.name || "").trim().toLowerCase();
   const domain = normalizeDomain(tenant?.customDomain || "");
   const status = String(tenant?.status || "").trim().toLowerCase();
+  const demoAccessEnabled = tenant?.settings?.demoAccess?.enabled === true;
 
+  if (demoAccessEnabled) return true;
   if (status === "sandbox") return true;
   if (domain.endsWith(".pondbridge.test")) return true;
   return (

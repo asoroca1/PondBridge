@@ -700,7 +700,7 @@ router.get("/search", superSearchLimiter, async (req, res) => {
 router.get("/dashboard", requireRole("support_admin"), async (_req, res) => {
   const tenants = await TenantModel.find(
     {},
-    { select: ["id", "slug", "name", "status", "customDomain"] }
+    { select: ["id", "slug", "name", "status", "customDomain", "settings"] }
   );
   const kindSummary = summarizeTenantKinds(tenants);
   // Demo camps hold more than four times the profiles the real clients do, so

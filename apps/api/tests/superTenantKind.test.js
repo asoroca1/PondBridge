@@ -6,22 +6,29 @@ import {
   tenantKind
 } from "../src/services/superTenantKind.js";
 
-// The real production book on 2026-09-03: three clients, six sales demos.
+// The real production book after the 2026-09-06 dashboard cleanup: two clients
+// and seven sales demos. Matoaka keeps its normal public slug, so its explicit
+// demo-access setting is the authoritative signal.
 const TENANTS = [
   { slug: "cedar", name: "Camp Cedar", status: "active" },
-  { slug: "matoaka", name: "Camp Matoaka", status: "active" },
-  { slug: "cedar-archived-20260313-205245", name: "Camp Cedar (Archived 20260313-205245)", status: "inactive" },
+  { slug: "greenlane", name: "Camp Green Lane", status: "active" },
+  {
+    slug: "matoaka",
+    name: "Camp Matoaka",
+    status: "active",
+    settings: { demoAccess: { enabled: true } }
+  },
   { slug: "waldemar-demo", name: "Camp Waldemar", status: "active" },
-  { slug: "green-lane-demo", name: "Camp Green Lane", status: "active" },
   { slug: "towanda-demo", name: "Camp Towanda", status: "active" },
   { slug: "caribou-demo", name: "Camp Caribou", status: "active" },
   { slug: "vega-demo", name: "Camp Vega", status: "active" },
-  { slug: "tapawingo-demo", name: "Camp Tapawingo", status: "active" }
+  { slug: "tapawingo-demo", name: "Camp Tapawingo", status: "active" },
+  { slug: "winadu-demo", name: "Camp Winadu", status: "active" }
 ];
 
 describe("client and demo camps", () => {
-  test("splits the real book into three clients and six demos", () => {
-    expect(summarizeTenantKinds(TENANTS)).toEqual({ clients: 3, demos: 6, total: 9 });
+  test("splits the real book into two clients and seven demos", () => {
+    expect(summarizeTenantKinds(TENANTS)).toEqual({ clients: 2, demos: 7, total: 9 });
   });
 
   test("a paying camp is never mistaken for a demo", () => {
@@ -29,7 +36,8 @@ describe("client and demo camps", () => {
     expect(tenantKind({ slug: "cedar", name: "Camp Cedar" })).toBe("client");
   });
 
-  test("recognises demos by slug, sandbox status and test domain", () => {
+  test("recognises demos by explicit access, slug, sandbox status and test domain", () => {
+    expect(isDemoTenant({ slug: "matoaka", settings: { demoAccess: { enabled: true } } })).toBe(true);
     expect(isDemoTenant({ slug: "waldemar-demo" })).toBe(true);
     expect(isDemoTenant({ slug: "test29" })).toBe(true);
     expect(isDemoTenant({ slug: "pine", status: "sandbox" })).toBe(true);
@@ -55,10 +63,9 @@ describe("client and demo camps", () => {
   test("filtering keeps only the kind asked for", () => {
     expect(applyTenantKindFilter(TENANTS, "client").map((t) => t.slug)).toEqual([
       "cedar",
-      "matoaka",
-      "cedar-archived-20260313-205245"
+      "greenlane"
     ]);
-    expect(applyTenantKindFilter(TENANTS, "demo")).toHaveLength(6);
+    expect(applyTenantKindFilter(TENANTS, "demo")).toHaveLength(7);
     expect(applyTenantKindFilter(TENANTS, "all")).toHaveLength(9);
   });
 });
