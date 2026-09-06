@@ -33,6 +33,13 @@
   --neutral-800: #303030;
   --neutral-900: #1c1c1c;
 
+  /* This product is light-only: there is no dark palette anywhere, by choice.
+     Saying so lets the browser render the parts it owns to match -- form
+     controls and the menus they open, scrollbars, and the canvas behind the
+     page. Without it a member on a dark phone gets a white select that opens a
+     dark list, and dark rubber-band overscroll under a light page. */
+  color-scheme: light;
+
   /* ===== Semantic surface colors ===== */
   --bg: #fafafa;
   --bg-warm: #f6f5f2;

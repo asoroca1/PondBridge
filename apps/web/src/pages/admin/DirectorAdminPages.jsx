@@ -745,8 +745,12 @@ export function DirectorAdminDashboardPage() {
   const statCards = [
     {
       key: "total-members",
-      label: "Members",
-      value: totalMembers,
+      // "Active members", not "Members": Plan & billing shows a different and
+      // larger number under the bare word, because it counts everyone the plan
+      // is billed for. Two tabs disagreeing about "Members" reads as a bug even
+      // when both numbers are right, so each says which members it means.
+      label: "Active members",
+      value: totalMembers.toLocaleString(),
       hint: deltaHint(stats.totalMembersDelta),
       tone: "success",
       icon: "members"
@@ -754,7 +758,7 @@ export function DirectorAdminDashboardPage() {
     {
       key: "sign-ins",
       label: "Sign-ins",
-      value: signInsThisWeek,
+      value: signInsThisWeek.toLocaleString(),
       hint: "In the last 7 days",
       tone: signInsThisWeek > 0 ? "success" : "neutral",
       icon: "active"
@@ -762,7 +766,7 @@ export function DirectorAdminDashboardPage() {
     {
       key: "recent-signups",
       label: "Joined",
-      value: recentSignups,
+      value: recentSignups.toLocaleString(),
       hint: "In the last 7 days",
       tone: recentSignups > 0 ? "success" : "neutral",
       icon: "signups"

@@ -143,7 +143,10 @@ export default function HeroImageEditor({
     const provided = Array.isArray(enabledFeatureLabels)
       ? enabledFeatureLabels.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
-    const fallback = ["Advanced Search", `${alumniWordTitle} Map`, "Chats & Forums", "Cedar Chest"];
+    // Three of these adapt to the camp; the fourth used to be "Cedar Chest",
+    // one camp's name for its newsletter, shown to every other camp. The
+    // generic word is the honest placeholder when no labels were passed in.
+    const fallback = ["Advanced Search", `${alumniWordTitle} Map`, "Chats & Forums", "Newsletter"];
     return (provided.length ? provided : fallback).slice(0, 4);
   }, [alumniWordTitle, enabledFeatureLabels]);
 

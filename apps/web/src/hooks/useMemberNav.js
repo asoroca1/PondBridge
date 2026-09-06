@@ -83,9 +83,11 @@ export function useMemberNavSections() {
   const newsletterLabel = resolveNewsletterLabel(tenant);
   const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const content = resolveTenantContent(tenant);
-  const merchShopUrl =
-    String(content.merchShopUrl || "").trim() ||
-    (slug === "camp-cedar" || slug === "cedar" ? "https://thecampspot.com/camphome.aspx" : "");
+  // Whatever the camp configured, and nothing else. This used to fall back to one
+  // specific camp's storefront for any tenant whose slug happened to be "cedar" or
+  // "camp-cedar", which put that camp's vendor in another camp's member menu.
+  // A camp with no store configured simply has no store link.
+  const merchShopUrl = String(content.merchShopUrl || "").trim();
   const nativeApp = isNativeApp();
 
   const canSearch = Boolean(isAuthenticated && modules.search !== false);
@@ -137,7 +139,7 @@ export function useMemberNavSections() {
       communityItems.push({
         id: "chat",
         icon: MessageSquare,
-        label: "Chats and Forums",
+        label: "Chats & Forums",
         to: pathWithCamp(slug, "/chat-rooms?tab=personal")
       });
     }
