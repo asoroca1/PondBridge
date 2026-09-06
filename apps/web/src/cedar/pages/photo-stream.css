@@ -221,6 +221,12 @@
     display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;
   }
   .ps-name{ font-size:14px; color:var(--neutral-900); font-weight:600; }
+
+  /* A member's name links to their profile here exactly as it does in search
+     results, where .as2-name and .sr-name underline on hover. This one had no
+     hover rule outside the narrow-screen block, so the same element behaved
+     differently depending on which page you met it on. */
+  .ps-name:hover{ text-decoration: underline; }
   .ps-date{ font-size:12px; color:var(--ps-gray-500); }
 
   .ps-actions{
@@ -962,7 +968,6 @@
   }
   
   .ps-name:hover {
-    text-decoration: none;
     color: var(--ps-blue-600);
     opacity: .88;
   }

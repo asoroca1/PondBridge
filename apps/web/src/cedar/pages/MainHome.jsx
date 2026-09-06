@@ -185,7 +185,7 @@ function quickActionLabel(action, { alumniWordTitle, newsletterLabel, mediaStrea
 }
 
 /* ============= Related Profiles ============= */
-function RelatedProfilesCard({ targetUserId }) {
+function RelatedProfilesCard({ targetUserId, onSettled }) {
   const { slug } = useTenant();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -199,6 +199,7 @@ function RelatedProfilesCard({ targetUserId }) {
           if (!abort) {
             setItems([]);
             setLoading(false);
+            onSettled?.();
           }
           return;
         }
@@ -214,13 +215,16 @@ function RelatedProfilesCard({ targetUserId }) {
       } catch (e) {
         console.error(e);
       } finally {
-        if (!abort) setLoading(false);
+        if (!abort) {
+          setLoading(false);
+          onSettled?.();
+        }
       }
     })();
     return () => {
       abort = true;
     };
-  }, [targetUserId]);
+  }, [onSettled, targetUserId]);
 
   return (
     <aside className="p1-card">
@@ -282,7 +286,7 @@ function RelatedProfilesCard({ targetUserId }) {
 }
 
 /* ============= Media Stream (latest two) ============= */
-function PhotosPreviewCard() {
+function PhotosPreviewCard({ onSettled }) {
   const { slug, tenant } = useTenant();
   const mediaStreamLabel = resolveMediaStreamLabel(tenant);
   const [items, setItems] = useState([]);
@@ -296,9 +300,13 @@ function PhotosPreviewCard() {
         if (!r.ok) return;
         const data = await r.json();
         setItems(data.items || []);
-      } catch {}
+      } catch {
+        // A card that failed has still finished; the prompt must not wait forever.
+      } finally {
+        onSettled?.();
+      }
     })();
-  }, []);
+  }, [onSettled]);
 
   return (
     <div className="p1-card">
@@ -626,6 +634,24 @@ export default function MainHome() {
   const feedScrollRef = useRef(null);
   const [mobileFeedMaxHeight, setMobileFeedMaxHeight] = useState(null);
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  // The two side cards fetch for themselves and finish after the bootstrap does,
+  // so `stats` alone still let the dialog open over their skeletons — measured at
+  // roughly 800ms of it. Each card reports in when it has settled and the prompt
+  // waits for both.
+  //
+  // Tracked by name rather than counted: RelatedProfilesCard settles once on the
+  // no-user-yet path and again once the profile arrives, so a counter reaches two
+  // from that card alone and the gate opens with the other still loading.
+  const [settledCards, setSettledCards] = useState(() => new Set());
+  const noteCardSettled = useCallback((cardName) => {
+    setSettledCards((settled) =>
+      settled.has(cardName) ? settled : new Set(settled).add(cardName)
+    );
+  }, []);
+  const notePhotosSettled = useCallback(() => noteCardSettled("photos"), [noteCardSettled]);
+  const noteRelatedSettled = useCallback(() => noteCardSettled("related"), [noteCardSettled]);
+  const allPreviewCardsSettled =
+    settledCards.has("photos") && settledCards.has("related");
   const [profileCompletion, setProfileCompletion] = useState(100);
 
   useEffect(() => {
@@ -746,13 +772,14 @@ export default function MainHome() {
     // thing a member sees after signing in is a dialog on top of nothing. `stats` is set
     // from the bootstrap response, so it is the signal that the page has content.
     if (!stats) return;
+    if (!allPreviewCardsSettled) return;
     try {
       if (localStorage.getItem(profilePromptSeenKey) === "1") return;
     } catch {
       // ignore private mode/storage quota issues
     }
     setShowProfilePrompt(true);
-  }, [authUser, currentUserId, me, profilePromptSeenKey, stats]);
+  }, [allPreviewCardsSettled, authUser, currentUserId, me, profilePromptSeenKey, stats]);
 
   const locCount = resolveLocations(stats, locationsSummary);
   // Directors choose these four buttons in Settings → Features; the shared
@@ -967,8 +994,8 @@ export default function MainHome() {
         </section>
 
         <aside className="side-col" ref={sideColRef}>
-          <PhotosPreviewCard />
-          <RelatedProfilesCard targetUserId={me?._id || me?.id} />
+          <PhotosPreviewCard onSettled={notePhotosSettled} />
+          <RelatedProfilesCard targetUserId={me?._id || me?.id} onSettled={noteRelatedSettled} />
         </aside>
       </main>
 

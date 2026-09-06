@@ -125,6 +125,40 @@ describe("member home page", () => {
     );
   });
 
+  it("waits for the cards behind it, not just the bootstrap payload", async () => {
+    // The bootstrap lands immediately but the photos card never answers. `stats`
+    // alone used to be enough to open the prompt, which put a dialog over a
+    // column of skeletons for as long as the slowest card took.
+    const photos = deferred();
+    global.fetch = vi.fn(async (url) => {
+      const href = String(url);
+      if (href.includes("/home/bootstrap")) {
+        return { ok: true, json: async () => BOOTSTRAP_WITH_STATS };
+      }
+      if (href.includes("/photos")) {
+        return { ok: true, json: async () => photos.promise };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    const { default: MainHome } = await import("./MainHome.jsx");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <MainHome />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(getMe).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByText(/Community Pulse/i)).toBeInTheDocument()
+    );
+    expect(screen.queryByText("Complete Your Profile")).not.toBeInTheDocument();
+
+    photos.resolve({ items: [] });
+    await waitFor(() =>
+      expect(screen.getByText("Complete Your Profile")).toBeInTheDocument()
+    );
+  });
+
   it("keeps the completion prompt closed until the page behind it has content", async () => {
     // Hold the bootstrap response open, so the only thing the page is missing
     // is its content. The profile has already arrived by the time we assert:
