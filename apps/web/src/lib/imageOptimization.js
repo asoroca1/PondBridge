@@ -352,3 +352,187 @@ export async function transcodeUnrenderableImage(file, { quality = 0.9 } = {}) {
     decoded?.release?.();
   }
 }
+
+// Logo backdrop detection. See lib/logoTreatment.js for what the result is used
+// for; this half only reads pixels.
+
+// The sample is downscaled first, so the frame has to be wide enough to survive
+// that: a single-pixel border would be mostly resampling artifacts.
+const BACKDROP_SAMPLE_EDGE = 192;
+const BACKDROP_BORDER_FRACTION = 0.04;
+// JPEG ringing around a hard edge moves the corners by a few levels even when the
+// backdrop was pure white in the source, so "uniform" has to allow for that.
+const BACKDROP_UNIFORM_TOLERANCE = 14;
+const BACKDROP_LIGHT_MINIMUM = 232;
+const BACKDROP_ALPHA_OPAQUE = 250;
+// Below this the difference is compression noise rather than artwork.
+const BACKDROP_CONTENT_DELTA = 26;
+
+/**
+ * Reads RGBA pixels and reports what sits behind the mark: whether the backdrop
+ * is opaque, whether its outer frame is a uniform light color, and how big the
+ * non-backdrop content is.
+ *
+ * Transparency is judged on the border ring alone, not the whole image. What
+ * makes a rectangle appear on the bar is an opaque *frame*; a mark that is cut
+ * out has a see-through one. Sampling everything instead would let a single
+ * antialiased pixel anywhere inside the artwork call a solid white box
+ * transparent -- and would misread a logo like Camp Waldemar's, which is a white
+ * disc on transparency and already sits correctly on its bar.
+ *
+ * Separated from the canvas so the thresholds can be exercised directly.
+ */
+export function readLogoBackdropFromPixels(data, width, height) {
+  const safeWidth = Math.max(0, Math.floor(Number(width) || 0));
+  const safeHeight = Math.max(0, Math.floor(Number(height) || 0));
+  const empty = {
+    backdropIsOpaque: false,
+    borderIsUniformLight: false,
+    contentWidth: 0,
+    contentHeight: 0
+  };
+  if (!data || !safeWidth || !safeHeight) return empty;
+  if (data.length < safeWidth * safeHeight * 4) return empty;
+
+  const band = Math.max(1, Math.round(Math.min(safeWidth, safeHeight) * BACKDROP_BORDER_FRACTION));
+  const isBorder = (x, y) =>
+    x < band || y < band || x >= safeWidth - band || y >= safeHeight - band;
+
+  let borderIsOpaque = true;
+  let borderCount = 0;
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  let minR = 255;
+  let minG = 255;
+  let minB = 255;
+  let maxR = 0;
+  let maxG = 0;
+  let maxB = 0;
+
+  for (let y = 0; y < safeHeight; y += 1) {
+    for (let x = 0; x < safeWidth; x += 1) {
+      if (!isBorder(x, y)) continue;
+      const index = (y * safeWidth + x) * 4;
+      if (data[index + 3] < BACKDROP_ALPHA_OPAQUE) borderIsOpaque = false;
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      borderCount += 1;
+      sumR += r;
+      sumG += g;
+      sumB += b;
+      if (r < minR) minR = r;
+      if (g < minG) minG = g;
+      if (b < minB) minB = b;
+      if (r > maxR) maxR = r;
+      if (g > maxG) maxG = g;
+      if (b > maxB) maxB = b;
+    }
+  }
+
+  // A see-through frame answers the question on its own; its color is moot.
+  if (!borderIsOpaque || !borderCount) {
+    return {
+      backdropIsOpaque: false,
+      borderIsUniformLight: false,
+      contentWidth: 0,
+      contentHeight: 0
+    };
+  }
+
+  const meanR = sumR / borderCount;
+  const meanG = sumG / borderCount;
+  const meanB = sumB / borderCount;
+  const spread = Math.max(maxR - minR, maxG - minG, maxB - minB);
+  const borderIsUniformLight =
+    spread <= BACKDROP_UNIFORM_TOLERANCE &&
+    meanR >= BACKDROP_LIGHT_MINIMUM &&
+    meanG >= BACKDROP_LIGHT_MINIMUM &&
+    meanB >= BACKDROP_LIGHT_MINIMUM;
+
+  if (!borderIsUniformLight) {
+    return {
+      backdropIsOpaque: true,
+      borderIsUniformLight: false,
+      contentWidth: 0,
+      contentHeight: 0
+    };
+  }
+
+  let minX = safeWidth;
+  let minY = safeHeight;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < safeHeight; y += 1) {
+    for (let x = 0; x < safeWidth; x += 1) {
+      const index = (y * safeWidth + x) * 4;
+      const delta = Math.max(
+        Math.abs(data[index] - meanR),
+        Math.abs(data[index + 1] - meanG),
+        Math.abs(data[index + 2] - meanB)
+      );
+      if (delta < BACKDROP_CONTENT_DELTA) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (maxX < 0) {
+    return {
+      backdropIsOpaque: true,
+      borderIsUniformLight: true,
+      contentWidth: 0,
+      contentHeight: 0
+    };
+  }
+
+  return {
+    backdropIsOpaque: true,
+    borderIsUniformLight: true,
+    contentWidth: maxX - minX + 1,
+    contentHeight: maxY - minY + 1
+  };
+}
+
+/**
+ * Measures a logo file's backdrop. Returns null rather than throwing when the
+ * browser will not hand back pixel data -- a logo that cannot be measured keeps
+ * the plain treatment, which is what it would have had anyway.
+ */
+export async function measureLogoBackdrop(file) {
+  if (!file || !String(file.type || "").startsWith("image/")) return null;
+  // A vector has no pixels to sample and animation is not a branding logo.
+  if (shouldPreserveOriginalImageType(file.type)) return null;
+
+  let decoded = null;
+  let canvas = null;
+  try {
+    decoded = await decodeImage(file);
+    const { width, height } = calculateContainDimensions(
+      decoded.width,
+      decoded.height,
+      BACKDROP_SAMPLE_EDGE,
+      BACKDROP_SAMPLE_EDGE
+    );
+    canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
+    if (!context) return null;
+    context.clearRect(0, 0, width, height);
+    context.drawImage(decoded.source, 0, 0, width, height);
+    const { data } = context.getImageData(0, 0, width, height);
+    return readLogoBackdropFromPixels(data, width, height);
+  } catch {
+    return null;
+  } finally {
+    decoded?.release?.();
+    if (canvas) {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+  }
+}

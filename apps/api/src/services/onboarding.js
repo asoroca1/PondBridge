@@ -5,6 +5,7 @@ import {
   normalizeHeroImagePosition,
   normalizeHeroImageSize,
   normalizeHomeQuickActions,
+  normalizeLogoTreatment,
   onboardingPatchSchema,
   replaceAlumniForCampType,
   resolveTenantModules,
@@ -395,6 +396,11 @@ export function resolveTheme(tenant) {
     textMuted: String(live.textMuted || ""),
     cardBorder: String(live.cardBorder || ""),
     logoUrl: String(live.logoUrl || ""),
+    // How the logo sits on the brand-colored navbar. logoBackdrop is what
+    // detection measured from the uploaded file; logoTreatment is a director's
+    // override of it. Empty in both means the plain <img> a camp gets today.
+    logoBackdrop: normalizeLogoTreatment(live.logoBackdrop),
+    logoTreatment: normalizeLogoTreatment(live.logoTreatment),
     // Optional. Empty means the tab icon is derived from the logo instead.
     faviconUrl: String(live.faviconUrl || ""),
     iconUrls: normalizeIconUrls(live.iconUrls),
@@ -574,6 +580,8 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
   return {
     branding: {
       logoUrl: theme.logoUrl,
+      logoBackdrop: theme.logoBackdrop,
+      logoTreatment: theme.logoTreatment,
       faviconUrl: theme.faviconUrl,
       iconUrls: theme.iconUrls,
       brandPrimary: theme.brandPrimary,

@@ -2913,6 +2913,29 @@ html.is-native-app textarea{
 
 /* Logo + Title */
 .navbar2-logo{ height:58px; width:auto; margin-right:14px; object-fit:contain; }
+/* Most camps upload a logo baked onto an opaque white square, which reads as a
+   torn-out rectangle on the brand-colored bar. The white cannot simply be
+   dropped -- a green mark on a green bar has nothing left to separate it -- so
+   it becomes a deliberate chip instead. Sizing is deliberately expressed as
+   aspect-ratio and padding rather than fixed px so every breakpoint below, which
+   only ever sets height, keeps working untouched. */
+.navbar2-logo.is-logo-chip{
+  background:#fff;
+  box-shadow:0 0 0 1px rgba(0,0,0,.08);
+  box-sizing:border-box;
+}
+.navbar2-logo.is-logo-chip-circle{
+  aspect-ratio:1;
+  width:auto;
+  border-radius:50%;
+  /* px, not %: percentage padding on a replaced element resolves against the
+     containing block's width, which here is the whole left-hand nav cluster. */
+  padding:4px;
+}
+.navbar2-logo.is-logo-chip-rounded{
+  border-radius:10px;
+  padding:6px 9px;
+}
 .navbar2-logo-fallback{
   width:58px;
   height:58px;
@@ -9365,6 +9388,30 @@ html.is-native-app textarea{
   object-fit: cover;
   border: 1px solid var(--neutral-200);
   background: #fff;
+}
+
+/* A strip of the real navbar so the badge choice is judged where it lands:
+   against this camp's own color, at the size the bar actually draws. The logo
+   itself reuses .navbar2-logo rather than a copy of its rules. */
+.pb-cedar-page .director-admin-logo-backdrop-preview,
+.pb-admin-ui-scope .director-admin-logo-backdrop-preview{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.pb-cedar-page .director-admin-logo-backdrop-preview span,
+.pb-admin-ui-scope .director-admin-logo-backdrop-preview span{
+  font-family: "Roboto Slab Variable", "Roboto Slab", Georgia, serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pb-cedar-page .director-admin-branding-current-hero,

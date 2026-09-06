@@ -17,6 +17,7 @@ import {
   resolveMediaStreamLabel,
   resolveTenantLogoUrl
 } from "../lib/campLabels.js";
+import { logoTreatmentClassName, resolveLogoTreatment } from "../lib/logoTreatment.js";
 import { isNativeApp } from "../lib/nativeApp.js";
 import { tenantRoute } from "../lib/tenantRouting.js";
 import cedarLogo from "../assets/cedar-logo.png";
@@ -202,6 +203,10 @@ export default function NavBar({ hideBurger = false }) {
   const cedarFallback = slug === "camp-cedar" || slug === "cedar" ? cedarLogo : "";
   const resolvedLogoUrl = configuredLogoUrl || cedarFallback;
   const logoUrl = logoError ? cedarFallback : resolvedLogoUrl;
+  // The chip describes the camp's own upload, so it comes off with it when the
+  // bundled Cedar mark stands in.
+  const logoChipClass =
+    logoUrl && logoUrl === configuredLogoUrl ? logoTreatmentClassName(resolveLogoTreatment(tenant)) : "";
   const fallbackLogoInitial = initialsFrom(title || tenant?.name || "Camp");
   const avatarSrc = getPhotoUrl(user);
   const explicitProfileInitials = initialsOf(
@@ -459,7 +464,7 @@ export default function NavBar({ hideBurger = false }) {
             <img
               src={logoUrl}
               alt={`${tenant?.name || "Camp"} logo`}
-              className="navbar2-logo"
+              className={`navbar2-logo ${logoChipClass}`.trim()}
               fetchPriority="high"
               decoding="async"
               onError={() => setLogoError(true)}

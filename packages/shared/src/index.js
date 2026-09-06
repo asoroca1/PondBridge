@@ -368,6 +368,16 @@ export function normalizeHeroImageSize(value = "", fallback = "cover") {
   return fallback;
 }
 
+// Kept in step with apps/web/src/lib/logoTreatment.js, which decides what each
+// value draws. Anything unrecognized becomes empty: the plain <img> every camp
+// renders today.
+const LOGO_TREATMENT_SET = new Set(["auto", "plain", "circle", "rounded"]);
+
+export function normalizeLogoTreatment(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return LOGO_TREATMENT_SET.has(normalized) ? normalized : "";
+}
+
 export function normalizeCampType(value = "", fallback = "coed") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return CAMP_TYPE_SET.has(fallback) ? fallback : "coed";
@@ -451,6 +461,20 @@ export const tenantThemeSchema = z.object({
   textMuted: z.string().trim().default(""),
   cardBorder: z.string().trim().default(""),
   logoUrl: z.string().trim().default(""),
+  // How the logo sits on the brand-colored navbar. logoBackdrop is measured from
+  // the uploaded file at upload time; logoTreatment is a director's override of
+  // it. Empty in either means "no opinion", and an unrecognized value is dropped
+  // to empty rather than rejecting the whole theme save.
+  logoBackdrop: z
+    .string()
+    .trim()
+    .default("")
+    .transform((value) => normalizeLogoTreatment(value)),
+  logoTreatment: z
+    .string()
+    .trim()
+    .default("")
+    .transform((value) => normalizeLogoTreatment(value)),
   heroImageUrl: z.string().trim().default(""),
   // Optional second photo for the logged-in member home. Empty means the
   // member home reuses heroImageUrl, which is the normal case.
