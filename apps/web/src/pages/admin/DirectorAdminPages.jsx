@@ -26,6 +26,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveAlumniWord, resolveCampAiName } from "../../lib/campLabels.js";
 import { HIDE_CAMP_AI, HIDE_MOBILE_APP, isHiddenCapability } from "../../lib/directorHiddenFeatures.js";
+import { billingPlanShortLabel } from "../../lib/billingPlanCatalog.js";
 import HeroImageEditor from "../../components/HeroImageEditor.jsx";
 import BrandImageColorPicker from "../../components/BrandImageColorPicker.jsx";
 import {
@@ -1140,7 +1141,12 @@ export function DirectorAdminFeaturesPage() {
     lockedOrPilot: capabilities.filter((capability) => ["locked", "pilot"].includes(capability.status)).length
   };
   const planTier = String(payload?.tenant?.planTier || "base").trim().toLowerCase();
-  const planLabel = `${planTier.charAt(0).toUpperCase()}${planTier.slice(1)}`;
+  // Named from the plan the camp actually bought, through the same catalog
+  // Plan & billing reads. This used to capitalise the feature tier, which made
+  // the card say "Premium" while Billing said "Flagship" — and since
+  // resolveFeatureTierFromBillingPlan returns "premium" for every live plan, it
+  // was a field that could never say anything else.
+  const planLabel = billingPlanShortLabel(payload?.tenant?.billingPlan);
   const totalAttention = Number(payload?.summary?.moduleAttention || 0) + capabilitySummary.attention;
 
   function capabilityTone(capability) {
