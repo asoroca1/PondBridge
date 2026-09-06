@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Archive,
   ArrowUpRight,
@@ -50,7 +50,13 @@ export default function DirectorAdminGivingPage() {
   const { request } = useAdminApi();
   const { slug } = useTenant();
   const [payload, setPayload] = useState(null);
-  const [tab, setTab] = useState("pending");
+  // The tab lives in the URL, as the other workspaces' views do, so back,
+  // refresh and a bookmark all return a director to the list they were in.
+  // These stay role="tab" buttons rather than links: the group is a tablist,
+  // and navigating on click gets the routing without breaking that.
+  const navigate = useNavigate();
+  const { view: tabParam } = useParams();
+  const tab = TABS.some(([key]) => key === tabParam) ? tabParam : "pending";
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
@@ -127,7 +133,7 @@ export default function DirectorAdminGivingPage() {
       {error ? <p className="admin-giving-error" role="alert">{error}</p> : null}
 
       <div className="admin-giving-tabs" role="tablist" aria-label="Giving workspace views">
-        {TABS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "is-active" : ""} onClick={() => { setTab(key); setSelected(null); }}>{label}<span>{counts[key]}</span></button>)}
+        {TABS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "is-active" : ""} onClick={() => { setSelected(null); navigate(tenantRoute(slug, `/admin/giving/${key}`)); }}>{label}<span>{counts[key]}</span></button>)}
       </div>
 
       {loading ? <div className="admin-giving-loading">Loading giving activity…</div> : tab === "donations" ? (

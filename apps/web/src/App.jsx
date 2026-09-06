@@ -776,16 +776,21 @@ function TenantScopeRoutes() {
           <Route path="invites" element={<Navigate to="../people/add" replace />} />
           <Route path="directory" element={<Navigate to="../people/member" replace />} />
           <Route path="family-trees" element={<Navigate to="../features" replace />} />
+          {/* The rail views carry a path segment, as People's and Email's do, so
+              that back, refresh and a bookmark all land where the director was.
+              The bare path keeps working: it is where every existing link goes. */}
+          <Route path="events" element={<Navigate to="calendar" replace />} />
           <Route
-            path="events"
+            path="events/:view"
             element={
               <MemberModuleRoute moduleKey="events" fallbackPath="/admin/features">
                 <DirectorAdminEventsPage />
               </MemberModuleRoute>
             }
           />
+          <Route path="giving" element={<Navigate to="pending" replace />} />
           <Route
-            path="giving"
+            path="giving/:view"
             element={
               <MemberModuleRoute moduleKey="giving" fallbackPath="/admin/features">
                 <DirectorAdminGivingPage />
