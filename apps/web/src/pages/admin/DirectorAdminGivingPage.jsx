@@ -120,7 +120,7 @@ export default function DirectorAdminGivingPage() {
         <article><span><CircleDollarSign /></span><div><small>Raised across causes</small><strong>{money(summary.amountRaisedCents)}</strong></div></article>
         <article><span><Users /></span><div><small>Community supporters</small><strong>{summary.donorCount || 0}</strong></div></article>
         <article><span><HeartHandshake /></span><div><small>Active causes</small><strong>{summary.activeCauseCount || 0}</strong></div></article>
-        <article className={counts.pending ? "is-attention" : ""}><span><Sparkles /></span><div><small>Waiting for review</small><strong>{counts.pending}</strong></div></article>
+        <article className={counts.pending ? "is-attention" : ""}><span><Sparkles /></span><div><small>Needs review</small><strong>{counts.pending}</strong></div></article>
       </section>
 
       {notice ? <p className="admin-giving-notice"><CheckCircle2 /> {notice}</p> : null}

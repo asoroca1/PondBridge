@@ -254,7 +254,7 @@ export default function DirectorAdminBillingPage() {
             <small>{activatedAt ? `Active since ${formatDate(activatedAt)}` : "Not activated yet"}</small>
           </div>
           <div>
-            <span>Members</span>
+            <span>Billable members</span>
             <strong>{memberLabel}</strong>
             <small>{usage.memberLimit ? "of your plan limit" : "no limit on this plan"}</small>
           </div>

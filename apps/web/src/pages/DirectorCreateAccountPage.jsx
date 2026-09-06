@@ -99,16 +99,6 @@ function resolveServerResumeStep(
 }
 
 const DEFAULT_FEATURE_MODULES = { ...DEFAULT_TENANT_MODULES };
-const DEFAULT_AGE_GROUPS = [
-  "Super Warrior",
-  "Warrior",
-  "Freshman",
-  "Sophomore",
-  "Junior",
-  "Intermediate",
-  "Senior I",
-  "Senior II"
-];
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
 const MEMBER_TERMS_VERSION = "2026-03-04";
 const MEMBER_PRIVACY_VERSION = "2026-03-04";
@@ -181,7 +171,7 @@ function resolveLaunchRedirectTarget(launchPayload = {}, slug = "") {
 
 const FEATURE_OPTIONS = TENANT_MODULE_CATALOG.map((module) => ({
   key: module.key,
-  title: module.key === "chat" ? "Chats and Forums" : module.label,
+  title: module.key === "chat" ? "Chats & Forums" : module.label,
   description: module.description
 }));
 
@@ -446,7 +436,10 @@ function DirectorCreateAccountWizardPage() {
   });
   const [newsletterName, setNewsletterName] = useState("");
   const [campSpecifics, setCampSpecifics] = useState({
-    ageGroupsText: DEFAULT_AGE_GROUPS.join("\n"),
+    // Left blank on purpose: the field is required, and pre-filling it with
+    // another camp's divisions is how one camp's vocabulary ends up in
+    // everybody's member profiles. The placeholder shows the shape instead.
+    ageGroupsText: "",
     staffRolesText: DEFAULT_STAFF_ROLES.join("\n"),
     homepageQuote: "",
     merchShopUrl: ""
@@ -1325,7 +1318,7 @@ function DirectorCreateAccountWizardPage() {
       .filter(Boolean);
 
     setCampSpecifics({
-      ageGroupsText: (ageGroups.length ? ageGroups : DEFAULT_AGE_GROUPS).join("\n"),
+      ageGroupsText: ageGroups.join("\n"),
       staffRolesText: (staffRoles.length ? staffRoles : DEFAULT_STAFF_ROLES).join("\n"),
       homepageQuote: String(tenant?.content?.welcomeBody || "").trim(),
       merchShopUrl: String(tenant?.content?.merchShopUrl || "").trim()
@@ -3561,7 +3554,7 @@ function DirectorCreateAccountWizardPage() {
                       className={`wizard1-input director-multiline ${specificsErrors.ageGroupsText ? "has-error" : ""}`}
                       value={campSpecifics.ageGroupsText}
                       onChange={(event) => updateCampSpecificsField("ageGroupsText", event.target.value)}
-                      placeholder={"Super Warrior\nWarrior\nFreshman"}
+                      placeholder={"Juniors\nInters\nSeniors"}
                     />
                     <p className="director-field-hint">One per line. These labels appear in member profiles.</p>
                     {specificsErrors.ageGroupsText ? (

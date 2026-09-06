@@ -6,7 +6,14 @@ import {
 } from "@pondbridge/shared";
 
 const DEFAULT_STAFF_ROLES = ["Camper", "Counselor", "JC", "CIT", "Admin"];
-const DEFAULT_AGE_GROUPS = [
+// Camp Cedar's own division names, kept only so that tenants created before
+// onboarding started requiring age groups keep the labels their members already
+// have on their profiles. Onboarding now asks every new camp for its own, so
+// nothing reaches this list except those older tenants.
+//
+// This is not a default anyone should copy: "Super Warrior" and "Senior II"
+// belong to one camp, not to camps in general.
+const LEGACY_AGE_GROUPS = [
   "Super Warrior",
   "Warrior",
   "Freshman",
@@ -127,5 +134,5 @@ export function resolveStaffRoleOptions(tenant) {
 
 export function resolveAgeGroupOptions(tenant) {
   const content = resolveTenantContent(tenant);
-  return normalizeLabelList(content.ageGroups, DEFAULT_AGE_GROUPS);
+  return normalizeLabelList(content.ageGroups, LEGACY_AGE_GROUPS);
 }

@@ -243,6 +243,9 @@ export default function CedarChest() {
           subtitle={subtitleText}
         >
           <div className="cc-header-tools">
+            {/* Season and Year only mean something once issues exist. They stay
+                visible while a filter is set so an empty result can be cleared. */}
+            {(newsletters.length > 0 || season || year) && (
             <div className="cc-filters" role="group" aria-label="Filter newsletters">
               <label className="cc-filter">
                 <div className="cc-filter-label">Season</div>
@@ -283,6 +286,8 @@ export default function CedarChest() {
                 </select>
               </label>
             </div>
+
+            )}
 
             {isAdmin && (
               <button

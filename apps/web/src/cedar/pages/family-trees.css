@@ -100,16 +100,20 @@
   background: #fff9f9;
 }
 
+/* Matches the newsletter's empty state: centred icon, title, one line of
+   explanation. The two pages were saying the same thing in two different
+   shapes. */
 .ft-empty {
   margin-top: 14px;
   background: #fff;
   border: 1px dashed var(--neutral-200);
   border-radius: 14px;
-  padding: 20px 16px;
+  padding: 32px 16px;
   color: var(--neutral-600);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  text-align: center;
   gap: 10px;
 }
 
@@ -808,4 +812,8 @@ select.ft-input {
   .ft-tree-node-name {
     font-size: 18px;
   }
+}
+
+.ft-empty-icon {
+  color: var(--neutral-400);
 }

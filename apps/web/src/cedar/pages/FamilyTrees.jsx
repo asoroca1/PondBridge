@@ -174,13 +174,18 @@ export default function FamilyTrees() {
         <CedarPageHeader
           icon={<TreePine size={18} />}
           title="Family Trees"
-          subtitle={`Explore family tree containers across ${alumniWord} profiles.`}
+          subtitle={`See how ${alumniWord} families connect across the camp.`}
         >
           <Link className="btn-cedar" to={tenantRoute(slug, "/family-trees/new")}>
             Create New Family Tree
           </Link>
         </CedarPageHeader>
 
+        {/* Search appears once there is something to search. Offering it above
+            "no family trees yet" gives a member a control that cannot do
+            anything. It stays visible while searching so a search that matches
+            nothing can still be cleared. */}
+        {(view.total > 0 || search.trim()) && (
         <section className="ft-toolbar">
           <label htmlFor="family-tree-search" className="ft-search-label">
             Search Family Trees
@@ -199,12 +204,14 @@ export default function FamilyTrees() {
             </button>
           </div>
         </section>
+        )}
 
         {state.loading && <CedarSkeleton.Grid count={4} />}
         {!state.loading && state.error && <div className="ft-status ft-error">{state.error}</div>}
 
         {!state.loading && !state.error && view.total === 0 && (
           <div className="ft-empty">
+            <TreePine size={36} className="ft-empty-icon" aria-hidden="true" />
             {search.trim() ? (
               <>
                 <div className="ft-empty-title">No matching family trees</div>
@@ -212,13 +219,11 @@ export default function FamilyTrees() {
               </>
             ) : (
               <>
-                <div className="ft-empty-title">Create your family tree</div>
+                <div className="ft-empty-title">No family trees yet</div>
                 <div className="ft-empty-sub">
-                  No family trees are available yet. Start one and add members.
+                  Start one with Create New Family Tree and add the families you
+                  remember.
                 </div>
-                <Link className="btn-cedar" to={tenantRoute(slug, "/family-trees/new")}>
-                  Create New Family Tree
-                </Link>
               </>
             )}
           </div>
