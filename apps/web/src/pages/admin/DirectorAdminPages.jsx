@@ -602,11 +602,42 @@ function TimeSeriesChartCard({
   );
 }
 
+/**
+ * A breakdown row is a group of people, so where a row can name that group to
+ * the People list, it opens it. Rows without a `href` stay plain markup rather
+ * than becoming links that go nowhere.
+ */
+function BreakdownRow({ rank, label, count, href }) {
+  const body = (
+    <>
+      <span className="director-admin-breakdown-label">
+        <span className="director-admin-breakdown-rank">{rank}</span>
+        {label}
+      </span>
+      <strong>{count}</strong>
+    </>
+  );
+  return href ? (
+    <Link className="director-admin-breakdown-row-item is-linked" to={href}>{body}</Link>
+  ) : (
+    <div className="director-admin-breakdown-row-item">{body}</div>
+  );
+}
+
+/**
+ * `linkFor` is passed only by the cards whose rows map onto a filter People
+ * actually has. "Who comes back most" lists members with no way to address one
+ * of them by URL, and the stat cards above measure things — a rolling week of
+ * sign-ins, an average completion — that no People filter answers. Sending a
+ * director somewhere that quietly answers a different question is worse than
+ * leaving the number alone.
+ */
 function TopProfileBreakdownCard({
   title,
   columnLabel = "Category",
   countLabel = "Members",
-  items = []
+  items = [],
+  linkFor = null
 }) {
   const rows = (Array.isArray(items) ? items : []).slice(0, 5);
   return (
@@ -622,13 +653,13 @@ function TopProfileBreakdownCard({
       <div className="director-admin-breakdown-list">
         {rows.length ? (
           rows.map((item, index) => (
-            <div key={`${item.label}-${index}`} className="director-admin-breakdown-row-item">
-              <span className="director-admin-breakdown-label">
-                <span className="director-admin-breakdown-rank">{index + 1}</span>
-                {item.label}
-              </span>
-              <strong>{Number(item.count || 0)}</strong>
-            </div>
+            <BreakdownRow
+              key={`${item.label}-${index}`}
+              rank={index + 1}
+              label={item.label}
+              count={Number(item.count || 0)}
+              href={linkFor ? linkFor(item) : ""}
+            />
           ))
         ) : (
           <p className="director-admin-breakdown-empty">No profile data yet.</p>
@@ -925,8 +956,22 @@ export function DirectorAdminDashboardPage() {
           </Link>
         </header>
         <div className="director-admin-breakdown-grid">
-          <TopProfileBreakdownCard title="Where they live" columnLabel="Location" items={topLocations} />
-          <TopProfileBreakdownCard title="What they did at camp" columnLabel="Role" items={topRoles} />
+          <TopProfileBreakdownCard
+            title="Where they live"
+            columnLabel="Location"
+            items={topLocations}
+            linkFor={(item) =>
+              `/t/${slug}/admin/people/all?q=${encodeURIComponent(item.label)}`
+            }
+          />
+          <TopProfileBreakdownCard
+            title="What they did at camp"
+            columnLabel="Role"
+            items={topRoles}
+            linkFor={(item) =>
+              `/t/${slug}/admin/people/all?role=${encodeURIComponent(item.label)}`
+            }
+          />
           <TopProfileBreakdownCard
             title="Who comes back most"
             columnLabel="Member"
