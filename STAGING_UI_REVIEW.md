@@ -774,3 +774,80 @@ Now:
   a defect.
 
 API suite: 56/56 suites, 400/400 tests.
+
+---
+
+# Fix status — round 4 (2026-09-06)
+
+The last three P2s from the first review. One of them needed no work.
+
+## UI-20 — Media Stream header ~~collapses at tablet width~~ — ALREADY FIXED
+
+Measured on staging at 749px, the width the finding named: the description is
+**699px wide by 38px tall**, and the Sort/Upload controls sit on their own row
+below it. Checked again at 900, 979 and 1000px — never collapses, never shares a
+row.
+
+The `flex-wrap: wrap` that fixes it is in `photo-stream.css` inside
+`@media (max-width: 980px)`, which covers 749px. It landed in an earlier round
+and this document's "Still open" list was stale. No change made.
+
+## UI-07 — Inconsistent name styling in result cards — FIXED
+
+The original note ("one member name rendered underlined while all others were
+not") was the cursor: `.as2-name:hover` and `.sr-name:hover` both underline, so
+whichever name the pointer was over looked different from its neighbours. That
+part is working as designed.
+
+Looking properly turned up a real inconsistency underneath it, across surfaces
+rather than within one list. A member's name links to their profile in four
+places, and hovering it did four different things:
+
+| | hover |
+| --- | --- |
+| `.as2-name` — Advanced Search result | underline |
+| `.sr-name` — Search Results | underline |
+| `.ps-name` — Media Stream author | nothing (only the shared 0.92 opacity) |
+| `.p1-suggest-name`, `.activity-target` — chips | colour + background + shadow |
+
+`.ps-name` had no hover rule at all outside a `@media (max-width: 640px)` block,
+where it explicitly set `text-decoration: none` — so on the desktop screens where
+hover actually happens, the same element behaved differently depending on which
+page you met it on.
+
+`.ps-name` now underlines on hover like the other two name links, and the
+narrow-screen block no longer contradicts it. The two chip-shaped ones keep their
+background treatment: they are a different component, not a bare text link.
+
+Verified live: hovering "Maya Rossi" on Media Stream reports
+`textDecorationLine: "underline"`.
+
+## UI-08 — "Complete Your Profile" modal appears over unloaded content — FIXED
+
+The `stats` gate added in an earlier round removed most of this but not all of it.
+Measured on staging before the change:
+
+    t=3874ms  prompt appears, 4 skeletons still on screen
+    t=4663ms  skeletons clear
+
+The bootstrap payload sets `stats`, but the two side cards fetch for themselves
+and finish later, so the dialog still opened over roughly 800ms of skeletons.
+
+Each preview card now reports when it has settled — including when its request
+fails, so a broken card cannot hold the prompt shut forever — and the prompt waits
+for both.
+
+Tracked by name rather than counted. `RelatedProfilesCard` settles once on the
+no-user-yet path and again when the profile arrives, so a counter reached two from
+that card alone and the gate opened with the other still loading. The test caught
+that; the first version of this fix was wrong.
+
+Measured after:
+
+    t=3950ms  skeletons clear
+    t=4394ms  prompt appears, 0 skeletons
+
+## Still open from the original list
+
+Nothing. UI-01 through UI-21 are now fixed, withdrawn, or — for UI-20 — were
+already fixed before this round.
