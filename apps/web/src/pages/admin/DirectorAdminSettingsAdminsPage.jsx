@@ -8,19 +8,13 @@ import {
   SettingListItem
 } from "../../components/admin/SettingControls.jsx";
 import useAdminApi from "./useAdminApi.js";
+import { formatDate } from "../../lib/adminDates.js";
 
 // Past this many, the list stops being something you read and starts being
 // something you search. Below it, a filter box and a "show all" would be more
 // chrome than the list itself.
 const ADMIN_LIST_BROWSE_THRESHOLD = 8;
 
-function formatDate(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
 
 function useDebouncedValue(value, delayMs = 220) {
   const [debounced, setDebounced] = useState(value);

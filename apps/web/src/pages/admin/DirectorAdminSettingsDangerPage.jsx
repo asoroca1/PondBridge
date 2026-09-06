@@ -4,14 +4,8 @@ import { PauseCircle, PlayCircle, TriangleAlert } from "lucide-react";
 import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
 import useAdminApi from "./useAdminApi.js";
 import "./director-admin-danger.css";
+import { formatDateTime as formatWhen } from "../../lib/adminDates.js";
 
-function formatWhen(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
 
 export default function DirectorAdminSettingsDangerPage() {
   const { request } = useAdminApi();

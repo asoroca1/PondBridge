@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@pondbridge/ui";
 import { ShieldCheck } from "lucide-react";
+import { formatDateTime } from "../../../lib/adminDates.js";
 
-function formatDateTime(value) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-}
 
 export default function MailBlockedView({ request }) {
   const [items, setItems] = useState([]);
@@ -77,8 +73,8 @@ export default function MailBlockedView({ request }) {
                 <tr key={item.id}>
                   <td>{item.email}</td>
                   <td>{item.reason || item.sourceEventType || "—"}</td>
-                  <td>{formatDateTime(item.firstSeenAt)}</td>
-                  <td>{formatDateTime(item.lastSeenAt)}</td>
+                  <td>{formatDateTime(item.firstSeenAt, "—")}</td>
+                  <td>{formatDateTime(item.lastSeenAt, "—")}</td>
                   <td>
                     <Button
                       type="button"

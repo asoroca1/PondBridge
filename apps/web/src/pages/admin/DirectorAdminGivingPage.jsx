@@ -20,6 +20,7 @@ import {
 import { WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
+import { formatDate, formatDayRange } from "../../lib/adminDates.js";
 import useAdminApi from "./useAdminApi.js";
 import "./director-admin-giving.css";
 
@@ -139,7 +140,7 @@ export default function DirectorAdminGivingPage() {
       {loading ? <div className="admin-giving-loading">Loading giving activity…</div> : tab === "donations" ? (
         <section className="admin-giving-table-card">
           <header><div><h2>Donation ledger</h2><p>Provider-confirmed gifts are the source of truth for these records.</p></div></header>
-          <div className="admin-giving-table-wrap"><table><thead><tr><th>Donor</th><th>Cause</th><th>Amount</th><th>Display</th><th>Completed</th><th>Status</th></tr></thead><tbody>{payload?.donations?.map((donation) => <tr key={donation.id}><td><strong>{donation.donorName || donation.donorEmail || "Supporter"}</strong><small>{donation.donorAffiliation}</small></td><td>{donation.causeTitle}</td><td><strong>{money(donation.amountCents)}</strong></td><td>{donation.displayPreference.replaceAll("_", " ")}</td><td>{donation.completedAt ? new Date(donation.completedAt).toLocaleDateString() : "—"}</td><td><CauseStatus status={donation.status} /></td></tr>)}</tbody></table></div>
+          <div className="admin-giving-table-wrap"><table><thead><tr><th>Donor</th><th>Cause</th><th>Amount</th><th>Display</th><th>Completed</th><th>Status</th></tr></thead><tbody>{payload?.donations?.map((donation) => <tr key={donation.id}><td><strong>{donation.donorName || donation.donorEmail || "Supporter"}</strong><small>{donation.donorAffiliation}</small></td><td>{donation.causeTitle}</td><td><strong>{money(donation.amountCents)}</strong></td><td>{donation.displayPreference.replaceAll("_", " ")}</td><td>{formatDate(donation.completedAt, "—")}</td><td><CauseStatus status={donation.status} /></td></tr>)}</tbody></table></div>
         </section>
       ) : (
         <section className="admin-giving-list-card">
@@ -155,7 +156,7 @@ export default function DirectorAdminGivingPage() {
             <div className="admin-giving-drawer-body">
               <p className="admin-giving-kicker">Proposal story</p><p className="admin-giving-summary">{selected.shortDescription}</p><p className="admin-giving-story">{selected.description}</p>
               {selected.whyItMatters ? <div className="admin-giving-why"><strong>Why it matters</strong><p>{selected.whyItMatters}</p></div> : null}
-              <dl className="admin-giving-details"><div><dt>Goal</dt><dd>{money(selected.goalAmountCents)}</dd></div><div><dt>Raised</dt><dd>{money(selected.amountRaisedCents)}</dd></div><div><dt>Category</dt><dd>{selected.category}</dd></div><div><dt>Timeline</dt><dd>{selected.startDate || "Approval"} — {selected.endDate || "Ongoing"}</dd></div></dl>
+              <dl className="admin-giving-details"><div><dt>Goal</dt><dd>{selected.goalAmountCents ? money(selected.goalAmountCents) : "Open fund"}</dd></div><div><dt>Raised</dt><dd>{money(selected.amountRaisedCents)}</dd></div><div><dt>Category</dt><dd>{selected.category}</dd></div><div><dt>Timeline</dt><dd>{formatDayRange(selected.startDate, selected.endDate, { startFallback: "When approved", endFallback: "Ongoing" })}</dd></div></dl>
 
               {selected.status === "pending" ? <section className="admin-giving-review-box"><label>Director note <small>Required for edits or rejection</small><textarea rows="4" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="Give the creator clear, useful feedback…" /></label><div><button type="button" className="is-approve" disabled={busy} onClick={() => action("approve", selected, "Cause approved and published.")}><Check /> Approve</button><button type="button" disabled={busy} onClick={() => action("request-edit", selected, "Edit request sent.")}><PencilLine /> Request edit</button><button type="button" className="is-danger" disabled={busy} onClick={() => action("reject", selected, "Cause rejected.")}><X /> Reject</button></div></section> : null}
 
