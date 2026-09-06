@@ -5650,6 +5650,11 @@ router.get("/features", async (req, res) => {
       slug: req.tenant.slug,
       name: req.tenant.name,
       planTier,
+      // The tier is a capability gate — resolveFeatureTierFromBillingPlan
+      // returns "premium" for every live plan — so it cannot name the plan a
+      // director is on. Send the plan code as well, and let the page read it
+      // through the same catalog Plan & billing uses.
+      billingPlan: resolveTenantBilling(req.tenant).billingPlan,
       features
     },
     theme: {
