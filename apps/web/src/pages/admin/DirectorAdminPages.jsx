@@ -47,6 +47,7 @@ import {
 } from "../../lib/imageOptimization.js";
 import { APP_ICON_SIZES, campNetworkTitle } from "../../lib/tenantBrandAssets.js";
 import "./director-admin-today.css";
+import "../../styles/productOnboarding.css";
 
 function getNiceTickStep(maxValue = 1, targetTickCount = 5) {
   const safeMax = Math.max(1, Number(maxValue || 0));

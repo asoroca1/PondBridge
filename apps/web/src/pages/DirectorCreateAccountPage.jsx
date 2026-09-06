@@ -38,6 +38,7 @@ import {
   extensionForImageMime,
   optimizeImageFile
 } from "../lib/imageOptimization.js";
+import "../styles/productOnboarding.css";
 
 const STEP_ACCOUNT = "account";
 const STEP_DESIGN = "design";
