@@ -46,6 +46,20 @@ export default defineConfig(({ command }) => {
 
   return {
     plugins: [react()],
+    test: {
+      // Components are tested by mounting them, so the suite needs a DOM.
+      // Everything else -- pure helpers, reducers, formatters -- runs happily
+      // in jsdom too, so one environment keeps the config honest rather than
+      // splitting the suite into two worlds that drift apart.
+      environment: "jsdom",
+      setupFiles: ["./src/test/setup.js"],
+      // The existing suite imports `describe`/`it`/`expect` from vitest
+      // explicitly. Keeping globals off means a test that forgets the import
+      // fails loudly instead of picking up an ambient one.
+      globals: false,
+      clearMocks: true,
+      restoreMocks: true
+    },
     server: {
       host: "0.0.0.0",
       port: 5173,
