@@ -5,6 +5,7 @@ module.exports = {
   testMatch: [
     "**/tests/accessDecisionEmailBranding.test.js",
     "**/tests/brandingFaviconField.test.js",
+    "**/tests/brandingLogoTreatment.test.js",
     "**/tests/clerkVerificationEmail.test.js",
     "**/tests/clerkAccountDeletion.test.js",
     "**/tests/cloudflareStream.test.js",

@@ -42,9 +42,15 @@ import {
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import {
   IMAGE_OPTIMIZATION_PRESETS,
+  measureLogoBackdrop,
   optimizeImageFile,
   renderAppIconPng
 } from "../../lib/imageOptimization.js";
+import {
+  LOGO_TREATMENTS,
+  classifyLogoBackdrop,
+  logoTreatmentClassName
+} from "../../lib/logoTreatment.js";
 import { APP_ICON_SIZES, campNetworkTitle } from "../../lib/tenantBrandAssets.js";
 import "./director-admin-today.css";
 import "../../styles/productOnboarding.css";
@@ -2028,6 +2034,8 @@ export function DirectorAdminSettingsBrandingPage() {
   const [form, setForm] = useState({
     brandPrimary: DEFAULT_BRAND_PRIMARY,
     logoUrl: "",
+    logoBackdrop: "",
+    logoTreatment: "",
     faviconUrl: "",
     heroImageUrl: "",
     heroImageUrlMember: "",
@@ -2057,6 +2065,8 @@ export function DirectorAdminSettingsBrandingPage() {
     setForm({
       brandPrimary: normalizeBrandHex(payload.branding.brandPrimary, DEFAULT_BRAND_PRIMARY),
       logoUrl: payload.branding.logoUrl || "",
+      logoBackdrop: payload.branding.logoBackdrop || "",
+      logoTreatment: payload.branding.logoTreatment || "",
       faviconUrl: payload.branding.faviconUrl || "",
       heroImageUrl: payload.branding.heroImageUrl || "",
       heroImageUrlMember: payload.branding.heroImageUrlMember || "",
@@ -2272,6 +2282,8 @@ export function DirectorAdminSettingsBrandingPage() {
         const nextBranding = {
           ...(previous.branding || {}),
           logoUrl: String(payloadToSave.logoUrl || ""),
+          logoBackdrop: String(payloadToSave.logoBackdrop || ""),
+          logoTreatment: String(payloadToSave.logoTreatment || ""),
           faviconUrl: String(payloadToSave.faviconUrl || ""),
           iconUrls: payloadToSave.iconUrls || {},
           heroImageUrl: String(payloadToSave.heroImageUrl || ""),
@@ -2360,6 +2372,14 @@ export function DirectorAdminSettingsBrandingPage() {
       if (field === "logoUrl") {
         setPendingLogoFile(optimizedFile);
         setPendingLogoPreviewUrl(previewDataUrl);
+        // Measured from the optimized file rather than the original: that is the
+        // one that gets uploaded and drawn, so it is the one whose backdrop
+        // matters. A null measurement leaves the logo plain.
+        const backdrop = await measureLogoBackdrop(optimizedFile);
+        setForm((prev) => ({
+          ...prev,
+          logoBackdrop: backdrop ? classifyLogoBackdrop(backdrop) : LOGO_TREATMENTS.PLAIN
+        }));
       } else if (field === "heroImageUrlMember") {
         setPendingMemberHeroFile(optimizedFile);
         setPendingMemberHeroPreviewUrl(previewDataUrl);
@@ -2433,6 +2453,12 @@ export function DirectorAdminSettingsBrandingPage() {
   // photo, not a stale member photo the director just cleared.
   const liveMemberHeroPreviewUrl = pendingMemberHeroPreviewUrl || draftMemberHeroUrl;
   const hasPendingLogoUpdate = Boolean(pendingLogoFile) || (Boolean(draftLogoUrl) && draftLogoUrl !== currentLogoUrl);
+  // What the navbar will actually draw: the director's override when they have
+  // set one, otherwise whatever detection measured off the uploaded file.
+  const detectedLogoBackdrop = String(form.logoBackdrop || "").trim() || LOGO_TREATMENTS.PLAIN;
+  const chosenLogoTreatment = String(form.logoTreatment || "").trim() || LOGO_TREATMENTS.AUTO;
+  const effectiveLogoTreatment =
+    chosenLogoTreatment === LOGO_TREATMENTS.AUTO ? detectedLogoBackdrop : chosenLogoTreatment;
   const liveFaviconPreviewUrl = pendingFaviconPreviewUrl || draftFaviconUrl;
   const hasPendingFaviconUpdate = Boolean(pendingFaviconFile) || draftFaviconUrl !== currentFaviconUrl;
   // What the tab actually shows: the camp's own icon when they have set one, their
@@ -2496,6 +2522,46 @@ export function DirectorAdminSettingsBrandingPage() {
                 {hasPendingLogoUpdate ? <p className="muted">Saving will replace the current logo.</p> : null}
               </div>
         </div>
+
+        {liveLogoPreviewUrl ? (
+          <div className="pb-set-upload">
+            <h3 className="pb-set-subsection">How it sits on your bar</h3>
+            <p className="muted">
+              Logos saved on a solid white background need a badge, or the white shows as a
+              rectangle against your color. We pick this for you from the file you upload.
+            </p>
+            <div
+              className="director-admin-logo-backdrop-preview"
+              style={{ background: previewBrandPrimary }}
+            >
+              <img
+                src={liveLogoPreviewUrl}
+                alt=""
+                className={`navbar2-logo ${logoTreatmentClassName(effectiveLogoTreatment)}`.trim()}
+              />
+              <span style={{ color: "#fff" }}>{campNetworkTitle(tenant?.name || "")}</span>
+            </div>
+            <SettingField label="Badge">
+              <select
+                value={chosenLogoTreatment}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, logoTreatment: event.target.value }))
+                }
+              >
+                <option value={LOGO_TREATMENTS.AUTO}>
+                  Automatic{detectedLogoBackdrop === LOGO_TREATMENTS.PLAIN
+                    ? " (no badge needed)"
+                    : detectedLogoBackdrop === LOGO_TREATMENTS.CIRCLE
+                      ? " (round badge)"
+                      : " (rounded badge)"}
+                </option>
+                <option value={LOGO_TREATMENTS.PLAIN}>No badge</option>
+                <option value={LOGO_TREATMENTS.CIRCLE}>Round badge</option>
+                <option value={LOGO_TREATMENTS.ROUNDED}>Rounded badge</option>
+              </select>
+            </SettingField>
+          </div>
+        ) : null}
       </Card>
       ) : null}
 

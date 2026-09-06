@@ -36,8 +36,10 @@ import { mountEmbeddedCheckout } from "../lib/stripeEmbeddedCheckout.js";
 import {
   IMAGE_OPTIMIZATION_PRESETS,
   extensionForImageMime,
+  measureLogoBackdrop,
   optimizeImageFile
 } from "../lib/imageOptimization.js";
+import { LOGO_TREATMENTS, classifyLogoBackdrop } from "../lib/logoTreatment.js";
 import "../styles/productOnboarding.css";
 
 const STEP_ACCOUNT = "account";
@@ -1375,6 +1377,7 @@ function DirectorCreateAccountWizardPage() {
           ? localDraft.themeDraft.brandPrimary
           : prev.brandPrimary,
         logoUrl: String(localDraft.themeDraft.logoUrl || prev.logoUrl || ""),
+        logoBackdrop: String(localDraft.themeDraft.logoBackdrop || prev.logoBackdrop || ""),
         heroImageUrl: String(localDraft.themeDraft.heroImageUrl || prev.heroImageUrl || ""),
         heroImageUrlMember: String(
           localDraft.themeDraft.heroImageUrlMember || prev.heroImageUrlMember || ""
@@ -1594,6 +1597,7 @@ function DirectorCreateAccountWizardPage() {
       themeDraft: {
         brandPrimary: isHexColor(themeDraft.brandPrimary) ? themeDraft.brandPrimary : initialBrandColor,
         logoUrl: String(themeDraft.logoUrl || ""),
+        logoBackdrop: String(themeDraft.logoBackdrop || ""),
         heroImageUrl: String(themeDraft.heroImageUrl || ""),
         heroImagePosition: normalizeHeroImagePosition(
           themeDraft.heroImagePositionLanding || themeDraft.heroImagePosition || DEFAULT_HERO_IMAGE_POSITION
@@ -2185,6 +2189,14 @@ function DirectorCreateAccountWizardPage() {
             })
           : await blobToDataUrl(optimizedLogo);
       updateThemeField("logoUrl", logoUrl);
+      // Most camps arrive with an emblem flattened onto white. Recording that here
+      // means their bar looks right the first time they see it, with nothing for
+      // them to notice or fix.
+      const backdrop = await measureLogoBackdrop(optimizedLogo);
+      updateThemeField(
+        "logoBackdrop",
+        backdrop ? classifyLogoBackdrop(backdrop) : LOGO_TREATMENTS.PLAIN
+      );
     } catch (error) {
       setSubmitError(error.message || "Unable to process logo image.");
     }
@@ -2549,6 +2561,7 @@ function DirectorCreateAccountWizardPage() {
             brandPrimary: finalPrimaryColor,
             brandSecondary: deriveSecondaryHex(finalPrimaryColor),
             logoUrl: finalLogoUrl,
+            logoBackdrop: String(themeDraft.logoBackdrop || ""),
             brandAccent: String(baseTheme.brandAccent || "#f2b134"),
             bg: String(baseTheme.bg || "#fafafa"),
             text: String(baseTheme.text || "#1c1c1c"),
