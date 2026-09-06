@@ -3164,8 +3164,10 @@ html.is-native-app textarea{
   text-transform: uppercase;
   font-weight: 800;
 }
-.navbar2-dropdown button, .navbar2-dropdown button *{ background:transparent!important; border:0!important; box-shadow:none!important; outline:0; margin:0; padding:0; }
-.navbar2-dropdown button{
+.navbar2-dropdown button, .navbar2-dropdown button *,
+.navbar2-dropdown a[role="menuitem"], .navbar2-dropdown a[role="menuitem"] *{ background:transparent!important; border:0!important; box-shadow:none!important; outline:0; margin:0; padding:0; }
+.navbar2-dropdown button,
+.navbar2-dropdown a[role="menuitem"]{
   display:flex;
   align-items:center;
   gap:8px;
@@ -3180,16 +3182,20 @@ html.is-native-app textarea{
   white-space:nowrap;
   line-height:1.2;
   font-weight:500;
+  text-decoration:none;
   transition:background-color .15s ease, color .15s ease, transform .15s ease;
 }
-.navbar2-dropdown button svg{ color:var(--neutral-700); flex:0 0 auto; }
-.navbar2-dropdown button:hover{
+.navbar2-dropdown button svg,
+.navbar2-dropdown a[role="menuitem"] svg{ color:var(--neutral-700); flex:0 0 auto; }
+.navbar2-dropdown button:hover,
+.navbar2-dropdown a[role="menuitem"]:hover{
   background:var(--neutral-100)!important;
   background:color-mix(in srgb, var(--brand-primary) 12%, #ffffff)!important;
   color:var(--brand-primary-hover);
   transform:translateX(1px);
 }
-.navbar2-dropdown button:hover svg{ color:var(--brand-primary); }
+.navbar2-dropdown button:hover svg,
+.navbar2-dropdown a[role="menuitem"]:hover svg{ color:var(--brand-primary); }
 
 @keyframes nav2MenuIn{
   from{ opacity:0; transform:translateY(-6px) scale(.985); }
