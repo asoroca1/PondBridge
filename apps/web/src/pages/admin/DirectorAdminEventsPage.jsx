@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NavLink, useParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
 import { CalendarPlus } from "lucide-react";
 import { ModalConfirm, WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
@@ -17,7 +18,11 @@ export default function DirectorAdminEventsPage() {
   const { request } = useAdminApi();
   const { tenant } = useTenant();
 
-  const [view, setView] = useState("calendar");
+  // The view lives in the URL, as People's and Email's do, so back, refresh and
+  // a bookmark all return a director to the list they were working in. An
+  // unknown segment falls back rather than rendering an empty workspace.
+  const { view: viewParam } = useParams();
+  const view = VIEWS.some((item) => item.key === viewParam) ? viewParam : "calendar";
   const [month, setMonth] = useState(() => new Date());
   const [items, setItems] = useState([]);
   const [moduleEnabled, setModuleEnabled] = useState(true);
@@ -244,16 +249,15 @@ export default function DirectorAdminEventsPage() {
         <ul>
           {VIEWS.map((item) => (
             <li key={item.key}>
-              <button
-                type="button"
-                className={view === item.key ? "is-active" : ""}
-                onClick={() => setView(item.key)}
+              <NavLink
+                to={tenantRoute(tenant?.slug, `/admin/events/${item.key}`)}
+                className={({ isActive }) => (isActive ? "is-active" : "")}
               >
                 <span>{item.label}</span>
                 {item.key !== "calendar" && counts[item.key] > 0 ? (
                   <em>{counts[item.key]}</em>
                 ) : null}
-              </button>
+              </NavLink>
             </li>
           ))}
         </ul>
