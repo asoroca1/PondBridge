@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 const PAGE_SIZE = 25;
 
@@ -31,11 +32,55 @@ function completionParams(value = "all") {
 }
 
 /**
+ * Filters live in the query string.
+ *
+ * They used to live in component state, which meant a filtered list could not
+ * be linked to, shared or refreshed — and, more to the point here, that Today's
+ * breakdowns had nowhere to send a director who wanted the people behind a
+ * number. "Counselor 751" is only useful if it can open the 751.
+ *
+ * Written with replace, so typing in the search box does not fill the back
+ * history with a stack of half-typed words.
+ */
+function filtersFromParams(params) {
+  const read = (key) => params.get(key) || DEFAULT_FILTERS[key];
+  return {
+    q: params.get("q") || "",
+    role: read("role"),
+    year: read("year"),
+    completion: read("completion"),
+    match: read("match"),
+    sort: read("sort")
+  };
+}
+
+/**
  * Loads the unified people list. One request serves both the visible page and
  * the rail badge counts, so switching stages never shows stale totals.
  */
 export default function usePeopleDirectory({ request, stage = "all" }) {
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
+
+  const setFilters = useCallback(
+    (next) => {
+      setSearchParams(
+        (current) => {
+          const resolved = typeof next === "function" ? next(filtersFromParams(current)) : next;
+          const params = new URLSearchParams(current);
+          for (const [key, value] of Object.entries(resolved)) {
+            // A filter at its default is absent, so a plain People link stays a
+            // plain URL rather than carrying six "all"s around.
+            if (!value || value === DEFAULT_FILTERS[key]) params.delete(key);
+            else params.set(key, value);
+          }
+          return params;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
   const [page, setPage] = useState(1);
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);

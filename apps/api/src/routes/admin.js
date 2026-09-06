@@ -143,7 +143,9 @@ import {
   isAlumniGrowthStorageUnavailable,
   isRemovedUser,
   normalizeAlumniContactInput,
+  personMatchesRole,
   resolveGrowthEmailSegment,
+  splitRoleValues,
   trackInvitedAlumniContact,
   upsertAlumniContact
 } from "../services/alumniGrowth.js";
@@ -1573,14 +1575,6 @@ function normalizeRoleLabel(roleAtCamp = "") {
 function normalizeLocationLabel(cityState = "") {
   const parsed = parseCityStateDetailed(String(cityState || "").trim());
   return composeCityState(parsed);
-}
-
-function splitRoleValues(roleAtCamp = "") {
-  const source = Array.isArray(roleAtCamp) ? roleAtCamp : [roleAtCamp];
-  return source
-    .flatMap((entry) => String(entry || "").split(/[,;|]+/g))
-    .map((entry) => sanitizeText(String(entry || "").trim()))
-    .filter(Boolean);
 }
 
 function topCountBuckets(values = [], limit = 5) {
@@ -7151,7 +7145,10 @@ async function resolveFilteredPeople(req) {
     if (keys.size) return keys.has(person.key);
     if (stage !== "all" && person.stage !== stage) return false;
     if (match !== "any" && person.recognition !== match) return false;
-    if (role !== "all" && String(person.role || "").toLowerCase() !== role) return false;
+    // Today's role breakdown counts camp roles, so a link from it has to find
+    // them here too — a counselor who is also an admin reads as "Admin" in
+    // `role` and would otherwise go missing from her own camp role's list.
+    if (!personMatchesRole(person, role)) return false;
     if (year !== "all" && !person.yearsAtCamp.includes(year)) return false;
     if (completionRange && person.stage === "member"
       && !matchesCompletionRange(person.completionScore, completionRange)) return false;
@@ -7255,7 +7252,9 @@ router.get("/people", async (req, res, next) => {
       recognitionCounts,
       items: filtered.slice(skip, skip + pageSize),
       filters: {
-        roleOptions: [...new Set(people.map((item) => item.role).filter(Boolean))].sort(),
+        roleOptions: [...new Set(
+          people.flatMap((item) => [item.role, ...item.campRoles]).filter(Boolean)
+        )].sort(),
         yearOptions: [...new Set(people.flatMap((item) => item.yearsAtCamp))].filter(Boolean).sort()
       },
       storage

@@ -41,6 +41,7 @@ module.exports = {
     "**/tests/multiCampIdentityMigration.test.js",
     "**/tests/newsletterEmailing.test.js",
     "**/tests/operatingCosts.test.js",
+    "**/tests/peopleRoleFilter.test.js",
     "**/tests/operationalTelemetry.test.js",
     "**/tests/profilePrivacy.test.js",
     "**/tests/pushFanout.test.js",

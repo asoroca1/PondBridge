@@ -1,4 +1,5 @@
 import { AlumniContactModel } from "../db/models/index.js";
+import { sanitizeText } from "../utils/sanitize.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTACT_STATUSES = new Set(["active", "do_not_contact", "archived"]);
@@ -364,6 +365,29 @@ export const PEOPLE_STAGES = [
  * requests, invitations, and pre-member contacts all resolve against the same
  * email key, so one person never appears twice.
  */
+// A camp role is whatever the member wrote on their profile, and some of them
+// wrote more than one ("Counselor, Lifeguard"). Today's breakdown counts each
+// value separately, so the directory has to be able to match them the same way
+// or a link from one to the other promises a number it cannot deliver.
+export function splitRoleValues(roleAtCamp = "") {
+  const source = Array.isArray(roleAtCamp) ? roleAtCamp : [roleAtCamp];
+  return source
+    .flatMap((entry) => String(entry || "").split(/[,;|]+/g))
+    .map((entry) => sanitizeText(String(entry || "").trim()))
+    .filter(Boolean);
+}
+
+// The directory shows one role per person, but a person can have two kinds:
+// what their account is (Admin, Director) and what they did at camp. Matching
+// either is what keeps the role filter agreeing with Today's breakdown.
+export function personMatchesRole(person = null, role = "") {
+  const wanted = String(role || "").trim().toLowerCase();
+  if (!wanted || wanted === "all") return true;
+  if (String(person?.role || "").toLowerCase() === wanted) return true;
+  return (Array.isArray(person?.campRoles) ? person.campRoles : [])
+    .some((value) => String(value || "").toLowerCase() === wanted);
+}
+
 function indexPeopleSources({
   contacts = [],
   invites = [],
@@ -496,6 +520,12 @@ export function buildPeopleDirectory({
     const email = index.emailFor(key);
     const profile = member?.profile || null;
     const user = member?.user || null;
+    // Kept beside `role` rather than folded into it: `role` is what this person
+    // is to the camp's account (an admin reads as "Admin"), campRoles is what
+    // they did at camp. Filtering needs the second, the row still shows the first.
+    const campRoles = splitRoleValues(
+      profile?.roleAtCamp || request?.selfReportedRole || contact?.roleAtCamp || ""
+    );
     const userId = String(user?._id || user?.id || profile?.userId || "");
     const memberRow = profile && typeof mapMember === "function" ? mapMember(profile, user) : null;
 
@@ -520,6 +550,7 @@ export function buildPeopleDirectory({
       requestId: String(request?._id || request?.id || ""),
       avatarUrl: memberRow?.avatarUrl || String(profile?.avatarUrl || ""),
       role: memberRow?.role || String(request?.selfReportedRole || contact?.roleAtCamp || ""),
+      campRoles,
       location: memberRow?.location || String(profile?.cityState || ""),
       yearsAtCamp: mergeCampYears(memberRow?.yearsAtCamp, contact?.campYears),
       completionScore: Number(memberRow?.completionScore || 0),
