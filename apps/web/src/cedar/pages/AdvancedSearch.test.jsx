@@ -24,6 +24,15 @@ const render = (url = "/") =>
     </MemoryRouter>
   );
 
+// `fs` will not take a URL object built here: jsdom installs its own `URL` class
+// over Node's, and the two are not interchangeable across that boundary. A plain
+// path avoids the question entirely.
+async function readStylesheet() {
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  return readFile(join(import.meta.dirname, "advanced-search.css"), "utf8");
+}
+
 describe("AdvancedSearch first paint", () => {
   it("renders without throwing", () => {
     expect(() => render()).not.toThrow();
@@ -113,8 +122,7 @@ describe("filter dropdown stacking", () => {
   });
 
   it("keeps the stacking rules that make the fix work", async () => {
-    const { readFile } = await import("node:fs/promises");
-    const css = await readFile(new URL("./advanced-search.css", import.meta.url), "utf8");
+    const css = await readStylesheet();
     // The menu's own z-index cannot lift it out of its section's stacking context,
     // so the fix has to act on the sections themselves.
     expect(css).toMatch(/\.as2-sec\.as2-sec-display[\s\S]*?z-index:\s*1/);
@@ -126,8 +134,7 @@ describe("empty-state actions layout", () => {
   // Regression: this container was written for a single button. Adding the browse-all
   // button left the two sitting flush, separated only by collapsed JSX whitespace.
   it("lays the buttons out as a spaced row", async () => {
-    const { readFile } = await import("node:fs/promises");
-    const css = await readFile(new URL("./advanced-search.css", import.meta.url), "utf8");
+    const css = await readStylesheet();
     const rule = css.match(/\.as2-empty-actions\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     expect(rule[0]).toMatch(/display:\s*flex/);
