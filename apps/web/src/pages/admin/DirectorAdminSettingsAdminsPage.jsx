@@ -9,6 +9,11 @@ import {
 } from "../../components/admin/SettingControls.jsx";
 import useAdminApi from "./useAdminApi.js";
 
+// Past this many, the list stops being something you read and starts being
+// something you search. Below it, a filter box and a "show all" would be more
+// chrome than the list itself.
+const ADMIN_LIST_BROWSE_THRESHOLD = 8;
+
 function formatDate(value) {
   if (!value) return "";
   const parsed = new Date(value);
@@ -31,6 +36,11 @@ export default function DirectorAdminSettingsAdminsPage() {
   const [payload, setPayload] = useState({ admins: [], pendingInvites: [] });
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 220);
+  // The list below is separate from the search that finds someone to promote.
+  // Most camps have a handful of admins; this one had 57, rendered in a single
+  // unbroken column with no way to find anyone in it.
+  const [adminFilter, setAdminFilter] = useState("");
+  const [showAllAdmins, setShowAllAdmins] = useState(false);
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -117,6 +127,20 @@ export default function DirectorAdminSettingsAdminsPage() {
   const pending = Array.isArray(payload?.pendingInvites) ? payload.pendingInvites : [];
   const trimmedQuery = query.trim();
 
+  const adminFilterTerm = adminFilter.trim().toLowerCase();
+  const filteredAdmins = adminFilterTerm
+    ? admins.filter((item) =>
+        `${item.name || ""} ${item.email || ""}`.toLowerCase().includes(adminFilterTerm)
+      )
+    : admins;
+  // A filtered list is already the short answer to a question, so showing all of
+  // it is the right default; the cap is for the unfiltered wall.
+  const visibleAdmins =
+    showAllAdmins || adminFilterTerm
+      ? filteredAdmins
+      : filteredAdmins.slice(0, ADMIN_LIST_BROWSE_THRESHOLD);
+  const hiddenAdminCount = filteredAdmins.length - visibleAdmins.length;
+
   return (
     <div className="pb-set-stack">
       {error ? <p className="error-text" role="alert">{error}</p> : null}
@@ -129,11 +153,30 @@ export default function DirectorAdminSettingsAdminsPage() {
           They cannot remove you.
         </p>
 
+        {!loading && admins.length > ADMIN_LIST_BROWSE_THRESHOLD ? (
+          <div className="pb-set-form">
+            <SettingField label="Find an admin">
+              <Input
+                value={adminFilter}
+                placeholder="Search this list by name or email"
+                spellCheck={false}
+                onChange={(event) => setAdminFilter(event.target.value)}
+              />
+            </SettingField>
+          </div>
+        ) : null}
+
         {loading ? (
           <p className="muted pb-set-empty">Loading…</p>
         ) : (
-          <SettingList empty="Nobody else has admin access yet.">
-            {admins.map((item) => (
+          <SettingList
+            empty={
+              adminFilter.trim()
+                ? `Nobody in this list matches “${adminFilter.trim()}”.`
+                : "Nobody else has admin access yet."
+            }
+          >
+            {visibleAdmins.map((item) => (
               <SettingListItem
                 key={item.id}
                 title={item.name || item.email}
@@ -150,6 +193,12 @@ export default function DirectorAdminSettingsAdminsPage() {
             ))}
           </SettingList>
         )}
+
+        {!loading && hiddenAdminCount > 0 ? (
+          <Button variant="ghost" size="sm" onClick={() => setShowAllAdmins(true)}>
+            Show all {filteredAdmins.length} admins
+          </Button>
+        ) : null}
 
         {pending.length ? (
           <>
