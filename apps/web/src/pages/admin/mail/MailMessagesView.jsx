@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Input } from "@pondbridge/ui";
 import { CalendarClock, FileEdit, Inbox, RefreshCw } from "lucide-react";
 import { ModalConfirm } from "../../../components/admin/AdminUi.jsx";
+import { formatDateTime } from "../../../lib/adminDates.js";
 
 const PAGE_SIZE = 30;
 
@@ -23,12 +24,6 @@ const FOLDER_COPY = {
   }
 };
 
-function formatDateTime(value) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-}
 
 function formatPercent(value) {
   if (value == null || value === "") return "—";
@@ -180,7 +175,7 @@ export default function MailMessagesView({ folder = "sent", request, onEditDraft
                 >
                   <span className="pb-mail-list-row">
                     <strong>{item.subject || "(No subject)"}</strong>
-                    <small>{formatDateTime(item.sentAt || item.scheduledFor || item.updatedAt || item.createdAt)}</small>
+                    <small>{formatDateTime(item.sentAt || item.scheduledFor || item.updatedAt || item.createdAt, "—")}</small>
                   </span>
                   <span className="pb-mail-list-snippet">{plainPreview(item.preheader || item.body) || "No content yet"}</span>
                   <span className="pb-mail-list-meta">
@@ -228,7 +223,7 @@ export default function MailMessagesView({ folder = "sent", request, onEditDraft
                 <h3>{selected.subject || "(No subject)"}</h3>
                 <p>
                   <span className={`pb-mail-status tone-${statusTone(selected.status)}`}>{selected.status}</span>
-                  <span>{formatDateTime(selected.sentAt || selected.scheduledFor || selected.updatedAt || selected.createdAt)}</span>
+                  <span>{formatDateTime(selected.sentAt || selected.scheduledFor || selected.updatedAt || selected.createdAt, "—")}</span>
                   {folder === "drafts" ? null : <span>{Number(selected.recipientCount || 0).toLocaleString()} recipients</span>}
                 </p>
               </div>

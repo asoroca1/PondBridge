@@ -6,14 +6,8 @@ import { useTenant } from "../../context/TenantContext.jsx";
 import useAdminApi from "./useAdminApi.js";
 import { requestJson } from "../../lib/http.js";
 import "./director-admin-billing.css";
+import { formatDate } from "../../lib/adminDates.js";
 
-function formatDate(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
 
 function formatMoney(value = 0) {
   return new Intl.NumberFormat("en-US", {
