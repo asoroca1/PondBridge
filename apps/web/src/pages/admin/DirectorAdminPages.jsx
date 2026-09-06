@@ -37,8 +37,7 @@ import {
 import {
   SettingActions,
   SettingField,
-  SettingRow,
-  SettingTabs
+  SettingRow
 } from "../../components/admin/SettingControls.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import {
@@ -1386,11 +1385,18 @@ export function DirectorAdminFeaturesPage() {
           <div className="director-admin-section-heading">
             <div>
               <p className="director-admin-section-kicker">Member home</p>
-              <h2 id="home-buttons-heading">Home page buttons</h2>
-              <p>
-                Choose the four shortcuts members see under the welcome banner. Leave a slot on
-                automatic and PondBridge fills it with the next available page.
-              </p>
+              <h2 id="home-buttons-heading">
+                Home page buttons
+                <InfoHint label="Home page buttons">
+                  <span className="director-admin-module-about">
+                    Choose the four shortcuts members see under the welcome banner. Leave a slot on
+                    automatic and PondBridge fills it with the next available page.
+                  </span>
+                  <span className="director-admin-module-about">
+                    Members see the new buttons the next time they open the home page.
+                  </span>
+                </InfoHint>
+              </h2>
             </div>
             <Badge tone="neutral">{HOME_QUICK_ACTION_SLOTS} buttons</Badge>
           </div>
@@ -1431,7 +1437,7 @@ export function DirectorAdminFeaturesPage() {
               );
             })}
           </div>
-          <SettingActions note="Members see the new buttons the next time they open the home page.">
+          <SettingActions>
             <Button
               variant="secondary"
               onClick={() => setHomeQuickActions(Array(HOME_QUICK_ACTION_SLOTS).fill(""))}
@@ -1450,7 +1456,6 @@ export function DirectorAdminFeaturesPage() {
               <p className="director-admin-section-kicker">Member navigation</p>
               <h2 id="member-navigation-heading">Sidebar navigation</h2>
             </div>
-            <Badge tone="neutral">Wide screens only</Badge>
           </div>
           <div className="director-admin-module-list">
             <article className={`director-admin-module-row ${moduleSettings.sideNavEnabled ? "is-enabled" : ""}`.trim()}>
@@ -1458,6 +1463,7 @@ export function DirectorAdminFeaturesPage() {
                 <div className="director-admin-module-copy">
                   <div className="director-admin-module-title-row">
                     <h3>Left sidebar</h3>
+                    <span className="director-admin-module-depends">Wide screens only</span>
                     {/* This was two paragraphs and a badge for one switch. Both
                         paragraphs are here; the switch says which way it is set. */}
                     <InfoHint label="Left sidebar">
@@ -2030,7 +2036,6 @@ export function DirectorAdminSettingsBrandingPage() {
   const [status, setStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadingField, setUploadingField] = useState("");
-  const [section, setSection] = useState("logo");
   const [logoFileName, setLogoFileName] = useState("");
   const [faviconFileName, setFaviconFileName] = useState("");
   const [heroFileName, setHeroFileName] = useState("");
@@ -2491,20 +2496,7 @@ export function DirectorAdminSettingsBrandingPage() {
       {uploadError ? <p className="error-text" role="alert">{uploadError}</p> : null}
       {status ? <p className="success-text" role="status">{status}</p> : null}
 
-      <SettingTabs
-        tabs={[
-          { key: "logo", label: "Logo" },
-          { key: "icon", label: "Tab icon" },
-          { key: "photo", label: "Main photo" },
-          { key: "color", label: "Color" },
-          { key: "preview", label: "Preview" }
-        ]}
-        active={section}
-        onChange={setSection}
-      />
-
-      {section === "logo" ? (
-      <Card>
+            <Card>
         <h2 className="pb-section-title">Your logo</h2>
         <p className="muted">Sits in the top-left of every page, and at the top of the emails you send.</p>
         <div className="pb-set-upload">
@@ -2526,7 +2518,7 @@ export function DirectorAdminSettingsBrandingPage() {
                 onChange={(event) => onFilePick("logoUrl", event.target.files?.[0] || null)}
               />
               <h3 className="pb-set-subsection">
-                {hasPendingLogoUpdate ? "Waiting to be saved" : "Currently in use"}
+                {hasPendingLogoUpdate ? "Waiting to be saved" : "Logo in use"}
               </h3>
               <div className="director-admin-branding-current-media">
                 {liveLogoPreviewUrl ? (
@@ -2578,10 +2570,8 @@ export function DirectorAdminSettingsBrandingPage() {
           </div>
         ) : null}
       </Card>
-      ) : null}
 
-      {section === "icon" ? (
-      <Card>
+            <Card>
         <h2 className="pb-section-title">Your tab icon</h2>
         <p className="muted">
           The small square that shows in the browser tab, in bookmarks, and on a phone home
@@ -2608,7 +2598,7 @@ export function DirectorAdminSettingsBrandingPage() {
           />
 
           <h3 className="pb-set-subsection">
-            {hasPendingFaviconUpdate ? "Waiting to be saved" : "How it looks"}
+            {hasPendingFaviconUpdate ? "Waiting to be saved" : "In the browser tab"}
           </h3>
 
           {effectiveIconUrl ? (
@@ -2694,10 +2684,8 @@ export function DirectorAdminSettingsBrandingPage() {
           )}
         </div>
       </Card>
-      ) : null}
 
-      {section === "photo" ? (
-      <Card>
+            <Card>
         <h2 className="pb-section-title">Your main photo</h2>
         <p className="muted">
           The big image behind your login page and your members&apos; home page. Landscape photos work best.
@@ -2721,7 +2709,7 @@ export function DirectorAdminSettingsBrandingPage() {
                 onChange={(event) => onFilePick("heroImageUrl", event.target.files?.[0] || null)}
               />
               <h3 className="pb-set-subsection">
-                {hasPendingHeroUpdate ? "Waiting to be saved" : "Currently in use"}
+                {hasPendingHeroUpdate ? "Waiting to be saved" : "Main photo in use"}
               </h3>
               <div className="director-admin-branding-current-media">
                 {liveHeroPreviewUrl ? (
@@ -2756,7 +2744,7 @@ export function DirectorAdminSettingsBrandingPage() {
                 onChange={(event) => onFilePick("heroImageUrlMember", event.target.files?.[0] || null)}
               />
               <h3 className="pb-set-subsection">
-                {hasPendingMemberHeroUpdate ? "Waiting to be saved" : "Currently in use"}
+                {hasPendingMemberHeroUpdate ? "Waiting to be saved" : "Member home photo in use"}
               </h3>
               <div className="director-admin-branding-current-media">
                 {liveMemberHeroPreviewUrl ? (
@@ -2776,10 +2764,8 @@ export function DirectorAdminSettingsBrandingPage() {
               </div>
         </div>
       </Card>
-      ) : null}
 
-      {section === "color" ? (
-      <Card>
+            <Card>
         <h2 className="pb-section-title">Your color</h2>
         <p className="muted">
           Used for buttons, links, and highlights. Pick it from your logo if you want an exact match.
@@ -2831,10 +2817,8 @@ export function DirectorAdminSettingsBrandingPage() {
               </div>
         </div>
       </Card>
-      ) : null}
 
-      {section === "preview" ? (
-      <Card>
+            <Card>
         <h2 className="pb-section-title">How it looks</h2>
         <p className="muted">Drag the photo to choose what stays in frame on each page.</p>
           <HeroImageEditor
@@ -2879,7 +2863,6 @@ export function DirectorAdminSettingsBrandingPage() {
             }
           />
       </Card>
-      ) : null}
 
       <Card>
         <SettingActions note="Uploads are only stored once you save.">

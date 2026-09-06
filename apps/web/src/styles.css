@@ -8652,7 +8652,10 @@ html.is-native-app textarea{
 /* The four home-page button slots, side by side on desktop. */
 .pb-cedar-page .director-admin-home-buttons{
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* Four fixed columns, then two. auto-fit gave whatever happened to fit, which
+     at this column width was three and an orphan — the four slots stop reading
+     as one set of four. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   padding: 16px 18px;
   border: 1px solid var(--neutral-200);
@@ -17691,10 +17694,11 @@ html.is-native-app .asset-update-notice{
 }
 
 .pb-info-hint-panel{
-  position: absolute;
+  /* Fixed, not absolute: these rows sit inside lists that clip their overflow,
+     which cut the panel off entirely on the last row. Placement comes from the
+     component, which flips it above the trigger when there is no room below. */
+  position: fixed;
   z-index: 40;
-  top: calc(100% + 8px);
-  left: -8px;
   width: max-content;
   max-width: 320px;
   display: grid;
@@ -17713,12 +17717,6 @@ html.is-native-app .asset-update-notice{
   white-space: normal;
 }
 
-/* Near the right edge the panel would otherwise run off the card. */
-.pb-cedar-page .director-admin-module-title-row .pb-info-hint-panel{
-  left: auto;
-  right: auto;
-}
-
 .director-admin-module-about{
   display: block;
 }
@@ -17727,4 +17725,10 @@ html.is-native-app .asset-update-notice{
 .pb-cedar-page .director-admin-module-depends{
   color: var(--neutral-500);
   font-size: .78rem;
+}
+
+@media (max-width: 1200px){
+  .pb-cedar-page .director-admin-home-buttons{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

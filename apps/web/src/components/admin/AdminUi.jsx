@@ -447,8 +447,61 @@ const openHints = new Set();
 
 export function InfoHint({ label, children, className = "" }) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState(null);
   const wrapRef = useRef(null);
+  const panelRef = useRef(null);
   const panelId = useId();
+
+  // Positioned fixed against the trigger rather than absolutely inside it.
+  // The lists these sit in clip their overflow for rounded corners, so an
+  // absolutely placed panel on the last row was cut off seven pixels in and
+  // effectively invisible. Fixed placement escapes every clipping ancestor;
+  // the cost is having to work out where to put it.
+  useEffect(() => {
+    if (!open) return undefined;
+    function place() {
+      const trigger = wrapRef.current?.querySelector("button");
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+      const anchor = trigger.getBoundingClientRect();
+      const { width, height } = panel.getBoundingClientRect();
+      const margin = 8;
+      const roomBelow = window.innerHeight - anchor.bottom;
+      // Open upward when there is not room below and there is room above.
+      const above = roomBelow < height + margin && anchor.top > height + margin;
+      const top = above ? anchor.top - height - margin : anchor.bottom + margin;
+      const left = Math.min(
+        Math.max(margin, anchor.left - 8),
+        Math.max(margin, window.innerWidth - width - margin)
+      );
+      setPlacement({ top, left });
+    }
+    // Measured after the browser has laid out, not during the event. On resize
+    // the row reflows and the trigger moves; reading its rect in the handler
+    // itself gave the pre-reflow position, which parked the panel away from the
+    // ⓘ it belongs to and sometimes flipped it for room it did not need.
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(place);
+    };
+    // Placed straight away, then refined after the next frame. Doing only the
+    // rAF pass would leave the panel hidden in a backgrounded tab, where
+    // animation frames do not run.
+    place();
+    schedule();
+    window.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setPlacement(null);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -493,7 +546,15 @@ export function InfoHint({ label, children, className = "" }) {
         <span aria-hidden="true">i</span>
       </button>
       {open ? (
-        <span className="pb-info-hint-panel" id={panelId} role="note">
+        <span
+          className="pb-info-hint-panel"
+          id={panelId}
+          role="note"
+          ref={panelRef}
+          // Hidden for the first frame only, while its size is measured; without
+          // this it flashes at the wrong place before being positioned.
+          style={placement ? { top: `${placement.top}px`, left: `${placement.left}px` } : { visibility: "hidden" }}
+        >
           {children}
         </span>
       ) : null}
