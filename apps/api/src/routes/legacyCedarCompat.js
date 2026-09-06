@@ -34,6 +34,7 @@ import {
 } from "../services/cloudflareStream.js";
 import { logLine } from "../services/logger.js";
 import { ACTIVE_ALUMNI_FILTER, countActiveAlumni } from "../services/alumniTotals.js";
+import { aggregateCityCounts, parseCityState } from "../services/cityCounts.js";
 import {
   citiesCacheByTenant,
   cityPeopleCacheByTenant,
@@ -162,10 +163,6 @@ const MAP_SYNC_GEOCODE_LIMIT = Math.max(
   0,
   Number(process.env.MAP_SYNC_GEOCODE_LIMIT || (process.env.MAPBOX_TOKEN ? 12 : 1))
 );
-const CITY_STATE_PARSE_CACHE_LIMIT = Math.max(
-  1000,
-  Number(process.env.MAP_CITY_STATE_PARSE_CACHE_LIMIT || 6000)
-);
 const MAP_CITY_PROFILE_SELECT = [
   "id",
   "userId",
@@ -180,7 +177,6 @@ const MAP_CITIES_RESPONSE_CACHE_CONTROL = "private, max-age=20, stale-while-reva
 const MAP_CITY_PEOPLE_RESPONSE_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=30";
 const geocodeQueue = new Map();
 let geocodeWorkerRunning = false;
-const parsedCityStateCache = new Map();
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/jpg",
@@ -841,36 +837,6 @@ async function resolveNetworkRecipientEmails(tenantId) {
   return collectTenantNewsletterRecipients({ users, profiles });
 }
 
-function parseCityState(raw = "") {
-  const value = String(raw || "").trim();
-  if (!value) return { city: "", state: "" };
-  const cacheKey = value.toLowerCase();
-  const cached = parsedCityStateCache.get(cacheKey);
-  if (cached) return { ...cached };
-
-  let parsed = { city: value, state: "" };
-  if (value.includes(",")) {
-    const [city, state] = value.split(",", 2).map((part) => String(part || "").trim());
-    parsed = { city, state: state.toUpperCase() };
-  } else {
-    const parts = value.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      const maybeState = parts[parts.length - 1];
-      if (/^[A-Za-z]{2,3}$/.test(maybeState)) {
-        parsed = {
-          city: parts.slice(0, -1).join(" ").trim(),
-          state: maybeState.toUpperCase()
-        };
-      }
-    }
-  }
-
-  if (parsedCityStateCache.size >= CITY_STATE_PARSE_CACHE_LIMIT) {
-    parsedCityStateCache.clear();
-  }
-  parsedCityStateCache.set(cacheKey, parsed);
-  return { ...parsed };
-}
 
 function hasCoords(row) {
   return Number.isFinite(Number(row?.lat)) && Number.isFinite(Number(row?.lng));
@@ -927,36 +893,6 @@ async function runGeocodeWorker() {
   }
 }
 
-async function aggregateCityCounts(tenantId, { hiddenUserIds = null } = {}) {
-  // Every pin's count is tallied from these rows, so a truncated read understates the
-  // map. TODO: this is a GROUP BY the database should be doing, not JS over 3k rows.
-  const rows = await collectAll(ProfileModel.findAllBatched(
-    tenantId,
-    { cityState: { $ne: "" }, ...ACTIVE_ALUMNI_FILTER },
-    { select: ["cityState", "userId"] }
-  ));
-
-  const hidden = hiddenUserIds instanceof Set ? hiddenUserIds : null;
-  const byKey = new Map();
-  for (const row of rows) {
-    if (hidden?.has(String(row?.userId || ""))) continue;
-    const parsed = parseCityState(row?.cityState || "");
-    const city = norm(parsed.city);
-    const state = norm(parsed.state);
-    if (!city && !state) continue;
-
-    const key = cityKey(city, state);
-    if (!key) continue;
-
-    if (byKey.has(key)) {
-      byKey.get(key).count += 1;
-    } else {
-      byKey.set(key, { key, city, state, count: 1 });
-    }
-  }
-
-  return [...byKey.values()];
-}
 
 /**
  * The alumni total shown beside the map, minus anyone the viewer's tier hides.
