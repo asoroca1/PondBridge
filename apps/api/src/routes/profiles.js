@@ -10,6 +10,10 @@ import { createTtlCache } from "../utils/ttlCache.js";
 import { clearSearchCaches } from "../services/searchCache.js";
 import { filterProfileContactFields, normalizeProfilePrivacy } from "../services/profilePrivacy.js";
 import {
+  stripDisabledProfileFields,
+  stripDisabledProfileFieldsFromList
+} from "../services/profileFieldVisibility.js";
+import {
   canonicalizeCityName,
   canonicalizeCountryName,
   composeCityState,
@@ -45,7 +49,8 @@ function withNickname(profile = {}) {
   const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
   return {
     ...profile,
-    nickname: String(profile.nickname || socials.nickname || socials.campNickname || "").trim()
+    nickname: String(profile.nickname || socials.nickname || socials.campNickname || "").trim(),
+    maidenName: String(profile.maidenName || socials.maidenName || "").trim()
   };
 }
 
@@ -113,6 +118,41 @@ function normalizeCollegeMajorsFromBody(body = {}) {
   return null;
 }
 
+// Greek affiliation is stored the same way majors are: a bare array parallel to
+// `colleges`, kept on the socials JSON rather than a new column, so index N of
+// each lines up with college N.
+function normalizeCollegeGreekFromBody(body = {}) {
+  if (Array.isArray(body.collegeGreek)) {
+    return body.collegeGreek.map((entry) => sanitizeText(String(entry || "").trim()));
+  }
+  if (Array.isArray(body.education)) {
+    return body.education.map((row) => sanitizeText(String(row?.greek || "").trim()));
+  }
+  const fromSocials =
+    body.socials && typeof body.socials === "object"
+      ? body.socials
+      : body.social && typeof body.social === "object"
+      ? body.social
+      : {};
+  if (Array.isArray(fromSocials.collegeGreek)) {
+    return fromSocials.collegeGreek.map((entry) => sanitizeText(String(entry || "").trim()));
+  }
+  return null;
+}
+
+function readMaidenNameFromBody(body = {}) {
+  const source =
+    body.socials && typeof body.socials === "object"
+      ? body.socials
+      : body.social && typeof body.social === "object"
+      ? body.social
+      : {};
+  const provided =
+    body.maidenName !== undefined || source.maidenName !== undefined;
+  if (!provided) return null;
+  return sanitizeText(String(body.maidenName ?? source.maidenName ?? "").trim());
+}
+
 router.get("/me", async (req, res) => {
   const user = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
   if (!user) {
@@ -166,33 +206,46 @@ router.put("/me", profileUpdateLimiter, async (req, res) => {
       : req.body.social && typeof req.body.social === "object"
       ? req.body.social
       : null;
-  const incomingCollegeMajors = normalizeCollegeMajorsFromBody(req.body);
-  const nextSocials = providedSocials || incomingNicknameProvided
+  const incomingEducationRows = Array.isArray(req.body.education)
+    ? req.body.education
+        .map((row) => ({
+          college: sanitizeText(String(row?.college || "").trim()),
+          year: sanitizeText(String(row?.year || "").trim()),
+          major: sanitizeText(String(row?.major || "").trim()),
+          greek: sanitizeText(String(row?.greek || "").trim())
+        }))
+        .filter((row) => row.college || row.year || row.major || row.greek)
+    : null;
+  // `colleges` below is built from the *filtered* rows, so majors and greek have
+  // to come from the same filtered list. Reading them straight off req.body
+  // would shift every entry after a blank row by one.
+  const incomingCollegeMajors = incomingEducationRows
+    ? incomingEducationRows.map((row) => row.major)
+    : normalizeCollegeMajorsFromBody(req.body);
+  const incomingCollegeGreek = incomingEducationRows
+    ? incomingEducationRows.map((row) => row.greek)
+    : normalizeCollegeGreekFromBody(req.body);
+  const incomingMaidenName = readMaidenNameFromBody(req.body);
+  // Every one of these lives on the socials JSON, so any of them being present
+  // means socials has to be rewritten as a whole.
+  const socialsTouched =
+    Boolean(providedSocials) ||
+    incomingNicknameProvided ||
+    Boolean(incomingCollegeMajors) ||
+    Boolean(incomingCollegeGreek) ||
+    incomingMaidenName !== null;
+  const nextSocials = socialsTouched
     ? {
         ...existingSocials,
         ...(providedSocials || {}),
         ...(incomingNicknameProvided ? { nickname: incomingNickname, campNickname: incomingNickname } : {}),
         ...(incomingCollegeMajors
           ? { collegeMajors: incomingCollegeMajors, educationMajors: incomingCollegeMajors }
-          : {})
-      }
-    : incomingCollegeMajors
-    ? {
-        ...existingSocials,
-        collegeMajors: incomingCollegeMajors,
-        educationMajors: incomingCollegeMajors
+          : {}),
+        ...(incomingCollegeGreek ? { collegeGreek: incomingCollegeGreek } : {}),
+        ...(incomingMaidenName !== null ? { maidenName: incomingMaidenName } : {})
       }
     : undefined;
-  const incomingEducationRows = Array.isArray(req.body.education)
-    ? req.body.education
-        .map((row) => ({
-          college: sanitizeText(String(row?.college || "").trim()),
-          year: sanitizeText(String(row?.year || "").trim()),
-          major: sanitizeText(String(row?.major || "").trim())
-        }))
-        .filter((row) => row.college || row.year || row.major)
-    : null;
-
   const update = {
     firstName: sanitizeText(String(req.body.firstName || "").trim()),
     lastName: sanitizeText(String(req.body.lastName || "").trim()),
@@ -282,11 +335,14 @@ router.get("/", requireTenantModule("directory"), async (req, res) => {
       !isRemovedProfile(profile) &&
       !hiddenUserIdSet.has(String(profile?.userId || ""))
   );
+  // Stripped before mapping, so a field the camp no longer collects is gone
+  // from the summary and the full view alike.
+  const collectedItems = stripDisabledProfileFieldsFromList(visibleItems, req.tenant);
   const payload = {
-    total: visibleItems.length,
+    total: collectedItems.length,
     items: includeFull
-      ? visibleItems.map((profile) => withNickname(filterProfileContactFields(profile, req.user)))
-      : visibleItems.map((profile) => mapProfileSummary(profile))
+      ? collectedItems.map((profile) => withNickname(filterProfileContactFields(profile, req.user)))
+      : collectedItems.map((profile) => mapProfileSummary(profile))
   };
 
   if (!includeFull) {
@@ -328,7 +384,9 @@ router.get("/:profileId", requireTenantModule("directory"), async (req, res) => 
   }
 
   return res.json({
-    profile: withNickname(filterProfileContactFields(profile, req.user))
+    profile: withNickname(
+      filterProfileContactFields(stripDisabledProfileFields(profile, req.tenant), req.user)
+    )
   });
 });
 

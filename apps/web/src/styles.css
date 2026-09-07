@@ -2443,12 +2443,35 @@ body{
 .wizard1-edu-list { display: flex; flex-direction: column; gap: 10px; }
 .wizard1-edu-row {
     display: grid;
-    grid-template-columns: 1.5fr 1fr 100px auto;
+    /* College, Grad Year, actions. Major and Greek life are each a director
+       setting, so the row has to size itself for whichever of them is on
+       rather than assuming a fixed three-field row. */
+    grid-template-columns: 1.5fr 110px auto;
     gap: 10px;
     align-items: end;
   }
+  .wizard1-edu-row.has-major {
+    grid-template-columns: 1.5fr 1fr 110px auto;
+  }
+  .wizard1-edu-row.has-greek {
+    grid-template-columns: 1.5fr 1fr 110px auto;
+  }
+  .wizard1-edu-row.has-major.has-greek {
+    grid-template-columns: 1.4fr 1fr 1fr 110px auto;
+  }
+  @media (max-width: 900px){
+    .wizard1-edu-row.has-major.has-greek {
+      grid-template-columns: 1fr 1fr;
+    }
+    .wizard1-edu-row.has-major.has-greek .wizard1-edu-actions {
+      grid-column: 1 / -1;
+    }
+  }
   @media (max-width: 640px){
-    .wizard1-edu-row {
+    .wizard1-edu-row,
+    .wizard1-edu-row.has-major,
+    .wizard1-edu-row.has-greek,
+    .wizard1-edu-row.has-major.has-greek {
       grid-template-columns: 1fr;
     }
   }

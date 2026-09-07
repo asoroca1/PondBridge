@@ -16,6 +16,7 @@ import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { UserRoundPen } from "lucide-react";
 import { tenantHasFeature } from "../../lib/features.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
+import { useProfileFields } from "../../lib/profileFields.js";
 import { useUnsavedChangesGuard } from "../../lib/useUnsavedChangesGuard.js";
 import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
 import "./edit-profile.css";
@@ -173,7 +174,8 @@ function mergeParsedProfileIntoForm(currentForm, parsedProfile = {}) {
       ? Array.from({ length: parsedEducationLength }, (_, index) => ({
           college: String(parsedColleges[index] || "").trim(),
           year: String(parsedCollegeYears[index] || "").trim(),
-          major: ""
+          major: "",
+          greek: ""
         })).filter((row) => row.college || row.year || row.major)
       : [];
   const parsedCurrentJobs = Array.isArray(safeParsed.currentJobs)
@@ -210,7 +212,7 @@ function mergeParsedProfileIntoForm(currentForm, parsedProfile = {}) {
         ? parsedEducation
         : Array.isArray(safeCurrent.education) && safeCurrent.education.length
         ? safeCurrent.education
-        : [{ college: "", year: "", major: "" }],
+        : [{ college: "", year: "", major: "", greek: "" }],
     industry: String(safeParsed.industry || "").trim() || safeCurrent.industry || "",
     currentJobs:
       parsedCurrentJobs.length > 0
@@ -630,8 +632,7 @@ function MultiSelect({ label, placeholder, options, value, onChange, id }) {
 }
 
 /* Stepper */
-function Stepper({ activeStep = 0 }) {
-  const steps = ["Personal","Education","Experience","Social Media"];
+function Stepper({ activeStep = 0, steps = ["Personal", "Education", "Experience", "Social Media"] }) {
   return (
     <nav className="wizard1-stepper" aria-label="Profile editing progress">
       <div className="wizard1-stepper-track" />
@@ -674,6 +675,10 @@ export default function EditProfile() {
   const canUseResumeParsing = tenantHasFeature(tenant, "resumeParsing");
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
   const ageGroupOptions = useMemo(() => resolveAgeGroupOptions(tenant), [tenant]);
+  // A camp that does not collect a field should never be asked for it. The
+  // values already on file are left untouched and still round-trip on save, so
+  // switching a field back on brings the old answers back with it.
+  const profileFields = useProfileFields(tenant);
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -690,7 +695,7 @@ export default function EditProfile() {
   const [form, setForm] = useState({
     uploads: { photo: null, photoUrl: "", pdfs: [] },
 
-    firstName: "", lastName: "", nickname: "",
+    firstName: "", lastName: "", nickname: "", maidenName: "",
     email: "", // read-only in UI
     phone: "",
     privacy: { email: "members", phone: "members" },
@@ -703,7 +708,7 @@ export default function EditProfile() {
     staffYearStints: [],
 
     highSchool: "",
-    education: [{ college: "", year: "", major: "" }],
+    education: [{ college: "", year: "", major: "", greek: "" }],
 
     industry: "",
     currentJobs: [{ role: "", company: "", years: "" }],
@@ -924,6 +929,7 @@ export default function EditProfile() {
           nickname: String(
             fresh.nickname || fresh.social?.nickname || fresh.socials?.nickname || fresh.socials?.campNickname || ""
           ).trim(),
+          maidenName: String(fresh.maidenName || socialSource.maidenName || "").trim(),
           email: fresh.email || "",
           phone: fresh.phone || "",
           privacy: {
@@ -946,7 +952,7 @@ export default function EditProfile() {
           education:
             Array.isArray(fresh.education) && fresh.education.length
               ? fresh.education
-              : [{ college: "", year: "", major: "" }],
+              : [{ college: "", year: "", major: "", greek: "" }],
 
           industry: fresh.industry || "",
           currentJobs:
@@ -1018,9 +1024,13 @@ export default function EditProfile() {
     if (!form.firstName.trim()) e.firstName = "First name is required.";
     if (!form.lastName.trim())  e.lastName  = "Last name is required.";
 
-    const normalizedLocation = composeCityStateLabel(form.cityState);
-    if (!normalizedLocation) {
-      e.cityState = "Enter location as City, State (US) or City, Country.";
+    // Only required when the camp actually asks for it — otherwise the field
+    // is not on screen and the member could never clear the error.
+    if (profileFields.has("location")) {
+      const normalizedLocation = composeCityStateLabel(form.cityState);
+      if (!normalizedLocation) {
+        e.cityState = "Enter location as City, State (US) or City, Country.";
+      }
     }
 
     const validateYearStints = (stints, prefix, label) => {
@@ -1067,7 +1077,7 @@ export default function EditProfile() {
 
   const validateStep3 = () => {
     const e = {};
-    if (!form.industry) e.industry = "Please select an industry.";
+    if (profileFields.has("industry") && !form.industry) e.industry = "Please select an industry.";
 
     const checkList = (list, prefix) => {
       form[list].forEach((j, i) => {
@@ -1090,15 +1100,15 @@ export default function EditProfile() {
     const e = {};
     const S = form.social || {};
 
-    if (S.linkedin) {
+    if (profileFields.has("socialLinkedin") && S.linkedin) {
       try { new URL(ensureUrl(S.linkedin)); }
       catch { e.social_linkedin = "Enter a valid LinkedIn URL (include http/https)."; }
     }
-    if (S.instagram) {
+    if (profileFields.has("socialInstagram") && S.instagram) {
       const ig = toInstagramUrl(S.instagram);
       try { new URL(ig); } catch { e.social_instagram = "Enter a valid Instagram username or URL."; }
     }
-    if (S.facebook) {
+    if (profileFields.has("socialFacebook") && S.facebook) {
       const fb = toFacebookUrl(S.facebook);
       try { new URL(fb); } catch { e.social_facebook = "Enter a valid Facebook username or URL."; }
     }
@@ -1107,12 +1117,74 @@ export default function EditProfile() {
     return Object.keys(e).length === 0;
   };
 
+  // A camp that collects no education, no work history or no social links
+  // should not make its members click Next through an empty page, so those
+  // steps leave the flow entirely rather than rendering as a placeholder.
+  // Personal always stays: first and last name live there and are never optional.
+  //
+  // Only the ids live in the memo. The validators are re-created on every
+  // render because they close over `form`, so memoizing them alongside would
+  // pin the copy that saw the empty initial form and reject every save.
+  const activeSteps = useMemo(() => {
+    const steps = [{ id: "personal", label: "Personal" }];
+    if (profileFields.has("highSchool") || profileFields.has("college")) {
+      steps.push({ id: "education", label: "Education" });
+    }
+    if (
+      profileFields.has("industry") ||
+      profileFields.has("currentJobs") ||
+      profileFields.has("pastJobs")
+    ) {
+      steps.push({ id: "experience", label: "Experience" });
+    }
+    if (profileFields.hasAnySocial) {
+      steps.push({ id: "social", label: "Social Media" });
+    }
+    return steps;
+  }, [profileFields]);
+
+  // "Step 3" has to mean the third step this camp actually has, not the third
+  // step the code was originally written with. With a single step there is no
+  // sequence to number, so the eyebrow says nothing.
+  const stepEyebrow = (id) => {
+    if (activeSteps.length < 2) return "";
+    const position = activeSteps.findIndex((entry) => entry.id === id);
+    return position < 0 ? "" : `Step ${position + 1}`;
+  };
+
+  // Names only the sections this camp actually has, so the subtitle never
+  // promises a member a page that is not in their flow.
+  const editSubtitle = (() => {
+    const SUBTITLE_NAMES = {
+      personal: "your details and camp history",
+      education: "schools",
+      experience: "work history",
+      social: "social links"
+    };
+    const parts = activeSteps.map((entry) => SUBTITLE_NAMES[entry.id]).filter(Boolean);
+    if (parts.length === 1) return `Update ${parts[0]}.`;
+    return `Update ${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}.`;
+  })();
+
+  const stepValidators = {
+    personal: validateStep1,
+    education: validateStep2,
+    experience: validateStep3,
+    social: validateStep4
+  };
+
+  // Turning a field off can shorten the flow while a member is standing on the
+  // last step, so clamp rather than render nothing.
+  const stepIndex = Math.min(step, activeSteps.length - 1);
+  const currentStep = activeSteps[stepIndex];
+  const isLastStep = stepIndex >= activeSteps.length - 1;
+
   const updateEdu = (idx, patch) =>
     setForm(f => ({
       ...f,
       education: f.education.map((row, i) => i === idx ? { ...row, ...patch } : row)
     }));
-  const addEdu = () => setForm(f => ({ ...f, education: [...f.education, { college: "", year: "", major: "" }] }));
+  const addEdu = () => setForm(f => ({ ...f, education: [...f.education, { college: "", year: "", major: "", greek: "" }] }));
   const removeEdu = (idx) =>
     setForm(f => ({ ...f, education: f.education.filter((_, i) => i !== idx) }));
 
@@ -1143,17 +1215,12 @@ export default function EditProfile() {
     });
 
   const onNext = async () => {
-    if (step === 0) { if (!validateStep1()) return; return setStep(1); }
-    if (step === 1) { if (!validateStep2()) return; return setStep(2); }
-    if (step === 2) { if (!validateStep3()) return; return setStep(3); }
-
-    if (step === 3) {
-      if (!validateStep4()) return;
-      await persistProfile({ exitAfterSave: true });
-    }
+    if (!stepValidators[currentStep?.id]?.()) return;
+    if (!isLastStep) return setStep(stepIndex + 1);
+    await persistProfile({ exitAfterSave: true });
   };
 
-  const onBack = () => setStep((s) => Math.max(0, s - 1));
+  const onBack = () => setStep(() => Math.max(0, stepIndex - 1));
 
   async function persistProfile({ exitAfterSave = false } = {}) {
     try {
@@ -1246,6 +1313,7 @@ export default function EditProfile() {
       firstName: form.firstName,
       lastName: form.lastName,
       nickname: form.nickname,
+      maidenName: form.maidenName,
       phone: form.phone,
       privacy: form.privacy,
 
@@ -1275,11 +1343,12 @@ export default function EditProfile() {
 
       highSchool: form.highSchool,
       education: (form.education || [])
-        .filter((e) => (e.college || e.major || e.year || "").toString().trim())
+        .filter((e) => (e.college || e.major || e.year || e.greek || "").toString().trim())
         .map((e) => ({
           college: (e.college || "").trim(),
           major: (e.major || "").trim(),
           year: (e.year || "").trim(),
+          greek: (e.greek || "").trim(),
         })),
 
       industry: form.industry || "",
@@ -1352,7 +1421,7 @@ export default function EditProfile() {
         <div className="wizard1-span-12 edit-profile-personal-block">
           <div className="edit-profile-section-heading">
             <div>
-              <span className="edit-profile-eyebrow">Step 1</span>
+              <span className="edit-profile-eyebrow">{stepEyebrow("personal")}</span>
               <h2 className="wizard1-h2">Personal details</h2>
             </div>
             <p>Keep your contact information and camp history accurate.</p>
@@ -1507,18 +1576,40 @@ export default function EditProfile() {
               </div>
             </div>
 
-            <div className="wizard1-span-6">
-              <div className="wizard1-field">
-                <label className="wizard1-label" htmlFor="edit-profile-nickname">Camp Nickname</label>
-                <input
-                  id="edit-profile-nickname"
-                  className="wizard1-input"
-                  value={form.nickname}
-                  onChange={(e) => setField({ nickname: e.target.value })}
-                />
+            {profileFields.has("nickname") ? (
+              <div className="wizard1-span-6">
+                <div className="wizard1-field">
+                  <label className="wizard1-label" htmlFor="edit-profile-nickname">Camp Nickname</label>
+                  <input
+                    id="edit-profile-nickname"
+                    className="wizard1-input"
+                    value={form.nickname}
+                    onChange={(e) => setField({ nickname: e.target.value })}
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
 
+            {profileFields.has("maidenName") ? (
+              <div className="wizard1-span-6">
+                <div className="wizard1-field">
+                  <label className="wizard1-label" htmlFor="edit-profile-maiden-name">Maiden Name</label>
+                  <input
+                    id="edit-profile-maiden-name"
+                    className="wizard1-input"
+                    value={form.maidenName}
+                    onChange={(e) => setField({ maidenName: e.target.value })}
+                    placeholder="e.g., Whitfield"
+                    aria-describedby="edit-profile-maiden-name-hint"
+                  />
+                  <p id="edit-profile-maiden-name-hint" className="wizard1-hint" style={{ marginTop: 6 }}>
+                    Shown next to your last name, so camp friends recognize you.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {profileFields.has("location") ? (
             <div className="wizard1-span-6">
               <div className="wizard1-field">
                 <label className="wizard1-label" htmlFor="edit-profile-location">Current Location <span className="req">*</span></label>
@@ -1542,6 +1633,7 @@ export default function EditProfile() {
                 {errors.cityState && <p id="edit-profile-location-error" className="wizard1-error">{errors.cityState}</p>}
               </div>
             </div>
+            ) : null}
 
             <div className="wizard1-span-6">
               <div className="wizard1-field">
@@ -1565,6 +1657,7 @@ export default function EditProfile() {
               </div>
             </div>
 
+            {profileFields.has("phone") ? (
             <div className="wizard1-span-6">
               <div className="wizard1-field">
                 <label className="wizard1-label" htmlFor="edit-profile-phone">Phone</label>
@@ -1600,13 +1693,17 @@ export default function EditProfile() {
                 </select>
               </div>
             </div>
+            ) : null}
 
+            {(profileFields.has("campRoles") || profileFields.has("camperYears") || profileFields.has("staffYears")) ? (
             <div className="wizard1-span-12 edit-profile-subsection-heading">
               <span className="edit-profile-eyebrow">Camp history</span>
               <h3>How you’re connected to camp</h3>
               <p>Add your roles and years so friends can find the people they remember.</p>
             </div>
+            ) : null}
 
+            {profileFields.has("campRoles") ? (
             <div className="wizard1-span-12">
               <MultiSelect
                 id="roles"
@@ -1617,7 +1714,9 @@ export default function EditProfile() {
                 onChange={(v) => setField({ roles: v })}
               />
             </div>
+            ) : null}
 
+            {profileFields.has("camperYears") ? (
             <div className="wizard1-span-12" style={{ marginTop: 4 }}>
               <div className="wizard1-subtitle">Years at Camp (Camper)</div>
               <div className="wizard1-year-list">
@@ -1718,7 +1817,9 @@ export default function EditProfile() {
                 </div>
               </div>
             </div>
+            ) : null}
 
+            {profileFields.has("staffYears") ? (
             <div className="wizard1-span-12" style={{ marginTop: 8 }}>
               {!showStaffYears ? (
                 <button
@@ -1810,6 +1911,7 @@ export default function EditProfile() {
                 </>
               )}
             </div>
+            ) : null}
 
           </div>
         </div>
@@ -1822,29 +1924,41 @@ export default function EditProfile() {
       <div className="wizard1-grid wizard1-gap">
         <div className="wizard1-span-12 edit-profile-section-heading">
           <div>
-            <span className="edit-profile-eyebrow">Step 2</span>
+            <span className="edit-profile-eyebrow">{stepEyebrow("education")}</span>
             <h2 className="wizard1-h2">Education</h2>
           </div>
           <p>Add your schools so alumni can connect over shared campuses.</p>
         </div>
 
-        <div className="wizard1-span-6">
-          <div className="wizard1-field">
-            <label className="wizard1-label" htmlFor="edit-profile-high-school">High School</label>
-            <input
-              id="edit-profile-high-school"
-              className="wizard1-input"
-              value={form.highSchool}
-              onChange={(e) => setField({ highSchool: e.target.value })}
-              placeholder="e.g., Brunswick"
-            />
+        {profileFields.has("highSchool") ? (
+          <div className="wizard1-span-6">
+            <div className="wizard1-field">
+              <label className="wizard1-label" htmlFor="edit-profile-high-school">High School</label>
+              <input
+                id="edit-profile-high-school"
+                className="wizard1-input"
+                value={form.highSchool}
+                onChange={(e) => setField({ highSchool: e.target.value })}
+                placeholder="e.g., Brunswick"
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
 
+        {profileFields.has("college") ? (
         <div className="wizard1-span-12">
           <div className="wizard1-edu-list">
             {form.education.map((row, idx) => (
-              <div key={idx} className="wizard1-edu-row">
+              <div
+                key={idx}
+                className={[
+                  "wizard1-edu-row",
+                  profileFields.has("collegeMajor") ? "has-major" : "",
+                  profileFields.has("greekLife") ? "has-greek" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <div className="wizard1-field">
                   <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-college`}>College</label>
                   <input
@@ -1856,16 +1970,33 @@ export default function EditProfile() {
                   />
                 </div>
 
-                <div className="wizard1-field">
-                  <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-major`}>Major</label>
-                  <input
-                    id={`edit-profile-education-${idx}-major`}
-                    className="wizard1-input"
-                    value={row.major || ""}
-                    onChange={(e) => updateEdu(idx, { major: e.target.value })}
-                    placeholder="e.g., Economics"
-                  />
-                </div>
+                {profileFields.has("collegeMajor") ? (
+                  <div className="wizard1-field">
+                    <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-major`}>Major</label>
+                    <input
+                      id={`edit-profile-education-${idx}-major`}
+                      className="wizard1-input"
+                      value={row.major || ""}
+                      onChange={(e) => updateEdu(idx, { major: e.target.value })}
+                      placeholder="e.g., Economics"
+                    />
+                  </div>
+                ) : null}
+
+                {profileFields.has("greekLife") ? (
+                  <div className="wizard1-field">
+                    <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-greek`}>
+                      Greek Life
+                    </label>
+                    <input
+                      id={`edit-profile-education-${idx}-greek`}
+                      className="wizard1-input"
+                      value={row.greek || ""}
+                      onChange={(e) => updateEdu(idx, { greek: e.target.value })}
+                      placeholder="e.g., Sigma Chi"
+                    />
+                  </div>
+                ) : null}
 
                 <div className="wizard1-field">
                   <label className="wizard1-label" htmlFor={`edit-profile-education-${idx}-year`}>Grad Year</label>
@@ -1897,6 +2028,8 @@ export default function EditProfile() {
             + Add another college
           </button>
         </div>
+        ) : null}
+
       </div>
     </section>
   );
@@ -1906,12 +2039,13 @@ export default function EditProfile() {
       <div className="wizard1-grid wizard1-gap">
         <div className="wizard1-span-12 edit-profile-section-heading">
           <div>
-            <span className="edit-profile-eyebrow">Step 3</span>
+            <span className="edit-profile-eyebrow">{stepEyebrow("experience")}</span>
             <h2 className="wizard1-h2">Experience</h2>
           </div>
           <p>Help alumni discover professional connections across the network.</p>
         </div>
 
+        {profileFields.has("industry") ? (
         <div className="wizard1-span-6">
           <div className="wizard1-field">
             <label className="wizard1-label" htmlFor="edit-profile-industry">Industry <span className="req">*</span></label>
@@ -1940,7 +2074,9 @@ export default function EditProfile() {
             {errors.industry && <p id="edit-profile-industry-error" className="wizard1-error">{errors.industry}</p>}
           </div>
         </div>
+        ) : null}
 
+        {profileFields.has("currentJobs") ? (
         <div className="wizard1-span-12">
           <div className="wizard1-subtitle">Current Job(s)</div>
           <div className="wizard1-job-list">
@@ -2004,7 +2140,9 @@ export default function EditProfile() {
             + Add another current job
           </button>
         </div>
+        ) : null}
 
+        {profileFields.has("pastJobs") ? (
         <div className="wizard1-span-12">
           <div className="wizard1-subtitle">Past Job(s)</div>
           <div className="wizard1-job-list">
@@ -2068,6 +2206,8 @@ export default function EditProfile() {
             + Add another past job
           </button>
         </div>
+        ) : null}
+
       </div>
     </section>
   );
@@ -2077,12 +2217,14 @@ export default function EditProfile() {
       <div className="wizard1-grid wizard1-gap">
         <div className="wizard1-span-12 edit-profile-section-heading">
           <div>
-            <span className="edit-profile-eyebrow">Step 4</span>
+            <span className="edit-profile-eyebrow">{stepEyebrow("social")}</span>
             <h2 className="wizard1-h2">Social links</h2>
           </div>
           <p>Make it easy for camp friends to stay in touch elsewhere.</p>
         </div>
 
+
+        {profileFields.has("socialLinkedIn") ? (
         <div className="wizard1-span-6">
           <div className="wizard1-field">
             <label className="wizard1-label" htmlFor="edit-profile-linkedin">LinkedIn</label>
@@ -2100,7 +2242,9 @@ export default function EditProfile() {
             {errors.social_linkedin && <p id="edit-profile-linkedin-error" className="wizard1-error">{errors.social_linkedin}</p>}
           </div>
         </div>
+        ) : null}
 
+        {profileFields.has("socialInstagram") ? (
         <div className="wizard1-span-6">
           <div className="wizard1-field">
             <label className="wizard1-label" htmlFor="edit-profile-instagram">Instagram</label>
@@ -2118,7 +2262,9 @@ export default function EditProfile() {
             {errors.social_instagram && <p id="edit-profile-instagram-error" className="wizard1-error">{errors.social_instagram}</p>}
           </div>
         </div>
+        ) : null}
 
+        {profileFields.has("socialFacebook") ? (
         <div className="wizard1-span-6">
           <div className="wizard1-field">
             <label className="wizard1-label" htmlFor="edit-profile-facebook">Facebook</label>
@@ -2136,6 +2282,7 @@ export default function EditProfile() {
             {errors.social_facebook && <p id="edit-profile-facebook-error" className="wizard1-error">{errors.social_facebook}</p>}
           </div>
         </div>
+        ) : null}
       </div>
     </section>
   );
@@ -2150,7 +2297,7 @@ export default function EditProfile() {
               <CedarPageHeader
                 icon={<UserRoundPen size={18} />}
                 title="Edit Profile"
-                subtitle="Update your details, camp history, and social links."
+                subtitle={editSubtitle}
                 className="edit-profile-header"
               />
             </div>
@@ -2170,18 +2317,26 @@ export default function EditProfile() {
             <CedarPageHeader
               icon={<UserRoundPen size={18} />}
               title="Edit Profile"
-              subtitle="Update your details, camp history, and social links."
+              subtitle={editSubtitle}
               className="edit-profile-header"
             />
           </div>
-          <Stepper activeStep={step} />
+          {activeSteps.length > 1 ? (
+            <Stepper activeStep={stepIndex} steps={activeSteps.map((entry) => entry.label)} />
+          ) : null}
 
-          {step === 0 ? Step1 : step === 1 ? Step2 : step === 2 ? Step3 : Step4}
+          {currentStep?.id === "personal"
+            ? Step1
+            : currentStep?.id === "education"
+            ? Step2
+            : currentStep?.id === "experience"
+            ? Step3
+            : Step4}
 
           {saveError ? <p className="wizard1-error" role="alert">{saveError}</p> : null}
 
           <div className="wizard1-actions edit-profile-actions">
-            {step > 0 ? (
+            {stepIndex > 0 ? (
               <button className="wizard1-btn-primary" onClick={onBack} disabled={submitting}>
                 Back
               </button>
@@ -2194,7 +2349,7 @@ export default function EditProfile() {
                 {submitting ? "Saving..." : "Save & Exit"}
               </button>
               <button className="wizard1-btn-primary" onClick={onNext} disabled={submitting}>
-                {step < 3 ? "Next" : (submitting ? "Saving..." : "Save")}
+                {!isLastStep ? "Next" : (submitting ? "Saving..." : "Save")}
               </button>
             </div>
           </div>
