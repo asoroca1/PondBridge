@@ -119,6 +119,10 @@ import {
   activityActorUserIds,
   filterActivityItemsForActiveUsers
 } from "../services/memberVisibility.js";
+import {
+  stripDisabledProfileFields,
+  stripDisabledProfileFieldsFromList
+} from "../services/profileFieldVisibility.js";
 
 const router = Router({ mergeParams: true });
 const upload = multer({
@@ -2003,7 +2007,12 @@ router.get("/search/users", async (req, res) => {
     limit
   });
 
-  const mapped = items.map((item) => profileToLegacy(item, { viewer: req.user }));
+  // Stripped here and not inside profileToLegacy, because that same mapper
+  // also builds the GET/PUT /me responses, which the member's own editor
+  // writes straight back — blanking a field there would erase it on save.
+  const mapped = stripDisabledProfileFieldsFromList(items, req.tenant).map((item) =>
+    profileToLegacy(item, { viewer: req.user })
+  );
   return res.json({ total: mapped.length, items: mapped, results: mapped });
 });
 
@@ -2035,7 +2044,7 @@ router.get("/search/user/:id", async (req, res) => {
   }
 
   return res.json({
-    user: profileToLegacy(item, {
+    user: profileToLegacy(stripDisabledProfileFields(item, req.tenant), {
       fallbackEmail: user?.email || "",
       viewer: req.user
     })
@@ -2139,11 +2148,17 @@ router.get("/suggestions", async (req, res) => {
         })
     : [];
 
+  // Related Profiles shows a job line under each name, so the suggestion cards
+  // are stripped like any other member-to-member view. Ranking above still runs
+  // on the whole profile, which is the camp's own data, not a member's view.
   const rankedItems = buildSuggestionResults({
     primaryProfiles: mode === "personalized"
-      ? scored.slice(0, limit).map((item) => item.profile)
+      ? stripDisabledProfileFieldsFromList(
+          scored.slice(0, limit).map((item) => item.profile),
+          req.tenant
+        )
       : [],
-    fallbackProfiles: visibleCandidates,
+    fallbackProfiles: stripDisabledProfileFieldsFromList(visibleCandidates, req.tenant),
     limit
   });
   const items = addSuggestionContext({ items: rankedItems, scoredProfiles: scored, mode });

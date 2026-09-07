@@ -71,6 +71,7 @@ module.exports = {
     "**/tests/tenantContentFields.test.js",
     "**/tests/tenantProfileFields.test.js",
     "**/tests/profileMaidenNameSearch.test.js",
+    "**/tests/profileFieldVisibility.test.js",
     "**/tests/tenantIsolation.test.js"
   ]
 };

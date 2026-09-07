@@ -10,6 +10,10 @@ import { createTtlCache } from "../utils/ttlCache.js";
 import { clearSearchCaches } from "../services/searchCache.js";
 import { filterProfileContactFields, normalizeProfilePrivacy } from "../services/profilePrivacy.js";
 import {
+  stripDisabledProfileFields,
+  stripDisabledProfileFieldsFromList
+} from "../services/profileFieldVisibility.js";
+import {
   canonicalizeCityName,
   canonicalizeCountryName,
   composeCityState,
@@ -331,11 +335,14 @@ router.get("/", requireTenantModule("directory"), async (req, res) => {
       !isRemovedProfile(profile) &&
       !hiddenUserIdSet.has(String(profile?.userId || ""))
   );
+  // Stripped before mapping, so a field the camp no longer collects is gone
+  // from the summary and the full view alike.
+  const collectedItems = stripDisabledProfileFieldsFromList(visibleItems, req.tenant);
   const payload = {
-    total: visibleItems.length,
+    total: collectedItems.length,
     items: includeFull
-      ? visibleItems.map((profile) => withNickname(filterProfileContactFields(profile, req.user)))
-      : visibleItems.map((profile) => mapProfileSummary(profile))
+      ? collectedItems.map((profile) => withNickname(filterProfileContactFields(profile, req.user)))
+      : collectedItems.map((profile) => mapProfileSummary(profile))
   };
 
   if (!includeFull) {
@@ -377,7 +384,9 @@ router.get("/:profileId", requireTenantModule("directory"), async (req, res) => 
   }
 
   return res.json({
-    profile: withNickname(filterProfileContactFields(profile, req.user))
+    profile: withNickname(
+      filterProfileContactFields(stripDisabledProfileFields(profile, req.tenant), req.user)
+    )
   });
 });
 

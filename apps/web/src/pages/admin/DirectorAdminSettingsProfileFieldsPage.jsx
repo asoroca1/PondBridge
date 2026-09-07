@@ -128,8 +128,8 @@ export default function DirectorAdminSettingsProfileFieldsPage() {
       <Card className="director-profile-fields-intro">
         <p>
           Choose what your members are asked for. Anything switched off disappears from the profile
-          form and from every place that profile is shown — no blank rows, no empty cards. Answers
-          already on file are kept, so a field can come back later with its data intact.
+          form and from every place that profile is shown. Answers already on file are kept, so a
+          field can come back later with its data intact.
         </p>
         <div className="director-profile-fields-intro-actions">
           <Link

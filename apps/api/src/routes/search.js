@@ -23,6 +23,10 @@ import {
 } from "../services/searchCache.js";
 import { canViewProfileContact, filterProfileContactFields } from "../services/profilePrivacy.js";
 import {
+  stripDisabledProfileFields,
+  stripDisabledProfileFieldsFromList
+} from "../services/profileFieldVisibility.js";
+import {
   findMemberBlockBetween,
   isSafetyModerator
 } from "../services/memberSafety.js";
@@ -745,12 +749,15 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
     company,
     roleTitle
   };
-  const items = rankedItems
-    .slice(offset, offset + limit)
-    .map((entry) => ({
-      ...mapSearchSummary(entry.profile),
-      matchReasons: buildMatchReasons(entry.profile, matchFilters)
-    }));
+  const pageEntries = rankedItems.slice(offset, offset + limit);
+  const collectedPage = stripDisabledProfileFieldsFromList(
+    pageEntries.map((entry) => entry.profile),
+    req.tenant
+  );
+  const items = pageEntries.map((entry, index) => ({
+    ...mapSearchSummary(collectedPage[index]),
+    matchReasons: buildMatchReasons(entry.profile, matchFilters)
+  }));
 
   // Members a filter could never match because they have no value for that field.
   // Reported so a narrow result set is explicable rather than looking like an empty camp.
@@ -1120,12 +1127,13 @@ router.get("/names", async (req, res) => {
     cityState: cityState || null,
     limit
   });
-  const mapped = items
-    .filter((profile) =>
-      !isRemovedProfile(profile) &&
-      !hiddenUserIdSet.has(String(profile?.userId || ""))
-    )
-    .map((profile) => mapNameResult(profile));
+  const mapped = stripDisabledProfileFieldsFromList(
+    items.filter(
+      (profile) =>
+        !isRemovedProfile(profile) && !hiddenUserIdSet.has(String(profile?.userId || ""))
+    ),
+    req.tenant
+  ).map((profile) => mapNameResult(profile));
   res.set("Cache-Control", SEARCH_CACHE_CONTROL);
 
   const payload = {
@@ -1182,7 +1190,9 @@ router.get("/user/:id", async (req, res) => {
   }
 
   const emailVisible = canViewProfileContact(profile, "email", req.user);
-  const mapped = withNickname(filterProfileContactFields(profile, req.user));
+  const mapped = withNickname(
+    filterProfileContactFields(stripDisabledProfileFields(profile, req.tenant), req.user)
+  );
   const payload = {
     user: {
       ...mapped,
