@@ -12,6 +12,7 @@ import { MapPin, Mail, Phone, Linkedin, Instagram, Facebook } from "lucide-react
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveMediaStreamLabel } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
+import { formatLastNameWithMaidenName, useProfileFields } from "../../lib/profileFields.js";
 import { readAuthFromStorage } from "../../lib/storage.js";
 
 function safeUrl(u) { if (!u) return ""; return /^https?:\/\//i.test(u) ? u : `https://${u}`; }
@@ -197,6 +198,11 @@ function normalizeProfile(src = {}) {
     : Array.isArray(socialSource.educationMajors)
     ? socialSource.educationMajors
     : [];
+  const collegeGreek = Array.isArray(src.collegeGreek)
+    ? src.collegeGreek
+    : Array.isArray(socialSource.collegeGreek)
+    ? socialSource.collegeGreek
+    : [];
   const nickname = String(src.nickname || socialSource.nickname || socialSource.campNickname || "").trim();
   const normalizedEducation =
     Array.isArray(src.education) && src.education.length
@@ -205,7 +211,8 @@ function normalizeProfile(src = {}) {
       ? src.colleges.map((college, idx) => ({
           college: String(college || "").trim(),
           year: String(src.collegeYears?.[idx] || "").trim(),
-          major: String(collegeMajors?.[idx] || "").trim()
+          major: String(collegeMajors?.[idx] || "").trim(),
+          greek: String(collegeGreek?.[idx] || "").trim()
         }))
       : [];
   const camperYearsSource =
@@ -227,6 +234,7 @@ function normalizeProfile(src = {}) {
     firstName: src.firstName || "",
     lastName: src.lastName || "",
     nickname,
+    maidenName: String(src.maidenName || socialSource.maidenName || "").trim(),
     email: src.email || src.emails?.[0] || "",
     phone: src.phone || src.phones?.[0] || "",
     city: src.city || split.city,
@@ -481,13 +489,18 @@ export default function PublicProfile() {
     return () => { cancelled = true; };
   }, [isOwnProfile, profile, safetyTargetId]);
 
+  const profileFields = useProfileFields(tenant);
   const fullName = useMemo(() => {
     if (!profile) return "";
     const first = profile.firstName || "";
-    const nick  = profile.nickname ? `"${profile.nickname}"` : "";
-    const last  = profile.lastName || "";
+    const nick = profileFields.has("nickname") && profile.nickname ? `"${profile.nickname}"` : "";
+    // The maiden name rides along with the last name rather than taking a line
+    // of its own, so a name stays one line however many parts it has.
+    const last = profileFields.has("maidenName")
+      ? formatLastNameWithMaidenName(profile.lastName, profile.maidenName)
+      : String(profile.lastName || "").trim();
     return [first, nick, last].filter(Boolean).join(" ");
-  }, [profile]);
+  }, [profile, profileFields]);
   const educationList = useMemo(
     () => sortEducationNewest(profile?.education || []),
     [profile?.education]
@@ -543,20 +556,39 @@ export default function PublicProfile() {
     );
   }
 
+  // Everything below is filtered by what this camp collects, so a switched-off
+  // field leaves no empty row, no stray bullet, and no card with a heading and
+  // nothing under it.
   const jobs = [
-    ...(profile.currentJobs || []).map(j => ({ ...j, _type: "current" })),
-    ...(profile.pastJobs || []).map(j => ({ ...j, _type: "past" })),
+    ...(profileFields.has("currentJobs") ? (profile.currentJobs || []).map(j => ({ ...j, _type: "current" })) : []),
+    ...(profileFields.has("pastJobs") ? (profile.pastJobs || []).map(j => ({ ...j, _type: "past" })) : []),
   ].filter(j => j && (j.role || j.company || j.years));
-  const roleChips = profile.roles?.length
-    ? profile.roles
-    : profile.roleAtCamp
-      ? [profile.roleAtCamp]
-      : [];
+  const roleChips = !profileFields.has("campRoles")
+    ? []
+    : profile.roles?.length
+      ? profile.roles
+      : profile.roleAtCamp
+        ? [profile.roleAtCamp]
+        : [];
+  const industryLabel = profileFields.has("industry") ? String(profile.industry || "").trim() : "";
 
   const targetId = profile.id || profile._id;
 
-  const camperStints = Array.isArray(profile.camperYearStints) ? profile.camperYearStints : [];
-  const staffStints = Array.isArray(profile.staffYearStints) ? profile.staffYearStints : [];
+  const camperStints = profileFields.has("camperYears") && Array.isArray(profile.camperYearStints)
+    ? profile.camperYearStints
+    : [];
+  const staffStints = profileFields.has("staffYears") && Array.isArray(profile.staffYearStints)
+    ? profile.staffYearStints
+    : [];
+
+  const collegeList = profileFields.has("college") ? educationList : [];
+  const showExperienceCard = profileFields.has("currentJobs") || profileFields.has("pastJobs");
+  const showEducationCard = profileFields.has("college") || profileFields.has("highSchool");
+  // The middle column holds only those two cards. With neither, a three-column
+  // grid would render a third of the page as empty space, so drop to two.
+  const hasCenterColumn = showExperienceCard || showEducationCard;
+  const phoneToShow = profileFields.has("phone") ? String(profile.phone || "").trim() : "";
+  const showContactCard = Boolean(String(profile.email || "").trim()) || Boolean(phoneToShow);
 
   return (
     <div style={{ position: "relative", minHeight: "100vh" }}>
@@ -565,7 +597,7 @@ export default function PublicProfile() {
       <div className="profile1" style={{ position: "relative", zIndex: 1 }}>
         <main className="profile1-main">
           <div className="profile1-container">
-            <div className="profile1-grid">
+            <div className={`profile1-grid${hasCenterColumn ? "" : " p1-no-center"}`}>
               {/* LEFT */}
               <div className="p1-leftcol">
                 <aside className="p1-card p1-card-profile p1-left with-cover">
@@ -601,23 +633,25 @@ export default function PublicProfile() {
                   <div className="p1-fixed-inner">
                     <h1 className="p1-name">{fullName || "Unnamed Alum"}</h1>
 
-                    {(profile.city || profile.state) && (
+                    {profileFields.has("location") && (profile.city || profile.state) && (
                       <AutoFitText as="div" className="p1-sub" min={12} shrinkOnly={true} weight={500}>
                         <span className="p1-inline"><MapPin size={16} /> {fmtLocation(profile)}</span>
                       </AutoFitText>
                     )}
                   </div>
 
-                  {(roleChips.length || profile.industry) ? (
+                  {(roleChips.length || industryLabel) ? (
                     <>
-                      <div className="p1-roles">
-                        {roleChips.map((r) => (
-                          <span key={r} className="p1-role-chip p1-camp-role-chip">{r}</span>
-                        ))}
-                      </div>
-                      {profile.industry && (
+                      {roleChips.length ? (
+                        <div className="p1-roles">
+                          {roleChips.map((r) => (
+                            <span key={r} className="p1-role-chip p1-camp-role-chip">{r}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {industryLabel && (
                         <div className="p1-industry-row">
-                          <span className="p1-role-chip p1-industry-chip">{profile.industry}</span>
+                          <span className="p1-role-chip p1-industry-chip">{industryLabel}</span>
                         </div>
                       )}
                     </>
@@ -642,6 +676,7 @@ export default function PublicProfile() {
 
               {/* CENTER */}
               <section className="p1-center">
+                {showExperienceCard ? (
                 <div className="p1-card p1-exp-card">
                   <h2 className="p1-h2">Experience</h2>
                   <div className="p1-timeline">
@@ -655,32 +690,46 @@ export default function PublicProfile() {
                     )) : <div className="p1-empty">No experience yet.</div>}
                   </div>
                 </div>
+                ) : null}
 
+                {showEducationCard ? (
                 <div className="p1-card p1-edu-card">
                   <h2 className="p1-h2">Education</h2>
                   <div className="p1-edu-grid">
-                    {educationList.map((e, i) => (
-                      <div key={i} className="p1-edu-item">
-                        <div className="p1-edu-college">{e.college || "College"}</div>
-                        <div className="p1-edu-sub">{[e.major, e.year].filter(Boolean).join(" • ")}</div>
-                      </div>
-                    ))}
-                    {profile.highSchool && (
+                    {collegeList.map((e, i) => {
+                      // Major and greek life are separate switches under
+                      // College, so the sub-line is assembled rather than
+                      // hard-coded — with nothing left in it, it is not drawn.
+                      const sub = [
+                        profileFields.has("collegeMajor") ? e.major : "",
+                        profileFields.has("greekLife") ? e.greek : "",
+                        e.year
+                      ].filter(Boolean).join(" • ");
+                      return (
+                        <div key={i} className="p1-edu-item">
+                          <div className="p1-edu-college">{e.college || "College"}</div>
+                          {sub ? <div className="p1-edu-sub">{sub}</div> : null}
+                        </div>
+                      );
+                    })}
+                    {profileFields.has("highSchool") && profile.highSchool && (
                       <div className="p1-edu-item">
                         <div className="p1-edu-college">{profile.highSchool}</div>
                         <div className="p1-edu-sub">High School</div>
                       </div>
                     )}
-                    {!profile.highSchool && educationList.length === 0 && (
+                    {!(profileFields.has("highSchool") && profile.highSchool) && collegeList.length === 0 && (
                       <div className="p1-empty">No education yet.</div>
                     )}
                   </div>
                 </div>
+                ) : null}
               </section>
 
               {/* RIGHT */}
               <div className="p1-right">
                 {/* ✅ Camper Years ABOVE Social */}
+                {profileFields.has("camperYears") ? (
                 <aside className="p1-card p1-camper-card">
                   <h2 className="p1-h2">Camper Years</h2>
                   {camperStints.length === 0 ? (
@@ -696,6 +745,7 @@ export default function PublicProfile() {
                     </div>
                   )}
                 </aside>
+                ) : null}
 
                 {staffStints.length > 0 && (
                   <aside className="p1-card p1-staff-card">
@@ -710,30 +760,35 @@ export default function PublicProfile() {
                   </aside>
                 )}
 
+                {profileFields.hasAnySocial ? (
                 <aside className="p1-card p1-social-card">
                   <h2 className="p1-h2">Social</h2>
                   <div className="p1-social">
-                    {profile.social?.linkedin && (
+                    {profileFields.has("socialLinkedin") && profile.social?.linkedin && (
                       <a className="p1-social-link" href={safeUrl(profile.social.linkedin)} target="_blank" rel="noopener noreferrer">
                         <Linkedin className="p1-social-icon" /> LinkedIn
                       </a>
                     )}
-                    {profile.social?.instagram && (
+                    {profileFields.has("socialInstagram") && profile.social?.instagram && (
                       <a className="p1-social-link" href={safeUrl(profile.social.instagram)} target="_blank" rel="noopener noreferrer">
                         <Instagram className="p1-social-icon" /> Instagram
                       </a>
                     )}
-                    {profile.social?.facebook && (
+                    {profileFields.has("socialFacebook") && profile.social?.facebook && (
                       <a className="p1-social-link" href={safeUrl(profile.social.facebook)} target="_blank" rel="noopener noreferrer">
                         <Facebook className="p1-social-icon" /> Facebook
                       </a>
                     )}
-                    {!profile.social?.linkedin && !profile.social?.instagram && !profile.social?.facebook && (
-                      <div className="p1-empty">No social links yet.</div>
-                    )}
+                    {!(profileFields.has("socialLinkedin") && profile.social?.linkedin) &&
+                      !(profileFields.has("socialInstagram") && profile.social?.instagram) &&
+                      !(profileFields.has("socialFacebook") && profile.social?.facebook) && (
+                        <div className="p1-empty">No social links yet.</div>
+                      )}
                   </div>
                 </aside>
+                ) : null}
 
+                {showContactCard ? (
                 <aside className="p1-card p1-contact-card">
                   <h2 className="p1-h2">Contact</h2>
                   <div className="p1-contact">
@@ -743,14 +798,15 @@ export default function PublicProfile() {
                         <span className="p1-contact-text">{profile.email}</span>
                       </a>
                     )}
-                    {profile.phone && (
-                      <a className="p1-contact-link" href={telHref(profile.phone)}>
+                    {phoneToShow && (
+                      <a className="p1-contact-link" href={telHref(phoneToShow)}>
                         <Phone className="p1-contact-icon" size={16} />
-                        <span className="p1-contact-text">{profile.phone}</span>
+                        <span className="p1-contact-text">{phoneToShow}</span>
                       </a>
                     )}
                   </div>
                 </aside>
+                ) : null}
 
                 <PhotosMosaic userId={profile.userId || targetId} />
               </div>

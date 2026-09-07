@@ -75,6 +75,14 @@
 /* Prevent any child from blowing out its track */
 .p1-leftcol, .p1-center, .p1-right { min-width: 0; }
 
+/* A camp that collects neither work history nor schooling leaves the middle
+   column with nothing in it. Rather than paint a third of the page as empty
+   space, fold the layout down to the two columns that still have cards. */
+.profile1-grid.p1-no-center {
+  grid-template-columns: var(--left-col) minmax(0, 1fr);
+  grid-template-areas: "left right";
+}
+
 /* Left wrapper stacks Profile + Suggested */
 .p1-leftcol {
   grid-area: left;

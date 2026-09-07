@@ -93,6 +93,9 @@ const DirectorAdminSettingsBrandingPage = lazyPage(() =>
   }))
 );
 const DirectorAdminSettingsAccessPage = lazyPage(() => import("./pages/admin/DirectorAdminSettingsAccessPage.jsx"));
+const DirectorAdminSettingsProfileFieldsPage = lazyPage(() =>
+  import("./pages/admin/DirectorAdminSettingsProfileFieldsPage.jsx")
+);
 const DirectorAdminSettingsDangerPage = lazyPage(() => import("./pages/admin/DirectorAdminSettingsDangerPage.jsx"));
 const DirectorAdminSettingsSupportPage = lazyPage(() =>
   import("./pages/admin/DirectorAdminSettingsSupportPage.jsx")
@@ -825,6 +828,7 @@ function TenantScopeRoutes() {
             <Route index element={<Navigate to="network" replace />} />
             <Route path="network" element={<DirectorAdminSettingsNetworkPage />} />
             <Route path="features" element={<DirectorAdminFeaturesPage />} />
+            <Route path="profile-content" element={<DirectorAdminSettingsProfileFieldsPage />} />
             <Route path="branding" element={<DirectorAdminSettingsBrandingPage />} />
             <Route path="access" element={<DirectorAdminSettingsAccessPage />} />
             <Route path="admins" element={<DirectorAdminSettingsAdminsPage />} />

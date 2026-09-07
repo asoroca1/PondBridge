@@ -14,7 +14,9 @@ import {
   listFeaturesForPlan,
   normalizeCampType,
   normalizeHomeQuickActions,
+  PROFILE_FIELD_CATALOG,
   replaceAlumniForCampType,
+  resolveProfileFields,
   resolveTenantModules
 } from "@pondbridge/shared";
 import { requireTenantRoleScope } from "../middleware/tenantAccess.js";
@@ -1657,6 +1659,15 @@ function mapMemberRow(profile = {}, user = null, { directorUserId = "" } = {}) {
   };
 }
 
+// Majors and greek affiliations are positional: entry N belongs to college N.
+// sanitizeStringList drops blanks and de-duplicates, which would slide every
+// later entry onto the wrong school, so those two lists get their own helper.
+function sanitizeParallelList(values = []) {
+  return (Array.isArray(values) ? values : []).map((value) =>
+    sanitizeText(String(value || "").trim())
+  );
+}
+
 function sanitizeStringList(values = [], { lower = false } = {}) {
   const seen = new Set();
   return (Array.isArray(values) ? values : [])
@@ -1881,9 +1892,10 @@ function normalizeMemberEducationRows(value = []) {
     .map((row) => ({
       college: sanitizeText(String(row?.college || "").trim()),
       year: sanitizeText(String(row?.year || "").trim()),
-      major: sanitizeText(String(row?.major || "").trim())
+      major: sanitizeText(String(row?.major || "").trim()),
+      greek: sanitizeText(String(row?.greek || "").trim())
     }))
-    .filter((row) => row.college || row.year || row.major);
+    .filter((row) => row.college || row.year || row.major || row.greek);
 }
 
 function mapAdminMemberProfile(profile = {}, user = null) {
@@ -1900,18 +1912,26 @@ function mapAdminMemberProfile(profile = {}, user = null) {
   );
   const colleges = Array.isArray(profile?.colleges) ? profile.colleges : [];
   const collegeYears = Array.isArray(profile?.collegeYears) ? profile.collegeYears : [];
+  const collegeGreek = Array.isArray(socials?.collegeGreek) ? socials.collegeGreek : [];
   const collegeMajors = Array.isArray(socials?.collegeMajors)
     ? socials.collegeMajors
     : Array.isArray(socials?.educationMajors)
     ? socials.educationMajors
     : [];
   const educationRows = [];
-  const rowCount = Math.max(colleges.length, collegeYears.length, collegeMajors.length, 1);
+  const rowCount = Math.max(
+    colleges.length,
+    collegeYears.length,
+    collegeMajors.length,
+    collegeGreek.length,
+    1
+  );
   for (let index = 0; index < rowCount; index += 1) {
     educationRows.push({
       college: sanitizeText(String(colleges[index] || "").trim()),
       year: sanitizeText(String(collegeYears[index] || "").trim()),
-      major: sanitizeText(String(collegeMajors[index] || "").trim())
+      major: sanitizeText(String(collegeMajors[index] || "").trim()),
+      greek: sanitizeText(String(collegeGreek[index] || "").trim())
     });
   }
 
@@ -1921,6 +1941,7 @@ function mapAdminMemberProfile(profile = {}, user = null) {
     firstName: profile?.firstName || "",
     lastName: profile?.lastName || "",
     nickname: String(profile?.nickname || socials?.nickname || socials?.campNickname || "").trim(),
+    maidenName: String(profile?.maidenName || socials?.maidenName || "").trim(),
     email: profile?.emails?.find(Boolean) || user?.email || "",
     emails: sanitizeStringList(profile?.emails || [], { lower: true }),
     phone: profile?.phones?.find(Boolean) || "",
@@ -3540,7 +3561,7 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
     Array.isArray(incoming?.socials?.collegeMajors) ||
     Array.isArray(incoming?.social?.educationMajors) ||
     Array.isArray(incoming?.socials?.educationMajors);
-  const incomingCollegeMajors = sanitizeStringList(
+  const incomingCollegeMajors = sanitizeParallelList(
     Array.isArray(incoming.collegeMajors)
       ? incoming.collegeMajors
       : incomingEducationRows.length
@@ -3555,6 +3576,33 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
       ? incoming.socials.educationMajors
       : []
   );
+  const incomingCollegeGreekProvided =
+    Array.isArray(incoming.education) ||
+    Array.isArray(incoming.collegeGreek) ||
+    Array.isArray(incoming?.social?.collegeGreek) ||
+    Array.isArray(incoming?.socials?.collegeGreek);
+  const incomingCollegeGreek = sanitizeParallelList(
+    Array.isArray(incoming.collegeGreek)
+      ? incoming.collegeGreek
+      : incomingEducationRows.length
+      ? incomingEducationRows.map((row) => row.greek)
+      : Array.isArray(incoming?.social?.collegeGreek)
+      ? incoming.social.collegeGreek
+      : Array.isArray(incoming?.socials?.collegeGreek)
+      ? incoming.socials.collegeGreek
+      : []
+  );
+  const incomingMaidenNameProvided =
+    hasOwn("maidenName") ||
+    incoming?.social?.maidenName !== undefined ||
+    incoming?.socials?.maidenName !== undefined;
+  const incomingMaidenName = incomingMaidenNameProvided
+    ? sanitizeText(
+        String(
+          incoming?.maidenName ?? incoming?.social?.maidenName ?? incoming?.socials?.maidenName ?? ""
+        ).trim()
+      )
+    : "";
   const hasSocialPatch = Boolean(incoming.social || incoming.socials);
   const existingSocials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
   const nextSocials =
@@ -3563,7 +3611,9 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
     incomingStaffYearsProvided ||
     incomingRolesProvided ||
     incomingNicknameProvided ||
-    incomingCollegeMajorsProvided
+    incomingCollegeMajorsProvided ||
+    incomingCollegeGreekProvided ||
+    incomingMaidenNameProvided
       ? {
           ...existingSocials,
           ...(hasSocialPatch
@@ -3579,7 +3629,9 @@ router.put("/members/:profileId([a-fA-F0-9]{24})/full", async (req, res) => {
           ...(incomingNicknameProvided ? { nickname: incomingNickname, campNickname: incomingNickname } : {}),
           ...(incomingCollegeMajorsProvided
             ? { collegeMajors: incomingCollegeMajors, educationMajors: incomingCollegeMajors }
-            : {})
+            : {}),
+          ...(incomingCollegeGreekProvided ? { collegeGreek: incomingCollegeGreek } : {}),
+          ...(incomingMaidenNameProvided ? { maidenName: incomingMaidenName } : {})
         }
       : undefined;
   const hasLocationFields = hasOwn("cityState") || hasOwn("city") || hasOwn("state") || hasOwn("country");
@@ -5828,6 +5880,78 @@ router.patch("/features", async (req, res) => {
     },
     homeQuickActions: resolveContent(tenant).homeQuickActions
   });
+});
+
+// Which optional profile fields this camp collects. Kept separate from
+// /features because these are not modules: turning one off does not remove a
+// page, it removes a question from the profile form and a line from every
+// place that profile is rendered.
+router.get("/profile-fields", async (req, res) => {
+  const content = resolveContent(req.tenant);
+  const profileFields = resolveProfileFields(content.profileFields);
+  const modules = resolveModules(req.tenant);
+
+  return res.json({
+    fields: PROFILE_FIELD_CATALOG.map((field) => ({
+      ...field,
+      enabled: Boolean(profileFields[field.key]),
+      // A parent that is off makes the child unreachable rather than merely
+      // unchecked, so the page can explain why the switch will not move.
+      blockedBy: field.requires && !profileFields[field.requires] ? field.requires : null,
+      // Only warn about a module the camp actually has switched on.
+      affectsModules: (field.poweredModules || []).filter((key) => modules[key] !== false)
+    })),
+    values: profileFields
+  });
+});
+
+router.patch("/profile-fields", async (req, res) => {
+  const incoming =
+    req.body?.profileFields && typeof req.body.profileFields === "object" ? req.body.profileFields : null;
+  if (!incoming) {
+    return res.status(400).json({
+      error: { code: "INVALID_PROFILE_FIELDS", message: "Provide a profileFields object." }
+    });
+  }
+
+  const currentContent = resolveContent(req.tenant);
+  const current = resolveProfileFields(currentContent.profileFields);
+  const merged = { ...current };
+  for (const field of PROFILE_FIELD_CATALOG) {
+    if (!Object.prototype.hasOwnProperty.call(incoming, field.key)) continue;
+    merged[field.key] = Boolean(incoming[field.key]);
+  }
+  // Re-resolve rather than trusting the merge: this is what forces a major or a
+  // greek affiliation off when the college it hangs from was just switched off.
+  const nextProfileFields = resolveProfileFields(merged);
+
+  const nextContent = { ...currentContent, profileFields: nextProfileFields };
+  const draft = resolveDraft(req.tenant);
+  const tenant = await TenantModel.update(req.tenant._id, {
+    content: nextContent,
+    onboardingDraft: {
+      ...draft,
+      content: { ...draft.content, ...nextContent },
+      updatedAt: new Date(),
+      updatedByUserId: req.user.id
+    }
+  });
+
+  // Members read this off the public tenant config, which would otherwise serve
+  // the pre-save answer for another five minutes.
+  invalidatePublicTenantCache(tenant || req.tenant);
+
+  const changes = PROFILE_FIELD_CATALOG
+    .map((field) => ({
+      key: field.key,
+      before: Boolean(current[field.key]),
+      after: Boolean(nextProfileFields[field.key])
+    }))
+    .filter((change) => change.before !== change.after);
+
+  await writeAdminAudit(req, "admin_profile_fields_updated", { changes });
+
+  return res.json({ ok: true, values: nextProfileFields });
 });
 
 router.get("/billing", ensureBillingVisibleForTenant, async (req, res) => {

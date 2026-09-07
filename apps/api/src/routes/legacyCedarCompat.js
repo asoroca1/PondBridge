@@ -1204,9 +1204,10 @@ function extractEducationRows(value = []) {
     .map((row) => ({
       college: sanitizeText(String(row?.college || "").trim()),
       major: sanitizeText(String(row?.major || "").trim()),
-      year: sanitizeText(String(row?.year || "").trim())
+      year: sanitizeText(String(row?.year || "").trim()),
+      greek: sanitizeText(String(row?.greek || "").trim())
     }))
-    .filter((row) => row.college || row.major || row.year);
+    .filter((row) => row.college || row.major || row.year || row.greek);
 }
 
 function profileToLegacy(profile, { identity = {}, fallbackEmail = "", viewer = {} } = {}) {
@@ -1222,6 +1223,11 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "", viewer = 
       ? socials.educationMajors
       : []
   );
+  // Greek affiliation is a bare array parallel to colleges, exactly like majors.
+  const collegeGreek = normalizeCollegeMajors(
+    Array.isArray(socials.collegeGreek) ? socials.collegeGreek : []
+  );
+  const maidenName = sanitizeText(String(socials.maidenName || "").trim());
   const roleList = normalizeRoleList([profile.roleAtCamp, ...(Array.isArray(socials.roles) ? socials.roles : [])]);
   const primaryRole = roleList[0] || "";
   const camperYears = normalizeCamperYears(socials.camperYears || profile.camperYears || {});
@@ -1242,6 +1248,7 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "", viewer = 
     firstName,
     lastName,
     nickname: resolveProfileNickname(profile),
+    maidenName,
     email,
     phone,
     city: String(cityPart || "").trim(),
@@ -1260,10 +1267,12 @@ function profileToLegacy(profile, { identity = {}, fallbackEmail = "", viewer = 
     staffYears,
     roles: roleList,
     collegeMajors,
+    collegeGreek,
     education: (profile.colleges || []).map((college, idx) => ({
       college,
       year: profile.collegeYears?.[idx] || "",
-      major: collegeMajors?.[idx] || ""
+      major: collegeMajors?.[idx] || "",
+      greek: collegeGreek?.[idx] || ""
     }))
   };
 }
@@ -1847,6 +1856,33 @@ router.put("/me", async (req, res) => {
       ? req.body.socials.educationMajors
       : []
   );
+  const incomingCollegeGreekProvided =
+    Array.isArray(req.body?.education) ||
+    Array.isArray(req.body?.collegeGreek) ||
+    Array.isArray(req.body?.social?.collegeGreek) ||
+    Array.isArray(req.body?.socials?.collegeGreek);
+  const incomingCollegeGreek = normalizeCollegeMajors(
+    Array.isArray(req.body?.collegeGreek)
+      ? req.body.collegeGreek
+      : incomingEducationRows.length
+      ? incomingEducationRows.map((row) => row.greek)
+      : Array.isArray(req.body?.social?.collegeGreek)
+      ? req.body.social.collegeGreek
+      : Array.isArray(req.body?.socials?.collegeGreek)
+      ? req.body.socials.collegeGreek
+      : []
+  );
+  const incomingMaidenNameProvided =
+    req.body?.maidenName !== undefined ||
+    req.body?.social?.maidenName !== undefined ||
+    req.body?.socials?.maidenName !== undefined;
+  const incomingMaidenName = incomingMaidenNameProvided
+    ? sanitizeText(
+        String(
+          req.body?.maidenName ?? req.body?.social?.maidenName ?? req.body?.socials?.maidenName ?? ""
+        ).trim()
+      )
+    : "";
   const existingSocials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
   const hasSocialPatch = Boolean(req.body.social || req.body.socials);
   const nextSocials =
@@ -1855,7 +1891,9 @@ router.put("/me", async (req, res) => {
     incomingStaffYearsProvided ||
     incomingRolesProvided ||
     incomingNicknameProvided ||
-    incomingCollegeMajorsProvided
+    incomingCollegeMajorsProvided ||
+    incomingCollegeGreekProvided ||
+    incomingMaidenNameProvided
     ? {
         ...existingSocials,
         ...(hasSocialPatch
@@ -1871,7 +1909,9 @@ router.put("/me", async (req, res) => {
         ...(incomingNicknameProvided ? { nickname: incomingNickname, campNickname: incomingNickname } : {}),
         ...(incomingCollegeMajorsProvided
           ? { collegeMajors: incomingCollegeMajors, educationMajors: incomingCollegeMajors }
-          : {})
+          : {}),
+        ...(incomingCollegeGreekProvided ? { collegeGreek: incomingCollegeGreek } : {}),
+        ...(incomingMaidenNameProvided ? { maidenName: incomingMaidenName } : {})
       }
     : undefined;
 

@@ -8,7 +8,8 @@ import {
   Bell,
   ShieldAlert,
   SlidersHorizontal,
-  UserCog
+  UserCog,
+  IdCard
 } from "lucide-react";
 import { HIDE_MOBILE_APP } from "../../lib/directorHiddenFeatures.js";
 import "./director-admin-settings.css";
@@ -42,6 +43,14 @@ const GROUPS = [
         icon: SlidersHorizontal,
         blurb: "Which modules members can use",
         description: "Choose what members can use, then finish any services that still need setup."
+      },
+      {
+        to: "profile-content",
+        label: "Profile content",
+        icon: IdCard,
+        blurb: "Which fields profiles include",
+        description:
+          "Pick what members are asked for. Anything you switch off disappears from the profile form and from everywhere that profile is shown."
       }
     ]
   },

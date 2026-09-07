@@ -69,6 +69,8 @@ module.exports = {
     "**/tests/tenantPurgeCoverage.test.js",
     "**/tests/tenantSchemaHardening.test.js",
     "**/tests/tenantContentFields.test.js",
+    "**/tests/tenantProfileFields.test.js",
+    "**/tests/profileMaidenNameSearch.test.js",
     "**/tests/tenantIsolation.test.js"
   ]
 };

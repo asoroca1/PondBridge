@@ -6,6 +6,7 @@ import {
   listFeaturesForPlan,
   normalizeFeatureName
 } from "./features.js";
+import { resolveProfileFields } from "./profileFields.js";
 
 export const PLAN_TIERS = ["base", "premium"];
 export { FEATURE_ALIASES, PLAN_FEATURES, hasFeature, listFeaturesForPlan, normalizeFeatureName };
@@ -594,7 +595,17 @@ export const tenantContentSchema = z.object({
   defaultEmailFooterPresetId: z.string().trim().max(90).default(""),
   emailRecipientGroups: z.array(tenantEmailRecipientGroupSchema).max(60).default([]),
   emailTemplates: z.array(tenantEmailTemplateSchema).max(40).default([]),
-  memberExportPresets: z.array(tenantMemberExportPresetSchema).max(30).default([])
+  memberExportPresets: z.array(tenantMemberExportPresetSchema).max(30).default([]),
+  // Which optional profile fields this camp collects and shows. Stored as a
+  // partial map; resolveProfileFields() fills in the catalog defaults and
+  // forces a child field off when its parent is off.
+  profileFields: z
+    // Deliberately loose on the key: resolveProfileFields() is the authority on
+    // which keys exist, and it drops anything the catalog does not name. A
+    // stricter enum here would reject a whole content save for one stale key.
+    .record(z.string(), z.boolean())
+    .default({})
+    .transform((value) => resolveProfileFields(value))
 });
 
 export const tenantSettingsSchema = z.object({
@@ -655,4 +666,5 @@ export function normalizeSlug(value = "") {
 }
 
 export { INDUSTRIES } from "./industries.js";
+export * from "./profileFields.js";
 export * from "./tiers.js";
