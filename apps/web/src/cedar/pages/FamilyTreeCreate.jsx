@@ -6,7 +6,7 @@ import { resolveAlumniWord } from "../../lib/campLabels.js";
 import InitialsMark from "../../components/InitialsMark.jsx";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
-import { requestFamilyTrees } from "../lib/familyTreesApi";
+import { apiErrorMessage, currentUserProfileId, requestFamilyTrees } from "../lib/familyTreesApi";
 import { getToken, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
 import "./family-trees.css";
 
@@ -29,7 +29,8 @@ function readCurrentUser() {
   try {
     const raw = JSON.parse(localStorage.getItem("user") || "null");
     if (!raw) return null;
-    const id = String(raw._id || raw.id || "").trim();
+    // Members are profiles, not users - the two ids differ.
+    const id = currentUserProfileId();
     if (!id) return null;
     return {
       id,
@@ -216,7 +217,7 @@ export default function FamilyTreeCreate() {
         if (res.status === 404) {
           throw new Error("Family Trees API route not found on backend. Please restart/deploy backend.");
         }
-        throw new Error(data?.error || `Failed to create tree (${res.status})`);
+        throw new Error(apiErrorMessage(data, `Failed to create tree (${res.status})`));
       }
 
       const id = String(data?.id || data?._id || "").trim();
