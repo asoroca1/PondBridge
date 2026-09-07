@@ -56,3 +56,5 @@ Known release constraints:
 - The shell currently loads `https://app.pondbridgealumni.com`; a first-ever cold start without connectivity cannot load a bundled offline app. Treat bundled fallback/offline-first startup as an explicit product and release decision.
 - Do not claim universal/App Links until the production association files and signing fingerprints are configured and tested.
 - Do not claim production push readiness from simulator/emulator builds; APNs and FCM delivery require signed physical-device rehearsals.
+
+Checkout repair (September 2026): Android source/resource filenames must retain their canonical names (for example `AndroidManifest.xml`, never `AndroidManifest 2.xml`). Commit the Gradle wrapper and `MainActivity.java`; keep local SDK configuration and signing/Firebase secrets outside Git. `npm run ios:doctor` and `./gradlew :app:tasks --all` verify project structure. An actual Android build additionally needs an installed SDK with `ANDROID_HOME` or ignored `android/local.properties` configured.

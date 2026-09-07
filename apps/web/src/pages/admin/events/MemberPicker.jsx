@@ -72,6 +72,7 @@ export default function MemberPicker({
         disabled={disabled}
         onChange={(event) => setQuery(event.target.value)}
         placeholder={placeholder}
+        aria-label={placeholder}
       />
       {query.trim().length === 1 ? (
         <p className="pb-events-picker-empty">Keep typing to search.</p>

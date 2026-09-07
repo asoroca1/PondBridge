@@ -1,20 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
+import { activateDialogFocus } from "../../lib/dialogFocus.js";
 
 const ToastContext = createContext(null);
 
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
 }
-
-const FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])"
-].join(",");
 
 export function useDialogFocus(open, onClose) {
   const dialogRef = useRef(null);
@@ -23,45 +15,7 @@ export function useDialogFocus(open, onClose) {
 
   useEffect(() => {
     if (!open) return undefined;
-    const returnFocusTo = document.activeElement;
-    const dialog = dialogRef.current;
-    const focusable = () => [...(dialog?.querySelectorAll(FOCUSABLE_SELECTOR) || [])]
-      .filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
-    const frame = window.requestAnimationFrame(() => {
-      const first = focusable()[0];
-      (first || dialog)?.focus?.();
-    });
-
-    function onKeyDown(event) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onCloseRef.current?.();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusable();
-      if (items.length === 0) {
-        event.preventDefault();
-        dialog?.focus?.();
-        return;
-      }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", onKeyDown);
-      if (returnFocusTo && document.contains(returnFocusTo)) returnFocusTo.focus?.();
-    };
+    return activateDialogFocus(dialogRef.current, () => onCloseRef.current?.());
   }, [open]);
 
   return dialogRef;

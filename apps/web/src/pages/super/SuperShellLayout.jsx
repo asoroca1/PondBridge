@@ -293,6 +293,7 @@ export default function SuperShellLayout() {
             onChange={(event) => setSearch(event.target.value)}
             placeholder={role === "finance_admin" ? "Search camp billing" : "Search camps, directors, emails"}
             className="super-topbar-search"
+            aria-label={role === "finance_admin" ? "Search camp billing" : "Search camps, directors, emails"}
           />
           {searchLoading ? <span className="super-search-spinner">Searching...</span> : null}
           {searchResults.length ? (

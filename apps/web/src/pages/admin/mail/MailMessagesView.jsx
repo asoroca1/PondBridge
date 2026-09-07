@@ -151,7 +151,7 @@ export default function MailMessagesView({ folder = "sent", request, onEditDraft
           </Button>
         </div>
         <div className="pb-mail-list-search">
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search subjects" />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search subjects" aria-label="Search subjects" />
         </div>
 
         {error ? <p className="error-text" role="alert">{error}</p> : null}

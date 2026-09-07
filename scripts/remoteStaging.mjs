@@ -239,20 +239,31 @@ function serviceRoleKey() {
 // Mirrors buildSafeApplicationEnv() in localStaging.mjs: the child processes get an
 // explicit env and inherit nothing from the host shell or the repo's .env files, so
 // running against staging can never pick up a live Stripe/Resend/Clerk credential.
+function stagingPort(name, fallback) {
+  const value = String(process.env[name] || fallback);
+  if (!/^\d+$/.test(value) || Number(value) < 1024 || Number(value) > 65535) {
+    fail(`${name} must be an integer port between 1024 and 65535.`);
+  }
+  return value;
+}
+
 function buildStagingEnv() {
+  const apiPort = stagingPort("STAGING_API_PORT", "4000");
+  const webPort = stagingPort("STAGING_WEB_PORT", "5174");
   const url = `https://${projectRef()}.supabase.co`;
   const origins = [
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://cedar.localhost:5174",
-    "http://pine-control.localhost:5174",
-    "http://fresh-camp.localhost:5174"
+    `http://localhost:${webPort}`,
+    `http://127.0.0.1:${webPort}`,
+    `http://cedar.localhost:${webPort}`,
+    `http://pine-control.localhost:${webPort}`,
+    `http://fresh-camp.localhost:${webPort}`
   ].join(",");
   return {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     NODE_ENV: "development",
-    PORT: "4000",
+    PORT: apiPort,
+    PONDBRIDGE_ISOLATED_ENV: "1",
     AUTH_PROVIDER: "legacy",
     AUTH_TOKEN_MODE: "hybrid",
     AUTH_COOKIE_SAMESITE: "lax",
@@ -266,9 +277,9 @@ function buildStagingEnv() {
     PONDBRIDGE_TEST_RESET_ACK: "0",
     APP_BASE_DOMAIN: "localhost",
     TENANT_HOST_SUFFIXES: "localhost",
-    FRONTEND_ORIGIN: "http://127.0.0.1:5174",
+    FRONTEND_ORIGIN: `http://127.0.0.1:${webPort}`,
     FRONTEND_ORIGINS: origins,
-    PUBLIC_API_ORIGIN: "http://127.0.0.1:4000",
+    PUBLIC_API_ORIGIN: `http://127.0.0.1:${apiPort}`,
     CUSTOM_DOMAIN_ALLOWLIST: "",
     TRUST_PROXY_HOPS: "0",
     // Staging must not be able to reach any live provider.
@@ -322,8 +333,8 @@ function buildStagingEnv() {
     CLERK_SUPER_ADMIN_EMAILS: "",
     CLERK_SUPER_ADMIN_USER_IDS: "",
     CLERK_BOOTSTRAP_FIRST_SUPER_ADMIN: "false",
-    VITE_API_BASE: "http://127.0.0.1:4000",
-    VITE_NATIVE_API_BASE: "http://127.0.0.1:4000",
+    VITE_API_BASE: `http://127.0.0.1:${apiPort}`,
+    VITE_NATIVE_API_BASE: `http://127.0.0.1:${apiPort}`,
     VITE_APP_BASE_DOMAIN: "localhost",
     VITE_AUTH_PROVIDER: "legacy",
     VITE_CLERK_PUBLISHABLE_KEY: "",
@@ -337,11 +348,11 @@ function buildStagingEnv() {
 function cmdDev() {
   const env = buildStagingEnv();
   console.log(`Running API + web against staging (${projectRef()})`);
-  console.log("  api  http://127.0.0.1:4000");
-  console.log("  web  http://127.0.0.1:5174\n");
+  console.log(`  api  ${env.PUBLIC_API_ORIGIN}`);
+  console.log(`  web  ${env.FRONTEND_ORIGIN}\n`);
   const children = [
-    spawn("npm", ["--workspace", "@pondbridge/api", "run", "dev"], { cwd: repoRoot, stdio: "inherit", env }),
-    spawn("npm", ["--workspace", "@pondbridge/web", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5174", "--strictPort"],
+    spawn(process.execPath, ["src/server.js"], { cwd: path.join(repoRoot, "apps/api"), stdio: "inherit", env }),
+    spawn("npm", ["--workspace", "@pondbridge/web", "run", "dev", "--", "--host", "127.0.0.1", "--port", stagingPort("STAGING_WEB_PORT", "5174"), "--strictPort"],
       { cwd: repoRoot, stdio: "inherit", env })
   ];
   const stop = () => children.forEach((c) => { try { c.kill("SIGTERM"); } catch {} });
@@ -357,7 +368,7 @@ function cmdDev() {
 // Running this from a local-disk clone with its own node_modules starts in seconds.
 function cmdDevApi() {
   const env = buildStagingEnv();
-  console.log(`API only, against staging (${projectRef()}) on http://127.0.0.1:4000`);
+  console.log(`API only, against staging (${projectRef()}) on ${env.PUBLIC_API_ORIGIN}`);
   // Run node directly rather than `npm run dev`. nodemon hangs here before it ever
   // spawns its child (measured 2026-09-04: 3.5 min elapsed, 0.29s CPU, no child
   // process, nothing on port 4000) even from a local-disk clone with no iCloud

@@ -114,6 +114,8 @@ function LoginScaffold({
                 className="login1-input"
                 type="email"
                 placeholder="Email Address"
+                aria-label="Email Address"
+                autoComplete="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -122,6 +124,8 @@ function LoginScaffold({
                 className="login1-input"
                 type="password"
                 placeholder="Password"
+                aria-label="Password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
@@ -697,6 +701,7 @@ function DemoCodeLogin() {
                 className="login1-input"
                 type="text"
                 placeholder="Demo Access Code"
+                aria-label="Demo Access Code"
                 value={code}
                 onChange={(event) => setCode(String(event.target.value || "").toUpperCase())}
                 autoComplete="one-time-code"

@@ -990,7 +990,7 @@ export function SuperEmailTransactionalPage() {
           subtitle="Verified provider delivery events and privacy-safe diagnostics."
           actions={
             <div className="super-inline-row">
-              <Select value={days} onChange={(event) => setDays(Number(event.target.value || 7))}>
+              <Select aria-label="Email reporting period" value={days} onChange={(event) => setDays(Number(event.target.value || 7))}>
                 <option value={7}>Last 7 days</option>
                 <option value={14}>Last 14 days</option>
                 <option value={30}>Last 30 days</option>

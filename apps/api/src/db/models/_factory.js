@@ -66,22 +66,25 @@ function hasFilterScope(filter) {
  */
 function filterNamesTenant(filter) {
   if (!filter || typeof filter !== "object" || Array.isArray(filter)) return false;
-  const hasKey =
-    Object.prototype.hasOwnProperty.call(filter, "tenantId") ||
-    Object.prototype.hasOwnProperty.call(filter, "tenant_id");
-  if (!hasKey) return false;
-  // Read the key that is actually present; `??` would skip a deliberate null.
-  const value = Object.prototype.hasOwnProperty.call(filter, "tenantId")
-    ? filter.tenantId
-    : filter.tenant_id;
-  // `tenantId: null` is how platform-level rows (super admins) are addressed,
-  // which is an explicit scope decision. `undefined` is a mistake, not intent.
-  if (value === undefined) return false;
+  // Only model field names are translated by applyFilter. A raw tenant_id
+  // key must never satisfy this guard: it would be silently ignored below.
+  if (!Object.prototype.hasOwnProperty.call(filter, "tenantId")) return false;
+  const value = filter.tenantId;
   if (value === null) return true;
-  // `{ tenantId: { $in: [...] } }` is a deliberate multi-tenant read and still
-  // names the tenants it touches.
-  if (typeof value === "object") return Object.keys(value).length > 0;
-  return Boolean(normalizeId(value));
+  if (typeof value === "string") return Boolean(value.trim());
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  // Count only operators that actually produce a tenant predicate. Unknown
+  // operators (including $exists) are ignored by the query translator.
+  const scalarOperators = new Set(["$eq", "$ne", "$neq", "$gt", "$gte", "$lt", "$lte", "$ilike"]);
+  return Object.entries(value).some(([operator, operand]) => {
+    if (scalarOperators.has(operator)) {
+      return operand === null || (typeof operand === "string" && Boolean(operand.trim()));
+    }
+    if (operator === "$in") {
+      return Array.isArray(operand) && operand.every((id) => typeof id === "string" && Boolean(id.trim()));
+    }
+    return false;
+  });
 }
 
 function assertTenantScope({ tableName = "", tenantId = "", method = "", filter = null } = {}) {

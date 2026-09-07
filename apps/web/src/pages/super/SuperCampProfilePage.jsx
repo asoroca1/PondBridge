@@ -70,7 +70,7 @@ export function ClaimLinkRow({ label, value, onCopy, hint = "" }) {
     <div className="super-camp-profile-link">
       <p className="super-create-result-label">{label}</p>
       <div className="super-create-result-link-row">
-        <Input readOnly value={value} onFocus={(event) => event.target.select()} />
+        <Input aria-label={label} readOnly value={value} onFocus={(event) => event.target.select()} />
         <div className="super-create-result-actions">
           <Button type="button" variant="secondary" onClick={() => onCopy(value, label)}>
             Copy

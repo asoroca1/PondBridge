@@ -11859,6 +11859,7 @@ html.is-native-app textarea{
 
 .super-login-form {
   display: grid;
+  justify-content: stretch;
   gap: 12px;
 }
 

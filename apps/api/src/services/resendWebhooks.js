@@ -1,9 +1,6 @@
 import crypto from "crypto";
 import { env } from "../config/env.js";
 import {
-  AnalyticsEventModel,
-  EmailBroadcastModel,
-  EmailSuppressionModel,
   ResendWebhookEventModel,
   TenantModel,
   UserModel
@@ -182,157 +179,6 @@ async function resolveTenantFromWebhook({ tenantSlug = "", recipients = [] }) {
   return null;
 }
 
-async function attachSuppressionIfNeeded({
-  eventType,
-  recipientEmail,
-  tenant,
-  tenantSlug,
-  payload
-}) {
-  if (!["email.bounced", "email.complained"].includes(eventType)) return;
-  if (!recipientEmail) return;
-
-  const bounce = payload?.data?.bounce && typeof payload.data.bounce === "object" ? payload.data.bounce : {};
-  const complaint = payload?.data?.complaint && typeof payload.data.complaint === "object" ? payload.data.complaint : {};
-  const reason =
-    String(
-      bounce.message ||
-        complaint.message ||
-        (eventType === "email.complained"
-          ? "Recipient marked the email as spam."
-          : "Recipient address bounced.")
-    ).trim();
-
-  await EmailSuppressionModel.upsertActive({
-    email: recipientEmail,
-    reason,
-    sourceEventType: eventType,
-    tenantId: tenant?._id || null,
-    tenantSlug: tenant?.slug || tenantSlug || "",
-    lastEmailId: String(payload?.data?.email_id || "").trim(),
-    lastBroadcastId: String(payload?.data?.broadcast_id || "").trim(),
-    metadata: {
-      bounce,
-      complaint,
-      eventCreatedAt: payload?.created_at || null
-    },
-    seenAt: normalizeEventTimestamp(payload?.created_at)
-  });
-}
-
-async function updateBroadcastStatsFromWebhook({
-  tenantId,
-  eventType,
-  emailId,
-  pondbridgeBroadcastId,
-  occurredAt,
-  recipientEmail
-}) {
-  if (!tenantId || !emailId) return;
-  let broadcast = null;
-  if (pondbridgeBroadcastId) {
-    broadcast = await EmailBroadcastModel.findOne(tenantId, { _id: pondbridgeBroadcastId });
-  }
-  if (!broadcast) {
-    const broadcasts = await EmailBroadcastModel.find(tenantId, {}, {
-      sort: { createdAt: -1 },
-      limit: 200
-    });
-    broadcast = (broadcasts || []).find((item) => {
-      const immediateMessageIds = item?.stats?.delivery?.messageIds;
-      const scheduledMessageIds = item?.stats?.providerSchedule?.messageIds;
-      return (
-        (Array.isArray(immediateMessageIds) && immediateMessageIds.includes(emailId)) ||
-        (Array.isArray(scheduledMessageIds) && scheduledMessageIds.includes(emailId))
-      );
-    });
-  }
-  if (!broadcast) return;
-
-  const currentStats = broadcast?.stats && typeof broadcast.stats === "object" ? broadcast.stats : {};
-  const currentWebhook = currentStats?.webhook && typeof currentStats.webhook === "object"
-    ? currentStats.webhook
-    : {};
-  const base = {
-    totalEvents: Number(currentWebhook.totalEvents || 0),
-    sent: Number(currentWebhook.sent || 0),
-    delivered: Number(currentWebhook.delivered || 0),
-    bounced: Number(currentWebhook.bounced || 0),
-    complained: Number(currentWebhook.complained || 0),
-    clicked: Number(currentWebhook.clicked || 0),
-    failed: Number(currentWebhook.failed || 0),
-    deliveryDelayed: Number(currentWebhook.deliveryDelayed || 0),
-    suppressed: Number(currentWebhook.suppressed || 0),
-    lastEventAt: currentWebhook.lastEventAt || null,
-    lastRecipient: currentWebhook.lastRecipient || ""
-  };
-  base.totalEvents += 1;
-  if (eventType === "email.sent") base.sent += 1;
-  if (eventType === "email.delivered") base.delivered += 1;
-  if (eventType === "email.bounced") base.bounced += 1;
-  if (eventType === "email.complained") base.complained += 1;
-  if (eventType === "email.clicked") base.clicked += 1;
-  if (eventType === "email.failed") base.failed += 1;
-  if (eventType === "email.delivery_delayed") base.deliveryDelayed += 1;
-  if (eventType === "email.suppressed") base.suppressed += 1;
-  base.lastEventAt = occurredAt.toISOString();
-  base.lastRecipient = recipientEmail || base.lastRecipient;
-
-  const sentCount =
-    Number(currentStats?.delivery?.acceptedCount || 0) ||
-    Number(currentStats?.delivery?.sentCount || 0) ||
-    Number(broadcast?.recipientCount || 0);
-  const clickRate = sentCount > 0 ? Math.round((base.clicked / sentCount) * 1000) / 10 : 0;
-  const bounceRate = sentCount > 0 ? Math.round((base.bounced / sentCount) * 1000) / 10 : 0;
-  const complaintRate = sentCount > 0 ? Math.round((base.complained / sentCount) * 1000) / 10 : 0;
-
-  const updates = {
-    stats: {
-      ...currentStats,
-      webhook: base,
-      clickRate,
-      bounceRate,
-      complaintRate
-    }
-  };
-  if (eventType === "email.sent" && broadcast.status === "scheduled") {
-    updates.status = "sent";
-    updates.sentAt = occurredAt;
-  } else if (
-    eventType === "email.failed" &&
-    broadcast.status === "scheduled" &&
-    base.sent === 0 &&
-    base.failed >= sentCount
-  ) {
-    updates.status = "failed";
-  }
-  await EmailBroadcastModel.update(broadcast._id, updates);
-}
-
-async function writeTenantAnalyticsEvent({
-  tenantId,
-  userId = null,
-  eventType,
-  emailId,
-  recipientEmail,
-  broadcastId,
-  occurredAt
-}) {
-  if (!tenantId) return;
-  await AnalyticsEventModel.create({
-    tenantId,
-    userId,
-    eventType,
-    metadata: {
-      featureModule: "email",
-      emailId,
-      broadcastId,
-      recipient: recipientEmail
-    },
-    createdAt: occurredAt
-  });
-}
-
 export async function processResendWebhookRequest(req) {
   const payloadText = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body || "");
   if (!payloadText.trim()) {
@@ -389,7 +235,7 @@ export async function processResendWebhookRequest(req) {
   let inserted = 0;
   let duplicates = 0;
   for (const recipient of recipients) {
-    const saved = await ResendWebhookEventModel.insertUnique({
+    const saved = await ResendWebhookEventModel.processAtomically({
       svixId,
       eventType,
       emailId,
@@ -398,39 +244,14 @@ export async function processResendWebhookRequest(req) {
       tenantId: tenant?._id || null,
       tenantSlug: tenant?.slug || tenantTag || "",
       occurredAt,
-      payload
+      payload,
+      pondbridgeBroadcastId
     });
     if (!saved) {
       duplicates += 1;
       continue;
     }
     inserted += 1;
-
-    await attachSuppressionIfNeeded({
-      eventType,
-      recipientEmail: recipient,
-      tenant,
-      tenantSlug: tenantTag,
-      payload
-    });
-
-    await updateBroadcastStatsFromWebhook({
-      tenantId: tenant?._id || null,
-      eventType,
-      emailId,
-      pondbridgeBroadcastId,
-      occurredAt,
-      recipientEmail: recipient
-    });
-
-    await writeTenantAnalyticsEvent({
-      tenantId: tenant?._id || null,
-      eventType,
-      emailId,
-      recipientEmail: recipient,
-      broadcastId,
-      occurredAt
-    });
   }
 
   return {
