@@ -1,5 +1,6 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 import { AUTH_PROVIDER } from "../lib/authMode.js";
+import { settleAuthBootstrap } from "../lib/authReadiness.js";
 
 export const AuthContext = createContext(null);
 const TAB_LOGIN_INTENT_KEY = "pondbridgeTabLoginIntent";
@@ -31,6 +32,12 @@ export function PublicAuthProvider({ children }) {
     }),
     []
   );
+
+  // Releases any request held while the token was being restored. Runs for
+  // every provider, so no auth mode can leave the gate closed.
+  useEffect(() => {
+    if (value.isReady) settleAuthBootstrap();
+  }, [value.isReady]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

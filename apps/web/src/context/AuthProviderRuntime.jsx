@@ -13,6 +13,7 @@ import {
   clerkUiEnabled
 } from "../lib/authMode.js";
 import { ACTIVITY_CHECK_INTERVAL_MS, createIdleWatcher } from "../lib/idleActivity.js";
+import { settleAuthBootstrap } from "../lib/authReadiness.js";
 
 const IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
 const TAB_AUTH_SESSION_KEY = "pondbridgeTabAuthSession";
@@ -458,6 +459,12 @@ function LegacyAuthProvider({ children }) {
     }),
     [login, logout, refreshSession, sessionReady, token, user]
   );
+
+  // Releases any request held while the token was being restored. Runs for
+  // every provider, so no auth mode can leave the gate closed.
+  useEffect(() => {
+    if (value.isReady) settleAuthBootstrap();
+  }, [value.isReady]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -1178,6 +1185,12 @@ function ClerkBackedAuthProvider({ children }) {
     [bootstrapError, clerkLoadTimedOut, dismissSessionWarning, getAuthToken, hasHydratedSessionSnapshot, isLoaded, login, logout, refreshSession, retryBootstrap, sessionRefreshing, sessionWarningMinutes, token, user]
   );
 
+  // Releases any request held while the token was being restored. Runs for
+  // every provider, so no auth mode can leave the gate closed.
+  useEffect(() => {
+    if (value.isReady) settleAuthBootstrap();
+  }, [value.isReady]);
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -1210,6 +1223,12 @@ function ClerkUnavailableAuthProvider({ children }) {
     }),
     [configError, logout, refreshSession]
   );
+
+  // Releases any request held while the token was being restored. Runs for
+  // every provider, so no auth mode can leave the gate closed.
+  useEffect(() => {
+    if (value.isReady) settleAuthBootstrap();
+  }, [value.isReady]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
