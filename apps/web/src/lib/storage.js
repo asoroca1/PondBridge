@@ -69,6 +69,23 @@ export function readAuthFromStorage() {
   return { token, user };
 }
 
+/**
+ * The cached member, read without the side effects `readAuthFromStorage` has —
+ * that one rehydrates the volatile token as it goes, which is not something a
+ * render-path caller should be doing on every render.
+ */
+export function readCachedAuthUser() {
+  const rawUser =
+    readStorageValue(localStorage, STORAGE_KEYS.user) ||
+    readStorageValue(localStorage, STORAGE_KEYS.legacyUser) ||
+    "";
+  try {
+    return rawUser ? JSON.parse(rawUser) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function writeAuthToStorage(token, user) {
   const normalizedToken = String(token || "").trim();
   setVolatileAuthToken(normalizedToken);
