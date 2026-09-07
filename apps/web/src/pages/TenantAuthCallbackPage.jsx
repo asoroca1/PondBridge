@@ -461,9 +461,15 @@ function ClerkAuthCallbackPage() {
           inviteTokenValue: inviteToken
         });
 
+        // A profile waiting to be claimed outranks returnTo. Otherwise a deep
+        // link — the usual case, since the claim email carries one — would drop
+        // someone straight into a profile they have never agreed to.
+        const mustClaim = decision.state === "profile_ready_to_claim";
         const next = normalizeTenantRouteForHost(
           slug,
-          returnTo || String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home")
+          mustClaim
+            ? String(decision.nextRoute || routeWithSlug(slug, "/claim-profile"))
+            : returnTo || String(decision.nextRoute || "").trim() || routeWithSlug(slug, "/home")
         );
         clearPendingLegalAgreement(slug);
         redirected = true;

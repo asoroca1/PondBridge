@@ -61,6 +61,7 @@ const MemberCampAiPage = lazyPage(() => import("./pages/MemberCampAiPage.jsx"));
 const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
 const TenantAuthCallbackPage = lazyPage(() => import("./pages/TenantAuthCallbackPage.jsx"));
 const TenantAccessPendingPage = lazyPage(() => import("./pages/TenantAccessPendingPage.jsx"));
+const TenantClaimProfilePage = lazyPage(() => import("./pages/TenantClaimProfilePage.jsx"));
 const SuperLoginPage = lazyPage(() => import("./pages/SuperLoginPage.jsx"));
 const MobileCampCodeEntryPage = lazyPage(() => import("./pages/MobileCampCodeEntryPage.jsx"));
 const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage.jsx"));
@@ -249,7 +250,8 @@ function TenantScopeRoutes() {
     currentPath.includes("/director-create-account") ||
     currentPath.includes("/login") ||
     currentPath.includes("/create-account") ||
-    currentPath.includes("/request-access");
+    currentPath.includes("/request-access") ||
+    currentPath.includes("/claim-profile");
   // Once a member has been resolved, a momentary "signed in but no user" gap is
   // a background refresh, not a sign-in that needs finishing. Treating it as one
   // blanked the page behind the branded shell and then sent the member to the
@@ -292,7 +294,8 @@ function TenantScopeRoutes() {
       path.includes("/auth/callback") ||
       path.includes("/director-claim") ||
       path.includes("/director-create-account") ||
-      path.includes("/request-access");
+      path.includes("/request-access") ||
+      path.includes("/claim-profile");
     // Wait for auth to be fully ready before syncing membership. This prevents
     // firing a second refreshSession while the initial bootstrap is in flight,
     // which was a major source of cascading re-renders and glitching.
@@ -341,7 +344,8 @@ function TenantScopeRoutes() {
       path.includes("/director-create-account") ||
       path.includes("/login") ||
       path.includes("/create-account") ||
-      path.includes("/request-access");
+      path.includes("/request-access") ||
+      path.includes("/claim-profile");
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
     const tenantId = String(tenant?.id || tenant?._id || "").trim();
     const userTenantId = String(user?.tenantId || "").trim();
@@ -391,7 +395,8 @@ function TenantScopeRoutes() {
       path.includes("/director-create-account") ||
       path.includes("/login") ||
       path.includes("/create-account") ||
-      path.includes("/request-access");
+      path.includes("/request-access") ||
+      path.includes("/claim-profile");
     if (onAuthBootstrapRoute) return;
 
     let cancelled = false;
@@ -553,6 +558,7 @@ function TenantScopeRoutes() {
         />
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
         <Route path="request-access" element={<TenantAccessPendingPage />} />
+        <Route path="claim-profile" element={<TenantClaimProfilePage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
         <Route path="director-create-account/*" element={<DirectorCreateAccountPage />} />
         <Route path="director-legal" element={<DirectorLegalAgreementPage />} />

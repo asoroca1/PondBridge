@@ -359,7 +359,10 @@ async function fetchCandidateProfilePage(tenantId, opts = {}, from = 0, to = 999
     .from("profiles")
     .select(SEARCH_CANDIDATE_SELECT_SQL)
     .eq("tenant_id", tenantId)
-    .neq("status", "removed")
+    // "pending" is an imported profile nobody has claimed yet. Excluding it here
+    // keeps search agreeing with countActiveAlumni, which has always counted only
+    // active profiles — otherwise a camp reads one total and lists a longer one.
+    .not("status", "in", "(removed,pending)")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true })
     .order("id", { ascending: true })
