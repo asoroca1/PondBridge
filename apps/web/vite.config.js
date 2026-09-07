@@ -9,13 +9,14 @@ const __dirname = path.dirname(__filename);
 const repoEnvPath = path.resolve(__dirname, "../../.env");
 const webEnvPath = path.resolve(__dirname, ".env");
 const isLocalStaging = process.env.PONDBRIDGE_LOCAL_STAGING === "1";
+const isIsolatedEnv = isLocalStaging || process.env.PONDBRIDGE_ISOLATED_ENV === "1";
 
 // Make root .env (Cloudflare/Clerk shared config) available to web builds,
 // then allow apps/web/.env to fill in anything not present there.
 // .env.local (git-ignored) can override any value for local development,
 // but should not leak into production/native bundles.
 const webEnvLocalPath = path.resolve(__dirname, ".env.local");
-if (!isLocalStaging) {
+if (!isIsolatedEnv) {
   dotenv.config({ path: repoEnvPath, override: false });
   dotenv.config({ path: webEnvPath, override: false });
 }
@@ -34,7 +35,7 @@ for (const [viteKey, sharedKey] of Object.entries(envFallbackMap)) {
 }
 
 export default defineConfig(({ command }) => {
-  if (command === "serve" && !isLocalStaging) {
+  if (command === "serve" && !isIsolatedEnv) {
     dotenv.config({ path: webEnvLocalPath, override: true });
 
     for (const [viteKey, sharedKey] of Object.entries(envFallbackMap)) {
@@ -46,6 +47,8 @@ export default defineConfig(({ command }) => {
 
   return {
     plugins: [react()],
+    // Vite also loads .env files itself unless explicitly disabled.
+    envDir: isIsolatedEnv ? false : undefined,
     test: {
       // Components are tested by mounting them, so the suite needs a DOM.
       // Everything else -- pure helpers, reducers, formatters -- runs happily

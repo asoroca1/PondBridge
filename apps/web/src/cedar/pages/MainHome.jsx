@@ -373,6 +373,7 @@ function AnnouncementForm({ onPosted }) {
         className="announce-input"
         type="text"
         placeholder="Share a quick announcement…"
+        aria-label="Share a quick announcement"
         maxLength={500}
         value={msg}
         onChange={(e) => setMsg(e.target.value)}

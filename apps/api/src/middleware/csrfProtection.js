@@ -1,3 +1,4 @@
+import { readBearerToken } from "../utils/bearerToken.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
 import { readAuthTokenFromCookie } from "../utils/authCookie.js";
 
@@ -27,8 +28,7 @@ export function csrfProtection(req, res, next) {
   }
 
   // Skip requests authenticated via Bearer token (not vulnerable to CSRF)
-  const authHeader = String(req.headers.authorization || "").trim();
-  if (authHeader.toLowerCase().startsWith("bearer ")) {
+  if (readBearerToken(req)) {
     return next();
   }
 

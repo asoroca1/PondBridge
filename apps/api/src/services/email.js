@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import nodemailer from "nodemailer";
 import { defaultNetworkDisplayNameForCamp, normalizeCampType } from "@pondbridge/shared";
 import { env } from "../config/env.js";
@@ -17,7 +18,7 @@ import {
 let transport = null;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RESEND_TRANSIENT_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
-const RESEND_TRANSIENT_ERROR_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND"]);
+const RESEND_TRANSIENT_ERROR_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND", "CONCURRENT_IDEMPOTENT_REQUESTS"]);
 const RESEND_TAG_TOKEN_REGEX = /^[A-Za-z0-9_-]+$/;
 const RESEND_HEADER_NAME_REGEX = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -477,7 +478,11 @@ async function sendResendRequest(payload) {
   const resendUserAgent = normalizeString(env.RESEND_USER_AGENT || "pondbridge-api/1.0");
   const endpointPath = normalizeString(payload?.endpointPath || "/emails") || "/emails";
   const method = normalizeString(payload?.method || "POST").toUpperCase();
-  const idempotencyKey = normalizeIdempotencyKey(payload?.idempotencyKey || "");
+  // A lost response may follow an accepted send. Reuse one key across every
+  // attempt, even when the caller has no durable business-operation key.
+  const isEmailSend = method === "POST" && ["/emails", "/emails/batch"].includes(endpointPath);
+  const idempotencyKey = normalizeIdempotencyKey(payload?.idempotencyKey || "") ||
+    (isEmailSend ? `pondbridge-request/${randomUUID()}` : "");
   const requestHeaders = normalizeResendHeaders(payload?.headers || {});
   const requestPayload = payload?.body;
   let lastError = null;
@@ -517,7 +522,7 @@ async function sendResendRequest(payload) {
       const message = String(
         responseBody?.message || responseBody?.name || responseBody?.error?.message || ""
       ).trim();
-      const code = String(responseBody?.error?.code || responseBody?.code || "").trim().toUpperCase();
+      const code = String(responseBody?.error?.code || responseBody?.code || responseBody?.name || "").trim().toUpperCase();
       const retryable = shouldRetryResend(response.status, code);
 
       const error = createEmailError(
@@ -532,7 +537,12 @@ async function sendResendRequest(payload) {
     } catch (error) {
       const isAbortError = String(error?.name || "").toLowerCase() === "aborterror";
       const errorCode = String(error?.code || "").toUpperCase();
-      const retryable = isAbortError || shouldRetryResend(503, errorCode);
+      // Provider errors were already classified from their HTTP response. Do
+      // not turn permanent validation/authentication failures into retries.
+      const isProviderError = ["EMAIL_PROVIDER_TEMPORARY", "EMAIL_PROVIDER_REJECTED"].includes(errorCode);
+      const retryable = isProviderError
+        ? errorCode === "EMAIL_PROVIDER_TEMPORARY"
+        : isAbortError || error instanceof TypeError || shouldRetryResend(0, errorCode);
       lastError = error;
       if (!retryable || attempt >= maxRetries) {
         if (error?.code) throw error;

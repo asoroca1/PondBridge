@@ -1,3 +1,4 @@
+import { readBearerToken } from "../utils/bearerToken.js";
 import { createClerkClient, verifyToken } from "@clerk/backend";
 import { env } from "../config/env.js";
 
@@ -9,18 +10,6 @@ const CLERK_USER_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 
 function authUsesClerk() {
   return ["clerk", "hybrid"].includes(env.AUTH_PROVIDER);
-}
-
-function shouldRetryVerificationWithoutPolicy(error) {
-  const message = String(error?.message || "").toLowerCase();
-  const code = String(error?.code || "").toLowerCase();
-  return (
-    message.includes("audience") ||
-    message.includes("authorized") ||
-    message.includes("azp") ||
-    code.includes("audience") ||
-    code.includes("authorized")
-  );
 }
 
 function isClerkNotFoundError(error) {
@@ -35,12 +24,6 @@ function isClerkNotFoundError(error) {
       .toLowerCase()
       .includes("not_found")
   );
-}
-
-function parseBearerToken(req) {
-  const header = String(req.headers.authorization || "").trim();
-  if (header.startsWith("Bearer ")) return header.slice(7).trim();
-  return "";
 }
 
 function parseCookieToken(req, cookieName = "__session") {
@@ -188,7 +171,7 @@ async function resolveClerkUserSnapshot(clerkUserId = "") {
 
 export async function resolveClerkIdentityFromRequest(req) {
   if (!authUsesClerk()) return null;
-  const token = parseBearerToken(req) || parseCookieToken(req);
+  const token = readBearerToken(req) || parseCookieToken(req);
   if (!token) return null;
 
   const verifyOptions = {
@@ -199,29 +182,9 @@ export async function resolveClerkIdentityFromRequest(req) {
     verifyOptions.authorizedParties = env.CLERK_AUTHORIZED_PARTIES;
   }
 
-  let claims;
-  try {
-    claims = await verifyToken(token, verifyOptions);
-  } catch (error) {
-    const strictPoliciesEnabled =
-      Boolean(env.CLERK_JWT_AUDIENCE) || env.CLERK_AUTHORIZED_PARTIES.length > 0;
-    if (!strictPoliciesEnabled || !shouldRetryVerificationWithoutPolicy(error)) {
-      throw error;
-    }
-
-    // Fallback for production incidents caused by stale audience/authorized-party config.
-    // Signature validation still uses the Clerk secret for this instance.
-    try {
-      console.warn("[auth] Clerk strict token policy rejected request, retrying with signature-only verification", {
-        requestId: String(req?.requestId || ""),
-        path: String(req?.originalUrl || req?.url || ""),
-        origin: String(req?.headers?.origin || "")
-      });
-    } catch {
-      // no-op
-    }
-    claims = await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY });
-  }
+  // Audience and authorized-party restrictions are authentication boundaries.
+  // A policy failure must never retry verification without those restrictions.
+  const claims = await verifyToken(token, verifyOptions);
   const clerkUserId = String(claims?.sub || "").trim();
   if (!clerkUserId) return null;
 

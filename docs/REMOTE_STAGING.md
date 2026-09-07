@@ -161,3 +161,13 @@ false differences.
 3. Exercise the affected endpoints against staging.
 4. Apply the same file to production via the Supabase migration API.
 5. Merge to `main`.
+
+## Isolated audit sessions
+
+`staging:remote:dev` now disables both application dotenv reads and Vite automatic env loading. It starts the API directly (without nodemon); restart the session after API edits. To run alongside another staging session:
+
+```sh
+STAGING_API_PORT=4010 STAGING_WEB_PORT=5184 npm run staging:remote:dev
+```
+
+Ports must be integers from 1024 through 65535. Provider mocks and the staging project guard remain in force. Use `node scripts/testStagingEnvIsolation.mjs` to check that repository/app env files cannot override isolated application settings.

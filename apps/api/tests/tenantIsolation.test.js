@@ -125,6 +125,26 @@ describe("tenant isolation is enforced in the data layer", () => {
     );
   });
 
+  test.each([
+    { tenant_id: "tenant-a" },
+    { tenantId: { $exists: true } },
+    { tenantId: { $typo: "tenant-a" } },
+    { tenantId: { $eq: undefined } },
+    { tenantId: [] },
+    { tenantId: {} }
+  ])("rejects scope that the translator cannot apply: %j", async (filter) => {
+    for (const method of ["find", "findOne", "count", "deleteMany"]) {
+      await expect(PhotoLike[method](filter)).rejects.toThrow(/Refusing unscoped/);
+    }
+    await expect(PhotoLike.updateMany(filter, { caption: "x" })).rejects.toThrow(/Refusing unscoped/);
+    expect(captured).toHaveLength(0);
+  });
+
+  test("a recognized equality operator actually scopes the query", async () => {
+    await PhotoLike.find({ tenantId: { $eq: "tenant-a" } });
+    expect(captured.at(-1).query.filters).toContainEqual(["tenant_id", "tenant-a"]);
+  });
+
   test("tables without a tenant_id column are unaffected", async () => {
     await expect(GlobalLike.find({ email: "a@b.test" })).resolves.toBeDefined();
   });

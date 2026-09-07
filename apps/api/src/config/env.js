@@ -10,16 +10,17 @@ const repoEnvPath = path.resolve(__dirname, "../../../../.env");
 const apiEnvPath = path.resolve(__dirname, "../../.env");
 const isTestEnv = String(process.env.NODE_ENV || "").toLowerCase() === "test";
 const isLocalStaging = String(process.env.PONDBRIDGE_LOCAL_STAGING || "") === "1";
+const isIsolatedEnv = isLocalStaging || process.env.PONDBRIDGE_ISOLATED_ENV === "1";
 
 // For local/dev/runtime we support an ignored shared root .env.local for
 // developer secrets, with the existing shared root .env as a fallback.
 // Tests and isolated local staging skip it so behavior stays deterministic and
 // host/provider credentials cannot leak into the synthetic environment.
-if (!isTestEnv && !isLocalStaging) {
+if (!isTestEnv && !isIsolatedEnv) {
   dotenv.config({ path: repoLocalEnvPath, override: false });
   dotenv.config({ path: repoEnvPath, override: false });
 }
-if (!isLocalStaging) {
+if (!isIsolatedEnv) {
   dotenv.config({ path: apiEnvPath, override: false });
 }
 

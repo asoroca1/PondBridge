@@ -2023,7 +2023,7 @@ export function DirectorAdminSettingsNetworkPage() {
           <LabelListEditor
             label="Camper age groups"
             hint="Members choose a starting and ending group on their profile."
-            placeholder="Senior I"
+            placeholder="Senior I" aria-label="New camper age group"
             values={form.ageGroups}
             draft={ageGroupDraft}
             error={listErrors.ageGroups}
@@ -2035,7 +2035,7 @@ export function DirectorAdminSettingsNetworkPage() {
           <LabelListEditor
             label="Roles at camp"
             hint="Camper, counselor, and any staff roles. Used on profiles and in the People filters."
-            placeholder="Waterfront Director"
+            placeholder="Waterfront Director" aria-label="New staff role"
             values={form.staffRoles}
             draft={staffRoleDraft}
             error={listErrors.staffRoles}
@@ -2839,6 +2839,7 @@ export function DirectorAdminSettingsBrandingPage() {
                 <Input
                   value={form.brandPrimary}
                   placeholder={DEFAULT_BRAND_PRIMARY.toUpperCase()}
+                  aria-label="Main color hex code"
                   onChange={(event) => setForm((prev) => ({ ...prev, brandPrimary: event.target.value }))}
                   onBlur={() =>
                     setForm((prev) => ({ ...prev, brandPrimary: normalizeBrandHex(prev.brandPrimary, DEFAULT_BRAND_PRIMARY) }))

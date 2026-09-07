@@ -1,4 +1,4 @@
-import { createModel, toDoc } from "./_factory.js";
+import { createModel } from "./_factory.js";
 import { getSupabaseAdmin } from "../supabaseAdmin.js";
 
 const COLUMNS = {
@@ -26,7 +26,7 @@ export const ResendWebhookEventModel = {
   ...base,
   COLUMNS,
 
-  async insertUnique({
+  async processAtomically({
     svixId,
     eventType,
     emailId = "",
@@ -35,7 +35,8 @@ export const ResendWebhookEventModel = {
     tenantId = null,
     tenantSlug = "",
     occurredAt = null,
-    payload = {}
+    payload = {},
+    pondbridgeBroadcastId = ""
   }) {
     const row = {
       svix_id: String(svixId || "").trim(),
@@ -46,20 +47,12 @@ export const ResendWebhookEventModel = {
       tenant_id: tenantId ? String(tenantId) : null,
       tenant_slug: String(tenantSlug || "").trim(),
       occurred_at: occurredAt ? new Date(occurredAt).toISOString() : null,
-      payload: payload && typeof payload === "object" ? payload : {}
+      payload: payload && typeof payload === "object" ? payload : {},
+      pondbridge_broadcast_id: String(pondbridgeBroadcastId || "").trim()
     };
 
-    const { data, error } = await getSupabaseAdmin()
-      .from("resend_webhook_events")
-      .upsert(row, {
-        onConflict: "svix_id,recipient_email",
-        ignoreDuplicates: true
-      })
-      .select("*")
-      .maybeSingle();
-
+    const { data, error } = await getSupabaseAdmin().rpc("process_resend_webhook_event", { p_event: row });
     if (error) throw error;
-    return toDoc(data, COLUMNS);
+    return data === true;
   }
 };
-

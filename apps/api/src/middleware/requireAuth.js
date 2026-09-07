@@ -1,3 +1,4 @@
+import { readBearerToken } from "../utils/bearerToken.js";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { readAuthTokenFromCookie } from "../utils/authCookie.js";
@@ -98,8 +99,7 @@ function applyAppUser(req, appUser, identity, source) {
 }
 
 export async function requireIdentity(req, res, next) {
-  const header = req.headers.authorization || "";
-  const bearerToken = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const bearerToken = readBearerToken(req);
   const cookieToken = readAuthTokenFromCookie(req);
   const token = bearerToken || cookieToken;
   const allowLegacy = legacyTokenAllowed(req);

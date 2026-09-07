@@ -38,7 +38,7 @@
 
 .pb-events-rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 
-.pb-events-rail li button {
+.pb-events-rail li a {
   width: 100%;
   display: flex;
   align-items: center;
@@ -53,11 +53,13 @@
   font-weight: 600;
   color: var(--pb-ev-ink);
   cursor: pointer;
+  text-decoration: none;
+  min-height: 44px;
 }
 
-.pb-events-rail li button:hover { background: var(--pb-ev-surface-alt); }
+.pb-events-rail li a:hover { background: var(--pb-ev-surface-alt); }
 
-.pb-events-rail li button.is-active {
+.pb-events-rail li a.is-active {
   background: color-mix(in srgb, var(--pb-ev-accent) 12%, transparent);
   color: var(--pb-ev-accent);
 }
