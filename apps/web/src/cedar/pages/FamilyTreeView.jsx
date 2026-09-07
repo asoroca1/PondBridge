@@ -8,7 +8,7 @@ import { ModalConfirm } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import CedarBackground from "../components/CedarBackground";
 import { API_BASE } from "../lib/api";
-import { requestFamilyTrees } from "../lib/familyTreesApi";
+import { apiErrorMessage, currentUserProfileId, requestFamilyTrees } from "../lib/familyTreesApi";
 import { getToken, displayName, initialsOf, avatarUrl } from "../lib/helpers.js";
 import "./family-trees.css";
 
@@ -33,15 +33,6 @@ const PARENT_OF_TYPES = new Set(["parent_of", "father_of", "mother_of"]);
 const CHILD_OF_TYPES = new Set(["child_of", "son_of", "daughter_of"]);
 const SIBLING_TYPES = new Set(["sibling_of", "brother_of", "sister_of"]);
 const SPOUSE_TYPES = new Set(["spouse_of", "partner_of"]);
-
-function readCurrentUserId() {
-  try {
-    const raw = JSON.parse(localStorage.getItem("user") || "null");
-    return String(raw?._id || raw?.id || "").trim();
-  } catch {
-    return "";
-  }
-}
 
 function normalizeMember(raw = {}) {
   const id = String(raw.profileId || raw.id || raw._id || "").trim();
@@ -217,7 +208,7 @@ export default function FamilyTreeView() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const currentUserId = useMemo(() => readCurrentUserId(), []);
+  const currentUserProfile = useMemo(() => currentUserProfileId(), []);
   const wantsEdit = searchParams.get("edit") === "1";
 
   const [loading, setLoading] = useState(true);
@@ -259,7 +250,7 @@ export default function FamilyTreeView() {
         token: getToken(),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Failed to load tree (${res.status})`);
+      if (!res.ok) throw new Error(apiErrorMessage(data, `Failed to load tree (${res.status})`));
 
       const members = (Array.isArray(data.members) ? data.members : []).map(normalizeMember);
       const edges = (Array.isArray(data.edges) ? data.edges : []).map(normalizeEdge);
@@ -531,7 +522,7 @@ export default function FamilyTreeView() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.error || `Failed to update tree (${res.status})`);
+        throw new Error(apiErrorMessage(data, `Failed to update tree (${res.status})`));
       }
       await loadTree();
       setIsEditing(false);
@@ -559,7 +550,7 @@ export default function FamilyTreeView() {
         token: getToken(),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Delete failed (${res.status})`);
+      if (!res.ok) throw new Error(apiErrorMessage(data, `Delete failed (${res.status})`));
       navigate(tenantRoute(slug, "/family-trees"));
     } catch (err) {
       setError(err?.message || "Unable to delete family tree.");
@@ -661,7 +652,7 @@ export default function FamilyTreeView() {
                               ref={bindNodeRef(memberId)}
                               to={tenantRoute(slug, `/profile/${memberId}`)}
                               aria-label={`Open ${displayName(member)} profile`}
-                              className={`ft-tree-node ${memberId === currentUserId ? "is-you" : ""}`}
+                              className={`ft-tree-node ${memberId === currentUserProfile ? "is-you" : ""}`}
                             >
                               <MemberAvatar
                                 member={member}
