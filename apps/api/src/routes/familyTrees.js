@@ -159,7 +159,7 @@ function serializeTreeForClient(
     edges,
     permissions: {
       canEdit: Boolean(isSuperAdmin || isCreator || isMember),
-      canDelete: Boolean(isSuperAdmin || isCreator),
+      canDelete: canDeleteTree(tree, reqUserId, userRoles),
       isCreator,
       isMember,
       isMine: isCreator
@@ -173,9 +173,12 @@ function canEditTree(tree, userId, profileId, userRoles = []) {
   return (tree.members || []).some((member) => asId(member.profileId) === String(profileId));
 }
 
+// Whoever built the tree can take it down, and so can a director — they are
+// the ones who have to clear out a tree a member should not have made.
 function canDeleteTree(tree, userId, userRoles = []) {
-  if (userRoles.includes("super_admin")) return true;
-  return String(tree.createdByUserId) === String(userId);
+  const roles = Array.isArray(userRoles) ? userRoles : [];
+  if (roles.includes("super_admin") || roles.includes("tenant_admin") || roles.includes("admin")) return true;
+  return String(tree?.createdByUserId || "") === String(userId || "");
 }
 
 router.get("/", async (req, res) => {
@@ -373,7 +376,7 @@ router.delete("/:treeId", async (req, res) => {
 
   if (!canDeleteTree(tree, req.user.id, req.user.roles)) {
     return res.status(403).json({
-      error: { code: "FORBIDDEN", message: "Only the creator can delete this tree" }
+      error: { code: "FORBIDDEN", message: "Only the creator or a director can delete this tree" }
     });
   }
 
