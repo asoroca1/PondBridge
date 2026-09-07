@@ -12,7 +12,8 @@ import { campNetworkTitle } from "./lib/tenantBrandAssets.js";
 import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { HIDE_CAMP_AI, HIDE_MOBILE_APP } from "./lib/directorHiddenFeatures.js";
-import { readAuthFromStorage } from "./lib/storage.js";
+import { readAuthFromStorage, readCachedAuthUser } from "./lib/storage.js";
+import { normalizeTenantKey, shouldFinishTenantSignIn } from "./lib/authRouting.js";
 import { attemptAutomaticChunkRecovery } from "./lib/chunkRecovery.js";
 import {
   installRouteIntentPreloading,
@@ -133,10 +134,6 @@ const SuperTenantsPage = lazyPage(() =>
 
 const DEFAULT_TAB_TITLE = "PondBridge";
 
-function normalizeTenantKey(value = "") {
-  return String(value || "").trim().toLowerCase();
-}
-
 function resolveTenantTabTitle(tenant) {
   return campNetworkTitle(resolveCampName(tenant));
 }
@@ -250,14 +247,26 @@ function TenantScopeRoutes() {
     currentPath.includes("/login") ||
     currentPath.includes("/create-account") ||
     currentPath.includes("/request-access");
-  // Once a member has been resolved on this screen, a momentary "signed in but
-  // no user" gap is a background refresh, not a sign-in that needs finishing.
-  // Treating it as one blanked the page behind the branded shell and then sent
-  // the member to the auth callback - the phantom reload they kept hitting.
+  // Once a member has been resolved, a momentary "signed in but no user" gap is
+  // a background refresh, not a sign-in that needs finishing. Treating it as one
+  // blanked the page behind the branded shell and then sent the member to the
+  // auth callback - the phantom reload they kept hitting.
+  //
+  // The ref alone could not hold that fact: this component is mounted under
+  // three different layouts, so a route change that swaps layouts unmounts it
+  // and the ref forgets. The cached member survives that, and is cleared by
+  // logout and by any 401, so it cannot keep a stale session alive.
   const resolvedUserOnceRef = useRef(false);
   if (user) resolvedUserOnceRef.current = true;
-  const waitingForTenantScopedUser =
-    clerkMode && isAuthenticated && !user && !onAuthBootstrapRoute && !resolvedUserOnceRef.current;
+  const waitingForTenantScopedUser = shouldFinishTenantSignIn({
+    clerkMode,
+    isAuthenticated,
+    user,
+    onAuthBootstrapRoute,
+    resolvedUserOnce: resolvedUserOnceRef.current,
+    cachedUser: readCachedAuthUser(),
+    slug
+  });
   const demoAccessEnabled = Boolean(tenant?.accessSettings?.demoAccessEnabled);
 
   // The tab icon is resolved per camp at the edge (functions/brand/[[route]].js) so it

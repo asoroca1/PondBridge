@@ -1,4 +1,7 @@
 import { inferCampSlugFromHost } from "./domain.js";
+import { getVolatileAuthToken } from "./authMemory.js";
+import { readCachedAuthUser } from "./storage.js";
+import { whenAuthSettled } from "./authReadiness.js";
 
 const LOCAL_API_FALLBACK = "http://localhost:4000";
 const APP_BASE_DOMAIN = String(import.meta.env.VITE_APP_BASE_DOMAIN || "pondbridgealumni.com")
@@ -166,6 +169,48 @@ async function readBrowserClerkToken({ forceRefresh = false } = {}) {
   }
 }
 
+// A page load empties the in-memory token, and route data requests do not wait
+// for the auth bootstrap to put it back. A request that loses that race goes out
+// with no Authorization header at all, and the 401 it earns is indistinguishable
+// from a dead session: the app signed the member out, bounced them to /login and
+// reloaded — which reopened the same empty-token window. That is the "random"
+// sign-in flash, and on /photo-stream it reproduced every time.
+//
+// A 401 on a request we sent *unauthenticated* is a race, not an answer about
+// the session. Wait briefly for the token the bootstrap is already fetching and
+// ask again.
+const UNAUTHENTICATED_RETRY_DELAYS_MS = [50, 120, 300, 600];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Only worth waiting when this browser believes it has a session. A genuinely
+ * signed-out visitor should get their 401 immediately rather than paying a
+ * second of latency on every call.
+ */
+function expectsAuthenticatedSession() {
+  if (getVolatileAuthToken()) return true;
+  if (readCachedAuthUser()) return true;
+  return Boolean(typeof window !== "undefined" && window?.Clerk?.session);
+}
+
+async function waitForLateAuthToken(getToken) {
+  for (const delay of UNAUTHENTICATED_RETRY_DELAYS_MS) {
+    await sleep(delay);
+    const volatileToken = getVolatileAuthToken();
+    if (volatileToken) return volatileToken;
+    if (typeof getToken === "function") {
+      const fromProvider = await Promise.resolve(getToken()).catch(() => "");
+      if (fromProvider) return fromProvider;
+    }
+    const fromClerk = await readBrowserClerkToken();
+    if (fromClerk) return fromClerk;
+  }
+  return "";
+}
+
 async function readBrowserClerkTokenWithSharedForceRefresh() {
   const now = Date.now();
   if (forcedRefreshPromise) return forcedRefreshPromise;
@@ -239,6 +284,17 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
   const skipResponseCache = String(cache || "") === "no-store";
   const normalizedMethod = String(method || "GET").toUpperCase();
   const isPublicApiPath = normalizedPath.startsWith("/api/public/");
+  // The sign-in endpoints are what settle the gate, so they can never wait on
+  // it, and nothing on them is authenticated anyway.
+  const isAuthPath = normalizedPath.includes("/auth/");
+
+  // Hold authenticated calls until the bootstrap has restored the token. A page
+  // load empties it, and a request that goes out in that window earns a 401 that
+  // reads as a dead session.
+  if (!isPublicApiPath && !isAuthPath) {
+    await whenAuthSettled();
+  }
+
   let resolvedToken = token || "";
   if (typeof getToken === "function") {
     try {
@@ -330,6 +386,25 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
       }
       if (refreshedToken && refreshedToken !== resolvedToken) {
         resolvedToken = refreshedToken;
+        try {
+          response = await callWithToken(resolvedToken);
+        } catch (error) {
+          throw normalizeTransportError(error, normalizedPath);
+        }
+      }
+    }
+
+    // The request above carried no token and the refresh had nothing to give
+    // yet, so this 401 says nothing about whether the member is signed in.
+    if (
+      response.status === 401 &&
+      !isPublicApiPath &&
+      !resolvedToken &&
+      expectsAuthenticatedSession()
+    ) {
+      const lateToken = await waitForLateAuthToken(getToken);
+      if (lateToken) {
+        resolvedToken = lateToken;
         try {
           response = await callWithToken(resolvedToken);
         } catch (error) {

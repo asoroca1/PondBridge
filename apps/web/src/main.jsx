@@ -14,6 +14,7 @@ import {
   installChunkRecoveryListeners
 } from "./lib/chunkRecovery.js";
 import { canonicalTenantUrlForPreview } from "./lib/domain.js";
+import { armAuthBootstrap } from "./lib/authReadiness.js";
 import { API_BASE } from "./lib/http.js";
 import { readAuthFromStorage } from "./lib/storage.js";
 import { loadFullAuthRuntime } from "./lib/authRuntimePreload.js";
@@ -184,5 +185,8 @@ const canonicalPreviewUrl = canonicalTenantUrlForPreview();
 if (canonicalPreviewUrl && canonicalPreviewUrl !== window.location.href) {
   window.location.replace(canonicalPreviewUrl);
 } else {
+  // Armed before the first component mounts, so a route that fetches on mount
+  // cannot beat the auth bootstrap to the network. The provider settles it.
+  armAuthBootstrap();
   start();
 }
