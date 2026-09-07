@@ -10,7 +10,7 @@ try {
   const ddl=baseline.slice(start,baseline.indexOf('\n);',start)+3).replaceAll("encode(gen_random_bytes(12), 'hex')","gen_random_uuid()::text");
   await db.exec(ddl);
  }
- await db.exec(await readFile(new URL('../supabase/migrations/20260906232251_atomic_resend_webhook_processing.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/migrations/20260907121221_atomic_resend_webhook_processing.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../apps/api/tests/resendWebhookAtomicity.sql',import.meta.url),'utf8'));
  console.log('PASS: SQL transaction rollback, redelivery, duplicate suppression, cross-tenant broadcast isolation, unknown-tenant suppression, RPC grants (PGlite).');
 } finally { await db.close(); }
