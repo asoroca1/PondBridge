@@ -22,6 +22,12 @@ const AUTHED = { ok: true, status: 200, headers: { get: () => "application/json"
 const UNAUTHED = { ok: false, status: 401, headers: { get: () => "application/json" }, json: async () => ({ error: { message: "Unauthorized" } }) };
 
 let requestJson;
+// http.js and the gate have to come from the same module registry: resetModules
+// gives http.js a fresh copy of authReadiness, and a top-level import here would
+// arm a different one.
+let armAuthBootstrap;
+let settleAuthBootstrap;
+let resetAuthReadiness;
 
 function installFetch(handler) {
   const calls = [];
@@ -37,11 +43,13 @@ beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   delete globalThis.window.Clerk;
+  ({ armAuthBootstrap, settleAuthBootstrap, resetAuthReadiness } = await import("./authReadiness.js"));
   ({ requestJson } = await import("./http.js"));
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  resetAuthReadiness?.();
   delete globalThis.window.Clerk;
 });
 
@@ -101,5 +109,36 @@ describe("a 401 on a request that carried no token", () => {
     const calls = installFetch(() => AUTHED);
     await expect(requestJson("/api/t/cedar/me", { token: "good" })).resolves.toEqual({ ok: true });
     expect(calls).toEqual(["Bearer good"]);
+  });
+});
+
+describe("the readiness gate, from the request side", () => {
+  test("an authenticated call does not leave until the bootstrap settles", async () => {
+    armAuthBootstrap();
+    installFetch(() => AUTHED);
+
+    const inFlight = requestJson("/api/t/cedar/photos", { token: "good" });
+    await Promise.resolve();
+    await Promise.resolve();
+    // Still held: this is the request that used to go out bare and earn a 401.
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+
+    settleAuthBootstrap();
+    await expect(inFlight).resolves.toEqual({ ok: true });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("public endpoints are never held", async () => {
+    armAuthBootstrap();
+    installFetch(() => AUTHED);
+    await expect(requestJson("/api/public/tenant-config", {})).resolves.toEqual({ ok: true });
+  });
+
+  test("the sign-in endpoints are never held - they are what settles the gate", async () => {
+    armAuthBootstrap();
+    installFetch(() => AUTHED);
+    await expect(requestJson("/api/auth/session", { token: "good" })).resolves.toEqual({ ok: true });
+    await expect(requestJson("/api/t/cedar/auth/magic-link/consume", { method: "POST", body: {} }))
+      .resolves.toEqual({ ok: true });
   });
 });

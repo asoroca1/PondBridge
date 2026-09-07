@@ -1,6 +1,7 @@
 import { inferCampSlugFromHost } from "./domain.js";
 import { getVolatileAuthToken } from "./authMemory.js";
 import { readCachedAuthUser } from "./storage.js";
+import { whenAuthSettled } from "./authReadiness.js";
 
 const LOCAL_API_FALLBACK = "http://localhost:4000";
 const APP_BASE_DOMAIN = String(import.meta.env.VITE_APP_BASE_DOMAIN || "pondbridgealumni.com")
@@ -283,6 +284,17 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
   const skipResponseCache = String(cache || "") === "no-store";
   const normalizedMethod = String(method || "GET").toUpperCase();
   const isPublicApiPath = normalizedPath.startsWith("/api/public/");
+  // The sign-in endpoints are what settle the gate, so they can never wait on
+  // it, and nothing on them is authenticated anyway.
+  const isAuthPath = normalizedPath.includes("/auth/");
+
+  // Hold authenticated calls until the bootstrap has restored the token. A page
+  // load empties it, and a request that goes out in that window earns a 401 that
+  // reads as a dead session.
+  if (!isPublicApiPath && !isAuthPath) {
+    await whenAuthSettled();
+  }
+
   let resolvedToken = token || "";
   if (typeof getToken === "function") {
     try {
