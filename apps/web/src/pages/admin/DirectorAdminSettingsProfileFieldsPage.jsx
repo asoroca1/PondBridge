@@ -7,7 +7,7 @@ import {
   PROFILE_FIELD_CATALOG,
   PROFILE_FIELD_GROUPS
 } from "@pondbridge/shared";
-import { InfoHint, LoadingSkeleton, ModalConfirm } from "../../components/admin/AdminUi.jsx";
+import { EmptyState, InfoHint, LoadingSkeleton, ModalConfirm } from "../../components/admin/AdminUi.jsx";
 import { useConfirmDialog } from "../../components/admin/useConfirmDialog.js";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { tenantRoute } from "../../lib/tenantRouting.js";
@@ -27,17 +27,23 @@ export default function DirectorAdminSettingsProfileFieldsPage() {
   const [values, setValues] = useState(null);
   const [fields, setFields] = useState([]);
   const [saving, setSaving] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
   const load = useCallback(async () => {
     setError("");
+    setLoadFailed(false);
     try {
       const response = await request("/profile-fields");
       setFields(Array.isArray(response?.fields) ? response.fields : []);
       setValues(response?.values || {});
     } catch (requestError) {
       setError(requestError.message || "Failed to load profile content settings.");
+      // Tracked separately from `error`, because `values` stays null on a
+      // first-load failure and the skeleton below would otherwise shimmer
+      // forever with the reason sitting in state, unrendered.
+      setLoadFailed(true);
     }
   }, [request]);
 
@@ -82,6 +88,21 @@ export default function DirectorAdminSettingsProfileFieldsPage() {
   }, [fields]);
 
   if (!values) {
+    if (loadFailed) {
+      return (
+        <Card>
+          <EmptyState
+            title="Could not load profile content settings"
+            description={error || "Something went wrong reading this network's settings."}
+            actions={
+              <Button variant="secondary" onClick={load}>
+                Try again
+              </Button>
+            }
+          />
+        </Card>
+      );
+    }
     return (
       <Card>
         <LoadingSkeleton lines={4} />
