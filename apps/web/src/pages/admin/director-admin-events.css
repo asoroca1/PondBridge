@@ -38,7 +38,10 @@
 
 .pb-events-rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 
-.pb-events-rail li button {
+/* These were <button>s until the views moved into the URL. They are links now,
+   so the rules have to name links — an `li button` selector matches nothing
+   here and leaves the rail as four lines of raw text. */
+.pb-events-rail li a {
   width: 100%;
   display: flex;
   align-items: center;
@@ -52,14 +55,20 @@
   font-size: 0.92rem;
   font-weight: 600;
   color: var(--pb-ev-ink);
+  text-decoration: none;
   cursor: pointer;
 }
 
-.pb-events-rail li button:hover { background: var(--pb-ev-surface-alt); }
+.pb-events-rail li a:hover { background: var(--pb-ev-surface-alt); }
 
-.pb-events-rail li button.is-active {
+.pb-events-rail li a.is-active {
   background: color-mix(in srgb, var(--pb-ev-accent) 12%, transparent);
   color: var(--pb-ev-accent);
+}
+
+.pb-events-rail li a:focus-visible {
+  outline: 2px solid var(--pb-ev-accent);
+  outline-offset: 2px;
 }
 
 .pb-events-rail li em {
