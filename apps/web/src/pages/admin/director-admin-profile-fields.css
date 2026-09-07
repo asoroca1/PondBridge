@@ -86,7 +86,10 @@
 }
 
 .pb-cedar-page .director-profile-fields-rows {
-  margin: 0 -18px;
+  /* Bleed to the card's edge, whatever padding the card is currently at. The
+     hard -18px only matched the widest breakpoint and hung the rows past the
+     card everywhere else. */
+  margin: 0 calc(-1 * var(--pb-card-pad-x, 18px));
   border-top: 1px solid var(--neutral-200);
 }
 

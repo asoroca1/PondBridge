@@ -5009,8 +5009,11 @@ html.is-native-app textarea{
 }
 
 .pb-cedar-page .director-admin-main .pb-card{
+  /* Rows that bleed to the card's edge subtract this, so it has to stay the
+     single source of the horizontal padding at every width. */
+  --pb-card-pad-x: clamp(14px, 1.35vw, 18px);
   border-radius: 14px;
-  padding: clamp(14px, 1.35vw, 18px);
+  padding: clamp(14px, 1.35vw, 18px) var(--pb-card-pad-x);
 }
 
 .pb-cedar-page .director-admin-main-head{
@@ -10404,7 +10407,6 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-section-heading,
-  .pb-cedar-page .director-admin-module-main,
   .pb-cedar-page .director-admin-service-action-list > article,
   .pb-cedar-page .director-admin-service-inventory-toggle,
   .pb-cedar-page .director-admin-capability-row{
@@ -10412,6 +10414,9 @@ html.is-native-app textarea{
     flex-direction: column;
   }
 
+  /* A switch is 42px wide: stacking it under its own label left an orphaned
+     control and a row twice as tall as it needs to be. The label wraps
+     instead. */
   .pb-cedar-page .director-admin-module-main{
     gap: 12px;
   }
@@ -10772,8 +10777,9 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-main .pb-card{
+    --pb-card-pad-x: 12px;
     border-radius: 16px;
-    padding: 14px 12px;
+    padding: 14px var(--pb-card-pad-x);
   }
 
   .pb-cedar-page .director-admin-page-head{
@@ -10874,8 +10880,9 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-main .pb-card{
+    --pb-card-pad-x: 10px;
     border-radius: 14px;
-    padding: 12px 10px;
+    padding: 12px var(--pb-card-pad-x);
   }
 
   .pb-cedar-page .director-admin-stat-grid{

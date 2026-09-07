@@ -170,7 +170,12 @@ function serializeTreeForClient(
 function canEditTree(tree, userId, profileId, userRoles = []) {
   if (userRoles.includes("super_admin")) return true;
   if (String(tree.createdByUserId) === String(userId)) return true;
-  return tree.members.some((member) => asId(member.profileId) === String(profileId));
+  return (tree.members || []).some((member) => asId(member.profileId) === String(profileId));
+}
+
+function canDeleteTree(tree, userId, userRoles = []) {
+  if (userRoles.includes("super_admin")) return true;
+  return String(tree.createdByUserId) === String(userId);
 }
 
 router.get("/", async (req, res) => {
@@ -189,6 +194,10 @@ router.get("/", async (req, res) => {
     ? trees.filter((tree) => !hiddenUserIds.has(String(tree.createdByUserId || "")))
     : trees;
 
+  // The cards render an Edit affordance off these flags, so the list has to
+  // answer the same permission questions the detail route does.
+  const currentUser = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
+
   res.json({
     items: visibleTrees.map((tree) => ({
       id: String(tree._id),
@@ -196,7 +205,10 @@ router.get("/", async (req, res) => {
       memberCount: (tree.members || []).filter(
         (member) => !hiddenProfileIds?.has(String(member?.profileId || member?.id || ""))
       ).length,
-      createdByUserId: String(tree.createdByUserId)
+      createdByUserId: String(tree.createdByUserId),
+      canEdit: canEditTree(tree, req.user.id, currentUser?.profileId, req.user.roles),
+      canDelete: canDeleteTree(tree, req.user.id, req.user.roles),
+      isMine: String(tree.createdByUserId) === String(req.user.id)
     }))
   });
 });
@@ -333,6 +345,43 @@ router.put("/:treeId", async (req, res) => {
   });
 
   res.json({ tree: hydratedTree || updated, ...serialized });
+});
+
+router.delete("/:treeId", async (req, res) => {
+  const treeId = String(req.params.treeId || "").trim();
+  if (!isValidObjectId(treeId)) {
+    return res.status(400).json({
+      error: { code: "INVALID_ID", message: "Invalid family tree id" }
+    });
+  }
+
+  const tree = await FamilyTreeModel.findOne(req.tenant._id, { _id: treeId });
+  if (!tree) {
+    return res.status(404).json({
+      error: { code: "TREE_NOT_FOUND", message: "Family tree not found" }
+    });
+  }
+
+  // A tree whose creator the viewer's tier hides is invisible to them, so it
+  // has to 404 here exactly as it does on the read route.
+  const hiddenUserIds = await hiddenUserIdSetFor(req);
+  if (hiddenUserIds?.has(String(tree.createdByUserId || ""))) {
+    return res.status(404).json({
+      error: { code: "TREE_NOT_FOUND", message: "Family tree not found" }
+    });
+  }
+
+  if (!canDeleteTree(tree, req.user.id, req.user.roles)) {
+    return res.status(403).json({
+      error: { code: "FORBIDDEN", message: "Only the creator can delete this tree" }
+    });
+  }
+
+  // Scoped delete: the tenant id is part of the statement, so a valid id from
+  // another tenant can never match.
+  await FamilyTreeModel.deleteMany(req.tenant._id, { _id: tree._id });
+
+  res.json({ ok: true, id: String(tree._id) });
 });
 
 export default router;

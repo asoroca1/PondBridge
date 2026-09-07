@@ -98,6 +98,13 @@
   .pb-settings { grid-template-columns: minmax(0, 1fr); }
   .pb-settings-rail { position: static; }
   .pb-settings-rail a small { display: none; }
+
+  /* Each group is a grid item wrapping the scrollable list. Without this its
+     automatic minimum size is the full width of that row, so the rail pushes
+     the whole settings page wider than the phone instead of the list
+     scrolling inside it. */
+  .pb-settings-rail > * { min-width: 0; }
+
   .pb-settings-rail ul {
     grid-auto-flow: column;
     grid-auto-columns: max-content;
