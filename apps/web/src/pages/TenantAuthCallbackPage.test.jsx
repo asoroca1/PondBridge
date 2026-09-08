@@ -319,7 +319,7 @@ describe("signed-in legal agreement recovery", () => {
     const agreement = await screen.findByRole("checkbox");
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
     expect(screen.getByText(/Agree to the Terms of Service/)).toBeInTheDocument();
-    const continueButton = screen.getByRole("button", { name: "Continue to director review" });
+    const continueButton = screen.getByRole("button", { name: "Finish account confirmation" });
     expect(continueButton).toBeDisabled();
 
     await user.click(agreement);
