@@ -4,7 +4,7 @@
 
 No code defect reviewed here proves why an accepted verification or approval email landed in Junk. Provider delivery means the receiving mail server accepted it; it does not establish inbox placement. Diagnosis still needs the affected message's full received headers and mailbox-provider classification, correlated to its Resend ID. Do not describe the safeguard below as a fix for the reported spam placement.
 
-The parent task reports verified Resend SPF/DKIM, root DMARC `p=none`, disabled open/click tracking, and a delivered Cedar approval sample with a camp-branded From address on `pondbridgealumni.com`, Gmail Reply-To, plain text, and a valid tenant login URL. This code review did not independently inspect provider settings or mailbox headers.
+The joint audit verified Resend SPF/DKIM, root DMARC `p=none`, disabled open/click tracking, and a delivered Cedar approval sample with a camp-branded From address on `pondbridgealumni.com`, Gmail Reply-To, plain text, and a valid tenant login URL. The user identified Green Lane access-code emails as affected. Eight sampled Green Lane code messages were provider-delivered. Production records show 1,998 distinct sent messages and 209 bounced messages in the last 30 days, including 194 unspecified hard bounces; 209 active bounce suppression records are present. This is a list-quality/reputation concern, not a proven cause of Junk classification. No affected Green Lane message was found in the connected Outlook Junk folders; its received headers remain required. See the service audit for detailed aggregates.
 
 ## Checked code
 
