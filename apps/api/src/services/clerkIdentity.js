@@ -159,6 +159,9 @@ async function resolveClerkUserSnapshot(clerkUserId = "") {
   const fallback = user?.emailAddresses?.[0]?.emailAddress || "";
   const snapshot = {
     email: normalizeEmail(emailObj?.emailAddress || fallback),
+    verifiedEmails: (user?.emailAddresses || [])
+      .filter((item) => item.verification?.status === "verified")
+      .map((item) => normalizeEmail(item.emailAddress)),
     firstName: normalizeName(user?.firstName || ""),
     lastName: normalizeName(user?.lastName || "")
   };
@@ -167,6 +170,14 @@ async function resolveClerkUserSnapshot(clerkUserId = "") {
     data: snapshot
   });
   return snapshot;
+}
+
+// Email-only invitation acceptance must prove ownership, even if Clerk's
+// instance settings later permit accounts with unverified addresses.
+export async function isClerkIdentityEmailVerified(identity = {}) {
+  if (identity.provider !== "clerk" || !identity.clerkUserId || !identity.email) return false;
+  const snapshot = await resolveClerkUserSnapshot(identity.clerkUserId);
+  return Boolean(snapshot?.verifiedEmails?.includes(normalizeEmail(identity.email)));
 }
 
 export async function resolveClerkIdentityFromRequest(req) {
