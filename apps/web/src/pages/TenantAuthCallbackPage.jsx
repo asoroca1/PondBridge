@@ -256,7 +256,7 @@ function ClerkAuthCallbackPage() {
 
     if (decision.action === "wait_for_approval") return { pendingApproval: true };
 
-    if (decision.action === "accept_invite" && inviteTokenValue) {
+    if (decision.action === "accept_invite") {
       const accepted = await requestJson(`/api/t/${safeSlug}/access/invite/accept`, {
         method: "POST",
         token,
@@ -381,7 +381,7 @@ function ClerkAuthCallbackPage() {
             if (!isDirectorBootstrapDisabledError(bootstrapErr)) throw bootstrapErr;
           }
           clearDirectorBootstrapIntent(slug);
-        } else if (decision.action === "accept_invite" && inviteToken) {
+        } else if (decision.action === "accept_invite") {
           clearDirectorBootstrapIntent(slug);
           setPhaseMessage("Accepting your invite...");
           const accepted = await requestJson(`/api/t/${slug}/access/invite/accept`, {

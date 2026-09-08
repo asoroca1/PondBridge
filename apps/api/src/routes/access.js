@@ -963,15 +963,19 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
   }
 
   const identity = req.identity || {};
+  const identityEmail = normalizeEmail(identity.email || "");
   const token = String(req.body?.inviteToken || req.body?.token || "").trim();
-  if (!token) {
-    return res.status(400).json({
-      error: { code: "INVITE_TOKEN_REQUIRED", message: "Invite token is required." }
-    });
-  }
 
-  let invite = await findInviteByOpaqueToken(req.tenant._id, token);
-  if (!invite) {
+  // A person can begin account creation from the camp's normal signup page
+  // rather than from their invitation URL. The decision endpoint deliberately
+  // recognizes a live, email-addressed invite in that case. Complete the same
+  // invite here after Clerk has verified the address, instead of leaving the
+  // signed-in person without a membership or a review request just because
+  // their callback has no opaque token in its URL.
+  let invite = token
+    ? await findInviteByOpaqueToken(req.tenant._id, token)
+    : await findInviteForEmail(req.tenant._id, identityEmail);
+  if (!invite && token) {
     const usedInvite = await findInviteByOpaqueTokenAnyState(req.tenant._id, token);
     if (usedInvite?.usedAt) {
       const existingMember = await findTenantUserForIdentity(req.tenant._id, identity);
@@ -1004,7 +1008,6 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
     });
   }
 
-  const identityEmail = normalizeEmail(identity.email || "");
   const inviteEmail = normalizeEmail(invite.email || "");
   const inviteAllowsEmail = !inviteEmail || inviteEmail === identityEmail;
   if (!inviteAllowsEmail) {

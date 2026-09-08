@@ -5,6 +5,7 @@ import request from "supertest";
 let tenant;
 let membership;
 let pending;
+let invite;
 const email = "member@example.test";
 const createMembership = jest.fn();
 const approveRequest = jest.fn();
@@ -20,7 +21,19 @@ jest.unstable_mockModule("../src/middleware/tenantAccess.js", () => ({
   }]
 }));
 jest.unstable_mockModule("../src/db/models/index.js", () => ({
-  UserModel: {}, TenantModel: {}, InviteModel: { find: jest.fn(async () => []) },
+  UserModel: {}, TenantModel: {}, InviteModel: {
+    find: jest.fn(async (tenantId, filter) => {
+      if (
+        invite &&
+        invite.tenantId === tenantId &&
+        invite.email === filter?.email &&
+        !invite.usedAt
+      ) {
+        return [invite];
+      }
+      return [];
+    })
+  },
   ProfileModel: { updateScoped: profileWrite },
   TenantAdminAuditLogModel: { create: jest.fn(async () => ({})) },
   AccessRequestModel: {
@@ -50,7 +63,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   tenant = { _id: "camp-a", slug: "camp-a", status: "active", onboardingStatus: "live", billingStatus: "active",
     settings: { signupMode: "open", requireSignupApproval: false } };
-  membership = null; pending = null;
+  membership = null; pending = null; invite = null;
   findMembership.mockImplementation(async () => membership);
   findRequest.mockImplementation(async (tenantId, filter) => pending?.tenantId === tenantId && pending.email === filter.email && pending.status === "pending" ? pending : null);
   createMembership.mockImplementation(async () => {
@@ -77,6 +90,30 @@ test("gate-on new member stays queued, and gate-off join resolves only their own
   const joined = await request(app).post("/join").send(body);
   expect(joined.status).toBe(201); expect(joined.body.member.status).toBe("active");
   expect(approveRequest).toHaveBeenCalledWith(tenant._id, "request-a", expect.objectContaining({ status: "approved", approvedUserId: "member-a" }));
+});
+
+test("a verified email-addressed invite can enter the review queue without its opaque URL token", async () => {
+  tenant.settings.requireSignupApproval = true;
+  invite = {
+    _id: "invite-a",
+    tenantId: tenant._id,
+    email,
+    roleToAssign: "user",
+    usedAt: null,
+    expiresAt: new Date(Date.now() + 60_000)
+  };
+
+  const response = await request(app).post("/invite/accept").send(body);
+
+  expect(response.status).toBe(202);
+  expect(response.body.pendingApproval).toBe(true);
+  expect(response.body.request.email).toBeUndefined();
+  expect(createRequest).toHaveBeenCalledWith(expect.objectContaining({
+    tenantId: tenant._id,
+    email,
+    status: "pending"
+  }));
+  expect(createMembership).not.toHaveBeenCalled();
 });
 
 test.each(["inactive", "removed"])("gate off cannot reactivate a %s member through direct POST /join", async (status) => {
