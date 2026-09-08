@@ -33,4 +33,23 @@ The pure service rehearsal uses model mocks that reject all writes for dry-run t
 
 The previous implementation hashed a different unusable placeholder password for every created row. A local three-hash bcrypt sample at the default 12 rounds averaged 457 ms, implying approximately 274 seconds of hashing alone for 600 rows. The finishing change lazily hashes one new random 32-byte secret per import, retains only the hash, and never emails/logs/stores the secret. No change to actual member credentials or bcrypt rounds.
 
-The HTTP upload cap is 5 MiB and the importer rejects over 2,000 rows before fetching tenant accounts. Commit still performs three sequential model writes per new person, so hosted 600-person commit latency remains to be measured. There is no import-specific idempotency key or durable background job; retries create a new report and rely on current tenant deduplication. Avoid presenting a response timeout as proof that no rows were written. The production rehearsal must account for this limitation.
+The HTTP upload cap is 5 MiB and the importer rejects over 2,000 rows before fetching tenant accounts. Each new person still requires three ordered model writes, but independent identities now run in groups of at most eight. Duplicate/update dependencies drain the pending group first; fuzzy matching intentionally remains sequential. There is no import-specific idempotency key or durable background job; retries create a new report and rely on current tenant deduplication. Avoid presenting a response timeout as proof that no rows were written. The production rehearsal must account for this limitation.
+
+
+## Hosted staging acceptance after concurrency fixes
+
+On 2026-09-08, the integrated API at `127.0.0.1:4020` used the hosted synthetic staging database, mock email/billing and disabled AI. Each rehearsal used a fresh randomized `qa600-…@example.test` audience, empty city fields, and 600 names/addresses. Existing camp profiles were not changed.
+
+| Check | Sequential baseline | Bounded concurrency |
+| --- | ---: | ---: |
+| Preview 600 new rows | 4.883 s | 3.562 s |
+| Commit 600 new rows | Client timed out at approximately 300 s; report later confirmed all 600 | 63.198 s, 600 created, zero errors |
+| Re-preview identical imported file | Not rerun | 4.235 s, zero creates/updates, 600 duplicates |
+| Undo 600 unclaimed profiles | 106.246 s | 25.634 s |
+| Remaining matching synthetic people after undo | 0 | 0 |
+
+Both undo responses reported 600 removed, zero protected/claimed and zero failures. The baseline request was never blindly retried after its client timeout; its report was observed finalized before restarting the API. The final commit completed comfortably below the 120-second target on this staging rehearsal. This is measured acceptance for this workload and environment, not a guaranteed bound for every database/provider load, fuzzy import or update-heavy file.
+
+Create regression coverage verifies the eight-operation cap, dependent duplicate field merging, name/city matching, sequential fuzzy selection, failed reservation recovery and stable row error order. Undo coverage verifies the same cap, source-order failures and unchanged atomic claim protection. An independent security review found no new duplicate/order or atomicity issue in these concurrency changes.
+
+All 1,200 accounts/profiles created across the two rehearsals were removed by their respective report-scoped undo. No provider messages were sent. Retained synthetic report IDs for the parent cleanup are `8bd9065d67d522aa140f4c64` and `eadd36444cc5b0ac7213a846`. Full local timing evidence is in `/tmp/pondbridge-questionnaire-fixture/scale-baseline-evidence.json` and `/tmp/pondbridge-questionnaire-fixture/scale-evidence.json`; credentials are stored separately and must not be committed.
