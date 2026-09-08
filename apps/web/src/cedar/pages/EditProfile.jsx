@@ -984,11 +984,13 @@ export default function EditProfile() {
 
     const token = await resolveAuthToken();
 
-    const r = await fetch(`${API_BASE}/uploads/presign-public`, {
+    // The authenticated presign route, not presign-public: this runs for a
+    // member who is already signed in, so there is no reason to reach for the
+    // endpoint that exists only for the director wizard's pre-account uploads.
+    const r = await fetch(`${API_BASE}/uploads/presign`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // harmless if endpoint ignores auth; helpful if you later lock it down
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ fileName, fileType, fileSize: Number(blob?.size || 0) }),

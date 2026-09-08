@@ -181,13 +181,16 @@ const MAP_CITIES_RESPONSE_CACHE_CONTROL = "private, max-age=20, stale-while-reva
 const MAP_CITY_PEOPLE_RESPONSE_CACHE_CONTROL = "private, max-age=15, stale-while-revalidate=30";
 const geocodeQueue = new Map();
 let geocodeWorkerRunning = false;
+// No SVG. A presigned PUT enforces the content type the client declared, never
+// the bytes it actually sends, so an "image/svg+xml" upload is an arbitrary
+// script that later executes in whatever origin serves the bucket -- and
+// presign-public accepts uploads with no session at all.
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/jpg",
   "image/png",
   "image/gif",
-  "image/webp",
-  "image/svg+xml"
+  "image/webp"
 ]);
 const VIDEO_MIME_TYPES = new Set([
   "video/mp4",
@@ -1665,25 +1668,21 @@ async function loadCitySuggestionsForTenant(tenantId, { state = "", country = ""
   return candidates.slice(0, effectiveLimit);
 }
 
-router.get("/locations/cities", async (req, res) => {
-  const state = String(req.query.state || "").trim().toUpperCase();
-  const country = String(req.query.country || "").trim();
-  const q = String(req.query.q || "").trim();
-  const limit = Number(req.query.limit || 25);
-  const items = await loadCitySuggestionsForTenant(req.tenant._id, { state, country, q, limit });
-  return res.json(items);
-});
-
-router.get("/locations/cities/:state", async (req, res) => {
-  const state = String(req.params.state || "").trim().toUpperCase();
-  if (!state) return res.json([]);
-  const items = await loadCitySuggestionsForTenant(req.tenant._id, { state, limit: 100 });
-  return res.json(items);
-});
-
-router.post("/locations/cities", (_req, res) => {
-  return res.status(201).json({ ok: true });
-});
+// ---------------------------------------------------------------------------
+// Deliberately public routes.
+//
+// Everything from here to `router.use(requireAuth, ...)` below runs with a
+// resolved tenant but NO SESSION. Express applies middleware in registration
+// order, so a route added above that line is unauthenticated whether or not its
+// author intended it -- which is exactly how the object proxy and the city
+// lookups below ended up reachable by anyone. Only two things belong here:
+//
+//   - presign-public, because the director signup wizard uploads a logo before
+//     any account exists to authenticate with.
+//   - prelaunch/status, because the locked landing page renders before login.
+//
+// Anything else goes below the guard.
+// ---------------------------------------------------------------------------
 
 router.post("/uploads/presign-public", publicUploadPresignLimiter, async (req, res, next) => {
   try {
@@ -1694,39 +1693,6 @@ router.post("/uploads/presign-public", publicUploadPresignLimiter, async (req, r
       ...presigned,
       publicUrl: presigned.objectUrl
     });
-  } catch (error) {
-    return next(error);
-  }
-});
-
-router.get("/uploads/object", async (req, res, next) => {
-  try {
-    const key = String(req.query?.key || "").trim();
-    if (!key) {
-      return res.status(400).json({
-        error: {
-          code: "INVALID_OBJECT_KEY",
-          message: "Upload object key is required."
-        }
-      });
-    }
-
-    const expectedPrefix = `${String(req.tenant?.slug || "").trim()}/`;
-    if (!expectedPrefix || !key.startsWith(expectedPrefix)) {
-      return res.status(403).json({
-        error: {
-          code: "TENANT_SCOPE_DENIED",
-          message: "Object key is outside this tenant scope."
-        }
-      });
-    }
-
-    const signed = await createPresignedDownloadUrl({
-      key,
-      expiresInSeconds: 600
-    });
-    res.set("Cache-Control", PRIVATE_UPLOAD_PROXY_CACHE_CONTROL);
-    return res.redirect(302, signed.downloadUrl);
   } catch (error) {
     return next(error);
   }
@@ -1766,6 +1732,82 @@ router.use("/newsletters", requireTenantModule("newsletter", {
 router.use("/map", requireTenantModule("map", {
   message: "The location map is disabled for this camp."
 }));
+
+router.get("/locations/cities", async (req, res) => {
+  const state = String(req.query.state || "").trim().toUpperCase();
+  const country = String(req.query.country || "").trim();
+  const q = String(req.query.q || "").trim();
+  const limit = Number(req.query.limit || 25);
+  const items = await loadCitySuggestionsForTenant(req.tenant._id, { state, country, q, limit });
+  return res.json(items);
+});
+
+router.get("/locations/cities/:state", async (req, res) => {
+  const state = String(req.params.state || "").trim().toUpperCase();
+  if (!state) return res.json([]);
+  const items = await loadCitySuggestionsForTenant(req.tenant._id, { state, limit: 100 });
+  return res.json(items);
+});
+
+router.post("/locations/cities", (_req, res) => {
+  return res.status(201).json({ ok: true });
+});
+
+/**
+ * Hand back a short-lived signed URL for one object in this camp's bucket.
+ *
+ * The slug prefix below is a second fence, not the first one: a member of this
+ * camp is still not entitled to every object under it. Chat and forum
+ * attachments have their own proxies that check conversation membership, the
+ * direct-contact policy, and the tier policy before signing, and those checks
+ * are only worth anything if this route cannot be used to skip them. So it
+ * signs nothing under a prefix one of those proxies owns.
+ */
+const GUARDED_OBJECT_PREFIXES = ["chat/", "forums/"];
+
+router.get("/uploads/object", async (req, res, next) => {
+  try {
+    const key = String(req.query?.key || "").trim();
+    if (!key) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_OBJECT_KEY",
+          message: "Upload object key is required."
+        }
+      });
+    }
+
+    const tenantSlug = String(req.tenant?.slug || "").trim().toLowerCase();
+    const expectedPrefix = `${tenantSlug}/`;
+    if (!tenantSlug || !key.toLowerCase().startsWith(expectedPrefix)) {
+      return res.status(403).json({
+        error: {
+          code: "TENANT_SCOPE_DENIED",
+          message: "Object key is outside this tenant scope."
+        }
+      });
+    }
+
+    const scopedKey = key.slice(expectedPrefix.length).toLowerCase();
+    if (GUARDED_OBJECT_PREFIXES.some((prefix) => scopedKey.startsWith(prefix))) {
+      return res.status(403).json({
+        error: {
+          code: "ATTACHMENT_SCOPE_DENIED",
+          message: "Fetch this attachment through its conversation or forum."
+        }
+      });
+    }
+
+    const signed = await createPresignedDownloadUrl({
+      key,
+      expiresInSeconds: 600
+    });
+    res.set("Cache-Control", PRIVATE_UPLOAD_PROXY_CACHE_CONTROL);
+    return res.redirect(302, signed.downloadUrl);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.post("/uploads/presign", privateUploadPresignLimiter, async (req, res, next) => {
   try {
@@ -4239,5 +4281,7 @@ router.get("/map/city/:key", async (req, res) => {
 
   return res.json(withoutBlockedPeople(output, hiddenUserIds));
 });
+
+export const __testables = { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES };
 
 export default router;
