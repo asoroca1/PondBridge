@@ -1,4 +1,5 @@
 import { AlumniContactModel } from "../db/models/index.js";
+import { recoveredRequestRequiresConsent } from "./signupRecoveryConsent.js";
 import { isUnclaimedProfile } from "./memberVisibility.js";
 import { sanitizeText } from "../utils/sanitize.js";
 
@@ -558,6 +559,8 @@ export function buildPeopleDirectory({
       userId,
       contactId: String(contact?._id || contact?.id || ""),
       requestId: String(request?._id || request?.id || ""),
+      requiresConsent: recoveredRequestRequiresConsent(request),
+      recoveredSignup: Boolean(request?.recoveredClerkUserId),
       avatarUrl: memberRow?.avatarUrl || String(profile?.avatarUrl || ""),
       role: memberRow?.role || String(request?.selfReportedRole || contact?.roleAtCamp || ""),
       campRoles,

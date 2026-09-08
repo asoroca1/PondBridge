@@ -22,6 +22,12 @@ function routeWithSlug(slug, path) {
   return tenantRoute(slug, path);
 }
 
+function normalizeReturnTo(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "";
+  return raw;
+}
+
 export default function ClerkCreateAccountFlow() {
   const navigate = useNavigate();
   const params = useParams();
@@ -31,6 +37,7 @@ export default function ClerkCreateAccountFlow() {
   const [searchParams] = useSearchParams();
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const legalRequired = String(searchParams.get("legalRequired") || "").trim() === "1";
+  const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
   const { isLoaded, isSignedIn } = useClerkAuth();
   const { bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
@@ -88,19 +95,24 @@ export default function ClerkCreateAccountFlow() {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !slug || tenantLoading || !tenant) return;
+    // The callback sends an already signed-in person back here when the API
+    // still needs a legal agreement. Keep the consent form on screen until the
+    // person explicitly continues; immediately navigating would loop forever.
+    if (legalRequired) return;
     if (inviteOnlyWithoutInvite || (accessCodeRequired && !readPendingAccessGrant(slug))) return;
     const callbackPath = routeWithSlug(
       slug,
       `/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
     );
     navigate(callbackPath, { replace: true });
-  }, [accessCodeRequired, accessGrantReady, inviteOnlyWithoutInvite, inviteToken, isLoaded, isSignedIn, navigate, slug, tenant, tenantLoading]);
+  }, [accessCodeRequired, accessGrantReady, inviteOnlyWithoutInvite, inviteToken, isLoaded, isSignedIn, legalRequired, navigate, slug, tenant, tenantLoading]);
 
   const path = routeWithSlug(slug, "/create-account");
-  const callbackPath = routeWithSlug(
-    slug,
-    `/auth/callback${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`
-  );
+  const callbackParams = new URLSearchParams();
+  if (inviteToken) callbackParams.set("inviteToken", inviteToken);
+  if (returnTo) callbackParams.set("returnTo", returnTo);
+  const callbackQuery = callbackParams.toString();
+  const callbackPath = routeWithSlug(slug, `/auth/callback${callbackQuery ? `?${callbackQuery}` : ""}`);
   const signInUrl = routeWithSlug(slug, `/login${inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : ""}`);
   const legalPath = routeWithSlug(slug, "/legal");
   // Clerk's email.created webhook carries no tenant, so tell the API which camp
@@ -130,6 +142,16 @@ export default function ClerkCreateAccountFlow() {
     event.preventDefault();
     event.stopPropagation();
     setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
+  };
+
+  const continueSignedInLegalRecovery = () => {
+    if (!legalAccepted) {
+      setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
+      return;
+    }
+    setLegalError("");
+    setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
+    navigate(callbackPath, { replace: true });
   };
 
   async function verifyAccessCode(event) {
@@ -336,6 +358,16 @@ export default function ClerkCreateAccountFlow() {
               </label>
               {legalError ? <p className="error-text alumni-create-legal-error">{legalError}</p> : null}
             </div>
+            {legalRequired && isLoaded && isSignedIn ? (
+              <button
+                type="button"
+                className="login1-btn"
+                disabled={!legalAccepted}
+                onClick={continueSignedInLegalRecovery}
+              >
+                Continue to director review
+              </button>
+            ) : (
             <div className="login1-clerk-host alumni-create-clerk-host" onSubmitCapture={onSignUpSubmitCapture}>
               <SignUp
                 path={path}
@@ -475,6 +507,7 @@ export default function ClerkCreateAccountFlow() {
                 unsafe_disableDevelopmentModeWarnings
               />
             </div>
+            )}
             {nativeApp ? (
               <div className="auth-create-account-row auth-create-account-row-clerk">
                 <span>Already have an account?</span>

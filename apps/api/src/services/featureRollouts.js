@@ -3,6 +3,10 @@ import { FeatureRolloutModel } from "../db/models/index.js";
 export const MULTI_CAMP_IDENTITY_FLAG = "multi_camp_identity_v1";
 
 export const SUPPORTED_FEATURE_ROLLOUTS = Object.freeze({
+  verified_signup_review_reconciliation_v1: {
+    label: "Verified signup review recovery",
+    description: "GreenLane pilot: recover verified member signups into pending review without approving or inventing consent."
+  },
   director_copilot_v1: {
     label: "Director Copilot",
     description: "Provider-backed, read-only director assistance. Guided mode remains available when disabled."

@@ -116,6 +116,10 @@ function isAuthMembershipRequiredError(err) {
   return code === "AUTH_MEMBERSHIP_REQUIRED";
 }
 
+function requiresRecoveredRequestConsent(decision = {}) {
+  return Boolean(decision?.request?.requiresConsent);
+}
+
 function shouldForceSessionReset(err) {
   const code = String(err?.payload?.error?.code || err?.code || "")
     .trim()
@@ -254,7 +258,21 @@ function ClerkAuthCallbackPage() {
     const payload = await requestJson(`/api/t/${safeSlug}/access/decision${query}`, { token });
     const decision = payload?.decision || {};
 
-    if (decision.action === "wait_for_approval") return { pendingApproval: true };
+    if (decision.action === "wait_for_approval") {
+      if (requiresRecoveredRequestConsent(decision)) {
+        if (!legalAgreement) {
+          const error = new Error("Legal agreement is required before director approval.");
+          error.code = "LEGAL_AGREEMENT_REQUIRED";
+          throw error;
+        }
+        await requestJson(`/api/t/${safeSlug}/access/request-access`, {
+          method: "POST",
+          token,
+          body: { legalAgreement }
+        });
+      }
+      return { pendingApproval: true };
+    }
 
     if (decision.action === "accept_invite") {
       const accepted = await requestJson(`/api/t/${safeSlug}/access/invite/accept`, {
@@ -303,7 +321,10 @@ function ClerkAuthCallbackPage() {
             token,
             inviteTokenValue,
             legalAgreement
-          }).catch(() => ({ pendingApproval: false }));
+          }).catch((recoveryError) => {
+            if (isLegalAgreementRequiredError(recoveryError)) throw recoveryError;
+            return { pendingApproval: false };
+          });
           // There is nothing to recover while a director still has to decide;
           // retrying would only spin until the timeout.
           if (recovery?.pendingApproval) {
@@ -440,6 +461,18 @@ function ClerkAuthCallbackPage() {
           navigate(routeWithSlug(slug, "/request-access"), { replace: true });
           return;
         } else if (decision.action === "wait_for_approval") {
+          if (requiresRecoveredRequestConsent(decision)) {
+            if (!pendingLegalAgreement) {
+              const legalError = new Error("Legal agreement is required before director approval.");
+              legalError.code = "LEGAL_AGREEMENT_REQUIRED";
+              throw legalError;
+            }
+            await requestJson(`/api/t/${slug}/access/request-access`, {
+              method: "POST",
+              token,
+              body: { legalAgreement: pendingLegalAgreement }
+            });
+          }
           clearPendingLegalAgreement(slug);
           redirected = true;
           navigate(routeWithSlug(slug, "/request-access"), { replace: true });

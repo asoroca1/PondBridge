@@ -488,6 +488,13 @@ export function enforceVerificationBrandIsolation(context = {}, kind = "") {
 
 export async function processClerkWebhookRequest(req) {
   const event = await verifyClerkWebhookRequest(req);
+  if (["user.created", "user.updated"].includes(event?.type)) {
+    const { reconcileVerifiedSignupByClerkId } = await import("./verifiedSignupReconciliation.js");
+    const result = await reconcileVerifiedSignupByClerkId(event.data?.id, {
+      source: event.type === "user.created" ? "clerk_user_created" : "clerk_user_updated", apply: true
+    });
+    return { ok: true, reconciliation: result.outcome };
+  }
   if (event?.type !== "email.created") {
     return { ok: true, ignored: true, reason: "unsupported_event_type" };
   }

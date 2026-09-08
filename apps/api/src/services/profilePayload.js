@@ -70,6 +70,8 @@ export function normalizeSocialsFromBody(body = {}, roleList = []) {
   const fromSocials = body.socials && typeof body.socials === "object" ? body.socials : {};
   const fromSocial = body.social && typeof body.social === "object" ? body.social : {};
   const merged = { ...fromSocials, ...fromSocial };
+  // Reserved recovery provenance is supplied only by the server.
+  delete merged.signupRecovery;
   const nickname = String(
     body.nickname ??
       body.campNickname ??

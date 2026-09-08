@@ -4,7 +4,7 @@ Green Lane's Resend delivery screenshots demonstrate provider acceptance by reci
 
 ## Completed configuration and code
 
-Created dedicated `auth.pondbridgealumni.com` and `updates.pondbridgealumni.com` sending domains in Resend, with open/click tracking off, sending enabled and receiving disabled. Published the following DNS records through the existing Cloudflare connection; public DNS resolves the required records. The existing apex Microsoft 365 records are preserved. Resend verification is pending as of this report; the new From addresses must remain unset until verified.
+Created dedicated `auth.pondbridgealumni.com` and `updates.pondbridgealumni.com` sending domains in Resend, with open/click tracking off, sending enabled and receiving disabled. Published the following DNS records through the existing Cloudflare connection; public DNS resolves the required records. The existing apex Microsoft 365 records are preserved. Both domains were verified by Resend on September 8, 2026. The two sender overrides were then configured on Render; deployment `dep-dag7i79t0dsc73e7vieg` applies the change.
 
 | Type | Name | Value | Priority |
 | --- | --- | --- | --- |
@@ -19,7 +19,7 @@ Created dedicated `auth.pondbridgealumni.com` and `updates.pondbridgealumni.com`
 
 TTL is automatic for all records. TXT/MX records are not proxied.
 
-The optional `EMAIL_AUTH_FROM` and `EMAIL_BULK_FROM` settings separate account codes/reset/sign-in traffic from invitations, claims and broadcasts. Blank settings preserve `EMAIL_FROM`. Once verified, use `PondBridge <accounts@auth.pondbridgealumni.com>` and `PondBridge <updates@updates.pondbridgealumni.com>`. Tenant display names and tenant address local parts remain camp-specific. Update only those Render variables and redeploy; rollback by clearing the two overrides. Domain separation helps organize reputation by message type but does not erase existing reputation or guarantee placement. Introduce new bulk traffic gradually to engaged, permissioned recipients.
+The optional `EMAIL_AUTH_FROM` and `EMAIL_BULK_FROM` settings separate account codes/reset/sign-in traffic from invitations, claims and broadcasts. Blank settings preserve `EMAIL_FROM`. Configured values are `PondBridge <accounts@auth.pondbridgealumni.com>` and `PondBridge <updates@updates.pondbridgealumni.com>`. Tenant display names and tenant address local parts remain camp-specific. Only those two Render variables were merged into the existing configuration; rollback by clearing the two overrides and redeploying. Domain separation helps organize reputation by message type but does not erase existing reputation or guarantee placement. Introduce new bulk traffic gradually to engaged, permissioned recipients.
 
 Account verification, password reset and sign-in templates no longer depend on remote logo images and no longer claim that notification preferences can disable essential security mail. HTML and plain text include unsolicited-request guidance. The camp name, color and readable code remain. The synthetic verification email was rendered and visually inspected locally.
 
@@ -33,7 +33,7 @@ Plan for 3,000–12,000 members. One monthly update per member means 3,000–12,
 
 The historical sample had 209 bounce events and 1,998 distinct sent message IDs, including 194 bounces with no specific SMTP diagnosis. These are not a cohort-matched provider bounce rate. Stop targeting stale/unverified alumni lists and use suppression, recent engagement and camp-validated addresses; don't retry hard bounces. Dedicated IP purchase is not a first-line fix for this intermittent volume.
 
-Remaining externally measurable work: Resend domain verification; exact billing tier/remaining quota; receiver-side placement or Postmaster data; ongoing cohort-matched bounce and complaint rates; DMARC reports with an operator-controlled reporting destination. A delivered webhook cannot prove inbox placement.
+Remaining externally measurable work: exact billing tier/remaining quota; receiver-side placement or Postmaster data; ongoing cohort-matched bounce and complaint rates; DMARC reports with an operator-controlled reporting destination. A delivered webhook cannot prove inbox placement.
 
 ## Sources
 

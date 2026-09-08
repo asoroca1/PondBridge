@@ -1,6 +1,8 @@
 import { jest } from "@jest/globals";
 import express from "express";
 import request from "supertest";
+import { patchExpressAsyncErrors } from "../src/utils/patchExpressAsyncErrors.js";
+patchExpressAsyncErrors();
 
 let tenant;
 let membership;
@@ -40,6 +42,10 @@ jest.unstable_mockModule("../src/db/models/index.js", () => ({
   TenantAdminAuditLogModel: { create: jest.fn(async () => ({})) },
   AccessRequestModel: {
     findOne: findRequest, create: createRequest, updateScoped: approveRequest,
+    claimOne: jest.fn(async (_id, guard, patch) => {
+      if (pending?.tenantId !== guard.tenantId || pending?.status !== guard.status) return null;
+      pending = { ...pending, ...patch }; return pending;
+    }),
     update: jest.fn(async (_id, patch) => { pending = { ...pending, ...patch }; return pending; })
   }
 }));
@@ -59,6 +65,7 @@ jest.unstable_mockModule("../src/services/analytics.js", () => ({ logTenantEvent
 jest.unstable_mockModule("../src/services/mobileNotifications.js", () => ({ notifyTenantAdmins: jest.fn(async () => {}) }));
 const { default: accessRoutes } = await import("../src/routes/access.js");
 const app = express(); app.use(express.json()); app.use(accessRoutes);
+app.use((error, _req, res, _next) => res.status(error.statusCode || 500).json({ error: { code: error.code } }));
 const body = { firstName: "Test", lastName: "Member", legalAgreementAccepted: true, ageEligibilityConfirmed: true };
 
 beforeEach(() => {
@@ -175,4 +182,55 @@ test("tokenless invite acceptance still requires legal and age consent", async (
   expect(response.body.error.code).toBe("LEGAL_AGREEMENT_REQUIRED");
   expect(createMembership).not.toHaveBeenCalled();
   expect(createRequest).not.toHaveBeenCalled();
+});
+
+function recoveredPending() {
+  tenant.settings.requireSignupApproval = true;
+  pending = { _id: "request-a", tenantId: tenant._id, email, status: "pending", recoveredClerkUserId: "clerk-local", firstName: "Real", lastName: "Name",
+    profilePayload: { socials: { signupRecovery: { clerkUserId: "clerk-local", source: "periodic_scan", requiresConsent: true } } } };
+}
+
+test("recovered pending decision exposes consent and real POST preserves provenance", async () => {
+  recoveredPending();
+  const before = await request(app).get("/decision");
+  expect(before.body.decision.request.requiresConsent).toBe(true);
+  const completed = await request(app).post("/request-access").send(body);
+  expect(completed.status).toBe(200);
+  expect(completed.body.decision.request.requiresConsent).toBe(false);
+  expect(pending.profilePayload.socials.signupRecovery).toMatchObject({ clerkUserId: "clerk-local", source: "periodic_scan", requiresConsent: false });
+  expect(pending.profilePayload.socials.legalAgreement).toMatchObject({ accepted: true, ageEligibilityConfirmed: true });
+  expect(createMembership).not.toHaveBeenCalled();
+});
+
+test("recovered request cannot confirm consent with an unverified identity", async () => {
+  recoveredPending(); verifyIdentityEmail.mockResolvedValue(false);
+  const response = await request(app).post("/request-access").send(body);
+  expect(response.status).toBe(403);
+  expect(pending.profilePayload.socials.signupRecovery.requiresConsent).toBe(true);
+});
+
+test("recovered request cannot invent missing legal agreement", async () => {
+  recoveredPending();
+  const response = await request(app).post("/request-access").send({});
+  expect(response.status).toBe(400);
+  expect(pending.profilePayload.socials.legalAgreement).toBeUndefined();
+});
+
+test.each(["socials", "social"])("ordinary request strips forged recovery identity from %s", async (alias) => {
+  tenant.settings.requireSignupApproval = true;
+  const response = await request(app).post("/request-access").send({ ...body,
+    [alias]: { signupRecovery: { clerkUserId: "user_victim", source: "operator_repair", requiresConsent: false } }
+  });
+  expect(response.status).toBe(201);
+  expect(createRequest).toHaveBeenCalled();
+  expect(createRequest.mock.calls[0][0].profilePayload.socials.signupRecovery).toBeUndefined();
+  expect(createRequest.mock.calls[0][0].recoveredClerkUserId).toBeUndefined();
+});
+
+test("consent-only recovery callback retains verified signup names and profile details", async () => {
+  recoveredPending(); pending.profilePayload = { ...pending.profilePayload, firstName: "Real", lastName: "Name", cityState: "Synthetic City", phones: ["synthetic-phone"] };
+  const response = await request(app).post("/request-access").send({ legalAgreement: { accepted: true, ageEligibilityConfirmed: true } });
+  expect(response.status).toBe(200);
+  expect(pending).toMatchObject({ firstName: "Real", lastName: "Name", profilePayload: { firstName: "Real", lastName: "Name", cityState: "Synthetic City", phones: ["synthetic-phone"] } });
+  expect(pending.profilePayload.socials.legalAgreement.accepted).toBe(true);
 });

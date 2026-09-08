@@ -107,10 +107,17 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
         </p>
       ) : null}
 
+      {person.stage === "request" && person.requiresConsent ? (
+        <p role="status" className="pb-people-detail-summary">
+          Email verified. This person still needs to confirm their age and accept the Terms and Privacy Policy.
+          They can finish by signing in again; approval becomes available afterward.
+        </p>
+      ) : null}
+
       <div className="pb-people-detail-actions">
         {person.stage === "request" ? (
           <>
-            <Button type="button" onClick={() => actions.approve(person)} loading={actions.busy === "approve"} disabled={busy}>
+            <Button type="button" onClick={() => actions.approve(person)} loading={actions.busy === "approve"} disabled={busy || person.requiresConsent}>
               <Check aria-hidden="true" />
               Approve
             </Button>
