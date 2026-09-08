@@ -27,6 +27,7 @@ module.exports = {
     "**/tests/featureRollouts.test.js",
     "**/tests/importedProfileClaim.test.js",
     "**/tests/questionnaireImportFields.test.js",
+    "**/tests/questionnaireScale.test.js",
     "**/tests/questionnaireColumnMapper.test.js",
     "**/tests/questionnaireValueCleanup.test.js",
     "**/tests/claimAccountEmail.test.js",
