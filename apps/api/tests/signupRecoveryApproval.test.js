@@ -4,7 +4,12 @@ import request from "supertest";
 import { patchExpressAsyncErrors } from "../src/utils/patchExpressAsyncErrors.js";
 patchExpressAsyncErrors();
 const rpc = jest.fn();
+const readApprovalIntent = jest.fn();
 jest.unstable_mockModule("../src/db/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => ({ rpc }) }));
+jest.unstable_mockModule("../src/services/approvalEmailJobs.js", () => ({
+  approvalEmailJobKey: (requestId) => `access-approval/${requestId}`,
+  readApprovalEmailIntent: readApprovalIntent
+}));
 const emailModule = await import("../src/services/email.js");
 const sendDecision = jest.fn(async () => ({}));
 jest.unstable_mockModule("../src/services/email.js", () => ({ ...emailModule, sendAccessDecisionEmail: sendDecision }));
@@ -34,7 +39,7 @@ const { default: routes } = await import("../src/routes/admin.js");
 const app = express(); app.use(express.json()); app.use(routes);
 app.use((error, _req, res, _next) => res.status(500).json({ error: { code: error.code || "UNEXPECTED_TEST_ERROR" } }));
 beforeEach(() => {
-  jest.clearAllMocks(); rpc.mockImplementation(() => { throw new Error("Unexpected database RPC"); }); requestFind.mockResolvedValue(pending); requestList.mockResolvedValue([pending]); audit.mockResolvedValue({});
+  jest.clearAllMocks(); readApprovalIntent.mockResolvedValue(null); rpc.mockImplementation(() => { throw new Error("Unexpected database RPC"); }); requestFind.mockResolvedValue(pending); requestList.mockResolvedValue([pending]); audit.mockResolvedValue({});
 });
 function expectNoApprovalWrites() {
   expect(requestUpdate).not.toHaveBeenCalled(); expect(userCreate).not.toHaveBeenCalled();
@@ -82,6 +87,14 @@ test.each(["single", "bulk"])("%s recovered approval uses one atomic identity-an
   expect(userFind).toHaveBeenCalledWith("greenlane-id", { _id: "new-user" });
   expect(profileFind).toHaveBeenCalledWith("greenlane-id", { _id: "new-profile" });
   expectNoApprovalWrites(); expect(sendDecision).toHaveBeenCalledTimes(1);
+});
+test("a committed approval intent is reported and never duplicated by the HTTP process", async () => {
+  consentedRequest();
+  readApprovalIntent.mockResolvedValue({ id: "approval-job-id", status: "queued" });
+  const response = await request(app).post("/members/approvals/request-id/approve").send({});
+  expect(response.status).toBe(200);
+  expect(response.body.approvalEmail).toEqual({ durable: true, jobId: "approval-job-id", status: "queued" });
+  expect(sendDecision).not.toHaveBeenCalled();
 });
 test("a concurrent denial reported by the atomic approval sends no acceptance", async () => {
   consentedRequest(); rpc.mockResolvedValue({ data: { ok: false, code: "ACCESS_REQUEST_CHANGED" } });
