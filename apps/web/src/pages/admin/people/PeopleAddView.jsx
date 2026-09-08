@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from "react";
+import { parse } from "csv-parse/browser/esm/sync";
 import { Button, Input } from "@pondbridge/ui";
 import { Mail, Plus, Send, Trash2, Upload, UserPlus } from "lucide-react";
 import InviteMessageDialog, { readInviteMessage } from "./InviteMessageDialog.jsx";
+import QuestionnaireImportWizard from "./QuestionnaireImportWizard.jsx";
 import { nextGridCell } from "../../../lib/gridNavigation.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,36 +32,38 @@ function isBlankRow(row = {}) {
  * server-side review as anything typed by hand.
  */
 export function parsePeopleRows(value = "") {
-  const rows = [];
-  const seen = new Set();
+  const records = parse(String(value || ""), {
+    bom: true,
+    delimiter: [",", "\t"],
+    skip_empty_lines: true,
+    relax_column_count: true,
+    trim: true
+  }).filter((record) => record.some((cell) => cell.trim()));
+  if (!records.length) return [];
 
-  String(value || "")
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .forEach((line, index) => {
-      const parts = line.split(/[,\t]/).map((item) => item.trim());
-      const cleaned = parts.filter(Boolean);
-      // Skip a header row rather than importing it as a person.
-      if (index === 0 && /^(first\s*name|firstname)$/i.test(cleaned[0] || "")) return;
+  const aliases = { firstname: "firstName", lastname: "lastName", email: "email", emailaddress: "email" };
+  const header = records[0].map((cell) => aliases[cell.toLowerCase().replace(/[\s_-]/g, "")]);
+  const hasHeader = header.includes("email");
+  if (hasHeader) records.shift();
 
-      const emailIndex = cleaned.findIndex((item) => EMAIL_REGEX.test(item.toLowerCase()));
-      const email = emailIndex >= 0 ? cleaned[emailIndex].toLowerCase() : "";
-      if (email && seen.has(email)) return;
-      if (email) seen.add(email);
-
-      const names = emailIndex >= 0
-        ? cleaned.filter((_item, position) => position !== emailIndex)
-        : cleaned;
-
-      rows.push({
-        firstName: names[0] || "",
-        lastName: names[1] || "",
-        email
-      });
-    });
-
-  return rows;
+  // Keep blanks, invalid addresses, and duplicates visible for row validation.
+  // Dropping them here loses both the original data and the director's chance
+  // to correct it before saving or inviting.
+  return records.map((cells) => {
+    if (hasHeader) {
+      const read = (field) => (cells[header.indexOf(field)] || "").trim();
+      return { firstName: read("firstName"), lastName: read("lastName"), email: read("email").toLowerCase() };
+    }
+    let emailIndex = cells.findIndex((cell) => EMAIL_REGEX.test(cell));
+    if (emailIndex < 0) emailIndex = cells.findIndex((cell) => cell.includes("@"));
+    if (emailIndex < 0) emailIndex = cells.length === 1 ? 0 : 2;
+    const names = cells.filter((_cell, index) => index !== emailIndex);
+    return {
+      firstName: (names[0] || "").trim(),
+      lastName: (names[1] || "").trim(),
+      email: (cells[emailIndex] || "").trim().toLowerCase()
+    };
+  });
 }
 
 /**
@@ -93,8 +97,8 @@ export function validateRows(rows = []) {
 
     seen.set(email, index);
     ready.push({
-      firstName: String(row.firstName).trim(),
-      lastName: String(row.lastName).trim(),
+      firstName: String(row.firstName || "").trim(),
+      lastName: String(row.lastName || "").trim(),
       email
     });
   });
@@ -102,7 +106,11 @@ export function validateRows(rows = []) {
   return { ready, problems };
 }
 
-export default function PeopleAddView({ actions, storage, slug = "", networkName = "", onDone }) {
+export default function PeopleAddView({ actions, storage, request, download, slug = "", networkName = "", onDone }) {
+  // Two ways in, because from a director's side they answer the same question:
+  // I have a list of people, get them into the site. They differ only in how
+  // much each one carries.
+  const [mode, setMode] = useState("list");
   const [rows, setRows] = useState(() => padRows([]));
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -175,7 +183,14 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const imported = parsePeopleRows(String(reader.result || ""));
+      let imported;
+      try {
+        imported = parsePeopleRows(String(reader.result || ""));
+      } catch {
+        setStatus("");
+        setError("That file could not be parsed. Check its CSV formatting and try again.");
+        return;
+      }
       if (!imported.length) {
         setError("That file did not contain any rows.");
         return;
@@ -193,11 +208,17 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
     const text = event.clipboardData?.getData("text") || "";
     if (!text.includes("\n") && !text.includes("\t")) return;
     event.preventDefault();
-    const imported = parsePeopleRows(text);
+    let imported;
+    try {
+      imported = parsePeopleRows(text);
+    } catch {
+      setStatus("");
+      setError("That text could not be parsed. Check its formatting and try again.");
+      return;
+    }
     if (!imported.length) return;
     setRows((current) => {
-      const kept = current.filter((row, position) => position < index || !isBlankRow(row));
-      return padRows([...kept.slice(0, index), ...imported, ...kept.slice(index + 1)]);
+      return padRows([...current.slice(0, index), ...imported, ...current.slice(index + 1)]);
     });
     setStatus(`Pasted ${imported.length} row${imported.length === 1 ? "" : "s"}.`);
   }
@@ -244,8 +265,41 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
     onDone?.();
   }
 
+  const modeSwitch = (
+    <div className="pb-people-add-modes" role="tablist" aria-label="How to add people">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "list"}
+        className={mode === "list" ? "is-active" : ""}
+        onClick={() => setMode("list")}
+      >
+        Names and emails
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "import"}
+        className={mode === "import" ? "is-active" : ""}
+        onClick={() => setMode("import")}
+      >
+        Import a questionnaire
+      </button>
+    </div>
+  );
+
+  if (mode === "import") {
+    return (
+      <>
+        {modeSwitch}
+        <QuestionnaireImportWizard request={request} download={download} slug={slug} onDone={onDone} />
+      </>
+    );
+  }
+
   return (
     <div className="pb-people-panel">
+      {modeSwitch}
       <header className="pb-people-panel-head pb-people-add-head">
         <div>
           <h2>Add people</h2>

@@ -32,6 +32,12 @@ export const STAGES = [
     blurb: "Invitation lapsed without being used."
   },
   {
+    key: "unclaimed",
+    label: "Unclaimed",
+    tone: "info",
+    blurb: "Has a profile but has never signed in to confirm it. Hidden from everyone until they do."
+  },
+  {
     key: "prospect",
     label: "Prospects",
     tone: "neutral",
@@ -60,6 +66,23 @@ export const INVITABLE_STAGES = new Set(["prospect", "expired"]);
 
 export function isInvitable(person = {}) {
   return INVITABLE_STAGES.has(person.stage) && Boolean(person.email);
+}
+
+/**
+ * Imported people need the claim email, not an invitation.
+ *
+ * They already have an account — the invite flow skips anyone who does, so
+ * sending them an invitation would silently reach nobody. What they are missing
+ * is a password, which is a different mail and a different endpoint.
+ */
+export function isClaimable(person = {}) {
+  // Not every unclaimed profile came from a questionnaire, and the claim email
+  // names one — so the count on the button has to match who will actually be
+  // written to, or a director is told 25 and sees 2.
+  return person.stage === "unclaimed"
+    && Boolean(person.email)
+    && Boolean(person.wasImported)
+    && !person.claimDeclined;
 }
 
 export function canApprove(person = {}) {

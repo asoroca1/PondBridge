@@ -22,6 +22,7 @@ export default function ProtectedRoute({ children, role }) {
   const loginBasePath = effectiveSlug ? `/t/${effectiveSlug}/login` : "/login";
   const loginPath = loginParams.toString() ? `${loginBasePath}?${loginParams.toString()}` : loginBasePath;
   const fallbackPath = effectiveSlug ? `/t/${effectiveSlug}/home` : "/home";
+  const claimPath = effectiveSlug ? `/t/${effectiveSlug}/claim-profile` : "/claim-profile";
 
   // Wait until auth is fully resolved before making any routing decisions.
   // This prevents the race where isReady flickers to true before the user
@@ -36,6 +37,15 @@ export default function ProtectedRoute({ children, role }) {
 
   if (nativeApp && effectiveUser?.roles?.includes("super_admin")) {
     return <Navigate to="/" replace />;
+  }
+
+  // A profile an import created stays invisible until the person it describes
+  // confirms it is theirs. The Clerk callback learns that from the access
+  // decision, but the legacy login hands back a session directly — so the guard
+  // enforces it here, which covers password sign-in, magic links and a restored
+  // session alike rather than each of them separately.
+  if (effectiveUser?.profile?.status === "pending") {
+    return <Navigate to={claimPath} replace />;
   }
 
   if (role && !effectiveUser) {

@@ -299,6 +299,71 @@ export function inviteTemplate({
   return { subject, text, html };
 }
 
+/**
+ * Someone whose profile a camp built from their questionnaire answers.
+ *
+ * Deliberately not the invitation template. They are not being asked whether to
+ * join — something already exists with their information in it, and the mail has
+ * to say where that came from. Unexplained email carrying your job history reads
+ * as a breach, so the questionnaire is named, the one thing to do is set a
+ * password, and the promise that they can correct it all comes before the button
+ * rather than after.
+ */
+export function claimAccountTemplate({
+  tenantName,
+  link,
+  firstName = "",
+  lastName = "",
+  questionnaireName = "",
+  brandPrimary = BRAND.primary,
+  logoUrl = ""
+}) {
+  const P = buildEmailPalette(brandPrimary);
+  const safeTenant = escapeHtml(tenantName);
+  const recipientName = [String(firstName || "").trim(), String(lastName || "").trim()]
+    .filter(Boolean)
+    .join(" ");
+  const safeRecipientName = escapeHtml(recipientName || "there");
+  const source = String(questionnaireName || "").trim() || "the alumni questionnaire";
+  const safeSource = escapeHtml(source);
+
+  const subject = `Your ${tenantName} alumni profile is ready`;
+
+  const text = [
+    `Hi ${recipientName || "there"},`,
+    "",
+    `${tenantName} has set up an alumni profile for you, filled in from ${source} you answered.`,
+    "",
+    "Set a password to see it. You can change or remove anything on it, and nobody else",
+    "can see it until you have looked it over and confirmed it is yours.",
+    "",
+    `Set your password: ${link}`
+  ].join("\n");
+
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:32px;font-weight:700;line-height:1.2;color:${P.text};letter-spacing:-0.02em;">Your profile is ready</h1>
+    <p style="margin:0 0 12px;">Hi <strong>${safeRecipientName}</strong>,</p>
+    <p style="margin:0 0 12px;">
+      <strong>${safeTenant}</strong> has set up an alumni profile for you, filled in from
+      ${safeSource} you answered.
+    </p>
+    <p style="margin:0 0 18px;">
+      Set a password to see it. You can change or remove anything on it, and nobody else can
+      see it until you have looked it over and confirmed it is yours.
+    </p>
+    ${ctaButton(link, "Set Your Password", { backgroundColor: brandPrimary })}
+    <p style="margin:0;font-size:13px;color:${BRAND.muted};">If the button above doesn't work, copy and paste this link into your browser:</p>
+    <p style="margin:6px 0 0;font-size:13px;color:${BRAND.accent};word-break:break-all;"><a href="${escapeHtml(link)}" style="color:${BRAND.accent};text-decoration:underline;">${escapeHtml(link)}</a></p>
+  `, {
+    contextName: tenantName,
+    brandPrimary,
+    logoUrl,
+    tagline: "Your alumni profile"
+  });
+
+  return { subject, text, html };
+}
+
 // ---------------------------------------------------------------------------
 // 2. Magic link template
 // ---------------------------------------------------------------------------

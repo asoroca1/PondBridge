@@ -158,6 +158,23 @@ export default function usePersonActions({ request, reload }) {
       : `${person.fullName || person.email} is off hold.`;
   }), [request, run]);
 
+  /**
+   * Tells imported people their profile is waiting. Deliberately its own action
+   * rather than part of the import: a wrong upload should cost an undo, not a
+   * mailout nobody can recall.
+   */
+  const sendClaimEmails = useCallback((people = [], extras = {}) => run("claim", async () => {
+    const emails = people.map((person) => person.email).filter(Boolean);
+    if (!emails.length) throw new Error("None of those people have an email address on file.");
+    const payload = await request("/import/claim-emails", {
+      method: "POST",
+      body: { emails, questionnaireName: extras.questionnaireName || "" }
+    });
+    const sent = Number(payload?.sentCount || 0);
+    const skipped = Number(payload?.skipped?.length || 0);
+    return `Emailed ${sent} ${sent === 1 ? "person" : "people"}.${skipped ? ` ${skipped} skipped.` : ""}`;
+  }), [request, run]);
+
   const addProspects = useCallback((contacts = []) => run("prospects", async () => {
     const response = await request("/growth/contacts", { method: "POST", body: { contacts } });
     const created = Number(response?.createdCount || 0);
@@ -206,6 +223,7 @@ export default function usePersonActions({ request, reload }) {
     decideMany,
     setContactStatus,
     addProspects,
+    sendClaimEmails,
     removeMembers,
     deleteMember,
     purgePerson

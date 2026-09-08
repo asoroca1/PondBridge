@@ -75,6 +75,11 @@ export function buildAuthenticatedUserPayload(userDoc, profileDoc = null) {
       ? {
           id: String(profile?._id || profile?.id || "").trim(),
           _id: String(profile?._id || profile?.id || "").trim(),
+          // The client needs this to know an imported profile is still waiting to
+          // be claimed. The legacy login hands back a session directly instead of
+          // going through the access decision, so without it the route guard has
+          // no way to tell.
+          status: String(profile?.status || "").trim(),
           firstName,
           lastName,
           nickname,

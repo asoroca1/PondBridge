@@ -24,6 +24,9 @@ import {
   isProfileComplete,
   profileCompletionPercent
 } from "../services/profileCompletion.js";
+import { isUnclaimedProfile } from "../services/memberVisibility.js";
+import { claimSummaryFromProfile } from "../services/profileClaim.js";
+import { profilePayloadFromBody } from "../services/profilePayload.js";
 import { resolveSettings } from "../services/onboarding.js";
 import { readCampProfile } from "../services/superCampProfile.js";
 import { logTenantEvent } from "../services/analytics.js";
@@ -35,12 +38,6 @@ import {
   verifyTenantAccessCodeGrant,
   verifyTenantAccessCode
 } from "../services/accessPolicy.js";
-import {
-  canonicalizeCityName,
-  canonicalizeCountryName,
-  composeCityState,
-  parseCityStateDetailed
-} from "../utils/location.js";
 import {
   AGE_POLICY_VERSION,
   DEFAULT_MEMBER_PRIVACY_VERSION,
@@ -178,128 +175,6 @@ async function persistProfileLegalAgreement(profile, legalAgreement = null) {
   });
 }
 
-function normalizeCamperYears(value = {}) {
-  const input = value && typeof value === "object" ? value : {};
-  const validYear = (year = "") => {
-    const normalized = String(year || "").trim();
-    return /^\d{4}$/.test(normalized) ? normalized : "";
-  };
-  return {
-    firstYear: validYear(input.firstYear),
-    firstGroup: String(input.firstGroup || "").trim(),
-    lastYear: validYear(input.lastYear),
-    lastGroup: String(input.lastGroup || "").trim()
-  };
-}
-
-function normalizeRoleList(value = []) {
-  const values = Array.isArray(value) ? value : value ? [value] : [];
-  const seen = new Set();
-  const ordered = [];
-  values.forEach((entry) => {
-    const role = String(entry || "").trim();
-    const key = role.toLowerCase();
-    if (!role || seen.has(key)) return;
-    seen.add(key);
-    ordered.push(role);
-  });
-  return ordered;
-}
-
-function normalizeCollegeMajors(value = []) {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry) => String(entry || "").trim());
-}
-
-function normalizeCityStateFromBody(body = {}) {
-  const direct = String(body.cityState || "").trim();
-  if (direct) return composeCityState(parseCityStateDetailed(direct));
-  const state = String(body.state || "").trim().toUpperCase();
-  const country = canonicalizeCountryName(String(body.country || "").trim());
-  const city = canonicalizeCityName(String(body.city || "").trim(), { state, country });
-  return composeCityState({ city, state, country });
-}
-
-function normalizeSocialsFromBody(body = {}, roleList = []) {
-  const fromSocials = body.socials && typeof body.socials === "object" ? body.socials : {};
-  const fromSocial = body.social && typeof body.social === "object" ? body.social : {};
-  const merged = { ...fromSocials, ...fromSocial };
-  const nickname = String(
-    body.nickname ??
-      body.campNickname ??
-      merged.nickname ??
-      merged.campNickname ??
-      ""
-  ).trim();
-  const normalizedCamperYears = normalizeCamperYears(
-    body.camperYears && typeof body.camperYears === "object" ? body.camperYears : merged.camperYears || {}
-  );
-  const normalizedRoles = normalizeRoleList(
-    roleList.length ? roleList : Array.isArray(merged.roles) ? merged.roles : []
-  );
-  const normalizedCollegeMajors = normalizeCollegeMajors(
-    Array.isArray(body.collegeMajors)
-      ? body.collegeMajors
-      : Array.isArray(body.education)
-      ? body.education.map((row) => String(row?.major || "").trim())
-      : Array.isArray(merged.collegeMajors)
-      ? merged.collegeMajors
-      : Array.isArray(merged.educationMajors)
-      ? merged.educationMajors
-      : []
-  );
-  return {
-    ...merged,
-    ...(nickname ? { nickname, campNickname: nickname } : {}),
-    camperYears: normalizedCamperYears,
-    roles: normalizedRoles,
-    ...(normalizedCollegeMajors.length
-      ? { collegeMajors: normalizedCollegeMajors, educationMajors: normalizedCollegeMajors }
-      : {})
-  };
-}
-
-function normalizeJobRows(rows = []) {
-  if (!Array.isArray(rows)) return [];
-  return rows.map((row) => ({
-    role: String(row?.role || "").trim(),
-    company: String(row?.company || "").trim(),
-    years: String(row?.years || "").trim()
-  }));
-}
-
-function profilePayloadFromBody(body = {}, identity = {}) {
-  const email = normalizeEmail(identity.email || body.email || "");
-  const education = Array.isArray(body.education) ? body.education : [];
-  const roles = normalizeRoleList(Array.isArray(body.roles) ? body.roles : [body.roleAtCamp]);
-  const phones = Array.isArray(body.phones)
-    ? body.phones.map((entry) => String(entry || "").trim()).filter(Boolean)
-    : body.phone
-    ? [String(body.phone).trim()]
-    : [];
-  return {
-    firstName: String(body.firstName || "").trim(),
-    lastName: String(body.lastName || "").trim(),
-    emails: email ? [email] : [],
-    phones,
-    cityState: normalizeCityStateFromBody(body),
-    roleAtCamp: String(roles[0] || "").trim(),
-    highSchool: String(body.highSchool || "").trim(),
-    colleges: Array.isArray(body.colleges)
-      ? body.colleges
-      : education.map((row) => String(row?.college || "").trim()).filter(Boolean),
-    collegeYears: Array.isArray(body.collegeYears)
-      ? body.collegeYears
-      : education.map((row) => String(row?.year || "").trim()).filter(Boolean),
-    currentJobs: normalizeJobRows(body.currentJobs),
-    pastJobs: normalizeJobRows(body.pastJobs),
-    industry: String(body.industry || "").trim(),
-    socials: normalizeSocialsFromBody(body, roles),
-    bio: String(body.bio || "").trim(),
-    avatarUrl: String(body.uploads?.photoUrl || body.avatarUrl || body.photoUrl || "").trim()
-  };
-}
-
 function decisionRouteBase(slug = "") {
   const safeSlug = String(slug || "").trim();
   return safeSlug ? `/t/${safeSlug}` : "";
@@ -363,6 +238,7 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
   const directorSetupRoute = `${base}/director-create-account?setup=1`;
   const homeRoute = `${base}/home`;
   const pendingRoute = `${base}/request-access`;
+  const claimRoute = `${base}/claim-profile`;
 
   if (membership && membership.status !== "active") {
     const membershipSummary = {
@@ -435,6 +311,29 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
         }
       };
     }
+    // An import can create a membership before the person it describes has ever
+    // seen the site. Dropping them straight into a profile full of information
+    // they never entered is the thing to avoid, so this outranks every ordinary
+    // member route — but not the billing gate above it, which stops everyone.
+    if (isUnclaimedProfile(profile)) {
+      return {
+        state: "profile_ready_to_claim",
+        action: "confirm_identity",
+        nextRoute: claimRoute,
+        membership: {
+          id: String(membership._id),
+          status: membership.status,
+          roles: membership.roles || []
+        },
+        profile: {
+          id: String(profile?._id || ""),
+          completionPercent: completion,
+          createdAt: profile?.createdAt || null
+        },
+        claimSummary: claimSummaryFromProfile(profile)
+      };
+    }
+
     const nextRoute =
       isDirector && tenant.onboardingStatus !== "live"
         ? directorSetupRoute
@@ -1242,6 +1141,112 @@ router.post("/invite/create", accessMutationLimiter, inviteCreateLimiter, async 
     },
     token
   });
+});
+
+/**
+ * Finds the caller's own unclaimed profile, or explains why there isn't one.
+ * Both claim endpoints act only on the signed-in person's own row — the profile
+ * id is never taken from the request body, so there is nothing to tamper with.
+ */
+async function loadOwnUnclaimedProfile(req) {
+  const identity = req.identity || {};
+  const member = await findTenantUserForIdentity(req.tenant._id, identity);
+  if (!member || member.status !== "active") {
+    return { error: { status: 404, code: "NO_PROFILE_TO_CLAIM", message: "There is no profile waiting to be claimed for this account." } };
+  }
+
+  const profile = await ensureProfileForUser({ tenantId: req.tenant._id, user: member, identity });
+  if (!profile) {
+    return { error: { status: 404, code: "NO_PROFILE_TO_CLAIM", message: "There is no profile waiting to be claimed for this account." } };
+  }
+  if (!isUnclaimedProfile(profile)) {
+    // Already claimed, by an earlier visit or a second tab. Say so plainly rather
+    // than treating a repeat confirmation as an error the person has to solve.
+    return { error: { status: 409, code: "PROFILE_ALREADY_CLAIMED", message: "This profile has already been claimed." } };
+  }
+
+  return { member, profile };
+}
+
+router.post("/claim/confirm", accessMutationLimiter, async (req, res, next) => {
+  try {
+    const { member, profile, error } = await loadOwnUnclaimedProfile(req);
+    if (error) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+
+    // This is the one write that makes an imported profile visible to anyone.
+    // Creating a password does not do it, and neither does opening the email —
+    // only the person saying the information is theirs.
+    const claimed = await ProfileModel.update(profile._id, {
+      status: "active",
+      flaggedReason: ""
+    });
+
+    await logTenantEvent({
+      tenantId: req.tenant._id,
+      userId: member._id,
+      eventType: "profile_claimed",
+      metadata: { profileId: String(profile._id) }
+    }).catch(() => {});
+
+    await writeTenantAudit(req.tenant._id, member._id, "imported_profile_claimed", {
+      profileId: String(profile._id)
+    }).catch(() => {});
+
+    return res.status(200).json({
+      ok: true,
+      profile: {
+        id: String(claimed?._id || profile._id),
+        status: claimed?.status || "active"
+      },
+      nextRoute: `${decisionRouteBase(req.tenant.slug)}/edit-profile`
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.post("/claim/decline", accessMutationLimiter, async (req, res, next) => {
+  try {
+    const { member, profile, error } = await loadOwnUnclaimedProfile(req);
+    if (error) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+
+    // The camp put this address on the wrong person. The profile stays pending,
+    // so it stays invisible, and a director has to sort out who the row belongs
+    // to — releasing the email automatically would risk handing one alum's
+    // history to another.
+    const socials = profile.socials && typeof profile.socials === "object" ? profile.socials : {};
+    const importedFrom = socials.importedFrom && typeof socials.importedFrom === "object"
+      ? socials.importedFrom
+      : null;
+    await ProfileModel.update(profile._id, {
+      flaggedReason: "Claim declined: the person who signed in with this address says the profile is not theirs.",
+      // Recorded beside the import so the claim action can stop offering to email
+      // somebody who has already said this is not them.
+      ...(importedFrom
+        ? { socials: { ...socials, importedFrom: { ...importedFrom, claimDeclinedAt: new Date().toISOString() } } }
+        : {})
+    });
+
+    await logTenantEvent({
+      tenantId: req.tenant._id,
+      userId: member._id,
+      eventType: "profile_claim_declined",
+      metadata: { profileId: String(profile._id) }
+    }).catch(() => {});
+
+    await writeTenantAudit(req.tenant._id, member._id, "imported_profile_claim_declined", {
+      profileId: String(profile._id),
+      email: normalizeEmail(req.identity?.email || member.email || "")
+    }).catch(() => {});
+
+    // Deliberately no push here: notifyTenantAdmins keys off a registered
+    // notification kind, and adding one directors cannot switch off is worse
+    // than the audit trail. The people list surfaces declined rows.
+
+    return res.status(200).json({ ok: true, declined: true });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 export default router;

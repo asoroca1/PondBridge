@@ -47,13 +47,24 @@ import {
   MobileNotificationScheduleModel,
   AiGenerationModel
 } from "../db/models/index.js";
-import { findImportReportForTenant } from "../services/csvImport.js";
+import {
+  findImportReportForTenant,
+  listImportReportsForTenant,
+  runTenantCsvImport,
+  undoTenantImport
+} from "../services/csvImport.js";
+import { IMPORT_FIELDS, coerceCell } from "../services/importFieldMap.js";
+import { proposeImportMapping } from "../services/importColumnMapperAi.js";
+import { cleanImportValues } from "../services/importValueCleanerAi.js";
+import { cellKey } from "../services/importValueCleaner.js";
+import { parseImportCsv } from "../services/importCsvParse.js";
 import { env } from "../config/env.js";
 import {
   buildTenantEmailBranding,
   cancelScheduledTransactionalEmail,
   getEmailSchedulingStatus,
   sendBulkTransactionalEmail,
+  sendClaimAccountEmail,
   sendInviteEmail,
   sendTransactionalEmail,
   sendAccessDecisionEmail
@@ -8074,15 +8085,349 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
   }
 });
 
+/**
+ * The old single-shot import. It created members with no way to tell an imported
+ * row from someone who signed up, so it was disabled rather than fixed. The
+ * replacement is /import/dry-run followed by /import/commit, which shows a
+ * director what would happen before anything is written.
+ */
 router.post("/import-csv", csvUpload.single("file"), async (req, res) => {
   return res.status(410).json({
     error: {
       code: "MEMBER_IMPORT_DISABLED",
-      message:
-        "Member import is disabled. Use Invite Members so people create their own accounts."
+      message: "This import route has been replaced. Use the questionnaire import in People."
     }
   });
 });
+
+/** The fields a mapping may target, for the column-mapping step and its dropdowns. */
+router.get("/import/fields", async (_req, res) => {
+  return res.status(200).json({ ok: true, fields: IMPORT_FIELDS });
+});
+
+/** Recent imports, so one run ago can still be found and taken back. */
+router.get("/imports", async (req, res, next) => {
+  try {
+    const reports = await listImportReportsForTenant({ tenantId: req.tenant._id, limit: 20 });
+    return res.status(200).json({
+      ok: true,
+      imports: reports.map((report) => ({
+        id: String(report._id),
+        fileName: report.fileName,
+        createdAt: report.createdAt,
+        summary: report.summary || {}
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Takes an import back. Removes only the profiles it created that nobody has
+ * claimed — once someone has confirmed a profile the account is theirs, and a
+ * director's regret about the upload does not undo that.
+ */
+router.post("/imports/:reportId/undo", async (req, res, next) => {
+  try {
+    const result = await undoTenantImport({
+      tenantId: req.tenant._id,
+      reportId: req.params.reportId
+    });
+
+    await writeAdminAudit(req, "admin_import_undone", {
+      reportId: result.reportId,
+      removedCount: result.removedCount,
+      keptClaimedCount: result.keptClaimedCount
+    });
+    clearAdminReadCaches(req.tenant._id);
+
+    return res.status(200).json({ ok: true, ...result });
+  } catch (error) {
+    if (error?.code === "IMPORT_REPORT_NOT_FOUND") {
+      return res.status(404).json({ error: { code: error.code, message: error.message } });
+    }
+    return next(error);
+  }
+});
+
+/**
+ * Reads the headers and a few sample values, and proposes which column is which
+ * field. Writes nothing and never fails on the model's account — if the AI tier
+ * is unavailable the dictionary's answer comes back with a reason attached, and
+ * the director maps the rest by hand.
+ */
+router.post("/import/analyze", csvUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({
+        error: { code: "FILE_REQUIRED", message: "Upload a CSV file under field 'file'." }
+      });
+    }
+
+    let rows = [];
+    try {
+      rows = parseCsv(req.file.buffer.toString("utf8"), {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        bom: true,
+        relax_column_count: true
+      });
+    } catch (error) {
+      return res.status(400).json({
+        error: { code: "CSV_INVALID_FORMAT", message: error.message || "That file is not readable as CSV." }
+      });
+    }
+
+    if (!rows.length) {
+      return res.status(400).json({
+        error: { code: "CSV_EMPTY", message: "That file has a header row but no responses in it." }
+      });
+    }
+
+    const headers = Object.keys(rows[0] || {});
+    const result = await proposeImportMapping({
+      tenantId: req.tenant._id,
+      actorUserId: req.user.id,
+      headers,
+      // Only the first rows are read, and only to collect examples — the mapper
+      // never sees the rest of the file.
+      rows: rows.slice(0, 50),
+      useAi: String(req.body?.useAi ?? "true") !== "false"
+    });
+
+    return res.status(200).json({
+      ok: true,
+      fileName: req.file.originalname,
+      rowCount: rows.length,
+      headers,
+      ...result
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+function parseMappingField(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    const error = new Error("The column mapping was not valid JSON.");
+    error.statusCode = 400;
+    error.code = "IMPORT_MAPPING_INVALID";
+    throw error;
+  }
+}
+
+/**
+ * Rebuilds the rewrite map from the before/after pairs a director approved in the
+ * dry-run preview. Each one is put back through the field's own parser, so an
+ * edited or forged value is no more trusted than the model's original answer.
+ */
+function rewritesFromApprovals(value) {
+  const approvals = parseMappingField(value);
+  const list = Array.isArray(approvals) ? approvals : [];
+  const cleaned = new Map();
+  for (const entry of list) {
+    const field = String(entry?.field || "").trim();
+    const before = String(entry?.before ?? "").trim();
+    const after = coerceCell(field, entry?.after);
+    if (!field || !before || after === null) continue;
+    cleaned.set(cellKey(field, before), after);
+  }
+  return cleaned;
+}
+
+async function handleImport(req, res, next, { dryRun }) {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({
+        error: { code: "FILE_REQUIRED", message: "Upload a CSV file under field 'file'." }
+      });
+    }
+
+    const mapping = parseMappingField(req.body?.mapping);
+
+    // The dry run works out the rewrites and shows them; the commit applies only
+    // the ones that came back approved. Running the cleaner again at commit time
+    // would spend the model's budget twice and could return something the
+    // director never saw.
+    let cleanup = { cleaned: new Map(), preview: [], ai: { used: false, reason: "not_requested" } };
+    if (dryRun && String(req.body?.useAiCleanup ?? "true") !== "false") {
+      cleanup = await cleanImportValues({
+        tenantId: req.tenant._id,
+        actorUserId: req.user.id,
+        rows: parseImportCsv(req.file.buffer),
+        mapping
+      });
+    } else if (!dryRun) {
+      cleanup = { ...cleanup, cleaned: rewritesFromApprovals(req.body?.approvedRewrites) };
+    }
+
+    const result = await runTenantCsvImport({
+      tenantId: req.tenant._id,
+      userId: req.user.id,
+      fileName: req.file.originalname,
+      csvBuffer: req.file.buffer,
+      mapping,
+      cleanedValues: cleanup.cleaned,
+      options: {
+        dryRun,
+        enableFuzzyMatch: String(req.body?.enableFuzzyMatch || "") === "true",
+        fuzzyDistance: req.body?.fuzzyDistance
+      }
+    });
+    result.cleanup = { rewrites: cleanup.preview, ai: cleanup.ai };
+
+    if (!dryRun) {
+      await writeAdminAudit(req, "admin_questionnaire_import", {
+        reportId: result.reportId,
+        fileName: req.file.originalname,
+        rowsRead: result.rowsRead,
+        createdCount: result.createdCount,
+        updatedCount: result.updatedCount,
+        errorCount: result.errors.length
+      });
+      clearAdminReadCaches(req.tenant._id);
+    }
+
+    return res.status(dryRun ? 200 : 201).json({ ok: true, ...result });
+  } catch (error) {
+    if (error?.code === "IMPORT_EMAIL_REQUIRED" || error?.code === "IMPORT_FIELD_UNKNOWN"
+      || error?.code === "CSV_INVALID_FORMAT" || error?.code === "IMPORT_MAPPING_INVALID"
+      || error?.code === "IMPORT_TOO_MANY_ROWS") {
+      return res.status(400).json({ error: { code: error.code, message: error.message } });
+    }
+    return next(error);
+  }
+}
+
+/**
+ * Tells imported people their profile is waiting.
+ *
+ * Always a separate, deliberate step from the import itself. Commit creates the
+ * accounts; this is what reaches anyone, and a wrong upload should cost a
+ * director an undo rather than three thousand emails they cannot recall.
+ *
+ * The ordinary invite path cannot serve these people: it skips anyone who
+ * already has an account, and an imported person does.
+ */
+router.post("/import/claim-emails", inviteSendLimiter, async (req, res, next) => {
+  try {
+    const requested = Array.isArray(req.body?.emails)
+      ? req.body.emails.map((value) => normalizeEmail(value)).filter(Boolean)
+      : [];
+
+    const unclaimedProfiles = await collectAll(
+      ProfileModel.findAllBatched(req.tenant._id, { status: "pending" })
+    );
+    if (!unclaimedProfiles.length) {
+      return res.status(200).json({ ok: true, sentCount: 0, skipped: [], message: "Nobody is waiting to claim a profile." });
+    }
+
+    const users = await collectAll(
+      UserModel.findAllBatched(req.tenant._id, {
+        _id: { $in: unclaimedProfiles.map((profile) => String(profile.userId)).filter(Boolean) }
+      })
+    );
+    const usersById = new Map(users.map((user) => [String(user._id), user]));
+
+    const targets = unclaimedProfiles
+      // Only rows an import actually created. A profile can be unclaimed without
+      // having come from a questionnaire, and this mail names one — telling
+      // somebody their answers built a profile when they never sent any would be
+      // both wrong and alarming.
+      .filter((profile) => profile?.socials?.importedFrom)
+      // Someone who has said "this is not me" does not get asked again.
+      .filter((profile) => !profile?.socials?.importedFrom?.claimDeclinedAt)
+      .map((profile) => ({ profile, user: usersById.get(String(profile.userId)) || null }))
+      .filter(({ user }) => user && user.status === "active" && normalizeEmail(user.email))
+      .filter(({ user }) => !requested.length || requested.includes(normalizeEmail(user.email)));
+
+    if (targets.length > env.EMAIL_BROADCAST_MAX_RECIPIENTS) {
+      return res.status(400).json({
+        error: {
+          code: "TOO_MANY_RECIPIENTS",
+          message: `That is ${targets.length} people, past the ${env.EMAIL_BROADCAST_MAX_RECIPIENTS} limit for one send. Select fewer.`
+        }
+      });
+    }
+
+    const questionnaireName = String(req.body?.questionnaireName || "").trim();
+    let sentCount = 0;
+    const skipped = [];
+
+    for (const { profile, user } of targets) {
+      const email = normalizeEmail(user.email);
+
+      // A director's hold means "do not contact", and it outranks a send the
+      // same director just asked for.
+      let contact = null;
+      try {
+        contact = await AlumniContactModel.findOne(req.tenant._id, { email });
+      } catch (error) {
+        if (!isAlumniGrowthStorageUnavailable(error)) throw error;
+      }
+      if (contact?.contactStatus === "do_not_contact") {
+        skipped.push({ email, reason: "CONTACT_ON_HOLD" });
+        continue;
+      }
+
+      try {
+        await sendClaimAccountEmail({
+          tenant: req.tenant,
+          email,
+          firstName: profile.firstName || "",
+          lastName: profile.lastName || "",
+          questionnaireName,
+          replyTo: normalizeEmail(req.user?.email || "")
+        });
+        sentCount += 1;
+
+        // Recorded beside the import that created the row, so a resend and the
+        // "still waiting" reminder both know who has already been asked.
+        const socials = profile.socials && typeof profile.socials === "object" ? profile.socials : {};
+        const importedFrom = socials.importedFrom && typeof socials.importedFrom === "object"
+          ? socials.importedFrom
+          : {};
+        await ProfileModel.update(profile._id, {
+          socials: {
+            ...socials,
+            importedFrom: {
+              ...importedFrom,
+              claimEmailSentAt: new Date().toISOString(),
+              claimEmailCount: Number(importedFrom.claimEmailCount || 0) + 1
+            }
+          }
+        }).catch(() => {});
+      } catch (error) {
+        skipped.push({ email, reason: `EMAIL_SEND_FAILED: ${error.message}` });
+      }
+    }
+
+    await writeAdminAudit(req, "admin_claim_emails_sent", {
+      attemptedCount: targets.length,
+      sentCount,
+      skippedCount: skipped.length
+    });
+    clearAdminReadCaches(req.tenant._id);
+
+    return res.status(200).json({ ok: true, attemptedCount: targets.length, sentCount, skipped });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/** Works out what an import would do. Writes nothing. */
+router.post("/import/dry-run", csvUpload.single("file"), async (req, res, next) =>
+  handleImport(req, res, next, { dryRun: true }));
+
+router.post("/import/commit", csvUpload.single("file"), async (req, res, next) =>
+  handleImport(req, res, next, { dryRun: false }));
 
 router.get("/imports/:reportId/failures.csv", async (req, res) => {
   const report = await findImportReportForTenant({
