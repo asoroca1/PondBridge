@@ -25,9 +25,10 @@ export function buildAcceptedLegalAgreementPayload({ acceptedAt = "", ageEligibi
 
 function isValidAcceptedAt(value) {
   const normalized = String(value || "").trim();
-  return Boolean(normalized) &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(normalized) &&
-    Number.isFinite(Date.parse(normalized));
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/);
+  const parsed = Date.parse(normalized);
+  return Boolean(match) && Number.isFinite(parsed) &&
+    `${match[1]}.${String(match[2] || "").padEnd(3, "0")}Z` === new Date(parsed).toISOString();
 }
 
 export function isCurrentAcceptedLegalAgreement(payload) {
@@ -50,7 +51,12 @@ export function readPendingLegalAgreement(slug = "") {
   try {
     const raw = window.sessionStorage.getItem(legalAgreementStorageKey(slug));
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
+    let parsed = JSON.parse(raw);
+    // The previous storage format had the same explicit policy tuple and age
+    // confirmation, but no schema version. Preserve that evidence unchanged.
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.version === undefined) {
+      parsed = { ...parsed, version: LEGAL_AGREEMENT_VERSION };
+    }
     if (!isCurrentAcceptedLegalAgreement(parsed)) return null;
     return {
       version: parsed.version,

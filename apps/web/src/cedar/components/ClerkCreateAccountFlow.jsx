@@ -39,11 +39,12 @@ export default function ClerkCreateAccountFlow() {
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const legalRequired = String(searchParams.get("legalRequired") || "").trim() === "1";
   const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
-  const { isLoaded, isSignedIn } = useClerkAuth();
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const { bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
   const [pendingLegalAgreement, setPendingLegalAgreement] = useState(() => readPendingLegalAgreement(slug));
   const [legalError, setLegalError] = useState("");
+  const [savingLegal, setSavingLegal] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [accessCodeError, setAccessCodeError] = useState("");
   const [verifyingAccessCode, setVerifyingAccessCode] = useState(false);
@@ -144,13 +145,32 @@ export default function ClerkCreateAccountFlow() {
     setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
   };
 
-  const continueSignedInLegalRecovery = () => {
+  const continueSignedInLegalRecovery = async () => {
     if (!legalAccepted) {
       setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
       return;
     }
+    if (savingLegal) return;
     setLegalError("");
-    navigate(callbackPath, { replace: true });
+    setSavingLegal(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Please sign in again before saving your confirmation.");
+      const payload = await requestJson(`/api/t/${slug}/access/decision`, { token });
+      const decision = payload?.decision || {};
+      // Persist an existing recovered request before leaving this page. Other
+      // entry policies (including Cedar's gate-off join) keep their own flow.
+      if (decision.action === "wait_for_approval" && decision.request?.requiresConsent) {
+        await requestJson(`/api/t/${slug}/access/request-access`, {
+          method: "POST", token, body: { legalAgreement: pendingLegalAgreement }
+        });
+      }
+      navigate(callbackPath, { replace: true });
+    } catch (error) {
+      setLegalError(String(error?.message || "Could not save your confirmation. Please try again."));
+    } finally {
+      setSavingLegal(false);
+    }
   };
 
   async function verifyAccessCode(event) {
@@ -338,6 +358,7 @@ export default function ClerkCreateAccountFlow() {
                 <input
                   type="checkbox"
                   checked={legalAccepted}
+                  disabled={savingLegal}
                   onChange={(event) => {
                     if (event.target.checked) {
                       setPendingLegalAgreement(
@@ -368,10 +389,10 @@ export default function ClerkCreateAccountFlow() {
               <button
                 type="button"
                 className="login1-btn"
-                disabled={!legalAccepted}
+                disabled={!legalAccepted || savingLegal}
                 onClick={continueSignedInLegalRecovery}
               >
-                Finish account confirmation
+                {savingLegal ? "Saving confirmation…" : "Finish account confirmation"}
               </button>
             ) : (
             <div className="login1-clerk-host alumni-create-clerk-host" onSubmitCapture={onSignUpSubmitCapture}>

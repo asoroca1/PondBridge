@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { buildAcceptedLegalAgreementPayload } from "../lib/legalAgreement.js";
 
 const mocks = vi.hoisted(() => ({
   requestJson: vi.fn(),
@@ -234,9 +235,9 @@ describe("signed-in tenant callback", () => {
   });
 
   it("activates a director-approved request after real consent and continues into the network", async () => {
-    window.sessionStorage.setItem("pondbridgeLegalAgreement:greenlane", JSON.stringify({
-      accepted: true, ageEligibilityConfirmed: true, acceptedAt: "2026-09-08T22:00:00.000Z"
-    }));
+    window.sessionStorage.setItem("pondbridgeLegalAgreement:greenlane", JSON.stringify(buildAcceptedLegalAgreementPayload({
+      ageEligibilityConfirmed: true, acceptedAt: "2026-09-08T22:00:00.000Z"
+    })));
     let completed = false;
     mocks.requestJson.mockImplementation(async (url) => {
       if (url === "/api/t/greenlane/access/decision") {
@@ -302,6 +303,11 @@ describe("signed-in tenant callback", () => {
 describe("signed-in legal agreement recovery", () => {
   it("lets an already signed-in person accept the agreement before returning to callback", async () => {
     const user = userEvent.setup();
+    mocks.requestJson.mockImplementation(async (url) => {
+      if (url.endsWith("/access/decision")) return { decision: { action: "wait_for_approval", request: { requiresConsent: true } } };
+      if (url.endsWith("/access/request-access")) return { ok: true, pendingApproval: true };
+      throw new Error(`Unexpected request: ${url}`);
+    });
 
     render(
       <MemoryRouter
@@ -335,5 +341,42 @@ describe("signed-in legal agreement recovery", () => {
     expect(window.sessionStorage.getItem("pondbridgeLegalAgreement:greenlane")).toContain(
       '"accepted":true'
     );
+    expect(mocks.requestJson).toHaveBeenCalledWith("/api/t/greenlane/access/request-access", expect.objectContaining({
+      method: "POST", token: "clerk-session-token", body: { legalAgreement: expect.objectContaining({
+        accepted: true, ageEligibilityConfirmed: true, version: 1
+      }) }
+    }));
+  });
+
+  it("keeps confirmation on screen when its durable save fails", async () => {
+    mocks.requestJson.mockImplementation(async (url) => {
+      if (url.endsWith("/access/decision")) return { decision: { action: "wait_for_approval", request: { requiresConsent: true } } };
+      throw new Error("Could not save confirmation. Please retry.");
+    });
+    render(<MemoryRouter initialEntries={["/t/greenlane/create-account?legalRequired=1"]}>
+      <Routes><Route path="/t/:slug/create-account" element={<ClerkCreateAccountFlow />} />
+        <Route path="*" element={<LocationProbe />} /></Routes>
+    </MemoryRouter>);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Finish account confirmation" }));
+    expect(await screen.findByText("Could not save confirmation. Please retry.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("current route")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    expect(screen.getByRole("button", { name: "Finish account confirmation" })).toBeEnabled();
+  });
+
+  it("does not create a review request while confirming a Cedar gate-off signup", async () => {
+    mocks.tenant.slug = "cedar";
+    mocks.requestJson.mockResolvedValue({ decision: { action: "join_network", state: "not_member" } });
+    render(<MemoryRouter initialEntries={["/t/cedar/create-account?legalRequired=1"]}>
+      <Routes><Route path="/t/:slug/create-account" element={<ClerkCreateAccountFlow />} />
+        <Route path="*" element={<LocationProbe />} /></Routes>
+    </MemoryRouter>);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Finish account confirmation" }));
+    expect(await screen.findByLabelText("current route")).toHaveTextContent("/t/cedar/auth/callback");
+    expect(mocks.requestJson.mock.calls.some(([url]) => url.endsWith("/access/request-access"))).toBe(false);
   });
 });

@@ -100,6 +100,23 @@ describe("legal agreement storage", () => {
     expect(readPendingLegalAgreement("cedar")).toBeNull();
   });
 
+  it("preserves a complete current receipt from the previous unversioned storage format", () => {
+    const sessionStorage = createStorage();
+    vi.stubGlobal("window", { sessionStorage });
+    const receipt = buildAcceptedLegalAgreementPayload({ acceptedAt: "2026-09-08T20:00:00.000Z", ageEligibilityConfirmed: true });
+    const { version: _version, ...legacy } = receipt;
+    sessionStorage.setItem("pondbridgeLegalAgreement:cedar", JSON.stringify(legacy));
+    expect(readPendingLegalAgreement("cedar")).toEqual(receipt);
+  });
+
+  it("rejects an impossible calendar timestamp", () => {
+    const sessionStorage = createStorage();
+    vi.stubGlobal("window", { sessionStorage });
+    const receipt = buildAcceptedLegalAgreementPayload({ acceptedAt: "2026-02-30T20:00:00.000Z", ageEligibilityConfirmed: true });
+    sessionStorage.setItem("pondbridgeLegalAgreement:cedar", JSON.stringify(receipt));
+    expect(readPendingLegalAgreement("cedar")).toBeNull();
+  });
+
   it("does not write acceptance without explicit age confirmation", () => {
     const sessionStorage = createStorage();
     vi.stubGlobal("window", { sessionStorage });
