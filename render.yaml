@@ -103,6 +103,9 @@ services:
         value: https://app.pondbridgealumni.com/admin/billing
       - key: STRIPE_CURRENCY
         value: usd
+      # Enable only after applying 20260908220000_durable_tenant_jobs.sql.
+      - key: DURABLE_JOBS_ENABLED
+        sync: false
       - key: EMAIL_MODE
         value: resend
       - key: EMAIL_FROM
