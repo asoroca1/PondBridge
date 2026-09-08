@@ -4,6 +4,7 @@ module.exports = {
   ...base,
   testMatch: [
     "**/tests/emailDeliveryStreams.test.js",
+    "**/tests/durableBroadcastJobs.test.js",
     "**/tests/reviewGateToggleSafe.test.js",
     "**/tests/stripeWebhookCompatibility.test.js",
     "**/tests/authSecurityGuards.test.js",

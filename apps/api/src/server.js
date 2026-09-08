@@ -1,3 +1,5 @@
+import "./services/broadcastJobs.js";
+import { startDurableJobWorker, stopDurableJobWorker } from "./services/durableJobs.js";
 import { createServer } from "node:http";
 import { applyServerTimeouts } from "./services/serverTimeouts.js";
 import app from "./app.js";
@@ -47,6 +49,7 @@ async function start() {
         socketServer.disconnectSockets(true);
         await Promise.all([
           stopMobileNotificationScheduler(),
+          stopDurableJobWorker(),
           closeHttpServer(server)
         ]);
         clearTimeout(forceExitTimer);
@@ -69,6 +72,7 @@ async function start() {
   });
 
   startMobileNotificationScheduler();
+  startDurableJobWorker();
 
   server.listen(env.PORT, () => {
     console.log(`PondBridge API listening on http://localhost:${env.PORT}`);

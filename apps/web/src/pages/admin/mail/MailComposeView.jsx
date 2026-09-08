@@ -44,6 +44,34 @@ export default function MailComposeView({
   onDraftSaved
 }) {
   const [sending, setSending] = useState(false);
+  const queueStorageKey = `pondbridge:broadcast-job:${tenant?._id || tenant?.id || tenant?.slug}`;
+  const [queuedJob, setQueuedJob] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(queueStorageKey) || "null"); } catch { return null; }
+  });
+  const sendRequestRef = useRef(null);
+  useEffect(() => {
+    try {
+      setQueuedJob(JSON.parse(localStorage.getItem(queueStorageKey) || "null"));
+      sendRequestRef.current = JSON.parse(localStorage.getItem(`${queueStorageKey}:request`) || "null");
+    } catch { setQueuedJob(null); sendRequestRef.current = null; }
+  }, [queueStorageKey]);
+  useEffect(() => {
+    if (!queuedJob || !["queued", "running"].includes(queuedJob.status)) return;
+    let cancelled = false;
+    let timer;
+    const poll = async () => {
+      try {
+        const result = await request(`/jobs/${queuedJob.id}`);
+        if (cancelled) return;
+        setQueuedJob(result.job);
+        localStorage.setItem(queueStorageKey, JSON.stringify(result.job));
+      } catch { /* A temporary disconnect must not trigger a second send. */ }
+      if (!cancelled) timer = window.setTimeout(poll, 2000);
+    };
+    timer = window.setTimeout(poll, 500);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [queuedJob?.id, queuedJob?.status, queueStorageKey, request]);
+
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [showSendConfirm, setShowSendConfirm] = useState(false);
@@ -76,7 +104,7 @@ export default function MailComposeView({
   const targeting = useMemo(() => buildTargetingFromChips(chips), [chips]);
   const hasRecipients = recipientPreview.count > 0;
   const hasMessage = Boolean(compose.subject.trim() && compose.body.trim());
-  const sendDisabled = sending || !hasRecipients || !hasMessage;
+  const sendDisabled = sending || Boolean(queuedJob) || !hasRecipients || !hasMessage;
   const hasAnyContent = Boolean(compose.subject.trim() || compose.body.trim() || chips.length);
 
   const footer = useMemo(() => normalizeFooter(activeFooter, {}), [activeFooter]);
@@ -203,7 +231,17 @@ export default function MailComposeView({
     setError("");
     setStatus("");
     try {
-      await request("/email/send", {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify({
+        subject: compose.subject, preheader: compose.preheader, body: compose.body,
+        aiGenerationId: compose.aiGenerationId, scheduleType: compose.scheduleType,
+        scheduledFor: compose.scheduledFor, targeting, footer
+      })));
+      const signature = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      if (sendRequestRef.current?.signature !== signature) {
+        sendRequestRef.current = { signature, key: crypto.randomUUID() };
+        localStorage.setItem(`${queueStorageKey}:request`, JSON.stringify(sendRequestRef.current));
+      }
+      const result = await request("/email/send", {
         method: "POST",
         body: {
           subject: compose.subject,
@@ -213,14 +251,23 @@ export default function MailComposeView({
           targeting,
           scheduledFor: compose.scheduleType === "later" ? new Date(compose.scheduledFor).toISOString() : "",
           footer,
-          confirmDuplicate
+          confirmDuplicate,
+          requestKey: sendRequestRef.current.key
         }
       });
       // The draft became a real message; drop the working copy.
       if (draftIdRef.current) {
         await request(`/email/draft/${draftIdRef.current}`, { method: "DELETE" }).catch(() => {});
       }
-      onSent?.(compose.scheduleType === "later" ? "scheduled" : "sent");
+      if (result.queued && result.job) {
+        setQueuedJob(result.job);
+        localStorage.setItem(queueStorageKey, JSON.stringify(result.job));
+        localStorage.removeItem(`${queueStorageKey}:request`);
+        setStatus("Broadcast queued. Progress is saved if you leave this page.");
+      } else {
+        sendRequestRef.current = null;
+        onSent?.(compose.scheduleType === "later" ? "scheduled" : "sent");
+      }
     } catch (requestError) {
       const code = requestError?.payload?.error?.code || requestError?.code || "";
       // Match on the code, not the status. A compliance block is also a 409, and
@@ -309,6 +356,15 @@ export default function MailComposeView({
   }
 
   async function discardMessage() {
+    if (queuedJob && ["queued", "running"].includes(queuedJob.status)) {
+      setDiscardTarget(false);
+      setStatus("The broadcast is still processing. Clearing this draft does not cancel it.");
+      return;
+    }
+    setQueuedJob(null);
+    sendRequestRef.current = null;
+    localStorage.removeItem(queueStorageKey);
+    localStorage.removeItem(`${queueStorageKey}:request`);
     const draftId = draftIdRef.current;
     draftIdRef.current = "";
     setDiscardTarget(false);
@@ -350,6 +406,12 @@ export default function MailComposeView({
 
   return (
     <div className="pb-mail-compose">
+      {queuedJob && <div role="status" className="pb-card" style={{ padding: 16, marginBottom: 16 }}>
+        <strong>{queuedJob.status === "succeeded" ? "Broadcast accepted by email provider" : queuedJob.status === "failed" ? "Broadcast stopped — review required" : "Broadcast queued"}</strong>
+        <p>{queuedJob.processed} of {queuedJob.total} recipients processed · {queuedJob.accepted} accepted · {queuedJob.skipped} excluded.</p>
+        {["queued", "running"].includes(queuedJob.status) && <progress value={queuedJob.processed} max={queuedJob.total} aria-label="Broadcast progress" />}
+        {queuedJob.status === "failed" && <p>Some messages may already have been accepted. Contact support with job {queuedJob.id} before starting another broadcast.</p>}
+      </div>}
       <div className="pb-mail-compose-main">
         <div className="pb-mail-toolbar">
           <div className="pb-mail-toolbar-primary">
