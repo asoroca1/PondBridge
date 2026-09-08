@@ -3,6 +3,7 @@ const base = require("./jest.config.cjs");
 module.exports = {
   ...base,
   testMatch: [
+    "**/tests/stripeWebhookCompatibility.test.js",
     "**/tests/authSecurityGuards.test.js",
     "**/tests/objectUrlKeyRecovery.test.js",
     "**/tests/legacyCedarCompatAuthBoundary.test.js",
