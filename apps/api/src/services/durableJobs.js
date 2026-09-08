@@ -102,3 +102,9 @@ export function startDurableJobWorker() {
   timer = setTimeout(tick, 1000); timer.unref?.();
 }
 export async function stopDurableJobWorker() { stopped = true; clearTimeout(timer); await active; }
+
+export async function purgeTenantJobs(tenantId) {
+  const { data, error } = await getSupabaseAdmin().from("tenant_background_jobs").delete().eq("tenant_id", tenantId).select("id");
+  if (error && !["42P01", "PGRST205"].includes(error.code)) throw error;
+  return data?.length || 0;
+}

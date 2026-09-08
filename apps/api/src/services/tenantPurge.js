@@ -1,3 +1,4 @@
+import { purgeTenantJobs } from "./durableJobs.js";
 import {
   AccessRequestModel,
   ActivityItemModel,
@@ -78,6 +79,8 @@ export const TENANT_PURGE_STEPS = [
 
 export async function purgeTenantRows(tenantId) {
   const counts = {};
+  // Remove pending work before deleting members or broadcast records.
+  counts.backgroundJobs = await purgeTenantJobs(tenantId);
 
   const identityCleanup = await removeAllTenantMembershipIdentityLinks(tenantId);
   counts.tenantMemberships = identityCleanup.membershipsDeleted;

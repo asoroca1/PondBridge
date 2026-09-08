@@ -2,7 +2,7 @@
 BEGIN;
 CREATE TABLE IF NOT EXISTS public.tenant_background_jobs (
   id text PRIMARY KEY DEFAULT encode(gen_random_bytes(12), 'hex'),
-  tenant_id text NOT NULL REFERENCES public.tenants(id),
+  tenant_id text NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   actor_user_id text NOT NULL,
   kind text NOT NULL CHECK (kind IN ('broadcast','invites','import')),
   idempotency_key text NOT NULL CHECK (length(idempotency_key) BETWEEN 8 AND 200),

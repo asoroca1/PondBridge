@@ -11,7 +11,7 @@ const SCHEMA_PATH = path.join(HERE, "..", "scripts", "native_schema.sql");
 const HANDLED_ELSEWHERE = new Set(["tenants", "tenant_memberships"]);
 
 function tablesBlockingTenantDelete() {
-  const sql = fs.readFileSync(SCHEMA_PATH, "utf8");
+  const sql = fs.readFileSync(SCHEMA_PATH, "utf8") + "\n" + fs.readFileSync(path.join(HERE, "../../../supabase/migrations/20260908220000_durable_tenant_jobs.sql"), "utf8");
   const blocking = new Set();
   let table = "";
 
