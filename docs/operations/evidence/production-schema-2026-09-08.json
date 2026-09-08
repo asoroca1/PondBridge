@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-09-08T20:33:34.463011+00:00",
+  "scope": "production catalog-only SELECT in READ ONLY transaction",
+  "rows": [
+    {
+      "anon_undo": false,
+      "atomic_undo_present": true,
+      "authenticated_undo": false,
+      "postgres_version": "17.6",
+      "public_functions": 27,
+      "public_policies": 181,
+      "public_tables": 88,
+      "public_tables_with_rls": 88,
+      "service_undo": true
+    }
+  ]
+}

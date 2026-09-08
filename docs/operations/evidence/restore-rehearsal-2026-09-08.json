@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-09-08T20:34:57Z",
+  "scope": "new disposable local databases; schema-only source plus synthetic fixture",
+  "postgres_version": "17.6",
+  "archive_bytes": 634381,
+  "archive_sha256": "5d9de6a2587336c69c84b4ea6ae5d48adc8784602db9e4c0840d774859519095",
+  "public_tables": 48,
+  "public_policies": 78,
+  "public_functions": 24,
+  "checks": [
+    "full custom archive restored without errors",
+    "public catalog, RLS, policies, function definitions, ACLs and constraints equal",
+    "all synthetic data equal before behavioral checks",
+    "client table SELECT denied by restored ACL",
+    "transaction-only grant probes RLS: each camp sees its own profile; absent tenant sees zero",
+    "RLS cross-tenant update changes zero rows; probe grants rolled back",
+    "anon and authenticated cannot execute import undo",
+    "service-role wrong-tenant undo denied; correct-tenant undo removes only its stub"
+  ],
+  "elapsed_seconds": 4.1,
+  "disposable_databases_removed": true
+}
