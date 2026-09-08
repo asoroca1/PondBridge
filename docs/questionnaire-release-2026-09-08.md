@@ -10,18 +10,18 @@ Finishing fixes preserve quoted CSV/blank name fields, expose invalid and duplic
 
 ## Validation
 
-- Full web suite: 66 files / 462 tests passed before adding the final partial-undo regression; final targeted rerun recorded in task output.
+- Final integrated web suite: 66 files / 463 tests passed. Final integrated API safe suite: 86 suites / 680 tests passed. Lint, build, web performance budgets, offline Copilot evaluation and environment hygiene passed; production dependency audit reports zero vulnerabilities.
 - Six feature API suites: 105 tests passed, with synthetic localhost Supabase settings and mock email. No real provider or database write used.
 - Changed web files pass ESLint; Vite production bundle builds successfully with isolated environment.
 - API test config requires JWT_SECRET, SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY even for these pure tests. Synthetic values were supplied, never production secrets.
 
 ## Release preconditions
 
-- Integrate the security review's atomic undo/claim fix before releasing. The staged undo implementation reads then deletes and can race a member claiming their profile.
+- Atomic undo/claim protection is integrated and independently reviewed. Migration `20260908195000_atomic_import_undo.sql` was applied and recorded in staging and production on 2026-09-08; production confirms service-role execution allowed and authenticated client execution denied.
 - Keep frontend/API feature versions together. The UI requires `/api/t/:slug/admin/import/*`, report download/undo, unclaimed People stage, and member claim endpoints.
 - The eight staged commits add no database migration. They reuse existing `profiles.status = 'pending'`, profile `socials` provenance JSON and `import_reports` options/summary/error fields from the baseline schema. Verify these exist in the deployment target. Any migration introduced by the security fix must be applied first.
 - AI matching/cleanup uses existing `OPENAI_PROFILE_IMPORT_MODEL`, output/timeout limits, `PROFILE_IMPORT_MONTHLY_BUDGET_USD`, configured OpenAI credentials, approved pricing and the existing AI ledger. Without a working provider or budget, manual dictionary mapping still works. Do not expand provider settings just to publish this feature.
-- Complete browser rehearsal using synthetic CSVs: quoted/BOM headers, invalid/duplicate email, map correction, dry-run, rejected cleanup, import, failure download, claim visibility, undo and retry. Check a control tenant cannot access the other tenant's report/profile. Real email dispatch is a separate explicit action.
+- Browser rehearsal passed manual column correction, dry-run, two-row commit, invalid-row skip, authenticated error CSV HTTP 200, and atomic undo showing two profiles removed. The browser tool did not expose the download event, so local file-save completion was not independently observed. Automated regressions additionally cover: quoted/BOM headers, invalid/duplicate email, map correction, dry-run, rejected cleanup, import, failure download, claim visibility, undo and retry. Check a control tenant cannot access the other tenant's report/profile. Real email dispatch is a separate explicit action.
 
 ## Rollback
 
@@ -52,4 +52,4 @@ Both undo responses reported 600 removed, zero protected/claimed and zero failur
 
 Create regression coverage verifies the eight-operation cap, dependent duplicate field merging, name/city matching, sequential fuzzy selection, failed reservation recovery and stable row error order. Undo coverage verifies the same cap, source-order failures and unchanged atomic claim protection. An independent security review found no new duplicate/order or atomicity issue in these concurrency changes.
 
-All 1,200 accounts/profiles created across the two rehearsals were removed by their respective report-scoped undo. No provider messages were sent. Retained synthetic report IDs for the parent cleanup are `8bd9065d67d522aa140f4c64` and `eadd36444cc5b0ac7213a846`. Full local timing evidence is in `/tmp/pondbridge-questionnaire-fixture/scale-baseline-evidence.json` and `/tmp/pondbridge-questionnaire-fixture/scale-evidence.json`; credentials are stored separately and must not be committed.
+All 1,200 accounts/profiles created across the two rehearsals were removed by their respective report-scoped undo. No provider messages were sent. Synthetic report IDs used for scoped cleanup are `8bd9065d67d522aa140f4c64` and `eadd36444cc5b0ac7213a846`. Full local timing evidence is in `/tmp/pondbridge-questionnaire-fixture/scale-baseline-evidence.json` and `/tmp/pondbridge-questionnaire-fixture/scale-evidence.json`; credentials are stored separately and must not be committed.
