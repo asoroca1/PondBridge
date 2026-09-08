@@ -132,7 +132,7 @@ import { buildTenantFeatureInventory } from "../services/tenantFeatureInventory.
 import { removeTenantMembershipIdentityLink } from "../services/identityUsers.js";
 import { deleteClerkAccountForTenantUser } from "../services/clerkAccountDeletion.js";
 import { matchesMemberQuery } from "../utils/memberSearch.js";
-import { chunkForInClause, collectAll } from "../db/queryLimits.js";
+import { POSTGREST_MAX_ROWS, chunkForInClause, collectAll } from "../db/queryLimits.js";
 import {
   GROWTH_EMAIL_SEGMENTS,
   LIVE_PROFILE_STATUS_FILTER,
@@ -7942,30 +7942,65 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
       reason: error.code
     }));
 
-    for (const recipient of recipients) {
-      const email = recipient.email;
-      let trackedContact = null;
+    // Resolve every eligibility check up front. Asking per recipient made a CSV
+    // of N alumni cost 3N serial round-trips, which is what pushed a few hundred
+    // invitations past the gateway timeout. Same URL-length ceiling as above.
+    const inviteEmails = [...new Set(
+      recipients.map((recipient) => normalizeEmail(recipient.email)).filter(Boolean)
+    )];
+    const heldEmails = new Set();
+    const existingUserEmails = new Set();
+    const pendingInviteEmails = new Set();
+    const collectEmails = (rows = [], target) => {
+      for (const row of rows) {
+        const value = normalizeEmail(row?.email || "");
+        if (value) target.add(value);
+      }
+    };
+
+    for (const batch of chunkForInClause(inviteEmails)) {
       try {
-        trackedContact = await AlumniContactModel.findOne(req.tenant._id, { email });
+        collectEmails(
+          await AlumniContactModel.find(req.tenant._id, {
+            email: { $in: batch },
+            contactStatus: "do_not_contact"
+          }, { select: ["email"], limit: batch.length }),
+          heldEmails
+        );
       } catch (error) {
         if (!isAlumniGrowthStorageUnavailable(error)) throw error;
       }
-      if (trackedContact?.contactStatus === "do_not_contact") {
+
+      collectEmails(
+        await UserModel.find(req.tenant._id, { email: { $in: batch } }, {
+          select: ["email"],
+          limit: batch.length
+        }),
+        existingUserEmails
+      );
+
+      collectEmails(
+        await InviteModel.find(req.tenant._id, {
+          email: { $in: batch },
+          usedAt: null,
+          expiresAt: { $gt: new Date() }
+        }, { select: ["email"], limit: POSTGREST_MAX_ROWS }),
+        pendingInviteEmails
+      );
+    }
+
+    for (const recipient of recipients) {
+      const email = recipient.email;
+      const lookupEmail = normalizeEmail(email);
+      if (heldEmails.has(lookupEmail)) {
         skipped.push({ email, reason: "CONTACT_ON_HOLD" });
         continue;
       }
-      const existingUser = await UserModel.findOne(req.tenant._id, { email });
-      if (existingUser) {
+      if (existingUserEmails.has(lookupEmail)) {
         skipped.push({ email, reason: "USER_EXISTS" });
         continue;
       }
-
-      const pendingInvite = await InviteModel.findOne(req.tenant._id, {
-        email,
-        usedAt: null,
-        expiresAt: { $gt: new Date() }
-      });
-      if (pendingInvite) {
+      if (pendingInviteEmails.has(lookupEmail)) {
         skipped.push({ email, reason: "INVITE_ALREADY_PENDING" });
         continue;
       }
@@ -7977,6 +8012,9 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
         createdByUserId: req.user.id,
         expiresInDays
       });
+      // The pending-invite set was read before the loop, so record what this
+      // run creates. Otherwise an address repeated in the CSV is invited twice.
+      pendingInviteEmails.add(lookupEmail);
       createdCount += 1;
 
       try {
