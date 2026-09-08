@@ -3,6 +3,24 @@ import { jest } from "@jest/globals";
 const tenants = new Map();
 const receipts = new Map();
 const auditRows = [];
+const tenantUpdate = jest.fn(async (id, patch) => {
+  const current = tenants.get(String(id));
+  if (!current) return null;
+  const updated = {
+    ...current,
+    ...clone(patch),
+    settings: {
+      ...(current.settings || {}),
+      ...(patch.settings || {}),
+      billing: {
+        ...(current.settings?.billing || {}),
+        ...(patch.settings?.billing || {})
+      }
+    }
+  };
+  tenants.set(String(id), updated);
+  return clone(updated);
+});
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -103,24 +121,7 @@ jest.unstable_mockModule("../src/db/models/index.js", () => ({
       }
       return null;
     }),
-    update: jest.fn(async (id, patch) => {
-      const current = tenants.get(String(id));
-      if (!current) return null;
-      const updated = {
-        ...current,
-        ...clone(patch),
-        settings: {
-          ...(current.settings || {}),
-          ...(patch.settings || {}),
-          billing: {
-            ...(current.settings?.billing || {}),
-            ...(patch.settings?.billing || {})
-          }
-        }
-      };
-      tenants.set(String(id), updated);
-      return clone(updated);
-    })
+    update: tenantUpdate
   }
 }));
 
@@ -137,6 +138,7 @@ beforeEach(() => {
   tenants.clear();
   receipts.clear();
   auditRows.length = 0;
+  tenantUpdate.mockClear();
   seedTenant();
 });
 
@@ -172,6 +174,27 @@ test("current invoice.parent subscription_details maps by subscription and updat
     }
   });
   expect(receipts.get("evt_current_invoice").processingStatus).toBe("processed");
+});
+
+test("current invoice metadata-only parent maps by tenantId without subscription or customer", async () => {
+  const result = await processStripeEvent(event("evt_current_metadata_only", "invoice.paid", {
+    id: "in_current_metadata_only",
+    object: "invoice",
+    status: "paid",
+    parent: {
+      type: "subscription_details",
+      subscription_details: {
+        metadata: { tenantId: "tenant_1" }
+      }
+    },
+    lines: { data: [{ period: { end: 1_805_000_000 } }] }
+  }));
+
+  expect(result).toMatchObject({ processed: true, duplicate: false });
+  expect(tenants.get("tenant_1").settings.billing).toMatchObject({
+    lastInvoiceId: "in_current_metadata_only",
+    currentPeriodEnd: new Date(1_805_000_000 * 1000).toISOString()
+  });
 });
 
 test("legacy invoice.subscription payload still maps and records the invoice", async () => {
@@ -218,11 +241,15 @@ test("the webhook receipt makes a replay observable as a duplicate without a sec
     subscription: "sub_current",
     lines: { data: [{ period: { end: 1_840_000_000 } }] }
   };
+  const updatesBeforeReplay = tenantUpdate.mock.calls.length;
   const first = await processStripeEvent(event("evt_duplicate", "invoice.paid", payload));
+  const updatesAfterFirst = tenantUpdate.mock.calls.length;
   const second = await processStripeEvent(event("evt_duplicate", "invoice.paid", payload));
 
   expect(first).toMatchObject({ processed: true, duplicate: false });
   expect(second).toMatchObject({ processed: false, duplicate: true });
+  expect(updatesAfterFirst).toBeGreaterThan(updatesBeforeReplay);
+  expect(tenantUpdate).toHaveBeenCalledTimes(updatesAfterFirst);
   expect(receipts.get("evt_duplicate").processingStatus).toBe("processed");
 });
 
