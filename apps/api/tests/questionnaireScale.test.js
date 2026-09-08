@@ -83,3 +83,84 @@ describe("600-person questionnaire rehearsal without a database", () => {
     expect(ProfileModel.findAllBatched).not.toHaveBeenCalled();
   });
 });
+
+function commitFixture({ failUser = () => false, delay = () => 0 } = {}) {
+  readFixture();
+  jest.spyOn(bcrypt, "hash").mockResolvedValue("synthetic-bcrypt-hash");
+  const profiles = new Map();
+  let userNumber = 0;
+  let inFlight = 0;
+  let peakInFlight = 0;
+  UserModel.create.mockImplementation(async (data) => {
+    inFlight += 1;
+    peakInFlight = Math.max(peakInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, delay(data.email)));
+    inFlight -= 1;
+    if (failUser(data.email)) throw new Error("Synthetic write failure");
+    return { ...data, _id: `u${++userNumber}` };
+  });
+  ProfileModel.create.mockImplementation(async (data) => {
+    const profile = { ...data, _id: `p${data.userId}` };
+    profiles.set(profile._id, profile);
+    return profile;
+  });
+  ProfileModel.update.mockImplementation(async (id, patch) => {
+    const profile = { ...profiles.get(id), ...patch };
+    profiles.set(id, profile);
+    return profile;
+  });
+  UserModel.update.mockResolvedValue({});
+  ImportReportModel.create.mockImplementation(async (data) => ({ ...data, _id: "report-synthetic" }));
+  ImportReportModel.update.mockResolvedValue({});
+  return { peak: () => peakInFlight, profiles };
+}
+const commitCsv = (csvText, extraMapping = {}, options = {}) => runTenantCsvImport({
+  tenantId: "synthetic-camp", userId: "synthetic-director", csvBuffer: Buffer.from(csvText),
+  mapping: { ...mapping, ...extraMapping }, options
+});
+
+describe("bounded independent questionnaire creates", () => {
+  test("limits in-flight creates to eight", async () => {
+    const fixture = commitFixture();
+    const result = await commitCsv(csv(rows.slice(0, 20)).toString());
+    expect(fixture.peak()).toBe(8);
+    expect(result.createdCount).toBe(20);
+  });
+
+  test("a repeated email can fill a missing field on the newly created profile", async () => {
+    const fixture = commitFixture();
+    const result = await commitCsv('First,Last,Email,College\nAda,Example,ada@example.test,\nAda,Example,ada@example.test,Example University', { College: "colleges" });
+    expect(result).toMatchObject({ createdCount: 1, updatedCount: 1, skippedDuplicates: 0, errorCount: 0 });
+    expect([...fixture.profiles.values()][0].colleges).toEqual(["Example University"]);
+  });
+
+  test("matches name and city only after the earlier create settles", async () => {
+    commitFixture();
+    const result = await commitCsv('First,Last,Email,City\nAda,Example,ada@example.test,"Denver, CO"\nAda,Example,other@example.test,"Denver, CO"', { City: "cityState" });
+    expect(result).toMatchObject({ createdCount: 1, skippedDuplicates: 1, errorCount: 0 });
+    expect(result.dispositions[1].reason).toBe("name_and_city");
+  });
+
+  test("keeps fuzzy matching sequential and retains the first matching profile", async () => {
+    const fixture = commitFixture();
+    const result = await commitCsv('First,Last,Email,City\nAnnabelle,Example,one@example.test,"Denver, CO"\nAnabelle,Example,two@example.test,"Denver, CO"\nZelda,Other,three@example.test,"Denver, CO"', { City: "cityState" }, { enableFuzzyMatch: true });
+    expect(result).toMatchObject({ createdCount: 2, skippedDuplicates: 1, errorCount: 0 });
+    expect(result.dispositions[1].reason).toBe("fuzzy_name");
+    expect(fixture.peak()).toBe(1);
+  });
+
+  test("does not retain a failed create as a duplicate reservation", async () => {
+    let attempts = 0;
+    commitFixture({ failUser: () => ++attempts === 1 });
+    const result = await commitCsv('First,Last,Email\nAda,Example,ada@example.test\nAda,Example,ada@example.test');
+    expect(result).toMatchObject({ createdCount: 1, skippedDuplicates: 0, errorCount: 1 });
+    expect(result.errors[0].rowNumber).toBe(2);
+  });
+
+  test("reports failures in source row order despite different completion times", async () => {
+    commitFixture({ failUser: (email) => email !== "success@example.test", delay: (email) => email.startsWith("slow") ? 15 : 0 });
+    const result = await commitCsv('First,Last,Email\nSlow,Example,slow@example.test\nFast,Example,fast@example.test\nSuccess,Example,success@example.test');
+    expect(result).toMatchObject({ createdCount: 1, errorCount: 2 });
+    expect(result.errors.map((error) => error.rowNumber)).toEqual([2, 3]);
+  });
+});

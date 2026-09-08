@@ -399,6 +399,35 @@ export async function runTenantCsvImport({
   // Repeating bcrypt for every row adds minutes to a normal camp import while
   // giving no extra protection to credentials nobody knows or receives.
   let importPasswordHash = "";
+  const pendingCreates = [];
+  const CREATE_CONCURRENCY = 8;
+
+  async function flushCreates() {
+    if (!pendingCreates.length) return;
+    if (!importPasswordHash) {
+      importPasswordHash = await hashPassword(crypto.randomBytes(32).toString("base64url"));
+    }
+    const batch = pendingCreates.splice(0);
+    // Reservations prevent a repeated identity from entering the same batch.
+    // No further row is inspected until this batch settles, so replacing them
+    // with successful persisted records preserves the sequential merge rules.
+    for (const { email, payload } of batch) {
+      mapState.emailMap.delete(email);
+      const key = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
+      if (key) mapState.secondaryMap.delete(key);
+    }
+    const reservedEmails = new Set(batch.map((item) => item.email));
+    mapState.profilePool = mapState.profilePool.filter((item) => !reservedEmails.has(item.email));
+    await Promise.all(batch.map(async ({ email, payload, rowNumber, rawRow }) => {
+      try {
+        await createProfileForRow({ tenantId, payload, email, reportId, mapState, passwordHash: importPasswordHash });
+        createdCount += 1;
+      } catch (error) {
+        errors.push({ rowNumber, code: "CREATE_ERROR", message: error.message || "Failed to create", rawRow });
+      }
+    }));
+  }
+
 
   for (let index = 0; index < parsedRows.length; index += 1) {
     const rowNumber = index + 2;
@@ -427,6 +456,17 @@ export async function runTenantCsvImport({
         rawRow
       });
       continue;
+    }
+
+    const secondaryKey = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
+    // Dependent rows must see the result of earlier creates, including failures.
+    // Fuzzy matching intentionally remains sequential because its candidate
+    // choice depends on every earlier successful profile.
+    if (!dryRun && pendingCreates.length && (
+      enableFuzzyMatch || mapState.emailMap.has(email) ||
+      (secondaryKey && mapState.secondaryMap.has(secondaryKey))
+    )) {
+      await flushCreates();
     }
 
     const primaryDuplicate = mapState.emailMap.get(email);
@@ -467,7 +507,6 @@ export async function runTenantCsvImport({
       continue;
     }
 
-    const secondaryKey = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
     if (secondaryKey && mapState.secondaryMap.has(secondaryKey)) {
       skippedDuplicates += 1;
       dispositions.push({ rowNumber, email, disposition: "duplicate", reason: "name_and_city" });
@@ -496,19 +535,15 @@ export async function runTenantCsvImport({
     });
     if (dryRun) {
       rememberRow({ mapState, email, payload });
+      createdCount += 1;
     } else {
-      try {
-        if (!importPasswordHash) {
-          importPasswordHash = await hashPassword(crypto.randomBytes(32).toString("base64url"));
-        }
-        await createProfileForRow({ tenantId, payload, email, reportId, mapState, passwordHash: importPasswordHash });
-      } catch (error) {
-        errors.push({ rowNumber, code: "CREATE_ERROR", message: error.message || "Failed to create", rawRow });
-        continue;
-      }
+      pendingCreates.push({ email, payload, rowNumber, rawRow });
+      rememberRow({ mapState, email, payload });
+      if (pendingCreates.length >= CREATE_CONCURRENCY) await flushCreates();
     }
-    createdCount += 1;
   }
+  await flushCreates();
+  errors.sort((left, right) => left.rowNumber - right.rowNumber);
 
   const failureCsv = errors.length
     ? stringify(errors.map((error) => rowToFailureCsvRecord(error)), { header: true })
