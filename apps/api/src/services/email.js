@@ -704,7 +704,8 @@ async function sendResendEmail({
   tags,
   scheduledAt,
   topicId,
-  idempotencyKey
+  idempotencyKey,
+  suppressionFailClosed = false
 }) {
   ensureConfiguredForMode("resend");
 
@@ -718,7 +719,7 @@ async function sendResendEmail({
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
-  await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
+  await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc], { failClosed: suppressionFailClosed });
   const cleanSubject = String(subject || "").trim();
   if (!cleanSubject) {
     throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -875,7 +876,8 @@ export async function sendTransactionalEmail({
   scheduledAt,
   topicId,
   idempotencyKey,
-  modeOverride = ""
+  modeOverride = "",
+  suppressionFailClosed = false
 }) {
   const mode = String(modeOverride || getEmailMode()).trim().toLowerCase();
   assertEmailMode(mode);
@@ -886,7 +888,7 @@ export async function sendTransactionalEmail({
     if (normalized.to.length === 0) {
       throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
     }
-    await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
+    await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc], { failClosed: suppressionFailClosed });
     const cleanSubject = String(subject || "").trim();
     if (!cleanSubject) {
       throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -922,7 +924,8 @@ export async function sendTransactionalEmail({
       tags,
       scheduledAt,
       topicId,
-      idempotencyKey
+      idempotencyKey,
+      suppressionFailClosed
     });
   }
 
@@ -1235,7 +1238,8 @@ export async function sendInviteEmail({
   customSubject = "",
   customMessage = "",
   firstName = "",
-  lastName = ""
+  lastName = "",
+  idempotencyKey = ""
 }) {
   const branding = buildTenantEmailBranding(tenant, { stream: "bulk" });
   const mergeTagValues = {
@@ -1269,7 +1273,8 @@ export async function sendInviteEmail({
     subject,
     text,
     html,
-    idempotencyKey: buildScopedIdempotencyKey(`invite/${tenant.slug}`, token),
+    idempotencyKey: idempotencyKey || buildScopedIdempotencyKey(`invite/${tenant.slug}`, token),
+    suppressionFailClosed: true,
     tags: [
       { name: "category", value: "invite" },
       { name: "tenant", value: tenant.slug || "tenant" }
@@ -1494,31 +1499,39 @@ export async function sendRelayedClerkEmail({
   });
 }
 
-export async function sendAccessDecisionEmail({ tenant, email, firstName, approved, reason, loginUrl }) {
-  const branding = buildTenantEmailBranding(tenant);
+export function buildAccessApprovalEmail({ tenant, email, firstName, loginUrl }) {
+  const branding = buildTenantEmailBranding(tenant, { stream: "auth" });
+  const resolvedLoginUrl = loginUrl || `${resolveTenantAppBaseUrl({ tenant })}/login`;
+  const { subject, text, html } = accessApprovedTemplate({
+    tenantName: branding.networkName,
+    firstName,
+    loginUrl: resolvedLoginUrl,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
+  });
+  return {
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject,
+    text,
+    html,
+    tags: [
+      { name: "category", value: "access_approved" },
+      { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  };
+}
+
+export async function sendAccessDecisionEmail({ tenant, email, firstName, approved, reason, loginUrl, idempotencyKey = "" }) {
   if (approved) {
-    const resolvedLoginUrl = loginUrl || `${resolveTenantAppBaseUrl({ tenant })}/login`;
-    const { subject, text, html } = accessApprovedTemplate({
-      tenantName: branding.networkName,
-      firstName,
-      loginUrl: resolvedLoginUrl,
-      brandPrimary: branding.brandPrimary,
-      logoUrl: branding.logoUrl
-    });
     return sendTransactionalEmail({
-      from: branding.from,
-      to: email,
-      ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
-      subject,
-      text,
-      html,
-      tags: [
-        { name: "category", value: "access_approved" },
-        { name: "tenant", value: tenant.slug || "tenant" }
-      ]
+      ...buildAccessApprovalEmail({ tenant, email, firstName, loginUrl }),
+      idempotencyKey
     });
   }
 
+  const branding = buildTenantEmailBranding(tenant);
   const { subject, text, html } = accessDeniedTemplate({
     tenantName: branding.networkName,
     firstName,

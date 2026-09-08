@@ -70,3 +70,19 @@ test("durable batch sends refuse changed suppression eligibility before generati
     .rejects.toMatchObject({ code: "EMAIL_RECIPIENT_SET_CHANGED" });
   expect(global.fetch).not.toHaveBeenCalled();
 });
+
+
+test("an authorized invitation reminder can reuse its valid link with a distinct, retry-stable provider key", async () => {
+  const invitation = { tenant, email: "fixture@example.test", token: "synthetic-invite-token" };
+  await mail.sendInviteEmail(invitation);
+  const originalKey = global.fetch.mock.calls[0][1].headers["Idempotency-Key"];
+  const reminder = { ...invitation, customSubject: "Finish joining Camp Green Lane", idempotencyKey: "reviewed-reminder/synthetic-recipient" };
+  await mail.sendInviteEmail(reminder);
+  await mail.sendInviteEmail(reminder);
+  const requests = global.fetch.mock.calls.slice(1).map((call) => call[1]);
+  expect(requests[0].headers["Idempotency-Key"]).not.toBe(originalKey);
+  expect(requests[0].headers["Idempotency-Key"]).toBe(reminder.idempotencyKey);
+  expect(requests[1].headers["Idempotency-Key"]).toBe(reminder.idempotencyKey);
+  expect(JSON.parse(requests[0].body).text).toContain(invitation.token);
+  expect(requests[0].body).toBe(requests[1].body);
+});

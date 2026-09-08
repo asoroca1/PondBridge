@@ -1,6 +1,7 @@
 import { durableJobsEnabled, MAX_QUEUED_RECIPIENTS, enqueueJob, readJob, readJobByKey, jobFingerprint, publicJob } from "../services/durableJobs.js";
 import { Router } from "express";
 import { getSupabaseAdmin } from "../db/supabaseAdmin.js";
+import { approvalEmailJobKey, readApprovalEmailIntent } from "../services/approvalEmailJobs.js";
 import { recoveredRequestRequiresConsent } from "../services/signupRecoveryConsent.js";
 import { buildEmailPalette } from "../services/brandPalette.js";
 import crypto from "crypto";
@@ -4129,6 +4130,39 @@ router.get("/members/approvals", async (req, res) => {
 const APPROVAL_BULK_MAX = 250;
 const APPROVAL_SIDE_EFFECT_CONCURRENCY = 8;
 
+async function deliverApprovedAccessEmail({ tenant, email, firstName, requestId }) {
+  try {
+    const job = await readApprovalEmailIntent(tenant._id, requestId);
+    if (job) return { durable: true, jobId: job.id, status: job.status };
+  } catch (error) {
+    // Approval already committed. If queue visibility is uncertain, an inline
+    // fallback could duplicate a job that another worker is about to deliver.
+    console.warn("[email] approval handoff could not be confirmed", {
+      tenantId: String(tenant._id || ""),
+      requestId: String(requestId || ""),
+      code: String(error?.code || "APPROVAL_EMAIL_HANDOFF_UNKNOWN")
+    });
+    return { durable: false, status: "handoff_unknown" };
+  }
+  try {
+    await sendAccessDecisionEmail({
+      tenant,
+      email,
+      firstName,
+      approved: true,
+      idempotencyKey: approvalEmailJobKey(requestId)
+    });
+    return { durable: false, status: "provider_accepted" };
+  } catch (error) {
+    console.warn("[email] approval notification failed", {
+      tenantId: String(tenant._id || ""),
+      requestId: String(requestId || ""),
+      code: String(error?.code || "APPROVAL_EMAIL_SEND_FAILED")
+    });
+    return { durable: false, status: "failed" };
+  }
+}
+
 /**
  * Runs queued jobs a few at a time. Approving 250 people means 250 emails; all
  * at once would hammer the mail provider, one at a time would time out.
@@ -4182,14 +4216,19 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
     await logTenantEvent({ tenantId: req.tenant._id, userId: result.userId, eventType: "signup_created",
       metadata: { method: "director_approval", recoveredSignup: true }
     }).catch(() => {});
-    const send = () => sendAccessDecisionEmail({ tenant: req.tenant, email, firstName, approved: true });
+    let approvalEmail = null;
+    const send = async () => {
+      const delivery = await deliverApprovedAccessEmail({ tenant: req.tenant, email, firstName, requestId: result.requestId });
+      if (collector) collector.approvalEmails.push({ requestId: result.requestId, ...delivery });
+      return delivery;
+    };
     if (collector) {
       collector.approvedUserIds.push(result.userId); collector.requestIds.push(result.requestId); collector.emails.push(send);
     } else {
       await notifyAccessApproved(req, [result.userId], result.requestId);
-      await send().catch(() => {});
+      approvalEmail = await send();
     }
-    return { ...result, existingUser: false, member: mapMemberRow(profile || {}, user) };
+    return { ...result, existingUser: false, member: mapMemberRow(profile || {}, user), approvalEmail };
   }
   const existingUser = await UserModel.findOne(req.tenant._id, { email });
 
@@ -4250,39 +4289,30 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
       }).catch(() => {});
     }
 
+    let approvalEmail = null;
     if (collector) {
       collector.approvedUserIds.push(userId);
       collector.requestIds.push(toObjectIdString(request._id));
-      if (wasInactive) {
-        const email = normalizeEmail(request.email || existingUser.email || "");
-        const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
-        if (isEmail(email)) {
-          collector.emails.push(() =>
-            sendAccessDecisionEmail({ tenant: req.tenant, email, firstName, approved: true })
-          );
-        }
+      const email = normalizeEmail(request.email || existingUser.email || "");
+      const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
+      if (isEmail(email)) {
+        collector.emails.push(async () => {
+          const requestId = toObjectIdString(request._id);
+          const delivery = await deliverApprovedAccessEmail({ tenant: req.tenant, email, firstName, requestId });
+          collector.approvalEmails.push({ requestId, ...delivery });
+        });
       }
     } else {
       await notifyAccessApproved(req, [userId], toObjectIdString(request._id));
-      // A returning member is told the same way a new one is. Someone who was
-      // already active never asked, so they get nothing.
-      if (wasInactive) {
-        const email = normalizeEmail(request.email || existingUser.email || "");
-        const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
-        if (isEmail(email)) {
-          await sendAccessDecisionEmail({
-            tenant: req.tenant,
-            email,
-            firstName,
-            approved: true
-          }).catch((error) => {
-            console.warn("[email] approval notification failed", {
-              tenantId: String(req.tenant._id || ""),
-              email,
-              message: String(error?.message || "")
-            });
-          });
-        }
+      const email = normalizeEmail(request.email || existingUser.email || "");
+      const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
+      if (isEmail(email)) {
+        approvalEmail = await deliverApprovedAccessEmail({
+          tenant: req.tenant,
+          email,
+          firstName,
+          requestId: toObjectIdString(request._id)
+        });
       }
     }
 
@@ -4291,7 +4321,8 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
       requestId: toObjectIdString(request._id),
       existingUser: true,
       reactivated: wasInactive,
-      userId
+      userId,
+      approvalEmail
     };
   }
 
@@ -4368,25 +4399,21 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
 
   const userId = toObjectIdString(user._id);
   const requestId = toObjectIdString(request._id);
+  let approvalEmail = null;
   if (collector) {
     collector.approvedUserIds.push(userId);
     collector.requestIds.push(requestId);
-    collector.emails.push(() =>
-      sendAccessDecisionEmail({ tenant: req.tenant, email, firstName, approved: true })
-    );
+    collector.emails.push(async () => {
+      const delivery = await deliverApprovedAccessEmail({ tenant: req.tenant, email, firstName, requestId });
+      collector.approvalEmails.push({ requestId, ...delivery });
+    });
   } else {
     await notifyAccessApproved(req, [userId], requestId);
-    await sendAccessDecisionEmail({
+    approvalEmail = await deliverApprovedAccessEmail({
       tenant: req.tenant,
       email,
       firstName,
-      approved: true
-    }).catch((error) => {
-      console.warn("[email] approval notification failed", {
-        tenantId: String(req.tenant._id || ""),
-        email,
-        message: String(error?.message || "")
-      });
+      requestId
     });
   }
 
@@ -4395,7 +4422,8 @@ async function approveAccessRequest(req, request, { collector = null, audit = tr
     requestId,
     existingUser: false,
     userId,
-    member: mapMemberRow(profile, user)
+    member: mapMemberRow(profile, user),
+    approvalEmail
   };
 }
 
@@ -4536,7 +4564,8 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
   return res.json({
     ok: true,
     requestId: result.requestId,
-    ...(result.existingUser ? { existingUser: true } : { member: result.member })
+    ...(result.existingUser ? { existingUser: true } : { member: result.member }),
+    ...(result.approvalEmail ? { approvalEmail: result.approvalEmail } : {})
   });
 });
 
@@ -4596,7 +4625,7 @@ router.post("/members/approvals/bulk", async (req, res) => {
   const targets = matched.slice(0, APPROVAL_BULK_MAX);
   const remaining = Math.max(0, matched.length - targets.length);
 
-  const collector = { approvedUserIds: [], requestIds: [], emails: [] };
+  const collector = { approvedUserIds: [], requestIds: [], emails: [], approvalEmails: [] };
   const failed = [];
   let succeeded = 0;
 
@@ -4636,6 +4665,7 @@ router.post("/members/approvals/bulk", async (req, res) => {
     action,
     decided: succeeded,
     failed,
+    approvalEmails: collector.approvalEmails,
     // Anything past the per-request cap is still waiting; the client sends the
     // next chunk rather than silently dropping people.
     remaining

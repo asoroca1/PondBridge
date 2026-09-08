@@ -1,4 +1,5 @@
 import "./services/broadcastJobs.js";
+import "./services/approvalEmailJobs.js";
 import { startDurableJobWorker, stopDurableJobWorker } from "./services/durableJobs.js";
 import { createServer } from "node:http";
 import { startVerifiedSignupReconciliation, stopVerifiedSignupReconciliation } from "./services/verifiedSignupReconciliation.js";

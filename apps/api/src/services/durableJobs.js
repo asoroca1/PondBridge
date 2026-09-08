@@ -7,6 +7,9 @@ const handlers = new Map();
 let timer;
 let active;
 let stopped = true;
+let approvalEmailSchemaReady = false;
+let approvalEmailSchemaCheckedAt = 0;
+const APPROVAL_EMAIL_KIND = "approval_email";
 export const durableJobsEnabled = () => process.env.DURABLE_JOBS_ENABLED === "true";
 export const MAX_QUEUED_RECIPIENTS = 5000;
 function canonical(value) {
@@ -45,6 +48,14 @@ export async function readJobByKey(tenantId, kind, key) {
   return data;
 }
 export function registerJobHandler(kind, handler) { handlers.set(kind, handler); }
+async function approvalEmailQueueReady() {
+  if (approvalEmailSchemaReady) return true;
+  if (Date.now() - approvalEmailSchemaCheckedAt < 30_000) return false;
+  approvalEmailSchemaCheckedAt = Date.now();
+  const { data, error } = await getSupabaseAdmin().rpc("approval_email_jobs_ready");
+  if (!error && data === true) approvalEmailSchemaReady = true;
+  return approvalEmailSchemaReady;
+}
 export async function saveJob(job, { cursor = job.cursor, state = job.state, release = false, error = "" } = {}) {
   const { data, error: dbError } = await getSupabaseAdmin().rpc("checkpoint_tenant_job", {
     p_tenant: job.tenant_id, p_id: job.id, p_lease: job.lease_token,
@@ -58,10 +69,14 @@ export async function runJobStep(job) {
   const [tenant, actor] = await Promise.all([
     TenantModel.findById(job.tenant_id), UserModel.findById(job.actor_user_id)
   ]);
-  const roles = applySuperConsoleRolePolicy(actor?.roles || [], { clerkUserId: actor?.clerkUserId, email: actor?.email }, actor?.email || "");
-  if (!tenant || tenant.status !== "active" || !actor || actor.status !== "active" ||
-      !((String(actor.tenantId) === String(job.tenant_id) && roles.includes("tenant_admin")) || roles.includes("super_admin"))) {
-    throw jobError("JOB_ACTOR_NO_LONGER_AUTHORIZED");
+  if (job.kind !== APPROVAL_EMAIL_KIND) {
+    const roles = applySuperConsoleRolePolicy(actor?.roles || [], { clerkUserId: actor?.clerkUserId, email: actor?.email }, actor?.email || "");
+    if (!tenant || tenant.status !== "active" || !actor || actor.status !== "active" ||
+        !((String(actor.tenantId) === String(job.tenant_id) && roles.includes("tenant_admin")) || roles.includes("super_admin"))) {
+      throw jobError("JOB_ACTOR_NO_LONGER_AUTHORIZED");
+    }
+  } else if (!tenant) {
+    throw jobError("APPROVAL_EMAIL_TENANT_MISSING");
   }
   const handler = handlers.get(job.kind);
   if (!handler) throw jobError("JOB_KIND_UNAVAILABLE");
@@ -71,7 +86,11 @@ export async function runJobStep(job) {
   await saveJob(job, { ...result, release: true });
 }
 export async function tickDurableJobs() {
-  const { data, error } = await getSupabaseAdmin().rpc("claim_tenant_job");
+  const approvalReady = await approvalEmailQueueReady();
+  if (!approvalReady && !durableJobsEnabled()) return;
+  const { data, error } = approvalReady
+    ? await getSupabaseAdmin().rpc("claim_tenant_job_for_worker", { p_include_optional: durableJobsEnabled() })
+    : await getSupabaseAdmin().rpc("claim_tenant_job");
   if (error) throw error;
   const job = data?.[0];
   if (!job) return;
@@ -91,7 +110,7 @@ export async function tickDurableJobs() {
   } finally { clearInterval(heartbeat); }
 }
 export function startDurableJobWorker() {
-  if (!durableJobsEnabled() || !stopped) return;
+  if (!stopped) return;
   stopped = false;
   const tick = async () => {
     if (stopped) return;

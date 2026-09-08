@@ -121,7 +121,7 @@ function footerHtml({ unsubscribeUrl = "", contextName = "", essential = false }
     ? `Sent for ${escapeHtml(context)} via ${wordmark("PondBridge")}`
     : `Powered by ${wordmark("PondBridge")}`;
   const unsubLine = essential
-    ? `<br/><span style="font-size:11px;color:${BRAND.muted};">Account security message from ${escapeHtml(context || "PondBridge")}.</span>`
+    ? `<br/><span style="font-size:11px;color:${BRAND.muted};">Essential account message from ${escapeHtml(context || "PondBridge")}.</span>`
     : unsubscribeUrl
     ? `<br/><a href="${escapeHtml(unsubscribeUrl)}" style="color:${BRAND.muted};text-decoration:underline;font-size:12px;">Unsubscribe</a>`
     : `<br/><span style="font-size:11px;color:${BRAND.muted};">To stop receiving these emails, update your notification preferences in your account settings.</span>`;
@@ -672,6 +672,7 @@ export function accessApprovedTemplate({
     contextName: tenantName,
     brandPrimary,
     logoUrl,
+    essential: true,
     tagline: "Membership approved"
   });
 

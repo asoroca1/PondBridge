@@ -306,3 +306,11 @@ describe("imported profiles stay out of member search", () => {
     expect(isSearchVisibleProfile({ status: "flagged" })).toBe(true);
   });
 });
+
+
+test("a consent-only signup uses authenticated identity names without overwriting submitted profile names", () => {
+  const identity = { email: "member@synthetic.invalid", firstName: "Verified", lastName: "Member" };
+  expect(profilePayloadFromBody({ legalAgreement: { accepted: true } }, identity)).toMatchObject({ firstName: "Verified", lastName: "Member" });
+  expect(profilePayloadFromBody({ firstName: "Chosen", lastName: "Name" }, identity)).toMatchObject({ firstName: "Chosen", lastName: "Name" });
+  expect(profilePayloadFromBody({}, { email: identity.email })).toMatchObject({ firstName: "", lastName: "" });
+});
