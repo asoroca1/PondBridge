@@ -31,6 +31,15 @@ const COLUMNS = {
 };
 
 const base = createModel("profiles", COLUMNS);
+
+// Removed profiles are gone; pending ones are imported rows whose owner has not
+// signed in and confirmed them yet. Neither may appear in member-facing results.
+const HIDDEN_SEARCH_STATUSES = new Set(["removed", "pending"]);
+
+/** Exported so the rule is tested directly, not only through a live query. */
+export function isSearchVisibleProfile(profile = {}) {
+  return !HIDDEN_SEARCH_STATUSES.has(String(profile?.status || "").trim().toLowerCase());
+}
 const SEARCH_CANDIDATE_SELECT_SQL = [
   "id",
   "tenant_id",
@@ -359,7 +368,10 @@ async function fetchCandidateProfilePage(tenantId, opts = {}, from = 0, to = 999
     .from("profiles")
     .select(SEARCH_CANDIDATE_SELECT_SQL)
     .eq("tenant_id", tenantId)
-    .neq("status", "removed")
+    // "pending" is an imported profile nobody has claimed yet. Excluding it here
+    // keeps search agreeing with countActiveAlumni, which has always counted only
+    // active profiles — otherwise a camp reads one total and lists a longer one.
+    .not("status", "in", `(${[...HIDDEN_SEARCH_STATUSES].join(",")})`)
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true })
     .order("id", { ascending: true })
@@ -422,7 +434,16 @@ async function runRpcSearch(tenantId, query = "", opts = {}, limit = 30) {
       : {})
   });
   if (error) throw error;
-  return (data || []).map((row) => toDoc(row, COLUMNS));
+  // search_profiles decides visibility in SQL and still returns "pending" rows —
+  // imported profiles nobody has claimed. Every path out of search() runs through
+  // here or through fetchCandidateProfilePage, so filtering in both keeps an
+  // unclaimed profile out of results no matter which one answered.
+  //
+  // The RPC itself should stop selecting them, but that is a migration, and this
+  // guard still has to hold on a database that has not had it applied yet.
+  return (data || [])
+    .map((row) => toDoc(row, COLUMNS))
+    .filter(isSearchVisibleProfile);
 }
 
 function isSearchRpcUnavailable(error) {
@@ -438,6 +459,15 @@ function isSearchRpcUnavailable(error) {
 
 export const ProfileModel = {
   ...base,
+
+  async deleteUnclaimedImport(tenantId, profileId, reportId) {
+    if (!tenantId || !profileId || !reportId) throw new Error("Import deletion requires tenant, profile and report");
+    const { data, error } = await getSupabaseAdmin().rpc("delete_unclaimed_import_profile", {
+      p_tenant_id: String(tenantId), p_profile_id: String(profileId), p_report_id: String(reportId)
+    });
+    if (error) throw error;
+    return data;
+  },
   COLUMNS,
 
   async search(tenantId, query, opts = {}) {

@@ -5,6 +5,7 @@ import { env } from "../config/env.js";
 import { EmailSuppressionModel } from "../db/models/index.js";
 import { buildTenantUrls } from "../utils/domainProvisioning.js";
 import {
+  claimAccountTemplate,
   inviteTemplate,
   magicLinkTemplate,
   verificationCodeTemplate,
@@ -710,7 +711,7 @@ async function sendResendEmail({
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
-  await assertRecipientsNotSuppressed(normalized.to);
+  await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
   const cleanSubject = String(subject || "").trim();
   if (!cleanSubject) {
     throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -776,7 +777,7 @@ async function sendSmtpEmail({
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
-  await assertRecipientsNotSuppressed(normalized.to);
+  await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
 
   const cleanSubject = String(subject || "").trim();
   if (!cleanSubject) {
@@ -833,6 +834,20 @@ export function inviteLink({ tenant = null, tenantSlug = "", token, email }) {
   return `${base}/create-account?inviteToken=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 }
 
+/**
+ * Where a claim email points.
+ *
+ * Deliberately the ordinary login, not a token link. The person already has an
+ * account; what they lack is a password. Signing in with this address is what
+ * proves it is theirs, and the access decision then routes them to the claim
+ * screen — the same path as someone who finds the site by themselves, which is
+ * one path to keep working rather than two.
+ */
+export function claimProfileLink({ tenant = null, tenantSlug = "", email = "" }) {
+  const base = resolveTenantAppBaseUrl({ tenant, tenantSlug });
+  return `${base}/login?email=${encodeURIComponent(email)}`;
+}
+
 export function magicLink({ tenant = null, tenantSlug = "", token }) {
   const base = resolveTenantAppBaseUrl({ tenant, tenantSlug });
   return `${base}/login?magicToken=${encodeURIComponent(token)}`;
@@ -864,7 +879,7 @@ export async function sendTransactionalEmail({
     if (normalized.to.length === 0) {
       throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
     }
-    await assertRecipientsNotSuppressed(normalized.to);
+    await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
     const cleanSubject = String(subject || "").trim();
     if (!cleanSubject) {
       throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -1039,6 +1054,9 @@ export async function sendBulkTransactionalEmail({
   validateAddressList(ccList, "cc");
   validateAddressList(bccList, "bcc");
   validateAddressList(replyToList, "replyTo");
+  // Copies are delivery recipients too; a suppressed address must not bypass
+  // the gate just because it appears outside the main audience.
+  await assertRecipientsNotSuppressed([...ccList, ...bccList]);
 
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
@@ -1243,6 +1261,38 @@ export async function sendInviteEmail({
     idempotencyKey: buildScopedIdempotencyKey(`invite/${tenant.slug}`, token),
     tags: [
       { name: "category", value: "invite" },
+      { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  });
+}
+
+export async function sendClaimAccountEmail({ tenant, email, firstName = "", lastName = "", questionnaireName = "", replyTo = "" }) {
+  const branding = buildTenantEmailBranding(tenant);
+  const resolvedReplyTo = isValidEmailAddress(replyTo)
+    ? normalizeEmailAddress(replyTo)
+    : branding.replyTo;
+  const { subject, text, html } = claimAccountTemplate({
+    tenantName: branding.networkName,
+    link: claimProfileLink({ tenant, email }),
+    firstName,
+    lastName,
+    questionnaireName,
+    brandPrimary: branding.brandPrimary,
+    logoUrl: branding.logoUrl
+  });
+
+  return sendTransactionalEmail({
+    from: branding.from,
+    to: email,
+    ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {}),
+    subject,
+    text,
+    html,
+    // Scoped per send rather than per address, so a deliberate resend is not
+    // swallowed as a duplicate of the first one.
+    idempotencyKey: buildScopedIdempotencyKey(`claim/${tenant.slug}`, `${email}:${Date.now()}`),
+    tags: [
+      { name: "category", value: "profile_claim" },
       { name: "tenant", value: tenant.slug || "tenant" }
     ]
   });

@@ -1,47 +1,27 @@
 import crypto from "crypto";
-import { parse as parseCsv } from "csv-parse/sync";
 import { stringify } from "csv-stringify/sync";
-import { z } from "zod";
 import { UserModel, ProfileModel, ImportReportModel } from "../db/models/index.js";
-import { hashPassword } from "../utils/auth.js";
-import { composeCityState, parseCityStateDetailed } from "../utils/location.js";
 import { collectAll } from "../db/queryLimits.js";
+import { hashPassword } from "../utils/auth.js";
+import { buildImportBody, isKnownImportField } from "./importFieldMap.js";
+import { parseImportCsv } from "./importCsvParse.js";
+import { isUnclaimedProfile } from "./memberVisibility.js";
+import { profilePayloadFromBody } from "./profilePayload.js";
 
-const acceptedColumns = [
-  "firstName",
-  "lastName",
-  "email",
-  "phone",
-  "cityState",
-  "roleAtCamp",
-  "gradYear"
-];
-
-const csvRowSchema = z.object({
-  firstName: z.string().trim().min(1, "firstName is required"),
-  lastName: z.string().trim().min(1, "lastName is required"),
-  email: z.string().trim().email("email must be valid"),
-  phone: z.string().trim().optional().default(""),
-  cityState: z.string().trim().optional().default(""),
-  roleAtCamp: z.string().trim().optional().default(""),
-  gradYear: z
-    .string()
-    .trim()
-    .optional()
-    .default("")
-    .transform((value) => {
-      if (!value) return "";
-      return value;
-    })
-});
-
-function normalizeHeader(value = "") {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, "")
-    .replace(/_/g, "")
-    .toLowerCase();
-}
+/**
+ * Turns a camp's questionnaire export into profiles that are waiting to be
+ * claimed.
+ *
+ * Two things make this different from the seven-column importer it replaces.
+ * It writes every field a member can fill in themselves, through the same
+ * normalizers their own signup uses, so an imported member is indistinguishable
+ * from one who typed it all in. And the profiles it creates are "pending", which
+ * keeps them out of the directory, the member count and the map until the person
+ * they describe signs in and confirms them.
+ *
+ * The columns are not fixed. A caller supplies a mapping of spreadsheet column to
+ * profile field; producing that mapping automatically is a separate concern.
+ */
 
 function normalizeName(value = "") {
   return String(value || "")
@@ -56,12 +36,6 @@ function normalizeCityState(value = "") {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-}
-
-function canonicalizeCityState(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  return composeCityState(parseCityStateDetailed(raw));
 }
 
 function normalizeEmail(value = "") {
@@ -105,100 +79,10 @@ function levenshteinDistance(a = "", b = "") {
 
   return matrix[left.length][right.length];
 }
-
-function canonicalizeRow(rawRow = {}) {
-  const mapped = {
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    cityState: "",
-    roleAtCamp: "",
-    gradYear: ""
-  };
-
-  const entries = Object.entries(rawRow || {});
-  for (const [key, value] of entries) {
-    const normalized = normalizeHeader(key);
-    const stringValue = String(value ?? "").trim();
-
-    if (["firstname"].includes(normalized)) mapped.firstName = stringValue;
-    if (["lastname"].includes(normalized)) mapped.lastName = stringValue;
-    if (["email", "emailaddress"].includes(normalized)) mapped.email = stringValue;
-    if (["phone", "phonenumber"].includes(normalized)) mapped.phone = stringValue;
-    if (["citystate", "location", "city"].includes(normalized)) mapped.cityState = stringValue;
-    if (["roleatcamp", "camprole", "role"].includes(normalized)) mapped.roleAtCamp = stringValue;
-    if (["gradyear", "graduationyear"].includes(normalized)) mapped.gradYear = stringValue;
-  }
-
-  return {
-    ...mapped,
-    email: normalizeEmail(mapped.email),
-    cityState: canonicalizeCityState(mapped.cityState)
-  };
-}
-
-function rowToFailureCsvRecord(error) {
-  const raw = error.rawRow || {};
-  return {
-    rowNumber: error.rowNumber,
-    code: error.code,
-    message: error.message,
-    firstName: raw.firstName || "",
-    lastName: raw.lastName || "",
-    email: raw.email || "",
-    cityState: raw.cityState || "",
-    roleAtCamp: raw.roleAtCamp || "",
-    gradYear: raw.gradYear || ""
-  };
-}
-
 function ensureStringArray(values = []) {
   if (!Array.isArray(values)) return [];
   return values.map((value) => String(value || "").trim()).filter(Boolean);
 }
-
-function rowToProfilePatch(validRow, existingProfile) {
-  const patch = {};
-
-  if (validRow.firstName && validRow.firstName !== existingProfile.firstName) {
-    patch.firstName = validRow.firstName;
-  }
-
-  if (validRow.lastName && validRow.lastName !== existingProfile.lastName) {
-    patch.lastName = validRow.lastName;
-  }
-
-  if (validRow.phone) {
-    const existingPhones = ensureStringArray(existingProfile.phones);
-    if (!existingPhones.includes(validRow.phone)) {
-      patch.phones = [...existingPhones, validRow.phone];
-    }
-  }
-
-  if (validRow.cityState && validRow.cityState !== existingProfile.cityState) {
-    patch.cityState = validRow.cityState;
-  }
-
-  if (validRow.roleAtCamp && validRow.roleAtCamp !== existingProfile.roleAtCamp) {
-    patch.roleAtCamp = validRow.roleAtCamp;
-  }
-
-  if (validRow.gradYear) {
-    const existingYears = ensureStringArray(existingProfile.collegeYears);
-    if (!existingYears.includes(validRow.gradYear)) {
-      patch.collegeYears = [...existingYears, validRow.gradYear];
-    }
-  }
-
-  const existingEmails = ensureStringArray(existingProfile.emails);
-  if (validRow.email && !existingEmails.includes(validRow.email)) {
-    patch.emails = [...existingEmails, validRow.email];
-  }
-
-  return patch;
-}
-
 function buildExistingMaps(existingProfiles = [], existingUsers = []) {
   const usersById = new Map(existingUsers.map((user) => [String(user._id), user]));
   const usersByEmail = new Map();
@@ -264,14 +148,135 @@ function findFuzzyDuplicate({
 
   return null;
 }
+/**
+ * A blank cell means "leave this alone", so an update only ever adds. Arrays gain
+ * entries they do not already have, and a scalar is set only where the profile
+ * has nothing — a director's spreadsheet does not get to overwrite what a member
+ * wrote about themselves.
+ */
+function profilePatchFromPayload(payload, existingProfile) {
+  const patch = {};
 
-async function createProfileForRow({ tenantId, row, mapState }) {
-  const generatedPassword = crypto.randomBytes(18).toString("base64url");
-  const passwordHash = await hashPassword(generatedPassword);
+  for (const key of ["firstName", "lastName", "cityState", "roleAtCamp", "highSchool", "industry", "bio", "avatarUrl"]) {
+    const next = String(payload[key] || "").trim();
+    if (!next) continue;
+    if (String(existingProfile[key] || "").trim()) continue;
+    patch[key] = next;
+  }
+
+  for (const key of ["emails", "phones", "colleges", "collegeYears"]) {
+    const incoming = ensureStringArray(payload[key]);
+    if (!incoming.length) continue;
+    const existing = ensureStringArray(existingProfile[key]);
+    const merged = [...existing];
+    for (const value of incoming) {
+      if (!merged.some((item) => item.toLowerCase() === value.toLowerCase())) merged.push(value);
+    }
+    if (merged.length !== existing.length) patch[key] = merged;
+  }
+
+  for (const key of ["currentJobs", "pastJobs"]) {
+    const incoming = Array.isArray(payload[key]) ? payload[key] : [];
+    if (!incoming.length) continue;
+    const existing = Array.isArray(existingProfile[key]) ? existingProfile[key] : [];
+    const signature = (job) => `${String(job?.role || "").trim().toLowerCase()}|${String(job?.company || "").trim().toLowerCase()}`;
+    const seen = new Set(existing.map(signature));
+    const merged = [...existing];
+    for (const job of incoming) {
+      if (seen.has(signature(job))) continue;
+      seen.add(signature(job));
+      merged.push(job);
+    }
+    if (merged.length !== existing.length) patch[key] = merged;
+  }
+
+  // The socials blob carries camp years, roles and majors as well as the social
+  // links, so it merges key by key rather than being replaced wholesale.
+  const incomingSocials = payload.socials && typeof payload.socials === "object" ? payload.socials : {};
+  const existingSocials = existingProfile.socials && typeof existingProfile.socials === "object"
+    ? existingProfile.socials
+    : {};
+  const socialsPatch = { ...existingSocials };
+  let socialsChanged = false;
+  for (const [key, value] of Object.entries(incomingSocials)) {
+    if (value === undefined || value === null || value === "") continue;
+    if (Array.isArray(value) && !value.length) continue;
+    if (key === "camperYears") {
+      const existingYears = existingSocials.camperYears && typeof existingSocials.camperYears === "object"
+        ? existingSocials.camperYears
+        : {};
+      const nextYears = { ...existingYears };
+      for (const [yearKey, yearValue] of Object.entries(value || {})) {
+        if (!String(yearValue || "").trim()) continue;
+        if (String(existingYears[yearKey] || "").trim()) continue;
+        nextYears[yearKey] = yearValue;
+        socialsChanged = true;
+      }
+      socialsPatch.camperYears = nextYears;
+      continue;
+    }
+    if (existingSocials[key] !== undefined && String(existingSocials[key] || "").trim()) continue;
+    socialsPatch[key] = value;
+    socialsChanged = true;
+  }
+  if (socialsChanged) patch.socials = socialsPatch;
+
+  return patch;
+}
+
+function rowToFailureCsvRecord(error) {
+  const raw = error.rawRow && typeof error.rawRow === "object" ? error.rawRow : {};
+  return {
+    rowNumber: error.rowNumber,
+    code: error.code,
+    message: error.message,
+    ...raw
+  };
+}
+
+/**
+ * Records which import put a profile there. There is no column for it, and the
+ * socials blob is already where the profile keeps everything that is not a
+ * column, so it lives there — enough to find every row one bad import created.
+ */
+function stampProvenance(socials = {}, reportId = "") {
+  return {
+    ...(socials && typeof socials === "object" ? socials : {}),
+    importedFrom: { reportId: String(reportId || ""), importedAt: new Date().toISOString() }
+  };
+}
+
+/**
+ * Records a row as taken, so later rows in the same file see it.
+ *
+ * Called on a dry run too, where nothing is written. A questionnaire that holds
+ * the same person twice is ordinary — people resubmit — and without this the
+ * preview counted the second copy as another new profile, promising a director
+ * one more account than the commit would actually create.
+ */
+function rememberRow({ mapState, email, payload, profile = null, user = null }) {
+  const pair = { user, profile };
+  mapState.emailMap.set(email, pair);
+
+  const secondaryKey = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
+  if (secondaryKey) mapState.secondaryMap.set(secondaryKey, pair);
+
+  mapState.profilePool.push({
+    profileId: String(profile?._id || ""),
+    userId: String(user?._id || ""),
+    email,
+    fullName: fullName(payload.firstName, payload.lastName),
+    cityState: normalizeCityState(payload.cityState),
+    profile,
+    user
+  });
+}
+
+async function createProfileForRow({ tenantId, payload, email, reportId, mapState, passwordHash }) {
 
   const user = await UserModel.create({
     tenantId,
-    email: row.email,
+    email,
     passwordHash,
     roles: ["user"],
     status: "active"
@@ -280,211 +285,286 @@ async function createProfileForRow({ tenantId, row, mapState }) {
   const profile = await ProfileModel.create({
     tenantId,
     userId: user._id,
-    firstName: row.firstName,
-    lastName: row.lastName,
-    emails: [row.email],
-    phones: row.phone ? [row.phone] : [],
-    cityState: row.cityState || "",
-    roleAtCamp: row.roleAtCamp || "",
-    highSchool: "",
-    colleges: [],
-    collegeYears: row.gradYear ? [row.gradYear] : [],
-    currentJobs: [],
-    pastJobs: [],
-    industry: "",
-    socials: { linkedin: "", instagram: "", facebook: "" },
-    avatarUrl: "",
-    bio: ""
+    ...payload,
+    emails: payload.emails?.length ? payload.emails : [email],
+    socials: stampProvenance(payload.socials, reportId),
+    // The one line that keeps an imported person out of the directory until they
+    // sign in and say the profile is theirs.
+    status: "pending"
   });
 
   await UserModel.update(user._id, { profileId: profile._id });
 
-  const createdPair = { user, profile };
-
-  mapState.emailMap.set(row.email, createdPair);
-  const secondaryKey = buildSecondaryKey(row.firstName, row.lastName, row.cityState);
-  if (secondaryKey) {
-    mapState.secondaryMap.set(secondaryKey, createdPair);
-  }
-
-  mapState.profilePool.push({
-    profileId: String(profile._id),
-    userId: String(user._id),
-    email: row.email,
-    fullName: fullName(row.firstName, row.lastName),
-    cityState: normalizeCityState(row.cityState),
-    profile,
-    user
-  });
+  rememberRow({ mapState, email, payload, profile, user });
+  return profile;
 }
 
+/**
+ * A ceiling on one file. The commit walks rows inside a single request, so a
+ * questionnaire past this belongs in a couple of files rather than one that
+ * times out halfway and leaves a director guessing what landed.
+ */
+export const MAX_IMPORT_ROWS = 2000;
+
+export function validateImportMapping(mapping = {}) {
+  const entries = Object.entries(mapping || {});
+  const unknown = [];
+  const paths = new Set();
+
+  for (const [column, target] of entries) {
+    for (const path of Array.isArray(target) ? target : [target]) {
+      const trimmed = String(path || "").trim();
+      if (!trimmed) continue;
+      if (!isKnownImportField(trimmed)) unknown.push({ column, path: trimmed });
+      paths.add(trimmed);
+    }
+  }
+
+  return { unknown, hasEmail: paths.has("email") };
+}
+
+/**
+ * Runs an import, or works out what one would do.
+ *
+ * With `dryRun` nothing is written and every row comes back with the disposition
+ * it would have had. That is the whole safety property of the feature: a director
+ * sees creates, updates, duplicates and failures before any of it exists.
+ */
 export async function runTenantCsvImport({
   tenantId,
   userId,
   fileName,
   csvBuffer,
+  mapping = {},
+  cleanedValues = null,
   options = {}
 }) {
+  const dryRun = Boolean(options.dryRun);
   const enableFuzzyMatch = Boolean(options.enableFuzzyMatch);
   const fuzzyDistance = Math.min(4, Math.max(0, Number(options.fuzzyDistance ?? 1) || 1));
 
-  const csvText = Buffer.isBuffer(csvBuffer) ? csvBuffer.toString("utf8") : String(csvBuffer || "");
-
-  let parsedRows = [];
-  try {
-    parsedRows = parseCsv(csvText, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-      bom: true,
-      relax_column_count: true
-    });
-  } catch (error) {
-    const csvError = new Error(error.message || "Invalid CSV format");
-    csvError.code = "CSV_INVALID_FORMAT";
-    throw csvError;
+  const { unknown, hasEmail } = validateImportMapping(mapping);
+  if (unknown.length) {
+    const error = new Error(`Unknown import field: ${unknown.map((item) => item.path).join(", ")}`);
+    error.code = "IMPORT_FIELD_UNKNOWN";
+    throw error;
+  }
+  if (!hasEmail) {
+    // Email is how a person later claims the row. Without it an import creates
+    // profiles nobody can ever sign in to.
+    const error = new Error("Map a column to the email address before importing.");
+    error.code = "IMPORT_EMAIL_REQUIRED";
+    throw error;
   }
 
-  // These build the dedupe maps for the whole import. A capped read makes every member
-  // past the first 1,000 look new, so importing into a large camp would create duplicates
-  // instead of updating people who are already there.
+  const parsedRows = parseImportCsv(csvBuffer);
+  if (parsedRows.length > MAX_IMPORT_ROWS) {
+    const error = new Error(
+      `That file has ${parsedRows.length} responses, and ${MAX_IMPORT_ROWS} is the most one import can take. Split it and run them in turn.`
+    );
+    error.code = "IMPORT_TOO_MANY_ROWS";
+    throw error;
+  }
+
+  // These build the dedupe maps for the whole import, so they have to be complete.
+  // A capped read makes every member past the first 1,000 look new, which would
+  // create duplicates instead of updating people who are already there —
+  // findAllBatched keyset-walks the whole tenant rather than truncating.
   const existingProfiles = await collectAll(ProfileModel.findAllBatched(tenantId));
   const existingUsers = await collectAll(UserModel.findAllBatched(tenantId));
   const mapState = buildExistingMaps(existingProfiles, existingUsers);
 
   const errors = [];
+  const dispositions = [];
   let createdCount = 0;
   let updatedCount = 0;
   let skippedDuplicates = 0;
 
+  // Written before the rows so a run that times out still leaves a record of what
+  // was attempted, rather than a half-import with nothing to point at.
+  const report = dryRun
+    ? null
+    : await ImportReportModel.create({
+      tenantId,
+      createdByUserId: userId,
+      fileName: fileName || "import.csv",
+      options: { enableFuzzyMatch, fuzzyDistance, mapping },
+      summary: { rowsRead: parsedRows.length, createdCount: 0, updatedCount: 0, skippedDuplicates: 0, errorCount: 0 },
+      rowErrors: [],
+      failureCsv: ""
+    });
+  const reportId = report ? String(report._id) : "";
+  // Imported accounts have no usable password. Hash one fresh 256-bit secret
+  // per run, only when a new account is needed, and discard the plaintext.
+  // Repeating bcrypt for every row adds minutes to a normal camp import while
+  // giving no extra protection to credentials nobody knows or receives.
+  let importPasswordHash = "";
+  const pendingCreates = [];
+  const CREATE_CONCURRENCY = 8;
+
+  async function flushCreates() {
+    if (!pendingCreates.length) return;
+    if (!importPasswordHash) {
+      importPasswordHash = await hashPassword(crypto.randomBytes(32).toString("base64url"));
+    }
+    const batch = pendingCreates.splice(0);
+    // Reservations prevent a repeated identity from entering the same batch.
+    // No further row is inspected until this batch settles, so replacing them
+    // with successful persisted records preserves the sequential merge rules.
+    for (const { email, payload } of batch) {
+      mapState.emailMap.delete(email);
+      const key = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
+      if (key) mapState.secondaryMap.delete(key);
+    }
+    const reservedEmails = new Set(batch.map((item) => item.email));
+    mapState.profilePool = mapState.profilePool.filter((item) => !reservedEmails.has(item.email));
+    await Promise.all(batch.map(async ({ email, payload, rowNumber, rawRow }) => {
+      try {
+        await createProfileForRow({ tenantId, payload, email, reportId, mapState, passwordHash: importPasswordHash });
+        createdCount += 1;
+      } catch (error) {
+        errors.push({ rowNumber, code: "CREATE_ERROR", message: error.message || "Failed to create", rawRow });
+      }
+    }));
+  }
+
+
   for (let index = 0; index < parsedRows.length; index += 1) {
     const rowNumber = index + 2;
-    const canonical = canonicalizeRow(parsedRows[index]);
+    const rawRow = parsedRows[index];
+    const { body, skipped } = buildImportBody(rawRow, mapping, cleanedValues);
 
-    const parsed = csvRowSchema.safeParse(canonical);
-    if (!parsed.success) {
+    const email = normalizeEmail(body.email || "");
+    if (!email) {
       errors.push({
         rowNumber,
-        code: "VALIDATION_ERROR",
-        message: parsed.error.issues.map((issue) => issue.message).join("; "),
-        rawRow: canonical
+        code: "EMAIL_REQUIRED",
+        message: "This row has no usable email address, so nobody could ever claim it.",
+        rawRow
       });
       continue;
     }
 
-    const row = parsed.data;
-
-    const primaryDuplicate = mapState.emailMap.get(row.email);
-    if (primaryDuplicate) {
-      try {
-        const patch = rowToProfilePatch(row, primaryDuplicate.profile);
-        const patchKeys = Object.keys(patch);
-
-        if (patchKeys.length === 0) {
-          skippedDuplicates += 1;
-          continue;
-        }
-
-        const updatedProfile = await ProfileModel.update(primaryDuplicate.profile._id, patch);
-
-        primaryDuplicate.profile = updatedProfile;
-
-        const secondaryKey = buildSecondaryKey(
-          updatedProfile.firstName,
-          updatedProfile.lastName,
-          updatedProfile.cityState
-        );
-        if (secondaryKey) {
-          mapState.secondaryMap.set(secondaryKey, {
-            user: primaryDuplicate.user,
-            profile: updatedProfile
-          });
-        }
-
-        const poolItem = mapState.profilePool.find(
-          (candidate) => String(candidate.profileId) === String(updatedProfile._id)
-        );
-        if (poolItem) {
-          poolItem.profile = updatedProfile;
-          poolItem.fullName = fullName(updatedProfile.firstName, updatedProfile.lastName);
-          poolItem.cityState = normalizeCityState(updatedProfile.cityState);
-        }
-
-        updatedCount += 1;
-      } catch (error) {
-        errors.push({
-          rowNumber,
-          code: "UPDATE_ERROR",
-          message: error.message || "Failed to update duplicate row",
-          rawRow: row
-        });
-      }
+    // profilePayloadFromBody takes the address from the identity, which an import
+    // does not have — the row is the identity here.
+    const payload = profilePayloadFromBody(body, { email });
+    if (!payload.firstName && !payload.lastName) {
+      errors.push({
+        rowNumber,
+        code: "NAME_REQUIRED",
+        message: "This row has no name, so nobody could recognise the profile as theirs.",
+        rawRow
+      });
       continue;
     }
 
-    const secondaryKey = buildSecondaryKey(row.firstName, row.lastName, row.cityState);
+    const secondaryKey = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
+    // Dependent rows must see the result of earlier creates, including failures.
+    // Fuzzy matching intentionally remains sequential because its candidate
+    // choice depends on every earlier successful profile.
+    if (!dryRun && pendingCreates.length && (
+      enableFuzzyMatch || mapState.emailMap.has(email) ||
+      (secondaryKey && mapState.secondaryMap.has(secondaryKey))
+    )) {
+      await flushCreates();
+    }
+
+    const primaryDuplicate = mapState.emailMap.get(email);
+    if (primaryDuplicate) {
+      // No profile behind it means this file already held this person and the run
+      // is a dry one, so there is nothing on record to compare against yet. The
+      // row is a repeat either way.
+      if (!primaryDuplicate.profile) {
+        skippedDuplicates += 1;
+        dispositions.push({ rowNumber, email, disposition: "duplicate", reason: "repeated_in_file" });
+        continue;
+      }
+      const patch = profilePatchFromPayload(payload, primaryDuplicate.profile);
+      if (!Object.keys(patch).length) {
+        skippedDuplicates += 1;
+        dispositions.push({ rowNumber, email, disposition: "unchanged" });
+        continue;
+      }
+      dispositions.push({ rowNumber, email, disposition: "update", fields: Object.keys(patch) });
+      if (!dryRun) {
+        try {
+          const updatedProfile = await ProfileModel.update(primaryDuplicate.profile._id, patch);
+          primaryDuplicate.profile = updatedProfile;
+          const poolItem = mapState.profilePool.find(
+            (candidate) => String(candidate.profileId) === String(updatedProfile._id)
+          );
+          if (poolItem) {
+            poolItem.profile = updatedProfile;
+            poolItem.fullName = fullName(updatedProfile.firstName, updatedProfile.lastName);
+            poolItem.cityState = normalizeCityState(updatedProfile.cityState);
+          }
+        } catch (error) {
+          errors.push({ rowNumber, code: "UPDATE_ERROR", message: error.message || "Failed to update", rawRow });
+          continue;
+        }
+      }
+      updatedCount += 1;
+      continue;
+    }
+
     if (secondaryKey && mapState.secondaryMap.has(secondaryKey)) {
       skippedDuplicates += 1;
+      dispositions.push({ rowNumber, email, disposition: "duplicate", reason: "name_and_city" });
       continue;
     }
 
     if (enableFuzzyMatch) {
       const fuzzyDuplicate = findFuzzyDuplicate({
-        candidateFullName: fullName(row.firstName, row.lastName),
-        candidateCityState: row.cityState,
+        candidateFullName: fullName(payload.firstName, payload.lastName),
+        candidateCityState: payload.cityState,
         profilePool: mapState.profilePool,
         fuzzyDistance
       });
-
       if (fuzzyDuplicate) {
         skippedDuplicates += 1;
+        dispositions.push({ rowNumber, email, disposition: "duplicate", reason: "fuzzy_name" });
         continue;
       }
     }
 
-    try {
-      await createProfileForRow({ tenantId, row, mapState });
+    dispositions.push({
+      rowNumber,
+      email,
+      disposition: "create",
+      unparseable: skipped.length ? skipped : undefined
+    });
+    if (dryRun) {
+      rememberRow({ mapState, email, payload });
       createdCount += 1;
-    } catch (error) {
-      errors.push({
-        rowNumber,
-        code: "CREATE_ERROR",
-        message: error.message || "Failed to create profile",
-        rawRow: row
-      });
+    } else {
+      pendingCreates.push({ email, payload, rowNumber, rawRow });
+      rememberRow({ mapState, email, payload });
+      if (pendingCreates.length >= CREATE_CONCURRENCY) await flushCreates();
     }
   }
+  await flushCreates();
+  errors.sort((left, right) => left.rowNumber - right.rowNumber);
 
   const failureCsv = errors.length
     ? stringify(errors.map((error) => rowToFailureCsvRecord(error)), { header: true })
     : "";
-
-  const report = await ImportReportModel.create({
-    tenantId,
-    createdByUserId: userId,
-    fileName: fileName || "import.csv",
-    options: {
-      enableFuzzyMatch,
-      fuzzyDistance
-    },
-    summary: {
-      rowsRead: parsedRows.length,
-      createdCount,
-      updatedCount,
-      skippedDuplicates,
-      errorCount: errors.length
-    },
-    rowErrors: errors,
-    failureCsv
-  });
-
-  return {
-    reportId: String(report._id),
-    acceptedColumns,
+  const summary = {
     rowsRead: parsedRows.length,
     createdCount,
     updatedCount,
     skippedDuplicates,
+    errorCount: errors.length
+  };
+
+  if (report) {
+    await ImportReportModel.update(report._id, { summary, rowErrors: errors, failureCsv });
+  }
+
+  return {
+    reportId,
+    dryRun,
+    ...summary,
+    dispositions,
     errors,
     failureCsv
   };
@@ -493,3 +573,86 @@ export async function runTenantCsvImport({
 export async function findImportReportForTenant({ tenantId, reportId }) {
   return ImportReportModel.findOne(tenantId, { _id: reportId });
 }
+
+export function wasCreatedByImport(profile, reportId = "") {
+  const stamp = profile?.socials?.importedFrom;
+  return Boolean(reportId) && String(stamp?.reportId || "") === String(reportId);
+}
+
+/**
+ * Takes back an import.
+ *
+ * The reason a bad import is survivable: every profile it created carries the id
+ * of the run that created it, so the whole batch can be found and removed.
+ *
+ * It only ever removes rows that are still unclaimed. Once someone has signed in
+ * and confirmed a profile, the account is theirs — deleting it because a director
+ * regrets the upload would take away something a person now relies on. Those are
+ * counted and reported instead, so the director knows exactly what stayed and
+ * why.
+ */
+export async function undoTenantImport({ tenantId, reportId }) {
+  const report = await ImportReportModel.findOne(tenantId, { _id: reportId });
+  if (!report) {
+    const error = new Error("That import could not be found.");
+    error.code = "IMPORT_REPORT_NOT_FOUND";
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // The stamp lives inside the socials blob, which PostgREST cannot filter on
+  // through this model, so the tenant's profiles are read and matched here.
+  const profiles = await collectAll(ProfileModel.findAllBatched(tenantId));
+  const fromThisImport = profiles.filter((profile) => wasCreatedByImport(profile, reportId));
+
+  let removedCount = 0;
+  let keptClaimedCount = 0;
+  const failures = [];
+
+  // Each transaction locks one independent profile/account pair. Bound the
+  // parallelism so a normal camp-sized undo does not require hundreds of
+  // sequential network round trips, while retaining the claim/undo lock guard.
+  for (let offset = 0; offset < fromThisImport.length; offset += 8) {
+    const outcomes = await Promise.all(fromThisImport.slice(offset, offset + 8).map(async (profile) => {
+      if (!isUnclaimedProfile(profile)) return { kind: "claimed" };
+      try {
+        const kind = await ProfileModel.deleteUnclaimedImport(tenantId, profile._id, reportId);
+        return { kind };
+      } catch (error) {
+        return { failure: { profileId: String(profile._id), message: error.message || "Could not remove" } };
+      }
+    }));
+    // Promise.all retains source order even if the RPCs finish out of order.
+    for (const outcome of outcomes) {
+      if (outcome.kind === "removed") removedCount += 1;
+      else if (outcome.kind === "claimed" || outcome.kind === "protected") keptClaimedCount += 1;
+      if (outcome.failure) failures.push(outcome.failure);
+    }
+  }
+
+  await ImportReportModel.update(report._id, {
+    summary: {
+      ...(report.summary && typeof report.summary === "object" ? report.summary : {}),
+      undoneAt: new Date().toISOString(),
+      removedCount,
+      keptClaimedCount
+    }
+  }).catch(() => {});
+
+  return {
+    reportId: String(report._id),
+    matchedCount: fromThisImport.length,
+    removedCount,
+    keptClaimedCount,
+    failures
+  };
+}
+
+export async function listImportReportsForTenant({ tenantId, limit = 20 }) {
+  return ImportReportModel.find(tenantId, {}, { sort: { createdAt: -1 }, limit });
+}
+
+// The merge rule decides whether a re-import can overwrite what a member wrote
+// about themselves, so it is tested directly rather than only through a run that
+// needs a database.
+export const __testables = { profilePatchFromPayload, stampProvenance, rememberRow, buildExistingMaps };

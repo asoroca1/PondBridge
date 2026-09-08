@@ -31,6 +31,7 @@ export const FamilyTreeModel = {
     const { data, error } = await getSupabaseAdmin()
       .from("profiles")
       .select("id, first_name, last_name, avatar_url")
+      .eq("tenant_id", tenantId)
       .in("id", profileIds);
     if (error) throw error;
 

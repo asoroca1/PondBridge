@@ -2,7 +2,7 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
-import { resolveClerkIdentityFromRequest } from "./clerkIdentity.js";
+import { extractTenantScopeFromIdentity, resolveClerkIdentityFromRequest } from "./clerkIdentity.js";
 import {
   MessageModel,
   ConversationModel,
@@ -14,7 +14,8 @@ import {
   findSingleTenantMembershipForIdentity,
   findTenantUserFromMembershipIdentity,
   findTenantUserForIdentity,
-  ensureGlobalSuperAdmin
+  ensureGlobalSuperAdmin,
+  applySuperConsoleRolePolicy
 } from "./identityUsers.js";
 import {
   evaluateFeatureRollout,
@@ -51,7 +52,8 @@ export let io = null;
 // ---------------------------------------------------------------------------
 
 function authUsesLegacy() {
-  return ["legacy", "hybrid"].includes(env.AUTH_PROVIDER);
+  return env.AUTH_PROVIDER === "legacy" ||
+    (env.AUTH_PROVIDER === "hybrid" && Boolean(env.HYBRID_ALLOW_LEGACY_TOKENS));
 }
 
 function authUsesClerk() {
@@ -62,19 +64,21 @@ function authUsesClerk() {
  * Authenticate a socket connection from its handshake auth token.
  * Returns { user } on success or throws on failure.
  */
-async function authenticateSocket(socket) {
+export async function authenticateSocket(socket) {
   const token = socket.handshake.auth?.token || "";
   if (!token) throw new Error("Missing auth token");
+
+  const tenantSlug = String(socket.handshake.auth?.tenantSlug || "").trim().toLowerCase();
+  const selectedTenant = tenantSlug ? await TenantModel.findOne({ slug: tenantSlug }) : null;
+  if (tenantSlug && !selectedTenant) throw new Error("Tenant not found");
+  const identityRollout = selectedTenant
+    ? await evaluateFeatureRollout(MULTI_CAMP_IDENTITY_FLAG, selectedTenant)
+    : { enabled: false };
 
   // --- Legacy / JWT ---
   if (authUsesLegacy()) {
     try {
       const payload = jwt.verify(token, env.JWT_SECRET);
-      const tenantSlug = String(socket.handshake.auth?.tenantSlug || "").trim().toLowerCase();
-      const selectedTenant = tenantSlug ? await TenantModel.findOne({ slug: tenantSlug }) : null;
-      const identityRollout = selectedTenant
-        ? await evaluateFeatureRollout(MULTI_CAMP_IDENTITY_FLAG, selectedTenant)
-        : { enabled: false };
       const appUser = selectedTenant && identityRollout.enabled
         ? await findTenantUserFromMembershipIdentity(selectedTenant._id, {
             email: String(payload.email || ""),
@@ -82,12 +86,18 @@ async function authenticateSocket(socket) {
           })
         : await UserModel.findById(String(payload.sub || ""));
       if (!appUser) throw new Error("Membership not found");
-      const roles = Array.isArray(appUser.roles) ? appUser.roles : [];
+      const roles = applySuperConsoleRolePolicy(appUser.roles || [], {
+        provider: "legacy", email: payload.email || ""
+      }, appUser.email || "");
       if (appUser.status !== "active" && !roles.includes("super_admin")) {
         throw new Error("Membership is inactive");
       }
       const claimedTenantId = String(payload.tenantId || "").trim();
       const membershipTenantId = String(appUser.tenantId || "").trim();
+      if (selectedTenant && !roles.includes("super_admin") &&
+          membershipTenantId !== String(selectedTenant._id)) {
+        throw new Error("Tenant scope mismatch");
+      }
       if (
         !identityRollout.enabled &&
         claimedTenantId &&
@@ -124,11 +134,6 @@ async function authenticateSocket(socket) {
     if (identity) {
       // Resolve against the tenant selected by the client first. This keeps
       // multi-camp Clerk identities scoped to the camp currently being viewed.
-      const tenantSlug = String(socket.handshake.auth?.tenantSlug || "").trim().toLowerCase();
-      const selectedTenant = tenantSlug ? await TenantModel.findOne({ slug: tenantSlug }) : null;
-      const identityRollout = selectedTenant
-        ? await evaluateFeatureRollout(MULTI_CAMP_IDENTITY_FLAG, selectedTenant)
-        : { enabled: false };
       let appUser = selectedTenant
         ? identityRollout.enabled
           ? await findTenantUserFromMembershipIdentity(selectedTenant._id, identity)
@@ -141,7 +146,21 @@ async function authenticateSocket(socket) {
         throw new Error("Membership-backed tenant access required");
       }
       if (appUser) {
-        const roles = Array.isArray(appUser.roles) ? appUser.roles : [];
+        const roles = applySuperConsoleRolePolicy(appUser.roles || [], identity, appUser.email || "");
+        if (!roles.includes("super_admin")) {
+          const membershipTenantId = String(appUser.tenantId || "").trim();
+          const tenantId = selectedTenant ? String(selectedTenant._id) : membershipTenantId;
+          const claimedTenantId = String(extractTenantScopeFromIdentity(identity)?.tenantId || "").trim();
+          if (!membershipTenantId || membershipTenantId !== tenantId) {
+            throw new Error("Tenant scope mismatch");
+          }
+          if (!identityRollout.enabled && claimedTenantId && claimedTenantId !== tenantId) {
+            throw new Error("Token tenant scope mismatch");
+          }
+          if (!identityRollout.enabled && env.CLERK_REQUIRE_TENANT_CLAIM && !claimedTenantId) {
+            throw new Error("Tenant claim required");
+          }
+        }
         if (appUser.status !== "active" && !roles.includes("super_admin")) {
           throw new Error("Membership is inactive");
         }
@@ -155,17 +174,7 @@ async function authenticateSocket(socket) {
           }
         };
       }
-      // If we resolved an identity but no app user, allow connection with
-      // the Clerk userId so the client doesn't get hard-blocked.
-      return {
-        user: {
-          id: identity.clerkUserId,
-          _id: identity.clerkUserId,
-          tenantId: null,
-          roles: [],
-          email: identity.email || ""
-        }
-      };
+      throw new Error("Membership not found");
     }
   }
 

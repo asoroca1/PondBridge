@@ -1,0 +1,500 @@
+{
+  "checked_at": "2026-09-08T19:28:22.122Z",
+  "results": [
+    {
+      "label": "cloudflare-zone",
+      "status": 200,
+      "data": {
+        "success": true,
+        "status": "active",
+        "plan": "Free Website"
+      }
+    },
+    {
+      "label": "cloudflare-settings",
+      "status": 403,
+      "data": {
+        "code": [
+          9109
+        ]
+      }
+    },
+    {
+      "label": "cloudflare-pages",
+      "status": 200,
+      "data": {
+        "success": true,
+        "name": "pondbridge",
+        "production_branch": "main",
+        "build_config": {
+          "build_command": "npm --workspace @pondbridge/web run build",
+          "destination_dir": "apps/web/dist",
+          "root_dir": "",
+          "web_analytics_tag": null,
+          "web_analytics_token": null
+        },
+        "latest_deployment": {
+          "id": "98a7668b-9b9d-4471-aeb9-d881c9214d3f",
+          "environment": "production",
+          "stage": {
+            "name": "deploy",
+            "started_on": "2026-09-08T18:36:32.310521Z",
+            "ended_on": "2026-09-08T18:36:47.427838Z",
+            "status": "success"
+          },
+          "trigger": {
+            "branch": "main",
+            "commit_hash": "2fd23b54f409b704009cf5c36357826e36ba09e5",
+            "commit_message": "Improve search relevance, saved-search privacy, and admin clarity (#142)",
+            "commit_dirty": false
+          }
+        },
+        "env_keys": {
+          "preview": [
+            "VITE_API_BASE",
+            "VITE_APP_BASE_DOMAIN"
+          ],
+          "production": [
+            "VITE_API_BASE",
+            "VITE_APP_BASE_DOMAIN",
+            "VITE_AUTH_PROVIDER",
+            "VITE_CLERK_PUBLISHABLE_KEY"
+          ]
+        }
+      }
+    },
+    {
+      "label": "cloudflare-subscriptions",
+      "status": 403,
+      "data": {
+        "code": [
+          10000
+        ]
+      }
+    },
+    {
+      "label": "stripe-account",
+      "status": 200,
+      "data": {
+        "id": "acct_1T3ScFKmSeC5JnMu",
+        "charges_enabled": true,
+        "payouts_enabled": true,
+        "country": "US",
+        "requirements": {}
+      }
+    },
+    {
+      "label": "stripe-webhooks",
+      "status": 200,
+      "data": {
+        "has_more": false,
+        "endpoints": [
+          {
+            "url": "https://api.pondbridgealumni.com/api/stripe/webhook",
+            "status": "enabled",
+            "livemode": true,
+            "api_version": "2026-01-28.clover",
+            "enabled_events": [
+              "invoice.paid",
+              "invoice.payment_failed",
+              "checkout.session.completed",
+              "customer.subscription.created",
+              "customer.subscription.deleted",
+              "customer.subscription.updated",
+              "invoice.finalization_failed",
+              "payment_intent.succeeded",
+              "payment_intent.payment_failed"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "clerk-instance",
+      "status": 200,
+      "data": {
+        "keys": [
+          "id",
+          "object",
+          "environment_type",
+          "allowed_origins",
+          "allowed_subdomains",
+          "subdomain_allowlist_enabled",
+          "workspace_id"
+        ],
+        "environment_type": "production",
+        "allowed_origins": null
+      }
+    },
+    {
+      "label": "clerk-user-count",
+      "status": 200,
+      "data": {
+        "total_count": 470
+      }
+    },
+    {
+      "label": "r2-buckets",
+      "status": 403,
+      "data": {
+        "codes": [
+          10000
+        ]
+      }
+    },
+    {
+      "label": "stream-webhook",
+      "status": 403,
+      "data": {
+        "codes": [
+          10000
+        ]
+      }
+    },
+    {
+      "label": "dns-records",
+      "status": 200,
+      "data": {
+        "records": [
+          {
+            "type": "CNAME",
+            "name": "accounts.pondbridgealumni.com",
+            "content": "accounts.clerk.services",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "api.pondbridgealumni.com",
+            "content": "pondbridge-api.onrender.com",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "app.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "autodiscover.demos.pondbridgealumni.com",
+            "content": "autodiscover.outlook.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "autodiscover.outreach.pondbridgealumni.com",
+            "content": "autodiscover.outlook.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "autodiscover.pondbridgealumni.com",
+            "content": "autodiscover.outlook.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "autodiscover.support.pondbridgealumni.com",
+            "content": "autodiscover.outlook.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "caribou-demo.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "cedar-1151c861.pondbridge.co.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "cedar-128b989f.pondbridge.co.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "cedar-13f502e5.pondbridge.co.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "cedar-1588928f.pondbridge.co.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "cedar-22cbad95.pondbridge.co.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "cedar-23187967.pondbridge.co.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "cedar.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "clerk.pondbridgealumni.com",
+            "content": "frontend-api.clerk.services",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "clk2._domainkey.pondbridgealumni.com",
+            "content": "dkim2.ei8pzbz7pg9y.clerk.services",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "clk._domainkey.pondbridgealumni.com",
+            "content": "dkim1.ei8pzbz7pg9y.clerk.services",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "clkmail.pondbridgealumni.com",
+            "content": "mail.ei8pzbz7pg9y.clerk.services",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "debug522-1771983035618.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseenrollment.demos.pondbridgealumni.com",
+            "content": "enterpriseenrollment-s.manage.microsoft.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseenrollment.outreach.pondbridgealumni.com",
+            "content": "enterpriseenrollment-s.manage.microsoft.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseenrollment.pondbridgealumni.com",
+            "content": "enterpriseenrollment-s.manage.microsoft.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseenrollment.support.pondbridgealumni.com",
+            "content": "enterpriseenrollment-s.manage.microsoft.com",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseregistration.demos.pondbridgealumni.com",
+            "content": "enterpriseregistration.windows.net",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseregistration.outreach.pondbridgealumni.com",
+            "content": "enterpriseregistration.windows.net",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseregistration.pondbridgealumni.com",
+            "content": "enterpriseregistration.windows.net",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "enterpriseregistration.support.pondbridgealumni.com",
+            "content": "enterpriseregistration.windows.net",
+            "proxied": false
+          },
+          {
+            "type": "CNAME",
+            "name": "greenlane.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "isolation-187967.pondbridge.co.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "matoaka.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "*.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "pondbridgealumni.com",
+            "content": "pondbridge-landing.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "super.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "tapawingo-demo.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test10.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test12.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test13.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test19.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test1.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test20.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test2.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test3.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test4.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test5.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test8.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test9.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "test.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "tripplake.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "vega-demo.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "CNAME",
+            "name": "www.pondbridgealumni.com",
+            "content": "pondbridge.pages.dev",
+            "proxied": true
+          },
+          {
+            "type": "MX",
+            "name": "demos.pondbridgealumni.com",
+            "content": "demos-pondbridgealumni-com.mail.protection.outlook.com",
+            "proxied": false
+          },
+          {
+            "type": "MX",
+            "name": "outreach.pondbridgealumni.com",
+            "content": "outreach-pondbridgealumni-com.mail.protection.outlook.com",
+            "proxied": false
+          },
+          {
+            "type": "MX",
+            "name": "pondbridgealumni.com",
+            "content": "pondbridgealumni-com.mail.protection.outlook.com",
+            "proxied": false
+          },
+          {
+            "type": "MX",
+            "name": "send.pondbridgealumni.com",
+            "content": "feedback-smtp.us-east-1.amazonses.com",
+            "proxied": false
+          },
+          {
+            "type": "MX",
+            "name": "support.pondbridgealumni.com",
+            "content": "support-pondbridgealumni-com.mail.protection.outlook.com",
+            "proxied": false
+          }
+        ],
+        "total": 65
+      }
+    }
+  ]
+}

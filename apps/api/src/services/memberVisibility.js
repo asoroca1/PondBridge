@@ -6,6 +6,18 @@ export function isRemovedProfile(profile = null) {
   return normalizedStatus(profile?.status) === "removed";
 }
 
+/**
+ * A profile an import created for someone who has not yet signed in and said
+ * "yes, that's me". The camp asserted this information; the person it describes
+ * has not agreed to it being shown, so nothing may surface it to other members
+ * until they confirm.
+ *
+ * Nothing else in the API writes a pending profile, so the status is the marker.
+ */
+export function isUnclaimedProfile(profile = null) {
+  return normalizedStatus(profile?.status) === "pending";
+}
+
 export function isInactiveUser(user = null) {
   const status = normalizedStatus(user?.status);
   return status === "inactive" || status === "removed";
@@ -13,6 +25,7 @@ export function isInactiveUser(user = null) {
 
 export function canAccessMemberProfile({ profile = null, user = null } = {}) {
   if (!profile || isRemovedProfile(profile)) return false;
+  if (isUnclaimedProfile(profile)) return false;
   if (profile?.userId && (!user || isInactiveUser(user))) return false;
   return true;
 }

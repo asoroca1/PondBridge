@@ -1,4 +1,5 @@
 import { AlumniContactModel } from "../db/models/index.js";
+import { isUnclaimedProfile } from "./memberVisibility.js";
 import { sanitizeText } from "../utils/sanitize.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -429,7 +430,16 @@ function indexPeopleSources({
     const contact = contactMap.get(email);
     // An explicit hold outranks everything: it means "do not contact this person".
     if (String(contact?.contactStatus || "") === "do_not_contact") return "on_hold";
-    if (memberMap.has(email)) return "member";
+    // An account nobody has signed in to is not a member yet, and its profile is
+    // invisible to the camp until someone confirms it. Filing it under "member"
+    // would inflate the count and hide the people who still need asking.
+    //
+    // Not every one of these arrived by import — staging data carries pending
+    // profiles from its own seed — so the stage is named for the claim state,
+    // which is what it actually tests, rather than for where the row came from.
+    if (memberMap.has(email)) {
+      return isUnclaimedProfile(memberMap.get(email)?.profile) ? "unclaimed" : "member";
+    }
     if (requestMap.has(email)) return "request";
     const latestInvite = invitesByEmail.get(email)?.[0] || null;
     if (latestInvite && !latestInvite.usedAt) {
@@ -555,6 +565,12 @@ export function buildPeopleDirectory({
       yearsAtCamp: mergeCampYears(memberRow?.yearsAtCamp, contact?.campYears),
       completionScore: Number(memberRow?.completionScore || 0),
       memberStatus: memberRow?.status || "",
+      // Whether an import created this row, and whether the person has since said
+      // it is not them. The claim action needs both: it must not offer to email a
+      // profile that never came from a questionnaire, nor pester someone who has
+      // already told the camp they are the wrong person.
+      wasImported: Boolean(profile?.socials?.importedFrom),
+      claimDeclined: Boolean(profile?.socials?.importedFrom?.claimDeclinedAt),
       joinedAt: iso(profile?.createdAt || user?.createdAt),
       lastActiveAt: iso(activityByUserId.get(userId)),
       inviteCount: Math.max(
@@ -596,7 +612,11 @@ export function buildAlumniGrowthSnapshot({
   );
   // A member with no address on file still joined. They cannot be matched to a
   // contact or invite by email, but they must not vanish from the totals.
-  const joinedMemberCount = memberMap.size;
+  // Same rule as the stage rail: nobody has signed in to an unclaimed account, so
+  // it has not joined, and must not count towards "Joined" or flatter the
+  // weekly-active rate by sitting in its denominator.
+  const joinedMemberCount = [...memberMap.values()]
+    .filter((entry) => !isUnclaimedProfile(entry?.profile)).length;
   const emaillessMemberCount = Math.max(0, joinedMemberCount - joinedEmails.size);
   const contactMap = new Map();
   for (const contact of contacts) {

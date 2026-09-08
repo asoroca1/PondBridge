@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@pondbridge/ui";
 import { UserPlus } from "lucide-react";
@@ -6,7 +6,6 @@ import { WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import useAdminApi from "./useAdminApi.js";
-import PeopleAddView from "./people/PeopleAddView.jsx";
 import PeopleExportDialog from "./people/PeopleExportDialog.jsx";
 import PeopleListView from "./people/PeopleListView.jsx";
 import InviteReviewDialog from "./people/InviteReviewDialog.jsx";
@@ -17,6 +16,7 @@ import TiersWorkspace from "./tiers/TiersWorkspace.jsx";
 import "./director-admin-people.css";
 
 const VALID_VIEWS = new Set([...STAGES.map((stage) => stage.key), "add", "tiers"]);
+const PeopleAddView = lazy(() => import("./people/PeopleAddView.jsx"));
 
 export default function DirectorAdminPeoplePage() {
   const navigate = useNavigate();
@@ -66,13 +66,17 @@ export default function DirectorAdminPeoplePage() {
     }
     if (activeView === "add") {
       return (
-        <PeopleAddView
+        <Suspense fallback={<p role="status">Loading Add people…</p>}>
+          <PeopleAddView
           actions={actions}
           storage={directory.storage}
+          request={request}
+          download={download}
           slug={slug}
           networkName={networkName}
           onDone={() => navigate(`/t/${slug}/admin/people/prospect`)}
-        />
+          />
+        </Suspense>
       );
     }
     return (

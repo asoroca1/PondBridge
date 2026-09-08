@@ -129,7 +129,7 @@ function serializeTreeForClient(
             toProfileId: asId(rel?.toProfileId),
             type: toClientRelationshipType(rel?.type)
           }))
-          .filter((rel) => isValidObjectId(rel.toProfileId))
+          .filter((rel) => isValidObjectId(rel.toProfileId) && !hiddenProfileIds?.has(rel.toProfileId))
       };
     })
     .filter((member) => isValidObjectId(member.profileId));
@@ -237,9 +237,10 @@ router.post("/", async (req, res) => {
 
   const memberProfileIds = Array.from(new Set(members.map((member) => asId(member.profileId)).filter(Boolean)));
 
+  const hiddenProfileIds = await hiddenProfileIdSetFor(req);
   const foundProfiles = await ProfileModel.find(req.tenant._id, { _id: { $in: memberProfileIds } }, { select: ["id"] });
 
-  if (foundProfiles.length !== memberProfileIds.length) {
+  if (foundProfiles.length !== memberProfileIds.length || memberProfileIds.some((id) => hiddenProfileIds?.has(id))) {
     return res.status(400).json({
       error: {
         code: "INVALID_MEMBERS",
@@ -260,10 +261,11 @@ router.post("/", async (req, res) => {
   const serialized = serializeTreeForClient(hydratedTree || tree, {
     reqUserId: req.user.id,
     currentUserProfileId: currentUser?.profileId,
-    userRoles: req.user.roles
+    userRoles: req.user.roles,
+    hiddenProfileIds: await hiddenProfileIdSetFor(req)
   });
 
-  res.status(201).json({ tree: hydratedTree || tree, ...serialized });
+  res.status(201).json({ tree: serialized, ...serialized });
 });
 
 router.get("/:treeId", async (req, res) => {
@@ -303,6 +305,11 @@ router.put("/:treeId", async (req, res) => {
     });
   }
 
+  const hiddenUserIds = await hiddenUserIdSetFor(req);
+  if (hiddenUserIds?.has(String(tree.createdByUserId || ""))) {
+    return res.status(404).json({ error: { code: "TREE_NOT_FOUND", message: "Family tree not found" } });
+  }
+  const hiddenProfileIds = await hiddenProfileIdSetFor(req);
   const currentUser = await UserModel.findOne(req.tenant._id, { _id: req.user.id });
 
   if (!canEditTree(tree, req.user.id, currentUser?.profileId, req.user.roles)) {
@@ -328,7 +335,7 @@ router.put("/:treeId", async (req, res) => {
       new Set(requestedMembers.map((member) => asId(member.profileId)).filter(Boolean))
     );
     const foundProfiles = await ProfileModel.find(req.tenant._id, { _id: { $in: memberProfileIds } }, { select: ["id"] });
-    if (foundProfiles.length !== memberProfileIds.length) {
+    if (foundProfiles.length !== memberProfileIds.length || memberProfileIds.some((id) => hiddenProfileIds?.has(id))) {
       return res.status(400).json({
         error: {
           code: "INVALID_MEMBERS",
@@ -344,10 +351,11 @@ router.put("/:treeId", async (req, res) => {
   const serialized = serializeTreeForClient(hydratedTree || updated, {
     reqUserId: req.user.id,
     currentUserProfileId: currentUser?.profileId,
-    userRoles: req.user.roles
+    userRoles: req.user.roles,
+    hiddenProfileIds: await hiddenProfileIdSetFor(req)
   });
 
-  res.json({ tree: hydratedTree || updated, ...serialized });
+  res.json({ tree: serialized, ...serialized });
 });
 
 router.delete("/:treeId", async (req, res) => {

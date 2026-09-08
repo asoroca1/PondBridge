@@ -21,6 +21,7 @@
     "@fontsource-variable/roboto-slab": "5.3.0",
     "@pondbridge/shared": "0.1.0",
     "@pondbridge/ui": "0.1.0",
+    "csv-parse": "^7.0.2",
     "hls.js": "^1.7.2",
     "lucide-react": "^0.540.0",
     "maplibre-gl": "^5.18.0",

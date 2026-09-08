@@ -1,5 +1,6 @@
 module.exports = {
-  testEnvironment: "node",
+  testEnvironment: "<rootDir>/tests/nativeNodeEnvironment.cjs",
+  setupFilesAfterEnv: ["<rootDir>/tests/nativeDependencies.setup.js"],
   roots: ["<rootDir>/tests"],
   testMatch: ["**/*.test.js"],
   clearMocks: true,
