@@ -69,6 +69,7 @@ export default function DirectorAdminPeoplePage() {
         <PeopleAddView
           actions={actions}
           storage={directory.storage}
+          request={request}
           slug={slug}
           networkName={networkName}
           onDone={() => navigate(`/t/${slug}/admin/people/prospect`)}

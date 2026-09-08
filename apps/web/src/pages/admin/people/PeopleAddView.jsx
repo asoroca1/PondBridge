@@ -3,6 +3,7 @@ import { parse } from "csv-parse/browser/esm/sync";
 import { Button, Input } from "@pondbridge/ui";
 import { Mail, Plus, Send, Trash2, Upload, UserPlus } from "lucide-react";
 import InviteMessageDialog, { readInviteMessage } from "./InviteMessageDialog.jsx";
+import QuestionnaireImportWizard from "./QuestionnaireImportWizard.jsx";
 import { nextGridCell } from "../../../lib/gridNavigation.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -105,7 +106,11 @@ export function validateRows(rows = []) {
   return { ready, problems };
 }
 
-export default function PeopleAddView({ actions, storage, slug = "", networkName = "", onDone }) {
+export default function PeopleAddView({ actions, storage, request, slug = "", networkName = "", onDone }) {
+  // Two ways in, because from a director's side they answer the same question:
+  // I have a list of people, get them into the site. They differ only in how
+  // much each one carries.
+  const [mode, setMode] = useState("list");
   const [rows, setRows] = useState(() => padRows([]));
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -260,8 +265,41 @@ export default function PeopleAddView({ actions, storage, slug = "", networkName
     onDone?.();
   }
 
+  const modeSwitch = (
+    <div className="pb-people-add-modes" role="tablist" aria-label="How to add people">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "list"}
+        className={mode === "list" ? "is-active" : ""}
+        onClick={() => setMode("list")}
+      >
+        Names and emails
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "import"}
+        className={mode === "import" ? "is-active" : ""}
+        onClick={() => setMode("import")}
+      >
+        Import a questionnaire
+      </button>
+    </div>
+  );
+
+  if (mode === "import") {
+    return (
+      <>
+        {modeSwitch}
+        <QuestionnaireImportWizard request={request} slug={slug} onDone={onDone} />
+      </>
+    );
+  }
+
   return (
     <div className="pb-people-panel">
+      {modeSwitch}
       <header className="pb-people-panel-head pb-people-add-head">
         <div>
           <h2>Add people</h2>

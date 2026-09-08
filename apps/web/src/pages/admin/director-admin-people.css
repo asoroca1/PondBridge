@@ -1124,3 +1124,307 @@
   padding: 10px 0 0;
   border-top: 1px solid var(--card-border);
 }
+
+/* ---------------------------------------------------------------------------
+   Questionnaire import
+
+   The wizard shares the People panel's surface but needs a lot more room per
+   row than the add-people sheet: a director is comparing a column of real
+   answers against the field it will become, and cannot do that from a header
+   name alone.
+   --------------------------------------------------------------------------- */
+
+.pb-people-add-modes{
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border: 1px solid var(--neutral-200, #e4e4e7);
+  border-radius: 10px;
+  background: var(--neutral-50, #f7f7f8);
+  width: fit-content;
+}
+
+.pb-people-add-modes button{
+  border: 0;
+  background: transparent;
+  padding: 7px 14px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: .89rem;
+  font-weight: 600;
+  color: var(--neutral-600, #555);
+  cursor: pointer;
+}
+
+.pb-people-add-modes button.is-active{
+  background: var(--surface, #fff);
+  color: var(--neutral-900, #18181b);
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .08);
+}
+
+.pb-qimport-steps{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 0;
+}
+
+.pb-qimport-steps li{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .87rem;
+  color: var(--neutral-500, #71717a);
+}
+
+.pb-qimport-steps li.is-current{ color: var(--neutral-900, #18181b); font-weight: 600; }
+.pb-qimport-steps li.is-done{ color: var(--neutral-600, #555); }
+
+.pb-qimport-step-mark{
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: .74rem;
+  font-weight: 600;
+}
+
+.pb-qimport-steps li.is-current .pb-qimport-step-mark{
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #fff;
+}
+
+.pb-qimport-step-mark svg{ width: 13px; height: 13px; }
+
+.pb-qimport-error{
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border-radius: 9px;
+  background: #fdeceb;
+  color: #8f2c22;
+  font-size: .9rem;
+}
+
+.pb-qimport-drop{
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 46px 24px;
+  border: 1px dashed var(--neutral-300, #d4d4d8);
+  border-radius: 14px;
+  background: var(--neutral-50, #f7f7f8);
+}
+
+.pb-qimport-drop > svg{ width: 30px; height: 30px; color: var(--brand-primary); margin-bottom: 6px; }
+.pb-qimport-drop h3{ margin: 0; font-size: 1.05rem; }
+.pb-qimport-drop p{ margin: 0 0 14px; max-width: 46ch; color: var(--neutral-600, #555); font-size: .92rem; }
+
+.pb-qimport-file input{
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pb-qimport-file-button{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 9px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: .92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pb-qimport-file input:focus-visible + .pb-qimport-file-button{
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.pb-qimport-file-button svg{ width: 16px; height: 16px; }
+
+.pb-qimport-summary{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-bottom: 12px;
+  font-size: .9rem;
+  color: var(--neutral-600, #555);
+}
+
+.pb-qimport-ai{ display: inline-flex; align-items: center; gap: 6px; color: var(--brand-primary); }
+.pb-qimport-ai svg{ width: 14px; height: 14px; }
+
+.pb-qimport-note{
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 14px;
+  padding: 11px 14px;
+  border-radius: 9px;
+  background: var(--neutral-50, #f7f7f8);
+  color: var(--neutral-600, #555);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+
+.pb-qimport-note.is-blocking{ background: #fdf4e3; color: #7a5510; }
+.pb-qimport-note svg{ flex: 0 0 auto; width: 15px; height: 15px; margin-top: 2px; }
+
+.pb-qimport-table-wrap{
+  overflow-x: auto;
+  border: 1px solid var(--neutral-200, #e4e4e7);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.pb-qimport-table{ border-collapse: collapse; width: 100%; min-width: 620px; }
+
+.pb-qimport-table th{
+  text-align: left;
+  padding: 10px 14px;
+  font-size: .74rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--neutral-500, #71717a);
+  background: var(--neutral-50, #f7f7f8);
+  border-bottom: 1px solid var(--neutral-200, #e4e4e7);
+  white-space: nowrap;
+}
+
+.pb-qimport-table td{
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--neutral-100, #f1f1f3);
+  vertical-align: top;
+}
+
+.pb-qimport-table tr:last-child td{ border-bottom: 0; }
+.pb-qimport-table td:last-child{ width: 210px; }
+
+.pb-qimport-col{ display: block; font-weight: 600; font-size: .92rem; margin-bottom: 5px; }
+
+.pb-qimport-badge{
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+}
+
+.pb-qimport-badge.is-ok{ background: #e6f4ea; color: #226b3b; }
+.pb-qimport-badge.is-ai{ background: #eaf0fd; color: #2a4b96; }
+.pb-qimport-badge.is-warn{ background: #fdf4e3; color: #7a5510; }
+.pb-qimport-badge.is-muted{ background: var(--neutral-100, #f1f1f3); color: var(--neutral-600, #555); }
+
+.pb-qimport-reason{
+  display: block;
+  margin-top: 5px;
+  font-size: .8rem;
+  color: var(--neutral-500, #71717a);
+  line-height: 1.45;
+}
+
+.pb-qimport-samples{ margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+
+.pb-qimport-samples li{
+  font-size: .85rem;
+  color: var(--neutral-700, #3f3f46);
+  overflow-wrap: anywhere;
+}
+
+.pb-qimport-empty{ font-size: .82rem; color: var(--neutral-400, #a1a1aa); }
+
+.pb-qimport-counts{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.pb-qimport-counts > div{
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--neutral-200, #e4e4e7);
+  border-radius: 11px;
+}
+
+.pb-qimport-counts strong{ font-size: 1.55rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pb-qimport-counts span{ font-size: .84rem; color: var(--neutral-600, #555); }
+.pb-qimport-counts .is-problem{ border-color: #e8c9a4; background: #fdf8f0; }
+
+.pb-qimport-details{
+  border: 1px solid var(--neutral-200, #e4e4e7);
+  border-radius: 11px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.pb-qimport-details summary{ cursor: pointer; font-weight: 600; font-size: .92rem; }
+.pb-qimport-details > *:not(summary){ margin-top: 12px; }
+
+.pb-qimport-errors{ margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.pb-qimport-errors li{ font-size: .87rem; color: var(--neutral-600, #555); line-height: 1.45; }
+
+.pb-qimport-rewrites{ margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+
+.pb-qimport-rewrites label{
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.pb-qimport-rewrite-body{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: .88rem;
+}
+
+.pb-qimport-was{ color: var(--neutral-500, #71717a); text-decoration: line-through; overflow-wrap: anywhere; }
+.pb-qimport-now{ font-weight: 600; color: var(--neutral-900, #18181b); overflow-wrap: anywhere; }
+
+.pb-qimport-actions{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.pb-qimport-done{
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 40px 24px;
+}
+
+.pb-qimport-done-mark{
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #e6f4ea;
+  color: #226b3b;
+  margin-bottom: 6px;
+}
+
+.pb-qimport-done-mark svg{ width: 24px; height: 24px; }
+.pb-qimport-done h3{ margin: 0; font-size: 1.15rem; }
+.pb-qimport-done p{ margin: 0; max-width: 52ch; color: var(--neutral-600, #555); font-size: .92rem; line-height: 1.55; }
