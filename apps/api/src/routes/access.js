@@ -25,6 +25,7 @@ import {
   profileCompletionPercent
 } from "../services/profileCompletion.js";
 import { resolveSettings } from "../services/onboarding.js";
+import { readCampProfile } from "../services/superCampProfile.js";
 import { logTenantEvent } from "../services/analytics.js";
 import { isTenantBillingAccessAllowed } from "../services/billingState.js";
 import { notifyTenantAdmins } from "../services/mobileNotifications.js";
@@ -721,6 +722,21 @@ router.post("/director-bootstrap", accessMutationLimiter, async (req, res) => {
         code: "SUPER_ADMIN_SESSION_REQUIRES_SIGN_OUT",
         message:
           "You are signed in with a global super admin session. Sign out first, then create or sign in with the camp director account."
+      }
+    });
+  }
+
+  // Bootstrap runs before any membership exists, so the only thing standing
+  // between a pre-launch camp and whoever guesses its slug is this check. When
+  // the camp was provisioned with a director's address, that address is the
+  // claim: nobody else gets to be first. Camps created without one still fall
+  // back to first-come, which is what the operator asked for by omitting it.
+  const expectedDirectorEmail = normalizeEmail(readCampProfile(req.tenant).directorEmail || "");
+  if (expectedDirectorEmail && identityEmail !== expectedDirectorEmail) {
+    return res.status(403).json({
+      error: {
+        code: "DIRECTOR_BOOTSTRAP_EMAIL_MISMATCH",
+        message: "This camp's director account is reserved for the address it was set up with."
       }
     });
   }

@@ -125,12 +125,14 @@ services:
         value: "300"
       - key: RESEND_BATCH_ENABLED
         value: "true"
+      - key: RESEND_BATCH_MAX_BYTES
+        value: "5000000"
       - key: EMAIL_SUPPRESSION_ENABLED
         value: "true"
       - key: EMAIL_PREFERENCE_TOKEN_SECRET
         sync: false
       - key: EMAIL_BROADCAST_BATCH_SIZE
-        value: "40"
+        value: "100"
       - key: EMAIL_BROADCAST_MAX_RECIPIENTS
         value: "500"
       - key: AUTH_TOKEN_MODE

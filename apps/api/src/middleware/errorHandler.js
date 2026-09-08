@@ -61,10 +61,18 @@ export function errorHandler(err, req, res, _next) {
 
   res.locals.errorCode = code;
 
+  // An unhandled 500 carries whatever the thrower happened to say, and the
+  // throwers down here are Postgres and the storage client -- messages that
+  // name tables, columns, and hosts. Everything deliberate sets a code, so
+  // anything that reaches this branch without one is not ours to hand back.
+  // The full message still goes to the log line above.
+  const clientMessage =
+    isProd && status >= 500 && !rawCode ? "Unexpected server error" : message;
+
   res.status(status).json({
     error: {
       code,
-      message,
+      message: clientMessage,
       requestId: String(req.requestId || ""),
       details: isProd ? null : err.details || null,
       path: safeRoute

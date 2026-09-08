@@ -4,6 +4,8 @@ module.exports = {
   ...base,
   testMatch: [
     "**/tests/authSecurityGuards.test.js",
+    "**/tests/objectUrlKeyRecovery.test.js",
+    "**/tests/legacyCedarCompatAuthBoundary.test.js",
     "**/tests/accessDecisionEmailBranding.test.js",
     "**/tests/brandingFaviconField.test.js",
     "**/tests/brandingLogoTreatment.test.js",
@@ -24,6 +26,7 @@ module.exports = {
     "**/tests/accessPolicy.test.js",
     "**/tests/alumniGrowth.test.js",
     "**/tests/emailScheduling.test.js",
+    "**/tests/emailBatchPersonalization.test.js",
     "**/tests/memberCountConsistency.test.js",
     "**/tests/cityCountsGrouping.test.js",
     "**/tests/findAllBatchedSelect.test.js",
