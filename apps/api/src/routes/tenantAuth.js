@@ -39,8 +39,35 @@ import {
   normalizeMemberLegalAgreement as normalizeLegalAgreementFromBody
 } from "../services/memberEligibility.js";
 import { clearMemberDirectoryCaches } from "../services/memberDirectoryCache.js";
+import { accountConfirmationError, accountConfirmationRequired } from "../services/accountConfirmation.js";
 
 const router = Router({ mergeParams: true });
+
+export function confirmationRequiredTenantAuthResponse({ token, user }) {
+  const confirmation = accountConfirmationError();
+  return {
+    token,
+    confirmationRequired: true,
+    nextRoute: confirmation.nextRoute,
+    user: {
+      id: String(user?._id || user?.id || ""),
+      _id: String(user?._id || user?.id || ""),
+      tenantId: user?.tenantId ? String(user.tenantId) : null,
+      email: String(user?.email || ""),
+      roles: Array.isArray(user?.roles) ? user.roles : []
+    }
+  };
+}
+
+export function authenticatedTenantResponse({ token, user, profile }) {
+  if (accountConfirmationRequired(user)) {
+    return confirmationRequiredTenantAuthResponse({ token, user });
+  }
+  const { accountConfirmationRequestId: _accountConfirmationRequestId, ...publicUser } =
+    buildAuthenticatedUserPayload(user, profile);
+  return { token, user: publicUser, profile };
+}
+
 function authLimiterKey(req, { includeEmail = false } = {}) {
   const tenantSlug = String(req.params?.slug || req.tenant?.slug || "").trim().toLowerCase();
   const ip = String(req.ip || "").trim();
@@ -728,7 +755,9 @@ router.post("/login", loginLimiter, requireTenant, async (req, res) => {
 
   const token = signToken(user);
   setAuthCookie(res, token);
-  const profile = user.profileId
+  const profile = accountConfirmationRequired(user)
+    ? null
+    : user.profileId
     ? await ProfileModel.findOne(req.tenant._id, { _id: user.profileId })
     : null;
 
@@ -739,7 +768,7 @@ router.post("/login", loginLimiter, requireTenant, async (req, res) => {
     metadata: { method: "password" }
   }).catch(() => {});
 
-  return res.json({ token, user: buildAuthenticatedUserPayload(user, profile), profile });
+  return res.json(authenticatedTenantResponse({ token, user, profile }));
 });
 
 router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) => {
@@ -815,7 +844,9 @@ router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) =
 
   const token = signToken(user);
   setAuthCookie(res, token);
-  const profile = user.profileId
+  const profile = accountConfirmationRequired(user)
+    ? null
+    : user.profileId
     ? await ProfileModel.findOne(req.tenant._id, { _id: user.profileId })
     : null;
 
@@ -826,7 +857,7 @@ router.post("/demo-access", demoAccessLimiter, requireTenant, async (req, res) =
     metadata: { method: "demo_code" }
   }).catch(() => {});
 
-  return res.json({ token, user: buildAuthenticatedUserPayload(user, profile), profile });
+  return res.json(authenticatedTenantResponse({ token, user, profile }));
 });
 
 router.post("/magic-link/request", magicLinkRequestLimiter, requireTenant, async (req, res) => {
@@ -1006,7 +1037,9 @@ router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async
 
   const authToken = signToken(user);
   setAuthCookie(res, authToken);
-  const profile = user.profileId
+  const profile = accountConfirmationRequired(user)
+    ? null
+    : user.profileId
     ? await ProfileModel.findOne(req.tenant._id, { _id: user.profileId })
     : null;
 
@@ -1017,11 +1050,7 @@ router.post("/magic-link/consume", magicLinkConsumeLimiter, requireTenant, async
     metadata: { method: "magic_link" }
   }).catch(() => {});
 
-  return res.json({
-    token: authToken,
-    user: buildAuthenticatedUserPayload(user, profile),
-    profile
-  });
+  return res.json(authenticatedTenantResponse({ token: authToken, user, profile }));
 });
 
 router.post("/logout", requireTenant, async (_req, res) => {

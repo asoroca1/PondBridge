@@ -10,6 +10,7 @@ const COLUMNS = {
   roles: "roles",
   profileId: "profile_id",
   status: "status",
+  accountConfirmationRequestId: "account_confirmation_request_id",
   lastLoginAt: "last_login_at",
   createdAt: "created_at",
   updatedAt: "updated_at"

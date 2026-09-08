@@ -3,6 +3,9 @@ const base = require("./jest.config.cjs");
 module.exports = {
   ...base,
   testMatch: [
+    "**/tests/accountConfirmationCredentialResponses.test.js",
+    "**/tests/accountConfirmationAuth.test.js",
+    "**/tests/accountConfirmationIdentity.test.js",
     "**/tests/signupConsentReceipts.test.js",
     "**/tests/dependencySecurity.test.js",
     "**/tests/approvalEmailJobs.test.js",

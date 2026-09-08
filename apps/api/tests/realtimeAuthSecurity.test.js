@@ -19,7 +19,7 @@ const rolePolicy = jest.fn((roles) => roles);
 const rollout = jest.fn();
 jest.unstable_mockModule("../src/config/env.js", () => ({ env }));
 jest.unstable_mockModule("../src/db/models/index.js", () => ({
-  TenantModel: { findOne: findTenant }, UserModel: { findById: findUser },
+  TenantModel: { findOne: findTenant }, UserModel: { findById: findUser, findMembershipsByClerkUserId: async () => [] },
   MessageModel: {}, ConversationModel: {}, ForumModel: {}
 }));
 jest.unstable_mockModule("../src/services/clerkIdentity.js", () => ({
@@ -114,4 +114,12 @@ test("stale super roles cannot exempt an inactive account after allowlist remova
   findTenantUser.mockResolvedValue({ ...member, status: "inactive", roles: ["super_admin"] });
   rolePolicy.mockReturnValue([]);
   await expect(authenticateSocket(handshake("clerk-token"))).rejects.toThrow("Membership is inactive");
+});
+
+test("counted cohort cannot establish a Clerk or legacy socket before confirmation", async () => {
+ const gated = { ...member, accountConfirmationRequestId: "frozen-request" };
+ findUser.mockResolvedValue(gated); findTenantUser.mockResolvedValue(gated); findSingleMembership.mockResolvedValue(gated);
+ env.AUTH_PROVIDER="legacy"; await expect(authenticateSocket(handshake(legacyToken()))).rejects.toThrow();
+ env.AUTH_PROVIDER="clerk"; resolveIdentity.mockResolvedValue({provider:"clerk",clerkUserId:"user_verified",email:member.email});
+ await expect(authenticateSocket(handshake("clerk-token"))).rejects.toMatchObject({code:"ACCOUNT_CONFIRMATION_REQUIRED"});
 });

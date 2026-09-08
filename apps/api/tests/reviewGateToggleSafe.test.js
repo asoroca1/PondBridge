@@ -17,8 +17,16 @@ const profileWrite = jest.fn();
 const findRequest = jest.fn();
 const createRequest = jest.fn();
 const findMembership = jest.fn();
+const verifyConfirmation = jest.fn(async () => true);
+const findSingleMembership = jest.fn(async () => null);
 const profile = { _id: "profile-a", tenantId: "camp-a", status: "active", socials: {} };
 
+jest.unstable_mockModule("../src/services/accountConfirmation.js", () => ({
+  accountConfirmationRequired: (user) => Boolean(user?.accountConfirmationRequestId),
+  resolveAccountConfirmationGate: async (_identity,user) => user?.accountConfirmationRequestId ? user : null,
+  accountConfirmationError: () => ({ code: "ACCOUNT_CONFIRMATION_REQUIRED", nextRoute: "/t/greenlane/account-confirmation" }),
+  verifyAccountConfirmationIdentity: verifyConfirmation
+}));
 jest.unstable_mockModule("../src/services/clerkIdentity.js", () => ({ isClerkIdentityEmailVerified: verifyIdentityEmail }));
 jest.unstable_mockModule("../src/db/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => ({ rpc }) }));
 jest.unstable_mockModule("../src/middleware/tenantAccess.js", () => ({
@@ -52,7 +60,8 @@ jest.unstable_mockModule("../src/db/models/index.js", () => ({
   }
 }));
 jest.unstable_mockModule("../src/services/identityUsers.js", () => ({
-  findTenantUserForIdentity: findMembership, createTenantMembershipFromIdentity: createMembership
+  findTenantUserForIdentity: findMembership, createTenantMembershipFromIdentity: createMembership,
+  findSingleTenantMembershipForIdentity: findSingleMembership
 }));
 jest.unstable_mockModule("../src/services/profileCompletion.js", () => ({
   ensureProfileForUser: jest.fn(async () => profile), isProfileComplete: () => true, profileCompletionPercent: () => 100
@@ -267,4 +276,39 @@ test("consent-only recovery callback retains verified signup names and profile d
   expect(response.status).toBe(200);
   expect(pending).toMatchObject({ firstName: "Real", lastName: "Name", profilePayload: { firstName: "Real", lastName: "Name", cityState: "Synthetic City", phones: ["synthetic-phone"] } });
   expect(pending.profilePayload.socials.legalAgreement.accepted).toBe(true);
+});
+
+function countedMember() {
+ tenant.slug = "greenlane";
+ membership = { _id: "counted-user", tenantId: tenant._id, email, clerkUserId: "clerk-local", status: "active", roles: ["user"], accountConfirmationRequestId: "frozen-request" };
+}
+test("counted cohort decision contains only confirmation bootstrap, never a profile", async () => {
+ countedMember(); const response = await request(app).get("/decision");
+ expect(response.status).toBe(200); expect(response.body.decision).toMatchObject({ action: "confirm_account", confirmation: { required: true } });
+ expect(response.body.decision.profile).toBeUndefined(); expect(JSON.stringify(response.body)).not.toContain("frozen-request");
+});
+test.each(["/join", "/invite/accept", "/claim/confirm", "/claim/decline", "/invite/create"])("identity-only %s cannot bypass counted confirmation", async (path) => {
+ countedMember(); const response = await request(app).post(path).send(body);
+ expect(response.status).toBe(403); expect(response.body.error.code).toBe("ACCOUNT_CONFIRMATION_REQUIRED"); expect(rpc).not.toHaveBeenCalled();
+});
+test("another camp cannot be joined to bypass counted confirmation", async () => {
+ const gated = { tenantId: "greenlane-id", accountConfirmationRequestId: "frozen-request" };
+ findSingleMembership.mockResolvedValueOnce(gated);
+ const response=await request(app).post("/join").send(body);
+ expect(response.status).toBe(403); expect(createMembership).not.toHaveBeenCalled();
+});
+test("counted confirmation rejects absent actual agreement then atomically completes", async () => {
+ countedMember(); verifyConfirmation.mockResolvedValue(true);
+ expect((await request(app).post("/confirm-account").send({})).body.error.code).toBe("LEGAL_AGREEMENT_REQUIRED");
+ const agreement={version:1,accepted:true,ageEligibilityConfirmed:true,termsVersion:"2026-03-04",privacyVersion:"2026-03-04",agePolicyVersion:"2026-07-14",minimumAge:14,acceptedAt:new Date().toISOString()};
+ rpc.mockImplementation(async (name) => { expect(name).toBe("confirm_counted_signup_account"); membership.accountConfirmationRequestId=null; return {data:{ok:true}}; });
+ const response=await request(app).post("/confirm-account").send({legalAgreement:agreement});
+ expect(response.status).toBe(200); expect(response.body.confirmed).toBe(true); expect(response.body.decision.action).toBe("go_home");
+});
+
+test("revoked counted membership cannot enter an impossible confirmation loop", async () => {
+ countedMember(); membership.status="inactive";
+ const response=await request(app).get("/decision");
+ expect(response.body.decision).toMatchObject({state:"revoked",action:"contact_director"});
+ expect((await request(app).post("/confirm-account").send({})).status).toBe(403);
 });
