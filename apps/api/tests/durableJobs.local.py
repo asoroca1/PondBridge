@@ -41,6 +41,12 @@ try:
  assert q(f"SELECT public.checkpoint_tenant_job('camp-a','{leased}','{token}',3,'{{}}')")=='f'
  assert q(f"SELECT public.heartbeat_tenant_job('camp-a','{leased}','{token}')")=='f'
  checks.append('wrong tenant, wrong/stale lease and cursor rollback checkpoints denied')
+ q(f"UPDATE tenant_background_jobs SET lease_until=now()+interval '90 seconds' WHERE id='{leased}'")
+ assert q(f"SELECT public.checkpoint_tenant_job('camp-a','{leased}','{token}',40,'{{\"accepted\":10}}',false,'PERMANENT:BROADCAST_PARTIAL_ACCEPTANCE_REVIEW_REQUIRED')")=='t'
+ assert q(f"SELECT status||':'||cursor FROM tenant_background_jobs WHERE id='{leased}'")=='failed:40'
+ q("UPDATE tenant_job_dispatch_clock SET last_claim_at='-infinity'")
+ assert q('SELECT id FROM public.claim_tenant_job()') != leased
+ checks.append('partial acceptance atomically stores terminal failure and cannot be reclaimed')
  q("UPDATE tenant_background_jobs SET expires_at=now()-interval '1 second',payload='{\"synthetic\":true}',state='{\"prepared\":{\"synthetic\":true}}'")
  q('SELECT public.claim_tenant_job()')
  assert q("SELECT count(*) FROM tenant_background_jobs WHERE status='failed' AND payload='{}' AND NOT state ? 'prepared'")=='2'
