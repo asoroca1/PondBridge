@@ -115,12 +115,14 @@ function formatPlainTextParagraphs(value = "") {
     .join("");
 }
 
-function footerHtml({ unsubscribeUrl = "", contextName = "" } = {}) {
+function footerHtml({ unsubscribeUrl = "", contextName = "", essential = false } = {}) {
   const context = String(contextName || "").trim();
   const poweredByLine = context
     ? `Sent for ${escapeHtml(context)} via ${wordmark("PondBridge")}`
     : `Powered by ${wordmark("PondBridge")}`;
-  const unsubLine = unsubscribeUrl
+  const unsubLine = essential
+    ? `<br/><span style="font-size:11px;color:${BRAND.muted};">Account security message from ${escapeHtml(context || "PondBridge")}.</span>`
+    : unsubscribeUrl
     ? `<br/><a href="${escapeHtml(unsubscribeUrl)}" style="color:${BRAND.muted};text-decoration:underline;font-size:12px;">Unsubscribe</a>`
     : `<br/><span style="font-size:11px;color:${BRAND.muted};">To stop receiving these emails, update your notification preferences in your account settings.</span>`;
   return `
@@ -186,7 +188,7 @@ function wrapInviteLayout(bodyInner, options = {}) {
   const brandPrimary = normalizeBrandColor(opts.brandPrimary || BRAND.primary, BRAND.primary);
   // Chrome follows the camp's colour; email cannot use CSS variables.
   const palette = buildEmailPalette(brandPrimary);
-  const logoUrl = normalizeHttpUrl(opts.logoUrl || "");
+  const logoUrl = opts.essential ? "" : normalizeHttpUrl(opts.logoUrl || "");
   const tagline = escapeHtml(opts.tagline || "Member invitation");
   const initials = escapeHtml(initialsFromName(displayName, "PB"));
   const headerLogoMarkup = logoUrl
@@ -230,7 +232,7 @@ function wrapInviteLayout(bodyInner, options = {}) {
         </table>
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;width:100%;">
           <tr>
-            <td>${footerHtml({ unsubscribeUrl: opts.unsubscribeUrl || "", contextName: displayName })}</td>
+            <td>${footerHtml({ unsubscribeUrl: opts.unsubscribeUrl || "", contextName: displayName, essential: Boolean(opts.essential) })}</td>
           </tr>
         </table>
       </td>
@@ -384,7 +386,8 @@ export function magicLinkTemplate({
   const text = [
     `Use this one-time sign-in link for ${tenantName}.`,
     expiresStr ? `This link expires on ${expiresStr}.` : "",
-    `Sign in: ${link}`
+    `Sign in: ${link}`,
+    "If you did not request this link, you can ignore this email."
   ].filter(Boolean).join("\n");
 
   const html = wrapInviteLayout(`
@@ -398,6 +401,7 @@ export function magicLinkTemplate({
     contextName: tenantName,
     brandPrimary,
     logoUrl,
+    essential: true,
     tagline: "Secure sign-in"
   });
 
@@ -508,6 +512,7 @@ export function passwordChangedTemplate({
     contextName: brandName,
     brandPrimary,
     logoUrl,
+    essential: true,
     tagline: "Account security"
   });
 
@@ -562,6 +567,7 @@ export function passwordResetCodeTemplate({
     contextName: brandName,
     brandPrimary,
     logoUrl,
+    essential: true,
     tagline: "Password reset"
   });
 
@@ -600,6 +606,7 @@ export function verificationCodeTemplate({
     String(code || "").trim(),
     "",
     "To protect your account, do not share this code.",
+    "If you did not request this code, you can ignore this email.",
     requestSummary ? `Requested from ${requestSummary}.` : ""
   ].filter(Boolean).join("\n");
 
@@ -612,6 +619,7 @@ export function verificationCodeTemplate({
       </tr>
     </table>
     <p style="margin:0 0 10px;font-size:14px;color:${BRAND.muted};">To protect your account, do not share this code.</p>
+    <p style="margin:0 0 10px;font-size:14px;color:${BRAND.muted};">If you did not request this code, you can ignore this email.</p>
     ${
       requestSummary
         ? `<p style="margin:0;font-size:13px;color:${BRAND.muted};">Requested from ${requestSummary}.</p>`
@@ -621,6 +629,7 @@ export function verificationCodeTemplate({
     contextName: brandName,
     brandPrimary,
     logoUrl,
+    essential: true,
     tagline: isDirector ? "Director onboarding verification" : "Secure account verification"
   });
 

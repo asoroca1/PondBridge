@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { createClerkClient } from "@clerk/backend";
 import { verifyWebhook } from "@clerk/backend/webhooks";
 import { env } from "../config/env.js";
@@ -63,13 +64,10 @@ function markRecentDispatch(key = "", now = nowMs()) {
   recentVerificationDispatches.set(key, now + RECENT_VERIFICATION_TTL_MS);
 }
 
-// Clerk can raise several verification.code_sent events for a single signup,
-// each with its own code, and preparing a new code invalidates the previous
-// one. Sending every event mails the user codes that are already dead. Hold a
-// send briefly instead and mail only the newest code of a burst, so one signup
-// produces one usable email.
-const VERIFICATION_COLLAPSE_MS = 3000;
-const pendingVerificationSends = new Map();
+// Await provider acceptance inside the signed webhook request. A restart or
+// provider failure must leave Clerk able to retry; no OTP is stored on disk.
+const inFlightVerificationSends = new Map();
+const MAX_CODE_EVENT_AGE_MS = 10 * 60 * 1000;
 
 // Clerk names the template in `slug` (verification_code, reset_password_code,
 // password_changed, ...). Classify rather than special-case, so switching off
@@ -93,71 +91,59 @@ export function classifyClerkEmail(emailResource = {}, { hasOtpCode = false } = 
   return CLERK_EMAIL_KIND.RELAY;
 }
 
-function verificationCollapseKey(recipientEmail = "") {
-  return normalizeEmail(recipientEmail);
+export function verificationDispatchFingerprint({ recipientEmail = "", otpCode = "", audience = "", tenantSlug = "", kind = "", emailId = "" } = {}) {
+  // Provider idempotency logs must never contain the code or recipient address.
+  const digest = createHmac("sha256", env.CLERK_WEBHOOK_SIGNING_SECRET).update(JSON.stringify([
+    normalizeEmail(recipientEmail), safeString(otpCode), safeString(audience).toLowerCase(),
+    normalizeSlug(tenantSlug), kind, otpCode ? "" : emailId
+  ])).digest("hex");
+  return `clerk-verification/${digest}`;
 }
 
-function scheduleVerificationSend(request = {}) {
-  const base = verificationCollapseKey(request.recipientEmail);
-  if (!base) return false;
-  // Scope the key by kind so a password-change notice cannot supersede a
-  // verification code that is still waiting, or vice versa.
-  const key = `${base}/${request.kind || "verification_code"}`;
-
-  const existing = pendingVerificationSends.get(key);
-  if (existing && request.collapsible !== false) {
-    // A newer code supersedes the one still waiting. Clerk has already
-    // invalidated the older one, so the newest is the only sendable code.
-    existing.request = request;
-    logLine("info", "clerk.verification.superseded", {
-      emailId: request.emailId,
-      supersededEmailId: existing.request?.emailId || ""
-    });
-    return true;
-  }
-
-  const entry = { request, timer: null };
-  if (existing) {
-    // Non-collapsible: let the queued one stand and send this separately.
-    pendingVerificationSends.delete(key);
-  }
-  entry.timer = setTimeout(() => {
-    pendingVerificationSends.delete(key);
-    const pending = entry.request;
-    logLine("info", "clerk.verification.dispatch", {
-      emailId: pending.emailId,
-      signUpAttemptId: pending.signUpAttemptId,
-      audience: pending.audience,
-      tenantSlug: pending.tenantSlug || "none",
-      kind: pending.kind
-    });
-    const senders = {
-      [CLERK_EMAIL_KIND.VERIFICATION_CODE]: sendVerificationCodeEmail,
-      [CLERK_EMAIL_KIND.PASSWORD_RESET_CODE]: sendPasswordResetCodeEmail,
-      [CLERK_EMAIL_KIND.PASSWORD_CHANGED]: sendPasswordChangedEmail,
-      [CLERK_EMAIL_KIND.RELAY]: sendRelayedClerkEmail
-    };
-    const send = senders[pending.kind] || sendVerificationCodeEmail;
-    Promise.resolve(send(pending.send)).catch((error) => {
-      logLine("error", "clerk.verification.dispatch_failed", {
-        emailId: pending.emailId,
-        message: String(error?.message || error)
-      });
-    });
-  }, VERIFICATION_COLLAPSE_MS);
-
-  pendingVerificationSends.set(key, entry);
-  return false;
+export function isExpiredCodeEvent(event, now = Date.now()) {
+  const timestamp = Number(event?.timestamp);
+  return Number.isFinite(timestamp) && timestamp > 0 && now - timestamp > MAX_CODE_EVENT_AGE_MS;
 }
 
-function verificationDispatchFingerprint({ recipientEmail = "", otpCode = "", audience = "", tenantSlug = "" } = {}) {
-  return [
-    "clerk-verification",
-    normalizeEmail(recipientEmail),
-    safeString(otpCode),
-    safeString(audience).toLowerCase(),
-    normalizeSlug(tenantSlug)
-  ].filter(Boolean).join("/");
+const pendingCodeBursts = new Map();
+const CODE_BURST_MS = 3000;
+
+// Keep every webhook request open until the newest code in this short burst
+// has actually been accepted. A crash or failure leaves Clerk able to retry.
+async function coalesceCodeDelivery(groupKey, dispatchKey, kind, payload, timestamp) {
+  const current = pendingCodeBursts.get(groupKey);
+  if (current) {
+    if (timestamp >= current.timestamp) Object.assign(current, { dispatchKey, kind, payload, timestamp });
+    return current.promise;
+  }
+  const pending = { dispatchKey, kind, payload, timestamp };
+  pending.promise = new Promise((resolve, reject) => {
+    setTimeout(() => {
+      pendingCodeBursts.delete(groupKey);
+      deliverVerificationEmail(pending.dispatchKey, pending.kind, pending.payload).then(resolve, reject);
+    }, CODE_BURST_MS);
+  });
+  pendingCodeBursts.set(groupKey, pending);
+  return pending.promise;
+}
+
+async function deliverVerificationEmail(key, kind, payload) {
+  const existing = inFlightVerificationSends.get(key);
+  if (existing) return existing;
+  const senders = {
+    [CLERK_EMAIL_KIND.VERIFICATION_CODE]: sendVerificationCodeEmail,
+    [CLERK_EMAIL_KIND.PASSWORD_RESET_CODE]: sendPasswordResetCodeEmail,
+    [CLERK_EMAIL_KIND.PASSWORD_CHANGED]: sendPasswordChangedEmail,
+    [CLERK_EMAIL_KIND.RELAY]: sendRelayedClerkEmail
+  };
+  const send = senders[kind] || sendVerificationCodeEmail;
+  const attempt = Promise.resolve().then(() => send(payload));
+  inFlightVerificationSends.set(key, attempt);
+  try {
+    return await attempt;
+  } finally {
+    inFlightVerificationSends.delete(key);
+  }
 }
 
 function requestBodyText(req) {
@@ -537,6 +523,9 @@ export async function processClerkWebhookRequest(req) {
     });
     return { ok: true, ignored: true, reason: "code_missing" };
   }
+  if (needsCode && isExpiredCodeEvent(event)) {
+    return { ok: true, ignored: true, reason: "code_event_expired" };
+  }
   if (kind === CLERK_EMAIL_KIND.RELAY) {
     logLine("warn", "clerk.verification.relaying_unknown_template", {
       slug: safeString(emailResource?.slug) || "none"
@@ -560,7 +549,9 @@ export async function processClerkWebhookRequest(req) {
     recipientEmail,
     otpCode,
     audience: context.audience,
-    tenantSlug: context?.tenant?.slug
+    tenantSlug: context?.tenant?.slug,
+    kind,
+    emailId
   });
   if ((emailId && hasRecentDispatch(emailId)) || (dispatchKey && hasRecentDispatch(dispatchKey))) {
     return {
@@ -571,9 +562,6 @@ export async function processClerkWebhookRequest(req) {
     };
   }
 
-  if (emailId) markRecentDispatch(emailId);
-  if (dispatchKey) markRecentDispatch(dispatchKey);
-
   const requestIp = safeString(event?.event_attributes?.http_request?.client_ip);
   const sendPayload = needsCode
     ? {
@@ -582,7 +570,7 @@ export async function processClerkWebhookRequest(req) {
         code: otpCode,
         audience: context.audience,
         requestIp,
-        requestedAt: new Date(),
+        requestedAt: Number(event?.timestamp) > 0 ? new Date(Number(event.timestamp)) : null,
         idempotencyKey: dispatchKey
       }
     : kind === CLERK_EMAIL_KIND.PASSWORD_CHANGED
@@ -601,24 +589,20 @@ export async function processClerkWebhookRequest(req) {
           idempotencyKey: dispatchKey
         };
 
-  const collapsed = scheduleVerificationSend({
-    recipientEmail,
-    audience: context.audience,
-    tenantSlug: safeString(context?.tenant?.slug),
-    emailId,
-    signUpAttemptId,
-    kind,
-    // Only codes supersede one another. A notification is a distinct event and
-    // must never be swallowed by a code burst.
-    collapsible: needsCode,
-    send: sendPayload
-  });
-
-  const result = { mode: collapsed ? "superseded" : "queued" };
+  const groupKey = verificationDispatchFingerprint({ recipientEmail, audience: context.audience,
+    tenantSlug: context?.tenant?.slug, kind, emailId: "code-burst" });
+  const result = needsCode
+    ? await coalesceCodeDelivery(groupKey, dispatchKey, kind, sendPayload, Number(event?.timestamp) || 0)
+    : await deliverVerificationEmail(dispatchKey, kind, sendPayload);
+  // Mark only accepted deliveries. A failed send must remain retryable, and a
+  // crash after acceptance is deduplicated by the stable provider key above.
+  if (emailId) markRecentDispatch(emailId);
+  if (dispatchKey) markRecentDispatch(dispatchKey);
 
   return {
     ok: true,
-    delivered: true,
+    accepted: true,
+    delivered: false,
     emailId,
     audience: context.audience,
     tenantSlug: safeString(context?.tenant?.slug),

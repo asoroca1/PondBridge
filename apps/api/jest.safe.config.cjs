@@ -3,6 +3,8 @@ const base = require("./jest.config.cjs");
 module.exports = {
   ...base,
   testMatch: [
+    "**/tests/emailDeliveryStreams.test.js",
+    "**/tests/durableBroadcastJobs.test.js",
     "**/tests/reviewGateToggleSafe.test.js",
     "**/tests/stripeWebhookCompatibility.test.js",
     "**/tests/authSecurityGuards.test.js",
@@ -14,6 +16,7 @@ module.exports = {
     "**/tests/brandingFaviconField.test.js",
     "**/tests/brandingLogoTreatment.test.js",
     "**/tests/clerkVerificationEmail.test.js",
+    "**/tests/clerkDeliveryAck.test.js",
     "**/tests/clerkAccountDeletion.test.js",
     "**/tests/cloudflareStream.test.js",
     "**/tests/campAiSearch.test.js",
@@ -66,6 +69,7 @@ module.exports = {
     "**/tests/publicTenantCache.test.js",
     "**/tests/profilePdfImport.test.js",
     "**/tests/platformAuditMigrationSafety.test.js",
+    "**/tests/providerReadinessAudit.test.js",
     "**/tests/requireTenantModule.test.js",
     "**/tests/scheduleClaiming.test.js",
     "**/tests/seminarEvents.test.js",
@@ -88,6 +92,6 @@ module.exports = {
     "**/tests/tenantProfileFields.test.js",
     "**/tests/profileMaidenNameSearch.test.js",
     "**/tests/profileFieldVisibility.test.js",
-    "**/tests/tenantIsolation.test.js"
-  ]
+    "**/tests/tenantIsolation.test.js",
+  ],
 };

@@ -1,0 +1,136 @@
+{
+  "checked_at": "2026-09-08T20:33:34.463011+00:00",
+  "plan": "pro",
+  "entitlements": [
+    {
+      "feature": {
+        "key": "pitr.available_variants",
+        "type": "set"
+      },
+      "hasAccess": true,
+      "type": "set",
+      "config": {
+        "enabled": true,
+        "set": [
+          "pitr_7",
+          "pitr_14",
+          "pitr_28"
+        ]
+      }
+    },
+    {
+      "feature": {
+        "key": "backup.retention_days",
+        "type": "numeric"
+      },
+      "hasAccess": true,
+      "type": "numeric",
+      "config": {
+        "enabled": true,
+        "value": 7,
+        "unlimited": false,
+        "unit": "days"
+      }
+    },
+    {
+      "feature": {
+        "key": "backup.restore_to_new_project",
+        "type": "boolean"
+      },
+      "hasAccess": true,
+      "type": "boolean",
+      "config": {
+        "enabled": true
+      }
+    },
+    {
+      "feature": {
+        "key": "backup.schedule",
+        "type": "boolean"
+      },
+      "hasAccess": false,
+      "type": "boolean",
+      "config": {
+        "enabled": false
+      }
+    }
+  ],
+  "pitr_enabled": false,
+  "walg_enabled": true,
+  "backups": [
+    {
+      "inserted_at": "2026-09-08T10:00:12.503Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-07T09:54:00.406Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-06T09:55:32.120Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-05T10:01:15.242Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-04T21:37:35.883Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-04T10:02:20.715Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-03T09:55:43.570Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-02T10:01:57.161Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    },
+    {
+      "inserted_at": "2026-09-01T10:01:16.408Z",
+      "is_physical_backup": true,
+      "status": "COMPLETED"
+    }
+  ],
+  "selected_addons": [
+    {
+      "type": "compute_instance",
+      "variant": {
+        "id": "ci_micro",
+        "name": "Micro",
+        "price": {
+          "description": "$0.01344/hour (~$10/month)",
+          "type": "usage",
+          "interval": "hourly",
+          "amount": 0.01344
+        },
+        "meta": {
+          "cpu_cores": 2,
+          "cpu_dedicated": false,
+          "memory_gb": 1,
+          "baseline_disk_io_mbs": 87,
+          "max_disk_io_mbs": 2085,
+          "connections_direct": 60,
+          "connections_pooler": 200,
+          "supported_cloud_providers": [
+            "AWS",
+            "AWS_K8S",
+            "AWS_NIMBUS"
+          ]
+        }
+      }
+    }
+  ]
+}

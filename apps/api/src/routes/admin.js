@@ -1,3 +1,4 @@
+import { durableJobsEnabled, MAX_QUEUED_RECIPIENTS, enqueueJob, readJob, readJobByKey, jobFingerprint, publicJob } from "../services/durableJobs.js";
 import { Router } from "express";
 import { buildEmailPalette } from "../services/brandPalette.js";
 import crypto from "crypto";
@@ -5173,6 +5174,23 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
   const scheduledFor = scheduledForRaw ? new Date(scheduledForRaw) : null;
   const actorReplyTo = normalizeEmail(req.user.email || "");
   const requestedAiGenerationId = String(req.body?.aiGenerationId || "").trim();
+  const requestKey = req.get("Idempotency-Key") || req.body?.requestKey;
+  const requestFingerprint = jobFingerprint({ subject, preheader, body, targeting, scheduledForRaw,
+    requestedAiGenerationId, footer: req.body?.footer || {} });
+  if (durableJobsEnabled() && !scheduledForRaw && requestKey) {
+    try {
+      const previous = await readJobByKey(req.tenant._id, "broadcast", requestKey);
+      if (previous) {
+        if (previous.actor_user_id !== req.user.id || previous.request_fingerprint !== requestFingerprint) {
+          return res.status(409).json({ error: { code: "EMAIL_REQUEST_CHANGED", message: "This request key belongs to a different broadcast." } });
+        }
+        return res.status(202).json({ ok: true, queued: true, job: publicJob(previous) });
+      }
+    } catch {
+      return res.status(503).json({ error: { code: "EMAIL_QUEUE_UNAVAILABLE", message: "The email queue is temporarily unavailable. Retry this request." } });
+    }
+  }
+
 
   if (scheduledForRaw && (!scheduledFor || Number.isNaN(scheduledFor.getTime()))) {
     return res.status(400).json({
@@ -5249,11 +5267,12 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
     });
   }
 
-  if (recipients.length > env.EMAIL_BROADCAST_MAX_RECIPIENTS) {
+  const recipientLimit = durableJobsEnabled() && !isScheduled ? MAX_QUEUED_RECIPIENTS : env.EMAIL_BROADCAST_MAX_RECIPIENTS;
+  if (recipients.length > recipientLimit) {
     return res.status(400).json({
       error: {
         code: "TOO_MANY_RECIPIENTS",
-        message: `Recipient list exceeds max size of ${env.EMAIL_BROADCAST_MAX_RECIPIENTS}. Narrow your targeting and try again.`
+        message: `Recipient list exceeds max size of ${recipientLimit}. Narrow your targeting and try again.`
       }
     });
   }
@@ -5385,6 +5404,25 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
     scheduledFor: isScheduled ? scheduledFor : null,
     sentAt: null
   };
+
+  if (durableJobsEnabled() && !isScheduled) {
+    try {
+      const names = Object.fromEntries(eligibleRecipients.map((email) => {
+        const profile = emailToProfile.get(email) || {};
+        return [email, { firstName: String(profile.firstName || ""), lastName: String(profile.lastName || "") }];
+      }));
+      const job = await enqueueJob({ tenantId: req.tenant._id, actorUserId: req.user.id,
+        kind: "broadcast", key: requestKey,
+        total: eligibleRecipients.length,
+        payload: { requestFingerprint, recipients: eligibleRecipients, names, composed, replyTo: resolvedReplyTo || "", broadcast: basePayload } });
+      await writeAdminAudit(req, "admin_email_queued", { jobId: job.id, recipientCount: job.total }).catch(() => {});
+      return res.status(202).json({ ok: true, queued: true, job: publicJob(job) });
+    } catch (error) {
+      return res.status(error.code === "JOB_REQUEST_KEY_REQUIRED" || error.code === "22023" ? 409 : 503).json({
+        error: { code: "EMAIL_QUEUE_UNAVAILABLE", message: "The queue acknowledgment was unavailable. Retry with the same message and request key to safely retrieve its status." }
+      });
+    }
+  }
 
   const broadcast = await EmailBroadcastModel.create({ ...basePayload, tenantId: req.tenant._id });
 
@@ -5546,6 +5584,14 @@ router.post("/email/send", emailSendLimiter, async (req, res) => {
 
   const fresh = await EmailBroadcastModel.findOne(req.tenant._id, { _id: broadcast._id });
   return res.status(201).json({ ok: true, item: serializeEmailBroadcast(fresh) });
+});
+
+router.get("/jobs/:id", async (req, res, next) => {
+  try {
+    const job = await readJob(req.tenant._id, req.params.id);
+    if (!job) return res.status(404).json({ error: { code: "JOB_NOT_FOUND", message: "Job not found." } });
+    return res.json({ job: publicJob(job) });
+  } catch (error) { return next(error); }
 });
 
 router.get("/analytics/network", async (req, res, next) => {

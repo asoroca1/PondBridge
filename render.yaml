@@ -103,10 +103,20 @@ services:
         value: https://app.pondbridgealumni.com/admin/billing
       - key: STRIPE_CURRENCY
         value: usd
+      # Enable only after applying 20260908220000_durable_tenant_jobs.sql.
+      - key: DURABLE_JOBS_ENABLED
+        sync: false
       - key: EMAIL_MODE
         value: resend
       - key: EMAIL_FROM
         value: PondBridge <no-reply@pondbridgealumni.com>
+      # Set these only to sender addresses on domains verified by the delivery
+      # provider. Keeping them secret-managed avoids baking rollout identities
+      # into the Blueprint.
+      - key: EMAIL_AUTH_FROM
+        sync: false
+      - key: EMAIL_BULK_FROM
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_API_BASE_URL
@@ -188,6 +198,12 @@ services:
       - key: CLOUDFLARE_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_STREAM_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_STREAM_WEBHOOK_SECRET
+        sync: false
+      - key: CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN
         sync: false
       - key: CLOUDFLARE_ZONE_ID
         sync: false

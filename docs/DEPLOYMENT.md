@@ -1,11 +1,17 @@
 # PondBridge Deployment Guide
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-09-08
 
 For the launch checklist and rollback expectations, also see
-`docs/PROD_LAUNCH.md`.
+`docs/PROD_LAUNCH.md`. The canonical Render + Cloudflare Pages deployment,
+rollback and provider-capacity procedure is in
+`docs/PROVIDER_OPERATIONS_RUNBOOK.md`.
 
 ## Target services
+
+Production uses Render for the API and Cloudflare Pages for the web. The checked-in
+Fly.io and Vercel descriptors are retained alternatives and are not active
+deployment or failover authorities.
 
 - Web: static React/Vite deployment with SPA rewrites.
 - API: Node.js service with `GET /health` checks.

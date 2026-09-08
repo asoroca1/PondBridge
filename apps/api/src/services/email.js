@@ -195,10 +195,16 @@ function normalizeFromAddress(value = "") {
   return candidate;
 }
 
-export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) {
+function senderForStream(stream = "") {
+  if (stream === "auth" && env.EMAIL_AUTH_FROM) return env.EMAIL_AUTH_FROM;
+  if (stream === "bulk" && env.EMAIL_BULK_FROM) return env.EMAIL_BULK_FROM;
+  return env.EMAIL_FROM || "";
+}
+
+export function buildTenantEmailBranding(tenant = {}, { senderName = "", stream = "" } = {}) {
   const networkName = resolveTenantNetworkName(tenant);
   const safeSenderName = sanitizeSenderName(senderName || networkName, "PondBridge");
-  const baseFromAddress = tenantFromAddress(env.EMAIL_FROM || "", tenant);
+  const baseFromAddress = tenantFromAddress(senderForStream(stream), tenant);
   const themeSource = {
     ...(tenant?.theme && typeof tenant.theme === "object" ? tenant.theme : {}),
     ...(tenant?.onboardingDraft?.theme && typeof tenant.onboardingDraft.theme === "object"
@@ -207,7 +213,7 @@ export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) 
   };
   const from = baseFromAddress
     ? `${safeSenderName} <${baseFromAddress}>`
-    : normalizeFromAddress(env.EMAIL_FROM || "");
+    : normalizeFromAddress(senderForStream(stream));
   const contactEmail = normalizeEmailAddress(tenant?.content?.contactEmail || "");
   const replyTo = isValidEmailAddress(contactEmail) ? contactEmail : "";
   const brandPrimary = normalizeBrandColor(themeSource?.brandPrimary || "", "#252525");
@@ -221,11 +227,11 @@ export function buildTenantEmailBranding(tenant = {}, { senderName = "" } = {}) 
   };
 }
 
-export function buildPondBridgeEmailBranding({ senderName = "PondBridge" } = {}) {
+export function buildPondBridgeEmailBranding({ senderName = "PondBridge", stream = "" } = {}) {
   const safeSenderName = sanitizeSenderName(senderName || "PondBridge", "PondBridge");
   const baseFromAddress =
-    extractEmailAddress(env.EMAIL_FROM || "") ||
-    extractEmailAddress(normalizeFromAddress(env.EMAIL_FROM || ""));
+    extractEmailAddress(senderForStream(stream)) ||
+    extractEmailAddress(normalizeFromAddress(senderForStream(stream)));
   const from = normalizeFromAddress(`${safeSenderName} <${baseFromAddress}>`);
   return {
     networkName: "PondBridge",
@@ -249,7 +255,7 @@ function createEmailError(message, code = "EMAIL_SEND_FAILED", statusCode = 502,
   return error;
 }
 
-async function findSuppressedRecipients(recipients = []) {
+async function findSuppressedRecipients(recipients = [], { failClosed = false } = {}) {
   if (!suppressionsEnabled()) return [];
   const normalized = dedupeList((Array.isArray(recipients) ? recipients : [])
     .map((value) => normalizeEmailAddress(value))
@@ -258,6 +264,7 @@ async function findSuppressedRecipients(recipients = []) {
   try {
     return await EmailSuppressionModel.findActiveByEmails(normalized);
   } catch (error) {
+    if (failClosed) throw createEmailError("Unable to check email suppression status. Retry later.", "EMAIL_SUPPRESSION_UNAVAILABLE", 503);
     console.warn("[email] suppression lookup failed", {
       message: String(error?.message || "unknown")
     });
@@ -265,8 +272,8 @@ async function findSuppressedRecipients(recipients = []) {
   }
 }
 
-async function assertRecipientsNotSuppressed(recipients = []) {
-  const suppressedRows = await findSuppressedRecipients(recipients);
+async function assertRecipientsNotSuppressed(recipients = [], options = {}) {
+  const suppressedRows = await findSuppressedRecipients(recipients, options);
   if (suppressedRows.length === 0) return;
   const blocked = suppressedRows
     .map((item) => normalizeEmailAddress(item?.email || ""))
@@ -971,7 +978,8 @@ export async function sendBulkTransactionalEmail({
   strategy = "per-recipient",
   batchSize = env.EMAIL_BROADCAST_BATCH_SIZE,
   maxRecipients = env.EMAIL_BROADCAST_MAX_RECIPIENTS,
-  personalizer = null
+  personalizer = null,
+  requireUnchangedRecipients = false
 }) {
   const recipientList = dedupeList(
     (Array.isArray(recipients) ? recipients : []).map((item) => normalizeEmailAddress(item)).filter(Boolean)
@@ -998,10 +1006,13 @@ export async function sendBulkTransactionalEmail({
 
   const mode = String(modeOverride || getEmailMode()).trim().toLowerCase();
   assertEmailMode(mode);
-  const suppressedRows = await findSuppressedRecipients(recipientList);
+  const suppressedRows = await findSuppressedRecipients(recipientList, { failClosed: true });
   const suppressedSet = new Set(
     suppressedRows.map((item) => normalizeEmailAddress(item?.email || "")).filter(Boolean)
   );
+  if (requireUnchangedRecipients && suppressedSet.size > 0) {
+    throw createEmailError("Recipient eligibility changed after the message batch was prepared.", "EMAIL_RECIPIENT_SET_CHANGED", 409);
+  }
   const deliverableRecipients = recipientList.filter((email) => !suppressedSet.has(email));
   const normalizedBatchSize = toBoundedInt(batchSize, 40, 1, 200);
   const normalizedAttachments = normalizeAttachments(attachments);
@@ -1056,7 +1067,7 @@ export async function sendBulkTransactionalEmail({
   validateAddressList(replyToList, "replyTo");
   // Copies are delivery recipients too; a suppressed address must not bypass
   // the gate just because it appears outside the main audience.
-  await assertRecipientsNotSuppressed([...ccList, ...bccList]);
+  await assertRecipientsNotSuppressed([...ccList, ...bccList], { failClosed: true });
 
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
@@ -1226,7 +1237,7 @@ export async function sendInviteEmail({
   firstName = "",
   lastName = ""
 }) {
-  const branding = buildTenantEmailBranding(tenant);
+  const branding = buildTenantEmailBranding(tenant, { stream: "bulk" });
   const mergeTagValues = {
     firstName: String(firstName || "").trim() || "there",
     lastName: String(lastName || "").trim(),
@@ -1266,8 +1277,8 @@ export async function sendInviteEmail({
   });
 }
 
-export async function sendClaimAccountEmail({ tenant, email, firstName = "", lastName = "", questionnaireName = "", replyTo = "" }) {
-  const branding = buildTenantEmailBranding(tenant);
+export async function sendClaimAccountEmail({ tenant, email, firstName = "", lastName = "", questionnaireName = "", replyTo = "", idempotencyKey = "" }) {
+  const branding = buildTenantEmailBranding(tenant, { stream: "bulk" });
   const resolvedReplyTo = isValidEmailAddress(replyTo)
     ? normalizeEmailAddress(replyTo)
     : branding.replyTo;
@@ -1290,7 +1301,7 @@ export async function sendClaimAccountEmail({ tenant, email, firstName = "", las
     html,
     // Scoped per send rather than per address, so a deliberate resend is not
     // swallowed as a duplicate of the first one.
-    idempotencyKey: buildScopedIdempotencyKey(`claim/${tenant.slug}`, `${email}:${Date.now()}`),
+    idempotencyKey: idempotencyKey || buildScopedIdempotencyKey(`claim/${tenant.slug}`, `${email}:${Date.now()}`),
     tags: [
       { name: "category", value: "profile_claim" },
       { name: "tenant", value: tenant.slug || "tenant" }
@@ -1299,7 +1310,7 @@ export async function sendClaimAccountEmail({ tenant, email, firstName = "", las
 }
 
 export async function sendMagicLinkEmail({ tenant, email, token, expiresAt }) {
-  const branding = buildTenantEmailBranding(tenant);
+  const branding = buildTenantEmailBranding(tenant, { stream: "auth" });
   const link = magicLink({ tenant, token });
   const { subject, text, html } = magicLinkTemplate({
     tenantName: branding.networkName,
@@ -1360,8 +1371,8 @@ export async function sendVerificationCodeEmail({
   const normalizedAudience = String(audience || "member").trim().toLowerCase();
   const useSystemBranding = normalizedAudience === "director" || !tenant;
   const branding = useSystemBranding
-    ? buildPondBridgeEmailBranding()
-    : buildTenantEmailBranding(tenant);
+    ? buildPondBridgeEmailBranding({ stream: "auth" })
+    : buildTenantEmailBranding(tenant, { stream: "auth" });
   const { subject, text, html } = verificationCodeTemplate({
     brandName: branding.networkName,
     code,
@@ -1398,7 +1409,7 @@ export async function sendPasswordResetCodeEmail({
 }) {
   // A reset always belongs to an existing member, so brand it for their camp
   // whenever the tenant resolved; fall back to PondBridge only if it did not.
-  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  const branding = tenant ? buildTenantEmailBranding(tenant, { stream: "auth" }) : buildPondBridgeEmailBranding({ stream: "auth" });
   const { subject, text, html } = passwordResetCodeTemplate({
     brandName: branding.networkName,
     code,
@@ -1430,7 +1441,7 @@ export async function sendPasswordChangedEmail({
   accountEmail = "",
   idempotencyKey = ""
 }) {
-  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  const branding = tenant ? buildTenantEmailBranding(tenant, { stream: "auth" }) : buildPondBridgeEmailBranding({ stream: "auth" });
   const { subject, text, html } = passwordChangedTemplate({
     brandName: branding.networkName,
     firstName,
@@ -1467,7 +1478,7 @@ export async function sendRelayedClerkEmail({
   text = "",
   idempotencyKey = ""
 }) {
-  const branding = tenant ? buildTenantEmailBranding(tenant) : buildPondBridgeEmailBranding();
+  const branding = tenant ? buildTenantEmailBranding(tenant, { stream: "auth" }) : buildPondBridgeEmailBranding({ stream: "auth" });
   return sendTransactionalEmail({
     from: branding.from,
     to: email,
