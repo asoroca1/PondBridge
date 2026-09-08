@@ -22,8 +22,10 @@ import {
   createPresignedUpload,
   uploadBufferToR2,
   createPresignedDownloadUrl,
+  readObjectKeyFromUrl,
   deleteObjectFromR2
 } from "../services/objectStorage.js";
+import { env } from "../config/env.js";
 import {
   STREAM_STATUS,
   getVideo as getStreamVideo,
@@ -2514,11 +2516,43 @@ router.get("/photos", async (req, res) => {
   return res.json(payload);
 });
 
-router.post("/photos", async (req, res) => {
-  const imageUrl = String(req.body?.imageUrl || "").trim();
-  if (!imageUrl) {
-    return res.status(400).json({ error: { code: "IMAGE_REQUIRED", message: "imageUrl is required" } });
+/**
+ * Prove a photo URL names an object this camp actually uploaded.
+ *
+ * The feed renders these straight into an <img>, and the row took whatever
+ * string the client sent -- so a member could point the whole camp's feed at a
+ * host they control, watch it collect everyone's IP, and swap the picture
+ * afterwards. Chat and forum attachments have never had this hole because
+ * normalizeStoredMessageMedia rebuilds their URL from a checked key; this is
+ * the same check for the one scope that still stores a URL.
+ */
+function assertOwnPhotoUrl(req, value = "", { field = "imageUrl", allowEmpty = false } = {}) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    if (allowEmpty) return "";
+    const error = new Error(`${field} is required`);
+    error.statusCode = 400;
+    error.code = "IMAGE_REQUIRED";
+    throw error;
   }
+
+  const key = readObjectKeyFromUrl(raw, {
+    publicBaseUrl: env.R2_PUBLIC_BASE_URL,
+    objectProxyBaseUrl: buildTenantObjectProxyBaseUrl(req)
+  });
+  const expectedPrefix = `${String(req.tenant?.slug || "").trim().toLowerCase()}/photos/`;
+  if (!key || !key.toLowerCase().startsWith(expectedPrefix)) {
+    const error = new Error(`${field} must be a photo uploaded to this camp.`);
+    error.statusCode = 400;
+    error.code = "INVALID_PHOTO_URL";
+    throw error;
+  }
+
+  return raw;
+}
+
+router.post("/photos", async (req, res) => {
+  const imageUrl = assertOwnPhotoUrl(req, req.body?.imageUrl, { field: "imageUrl" });
 
   const profile = await ProfileModel.findOne(req.tenant._id, { userId: req.user.id });
   const ownerName = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || "Member";
@@ -2526,7 +2560,11 @@ router.post("/photos", async (req, res) => {
   const mediaType = normalizeMediaType(req.body?.mediaType);
   // A clip's thumbUrl is the poster frame the uploader captured; without one
   // the feed would try to render the video file as an <img> and show nothing.
-  const thumbUrl = String(req.body?.thumbUrl || (mediaType === "video" ? "" : imageUrl)).trim();
+  const thumbUrl = req.body?.thumbUrl
+    ? assertOwnPhotoUrl(req, req.body.thumbUrl, { field: "thumbUrl" })
+    : mediaType === "video"
+    ? ""
+    : imageUrl;
 
   const created = await PhotoModel.create({
     tenantId: req.tenant._id,
