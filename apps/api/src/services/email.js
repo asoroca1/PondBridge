@@ -1274,6 +1274,7 @@ export async function sendInviteEmail({
     text,
     html,
     idempotencyKey: idempotencyKey || buildScopedIdempotencyKey(`invite/${tenant.slug}`, token),
+    suppressionFailClosed: true,
     tags: [
       { name: "category", value: "invite" },
       { name: "tenant", value: tenant.slug || "tenant" }
