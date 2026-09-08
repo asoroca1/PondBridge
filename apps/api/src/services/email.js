@@ -172,11 +172,11 @@ function tenantFromAddress(baseAddress = "", tenant = {}) {
     .slice(0, 42);
   if (!tenantToken) return normalizedBase;
 
-  const localPartPrefix = "network";
+  // A plus-addressed From reads as machine-generated to filters and to people.
+  // Resend accepts any local part on a verified domain, so the tenant gets a
+  // plain address of its own instead of a tag on a shared mailbox.
   const maxLocalLength = 64;
-  const suffixBudget = Math.max(0, maxLocalLength - (localPartPrefix.length + 1));
-  const boundedToken = tenantToken.slice(0, suffixBudget);
-  return `${localPartPrefix}+${boundedToken}@${domain}`;
+  return `${tenantToken.slice(0, maxLocalLength)}@${domain}`;
 }
 
 function normalizeFromAddress(value = "") {
