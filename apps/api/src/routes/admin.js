@@ -1,5 +1,7 @@
 import { durableJobsEnabled, MAX_QUEUED_RECIPIENTS, enqueueJob, readJob, readJobByKey, jobFingerprint, publicJob } from "../services/durableJobs.js";
 import { Router } from "express";
+import { getSupabaseAdmin } from "../db/supabaseAdmin.js";
+import { recoveredRequestRequiresConsent } from "../services/signupRecoveryConsent.js";
 import { buildEmailPalette } from "../services/brandPalette.js";
 import crypto from "crypto";
 import multer from "multer";
@@ -4112,6 +4114,8 @@ router.get("/members/approvals", async (req, res) => {
       email: item.email || item.profilePayload?.emails?.[0] || "",
       selfReportedRole: item.selfReportedRole || item.profilePayload?.roleAtCamp || "",
       requestMessage: item.requestMessage || "",
+      requiresConsent: recoveredRequestRequiresConsent(item),
+      recoveredSignup: Boolean(item.recoveredClerkUserId),
       status: item.status,
       requestedAt: toIso(item.requestedAt || item.createdAt),
       reviewedAt: toIso(item.reviewedAt)
@@ -4149,12 +4153,44 @@ async function runWithConcurrency(jobs = [], limit = 8) {
  * than one per person.
  */
 async function approveAccessRequest(req, request, { collector = null, audit = true } = {}) {
+  if (recoveredRequestRequiresConsent(request)) {
+    return { ok: false, requestId: toObjectIdString(request._id), code: "RECOVERED_SIGNUP_CONSENT_REQUIRED" };
+  }
   const email = normalizeEmail(request.email || request.profilePayload?.emails?.[0] || "");
   if (!isEmail(email)) {
     return { ok: false, requestId: toObjectIdString(request._id), code: "INVALID_EMAIL" };
   }
 
   const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
+  if (request.recoveredClerkUserId) {
+    const { data: result, error } = await getSupabaseAdmin().rpc("approve_recovered_signup_review", {
+      p_tenant: String(req.tenant._id), p_request: toObjectIdString(request._id), p_actor: String(req.user.id)
+    });
+    if (error) throw error;
+    if (!result?.ok) return { ok: false, requestId: toObjectIdString(request._id), code: result?.code || "ACCESS_REQUEST_CHANGED" };
+    const [user, profile] = await Promise.all([
+      UserModel.findOne(req.tenant._id, { _id: result.userId }),
+      ProfileModel.findOne(req.tenant._id, { _id: result.profileId })
+    ]);
+    if (audit) await writeAdminAudit(req, "admin_access_request_approved", {
+      requestId: result.requestId, approvedUserId: result.userId, existingUser: false, recoveredSignup: true
+    });
+    await ActivityItemModel.create({ tenantId: req.tenant._id, actorUserId: result.userId,
+      actor: { id: result.userId, name: [profile?.firstName, profile?.lastName].filter(Boolean).join(" ") || "Someone" },
+      type: "user.join", target: { href: `/profile/${result.profileId}`, label: "profile" }, ts: new Date()
+    }).catch(() => {});
+    await logTenantEvent({ tenantId: req.tenant._id, userId: result.userId, eventType: "signup_created",
+      metadata: { method: "director_approval", recoveredSignup: true }
+    }).catch(() => {});
+    const send = () => sendAccessDecisionEmail({ tenant: req.tenant, email, firstName, approved: true });
+    if (collector) {
+      collector.approvedUserIds.push(result.userId); collector.requestIds.push(result.requestId); collector.emails.push(send);
+    } else {
+      await notifyAccessApproved(req, [result.userId], result.requestId);
+      await send().catch(() => {});
+    }
+    return { ...result, existingUser: false, member: mapMemberRow(profile || {}, user) };
+  }
   const existingUser = await UserModel.findOne(req.tenant._id, { email });
 
   if (existingUser) {
@@ -4383,12 +4419,13 @@ async function notifyAccessApproved(req, userIds = [], requestId = "") {
  * for the same reason approval is.
  */
 async function denyAccessRequest(req, pending, reason = "", { collector = null, audit = true } = {}) {
-  const request = await AccessRequestModel.update(pending._id, {
+  const request = await AccessRequestModel.claimOne(pending._id, { tenantId: req.tenant._id, status: "pending" }, {
     status: "denied",
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
     denialReason: reason
   });
+  if (!request) return { ok: false, requestId: toObjectIdString(pending._id), code: "ACCESS_REQUEST_CHANGED" };
   const requestId = toObjectIdString(request._id);
   if (audit) {
     await writeAdminAudit(req, "admin_access_request_denied", {
@@ -4485,10 +4522,12 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
 
   const result = await approveAccessRequest(req, request);
   if (!result.ok) {
-    return res.status(400).json({
+    return res.status(result.code === "INVALID_EMAIL" ? 400 : 409).json({
       error: {
         code: result.code || "ACCESS_REQUEST_NOT_APPROVED",
-        message: "Access request is missing a valid email."
+        message: result.code === "RECOVERED_SIGNUP_CONSENT_REQUIRED"
+          ? "This member must confirm their age eligibility and accept Terms and Privacy before approval."
+          : result.code === "INVALID_EMAIL" ? "Access request is missing a valid email." : "This request changed or conflicts with an existing account. Refresh the approval queue before continuing."
       }
     });
   }
@@ -4520,6 +4559,7 @@ router.post("/members/approvals/:requestId/deny", async (req, res) => {
   }
 
   const result = await denyAccessRequest(req, pending, reason);
+  if (!result.ok) return res.status(409).json({ error: { code: result.code, message: "This access request has already been reviewed." } });
   clearAdminReadCaches(req.tenant._id);
   return res.json({ ok: true, requestId: result.requestId });
 });

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { recoveredRequestRequiresConsent, preserveSignupRecoveryConsent } from "../services/signupRecoveryConsent.js";
 import rateLimit from "express-rate-limit";
 import {
   UserModel,
@@ -276,7 +277,8 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
         request: {
           id: String(alreadyAsked._id),
           status: alreadyAsked.status,
-          requestedAt: alreadyAsked.requestedAt
+          requestedAt: alreadyAsked.requestedAt,
+          requiresConsent: recoveredRequestRequiresConsent(alreadyAsked)
         }
       };
     }
@@ -400,10 +402,12 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
       nextRoute: pendingRoute,
       joinMode,
       signupMode,
+      requiresConsent: recoveredRequestRequiresConsent(pendingRequest),
       request: {
         id: String(pendingRequest._id),
         status: pendingRequest.status,
-        requestedAt: pendingRequest.requestedAt
+        requestedAt: pendingRequest.requestedAt,
+        requiresConsent: recoveredRequestRequiresConsent(pendingRequest)
       }
     };
   }
@@ -523,14 +527,38 @@ async function submitAccessRequest({ tenant, identity, body = {}, invite = null,
   };
 
   const existingPending = await findPendingRequest(tenantId, email);
+  const recoveredIdentity = existingPending?.recoveredClerkUserId;
+  if (recoveredIdentity && (identity.clerkUserId !== recoveredIdentity || !(await isClerkIdentityEmailVerified(identity)))) {
+    throw Object.assign(new Error("Verify the signup account before confirming consent."), {
+      statusCode: 403, code: "IDENTITY_EMAIL_VERIFICATION_REQUIRED"
+    });
+  }
+  if (recoveredRequestRequiresConsent(existingPending) && !isMemberEligibilityComplete(legalAgreement)) {
+    throw Object.assign(new Error("Confirm your age eligibility and accept the Terms and Privacy before continuing."), {
+      statusCode: 400, code: "LEGAL_AGREEMENT_REQUIRED"
+    });
+  }
+  fields.profilePayload = preserveSignupRecoveryConsent(existingPending, fields.profilePayload, body);
+  if (recoveredIdentity) {
+    fields.firstName = fields.profilePayload.firstName;
+    fields.lastName = fields.profilePayload.lastName;
+    if (!Object.hasOwn(body, "requestMessage")) fields.requestMessage = existingPending.requestMessage || "";
+    if (!Object.hasOwn(body, "roles") && !Object.hasOwn(body, "roleAtCamp")) fields.selfReportedRole = existingPending.selfReportedRole || fields.profilePayload.roleAtCamp || "";
+  }
   let requestRow = existingPending;
   if (existingPending) {
-    requestRow = await AccessRequestModel.update(existingPending._id, {
+    const patch = {
       ...fields,
       requestedAt: new Date(),
       reviewedAt: null,
       reviewedByUserId: null,
       denialReason: ""
+    };
+    requestRow = recoveredIdentity
+      ? await AccessRequestModel.claimOne(existingPending._id, { tenantId, status: "pending" }, patch)
+      : await AccessRequestModel.update(existingPending._id, patch);
+    if (!requestRow) throw Object.assign(new Error("This access request has already been reviewed."), {
+      statusCode: 409, code: "ACCESS_REQUEST_CHANGED"
     });
   } else {
     try {

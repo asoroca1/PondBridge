@@ -10,6 +10,7 @@ const COLUMNS = {
   selfReportedRole: "self_reported_role",
   requestMessage: "request_message",
   profilePayload: "profile_payload",
+  recoveredClerkUserId: "recovered_clerk_user_id",
   status: "status",
   requestedAt: "requested_at",
   reviewedAt: "reviewed_at",
