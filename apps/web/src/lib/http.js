@@ -2,6 +2,10 @@ import { inferCampSlugFromHost } from "./domain.js";
 import { getVolatileAuthToken } from "./authMemory.js";
 import { readCachedAuthUser } from "./storage.js";
 import { whenAuthSettled } from "./authReadiness.js";
+import {
+  dispatchAccountConfirmationRequired,
+  isAccountConfirmationRequired
+} from "./accountConfirmation.js";
 
 const LOCAL_API_FALLBACK = "http://localhost:4000";
 const APP_BASE_DOMAIN = String(import.meta.env.VITE_APP_BASE_DOMAIN || "pondbridgealumni.com")
@@ -422,6 +426,9 @@ export async function requestJson(path, { method = "GET", body, token, getToken,
       const error = new Error(message);
       error.status = response.status;
       error.payload = payload;
+      if (isAccountConfirmationRequired(payload)) {
+        dispatchAccountConfirmationRequired(normalizedPath, payload);
+      }
       throw error;
     }
 

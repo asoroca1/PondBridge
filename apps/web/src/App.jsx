@@ -16,6 +16,11 @@ import { readAuthFromStorage, readCachedAuthUser } from "./lib/storage.js";
 import { normalizeTenantKey, shouldFinishTenantSignIn } from "./lib/authRouting.js";
 import { attemptAutomaticChunkRecovery } from "./lib/chunkRecovery.js";
 import {
+  ACCOUNT_CONFIRMATION_REQUIRED_EVENT,
+  buildAccountConfirmationPath,
+  isAccountConfirmationRequired
+} from "./lib/accountConfirmation.js";
+import {
   installRouteIntentPreloading,
   preloadAuthenticatedCoreRoutes
 } from "./lib/routePreload.js";
@@ -61,6 +66,7 @@ const MemberCampAiPage = lazyPage(() => import("./pages/MemberCampAiPage.jsx"));
 const AppShell = lazyPage(() => import("./components/AppShell.jsx"));
 const TenantAuthCallbackPage = lazyPage(() => import("./pages/TenantAuthCallbackPage.jsx"));
 const TenantAccessPendingPage = lazyPage(() => import("./pages/TenantAccessPendingPage.jsx"));
+const TenantAccountConfirmationPage = lazyPage(() => import("./pages/TenantAccountConfirmationPage.jsx"));
 const TenantClaimProfilePage = lazyPage(() => import("./pages/TenantClaimProfilePage.jsx"));
 const SuperLoginPage = lazyPage(() => import("./pages/SuperLoginPage.jsx"));
 const MobileCampCodeEntryPage = lazyPage(() => import("./pages/MobileCampCodeEntryPage.jsx"));
@@ -217,7 +223,7 @@ function AdminBillingRoute({ children }) {
 
 function TenantScopeRoutes() {
   const { loading, error, tenant, slug: tenantSlug } = useTenant();
-  const { isAuthenticated, isReady, user, authProvider, refreshSession, logout } = useAuth();
+  const { isAuthenticated, isReady, user, authProvider, bootstrapError, refreshSession, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
@@ -251,7 +257,8 @@ function TenantScopeRoutes() {
     currentPath.includes("/login") ||
     currentPath.includes("/create-account") ||
     currentPath.includes("/request-access") ||
-    currentPath.includes("/claim-profile");
+    currentPath.includes("/claim-profile") ||
+    currentPath.includes("/account-confirmation");
   // Once a member has been resolved, a momentary "signed in but no user" gap is
   // a background refresh, not a sign-in that needs finishing. Treating it as one
   // blanked the page behind the branded shell and then sent the member to the
@@ -295,7 +302,8 @@ function TenantScopeRoutes() {
       path.includes("/director-claim") ||
       path.includes("/director-create-account") ||
       path.includes("/request-access") ||
-      path.includes("/claim-profile");
+      path.includes("/claim-profile") ||
+      path.includes("/account-confirmation");
     // Wait for auth to be fully ready before syncing membership. This prevents
     // firing a second refreshSession while the initial bootstrap is in flight,
     // which was a major source of cascading re-renders and glitching.
@@ -345,7 +353,8 @@ function TenantScopeRoutes() {
       path.includes("/login") ||
       path.includes("/create-account") ||
       path.includes("/request-access") ||
-      path.includes("/claim-profile");
+      path.includes("/claim-profile") ||
+      path.includes("/account-confirmation");
     const clerkMode = ["clerk", "hybrid"].includes(String(authProvider || "").toLowerCase());
     const tenantId = String(tenant?.id || tenant?._id || "").trim();
     const userTenantId = String(user?.tenantId || "").trim();
@@ -396,7 +405,8 @@ function TenantScopeRoutes() {
       path.includes("/login") ||
       path.includes("/create-account") ||
       path.includes("/request-access") ||
-      path.includes("/claim-profile");
+      path.includes("/claim-profile") ||
+      path.includes("/account-confirmation");
     if (onAuthBootstrapRoute) return;
 
     let cancelled = false;
@@ -423,6 +433,18 @@ function TenantScopeRoutes() {
       }
     };
   }, [isAuthenticated, isReady, loading, location.pathname, tenant]);
+
+  useEffect(() => {
+    function onAccountConfirmationRequired(event) {
+      const eventSlug = String(event?.detail?.tenantSlug || "").trim().toLowerCase();
+      const safeSlug = String(slug || "").trim().toLowerCase();
+      if (!safeSlug || (eventSlug && eventSlug !== safeSlug) || currentPath.includes("/account-confirmation")) return;
+      const returnTo = `${location.pathname || ""}${location.search || ""}${location.hash || ""}`;
+      navigate(buildAccountConfirmationPath(safeSlug, returnTo), { replace: true });
+    }
+    window.addEventListener(ACCOUNT_CONFIRMATION_REQUIRED_EVENT, onAccountConfirmationRequired);
+    return () => window.removeEventListener(ACCOUNT_CONFIRMATION_REQUIRED_EVENT, onAccountConfirmationRequired);
+  }, [currentPath, location.hash, location.pathname, location.search, navigate, slug]);
 
   useEffect(() => {
     if (!waitingForTenantScopedUser) {
@@ -520,6 +542,11 @@ function TenantScopeRoutes() {
     );
   }
 
+  if (isAccountConfirmationRequired(bootstrapError) && !currentPath.includes("/account-confirmation")) {
+    const returnTo = `${location.pathname || ""}${location.search || ""}${location.hash || ""}`;
+    return <Navigate to={buildAccountConfirmationPath(slug, returnTo)} replace />;
+  }
+
   if (waitingForTenantScopedUser && !allowAuthCallbackRedirect && !hasNativeCachedSession) {
     return <AppTransitionShell />;
   }
@@ -558,6 +585,7 @@ function TenantScopeRoutes() {
         />
         <Route path="auth/callback" element={<TenantAuthCallbackPage />} />
         <Route path="request-access" element={<TenantAccessPendingPage />} />
+        <Route path="account-confirmation" element={<TenantAccountConfirmationPage />} />
         <Route path="claim-profile" element={<TenantClaimProfilePage />} />
         <Route path="director-claim" element={<DirectorClaimPage />} />
         <Route path="director-create-account/*" element={<DirectorCreateAccountPage />} />

@@ -94,6 +94,25 @@ beforeEach(() => {
 });
 
 describe("signed-in tenant callback", () => {
+  it("routes a counted Green Lane member to explicit account confirmation and preserves their deep link", async () => {
+    mocks.requestJson.mockResolvedValueOnce({
+      decision: {
+        state: "account_confirmation_required",
+        action: "confirm_account",
+        nextRoute: "/t/greenlane/account-confirmation",
+        confirmation: { required: true, requestId: "request-safe-id" }
+      }
+    });
+
+    renderCallback("/t/greenlane/auth/callback?returnTo=%2Ft%2Fgreenlane%2Fevents%2Ffall-reunion");
+
+    expect(await screen.findByLabelText("current route")).toHaveTextContent(
+      "/t/greenlane/account-confirmation?returnTo=%2Ft%2Fgreenlane%2Fevents%2Ffall-reunion"
+    );
+    expect(mocks.refreshSession).not.toHaveBeenCalled();
+    expect(mocks.requestJson).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts an email-matched Green Lane invite without a URL token and waits for director approval", async () => {
     mocks.requestJson.mockImplementation(async (url) => {
       if (url === "/api/t/greenlane/access/decision") {
