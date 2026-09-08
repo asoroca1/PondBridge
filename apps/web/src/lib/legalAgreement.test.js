@@ -126,4 +126,53 @@ describe("legal agreement storage", () => {
     expect(readPendingLegalAgreement("cedar")).toBeNull();
     expect(sessionStorage.setItem).not.toHaveBeenCalled();
   });
+
+  it("returns explicit acceptance when session storage rejects the write", () => {
+    const sessionStorage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(() => {
+        throw new DOMException("Storage is blocked", "QuotaExceededError");
+      }),
+      removeItem: vi.fn()
+    };
+    vi.stubGlobal("window", { sessionStorage });
+
+    const payload = setPendingLegalAgreementAccepted("cedar", { ageEligibilityConfirmed: true });
+
+    expect(payload).toMatchObject({
+      version: LEGAL_AGREEMENT_VERSION,
+      accepted: true,
+      ageEligibilityConfirmed: true,
+      minimumAge: MINIMUM_MEMBER_AGE
+    });
+    expect(payload.acceptedAt).toEqual(expect.any(String));
+  });
+
+  it("preserves a readable timestamp when the replacement write is blocked", () => {
+    const acceptedAt = "2026-09-08T20:00:00.000Z";
+    const sessionStorage = {
+      getItem: vi.fn(() => JSON.stringify(buildAcceptedLegalAgreementPayload({ acceptedAt, ageEligibilityConfirmed: true }))),
+      setItem: vi.fn(() => {
+        throw new DOMException("Storage is blocked", "QuotaExceededError");
+      }),
+      removeItem: vi.fn()
+    };
+    vi.stubGlobal("window", { sessionStorage });
+
+    expect(setPendingLegalAgreementAccepted("cedar", { ageEligibilityConfirmed: true }).acceptedAt).toBe(acceptedAt);
+  });
+
+  it("does not throw when session storage rejects cleanup", () => {
+    const sessionStorage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(() => {
+        throw new DOMException("Storage is blocked", "SecurityError");
+      })
+    };
+    vi.stubGlobal("window", { sessionStorage });
+
+    expect(() => clearPendingLegalAgreement("cedar")).not.toThrow();
+    expect(sessionStorage.removeItem).toHaveBeenCalledWith("pondbridgeLegalAgreement:cedar");
+  });
 });

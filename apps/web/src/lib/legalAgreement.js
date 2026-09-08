@@ -80,13 +80,23 @@ export function setPendingLegalAgreementAccepted(slug = "", { ageEligibilityConf
     acceptedAt: existing?.acceptedAt,
     ageEligibilityConfirmed: true
   });
-  window.sessionStorage.setItem(legalAgreementStorageKey(slug), JSON.stringify(payload));
+  try {
+    window.sessionStorage.setItem(legalAgreementStorageKey(slug), JSON.stringify(payload));
+  } catch {
+    // Clerk still receives the explicit acceptance through the returned payload
+    // when session storage is blocked or full.
+  }
   return payload;
 }
 
 export function clearPendingLegalAgreement(slug = "") {
   if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(legalAgreementStorageKey(slug));
+  try {
+    window.sessionStorage.removeItem(legalAgreementStorageKey(slug));
+  } catch {
+    // Storage cleanup is best effort; an unavailable session store must not
+    // interrupt the auth flow.
+  }
 }
 
 export {
