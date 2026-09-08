@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTenant } from "../../context/TenantContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { ModalConfirm, useDialogFocus } from "../../components/admin/AdminUi.jsx";
@@ -553,6 +553,7 @@ function NewsletterCard({ item, newsletterLabel, isAdmin, onDeleted, index = 0 }
 
 // ===== admin upload form =====
 function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Newsletter" }) {
+  const formId = useId();
   const [title, setTitle] = useState("");
   const [season, setSeason] = useState("");
   const [year, setYear] = useState(String(new Date().getFullYear()));
@@ -754,9 +755,10 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
   return (
     <form className="cc-admin-form" onSubmit={handleSubmit}>
       <div className="cc-row">
-        <label>Title (optional)</label>
+        <label htmlFor={`${formId}-title`}>Title (optional)</label>
         <input
           type="text"
+          id={`${formId}-title`}
           placeholder={`Fall ${new Date().getFullYear()} ${newsletterLabel}`}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
@@ -765,8 +767,8 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
 
       <div className="cc-row cc-row-2">
         <div>
-          <label>Season</label>
-          <select value={season} onChange={(event) => setSeason(event.target.value)}>
+          <label htmlFor={`${formId}-season`}>Season</label>
+          <select id={`${formId}-season`} value={season} onChange={(event) => setSeason(event.target.value)}>
             <option value="">Select...</option>
             {DEFAULT_SEASONS.map((s) => (
               <option key={s} value={s}>
@@ -777,9 +779,10 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
         </div>
 
         <div>
-          <label>Year</label>
+          <label htmlFor={`${formId}-year`}>Year</label>
           <input
             type="number"
+            id={`${formId}-year`}
             min="1900"
             max="2100"
             value={year}
@@ -923,7 +926,7 @@ function AdminUpload({ onUploaded, onBusyChange, onCancel, newsletterLabel = "Ne
         </button>
       </div>
 
-      {msg && <span className="cc-msg">{msg}</span>}
+      {msg && <span className="cc-msg" role="status">{msg}</span>}
     </form>
   );
 }

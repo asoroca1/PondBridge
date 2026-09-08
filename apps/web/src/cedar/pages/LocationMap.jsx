@@ -206,6 +206,7 @@ export default function LocationMap() {
   const [selected, setSelected] = useState(null);
   const [people, setPeople] = useState([]);
   const [loadingPeople, setLoadingPeople] = useState(false);
+  const [peopleError, setPeopleError] = useState("");
   const [loadingCities, setLoadingCities] = useState(true);
   const [networkAlumni, setNetworkAlumni] = useState(0);
   const [mapRuntimeReady, setMapRuntimeReady] = useState(false);
@@ -778,6 +779,7 @@ export default function LocationMap() {
 
   async function loadPeople(citySel) {
     const reqId = ++peopleReqRef.current;
+    setPeopleError("");
     const cityKey = String(citySel?.key || "").trim();
     if (!cityKey) {
       setPeople([]);
@@ -820,7 +822,10 @@ export default function LocationMap() {
       }
     } catch (error) {
       console.error("Failed to load people for city", error);
-      if (reqId === peopleReqRef.current) setPeople([]);
+      if (reqId === peopleReqRef.current) {
+        setPeople([]);
+        setPeopleError("We couldn’t load profiles for this city. Please try again.");
+      }
     } finally {
       if (reqId === peopleReqRef.current) setLoadingPeople(false);
     }
@@ -830,6 +835,8 @@ export default function LocationMap() {
     peopleReqRef.current += 1;
     setSelected(null);
     setPeople([]);
+    setPeopleError("");
+    setLoadingPeople(false);
   }
 
   function resetMapView() {
@@ -880,6 +887,25 @@ export default function LocationMap() {
           </button>
         </CedarPageHeader>
 
+        {cities.length > 0 ? (
+          <label className="lm-city-picker">
+            <span>Explore a city</span>
+            <select value={selected?.key || ""} onChange={(event) => {
+              const city = cities.find((item) => String(item.key) === event.target.value);
+              if (!city) { clearSelection(); return; }
+              setSelected(city);
+              loadPeople(city);
+              const map = mapRef.current;
+              map?.easeTo({ center: [city.lng, city.lat], zoom: Math.max(map.getZoom(), 8) });
+            }}>
+              <option value="">Choose a city</option>
+              {[...cities].sort((a, b) => cityLabel(a).localeCompare(cityLabel(b))).map((city) => (
+                <option key={city.key} value={city.key}>{cityLabel(city)} ({city.count})</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         <section className="lm-map-card">
           <div className="lm-map" ref={mapEl} />
           {!mapRuntimeReady && !mapRuntimeError ? (
@@ -914,7 +940,7 @@ export default function LocationMap() {
               <div className="lm-prompt">
                 <MapPin size={36} className="lm-prompt-icon" aria-hidden="true" />
                 <h3>Select a city to explore</h3>
-                <p>{`Click any pin on the map to see ${alumniWord} who live there.`}</p>
+                <p>{`Choose a city above or select a map pin to see ${alumniWord} who live there.`}</p>
                 <p className="lm-prompt-stat">{mappedSummary}</p>
               </div>
             )
@@ -944,6 +970,11 @@ export default function LocationMap() {
                       style={{ animationDelay: `${index * 0.04}s` }}
                     />
                   ))}
+                </div>
+              ) : peopleError ? (
+                <div className="lm-empty" role="alert">
+                  <p>{peopleError}</p>
+                  <button type="button" className="lm-clear-btn" onClick={() => loadPeople(selected)}>Try again</button>
                 </div>
               ) : people.length === 0 ? (
                 <div className="lm-empty">

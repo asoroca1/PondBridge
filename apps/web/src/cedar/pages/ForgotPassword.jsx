@@ -86,10 +86,10 @@ export default function ForgotPassword() {
                 autoFocus
               />
 
-              {error ? <p className="login1-error">{error}</p> : null}
+              {error ? <p className="login1-error" role="alert">{error}</p> : null}
 
               <button className="login1-btn" type="submit" disabled={submitting}>
-                {submitting ? "Sending..." : "Send Reset Link"}
+                {submitting ? "Sending..." : "Send Sign-In Link"}
               </button>
 
               <Link to={loginPath} className="login1-forgot">

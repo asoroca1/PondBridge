@@ -856,11 +856,12 @@ function CommentsPanel({ photoId, canModerate }) {
         <input
           className="ps-input"
           placeholder="Add a comment…"
+          aria-label="Add a comment"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submitComment()}
         />
-        <button className="ps-btn primary" onClick={submitComment}>
+        <button className="ps-btn primary" onClick={submitComment} disabled={!text.trim()}>
           Post
         </button>
       </div>

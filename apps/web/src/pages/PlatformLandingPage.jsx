@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getAppBaseDomain } from "../lib/domain.js";
+import { localTenantDestination, superAdminLoginUrl } from "../lib/domain.js";
 import { requestJson } from "../lib/http.js";
 
 const RECENT_CAMP_KEY = "pondbridgeRecentCamp";
@@ -43,9 +43,7 @@ export default function PlatformLandingPage() {
   const [recentCamp, setRecentCamp] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const baseDomain = getAppBaseDomain();
-  const protocol = typeof window !== "undefined" && window.location.protocol === "http:" ? "http" : "https";
-  const adminUrl = `${protocol}://super.${baseDomain}/super/login`;
+  const adminUrl = superAdminLoginUrl();
 
   useEffect(() => {
     setRecentCamp(readRecentCamp());
@@ -62,7 +60,7 @@ export default function PlatformLandingPage() {
     setError("");
     try {
       const payload = await requestJson(`/api/public/tenant-lookup?query=${encodeURIComponent(query)}`);
-      const destination = safeDestination(payload?.network?.loginUrl || payload?.network?.appUrl);
+      const destination = safeDestination(localTenantDestination(payload?.network?.loginUrl || payload?.network?.appUrl, payload?.slug));
       if (!destination) throw new Error("That camp does not have a valid network address yet.");
       rememberVerifiedCamp(payload);
       window.location.assign(destination);

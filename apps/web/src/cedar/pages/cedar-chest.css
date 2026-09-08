@@ -387,7 +387,7 @@ body,
 
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 3000;
   background: rgba(23, 23, 23, 0.45);
   display: flex;
   align-items: center;

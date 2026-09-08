@@ -11,6 +11,33 @@ export function normalizeHost(host = "") {
   return String(host || "").trim().toLowerCase().split(":")[0];
 }
 
+export function isLocalDevelopmentHost(host = browserHost()) {
+  const safeHost = normalizeHost(host);
+  return safeHost === "localhost" || safeHost.endsWith(".localhost") || safeHost === "127.0.0.1";
+}
+
+export function superAdminLoginUrl(location = typeof window === "undefined" ? null : window.location) {
+  if (location && isLocalDevelopmentHost(location.hostname)) {
+    return `${location.origin}/super/login`;
+  }
+  return `https://super.${getAppBaseDomain()}/super/login`;
+}
+
+// The API's local camp domains do not know which Vite port is serving this session.
+export function localTenantDestination(value, slug, location = typeof window === "undefined" ? null : window.location) {
+  if (!value || !location || !isLocalDevelopmentHost(location.hostname)) return value;
+  const safeSlug = String(slug || "").trim().toLowerCase();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(safeSlug)) return value;
+  try {
+    const destination = new URL(value);
+    if (!["http:", "https:"].includes(destination.protocol) || !isLocalDevelopmentHost(destination.hostname)) return value;
+    const path = destination.pathname.replace(/^\/t\/[^/]+(?=\/|$)/, "");
+    return `${location.origin}/t/${safeSlug}${path === "/" ? "" : path}${destination.search}${destination.hash}`;
+  } catch {
+    return value;
+  }
+}
+
 export function getAppBaseDomain() {
   return normalizeHost(import.meta.env.VITE_APP_BASE_DOMAIN || DEFAULT_APP_BASE_DOMAIN);
 }
@@ -38,7 +65,10 @@ export function isNamedDeploymentPreviewHost(host = browserHost()) {
 export function inferCampSlugFromHost(host = browserHost()) {
   const safeHost = normalizeHost(host);
   if (!safeHost) return "";
-  if (safeHost.endsWith(".localhost")) return safeHost.replace(".localhost", "");
+  if (safeHost.endsWith(".localhost")) {
+    const candidate = safeHost.slice(0, -".localhost".length);
+    return RESERVED_SUBDOMAINS.has(candidate) ? "" : candidate;
+  }
 
   const baseDomain = getAppBaseDomain();
   if (baseDomain && safeHost.endsWith(`.${baseDomain}`)) {

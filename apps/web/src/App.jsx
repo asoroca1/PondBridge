@@ -9,7 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { resolveCampName } from "./lib/campLabels.js";
 import { campNetworkTitle } from "./lib/tenantBrandAssets.js";
-import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
+import { defaultTenantDomain, getAppBaseDomain, inferCampSlugFromHost, isBaseDomain, isLocalDevelopmentHost, isPotentialCustomTenantHost, isSuperSubdomain } from "./lib/domain.js";
 import { isNativeApp } from "./lib/nativeApp.js";
 import { HIDE_CAMP_AI, HIDE_MOBILE_APP } from "./lib/directorHiddenFeatures.js";
 import { readAuthFromStorage, readCachedAuthUser } from "./lib/storage.js";
@@ -1025,7 +1025,7 @@ export default function App() {
 
           {nativeApp ? (
             <Route path="/super/*" element={<Navigate to="/" replace />} />
-          ) : rootDomain ? (
+          ) : rootDomain && !isLocalDevelopmentHost() ? (
             <Route path="/super/*" element={<SuperSubdomainRedirect />} />
           ) : (
             <>

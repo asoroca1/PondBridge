@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import CedarBackground from "../components/CedarBackground";
 import CedarPageHeader from "../components/CedarPageHeader.jsx";
 import { API_BASE } from "../lib/api";
-import { createSocket } from "../lib/socket";
+import { createSocket, attachSocketStatus } from "../lib/socket";
 import "./chats.css";
 import { MessageSquare, Users, Megaphone, Plus, Shield, ChevronLeft, Search } from "lucide-react";
 import PeoplePicker from "../components/chat/PeoplePicker";
@@ -392,22 +392,16 @@ export default function ChatAndForums() {
   const tabParam = searchParams.get("tab");
   const initialTab = tabParam === "groups" || tabParam === "forums" ? tabParam : "personal";
   const [tab, setTab] = useState(initialTab); // personal | groups | forums
-  const [socket] = useState(() => createSocket(getToken() || ""));
+  const [socket] = useState(() => createSocket());
   const [realtimeStatus, setRealtimeStatus] = useState("connecting");
 
   useEffect(() => {
-    const onConnect = () => setRealtimeStatus("connected");
-    const onDisconnect = () => setRealtimeStatus("reconnecting");
-    const onConnectError = () => setRealtimeStatus("reconnecting");
-    const onReconnectAttempt = () => {
-      socket.auth = { ...socket.auth, token: getToken() || socket.auth?.token || "" };
-    };
+    const detachStatus = attachSocketStatus(socket, setRealtimeStatus);
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         socket.disconnect();
         return;
       }
-      socket.auth = { ...socket.auth, token: getToken() || socket.auth?.token || "" };
       setRealtimeStatus("connecting");
       socket.connect();
     };
@@ -416,18 +410,11 @@ export default function ChatAndForums() {
         new CustomEvent("cedar:chat-message", { detail: { conversationId: message?.conversationId || "" } })
       );
     };
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("connect_error", onConnectError);
-    socket.io.on("reconnect_attempt", onReconnectAttempt);
     socket.on("message:new", onAnyMessage);
     document.addEventListener("visibilitychange", onVisibilityChange);
     socket.connect();
     return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("connect_error", onConnectError);
-      socket.io.off("reconnect_attempt", onReconnectAttempt);
+      detachStatus();
       socket.off("message:new", onAnyMessage);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       socket.disconnect();
@@ -486,7 +473,11 @@ export default function ChatAndForums() {
 
         {realtimeStatus !== "connected" ? (
           <div className="cf-connection-status" role="status" aria-live="polite">
-            Reconnecting live updates. You can keep sending messages.
+            {realtimeStatus === "unavailable"
+              ? "Live updates are unavailable. Refresh the page to reconnect. You can keep sending messages."
+              : realtimeStatus === "connecting"
+                ? "Connecting live updates…"
+                : "Reconnecting live updates. You can keep sending messages."}
           </div>
         ) : null}
 

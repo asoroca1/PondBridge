@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, Input, Textarea } from "@pondbridge/ui";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { requestJson } from "../../lib/http.js";
+import { localTenantDestination } from "../../lib/domain.js";
 import { billingPlanShortLabel as billingPlanLabel } from "../../lib/billingPlanCatalog.js";
 
 function roleFromUser(user) {
@@ -289,7 +290,7 @@ export default function SuperCampProfilePage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => window.open(network.appUrl, "_blank", "noopener,noreferrer")}
+              onClick={() => window.open(localTenantDestination(network.appUrl, tenant.slug), "_blank", "noopener,noreferrer")}
             >
               Open camp site
             </Button>
@@ -310,7 +311,7 @@ export default function SuperCampProfilePage() {
           This link is rebuilt from the camp domain every time you open this page, so it cannot be
           lost. Send it to the director who is setting the camp up.
         </p>
-        <ClaimLinkRow label="Director claim link" value={claim.liveUrl} onCopy={copyLink} />
+        <ClaimLinkRow label="Director claim link" value={localTenantDestination(claim.liveUrl, tenant.slug)} onCopy={copyLink} />
         {claim.fallbackPath ? (
           <p className="super-create-result-note">
             Fallback while the camp domain is still activating: <code>{claim.fallbackPath}</code>
