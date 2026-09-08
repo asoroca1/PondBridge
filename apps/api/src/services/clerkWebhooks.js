@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { createClerkClient } from "@clerk/backend";
 import { verifyWebhook } from "@clerk/backend/webhooks";
 import { env } from "../config/env.js";
@@ -93,7 +93,7 @@ export function classifyClerkEmail(emailResource = {}, { hasOtpCode = false } = 
 
 export function verificationDispatchFingerprint({ recipientEmail = "", otpCode = "", audience = "", tenantSlug = "", kind = "", emailId = "" } = {}) {
   // Provider idempotency logs must never contain the code or recipient address.
-  const digest = createHash("sha256").update(JSON.stringify([
+  const digest = createHmac("sha256", env.CLERK_WEBHOOK_SIGNING_SECRET).update(JSON.stringify([
     normalizeEmail(recipientEmail), safeString(otpCode), safeString(audience).toLowerCase(),
     normalizeSlug(tenantSlug), kind, otpCode ? "" : emailId
   ])).digest("hex");
@@ -103,6 +103,28 @@ export function verificationDispatchFingerprint({ recipientEmail = "", otpCode =
 export function isExpiredCodeEvent(event, now = Date.now()) {
   const timestamp = Number(event?.timestamp);
   return Number.isFinite(timestamp) && timestamp > 0 && now - timestamp > MAX_CODE_EVENT_AGE_MS;
+}
+
+const pendingCodeBursts = new Map();
+const CODE_BURST_MS = 3000;
+
+// Keep every webhook request open until the newest code in this short burst
+// has actually been accepted. A crash or failure leaves Clerk able to retry.
+async function coalesceCodeDelivery(groupKey, dispatchKey, kind, payload, timestamp) {
+  const current = pendingCodeBursts.get(groupKey);
+  if (current) {
+    if (timestamp >= current.timestamp) Object.assign(current, { dispatchKey, kind, payload, timestamp });
+    return current.promise;
+  }
+  const pending = { dispatchKey, kind, payload, timestamp };
+  pending.promise = new Promise((resolve, reject) => {
+    setTimeout(() => {
+      pendingCodeBursts.delete(groupKey);
+      deliverVerificationEmail(pending.dispatchKey, pending.kind, pending.payload).then(resolve, reject);
+    }, CODE_BURST_MS);
+  });
+  pendingCodeBursts.set(groupKey, pending);
+  return pending.promise;
 }
 
 async function deliverVerificationEmail(key, kind, payload) {
@@ -548,7 +570,7 @@ export async function processClerkWebhookRequest(req) {
         code: otpCode,
         audience: context.audience,
         requestIp,
-        requestedAt: new Date(),
+        requestedAt: Number(event?.timestamp) > 0 ? new Date(Number(event.timestamp)) : null,
         idempotencyKey: dispatchKey
       }
     : kind === CLERK_EMAIL_KIND.PASSWORD_CHANGED
@@ -567,7 +589,11 @@ export async function processClerkWebhookRequest(req) {
           idempotencyKey: dispatchKey
         };
 
-  const result = await deliverVerificationEmail(dispatchKey, kind, sendPayload);
+  const groupKey = verificationDispatchFingerprint({ recipientEmail, audience: context.audience,
+    tenantSlug: context?.tenant?.slug, kind, emailId: "code-burst" });
+  const result = needsCode
+    ? await coalesceCodeDelivery(groupKey, dispatchKey, kind, sendPayload, Number(event?.timestamp) || 0)
+    : await deliverVerificationEmail(dispatchKey, kind, sendPayload);
   // Mark only accepted deliveries. A failed send must remain retryable, and a
   // crash after acceptance is deduplicated by the stable provider key above.
   if (emailId) markRecentDispatch(emailId);
