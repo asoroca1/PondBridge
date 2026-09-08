@@ -190,6 +190,23 @@ describe("counted member account confirmation", () => {
     expect(mocks.requestJson.mock.calls.filter(([url]) => url.endsWith("/access/confirm-account"))).toHaveLength(0);
   });
 
+  it("rechecks a denial that wins after the page loaded and exits without retrying the mutation", async () => {
+    const changed = new Error("This account changed");
+    changed.payload = { error: { code: "ACCOUNT_CONFIRMATION_CHANGED" } };
+    mocks.requestJson
+      .mockResolvedValueOnce(confirmationDecision())
+      .mockRejectedValueOnce(changed)
+      .mockResolvedValueOnce({
+        decision: { state: "revoked", action: "contact_director", nextRoute: "/t/greenlane/login" }
+      });
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm and enter" }));
+
+    expect(await screen.findByLabelText("current route")).toHaveTextContent("/t/greenlane/login");
+    expect(mocks.requestJson.mock.calls.filter(([url]) => url.endsWith("/access/confirm-account"))).toHaveLength(1);
+  });
+
   it("leaves a Cedar active member on Cedar's ordinary route", async () => {
     mocks.tenant = { slug: "cedar", tenant: { name: "Camp Cedar" } };
     mocks.requestJson.mockResolvedValueOnce({

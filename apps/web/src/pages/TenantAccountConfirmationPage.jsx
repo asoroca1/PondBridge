@@ -15,6 +15,14 @@ function errorCode(error) {
   return String(error?.payload?.error?.code || error?.code || "").trim().toUpperCase();
 }
 
+function shouldRefreshConfirmationDecision(code = "") {
+  return [
+    "ACCOUNT_CONFIRMATION_CHANGED",
+    "ACCOUNT_CONFIRMATION_REVOKED",
+    "ACCOUNT_CONFIRMATION_FORBIDDEN"
+  ].includes(String(code || "").trim().toUpperCase());
+}
+
 function AccountConfirmationFlow({ identityLoaded, signedIn, getIdentityToken, logout, refreshSession }) {
   const navigate = useNavigate();
   const params = useParams();
@@ -122,6 +130,14 @@ function AccountConfirmationFlow({ identityLoaded, signedIn, getIdentityToken, l
       );
       navigate(next, { replace: true });
     } catch (caught) {
+      const code = errorCode(caught);
+      if (shouldRefreshConfirmationDecision(code)) {
+        setRequired(false);
+        setSaving(false);
+        setLoading(true);
+        setRetryNonce((value) => value + 1);
+        return;
+      }
       setError(String(caught?.message || "Could not save your confirmation. Try again."));
       setSaving(false);
     }
