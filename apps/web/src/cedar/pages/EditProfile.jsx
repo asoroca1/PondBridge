@@ -680,6 +680,14 @@ export default function EditProfile() {
   // switching a field back on brings the old answers back with it.
   const profileFields = useProfileFields(tenant);
   const [step, setStep] = useState(0);
+  const stepCardRef = useRef(null);
+  const previousStepRef = useRef(step);
+  useEffect(() => {
+    if (previousStepRef.current === step) return;
+    previousStepRef.current = step;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    stepCardRef.current?.querySelector("h2")?.focus({ preventScroll: true });
+  }, [step]);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showStaffYears, setShowStaffYears] = useState(false);
@@ -1366,13 +1374,13 @@ export default function EditProfile() {
   }
 
   const Step1 = (
-    <section className="wizard1-card edit-profile-step-card">
+    <section ref={stepCardRef} className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
         <div className="wizard1-span-12 edit-profile-photo-block">
           <div className="edit-profile-section-heading">
             <div>
               <span className="edit-profile-eyebrow">Your profile</span>
-              <h2 className="wizard1-h2">Profile photo</h2>
+              <h2 className="wizard1-h2" tabIndex={-1}>Profile photo</h2>
             </div>
             <p>A clear photo makes it easier for camp friends to recognize you.</p>
           </div>
@@ -1424,7 +1432,7 @@ export default function EditProfile() {
           <div className="edit-profile-section-heading">
             <div>
               <span className="edit-profile-eyebrow">{stepEyebrow("personal")}</span>
-              <h2 className="wizard1-h2">Personal details</h2>
+              <h2 className="wizard1-h2" tabIndex={-1}>Personal details</h2>
             </div>
             <p>Keep your contact information and camp history accurate.</p>
           </div>
@@ -1922,12 +1930,12 @@ export default function EditProfile() {
   );
 
   const Step2 = (
-    <section className="wizard1-card edit-profile-step-card">
+    <section ref={stepCardRef} className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
         <div className="wizard1-span-12 edit-profile-section-heading">
           <div>
             <span className="edit-profile-eyebrow">{stepEyebrow("education")}</span>
-            <h2 className="wizard1-h2">Education</h2>
+            <h2 className="wizard1-h2" tabIndex={-1}>Education</h2>
           </div>
           <p>Add your schools so alumni can connect over shared campuses.</p>
         </div>
@@ -2037,12 +2045,12 @@ export default function EditProfile() {
   );
 
   const Step3 = (
-    <section className="wizard1-card edit-profile-step-card">
+    <section ref={stepCardRef} className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
         <div className="wizard1-span-12 edit-profile-section-heading">
           <div>
             <span className="edit-profile-eyebrow">{stepEyebrow("experience")}</span>
-            <h2 className="wizard1-h2">Experience</h2>
+            <h2 className="wizard1-h2" tabIndex={-1}>Experience</h2>
           </div>
           <p>Help alumni discover professional connections across the network.</p>
         </div>
@@ -2215,12 +2223,12 @@ export default function EditProfile() {
   );
 
   const Step4 = (
-    <section className="wizard1-card edit-profile-step-card">
+    <section ref={stepCardRef} className="wizard1-card edit-profile-step-card">
       <div className="wizard1-grid wizard1-gap">
         <div className="wizard1-span-12 edit-profile-section-heading">
           <div>
             <span className="edit-profile-eyebrow">{stepEyebrow("social")}</span>
-            <h2 className="wizard1-h2">Social links</h2>
+            <h2 className="wizard1-h2" tabIndex={-1}>Social links</h2>
           </div>
           <p>Make it easy for camp friends to stay in touch elsewhere.</p>
         </div>

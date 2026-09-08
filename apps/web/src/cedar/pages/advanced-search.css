@@ -188,8 +188,17 @@
 }
 
 .as2-sec-inner {
+  min-height: 0;
   overflow: hidden;
-  padding: 0 0 16px;
+  padding: 0;
+}
+
+.as2-sec:not(.open) .as2-sec-body {
+  visibility: hidden;
+}
+
+.as2-sec.open .as2-sec-inner {
+  padding-bottom: 16px;
 }
 
 .as2-sec.open {
@@ -1042,7 +1051,7 @@ select.as2-input {
     position: fixed;
     inset: 0;
     background: rgba(23, 23, 23, 0.28);
-    z-index: 80;
+    z-index: 2990;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
@@ -1061,7 +1070,8 @@ select.as2-input {
     bottom: 0;
     width: min(320px, calc(100vw - 24px));
     max-width: 100%;
-    z-index: 90;
+    z-index: 3000;
+    visibility: hidden;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
     overflow-y: auto;
@@ -1071,6 +1081,7 @@ select.as2-input {
   }
 
   .as2-rail.is-open {
+    visibility: visible;
     transform: translateX(0);
   }
 
@@ -1336,4 +1347,10 @@ select.as2-input {
 .as2-sec:has(.as2-mwrap.is-open),
 .as2-sec.open:has(.as2-mwrap.is-open) {
   z-index: 30;
+}
+
+@media (max-width: 980px) {
+  .as2-shell:has(.as2-rail.is-open) {
+    z-index: 3000;
+  }
 }

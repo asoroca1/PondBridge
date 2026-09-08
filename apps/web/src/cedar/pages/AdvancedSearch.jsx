@@ -1,3 +1,4 @@
+import { savedSearchStorageKey } from "../../lib/savedSearches.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -279,7 +280,7 @@ export function SectionHead({
 export default function AdvancedSearch() {
   const { tenant, slug } = useTenant();
   const aiName = resolveCampAiName(tenant);
-  const { token, getAuthToken, isReady: authReady } = useAuth();
+  const { token, user, getAuthToken, isReady: authReady } = useAuth();
   const alumniWord = resolveAlumniWord(tenant);
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
   // A filter on a field this camp does not collect would match nobody, so the
@@ -857,9 +858,10 @@ export default function AdvancedSearch() {
   // Saved searches live in this browser only. That keeps them free of a schema change,
   // at the cost of not following a member to another device - the copy-link button
   // covers that case.
-  const savedSearchKey = `pb.savedSearches.${slug || "unknown"}`;
+  const savedSearchKey = savedSearchStorageKey(slug, user?.id || user?._id);
 
   useEffect(() => {
+    if (!savedSearchKey) { setSavedSearches([]); return; }
     try {
       const raw = window.localStorage.getItem(savedSearchKey);
       const parsed = raw ? JSON.parse(raw) : [];
@@ -870,6 +872,7 @@ export default function AdvancedSearch() {
   }, [savedSearchKey]);
 
   const persistSavedSearches = (next) => {
+    if (!savedSearchKey) return;
     setSavedSearches(next);
     try {
       window.localStorage.setItem(savedSearchKey, JSON.stringify(next));

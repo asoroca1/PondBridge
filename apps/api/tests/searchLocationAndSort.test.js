@@ -242,3 +242,29 @@ describe("multi-term filters use OR, not AND", () => {
     expect(ranked[0]).toBe("Both");
   });
 });
+
+
+describe("text relevance survives structured filtering", () => {
+  // ProfileModel returns exact Alex Rivera before a weaker Vera match.
+  const textRanked = [
+    { firstName: "Alex", lastName: "Rivera", createdAt: "2025-01-01" },
+    { firstName: "Vera", lastName: "Andersen", createdAt: "2026-01-01" }
+  ];
+  const search = (sort, preserveTextRank) =>
+    filterAndRankSearchItems(textRanked)
+      .sort(buildRankedComparator(sort, { preserveTextRank }))
+      .map((entry) => entry.profile.firstName);
+
+  test("an exact text match stays ahead of alphabetically earlier fuzzy results", () => {
+    expect(search("relevance", true)).toEqual(["Alex", "Vera"]);
+  });
+
+  test("an empty query still defaults to surname order", () => {
+    expect(search("relevance", false)).toEqual(["Vera", "Alex"]);
+  });
+
+  test("explicit name and recent sorts override text relevance", () => {
+    expect(search("name", true)).toEqual(["Vera", "Alex"]);
+    expect(search("recent", true)).toEqual(["Vera", "Alex"]);
+  });
+});
