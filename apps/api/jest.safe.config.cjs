@@ -69,6 +69,7 @@ module.exports = {
     "**/tests/publicTenantCache.test.js",
     "**/tests/profilePdfImport.test.js",
     "**/tests/platformAuditMigrationSafety.test.js",
+    "**/tests/providerReadinessAudit.test.js",
     "**/tests/requireTenantModule.test.js",
     "**/tests/scheduleClaiming.test.js",
     "**/tests/seminarEvents.test.js",
@@ -91,6 +92,6 @@ module.exports = {
     "**/tests/tenantProfileFields.test.js",
     "**/tests/profileMaidenNameSearch.test.js",
     "**/tests/profileFieldVisibility.test.js",
-    "**/tests/tenantIsolation.test.js"
-  ]
+    "**/tests/tenantIsolation.test.js",
+  ],
 };

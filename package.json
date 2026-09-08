@@ -28,6 +28,7 @@
     "perf:check-web": "node scripts/checkWebBuildBudget.mjs",
     "smoke:spa-routing": "node scripts/smokeSpaRouting.mjs",
     "db:preflight": "npm --workspace @pondbridge/api run db:preflight",
+    "provider:readiness": "node apps/api/scripts/providerReadinessAudit.js",
     "staging:local:start": "node scripts/localStaging.mjs start",
     "staging:local:reset": "node scripts/localStaging.mjs reset",
     "staging:local:verify": "node scripts/localStaging.mjs verify",
