@@ -711,7 +711,7 @@ async function sendResendEmail({
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
-  await assertRecipientsNotSuppressed(normalized.to);
+  await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
   const cleanSubject = String(subject || "").trim();
   if (!cleanSubject) {
     throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -777,7 +777,7 @@ async function sendSmtpEmail({
   if (normalized.to.length === 0) {
     throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
   }
-  await assertRecipientsNotSuppressed(normalized.to);
+  await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
 
   const cleanSubject = String(subject || "").trim();
   if (!cleanSubject) {
@@ -879,7 +879,7 @@ export async function sendTransactionalEmail({
     if (normalized.to.length === 0) {
       throw createEmailError("Missing recipient email address.", "RECIPIENT_REQUIRED", 400);
     }
-    await assertRecipientsNotSuppressed(normalized.to);
+    await assertRecipientsNotSuppressed([...normalized.to, ...normalized.cc, ...normalized.bcc]);
     const cleanSubject = String(subject || "").trim();
     if (!cleanSubject) {
       throw createEmailError("Email subject is required.", "EMAIL_SUBJECT_REQUIRED", 400);
@@ -1054,6 +1054,9 @@ export async function sendBulkTransactionalEmail({
   validateAddressList(ccList, "cc");
   validateAddressList(bccList, "bcc");
   validateAddressList(replyToList, "replyTo");
+  // Copies are delivery recipients too; a suppressed address must not bypass
+  // the gate just because it appears outside the main audience.
+  await assertRecipientsNotSuppressed([...ccList, ...bccList]);
 
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
