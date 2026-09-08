@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Select } from "@pondbridge/ui";
-import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Sparkles, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Sparkles, Undo2, Upload } from "lucide-react";
 
 /**
  * Turns a camp's questionnaire export into profiles waiting to be claimed.
@@ -58,6 +58,7 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
   const [dryRun, setDryRun] = useState(null);
   const [rejectedRewrites, setRejectedRewrites] = useState(() => new Set());
   const [result, setResult] = useState(null);
+  const [undone, setUndone] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -141,6 +142,23 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
       setStep("done");
     } catch (err) {
       setError(String(err?.message || "That import could not be completed."));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /**
+   * The moment a director realises the upload was wrong is right after seeing the
+   * result, so the way out lives here rather than only in an import history.
+   */
+  async function undo() {
+    setBusy("undo");
+    setError("");
+    try {
+      const payload = await request(`/imports/${result.reportId}/undo`, { method: "POST", body: {} });
+      setUndone(payload);
+    } catch (err) {
+      setError(String(err?.message || "That import could not be taken back."));
     } finally {
       setBusy("");
     }
@@ -366,7 +384,7 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
         </>
       ) : null}
 
-      {step === "done" && result ? (
+      {step === "done" && result && !undone ? (
         <div className="pb-qimport-done">
           <span className="pb-qimport-done-mark" aria-hidden="true"><Check /></span>
           <h3>
@@ -374,7 +392,7 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
           </h3>
           <p>
             Nobody has been emailed and nobody can see these yet. Each person appears once they
-            sign in and confirm the profile is theirs — invite them when you are ready.
+            sign in and confirm the profile is theirs — email them when you are ready.
           </p>
           {result.errorCount ? (
             <p className="pb-qimport-note">
@@ -385,7 +403,30 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
             </p>
           ) : null}
           <div className="pb-qimport-actions">
+            <Button variant="ghost" onClick={undo} loading={busy === "undo"}>
+              <Undo2 aria-hidden="true" />
+              Undo this import
+            </Button>
             <Button onClick={() => onDone?.()}>See them in People</Button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "done" && undone ? (
+        <div className="pb-qimport-done">
+          <span className="pb-qimport-done-mark" aria-hidden="true"><Undo2 /></span>
+          <h3>
+            {undone.removedCount} {undone.removedCount === 1 ? "profile" : "profiles"} removed
+          </h3>
+          <p>
+            {undone.keptClaimedCount
+              ? `${undone.keptClaimedCount} ${undone.keptClaimedCount === 1 ? "person has" : "people have"} already signed in and confirmed their profile, so those accounts are theirs now and were left alone.`
+              : "Nothing from that import is left. You can upload a corrected file whenever you are ready."}
+          </p>
+          <div className="pb-qimport-actions">
+            <Button onClick={() => { setStep("upload"); setAnalysis(null); setResult(null); setUndone(null); }}>
+              Start again
+            </Button>
           </div>
         </div>
       ) : null}

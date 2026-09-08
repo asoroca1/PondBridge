@@ -47,7 +47,12 @@ import {
   MobileNotificationScheduleModel,
   AiGenerationModel
 } from "../db/models/index.js";
-import { findImportReportForTenant, runTenantCsvImport } from "../services/csvImport.js";
+import {
+  findImportReportForTenant,
+  listImportReportsForTenant,
+  runTenantCsvImport,
+  undoTenantImport
+} from "../services/csvImport.js";
 import { IMPORT_FIELDS, coerceCell } from "../services/importFieldMap.js";
 import { proposeImportMapping } from "../services/importColumnMapperAi.js";
 import { cleanImportValues } from "../services/importValueCleanerAi.js";
@@ -8100,6 +8105,52 @@ router.get("/import/fields", async (_req, res) => {
   return res.status(200).json({ ok: true, fields: IMPORT_FIELDS });
 });
 
+/** Recent imports, so one run ago can still be found and taken back. */
+router.get("/imports", async (req, res, next) => {
+  try {
+    const reports = await listImportReportsForTenant({ tenantId: req.tenant._id, limit: 20 });
+    return res.status(200).json({
+      ok: true,
+      imports: reports.map((report) => ({
+        id: String(report._id),
+        fileName: report.fileName,
+        createdAt: report.createdAt,
+        summary: report.summary || {}
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Takes an import back. Removes only the profiles it created that nobody has
+ * claimed — once someone has confirmed a profile the account is theirs, and a
+ * director's regret about the upload does not undo that.
+ */
+router.post("/imports/:reportId/undo", async (req, res, next) => {
+  try {
+    const result = await undoTenantImport({
+      tenantId: req.tenant._id,
+      reportId: req.params.reportId
+    });
+
+    await writeAdminAudit(req, "admin_import_undone", {
+      reportId: result.reportId,
+      removedCount: result.removedCount,
+      keptClaimedCount: result.keptClaimedCount
+    });
+    clearAdminReadCaches(req.tenant._id);
+
+    return res.status(200).json({ ok: true, ...result });
+  } catch (error) {
+    if (error?.code === "IMPORT_REPORT_NOT_FOUND") {
+      return res.status(404).json({ error: { code: error.code, message: error.message } });
+    }
+    return next(error);
+  }
+});
+
 /**
  * Reads the headers and a few sample values, and proposes which column is which
  * field. Writes nothing and never fails on the model's account — if the AI tier
@@ -8247,7 +8298,8 @@ async function handleImport(req, res, next, { dryRun }) {
     return res.status(dryRun ? 200 : 201).json({ ok: true, ...result });
   } catch (error) {
     if (error?.code === "IMPORT_EMAIL_REQUIRED" || error?.code === "IMPORT_FIELD_UNKNOWN"
-      || error?.code === "CSV_INVALID_FORMAT" || error?.code === "IMPORT_MAPPING_INVALID") {
+      || error?.code === "CSV_INVALID_FORMAT" || error?.code === "IMPORT_MAPPING_INVALID"
+      || error?.code === "IMPORT_TOO_MANY_ROWS") {
       return res.status(400).json({ error: { code: error.code, message: error.message } });
     }
     return next(error);

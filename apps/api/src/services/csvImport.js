@@ -5,6 +5,7 @@ import { collectAll } from "../db/queryLimits.js";
 import { hashPassword } from "../utils/auth.js";
 import { buildImportBody, isKnownImportField } from "./importFieldMap.js";
 import { parseImportCsv } from "./importCsvParse.js";
+import { isUnclaimedProfile } from "./memberVisibility.js";
 import { profilePayloadFromBody } from "./profilePayload.js";
 
 /**
@@ -289,6 +290,13 @@ async function createProfileForRow({ tenantId, payload, email, reportId, mapStat
   return profile;
 }
 
+/**
+ * A ceiling on one file. The commit walks rows inside a single request, so a
+ * questionnaire past this belongs in a couple of files rather than one that
+ * times out halfway and leaves a director guessing what landed.
+ */
+export const MAX_IMPORT_ROWS = 2000;
+
 export function validateImportMapping(mapping = {}) {
   const entries = Object.entries(mapping || {});
   const unknown = [];
@@ -341,6 +349,13 @@ export async function runTenantCsvImport({
   }
 
   const parsedRows = parseImportCsv(csvBuffer);
+  if (parsedRows.length > MAX_IMPORT_ROWS) {
+    const error = new Error(
+      `That file has ${parsedRows.length} responses, and ${MAX_IMPORT_ROWS} is the most one import can take. Split it and run them in turn.`
+    );
+    error.code = "IMPORT_TOO_MANY_ROWS";
+    throw error;
+  }
 
   // These build the dedupe maps for the whole import, so they have to be complete.
   // A capped read makes every member past the first 1,000 look new, which would
@@ -495,6 +510,77 @@ export async function runTenantCsvImport({
 
 export async function findImportReportForTenant({ tenantId, reportId }) {
   return ImportReportModel.findOne(tenantId, { _id: reportId });
+}
+
+export function wasCreatedByImport(profile, reportId = "") {
+  const stamp = profile?.socials?.importedFrom;
+  return Boolean(reportId) && String(stamp?.reportId || "") === String(reportId);
+}
+
+/**
+ * Takes back an import.
+ *
+ * The reason a bad import is survivable: every profile it created carries the id
+ * of the run that created it, so the whole batch can be found and removed.
+ *
+ * It only ever removes rows that are still unclaimed. Once someone has signed in
+ * and confirmed a profile, the account is theirs — deleting it because a director
+ * regrets the upload would take away something a person now relies on. Those are
+ * counted and reported instead, so the director knows exactly what stayed and
+ * why.
+ */
+export async function undoTenantImport({ tenantId, reportId }) {
+  const report = await ImportReportModel.findOne(tenantId, { _id: reportId });
+  if (!report) {
+    const error = new Error("That import could not be found.");
+    error.code = "IMPORT_REPORT_NOT_FOUND";
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // The stamp lives inside the socials blob, which PostgREST cannot filter on
+  // through this model, so the tenant's profiles are read and matched here.
+  const profiles = await collectAll(ProfileModel.findAllBatched(tenantId));
+  const fromThisImport = profiles.filter((profile) => wasCreatedByImport(profile, reportId));
+
+  let removedCount = 0;
+  let keptClaimedCount = 0;
+  const failures = [];
+
+  for (const profile of fromThisImport) {
+    if (!isUnclaimedProfile(profile)) {
+      keptClaimedCount += 1;
+      continue;
+    }
+    try {
+      await ProfileModel.delete(profile._id);
+      if (profile.userId) await UserModel.delete(profile.userId);
+      removedCount += 1;
+    } catch (error) {
+      failures.push({ profileId: String(profile._id), message: error.message || "Could not remove" });
+    }
+  }
+
+  await ImportReportModel.update(report._id, {
+    summary: {
+      ...(report.summary && typeof report.summary === "object" ? report.summary : {}),
+      undoneAt: new Date().toISOString(),
+      removedCount,
+      keptClaimedCount
+    }
+  }).catch(() => {});
+
+  return {
+    reportId: String(report._id),
+    matchedCount: fromThisImport.length,
+    removedCount,
+    keptClaimedCount,
+    failures
+  };
+}
+
+export async function listImportReportsForTenant({ tenantId, limit = 20 }) {
+  return ImportReportModel.find(tenantId, {}, { sort: { createdAt: -1 }, limit });
 }
 
 // The merge rule decides whether a re-import can overwrite what a member wrote
