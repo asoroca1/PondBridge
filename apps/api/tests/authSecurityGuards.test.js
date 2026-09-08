@@ -2,6 +2,7 @@ import { jest } from "@jest/globals";
 import { readBearerToken } from "../src/utils/bearerToken.js";
 
 const verifyToken = jest.fn();
+const getUser = jest.fn();
 const env = {
   AUTH_PROVIDER: "clerk",
   CLERK_SECRET_KEY: "test-key",
@@ -14,10 +15,10 @@ const env = {
 };
 jest.unstable_mockModule("../src/config/env.js", () => ({ env }));
 jest.unstable_mockModule("@clerk/backend", () => ({
-  createClerkClient: () => ({}),
+  createClerkClient: () => ({ users: { getUser } }),
   verifyToken
 }));
-const { resolveClerkIdentityFromRequest } = await import("../src/services/clerkIdentity.js");
+const { resolveClerkIdentityFromRequest, isClerkIdentityEmailVerified } = await import("../src/services/clerkIdentity.js");
 const { csrfProtection } = await import("../src/middleware/csrfProtection.js");
 
 beforeEach(() => verifyToken.mockReset());
@@ -58,4 +59,17 @@ test("lowercase bearer is verified instead of falling back to the ambient Clerk 
     authorization: "bearer supplied-token", cookie: "__session=ambient-cookie"
   } })).rejects.toThrow("invalid token");
   expect(verifyToken.mock.calls[0][0]).toBe("supplied-token");
+});
+
+
+test("email-only invite ownership comes from Clerk's verified addresses", async () => {
+  getUser.mockResolvedValue({ primaryEmailAddressId: "primary", emailAddresses: [
+    { id: "primary", emailAddress: "unverified@example.test", verification: { status: "unverified" } },
+    { id: "verified", emailAddress: "Verified@example.test", verification: { status: "verified" } }
+  ] });
+  const identity = { provider: "clerk", clerkUserId: "verification-test-user" };
+  await expect(isClerkIdentityEmailVerified({ ...identity, email: "unverified@example.test" })).resolves.toBe(false);
+  await expect(isClerkIdentityEmailVerified({ ...identity, email: "verified@example.test" })).resolves.toBe(true);
+  await expect(isClerkIdentityEmailVerified({ ...identity, email: "other@example.test" })).resolves.toBe(false);
+  await expect(isClerkIdentityEmailVerified({ ...identity, provider: "legacy", email: "verified@example.test" })).resolves.toBe(false);
 });

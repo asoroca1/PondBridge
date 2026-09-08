@@ -7,6 +7,7 @@ let membership;
 let pending;
 let invite;
 const email = "member@example.test";
+const verifyIdentityEmail = jest.fn();
 const createMembership = jest.fn();
 const approveRequest = jest.fn();
 const profileWrite = jest.fn();
@@ -15,6 +16,7 @@ const createRequest = jest.fn();
 const findMembership = jest.fn();
 const profile = { _id: "profile-a", tenantId: "camp-a", status: "active", socials: {} };
 
+jest.unstable_mockModule("../src/services/clerkIdentity.js", () => ({ isClerkIdentityEmailVerified: verifyIdentityEmail }));
 jest.unstable_mockModule("../src/middleware/tenantAccess.js", () => ({
   requireTenantIdentityScope: [(req, _res, next) => {
     req.tenant = tenant; req.identity = { provider: "clerk", clerkUserId: "clerk-local", email }; next();
@@ -61,6 +63,7 @@ const body = { firstName: "Test", lastName: "Member", legalAgreementAccepted: tr
 
 beforeEach(() => {
   jest.clearAllMocks();
+  verifyIdentityEmail.mockResolvedValue(true);
   tenant = { _id: "camp-a", slug: "camp-a", status: "active", onboardingStatus: "live", billingStatus: "active",
     settings: { signupMode: "open", requireSignupApproval: false } };
   membership = null; pending = null; invite = null;
@@ -138,4 +141,38 @@ test("gate-off join never approves a different camp's request for the same email
   const response = await request(app).post("/join").send(body);
   expect(response.status).toBe(201); expect(pending.status).toBe("pending");
   expect(approveRequest).not.toHaveBeenCalled();
+});
+
+
+test.each([
+  ["another email", { email: "someone@example.test" }],
+  ["another tenant", { tenantId: "camp-b" }],
+  ["expired", { expiresAt: new Date(0) }],
+  ["already used", { usedAt: new Date() }]
+])("tokenless acceptance rejects an invite that is %s", async (_label, patch) => {
+  invite = { _id: "invite-a", tenantId: tenant._id, email, usedAt: null,
+    expiresAt: new Date(Date.now() + 60000), ...patch };
+  const response = await request(app).post("/invite/accept").send(body);
+  expect(response.status).toBe(404);
+  expect(createMembership).not.toHaveBeenCalled();
+  expect(createRequest).not.toHaveBeenCalled();
+});
+
+test("tokenless acceptance requires verified email ownership", async () => {
+  verifyIdentityEmail.mockResolvedValue(false);
+  const response = await request(app).post("/invite/accept").send(body);
+  expect(response.status).toBe(403);
+  expect(response.body.error.code).toBe("IDENTITY_EMAIL_VERIFICATION_REQUIRED");
+  expect(createMembership).not.toHaveBeenCalled();
+  expect(createRequest).not.toHaveBeenCalled();
+});
+
+test("tokenless invite acceptance still requires legal and age consent", async () => {
+  invite = { _id: "invite-a", tenantId: tenant._id, email, usedAt: null,
+    expiresAt: new Date(Date.now() + 60000) };
+  const response = await request(app).post("/invite/accept").send({});
+  expect(response.status).toBe(400);
+  expect(response.body.error.code).toBe("LEGAL_AGREEMENT_REQUIRED");
+  expect(createMembership).not.toHaveBeenCalled();
+  expect(createRequest).not.toHaveBeenCalled();
 });

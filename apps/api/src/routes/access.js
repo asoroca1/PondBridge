@@ -8,6 +8,7 @@ import {
   TenantAdminAuditLogModel,
   TenantModel
 } from "../db/models/index.js";
+import { isClerkIdentityEmailVerified } from "../services/clerkIdentity.js";
 import { requireTenantIdentityScope } from "../middleware/tenantAccess.js";
 import {
   createInviteRecord,
@@ -965,6 +966,12 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
   const identity = req.identity || {};
   const identityEmail = normalizeEmail(identity.email || "");
   const token = String(req.body?.inviteToken || req.body?.token || "").trim();
+
+  if (!token && !(await isClerkIdentityEmailVerified(identity))) {
+    return res.status(403).json({
+      error: { code: "IDENTITY_EMAIL_VERIFICATION_REQUIRED", message: "Verify your email address before accepting this invitation." }
+    });
+  }
 
   // A person can begin account creation from the camp's normal signup page
   // rather than from their invitation URL. The decision endpoint deliberately
