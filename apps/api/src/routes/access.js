@@ -192,6 +192,19 @@ async function findPendingRequest(tenantId, email = "") {
   });
 }
 
+async function markPendingRequestApprovedByAutoJoin({ tenantId, email, userId }) {
+  const pendingRequest = await findPendingRequest(tenantId, email);
+  if (!pendingRequest) return null;
+
+  return AccessRequestModel.updateScoped(tenantId, pendingRequest._id, {
+    status: "approved",
+    reviewedAt: new Date(),
+    reviewedByUserId: null,
+    approvedUserId: userId,
+    denialReason: ""
+  });
+}
+
 async function findInviteForEmail(tenantId, email = "") {
   if (!tenantId || !email) return null;
   const candidates = await InviteModel.find(
@@ -379,7 +392,7 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
     };
   }
 
-  if (pendingRequest) {
+  if (pendingRequest && policy.requireApproval) {
     return {
       state: "access_pending",
       action: "wait_for_approval",
@@ -830,6 +843,15 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
     identity
   });
   const profile = await persistProfileLegalAgreement(profileRecord, legalAgreement);
+
+  // A request can have been submitted while the gate was on and then be
+  // completed after the director turns it off. The join itself is the
+  // authoritative approval in that case, so remove the stale queue item.
+  await markPendingRequestApprovedByAutoJoin({
+    tenantId: req.tenant._id,
+    email,
+    userId: member._id
+  });
 
   await logTenantEvent({
     tenantId: req.tenant._id,

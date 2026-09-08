@@ -535,6 +535,23 @@ router.post("/register", registerLimiter, requireTenant, async (req, res) => {
   await UserModel.updateScoped(req.tenant._id, user._id, { profileId: profile._id });
   user.profileId = profile._id;
 
+  // If this person requested access while the review gate was enabled, their
+  // successful direct registration after the gate is disabled resolves that
+  // pending request without leaving a duplicate item in the director queue.
+  const pendingRequest = await AccessRequestModel.findOne(req.tenant._id, {
+    email,
+    status: "pending"
+  });
+  if (pendingRequest) {
+    await AccessRequestModel.updateScoped(req.tenant._id, pendingRequest._id, {
+      status: "approved",
+      reviewedAt: new Date(),
+      reviewedByUserId: null,
+      approvedUserId: user._id,
+      denialReason: ""
+    });
+  }
+
   const actorName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() || "Someone";
   await ActivityItemModel.create({
     tenantId: req.tenant._id,
