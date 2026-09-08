@@ -423,7 +423,7 @@ describe("unified people directory", () => {
 
 
 test("recovered verified signups remain in Requests and expose missing consent to the director", () => {
-  const base = { _id: "recovered-1", status: "pending", email: "verified@example.test", profilePayload: { socials: {
+  const base = { _id: "recovered-1", recoveredClerkUserId: "user_synthetic", status: "pending", email: "verified@example.test", profilePayload: { socials: {
     signupRecovery: { clerkUserId: "synthetic-clerk", requiresConsent: true }
   } } };
   const first = buildPeopleDirectory({ accessRequests: [base] });
@@ -435,4 +435,6 @@ test("recovered verified signups remain in Requests and expose missing consent t
   expect(complete.people[0]).toMatchObject({ stage: "request", requiresConsent: false, recoveredSignup: true });
   const ordinary = buildPeopleDirectory({ accessRequests: [{ _id: "normal", status: "pending", email: "ordinary@example.test" }] });
   expect(ordinary.people[0].requiresConsent).toBe(false);
+  const forged = buildPeopleDirectory({ accessRequests: [{ ...base, recoveredClerkUserId: undefined }] });
+  expect(forged.people[0]).toMatchObject({ requiresConsent: false, recoveredSignup: false });
 });

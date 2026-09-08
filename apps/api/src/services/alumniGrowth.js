@@ -560,7 +560,7 @@ export function buildPeopleDirectory({
       contactId: String(contact?._id || contact?.id || ""),
       requestId: String(request?._id || request?.id || ""),
       requiresConsent: recoveredRequestRequiresConsent(request),
-      recoveredSignup: Boolean(request?.profilePayload?.socials?.signupRecovery),
+      recoveredSignup: Boolean(request?.recoveredClerkUserId),
       avatarUrl: memberRow?.avatarUrl || String(profile?.avatarUrl || ""),
       role: memberRow?.role || String(request?.selfReportedRole || contact?.roleAtCamp || ""),
       campRoles,
