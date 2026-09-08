@@ -1,4 +1,5 @@
 import { AlumniContactModel } from "../db/models/index.js";
+import { isUnclaimedProfile } from "./memberVisibility.js";
 import { sanitizeText } from "../utils/sanitize.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -429,7 +430,12 @@ function indexPeopleSources({
     const contact = contactMap.get(email);
     // An explicit hold outranks everything: it means "do not contact this person".
     if (String(contact?.contactStatus || "") === "do_not_contact") return "on_hold";
-    if (memberMap.has(email)) return "member";
+    // An account an import created is not a member yet: nobody has signed in to
+    // it, and its profile is invisible to the camp until they do. Filing it under
+    // "member" would inflate the count and hide the people who still need asking.
+    if (memberMap.has(email)) {
+      return isUnclaimedProfile(memberMap.get(email)?.profile) ? "imported" : "member";
+    }
     if (requestMap.has(email)) return "request";
     const latestInvite = invitesByEmail.get(email)?.[0] || null;
     if (latestInvite && !latestInvite.usedAt) {
@@ -596,7 +602,11 @@ export function buildAlumniGrowthSnapshot({
   );
   // A member with no address on file still joined. They cannot be matched to a
   // contact or invite by email, but they must not vanish from the totals.
-  const joinedMemberCount = memberMap.size;
+  // Same rule as the stage rail: an unclaimed import has not joined, so it must
+  // not count towards "Joined" or flatter the weekly-active rate by sitting in
+  // its denominator.
+  const joinedMemberCount = [...memberMap.values()]
+    .filter((entry) => !isUnclaimedProfile(entry?.profile)).length;
   const emaillessMemberCount = Math.max(0, joinedMemberCount - joinedEmails.size);
   const contactMap = new Map();
   for (const contact of contacts) {

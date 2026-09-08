@@ -59,6 +59,7 @@ import {
   cancelScheduledTransactionalEmail,
   getEmailSchedulingStatus,
   sendBulkTransactionalEmail,
+  sendClaimAccountEmail,
   sendInviteEmail,
   sendTransactionalEmail,
   sendAccessDecisionEmail
@@ -8252,6 +8253,115 @@ async function handleImport(req, res, next, { dryRun }) {
     return next(error);
   }
 }
+
+/**
+ * Tells imported people their profile is waiting.
+ *
+ * Always a separate, deliberate step from the import itself. Commit creates the
+ * accounts; this is what reaches anyone, and a wrong upload should cost a
+ * director an undo rather than three thousand emails they cannot recall.
+ *
+ * The ordinary invite path cannot serve these people: it skips anyone who
+ * already has an account, and an imported person does.
+ */
+router.post("/import/claim-emails", inviteSendLimiter, async (req, res, next) => {
+  try {
+    const requested = Array.isArray(req.body?.emails)
+      ? req.body.emails.map((value) => normalizeEmail(value)).filter(Boolean)
+      : [];
+
+    const unclaimedProfiles = await collectAll(
+      ProfileModel.findAllBatched(req.tenant._id, { status: "pending" })
+    );
+    if (!unclaimedProfiles.length) {
+      return res.status(200).json({ ok: true, sentCount: 0, skipped: [], message: "Nobody is waiting to claim a profile." });
+    }
+
+    const users = await collectAll(
+      UserModel.findAllBatched(req.tenant._id, {
+        _id: { $in: unclaimedProfiles.map((profile) => String(profile.userId)).filter(Boolean) }
+      })
+    );
+    const usersById = new Map(users.map((user) => [String(user._id), user]));
+
+    const targets = unclaimedProfiles
+      .map((profile) => ({ profile, user: usersById.get(String(profile.userId)) || null }))
+      .filter(({ user }) => user && user.status === "active" && normalizeEmail(user.email))
+      .filter(({ user }) => !requested.length || requested.includes(normalizeEmail(user.email)));
+
+    if (targets.length > env.EMAIL_BROADCAST_MAX_RECIPIENTS) {
+      return res.status(400).json({
+        error: {
+          code: "TOO_MANY_RECIPIENTS",
+          message: `That is ${targets.length} people, past the ${env.EMAIL_BROADCAST_MAX_RECIPIENTS} limit for one send. Select fewer.`
+        }
+      });
+    }
+
+    const questionnaireName = String(req.body?.questionnaireName || "").trim();
+    let sentCount = 0;
+    const skipped = [];
+
+    for (const { profile, user } of targets) {
+      const email = normalizeEmail(user.email);
+
+      // A director's hold means "do not contact", and it outranks a send the
+      // same director just asked for.
+      let contact = null;
+      try {
+        contact = await AlumniContactModel.findOne(req.tenant._id, { email });
+      } catch (error) {
+        if (!isAlumniGrowthStorageUnavailable(error)) throw error;
+      }
+      if (contact?.contactStatus === "do_not_contact") {
+        skipped.push({ email, reason: "CONTACT_ON_HOLD" });
+        continue;
+      }
+
+      try {
+        await sendClaimAccountEmail({
+          tenant: req.tenant,
+          email,
+          firstName: profile.firstName || "",
+          lastName: profile.lastName || "",
+          questionnaireName,
+          replyTo: normalizeEmail(req.user?.email || "")
+        });
+        sentCount += 1;
+
+        // Recorded beside the import that created the row, so a resend and the
+        // "still waiting" reminder both know who has already been asked.
+        const socials = profile.socials && typeof profile.socials === "object" ? profile.socials : {};
+        const importedFrom = socials.importedFrom && typeof socials.importedFrom === "object"
+          ? socials.importedFrom
+          : {};
+        await ProfileModel.update(profile._id, {
+          socials: {
+            ...socials,
+            importedFrom: {
+              ...importedFrom,
+              claimEmailSentAt: new Date().toISOString(),
+              claimEmailCount: Number(importedFrom.claimEmailCount || 0) + 1
+            }
+          }
+        }).catch(() => {});
+      } catch (error) {
+        skipped.push({ email, reason: `EMAIL_SEND_FAILED: ${error.message}` });
+      }
+    }
+
+    await writeAdminAudit(req, "admin_claim_emails_sent", {
+      attemptedCount: targets.length,
+      sentCount,
+      skippedCount: skipped.length
+    });
+    clearAdminReadCaches(req.tenant._id);
+
+    return res.status(200).json({ ok: true, attemptedCount: targets.length, sentCount, skipped });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 /** Works out what an import would do. Writes nothing. */
 router.post("/import/dry-run", csvUpload.single("file"), async (req, res, next) =>

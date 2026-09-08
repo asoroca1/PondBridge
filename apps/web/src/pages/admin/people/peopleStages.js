@@ -32,6 +32,12 @@ export const STAGES = [
     blurb: "Invitation lapsed without being used."
   },
   {
+    key: "imported",
+    label: "Imported",
+    tone: "info",
+    blurb: "Profile filled in and waiting. Hidden until they sign in and confirm it."
+  },
+  {
     key: "prospect",
     label: "Prospects",
     tone: "neutral",
@@ -60,6 +66,17 @@ export const INVITABLE_STAGES = new Set(["prospect", "expired"]);
 
 export function isInvitable(person = {}) {
   return INVITABLE_STAGES.has(person.stage) && Boolean(person.email);
+}
+
+/**
+ * Imported people need the claim email, not an invitation.
+ *
+ * They already have an account — the invite flow skips anyone who does, so
+ * sending them an invitation would silently reach nobody. What they are missing
+ * is a password, which is a different mail and a different endpoint.
+ */
+export function isClaimable(person = {}) {
+  return person.stage === "imported" && Boolean(person.email);
 }
 
 export function canApprove(person = {}) {

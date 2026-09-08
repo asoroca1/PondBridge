@@ -9,6 +9,7 @@ import {
   recognitionMeta,
   stageMeta,
   stageSummary,
+  isClaimable,
   isInvitable,
   canApprove
 } from "./peopleStages.js";
@@ -61,6 +62,7 @@ export default function PeopleListView({
   );
 
   const invitable = selected.filter(isInvitable);
+  const claimable = selected.filter(isClaimable);
   const approvable = selected.filter(canApprove);
   const emailable = selected.filter((person) => person.profileId);
   const allOnPageSelected = items.length > 0 && items.every((item) => selectedKeys.includes(item.key));
@@ -147,6 +149,17 @@ export default function PeopleListView({
                 <Button type="button" size="sm" onClick={() => onInvite(invitable)}>
                   <Send aria-hidden="true" />
                   Invite {invitable.length}
+                </Button>
+              ) : null}
+              {claimable.length ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  loading={actions.busy === "claim"}
+                  onClick={async () => onBulkResult?.(await actions.sendClaimEmails(claimable))}
+                >
+                  <Send aria-hidden="true" />
+                  Email {claimable.length} to claim
                 </Button>
               ) : null}
               {approvable.length ? (
