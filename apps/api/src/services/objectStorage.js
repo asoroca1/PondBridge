@@ -360,6 +360,64 @@ export async function createPresignedUpload({
   };
 }
 
+/**
+ * Recover the object key a stored URL refers to, or "" if it refers to
+ * something outside this bucket.
+ *
+ * Some rows keep a URL the client handed back rather than a key -- the photo
+ * stream is the one still doing it -- and a URL is only trustworthy once it has
+ * been proved to name an object we put there. Both shapes the app mints are
+ * accepted: the public CDN URL and the `?key=` proxy URL.
+ */
+export function readObjectKeyFromUrl(url = "", { publicBaseUrl = "", objectProxyBaseUrl = "" } = {}) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+
+  let parsed = null;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return "";
+  }
+
+  const proxyBase = trimTrailingSlashes(objectProxyBaseUrl);
+  if (proxyBase) {
+    try {
+      const base = new URL(proxyBase);
+      if (parsed.origin === base.origin && parsed.pathname === trimTrailingSlashes(base.pathname)) {
+        return String(parsed.searchParams.get("key") || "").trim();
+      }
+    } catch {
+      // Not a usable proxy base; fall through to the public form.
+    }
+  }
+
+  const publicBase = trimTrailingSlashes(publicBaseUrl);
+  if (publicBase) {
+    try {
+      const base = new URL(publicBase);
+      const basePath = trimTrailingSlashes(base.pathname);
+      if (parsed.origin === base.origin && parsed.pathname.startsWith(`${basePath}/`)) {
+        return parsed.pathname
+          .slice(basePath.length + 1)
+          .split("/")
+          .map((segment) => {
+            try {
+              return decodeURIComponent(segment);
+            } catch {
+              return segment;
+            }
+          })
+          .join("/");
+      }
+    } catch {
+      // Not a usable public base either.
+    }
+  }
+
+  return "";
+}
+
 export async function createPresignedDownloadUrl({
   key = "",
   expiresInSeconds = env.R2_PRESIGN_EXPIRES_SECONDS || 900
