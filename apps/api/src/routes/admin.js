@@ -49,6 +49,7 @@ import {
 } from "../db/models/index.js";
 import { findImportReportForTenant, runTenantCsvImport } from "../services/csvImport.js";
 import { IMPORT_FIELDS } from "../services/importFieldMap.js";
+import { proposeImportMapping } from "../services/importColumnMapperAi.js";
 import { env } from "../config/env.js";
 import {
   buildTenantEmailBranding,
@@ -8093,6 +8094,64 @@ router.post("/import-csv", csvUpload.single("file"), async (req, res) => {
 /** The fields a mapping may target, for the column-mapping step and its dropdowns. */
 router.get("/import/fields", async (_req, res) => {
   return res.status(200).json({ ok: true, fields: IMPORT_FIELDS });
+});
+
+/**
+ * Reads the headers and a few sample values, and proposes which column is which
+ * field. Writes nothing and never fails on the model's account — if the AI tier
+ * is unavailable the dictionary's answer comes back with a reason attached, and
+ * the director maps the rest by hand.
+ */
+router.post("/import/analyze", csvUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({
+        error: { code: "FILE_REQUIRED", message: "Upload a CSV file under field 'file'." }
+      });
+    }
+
+    let rows = [];
+    try {
+      rows = parseCsv(req.file.buffer.toString("utf8"), {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        bom: true,
+        relax_column_count: true
+      });
+    } catch (error) {
+      return res.status(400).json({
+        error: { code: "CSV_INVALID_FORMAT", message: error.message || "That file is not readable as CSV." }
+      });
+    }
+
+    if (!rows.length) {
+      return res.status(400).json({
+        error: { code: "CSV_EMPTY", message: "That file has a header row but no responses in it." }
+      });
+    }
+
+    const headers = Object.keys(rows[0] || {});
+    const result = await proposeImportMapping({
+      tenantId: req.tenant._id,
+      actorUserId: req.user.id,
+      headers,
+      // Only the first rows are read, and only to collect examples — the mapper
+      // never sees the rest of the file.
+      rows: rows.slice(0, 50),
+      useAi: String(req.body?.useAi ?? "true") !== "false"
+    });
+
+    return res.status(200).json({
+      ok: true,
+      fileName: req.file.originalname,
+      rowCount: rows.length,
+      headers,
+      ...result
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 function parseMappingField(value) {
