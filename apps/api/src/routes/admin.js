@@ -1,7 +1,7 @@
 import { durableJobsEnabled, MAX_QUEUED_RECIPIENTS, enqueueJob, readJob, readJobByKey, jobFingerprint, publicJob } from "../services/durableJobs.js";
 import { Router } from "express";
 import { getSupabaseAdmin } from "../db/supabaseAdmin.js";
-import { approvalEmailJobKey, readApprovalEmailIntent } from "../services/approvalEmailJobs.js";
+import { approvalEmailJobKey, readApprovalEmailIntent, readPreapprovalEmailIntent } from "../services/approvalEmailJobs.js";
 import { recoveredRequestRequiresConsent } from "../services/signupRecoveryConsent.js";
 import { buildEmailPalette } from "../services/brandPalette.js";
 import crypto from "crypto";
@@ -2730,7 +2730,7 @@ router.get("/dashboard", async (req, res, next) => {
     const [
       activeMembers,
       newThisWeek,
-      pendingApprovals,
+      pendingApprovalRows,
       profiles,
       lastBroadcast,
       activity,
@@ -2746,7 +2746,7 @@ router.get("/dashboard", async (req, res, next) => {
           ...ACTIVE_ALUMNI_FILTER,
           createdAt: { $gte: sevenDaysAgo }
         }),
-        AccessRequestModel.count(tenantId, { status: "pending" }),
+        AccessRequestModel.find(tenantId, { status: "pending" }, { limit: 5000 }),
         // Every profile, not the first page of them. This drives three figures on
         // Today — where members live, what they did at camp, and the average
         // profile completion — and a plain find() stops at PostgREST's 1,000-row
@@ -2869,6 +2869,7 @@ router.get("/dashboard", async (req, res, next) => {
     const actionQueue = [];
     const tenantAdminBase = `/t/${encodeURIComponent(String(req.tenant.slug || ""))}/admin`;
 
+    const pendingApprovals = pendingApprovalRows.filter((item) => !item.directorApprovedAt).length;
     if (pendingApprovals > 0) {
       actionQueue.push({
         id: "pending-approvals",
@@ -4107,8 +4108,8 @@ router.get("/members/approvals", async (req, res) => {
   });
 
   return res.json({
-    total: requests.length,
-    items: requests.map((item) => ({
+    total: requests.filter((item) => status !== "pending" || !item.directorApprovedAt).length,
+    items: requests.filter((item) => status !== "pending" || !item.directorApprovedAt).map((item) => ({
       id: toObjectIdString(item._id),
       firstName: item.firstName || item.profilePayload?.firstName || "",
       lastName: item.lastName || item.profilePayload?.lastName || "",
@@ -4117,6 +4118,9 @@ router.get("/members/approvals", async (req, res) => {
       requestMessage: item.requestMessage || "",
       requiresConsent: recoveredRequestRequiresConsent(item),
       recoveredSignup: Boolean(item.recoveredClerkUserId),
+      directorApproved: Boolean(item.directorApprovedAt),
+      directorApprovedAt: toIso(item.directorApprovedAt),
+      directorApprovedByUserId: String(item.directorApprovedByUserId || ""),
       status: item.status,
       requestedAt: toIso(item.requestedAt || item.createdAt),
       reviewedAt: toIso(item.reviewedAt)
@@ -4163,6 +4167,21 @@ async function deliverApprovedAccessEmail({ tenant, email, firstName, requestId 
   }
 }
 
+async function readPreapprovalEmailHandoff({ tenant, requestId }) {
+  try {
+    const job = await readPreapprovalEmailIntent(tenant._id, requestId);
+    return job
+      ? { durable: true, jobId: job.id, status: job.status }
+      : { durable: false, status: "handoff_missing" };
+  } catch (error) {
+    console.warn("[email] preapproval handoff could not be confirmed", {
+      tenantId: String(tenant._id || ""), requestId: String(requestId || ""),
+      code: String(error?.code || "PREAPPROVAL_EMAIL_HANDOFF_UNKNOWN")
+    });
+    return { durable: false, status: "handoff_unknown" };
+  }
+}
+
 /**
  * Runs queued jobs a few at a time. Approving 250 people means 250 emails; all
  * at once would hammer the mail provider, one at a time would time out.
@@ -4187,20 +4206,45 @@ async function runWithConcurrency(jobs = [], limit = 8) {
  * than one per person.
  */
 async function approveAccessRequest(req, request, { collector = null, audit = true } = {}) {
-  if (recoveredRequestRequiresConsent(request)) {
-    return { ok: false, requestId: toObjectIdString(request._id), code: "RECOVERED_SIGNUP_CONSENT_REQUIRED" };
-  }
   const email = normalizeEmail(request.email || request.profilePayload?.emails?.[0] || "");
   if (!isEmail(email)) {
     return { ok: false, requestId: toObjectIdString(request._id), code: "INVALID_EMAIL" };
   }
 
   const firstName = String(request.firstName || request.profilePayload?.firstName || "").trim();
-  if (request.recoveredClerkUserId) {
-    const { data: result, error } = await getSupabaseAdmin().rpc("approve_recovered_signup_review", {
+  let recoveredActivation = null;
+  if (recoveredRequestRequiresConsent(request)) {
+    const { data: result, error } = await getSupabaseAdmin().rpc("preapprove_recovered_signup_review", {
       p_tenant: String(req.tenant._id), p_request: toObjectIdString(request._id), p_actor: String(req.user.id)
     });
     if (error) throw error;
+    if (!result?.ok) return { ok: false, requestId: toObjectIdString(request._id), code: result?.code || "ACCESS_REQUEST_CHANGED" };
+    if (result.activated) {
+      recoveredActivation = result;
+    } else {
+      const requestId = String(result.requestId || toObjectIdString(request._id));
+      const approvalEmail = await readPreapprovalEmailHandoff({ tenant: req.tenant, requestId });
+      if (collector) {
+        collector.requestIds.push(requestId);
+        collector.awaitingConsent += 1;
+        collector.approvalEmails.push({ requestId, phase: "consent_pending", ...approvalEmail });
+      }
+      if (audit) await writeAdminAudit(req, "admin_access_request_preapproved", {
+        requestId, recoveredSignup: true, awaitingConsent: true
+      });
+      return { ok: true, requestId, awaitingConsent: true, directorApproved: true,
+        directorApprovedAt: result.directorApprovedAt, approvalEmail };
+    }
+  }
+  if (request.recoveredClerkUserId) {
+    let result = recoveredActivation;
+    if (!result) {
+      const rpcResult = await getSupabaseAdmin().rpc("approve_recovered_signup_review", {
+        p_tenant: String(req.tenant._id), p_request: toObjectIdString(request._id), p_actor: String(req.user.id)
+      });
+      if (rpcResult.error) throw rpcResult.error;
+      result = rpcResult.data;
+    }
     if (!result?.ok) return { ok: false, requestId: toObjectIdString(request._id), code: result?.code || "ACCESS_REQUEST_CHANGED" };
     const [user, profile] = await Promise.all([
       UserModel.findOne(req.tenant._id, { _id: result.userId }),
@@ -4451,6 +4495,8 @@ async function denyAccessRequest(req, pending, reason = "", { collector = null, 
     status: "denied",
     reviewedAt: new Date(),
     reviewedByUserId: req.user.id,
+    directorApprovedAt: null,
+    directorApprovedByUserId: null,
     denialReason: reason
   });
   if (!request) return { ok: false, requestId: toObjectIdString(pending._id), code: "ACCESS_REQUEST_CHANGED" };
@@ -4502,8 +4548,9 @@ async function resolvePendingRequestTargets(req, { ids = [], scope = "selected",
     limit: 5000
   });
 
+  const actionable = pending.filter((row) => !row.directorApprovedAt);
   const wanted = new Set(ids.map((id) => String(id || "").trim()).filter(Boolean));
-  let targets = scope === "all" ? pending : pending.filter((row) => wanted.has(toObjectIdString(row._id)));
+  let targets = scope === "all" ? actionable : actionable.filter((row) => wanted.has(toObjectIdString(row._id)));
 
   if (match !== "any") {
     const [invites, contactResult] = await Promise.all([
@@ -4564,7 +4611,9 @@ router.post("/members/approvals/:requestId/approve", async (req, res) => {
   return res.json({
     ok: true,
     requestId: result.requestId,
-    ...(result.existingUser ? { existingUser: true } : { member: result.member }),
+    ...(result.awaitingConsent
+      ? { awaitingConsent: true, directorApproved: true, directorApprovedAt: result.directorApprovedAt }
+      : result.existingUser ? { existingUser: true } : { member: result.member }),
     ...(result.approvalEmail ? { approvalEmail: result.approvalEmail } : {})
   });
 });
@@ -4625,7 +4674,7 @@ router.post("/members/approvals/bulk", async (req, res) => {
   const targets = matched.slice(0, APPROVAL_BULK_MAX);
   const remaining = Math.max(0, matched.length - targets.length);
 
-  const collector = { approvedUserIds: [], requestIds: [], emails: [], approvalEmails: [] };
+  const collector = { approvedUserIds: [], requestIds: [], emails: [], approvalEmails: [], awaitingConsent: 0 };
   const failed = [];
   let succeeded = 0;
 
@@ -4665,6 +4714,7 @@ router.post("/members/approvals/bulk", async (req, res) => {
     action,
     decided: succeeded,
     failed,
+    awaitingConsent: collector.awaitingConsent,
     approvalEmails: collector.approvalEmails,
     // Anything past the per-request cap is still waiting; the client sends the
     // next chunk rather than silently dropping people.
@@ -6225,7 +6275,8 @@ router.get("/settings", async (req, res) => {
   const settings = draft.settings;
   // Switching the review gate off leaves anyone already queued still waiting,
   // so the settings page has to be able to say so.
-  const pendingApprovalCount = await AccessRequestModel.count(req.tenant._id, { status: "pending" }).catch(() => 0);
+  const pendingApprovalRows = await AccessRequestModel.find(req.tenant._id, { status: "pending" }, { limit: 5000 }).catch(() => []);
+  const pendingApprovalCount = pendingApprovalRows.filter((item) => !item.directorApprovedAt).length;
   const tenantUrls = buildTenantUrls(req.tenant);
   const websiteUrl = String(content.supportUrl || "").trim() || tenantUrls.appUrl;
   const directorUserId = await resolveDirectorUserId(req.tenant);
@@ -7319,6 +7370,7 @@ const PEOPLE_EXPORT_DEFAULT_COLUMNS = ["firstName", "lastName", "email", "stage"
 
 const PEOPLE_STAGE_LABELS = {
   member: "Member",
+  awaiting_setup: "Approved · setup pending",
   request: "Pending request",
   invited: "Invited",
   expired: "Invite expired",

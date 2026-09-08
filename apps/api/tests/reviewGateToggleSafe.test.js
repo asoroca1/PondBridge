@@ -10,6 +10,7 @@ let pending;
 let invite;
 const email = "member@example.test";
 const verifyIdentityEmail = jest.fn();
+const rpc = jest.fn();
 const createMembership = jest.fn();
 const approveRequest = jest.fn();
 const profileWrite = jest.fn();
@@ -19,6 +20,7 @@ const findMembership = jest.fn();
 const profile = { _id: "profile-a", tenantId: "camp-a", status: "active", socials: {} };
 
 jest.unstable_mockModule("../src/services/clerkIdentity.js", () => ({ isClerkIdentityEmailVerified: verifyIdentityEmail }));
+jest.unstable_mockModule("../src/db/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => ({ rpc }) }));
 jest.unstable_mockModule("../src/middleware/tenantAccess.js", () => ({
   requireTenantIdentityScope: [(req, _res, next) => {
     req.tenant = tenant; req.identity = { provider: "clerk", clerkUserId: "clerk-local", email }; next();
@@ -75,13 +77,30 @@ beforeEach(() => {
     settings: { signupMode: "open", requireSignupApproval: false } };
   membership = null; pending = null; invite = null;
   findMembership.mockImplementation(async () => membership);
-  findRequest.mockImplementation(async (tenantId, filter) => pending?.tenantId === tenantId && pending.email === filter.email && pending.status === "pending" ? pending : null);
+  findRequest.mockImplementation(async (tenantId, filter) => {
+    if (pending?.tenantId !== tenantId) return null;
+    if (filter?._id) return pending._id === filter._id ? pending : null;
+    if (filter?.recoveredClerkUserId) return pending.recoveredClerkUserId === filter.recoveredClerkUserId ? pending : null;
+    return pending.email === filter.email && pending.status === "pending" ? pending : null;
+  });
   createMembership.mockImplementation(async () => {
     membership = { _id: "member-a", email, tenantId: tenant._id, roles: ["user"], status: "active" }; return membership;
   });
   createRequest.mockImplementation(async (row) => { pending = { _id: "request-a", ...row }; return pending; });
   approveRequest.mockImplementation(async (_tenantId, _id, patch) => { pending = { ...pending, ...patch }; return pending; });
   profileWrite.mockImplementation(async (_tenantId, _id, patch) => ({ ...profile, ...patch }));
+  rpc.mockImplementation(async (name, args) => {
+    if (name !== "submit_recovered_signup_consent") throw new Error(`Unexpected RPC ${name}`);
+    pending = { ...pending, firstName: args.p_first_name, lastName: args.p_last_name,
+      selfReportedRole: args.p_self_reported_role, requestMessage: args.p_request_message,
+      profilePayload: args.p_profile_payload };
+    if (!pending.directorApprovedAt) {
+      return { data: { ok: true, requestId: pending._id, activated: false, pendingApproval: true }, error: null };
+    }
+    pending = { ...pending, status: "approved", approvedUserId: "member-a" };
+    membership = { _id: "member-a", tenantId: tenant._id, email, status: "active", roles: ["user"] };
+    return { data: { ok: true, requestId: pending._id, userId: "member-a", activated: true, pendingApproval: false }, error: null };
+  });
 });
 
 test("gate-off decision ignores a stale pending request for a new member", async () => {
@@ -199,6 +218,21 @@ test("recovered pending decision exposes consent and real POST preserves provena
   expect(completed.body.decision.request.requiresConsent).toBe(false);
   expect(pending.profilePayload.socials.signupRecovery).toMatchObject({ clerkUserId: "clerk-local", source: "periodic_scan", requiresConsent: false });
   expect(pending.profilePayload.socials.legalAgreement).toMatchObject({ accepted: true, ageEligibilityConfirmed: true });
+  expect(createMembership).not.toHaveBeenCalled();
+});
+
+test("preapproved recovered consent activates atomically and returns explicit active state", async () => {
+  recoveredPending();
+  pending.directorApprovedAt = new Date("2026-09-08T21:00:00Z");
+  pending.directorApprovedByUserId = "director-a";
+  const completed = await request(app).post("/request-access").send(body);
+  expect(completed.status).toBe(200);
+  expect(completed.body.pendingApproval).toBe(false);
+  expect(completed.body.decision.state).toBe("active_member");
+  expect(rpc).toHaveBeenCalledWith("submit_recovered_signup_consent", expect.objectContaining({
+    p_tenant: "camp-a", p_request: "request-a", p_clerk_user_id: "clerk-local", p_verified_email: email
+  }));
+  expect(pending.status).toBe("approved");
   expect(createMembership).not.toHaveBeenCalled();
 });
 

@@ -261,15 +261,18 @@ function ClerkAuthCallbackPage() {
     if (decision.action === "wait_for_approval") {
       if (requiresRecoveredRequestConsent(decision)) {
         if (!legalAgreement) {
-          const error = new Error("Legal agreement is required before director approval.");
+          const error = new Error("Confirm your age and the agreement before gaining access.");
           error.code = "LEGAL_AGREEMENT_REQUIRED";
           throw error;
         }
-        await requestJson(`/api/t/${safeSlug}/access/request-access`, {
+        const completed = await requestJson(`/api/t/${safeSlug}/access/request-access`, {
           method: "POST",
           token,
           body: { legalAgreement }
         });
+        if (completed?.pendingApproval === false || completed?.decision?.state === "active_member") {
+          return { pendingApproval: false };
+        }
       }
       return { pendingApproval: true };
     }
@@ -461,22 +464,26 @@ function ClerkAuthCallbackPage() {
           navigate(routeWithSlug(slug, "/request-access"), { replace: true });
           return;
         } else if (decision.action === "wait_for_approval") {
+          let activated = false;
           if (requiresRecoveredRequestConsent(decision)) {
             if (!pendingLegalAgreement) {
-              const legalError = new Error("Legal agreement is required before director approval.");
+              const legalError = new Error("Confirm your age and the agreement before gaining access.");
               legalError.code = "LEGAL_AGREEMENT_REQUIRED";
               throw legalError;
             }
-            await requestJson(`/api/t/${slug}/access/request-access`, {
+            const completed = await requestJson(`/api/t/${slug}/access/request-access`, {
               method: "POST",
               token,
               body: { legalAgreement: pendingLegalAgreement }
             });
+            activated = completed?.pendingApproval === false || completed?.decision?.state === "active_member";
           }
           clearPendingLegalAgreement(slug);
-          redirected = true;
-          navigate(routeWithSlug(slug, "/request-access"), { replace: true });
-          return;
+          if (!activated) {
+            redirected = true;
+            navigate(routeWithSlug(slug, "/request-access"), { replace: true });
+            return;
+          }
         } else if (decision.action === "invite_required") {
           setError("This camp network is invite-only.");
           setGuidance("Open the personal invitation from your camp director to finish creating your account.");

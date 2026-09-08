@@ -1,5 +1,5 @@
 import { AlumniContactModel } from "../db/models/index.js";
-import { recoveredRequestRequiresConsent } from "./signupRecoveryConsent.js";
+import { recoveredRequestIsPreapproved, recoveredRequestRequiresConsent } from "./signupRecoveryConsent.js";
 import { isUnclaimedProfile } from "./memberVisibility.js";
 import { sanitizeText } from "../utils/sanitize.js";
 
@@ -354,6 +354,7 @@ export function resolveGrowthEmailSegment({
 
 export const PEOPLE_STAGES = [
   "member",
+  "awaiting_setup",
   "request",
   "invited",
   "expired",
@@ -441,7 +442,9 @@ function indexPeopleSources({
     if (memberMap.has(email)) {
       return isUnclaimedProfile(memberMap.get(email)?.profile) ? "unclaimed" : "member";
     }
-    if (requestMap.has(email)) return "request";
+    if (requestMap.has(email)) {
+      return recoveredRequestIsPreapproved(requestMap.get(email)) ? "awaiting_setup" : "request";
+    }
     const latestInvite = invitesByEmail.get(email)?.[0] || null;
     if (latestInvite && !latestInvite.usedAt) {
       const expiresAt = asDate(latestInvite.expiresAt)?.getTime();
@@ -559,6 +562,8 @@ export function buildPeopleDirectory({
       userId,
       contactId: String(contact?._id || contact?.id || ""),
       requestId: String(request?._id || request?.id || ""),
+      directorApprovedAt: iso(request?.directorApprovedAt),
+      directorApprovedByUserId: String(request?.directorApprovedByUserId || ""),
       requiresConsent: recoveredRequestRequiresConsent(request),
       recoveredSignup: Boolean(request?.recoveredClerkUserId),
       avatarUrl: memberRow?.avatarUrl || String(profile?.avatarUrl || ""),

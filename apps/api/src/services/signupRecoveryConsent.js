@@ -5,6 +5,15 @@ export function recoveredRequestRequiresConsent(request = {}) {
   return Boolean(request?.recoveredClerkUserId && !isMemberEligibilityComplete(socials.legalAgreement));
 }
 
+export function recoveredRequestIsPreapproved(request = {}) {
+  return Boolean(
+    request?.status === "pending" &&
+    request?.recoveredClerkUserId &&
+    request?.directorApprovedAt &&
+    request?.directorApprovedByUserId
+  );
+}
+
 // HTTP normalizers strip reserved provenance. Only a server-created row can
 // restore it, and consent-only retries must retain the verified signup names.
 export function preserveSignupRecoveryConsent(existingRequest, profilePayload, body) {

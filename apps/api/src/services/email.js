@@ -13,6 +13,7 @@ import {
   passwordChangedTemplate,
   welcomeTemplate,
   accessApprovedTemplate,
+  accessConsentPendingTemplate,
   accessDeniedTemplate
 } from "./emailTemplates.js";
 
@@ -1518,6 +1519,29 @@ export function buildAccessApprovalEmail({ tenant, email, firstName, loginUrl })
     html,
     tags: [
       { name: "category", value: "access_approved" },
+      { name: "tenant", value: tenant.slug || "tenant" }
+    ]
+  };
+}
+
+export function buildAccessConsentPendingEmail({ tenant, email, firstName, loginUrl }) {
+  const branding = buildTenantEmailBranding(tenant, { stream: "auth" });
+  const resolvedLoginUrl = loginUrl || `${resolveTenantAppBaseUrl({ tenant })}/login`;
+  const { subject, text, html } = accessConsentPendingTemplate({
+    tenantName: branding.networkName,
+    firstName,
+    loginUrl: resolvedLoginUrl,
+    brandPrimary: branding.brandPrimary
+  });
+  return {
+    from: branding.from,
+    to: email,
+    ...(branding.replyTo ? { replyTo: branding.replyTo } : {}),
+    subject,
+    text,
+    html,
+    tags: [
+      { name: "category", value: "access_consent_pending" },
       { name: "tenant", value: tenant.slug || "tenant" }
     ]
   };

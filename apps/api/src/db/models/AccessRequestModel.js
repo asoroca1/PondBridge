@@ -11,6 +11,8 @@ const COLUMNS = {
   requestMessage: "request_message",
   profilePayload: "profile_payload",
   recoveredClerkUserId: "recovered_clerk_user_id",
+  directorApprovedAt: "director_approved_at",
+  directorApprovedByUserId: "director_approved_by_user_id",
   status: "status",
   requestedAt: "requested_at",
   reviewedAt: "reviewed_at",

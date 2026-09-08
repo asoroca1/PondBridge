@@ -20,6 +20,12 @@ export const STAGES = [
     urgent: true
   },
   {
+    key: "awaiting_setup",
+    label: "Approved · setup pending",
+    tone: "info",
+    blurb: "You approved them. They must finish account confirmation before gaining access."
+  },
+  {
     key: "invited",
     label: "Invited",
     tone: "info",
@@ -125,6 +131,7 @@ export function stageSummary(person = {}) {
       : `Joined ${formatDate(person.joinedAt)}`;
   }
   if (person.stage === "request") return `Requested ${formatDate(person.requestedAt)}`;
+  if (person.stage === "awaiting_setup") return `Approved ${formatDate(person.directorApprovedAt)} · waiting for their account confirmation`;
   if (person.stage === "invited") return `Invited ${formatDate(person.lastInvitedAt)} · expires ${formatDate(person.inviteExpiresAt)}`;
   if (person.stage === "expired") return `Invite expired ${formatDate(person.inviteExpiresAt)}`;
   if (person.stage === "on_hold") return "Excluded from invitations and campaigns";

@@ -8,7 +8,8 @@ const readApprovalIntent = jest.fn();
 jest.unstable_mockModule("../src/db/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => ({ rpc }) }));
 jest.unstable_mockModule("../src/services/approvalEmailJobs.js", () => ({
   approvalEmailJobKey: (requestId) => `access-approval/${requestId}`,
-  readApprovalEmailIntent: readApprovalIntent
+  readApprovalEmailIntent: readApprovalIntent,
+  readPreapprovalEmailIntent: readApprovalIntent
 }));
 const emailModule = await import("../src/services/email.js");
 const sendDecision = jest.fn(async () => ({}));
@@ -45,15 +46,26 @@ function expectNoApprovalWrites() {
   expect(requestUpdate).not.toHaveBeenCalled(); expect(userCreate).not.toHaveBeenCalled();
   expect(userUpdate).not.toHaveBeenCalled(); expect(profileCreate).not.toHaveBeenCalled();
 }
-test("single director approval is blocked before any membership write when recovered consent is missing", async () => {
+function preapprovalResult() {
+  rpc.mockResolvedValue({ data: { ok: true, requestId: "request-id", awaitingConsent: true,
+    directorApproved: true, directorApprovedAt: "2026-09-08T21:00:00Z" }, error: null });
+}
+test("single director approval records preapproval without creating membership", async () => {
+  preapprovalResult();
   const response = await request(app).post("/members/approvals/request-id/approve").send({});
-  expect(response.status).toBe(409);
-  expect(response.body.error.code).toBe("RECOVERED_SIGNUP_CONSENT_REQUIRED"); expectNoApprovalWrites();
+  expect(response.status).toBe(200);
+  expect(response.body).toMatchObject({ ok: true, awaitingConsent: true, directorApproved: true });
+  expect(rpc).toHaveBeenCalledWith("preapprove_recovered_signup_review", {
+    p_tenant: "greenlane-id", p_request: "request-id", p_actor: "director-id"
+  });
+  expect(sendDecision).not.toHaveBeenCalled(); expectNoApprovalWrites();
 });
-test("bulk director approval leaves recovered pending requests undecided", async () => {
+test("bulk director approval counts recovered preapprovals without creating members", async () => {
+  preapprovalResult();
   const response = await request(app).post("/members/approvals/bulk").send({ action: "approve", ids: ["request-id"] });
-  expect(response.status).toBe(200); expect(response.body.decided).toBe(0);
-  expect(response.body.failed).toEqual([{ requestId: "request-id", code: "RECOVERED_SIGNUP_CONSENT_REQUIRED" }]);
+  expect(response.status).toBe(200); expect(response.body.decided).toBe(1);
+  expect(response.body.awaitingConsent).toBe(1);
+  expect(response.body.failed).toEqual([]);
   expectNoApprovalWrites();
 });
 test("director review list clearly exposes missing consent without treating recovery as consent", async () => {

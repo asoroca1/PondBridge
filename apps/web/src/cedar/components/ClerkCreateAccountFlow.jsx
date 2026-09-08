@@ -365,7 +365,7 @@ export default function ClerkCreateAccountFlow() {
                 disabled={!legalAccepted}
                 onClick={continueSignedInLegalRecovery}
               >
-                Continue to director review
+                Finish account confirmation
               </button>
             ) : (
             <div className="login1-clerk-host alumni-create-clerk-host" onSubmitCapture={onSignUpSubmitCapture}>

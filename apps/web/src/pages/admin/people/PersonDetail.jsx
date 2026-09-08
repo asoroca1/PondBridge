@@ -109,15 +109,23 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
 
       {person.stage === "request" && person.requiresConsent ? (
         <p role="status" className="pb-people-detail-summary">
-          Email verified. This person still needs to confirm their age and accept the Terms and Privacy Policy.
-          They can finish by signing in again; approval becomes available afterward.
+          Email verified. You can approve this request now. They must confirm their age and accept the Terms
+          and Privacy Policy when signing in before they gain access. You will not need to approve them again.
+        </p>
+      ) : null}
+
+      {person.stage === "awaiting_setup" ? (
+        <p role="status" className="pb-people-detail-summary">
+          Your approval is saved. They must sign in and
+          confirm their age and accept the Terms and Privacy Policy before gaining access.
+          No further approval is needed.
         </p>
       ) : null}
 
       <div className="pb-people-detail-actions">
         {person.stage === "request" ? (
           <>
-            <Button type="button" onClick={() => actions.approve(person)} loading={actions.busy === "approve"} disabled={busy || person.requiresConsent}>
+            <Button type="button" onClick={() => actions.approve(person)} loading={actions.busy === "approve"} disabled={busy}>
               <Check aria-hidden="true" />
               Approve
             </Button>
@@ -126,6 +134,13 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
               Deny
             </Button>
           </>
+        ) : null}
+
+        {person.stage === "awaiting_setup" ? (
+          <Button type="button" variant="secondary" onClick={() => setDenyOpen(true)} disabled={busy}>
+            <X aria-hidden="true" />
+            Withdraw approval
+          </Button>
         ) : null}
 
         {person.stage === "prospect" || person.stage === "expired" ? (
@@ -223,13 +238,13 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
 
       <ModalDialog
         open={denyOpen}
-        title="Deny this request?"
+        title={person.stage === "awaiting_setup" ? "Withdraw this approval?" : "Deny this request?"}
         description={`${person.email || "This applicant"} will not get access. You can include a short reason.`}
         onClose={busy ? undefined : () => setDenyOpen(false)}
         footer={
           <>
             <Button type="button" variant="secondary" onClick={() => setDenyOpen(false)} disabled={busy}>
-              Keep pending
+              {person.stage === "awaiting_setup" ? "Keep approval" : "Keep pending"}
             </Button>
             <Button
               type="button"
@@ -241,7 +256,7 @@ export default function PersonDetail({ person, slug, actions, onInvite, onEmail 
                 setDenyReason("");
               }}
             >
-              Deny request
+              {person.stage === "awaiting_setup" ? "Withdraw approval" : "Deny request"}
             </Button>
           </>
         }
