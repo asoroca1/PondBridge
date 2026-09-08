@@ -142,3 +142,8 @@ describe("the readiness gate, from the request side", () => {
       .resolves.toEqual({ ok: true });
   });
 });
+
+ test("transport errors give actionable wording without exposing API internals", async () => {
+  installFetch(() => { throw new TypeError("Failed to fetch"); });
+  await expect(requestJson("/api/t/cedar/auth/login", { method: "POST", body: { email: "test@example.test" } })).rejects.toMatchObject({ code: "API_UNREACHABLE", message: "We couldn’t connect. Check your internet connection and try again in a moment." });
+});

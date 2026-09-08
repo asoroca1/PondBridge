@@ -9,6 +9,7 @@ import CedarBackground from "../cedar/components/CedarBackground.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
 import { isNativeApp } from "../lib/nativeApp.js";
+import useRouteScrollReset from "../hooks/useRouteScrollReset.js";
 import {
   sideNavAllowedForPath,
   useSideNavActive,
@@ -20,6 +21,7 @@ const PRODUCT_LAYOUT_MATCHERS = ["/director-claim", "/director-create-account", 
 
 export default function AppShell({ children }) {
   const location = useLocation();
+  useRouteScrollReset();
   const { tenant } = useTenant();
   const { isAuthenticated } = useAuth();
   const nativeApp = isNativeApp();
@@ -75,11 +77,12 @@ export default function AppShell({ children }) {
   useEffect(() => {
     if (previousPathRef.current === currentPath) return undefined;
     previousPathRef.current = currentPath;
+    if (location.hash) return undefined;
     const timeoutId = window.setTimeout(() => {
       document.getElementById("main-content")?.focus({ preventScroll: true });
     }, 60);
     return () => window.clearTimeout(timeoutId);
-  }, [currentPath]);
+  }, [currentPath, location.hash]);
 
   if (useProductLayout) {
     return (

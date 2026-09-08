@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignIn, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import Navbar1 from "../components/Navbar1";
-import { API_BASE } from "../lib/api";
+import { requestTenantJson } from "../lib/api";
 import { requestJson } from "../../lib/http.js";
 import { noteTabLoginIntent, useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
@@ -10,16 +10,6 @@ import { clerkConfigError, clerkModeRequested, clerkUiEnabled } from "../../lib/
 import { resolveCampName, resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
-
-function normalizeErrorMessage(payload, fallback) {
-  if (!payload) return fallback;
-  if (typeof payload === "string") return payload;
-  if (typeof payload?.error === "string") return payload.error;
-  if (typeof payload?.error?.message === "string") return payload.error.message;
-  if (typeof payload?.message === "string") return payload.message;
-  if (typeof payload?.errors?.[0]?.msg === "string") return payload.errors[0].msg;
-  return fallback;
-}
 
 function resolveAuthIssueMessage(searchParams) {
   const authIssue = String(searchParams.get("authIssue") || "")
@@ -216,24 +206,10 @@ function LegacyLogin() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const payload = await requestTenantJson("/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: { email, password }
       });
-      const text = await res.text();
-
-      if (!res.ok) {
-        let msg = `Login failed (${res.status}).`;
-        try {
-          msg = normalizeErrorMessage(JSON.parse(text), msg);
-        } catch {
-          // keep default
-        }
-        throw new Error(msg);
-      }
-
-      const payload = JSON.parse(text || "{}");
       if (!payload?.token || !payload?.user) {
         throw new Error("Invalid login response from server.");
       }
@@ -652,22 +628,10 @@ function DemoCodeLogin() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/demo-access`, {
+      const payload = await requestTenantJson("/auth/demo-access", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: normalizedCode })
+        body: { code: normalizedCode }
       });
-      const text = await res.text();
-      if (!res.ok) {
-        let msg = `Demo access failed (${res.status}).`;
-        try {
-          msg = normalizeErrorMessage(JSON.parse(text), msg);
-        } catch {
-          // keep default
-        }
-        throw new Error(msg);
-      }
-      const payload = JSON.parse(text || "{}");
       if (!payload?.token || !payload?.user) {
         throw new Error("Invalid demo access response from server.");
       }

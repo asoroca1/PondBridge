@@ -57,9 +57,9 @@ function dateBadge(item = {}) {
 }
 
 function rsvpLabel(status = "") {
-  if (status === "attending") return "Attending";
+  if (status === "attending") return "Going";
   if (status === "maybe") return "Maybe";
-  if (status === "not_attending") return "Not attending";
+  if (status === "not_attending") return "Can’t go";
   return "No RSVP yet";
 }
 
@@ -157,7 +157,7 @@ export default function EventDetailPage() {
       setStatus(
         nextRole
           ? `You are registered as a ${registrationRoleLabel(nextRole)}.`
-          : `Your RSVP is now ${rsvpLabel(nextStatus).toLowerCase()}.`
+          : `RSVP saved: ${rsvpLabel(nextStatus)}.`
       );
       setJoinError("");
     } catch (saveError) {

@@ -148,11 +148,10 @@ function normalizeTransportError(error, path) {
     return error instanceof Error ? error : new Error("Request failed");
   }
 
-  const message = isNativeAppRuntime()
-    ? `Could not reach API server at ${API_BASE} while requesting ${path}. Check the native API base and try again.`
-    : `Could not reach API server at ${API_BASE} while requesting ${path}. Start the API server and refresh.`;
+  const message = "We couldn’t connect. Check your internet connection and try again in a moment.";
   const wrapped = new Error(message);
   wrapped.code = "API_UNREACHABLE";
+  wrapped.requestPath = path;
   wrapped.cause = error;
   return wrapped;
 }
