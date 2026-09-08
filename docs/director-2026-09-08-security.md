@@ -42,3 +42,13 @@ The separately integrated questionnaire feature was also reviewed for admin/impo
 Confirm/decline now compare-and-set the caller's own pending tenant/user profile. A concurrent deletion or prior claim returns 409, without reporting success or logging a claim. Claim reads no longer create a missing profile. Missing RPC deployment fails closed and surfaces per-profile undo failures; there is no fallback to unsafe deletes.
 
 Validation: 61 focused import/claim/security API tests passed. `python3 apps/api/tests/atomicImportUndo.local.py` passed against real PostgreSQL in a newly created isolated local Docker database, then removed only that database. It covers both concurrent claim/undo orders, tenant/report isolation, six protected-account cases, rollback when user deletion fails, and denied client-role execution. No shared fixtures were reset or hosted databases modified. Targeted ESLint and diff whitespace checks passed. Apply the reviewed migration before enabling the updated undo handler; coordinator owns hosted staging/production application and smoke verification.
+
+## Final gate and suppression review
+
+Reviewed `9182231` (review-toggle handling) and `0c13b1d` (CC/BCC suppression). Suppression correctly covers all actual delivery recipients before sending, while preserving Reply-To as metadata. The stale pending-request redirect is fixed for new members when approval is disabled.
+
+**High — removed membership could self-reactivate through direct join.** The existing `/access/join` handler explicitly recreated an inactive membership with active status when the review gate was off, contradicting its access-decision policy requiring human reapproval for removed members. The handler now queues any existing non-active membership regardless of gate configuration and has no automatic reactivation branch. New members and active members retain their gate-off behavior.
+
+The original `reviewGateToggle.test.js` connects to a database and clears documents after each test, so it intentionally remains outside the safe suite. Registered `reviewGateToggleSafe.test.js` instead exercises the actual Express decision/join routes with mocked storage, identity resolution and notifications. It covers stale pending decisions, gate-on to gate-off joins, inactive/removed direct requests, active-member success, and another camp's pending request.
+
+Before this final narrow change, the fully integrated API safe suite passed **85 suites / 667 tests** using Node 22 and the CI synthetic credentials/invalid Supabase hostname. The added six gate regressions pass independently, with targeted ESLint and whitespace checks.

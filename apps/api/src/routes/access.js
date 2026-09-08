@@ -795,9 +795,11 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
 
   // Everything the signup form collected is captured either way; the gate only
   // changes whether it becomes a member now or a row the director decides on.
-  if (policy.requireApproval) {
-    const existingMember = await findTenantUserForIdentity(req.tenant._id, identity);
-    if (!existingMember || existingMember.status !== "active") {
+  let member = await findTenantUserForIdentity(req.tenant._id, identity);
+  // Turning off review permits new members; it never reverses a director's
+  // removal. Returning members still need explicit human approval.
+  if (policy.requireApproval || (member && member.status !== "active")) {
+    if (!member || member.status !== "active") {
       const { requestRow, isNew } = await submitAccessRequest({
         tenant: req.tenant,
         identity,
@@ -818,21 +820,12 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
     }
   }
 
-  let member = await findTenantUserForIdentity(req.tenant._id, identity);
   if (!member) {
     member = await createTenantMembershipFromIdentity({
       tenantId: req.tenant._id,
       identity,
       tenantSlug: req.tenant.slug,
       roles: ["user"],
-      status: "active"
-    });
-  } else if (member.status !== "active") {
-    member = await createTenantMembershipFromIdentity({
-      tenantId: req.tenant._id,
-      identity,
-      tenantSlug: req.tenant.slug,
-      roles: member.roles || ["user"],
       status: "active"
     });
   }
