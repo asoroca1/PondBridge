@@ -1,4 +1,5 @@
 import { createClerkClient } from "@clerk/backend";
+import { SIGNUP_CONSENT_POLICY, validateSignupLegalAgreement } from "./signupConsentReceipts.js";
 import { env } from "../config/env.js";
 import { getSupabaseAdmin } from "../db/supabaseAdmin.js";
 import { TenantModel, TenantAdminAuditLogModel } from "../db/models/index.js";
@@ -56,11 +57,29 @@ async function reconcileRecord(user, tenant, source, apply = true) {
       event: "verified_signup_request_recovered", metadata: { source, requestId: result.request_id,
         clerkUserId: candidate.clerkUserId, requiresConsent: true } }).catch(() => {});
   }
-  return { outcome: result.outcome, ...(result.request_id ? { requestId: result.request_id } : {}) };
+  let consent = null;
+  if (apply === true && result.request_id && ["created", "existing_request"].includes(result.outcome)) {
+    // Missing/invalid metadata cannot invent acceptance. The RPC may only reuse
+    // an immutable receipt already recorded for this exact identity/policy.
+    const agreement = validateSignupLegalAgreement(user.unsafeMetadata?.signupLegalAgreement);
+    const ingestion = await getSupabaseAdmin().rpc("ingest_verified_signup_consent_receipt", {
+      p_tenant: String(tenant._id), p_request: result.request_id,
+      p_clerk_user_id: candidate.clerkUserId, p_verified_email: candidate.email,
+      p_policy: SIGNUP_CONSENT_POLICY, p_agreement: agreement
+    });
+    if (ingestion.error) throw ingestion.error; // Keep this scan page for retry.
+    consent = ingestion.data;
+    if (!["recorded", "existing_receipt", "no_receipt", "ineligible_request"].includes(consent?.outcome)) {
+      throw Object.assign(new Error("Consent receipt was not accepted by the database"), { code: "CONSENT_RECEIPT_REJECTED" });
+    }
+  }
+  return { outcome: result.outcome, ...(result.request_id ? { requestId: result.request_id } : {}),
+    ...(consent && consent.outcome !== "no_receipt" && consent.outcome !== "ineligible_request" ? { consent } : {}) };
 }
 
 // Also used by the operator's reviewed, ID-based repair. Never accepts an email
-// or client-provided profile as evidence. Never creates/approves a membership.
+// or client-provided profile as evidence. A recorded director decision may be
+// activated only after an actual, validated consent receipt is persisted.
 export async function reconcileVerifiedSignupByClerkId(clerkUserId, { source = "operator_repair", apply = false } = {}) {
   if (!clerk) return { outcome: "clerk_unavailable" };
   if (!/^user_[A-Za-z0-9]+$/.test(normalize(clerkUserId))) return { outcome: "ineligible_identity" };

@@ -23,7 +23,7 @@ beforeEach(() => {
   tenant = { _id: "greenlane-id", slug: "greenlane", status: "active", settings: { signupMode: "open", requireSignupApproval: true } };
   rollout.mockResolvedValue({ enabled: true }); getUser.mockResolvedValue(user());
   audit.mockResolvedValue({});
-  rpc.mockImplementation(async (name) => ({ data: name === "reconcile_verified_signup_review" ? [{ outcome: "would_create" }] : true }));
+  rpc.mockImplementation(async (name) => ({ data: name === "reconcile_verified_signup_review" ? [{ outcome: "would_create" }] : name === "ingest_verified_signup_consent_receipt" ? { outcome: "no_receipt" } : true }));
 });
 test.each([
   ["unverified primary", (u) => { u.emailAddresses[0].verification.status = "unverified"; }],
@@ -44,7 +44,7 @@ test("operator repair reloads real Clerk identity and defaults to dry-run", asyn
   expect(audit).not.toHaveBeenCalled();
 });
 test("explicit apply records provenance without inventing consent or notifying", async () => {
-  rpc.mockResolvedValue({ data: [{ outcome: "created", request_id: "pending-id" }] });
+  rpc.mockImplementation(async (name) => ({ data: name === "reconcile_verified_signup_review" ? [{ outcome: "created", request_id: "pending-id" }] : { outcome: "no_receipt" } }));
   expect(await reconcileVerifiedSignupByClerkId("user_verified", { apply: true })).toEqual({ outcome: "created", requestId: "pending-id" });
   expect(rpc.mock.calls[0][1].p_apply).toBe(true);
   expect(audit).toHaveBeenCalledWith(expect.objectContaining({ event: "verified_signup_request_recovered", metadata: expect.objectContaining({ requiresConsent: true }) }));
@@ -65,14 +65,14 @@ test("bounded page persists its position and completes cycles without using othe
   const cedar = user(); cedar.unsafeMetadata.tenantSlug = "cedar";
   getUserList.mockResolvedValue({ data: [user(), cedar], totalCount: 2 });
   rpc.mockImplementation(async (name) => ({ data: name === "claim_signup_review_scan" ? [{ scan_offset: 0, lease_token: "lease" }]
-    : name === "reconcile_verified_signup_review" ? [{ outcome: "created", request_id: "pending-id" }] : true }));
+    : name === "reconcile_verified_signup_review" ? [{ outcome: "created", request_id: "pending-id" }] : name === "ingest_verified_signup_consent_receipt" ? { outcome: "no_receipt" } : true }));
   expect(await runVerifiedSignupReconciliationPage()).toEqual({ outcome: "scanned", scanned: 2, created: 1, nextOffset: 0 });
   expect(getUserList).toHaveBeenCalledWith({ limit: 100, offset: 0, orderBy: "+created_at" });
   expect(rpc.mock.calls.filter(([name]) => name === "reconcile_verified_signup_review")).toHaveLength(1);
   expect(rpc).toHaveBeenCalledWith("finish_signup_review_scan", expect.objectContaining({ p_offset: 0 }));
 });
 test("failed provider page retains offset and records only a redacted error code", async () => {
-  rpc.mockImplementation(async (name) => ({ data: name === "claim_signup_review_scan" ? [{ scan_offset: 100, lease_token: "lease" }] : true }));
+  rpc.mockImplementation(async (name) => ({ data: name === "claim_signup_review_scan" ? [{ scan_offset: 100, lease_token: "lease" }] : name === "ingest_verified_signup_consent_receipt" ? { outcome: "no_receipt" } : true }));
   getUserList.mockRejectedValue(Object.assign(new Error("private provider details"), { code: "PROVIDER_UNAVAILABLE" }));
   await expect(runVerifiedSignupReconciliationPage()).rejects.toThrow();
   expect(rpc).toHaveBeenCalledWith("finish_signup_review_scan", { p_tenant: "greenlane-id", p_lease: "lease", p_offset: 100, p_error: "PROVIDER_UNAVAILABLE" });
@@ -89,4 +89,50 @@ test("recovered consent marker cannot authorize approval without real legal and 
   const retry = preserveSignupRecoveryConsent({ recoveredClerkUserId: "user_verified", profilePayload: completed }, { firstName: "Real" });
   expect(retry.socials.legalAgreement).toEqual(actual.socials.legalAgreement);
   expect(recoveredRequestRequiresConsent({ profilePayload: {} })).toBe(false);
+});
+
+function signupAgreement() {
+  return { version: 1, accepted: true, ageEligibilityConfirmed: true, termsVersion: "2026-03-04", privacyVersion: "2026-03-04", minimumAge: 14,
+    agePolicyVersion: "2026-07-14", acceptedAt: new Date(Date.now() - 1000).toISOString() };
+}
+test("lost browser state is recovered only from the freshly loaded verified Clerk record", async () => {
+  const record = user(); record.unsafeMetadata.signupLegalAgreement = signupAgreement(); getUser.mockResolvedValue(record);
+  rpc.mockImplementation(async (name) => ({ data: name === "reconcile_verified_signup_review" ? [{ outcome: "existing_request", request_id: "pending-id" }]
+    : { outcome: "recorded", receiptId: "receipt-id", activated: false } }));
+  const result = await reconcileVerifiedSignupByClerkId("user_verified", { apply: true });
+  expect(getUser).toHaveBeenCalledWith("user_verified");
+  expect(rpc).toHaveBeenCalledWith("ingest_verified_signup_consent_receipt", {
+    p_tenant: "greenlane-id", p_request: "pending-id", p_clerk_user_id: "user_verified", p_verified_email: "member@synthetic.invalid",
+    p_policy: { version: 1, termsVersion: "2026-03-04", privacyVersion: "2026-03-04", agePolicyVersion: "2026-07-14", minimumAge: 14 },
+    p_agreement: record.unsafeMetadata.signupLegalAgreement
+  });
+  expect(result.consent).toMatchObject({ outcome: "recorded", activated: false });
+});
+test("dry-run never ingests consent even when metadata contains a valid assertion", async () => {
+  const record = user(); record.unsafeMetadata.signupLegalAgreement = signupAgreement(); getUser.mockResolvedValue(record);
+  rpc.mockResolvedValue({ data: [{ outcome: "existing_request", request_id: "pending-id" }] });
+  await reconcileVerifiedSignupByClerkId("user_verified");
+  expect(rpc).toHaveBeenCalledTimes(1);
+});
+test("unchecked or stale metadata is never passed as an acceptance", async () => {
+  const record = user(); record.unsafeMetadata.signupLegalAgreement = { ...signupAgreement(), accepted: false }; getUser.mockResolvedValue(record);
+  rpc.mockImplementation(async (name) => ({ data: name === "reconcile_verified_signup_review" ? [{ outcome: "created", request_id: "pending-id" }] : { outcome: "no_receipt" } }));
+  await reconcileVerifiedSignupByClerkId("user_verified", { apply: true });
+  expect(rpc).toHaveBeenCalledWith("ingest_verified_signup_consent_receipt", expect.objectContaining({ p_agreement: null }));
+});
+test("receipt failure retains the scan page for retry instead of reporting healthy success", async () => {
+  const record = user(); record.unsafeMetadata.signupLegalAgreement = signupAgreement(); getUserList.mockResolvedValue({ data: [record], totalCount: 1 });
+  rpc.mockImplementation(async (name) => name === "ingest_verified_signup_consent_receipt"
+    ? { error: { code: "RECEIPT_DB_UNAVAILABLE" } }
+    : { data: name === "claim_signup_review_scan" ? [{ scan_offset: 100, lease_token: "lease" }]
+      : name === "reconcile_verified_signup_review" ? [{ outcome: "existing_request", request_id: "pending-id" }] : true });
+  await expect(runVerifiedSignupReconciliationPage()).rejects.toMatchObject({ code: "RECEIPT_DB_UNAVAILABLE" });
+  expect(rpc).toHaveBeenCalledWith("finish_signup_review_scan", expect.objectContaining({ p_offset: 100, p_error: "RECEIPT_DB_UNAVAILABLE" }));
+});
+
+test("unexpected SQL validation disagreement is a retryable scan failure, not silent success", async () => {
+  const record = user(); record.unsafeMetadata.signupLegalAgreement = signupAgreement(); getUser.mockResolvedValue(record);
+  rpc.mockImplementation(async (name) => ({ data: name === "reconcile_verified_signup_review" ? [{ outcome: "existing_request", request_id: "pending-id" }]
+    : { outcome: "invalid_receipt" } }));
+  await expect(reconcileVerifiedSignupByClerkId("user_verified", { apply: true })).rejects.toMatchObject({ code: "CONSENT_RECEIPT_REJECTED" });
 });
