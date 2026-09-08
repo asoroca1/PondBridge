@@ -12,9 +12,11 @@ import {
 const mocks = vi.hoisted(() => ({
   requestJson: vi.fn(),
   getToken: vi.fn(),
+  getAuthToken: vi.fn(),
   refreshSession: vi.fn(),
   logout: vi.fn(),
-  clerk: { isLoaded: true, isSignedIn: true },
+  clerk: { isLoaded: true, isSignedIn: true, uiEnabled: true },
+  auth: { token: "", isReady: true, isAuthenticated: false },
   tenant: { slug: "greenlane", tenant: { name: "Camp Green Lane" } }
 }));
 
@@ -27,9 +29,15 @@ vi.mock("@clerk/clerk-react", () => ({
 }));
 vi.mock("../lib/http.js", () => ({ requestJson: mocks.requestJson }));
 vi.mock("../context/AuthContext.jsx", () => ({
-  useAuth: () => ({ logout: mocks.logout, refreshSession: mocks.refreshSession })
+  useAuth: () => ({
+    ...mocks.auth,
+    getAuthToken: mocks.getAuthToken,
+    logout: mocks.logout,
+    refreshSession: mocks.refreshSession
+  })
 }));
 vi.mock("../context/TenantContext.jsx", () => ({ useTenant: () => mocks.tenant }));
+vi.mock("../lib/authMode.js", () => ({ clerkUiEnabled: () => mocks.clerk.uiEnabled }));
 
 const { default: TenantAccountConfirmationPage } = await import("./TenantAccountConfirmationPage.jsx");
 
@@ -63,10 +71,13 @@ function confirmationDecision() {
 beforeEach(() => {
   mocks.requestJson.mockReset();
   mocks.getToken.mockReset().mockResolvedValue("clerk-token");
+  mocks.getAuthToken.mockReset().mockResolvedValue("");
   mocks.refreshSession.mockReset().mockResolvedValue({ user: { id: "member-id" } });
   mocks.logout.mockReset().mockResolvedValue(undefined);
   mocks.clerk.isLoaded = true;
   mocks.clerk.isSignedIn = true;
+  mocks.clerk.uiEnabled = true;
+  mocks.auth = { token: "", isReady: true, isAuthenticated: false };
   mocks.tenant = { slug: "greenlane", tenant: { name: "Camp Green Lane" } };
 });
 
@@ -135,6 +146,26 @@ describe("counted member account confirmation", () => {
     expect(mocks.requestJson.mock.calls.filter(([url]) => url.endsWith("/access/confirm-account"))).toHaveLength(0);
   });
 
+  it("accepts a scoped legacy password or magic-link session without requiring a Clerk browser session", async () => {
+    mocks.clerk.uiEnabled = false;
+    mocks.clerk.isSignedIn = false;
+    mocks.auth = { token: "legacy-credential-token", isReady: true, isAuthenticated: true };
+    mocks.getAuthToken.mockResolvedValue("legacy-credential-token");
+    mocks.requestJson
+      .mockResolvedValueOnce(confirmationDecision())
+      .mockResolvedValueOnce({ confirmed: true, decision: { state: "active_member", nextRoute: "/t/greenlane/home" } });
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm and enter" }));
+
+    expect(await screen.findByLabelText("current route")).toHaveTextContent("/t/greenlane/home");
+    expect(mocks.requestJson).toHaveBeenCalledWith(
+      "/api/t/greenlane/access/confirm-account",
+      expect.objectContaining({ token: "legacy-credential-token" })
+    );
+    expect(mocks.getToken).not.toHaveBeenCalled();
+  });
+
   it("returns a fresh signup to the normal callback without creating an exception", async () => {
     mocks.requestJson.mockResolvedValueOnce({
       decision: { state: "not_member", action: "join_network", nextRoute: "/t/greenlane/home" }
@@ -146,6 +177,17 @@ describe("counted member account confirmation", () => {
       "/t/greenlane/auth/callback?returnTo=%2Ft%2Fgreenlane%2Fevents"
     );
     expect(mocks.requestJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a revoked cohort account to login instead of looping through confirmation", async () => {
+    mocks.requestJson.mockResolvedValueOnce({
+      decision: { state: "revoked", action: "contact_director", nextRoute: "/t/greenlane/login" }
+    });
+
+    renderPage();
+
+    expect(await screen.findByLabelText("current route")).toHaveTextContent("/t/greenlane/login");
+    expect(mocks.requestJson.mock.calls.filter(([url]) => url.endsWith("/access/confirm-account"))).toHaveLength(0);
   });
 
   it("leaves a Cedar active member on Cedar's ordinary route", async () => {

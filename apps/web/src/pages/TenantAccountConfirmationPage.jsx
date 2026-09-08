@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { requestJson } from "../lib/http.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTenant } from "../context/TenantContext.jsx";
+import { clerkUiEnabled } from "../lib/authMode.js";
 import {
   normalizeAccountConfirmationReturnTo
 } from "../lib/accountConfirmation.js";
@@ -14,15 +15,13 @@ function errorCode(error) {
   return String(error?.payload?.error?.code || error?.code || "").trim().toUpperCase();
 }
 
-export default function TenantAccountConfirmationPage() {
+function AccountConfirmationFlow({ identityLoaded, signedIn, getIdentityToken, logout, refreshSession }) {
   const navigate = useNavigate();
   const params = useParams();
   const [searchParams] = useSearchParams();
   const { slug: contextSlug = "", tenant } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const returnTo = normalizeAccountConfirmationReturnTo(searchParams.get("returnTo"), slug);
-  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
-  const { logout, refreshSession } = useAuth();
   const [loading, setLoading] = useState(true);
   const [required, setRequired] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,11 +31,11 @@ export default function TenantAccountConfirmationPage() {
   const homePath = tenantRoute(slug, "/home");
 
   useEffect(() => {
-    if (!isLoaded || !slug) return undefined;
+    if (!identityLoaded || !slug) return undefined;
     let active = true;
 
     async function check() {
-      if (!isSignedIn) {
+      if (!signedIn) {
         const loginParams = new URLSearchParams();
         if (returnTo) loginParams.set("returnTo", returnTo);
         navigate(tenantRoute(slug, `/login${loginParams.toString() ? `?${loginParams.toString()}` : ""}`), {
@@ -48,7 +47,7 @@ export default function TenantAccountConfirmationPage() {
       setLoading(true);
       setError("");
       try {
-        const token = await getToken();
+        const token = await getIdentityToken();
         if (!token) throw new Error("Your sign-in session is still loading. Try again.");
         const payload = await requestJson(`/api/t/${slug}/access/decision`, {
           token,
@@ -68,6 +67,13 @@ export default function TenantAccountConfirmationPage() {
             returnTo || String(decision.nextRoute || homePath)
           );
           navigate(next, { replace: true });
+          return;
+        }
+        if (decision.action === "contact_director" || decision.state === "revoked") {
+          navigate(normalizeTenantRouteForHost(
+            slug,
+            String(decision.nextRoute || tenantRoute(slug, "/login"))
+          ), { replace: true });
           return;
         }
         const callbackParams = new URLSearchParams();
@@ -92,14 +98,14 @@ export default function TenantAccountConfirmationPage() {
     return () => {
       active = false;
     };
-  }, [getToken, homePath, isLoaded, isSignedIn, navigate, refreshSession, retryNonce, returnTo, slug]);
+  }, [getIdentityToken, homePath, identityLoaded, navigate, refreshSession, retryNonce, returnTo, signedIn, slug]);
 
   async function confirmAndEnter() {
     if (saving || !required) return;
     setSaving(true);
     setError("");
     try {
-      const token = await getToken();
+      const token = await getIdentityToken();
       if (!token) throw new Error("Your sign-in session is still loading. Try again.");
       const payload = await requestJson(`/api/t/${slug}/access/confirm-account`, {
         method: "POST",
@@ -126,7 +132,7 @@ export default function TenantAccountConfirmationPage() {
     navigate(tenantRoute(slug, "/login"), { replace: true });
   }
 
-  if (loading || !isLoaded) {
+  if (loading || !identityLoaded) {
     return (
       <section className="app-status-shell">
         <div className="app-status-card"><p>Checking your account...</p></div>
@@ -162,4 +168,46 @@ export default function TenantAccountConfirmationPage() {
       </div>
     </section>
   );
+}
+
+function ClerkAccountConfirmationPage() {
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const auth = useAuth();
+  const getIdentityToken = useCallback(async () => {
+    const appToken = await Promise.resolve(auth.getAuthToken?.()).catch(() => "");
+    if (appToken) return appToken;
+    if (isLoaded && isSignedIn) return (await getToken()) || "";
+    return String(auth.token || "");
+  }, [auth.getAuthToken, auth.token, getToken, isLoaded, isSignedIn]);
+  const hasLegacySession = Boolean(auth.isAuthenticated && auth.token);
+  return (
+    <AccountConfirmationFlow
+      identityLoaded={Boolean(auth.isReady && (isLoaded || hasLegacySession))}
+      signedIn={Boolean(hasLegacySession || (isLoaded && isSignedIn))}
+      getIdentityToken={getIdentityToken}
+      logout={auth.logout}
+      refreshSession={auth.refreshSession}
+    />
+  );
+}
+
+function LegacyAccountConfirmationPage() {
+  const auth = useAuth();
+  const getIdentityToken = useCallback(
+    async () => (await Promise.resolve(auth.getAuthToken?.()).catch(() => "")) || String(auth.token || ""),
+    [auth.getAuthToken, auth.token]
+  );
+  return (
+    <AccountConfirmationFlow
+      identityLoaded={Boolean(auth.isReady)}
+      signedIn={Boolean(auth.isAuthenticated && auth.token)}
+      getIdentityToken={getIdentityToken}
+      logout={auth.logout}
+      refreshSession={auth.refreshSession}
+    />
+  );
+}
+
+export default function TenantAccountConfirmationPage() {
+  return clerkUiEnabled() ? <ClerkAccountConfirmationPage /> : <LegacyAccountConfirmationPage />;
 }
