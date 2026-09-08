@@ -1,14 +1,14 @@
-import { useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { parse } from "csv-parse/browser/esm/sync";
 import { Button, Input } from "@pondbridge/ui";
 import { Mail, Plus, Send, Trash2, Upload, UserPlus } from "lucide-react";
 import InviteMessageDialog, { readInviteMessage } from "./InviteMessageDialog.jsx";
-import QuestionnaireImportWizard from "./QuestionnaireImportWizard.jsx";
 import { nextGridCell } from "../../../lib/gridNavigation.js";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_VISIBLE_ROWS = 5;
 const COLUMNS = ["firstName", "lastName", "email"];
+const QuestionnaireImportWizard = lazy(() => import("./QuestionnaireImportWizard.jsx"));
 
 function emptyRow() {
   return { firstName: "", lastName: "", email: "" };
@@ -292,7 +292,9 @@ export default function PeopleAddView({ actions, storage, request, download, slu
     return (
       <>
         {modeSwitch}
-        <QuestionnaireImportWizard request={request} download={download} slug={slug} onDone={onDone} />
+        <Suspense fallback={<p role="status">Loading questionnaire import…</p>}>
+          <QuestionnaireImportWizard request={request} download={download} slug={slug} onDone={onDone} />
+        </Suspense>
       </>
     );
   }

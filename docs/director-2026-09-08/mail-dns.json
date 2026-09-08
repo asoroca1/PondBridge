@@ -1,0 +1,10 @@
+{
+  "checked_at": "2026-09-08T19:44:07.927Z",
+  "records": [
+    {
+      "id": "ebaa1d899e3b2bf643cf4748cba48f64",
+      "name": "_dmarc.pondbridgealumni.com",
+      "content": "\"v=DMARC1; p=none;\""
+    }
+  ]
+}
