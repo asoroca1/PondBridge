@@ -609,19 +609,24 @@ export async function undoTenantImport({ tenantId, reportId }) {
   let keptClaimedCount = 0;
   const failures = [];
 
-  for (const profile of fromThisImport) {
-    if (!isUnclaimedProfile(profile)) {
-      keptClaimedCount += 1;
-      continue;
-    }
-    try {
-      // The transaction rechecks the pending status while holding the profile
-      // lock shared with claimOne, and deletes its unused account stub atomically.
-      const outcome = await ProfileModel.deleteUnclaimedImport(tenantId, profile._id, reportId);
-      if (outcome === "removed") removedCount += 1;
-      else if (outcome === "claimed" || outcome === "protected") keptClaimedCount += 1;
-    } catch (error) {
-      failures.push({ profileId: String(profile._id), message: error.message || "Could not remove" });
+  // Each transaction locks one independent profile/account pair. Bound the
+  // parallelism so a normal camp-sized undo does not require hundreds of
+  // sequential network round trips, while retaining the claim/undo lock guard.
+  for (let offset = 0; offset < fromThisImport.length; offset += 8) {
+    const outcomes = await Promise.all(fromThisImport.slice(offset, offset + 8).map(async (profile) => {
+      if (!isUnclaimedProfile(profile)) return { kind: "claimed" };
+      try {
+        const kind = await ProfileModel.deleteUnclaimedImport(tenantId, profile._id, reportId);
+        return { kind };
+      } catch (error) {
+        return { failure: { profileId: String(profile._id), message: error.message || "Could not remove" } };
+      }
+    }));
+    // Promise.all retains source order even if the RPCs finish out of order.
+    for (const outcome of outcomes) {
+      if (outcome.kind === "removed") removedCount += 1;
+      else if (outcome.kind === "claimed" || outcome.kind === "protected") keptClaimedCount += 1;
+      if (outcome.failure) failures.push(outcome.failure);
     }
   }
 
