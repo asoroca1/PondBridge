@@ -26,3 +26,11 @@ Finishing fixes preserve quoted CSV/blank name fields, expose invalid and duplic
 ## Rollback
 
 Roll back frontend and API to the preceding release together. A code rollback does not delete imported records. Preserve pending profiles, import reports and provenance for recovery. Use the reviewed tenant-scoped undo only for unclaimed profiles created by a bad run; it intentionally keeps claimed accounts and updates to existing profiles. Retain any backward-compatible safety migration.
+
+## 600-person rehearsal and request limits
+
+The pure service rehearsal uses model mocks that reject all writes for dry-run tests. Final run: 600 unique responses → 600 creates (24 ms); 606 responses → 600 creates, 5 duplicates, 1 invalid address (38 ms); 600 existing accounts in the latter half of a 1,200-account tenant → 600 duplicates (23 ms). A mocked commit creates all 600 users and profiles, links all 600 users, finalizes the report, and hashes only one discarded random 256-bit batch secret (46 ms). These timings exclude database/network and bcrypt work and are correctness evidence, not a production throughput claim.
+
+The previous implementation hashed a different unusable placeholder password for every created row. A local three-hash bcrypt sample at the default 12 rounds averaged 457 ms, implying approximately 274 seconds of hashing alone for 600 rows. The finishing change lazily hashes one new random 32-byte secret per import, retains only the hash, and never emails/logs/stores the secret. No change to actual member credentials or bcrypt rounds.
+
+The HTTP upload cap is 5 MiB and the importer rejects over 2,000 rows before fetching tenant accounts. Commit still performs three sequential model writes per new person, so hosted 600-person commit latency remains to be measured. There is no import-specific idempotency key or durable background job; retries create a new report and rely on current tenant deduplication. Avoid presenting a response timeout as proof that no rows were written. The production rehearsal must account for this limitation.

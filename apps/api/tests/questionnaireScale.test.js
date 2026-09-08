@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
 import { ProfileModel, UserModel, ImportReportModel } from "../src/db/models/index.js";
 import { runTenantCsvImport } from "../src/services/csvImport.js";
@@ -26,7 +27,9 @@ afterEach(() => jest.restoreAllMocks());
 describe("600-person questionnaire rehearsal without a database", () => {
   test("counts all 600 new people with no writes", async () => {
     readFixture();
+    const hashing = jest.spyOn(bcrypt, "hash");
     const result = await preview(rows);
+    expect(hashing).not.toHaveBeenCalled();
     expect(result).toMatchObject({ rowsRead: 600, createdCount: 600, updatedCount: 0, skippedDuplicates: 0, errorCount: 0 });
     expect(result.dispositions).toHaveLength(600);
     expect(result.reportId).toBe("");
@@ -45,6 +48,32 @@ describe("600-person questionnaire rehearsal without a database", () => {
     readFixture(profiles, users);
     const result = await preview(Array.from({ length: 600 }, (_, index) => `Person${index + 600},Synthetic,person${index + 600}@example.test`));
     expect(result).toMatchObject({ rowsRead: 600, createdCount: 0, updatedCount: 0, skippedDuplicates: 600, errorCount: 0 });
+  });
+
+  test("commits 600 people with one discarded-secret password hash and complete row counts", async () => {
+    readFixture();
+    const hashing = jest.spyOn(bcrypt, "hash").mockResolvedValue("synthetic-bcrypt-hash");
+    let userNumber = 0;
+    let profileNumber = 0;
+    UserModel.create.mockImplementation(async (data) => ({ ...data, _id: `u${++userNumber}` }));
+    ProfileModel.create.mockImplementation(async (data) => ({ ...data, _id: `p${++profileNumber}` }));
+    UserModel.update.mockResolvedValue({});
+    ImportReportModel.create.mockImplementation(async (data) => ({ ...data, _id: "report-synthetic" }));
+    ImportReportModel.update.mockResolvedValue({});
+    const result = await runTenantCsvImport({ tenantId: "synthetic-camp", userId: "synthetic-director", csvBuffer: csv(rows), mapping });
+    expect(result).toMatchObject({ rowsRead: 600, createdCount: 600, updatedCount: 0, skippedDuplicates: 0, errorCount: 0 });
+    expect(hashing).toHaveBeenCalledTimes(1);
+    expect(Buffer.from(hashing.mock.calls[0][0], "base64url")).toHaveLength(32);
+    expect(UserModel.create).toHaveBeenCalledTimes(600);
+    expect(ProfileModel.create).toHaveBeenCalledTimes(600);
+    expect(UserModel.update).toHaveBeenCalledTimes(600);
+    for (const [data] of UserModel.create.mock.calls) {
+      expect(data.passwordHash).toBe("synthetic-bcrypt-hash");
+      expect(JSON.stringify(data)).not.toContain(hashing.mock.calls[0][0]);
+    }
+    expect(ImportReportModel.update).toHaveBeenCalledWith("report-synthetic", expect.objectContaining({
+      summary: { rowsRead: 600, createdCount: 600, updatedCount: 0, skippedDuplicates: 0, errorCount: 0 }
+    }));
   });
 
   test("rejects over 2000 responses before loading tenant accounts", async () => {

@@ -272,11 +272,7 @@ function rememberRow({ mapState, email, payload, profile = null, user = null }) 
   });
 }
 
-async function createProfileForRow({ tenantId, payload, email, reportId, mapState }) {
-  // Nothing ever signs in with this. Clerk owns the password once the person
-  // claims the account; the hash exists only because the column is not nullable.
-  const generatedPassword = crypto.randomBytes(18).toString("base64url");
-  const passwordHash = await hashPassword(generatedPassword);
+async function createProfileForRow({ tenantId, payload, email, reportId, mapState, passwordHash }) {
 
   const user = await UserModel.create({
     tenantId,
@@ -398,6 +394,11 @@ export async function runTenantCsvImport({
       failureCsv: ""
     });
   const reportId = report ? String(report._id) : "";
+  // Imported accounts have no usable password. Hash one fresh 256-bit secret
+  // per run, only when a new account is needed, and discard the plaintext.
+  // Repeating bcrypt for every row adds minutes to a normal camp import while
+  // giving no extra protection to credentials nobody knows or receives.
+  let importPasswordHash = "";
 
   for (let index = 0; index < parsedRows.length; index += 1) {
     const rowNumber = index + 2;
@@ -497,7 +498,10 @@ export async function runTenantCsvImport({
       rememberRow({ mapState, email, payload });
     } else {
       try {
-        await createProfileForRow({ tenantId, payload, email, reportId, mapState });
+        if (!importPasswordHash) {
+          importPasswordHash = await hashPassword(crypto.randomBytes(32).toString("base64url"));
+        }
+        await createProfileForRow({ tenantId, payload, email, reportId, mapState, passwordHash: importPasswordHash });
       } catch (error) {
         errors.push({ rowNumber, code: "CREATE_ERROR", message: error.message || "Failed to create", rawRow });
         continue;
