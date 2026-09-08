@@ -420,3 +420,19 @@ describe("unified people directory", () => {
     expect(counts.member).toBe(1);
   });
 });
+
+
+test("recovered verified signups remain in Requests and expose missing consent to the director", () => {
+  const base = { _id: "recovered-1", status: "pending", email: "verified@example.test", profilePayload: { socials: {
+    signupRecovery: { clerkUserId: "synthetic-clerk", requiresConsent: true }
+  } } };
+  const first = buildPeopleDirectory({ accessRequests: [base] });
+  expect(first.counts.request).toBe(1);
+  expect(first.people[0]).toMatchObject({ stage: "request", requiresConsent: true, recoveredSignup: true });
+  const complete = buildPeopleDirectory({ accessRequests: [{ ...base, profilePayload: { socials: {
+    ...base.profilePayload.socials, legalAgreement: { accepted: true, ageEligibilityConfirmed: true }
+  } } }] });
+  expect(complete.people[0]).toMatchObject({ stage: "request", requiresConsent: false, recoveredSignup: true });
+  const ordinary = buildPeopleDirectory({ accessRequests: [{ _id: "normal", status: "pending", email: "ordinary@example.test" }] });
+  expect(ordinary.people[0].requiresConsent).toBe(false);
+});
