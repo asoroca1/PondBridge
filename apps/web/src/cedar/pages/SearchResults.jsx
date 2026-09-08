@@ -6,6 +6,7 @@ import { useTenant } from "../../context/TenantContext.jsx";
 import { requestJson } from "../../lib/http.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
 import { avatarUrl } from "../lib/helpers.js";
+import { useProfileFields } from "../../lib/profileFields.js";
 
 /* ------------ helpers (keep OUTSIDE the component) ------------ */
 function pickCurrentJob(p = {}) {
@@ -89,7 +90,10 @@ function ResultAvatar({ photo = "", first = "", last = "", name = "" }) {
 
 export default function SearchResults() {
   const { token, getAuthToken, isReady: authReady } = useAuth();
-  const { slug } = useTenant();
+  const { slug, tenant } = useTenant();
+  // Same rule as the profile itself: a line the camp does not collect is not a
+  // blank line on the card, it is no line at all.
+  const profileFields = useProfileFields(tenant);
   const [params] = useSearchParams();
   const q = (params.get("q") || "").trim();
   const navigate = useNavigate();
@@ -208,25 +212,29 @@ export default function SearchResults() {
                   const photo = avatarUrl(p);
 
                   // Industry chip (several fallbacks)
-                  const industry =
-                    p.industry ||
-                    p.primaryIndustry ||
-                    (Array.isArray(p.industries) && p.industries[0]) ||
-                    p.sector ||
-                    "";
+                  const industry = !profileFields.has("industry")
+                    ? ""
+                    : p.industry ||
+                      p.primaryIndustry ||
+                      (Array.isArray(p.industries) && p.industries[0]) ||
+                      p.sector ||
+                      "";
 
                   // Current job (now reads p.currentJob too)
-                  const { role, company } = pickCurrentJob(p);
+                  const { role, company } = profileFields.has("currentJobs")
+                    ? pickCurrentJob(p)
+                    : { role: "", company: "" };
                   const jobLine = [role, company && `@ ${company}`]
                     .filter(Boolean)
                     .join(" ");
 
                   // Location
-                  const loc =
-                    p.location ||
-                    [p.city, p.state || p.region, p.country]
-                      .filter(Boolean)
-                      .join(", ");
+                  const loc = !profileFields.has("location")
+                    ? ""
+                    : p.location ||
+                      [p.city, p.state || p.region, p.country]
+                        .filter(Boolean)
+                        .join(", ");
 
                   const first = p.firstName || "";
                   const last = p.lastName || "";

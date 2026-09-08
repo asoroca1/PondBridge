@@ -159,11 +159,25 @@ function profileNickname(profile = {}) {
   return normalizeText(profile.nickname || socials.nickname || socials.campNickname || "");
 }
 
+function profileMaidenName(profile = {}) {
+  const socials = profile?.socials && typeof profile.socials === "object" ? profile.socials : {};
+  return normalizeText(profile.maidenName || socials.maidenName || "");
+}
+
 function profileSearchFields(profile = {}) {
   const nickname = profileNickname(profile);
+  // The whole point of a maiden name is that camp friends remember the other
+  // one, so "Casey Whitfield" has to find Casey Chen. It gets its own haystack
+  // rather than being appended to fullName, because fullName is also used for
+  // the exact- and prefix-match bonuses and must stay the name as it reads.
+  const maidenName = profileMaidenName(profile);
   return {
     fullName: normalizeText(`${profile.firstName || ""} ${nickname ? `${nickname} ` : ""}${profile.lastName || ""}`),
     nickname,
+    maidenName,
+    maidenFullName: maidenName
+      ? normalizeText(`${profile.firstName || ""} ${maidenName}`)
+      : "",
     role: normalizeText(profile.roleAtCamp || ""),
     industry: normalizeText(profile.industry || ""),
     cityState: normalizeText(profile.cityState || ""),
@@ -194,6 +208,8 @@ function scoreProfileForQuery(profile = {}, query = "") {
   const haystacks = [
     fields.fullName,
     fields.nickname,
+    fields.maidenName,
+    fields.maidenFullName,
     fields.emails,
     fields.role,
     fields.industry,
@@ -513,3 +529,7 @@ export const ProfileModel = {
     return toDoc(data, COLUMNS);
   }
 };
+
+// The search suites cannot reach a database, so the pure scorer is exported for
+// unit tests rather than exercised through ProfileModel.search.
+export const __testables = { scoreProfileForQuery, profileSearchFields };

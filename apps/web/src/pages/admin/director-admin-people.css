@@ -486,6 +486,9 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  /* Two buttons that neither shrink nor wrap ran the second one off the card
+     on a phone. */
+  flex-wrap: wrap;
 }
 
 /* A spreadsheet, not a form: shared column tracks keep every cell aligned. */
@@ -910,6 +913,13 @@
 
 @media (max-width: 780px) {
   .pb-people-export-body { grid-template-columns: minmax(0, 1fr); }
+
+  /* Once the actions have wrapped onto their own line there is nothing left to
+     protect them from, and refusing to shrink ran "Upload CSV" off the card. */
+  .pb-people-add-head-actions {
+    flex-shrink: 1;
+    min-width: 0;
+  }
 }
 
 /* --- Dark surface support --- */

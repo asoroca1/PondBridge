@@ -25,7 +25,7 @@ function toTree(raw = {}) {
     id: String(raw.id || raw._id || "").trim(),
     name: String(raw.name || "").trim(),
     memberCount: Number(raw.memberCount || 0),
-    createdBy: String(raw.createdBy || "").trim(),
+    createdBy: String(raw.createdByUserId || raw.createdBy || "").trim(),
     canEdit: Boolean(raw.canEdit),
     isMine: Boolean(raw.isMine),
     createdAt: raw.createdAt || null,

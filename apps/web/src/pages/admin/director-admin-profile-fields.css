@@ -1,0 +1,155 @@
+/* Profile content settings.
+   The rows deliberately reuse .director-admin-module-row from the Features
+   page: a director reads the same shape in both places — a name, an ⓘ, and one
+   switch — so the only new styling here is the grouping and the parent/child
+   relationship between College and the fields that hang off it. */
+
+.pb-cedar-page .director-profile-fields-intro p {
+  margin: 0;
+  max-width: 74ch;
+  color: var(--neutral-700);
+  line-height: 1.55;
+}
+
+.pb-cedar-page .director-profile-fields-intro-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pb-cedar-page .director-profile-fields-count {
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--neutral-600);
+}
+
+.pb-cedar-page .director-profile-fields-always-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--neutral-700);
+}
+
+.pb-cedar-page .director-profile-fields-always-head h3 {
+  margin: 0;
+  font-size: .95rem;
+}
+
+.pb-cedar-page .director-profile-fields-always p {
+  margin: 6px 0 12px;
+  max-width: 74ch;
+}
+
+.pb-cedar-page .director-profile-fields-always ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.pb-cedar-page .director-profile-fields-always li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--neutral-200);
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: .85rem;
+}
+
+.pb-cedar-page .director-profile-fields-always li strong {
+  color: var(--neutral-800);
+}
+
+.pb-cedar-page .director-profile-fields-always li span {
+  color: var(--neutral-600);
+}
+
+.pb-cedar-page .director-profile-fields-card {
+  padding-bottom: 0;
+}
+
+.pb-cedar-page .director-profile-fields-group-head h3 {
+  margin: 0;
+  font-size: .95rem;
+}
+
+.pb-cedar-page .director-profile-fields-group-head p {
+  margin: 4px 0 10px;
+  max-width: 74ch;
+}
+
+.pb-cedar-page .director-profile-fields-rows {
+  /* Bleed to the card's edge, whatever padding the card is currently at. The
+     hard -18px only matched the widest breakpoint and hung the rows past the
+     card everywhere else. */
+  margin: 0 calc(-1 * var(--pb-card-pad-x, 18px));
+  border-top: 1px solid var(--neutral-200);
+}
+
+.pb-cedar-page .director-profile-fields-row h4 {
+  margin: 0;
+  font-size: .9rem;
+  font-weight: 800;
+  color: var(--neutral-800);
+}
+
+/* Major and Greek life hang off College. The indent and the rule say so
+   without a sentence of explanation on every row. */
+.pb-cedar-page .director-profile-fields-row.is-child {
+  padding-left: 38px;
+  position: relative;
+}
+
+.pb-cedar-page .director-profile-fields-row.is-child::before {
+  content: "";
+  position: absolute;
+  left: 22px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--neutral-200);
+}
+
+.pb-cedar-page .director-profile-fields-row.is-child h4 {
+  font-weight: 700;
+  color: var(--neutral-700);
+}
+
+.pb-cedar-page .director-profile-fields-tag {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-primary) 10%, #fff);
+  color: var(--neutral-700);
+  border: 1px solid var(--neutral-200);
+}
+
+.pb-cedar-page .director-profile-fields-shown {
+  display: block;
+  margin-top: 6px;
+  font-size: .75rem;
+  color: var(--neutral-600);
+}
+
+.pb-cedar-page .director-profile-fields-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pb-cedar-page .director-profile-fields-footer p {
+  margin: 0;
+  max-width: 74ch;
+}

@@ -20,6 +20,7 @@ import {
 
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useTenant } from "../../context/TenantContext.jsx";
+import { useProfileFields } from "../../lib/profileFields.js";
 import { INDUSTRIES } from "@pondbridge/shared";
 
 import { requestJson } from "../../lib/http.js";
@@ -281,6 +282,9 @@ export default function AdvancedSearch() {
   const { token, getAuthToken, isReady: authReady } = useAuth();
   const alumniWord = resolveAlumniWord(tenant);
   const staffRoleOptions = useMemo(() => resolveStaffRoleOptions(tenant), [tenant]);
+  // A filter on a field this camp does not collect would match nobody, so the
+  // section is not offered at all rather than quietly returning no results.
+  const profileFields = useProfileFields(tenant);
 
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -548,6 +552,44 @@ export default function AdvancedSearch() {
     const extra = staffRoleOptions.length > 3 ? `, and ${staffRoleOptions.length - 3} more` : "";
     return `${base}${extra}`;
   }, [staffRoleOptions]);
+
+  // Whether a card has any line under the name at all. With every one of these
+  // switched off, a blank card is correct and "No details available" would
+  // wrongly read as a member who never filled their profile in.
+  const collectsCardMeta =
+    profileFields.has("industry") ||
+    profileFields.has("location") ||
+    profileFields.has("currentJobs") ||
+    profileFields.has("campRoles");
+
+  // Same idea as filterBlurb, in the header's fuller wording.
+  const headerFilterBlurb = useMemo(() => {
+    const parts = [
+      "name",
+      profileFields.has("campRoles") ? "camp role" : "",
+      profileFields.has("camperYears") ? "camper years" : "",
+      profileFields.has("industry") ? "industry" : "",
+      profileFields.has("college") ? "education" : "",
+      profileFields.has("location") ? "location" : ""
+    ].filter(Boolean);
+    if (parts.length === 1) return parts[0];
+    return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+  }, [profileFields]);
+
+  // The blurb has to name the filters that are actually on screen, or it
+  // promises a camp's members a College filter their camp does not offer.
+  const filterBlurb = useMemo(() => {
+    const parts = [
+      "name",
+      profileFields.has("currentJobs") ? "role" : "",
+      profileFields.has("industry") ? "industry" : "",
+      profileFields.has("college") ? "college" : "",
+      profileFields.has("camperYears") ? "years" : "",
+      profileFields.has("location") ? "location" : ""
+    ].filter(Boolean);
+    if (parts.length === 1) return parts[0];
+    return `${parts.slice(0, -1).join(", ")}, or ${parts[parts.length - 1]}`;
+  }, [profileFields]);
 
   useEffect(() => {
     if (!ui.drawerOpen) return;
@@ -899,7 +941,7 @@ export default function AdvancedSearch() {
           <CedarPageHeader
             icon={<SlidersHorizontal size={18} />}
             title="Advanced Search"
-            subtitle={`Find ${alumniWord} by name, camp role, industry, education, and location.`}
+            subtitle={`Find ${alumniWord} by ${headerFilterBlurb}.`}
           />
         </div>
 
@@ -970,6 +1012,7 @@ export default function AdvancedSearch() {
               </div>
             </section>
 
+            {profileFields.has("campRoles") ? (
             <section className={`as2-sec ${ui.sections.cedarRoles ? "open" : ""}`}>
               <SectionHead
                 icon={Users}
@@ -990,7 +1033,9 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {profileFields.has("camperYears") ? (
             <section className={`as2-sec ${ui.sections.camperYears ? "open" : ""}`}>
               <SectionHead
                 icon={CalendarDays}
@@ -1034,7 +1079,9 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {profileFields.has("industry") ? (
             <section className={`as2-sec ${ui.sections.industry ? "open" : ""}`}>
               <SectionHead
                 icon={Briefcase}
@@ -1080,7 +1127,9 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {profileFields.has("currentJobs") ? (
             <section className={`as2-sec ${ui.sections.role ? "open" : ""}`}>
               <SectionHead
                 icon={Tag}
@@ -1101,7 +1150,9 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {profileFields.has("currentJobs") ? (
             <section className={`as2-sec ${ui.sections.company ? "open" : ""}`}>
               <SectionHead
                 icon={Building2}
@@ -1129,7 +1180,9 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {profileFields.has("college") ? (
             <section className={`as2-sec ${ui.sections.college ? "open" : ""}`}>
               <SectionHead
                 icon={GraduationCap}
@@ -1188,7 +1241,9 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {profileFields.has("location") ? (
             <section className={`as2-sec ${ui.sections.location ? "open" : ""}`}>
               <SectionHead
                 icon={MapPin}
@@ -1224,6 +1279,7 @@ export default function AdvancedSearch() {
                 </div>
               </div>
             </section>
+            ) : null}
 
             <section className="as2-sec open as2-sec-display">
               <SectionHead
@@ -1409,21 +1465,27 @@ export default function AdvancedSearch() {
                   </div>
                   <h3>Start an advanced search</h3>
                   <p className="muted">
-                    {`Use filters to find ${alumniWord} by name, role, industry, college, years, or location.`}
+                    {`Use filters to find ${alumniWord} by ${filterBlurb}.`}
                   </p>
                   <ul className="as2-emptylist">
                     <li>
                       Search by name with <span className="kbd">Name</span>
                     </li>
-                    <li>
-                      {`Find ${alumniWord} in `}<span className="kbd">Industry</span>
-                    </li>
-                    <li>
-                      Discover who went to your <span className="kbd">College</span>
-                    </li>
-                    <li>
-                      Filter by camp roles ({rolePreview || "counselor, division head, and more"})
-                    </li>
+                    {profileFields.has("industry") ? (
+                      <li>
+                        {`Find ${alumniWord} in `}<span className="kbd">Industry</span>
+                      </li>
+                    ) : null}
+                    {profileFields.has("college") ? (
+                      <li>
+                        Discover who went to your <span className="kbd">College</span>
+                      </li>
+                    ) : null}
+                    {profileFields.has("campRoles") ? (
+                      <li>
+                        Filter by camp roles ({rolePreview || "counselor, division head, and more"})
+                      </li>
+                    ) : null}
                   </ul>
                   <div className="as2-empty-actions">
                     <button
@@ -1532,28 +1594,38 @@ export default function AdvancedSearch() {
                             const last = profile.lastName || profile.last || "";
                             const photo = avatarUrl(profile);
 
-                            const industry =
-                              profile.industry ||
-                              profile.primaryIndustry ||
-                              (Array.isArray(profile.industries) && profile.industries[0]) ||
-                              profile.sector ||
-                              "";
+                            // Each meta line is dropped when the camp does not
+                            // collect it, so a card never keeps a slot open for
+                            // something that can no longer be filled.
+                            const industry = !profileFields.has("industry")
+                              ? ""
+                              : profile.industry ||
+                                profile.primaryIndustry ||
+                                (Array.isArray(profile.industries) && profile.industries[0]) ||
+                                profile.sector ||
+                                "";
 
-                            const { role, company } = pickCurrentJob(profile);
+                            const { role, company } = profileFields.has("currentJobs")
+                              ? pickCurrentJob(profile)
+                              : { role: "", company: "" };
                             const jobLine = [role, company && `at ${company}`]
                               .filter(Boolean)
                               .join(" ");
-                            const loc =
-                              profile.location ||
-                              [profile.city, profile.state || profile.region, profile.country]
-                                .filter(Boolean)
-                                .join(", ");
+                            const loc = !profileFields.has("location")
+                              ? ""
+                              : profile.location ||
+                                [profile.city, profile.state || profile.region, profile.country]
+                                  .filter(Boolean)
+                                  .join(", ");
 
                             const profilePath = tenantRoute(slug, `/profile/${id}`);
                             const profileWithName = `${profilePath}?name=${encodeURIComponent(
                               `${first} ${last}`
                             )}`;
-                            const hasMeta = Boolean(industry || loc || jobLine);
+                            const campRole = profileFields.has("campRoles")
+                              ? String(profile.roleAtCamp || profile.role || "").trim()
+                              : "";
+                            const hasMeta = Boolean(industry || loc || jobLine || campRole);
 
                             return (
                               <div
@@ -1603,6 +1675,11 @@ export default function AdvancedSearch() {
                                     {jobLine}
                                   </div>
                                 )}
+                                {!industry && !jobLine && campRole && (
+                                  <div className="as2-industry" title={campRole}>
+                                    {campRole}
+                                  </div>
+                                )}
 
                                 {Array.isArray(profile.matchReasons) && profile.matchReasons.length > 0 && (
                                   <div className="as2-why">
@@ -1614,7 +1691,7 @@ export default function AdvancedSearch() {
                                   </div>
                                 )}
 
-                                {!hasMeta && (
+                                {!hasMeta && collectsCardMeta && (
                                   <div className="as2-loc as2-empty-meta">No details available</div>
                                 )}
 

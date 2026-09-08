@@ -8,6 +8,7 @@ import {
   normalizeLogoTreatment,
   onboardingPatchSchema,
   replaceAlumniForCampType,
+  resolveProfileFields,
   resolveTenantModules,
   tenantContentSchema,
   tenantModulesSchema,
@@ -494,7 +495,11 @@ export function resolveContent(tenant) {
     defaultEmailFooterPresetId,
     emailRecipientGroups: normalizeEmailRecipientGroups(live.emailRecipientGroups || []),
     emailTemplates: normalizeEmailTemplates(live.emailTemplates || []),
-    memberExportPresets: normalizeMemberExportPresets(live.memberExportPresets || [])
+    memberExportPresets: normalizeMemberExportPresets(live.memberExportPresets || []),
+    // Always a complete map, never a partial one: every member-facing surface
+    // reads this to decide whether to render a field, and a missing key there
+    // would read as "off" rather than as the catalog default.
+    profileFields: resolveProfileFields(live.profileFields)
   };
 }
 
@@ -611,7 +616,11 @@ export function buildTenantConfig(tenant, { includeSensitive = false } = {}) {
       homeQuickActions: content.homeQuickActions,
       aboutText: content.aboutText,
       contactEmail: content.contactEmail,
-      footerLinks: content.footerLinks
+      footerLinks: content.footerLinks,
+      // The client reads config.content in preference to content, so this has
+      // to be listed here or every member surface falls back to the catalog
+      // defaults and a camp's choices look like they never saved.
+      profileFields: content.profileFields
     },
     accessRules: {
       signupMode: settings.signupMode,

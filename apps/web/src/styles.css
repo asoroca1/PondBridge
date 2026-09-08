@@ -2443,12 +2443,35 @@ body{
 .wizard1-edu-list { display: flex; flex-direction: column; gap: 10px; }
 .wizard1-edu-row {
     display: grid;
-    grid-template-columns: 1.5fr 1fr 100px auto;
+    /* College, Grad Year, actions. Major and Greek life are each a director
+       setting, so the row has to size itself for whichever of them is on
+       rather than assuming a fixed three-field row. */
+    grid-template-columns: 1.5fr 110px auto;
     gap: 10px;
     align-items: end;
   }
+  .wizard1-edu-row.has-major {
+    grid-template-columns: 1.5fr 1fr 110px auto;
+  }
+  .wizard1-edu-row.has-greek {
+    grid-template-columns: 1.5fr 1fr 110px auto;
+  }
+  .wizard1-edu-row.has-major.has-greek {
+    grid-template-columns: 1.4fr 1fr 1fr 110px auto;
+  }
+  @media (max-width: 900px){
+    .wizard1-edu-row.has-major.has-greek {
+      grid-template-columns: 1fr 1fr;
+    }
+    .wizard1-edu-row.has-major.has-greek .wizard1-edu-actions {
+      grid-column: 1 / -1;
+    }
+  }
   @media (max-width: 640px){
-    .wizard1-edu-row {
+    .wizard1-edu-row,
+    .wizard1-edu-row.has-major,
+    .wizard1-edu-row.has-greek,
+    .wizard1-edu-row.has-major.has-greek {
       grid-template-columns: 1fr;
     }
   }
@@ -4989,8 +5012,11 @@ html.is-native-app textarea{
 }
 
 .pb-cedar-page .director-admin-main .pb-card{
+  /* Rows that bleed to the card's edge subtract this, so it has to stay the
+     single source of the horizontal padding at every width. */
+  --pb-card-pad-x: clamp(14px, 1.35vw, 18px);
   border-radius: 14px;
-  padding: clamp(14px, 1.35vw, 18px);
+  padding: clamp(14px, 1.35vw, 18px) var(--pb-card-pad-x);
 }
 
 .pb-cedar-page .director-admin-main-head{
@@ -10384,7 +10410,6 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-section-heading,
-  .pb-cedar-page .director-admin-module-main,
   .pb-cedar-page .director-admin-service-action-list > article,
   .pb-cedar-page .director-admin-service-inventory-toggle,
   .pb-cedar-page .director-admin-capability-row{
@@ -10392,6 +10417,9 @@ html.is-native-app textarea{
     flex-direction: column;
   }
 
+  /* A switch is 42px wide: stacking it under its own label left an orphaned
+     control and a row twice as tall as it needs to be. The label wraps
+     instead. */
   .pb-cedar-page .director-admin-module-main{
     gap: 12px;
   }
@@ -10752,8 +10780,9 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-main .pb-card{
+    --pb-card-pad-x: 12px;
     border-radius: 16px;
-    padding: 14px 12px;
+    padding: 14px var(--pb-card-pad-x);
   }
 
   .pb-cedar-page .director-admin-page-head{
@@ -10854,8 +10883,9 @@ html.is-native-app textarea{
   }
 
   .pb-cedar-page .director-admin-main .pb-card{
+    --pb-card-pad-x: 10px;
     border-radius: 14px;
-    padding: 12px 10px;
+    padding: 12px var(--pb-card-pad-x);
   }
 
   .pb-cedar-page .director-admin-stat-grid{

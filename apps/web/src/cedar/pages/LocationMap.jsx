@@ -11,6 +11,7 @@ import { useTenant } from "../../context/TenantContext.jsx";
 import { formatMappedAlumniSummary } from "../../lib/alumniTotals.js";
 import { resolveAlumniWord } from "../../lib/campLabels.js";
 import { tenantRoute } from "../../lib/tenantRouting.js";
+import { useProfileFields } from "../../lib/profileFields.js";
 import "./location-map.css";
 
 function nameOf(p) {
@@ -177,6 +178,10 @@ export default function LocationMap() {
   const { slug = "" } = useParams();
   const { getAuthToken } = useAuth();
   const { tenant } = useTenant();
+  // The map is nothing but city and state plotted on a basemap. A camp that has
+  // stopped collecting that field would otherwise still see every member's old
+  // city pinned here, which is the opposite of what the setting promises.
+  const profileFields = useProfileFields(tenant);
   const alumniWord = resolveAlumniWord(tenant);
   const alumniWordTitle = resolveAlumniWord(tenant, { capitalized: true });
 
@@ -844,6 +849,27 @@ export default function LocationMap() {
   }
 
   const skeletonCount = Math.max(3, Math.min(Number(selected?.count || 6), 12));
+
+  if (!profileFields.has("location")) {
+    return (
+      <div className="lm-wrap">
+        <CedarBackground behavior="scroll" opacity={0.9} zIndex={0} />
+        <main className="lm-main nav2-page-shell">
+          <CedarPageHeader
+            icon={<MapPin size={18} />}
+            title={`${alumniWordTitle} Location Map`}
+            subtitle={`This network does not collect where ${alumniWord} live.`}
+          />
+          <section className="lm-results">
+            <div className="lm-prompt lm-prompt-empty">
+              <MapPin size={22} aria-hidden="true" />
+              <p>{`The map plots the city and state on each profile, and this network has that turned off. A camp director can turn it back on under Settings & controls -> Profile content.`}</p>
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="lm-wrap">

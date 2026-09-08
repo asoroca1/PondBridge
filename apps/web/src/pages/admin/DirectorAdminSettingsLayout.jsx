@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { WorkspaceHeader } from "../../components/admin/AdminUi.jsx";
 import {
@@ -8,7 +9,8 @@ import {
   Bell,
   ShieldAlert,
   SlidersHorizontal,
-  UserCog
+  UserCog,
+  IdCard
 } from "lucide-react";
 import { HIDE_MOBILE_APP } from "../../lib/directorHiddenFeatures.js";
 import "./director-admin-settings.css";
@@ -42,6 +44,14 @@ const GROUPS = [
         icon: SlidersHorizontal,
         blurb: "Which modules members can use",
         description: "Choose what members can use, then finish any services that still need setup."
+      },
+      {
+        to: "profile-content",
+        label: "Profile content",
+        icon: IdCard,
+        blurb: "Which fields profiles include",
+        description:
+          "Pick what members are asked for. Anything you switch off disappears from the profile form and from everywhere that profile is shown."
       }
     ]
   },
@@ -116,9 +126,29 @@ export default function DirectorAdminSettingsLayout() {
   const active = (activeGroup?.items || [])
     .find((item) => location.pathname.endsWith(`/settings/${item.to}`));
 
+  // On a phone the rail is a horizontal scroller, so the page you are on can
+  // sit past the right edge unless it is scrolled into view.
+  const railRef = useRef(null);
+  useEffect(() => {
+    const link = railRef.current?.querySelector("a.is-active");
+    const list = link?.closest("ul");
+    if (!list) return undefined;
+
+    // A frame late, so the measurement is of the laid-out rail rather than of
+    // the vertical desktop list it renders as before the media query applies.
+    const frame = window.requestAnimationFrame(() => {
+      if (list.scrollWidth <= list.clientWidth) return;
+      const item = link.parentElement || link;
+      const offset = item.getBoundingClientRect().left - list.getBoundingClientRect().left;
+      const centered = list.scrollLeft + offset - (list.clientWidth - item.offsetWidth) / 2;
+      list.scrollLeft = Math.max(0, centered);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname]);
+
   return (
     <section className="pb-settings">
-      <nav className="pb-settings-rail" aria-label="Settings sections">
+      <nav className="pb-settings-rail" aria-label="Settings sections" ref={railRef}>
         {VISIBLE_GROUPS.map((group) => (
           <div key={group.key}>
             <h2>{group.label}</h2>

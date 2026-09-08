@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button, Card, Input, Select, Textarea } from "@pondbridge/ui";
 import { LoadingSkeleton, PageHeader } from "../../components/admin/AdminUi.jsx";
 import useAdminApi from "./useAdminApi.js";
+import { useTenant } from "../../context/TenantContext.jsx";
+import { useProfileFields } from "../../lib/profileFields.js";
 
 function emptyMemberEditorYearStint() {
   return { startYear: "", endYear: "", startAgeGroup: "", endAgeGroup: "" };
@@ -23,9 +25,10 @@ function normalizeMemberEditorEducation(value = []) {
   const rows = (Array.isArray(value) ? value : []).map((row) => ({
     college: String(row?.college || "").trim(),
     year: String(row?.year || "").trim(),
-    major: String(row?.major || "").trim()
+    major: String(row?.major || "").trim(),
+    greek: String(row?.greek || "").trim()
   }));
-  return rows.length ? rows : [{ college: "", year: "", major: "" }];
+  return rows.length ? rows : [{ college: "", year: "", major: "", greek: "" }];
 }
 
 function normalizeMemberEditorJobs(value = []) {
@@ -45,6 +48,7 @@ function normalizeMemberEditorForm(profile = null) {
     firstName: String(safe.firstName || "").trim(),
     lastName: String(safe.lastName || "").trim(),
     nickname: String(safe.nickname || "").trim(),
+    maidenName: String(safe.maidenName || safe?.social?.maidenName || "").trim(),
     email: String(safe.email || "").trim(),
     phone: String(safe.phone || "").trim(),
     cityState: String(safe.cityState || "").trim(),
@@ -97,6 +101,10 @@ export default function DirectorAdminMemberEditPage() {
   const navigate = useNavigate();
   const { profileId = "" } = useParams();
   const { slug, request } = useAdminApi();
+  const { tenant } = useTenant();
+  // A director set these switches; asking them to fill in a field their own
+  // camp does not collect would be the same contradiction members would see.
+  const profileFields = useProfileFields(tenant);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -191,6 +199,7 @@ export default function DirectorAdminMemberEditPage() {
         firstName: String(form.firstName || "").trim(),
         lastName: String(form.lastName || "").trim(),
         nickname: String(form.nickname || "").trim(),
+        maidenName: String(form.maidenName || "").trim(),
         emails: form.email ? [String(form.email || "").trim()] : [],
         phone: String(form.phone || "").trim(),
         cityState: String(form.cityState || "").trim(),
@@ -212,7 +221,7 @@ export default function DirectorAdminMemberEditPage() {
         },
         staffYears: { stints: staffYearStints },
         education: (Array.isArray(form.education) ? form.education : []).filter((row) =>
-          Boolean(String(row?.college || row?.year || row?.major || "").trim())
+          Boolean(String(row?.college || row?.year || row?.major || row?.greek || "").trim())
         ),
         currentJobs: (Array.isArray(form.currentJobs) ? form.currentJobs : []).filter((row) =>
           Boolean(String(row?.role || row?.company || row?.years || "").trim())
@@ -270,10 +279,18 @@ export default function DirectorAdminMemberEditPage() {
             Last name
             <Input value={form.lastName} onChange={(event) => setField({ lastName: event.target.value })} />
           </label>
-          <label>
-            Camp nickname
-            <Input value={form.nickname} onChange={(event) => setField({ nickname: event.target.value })} />
-          </label>
+          {profileFields.has("nickname") ? (
+            <label>
+              Camp nickname
+              <Input value={form.nickname} onChange={(event) => setField({ nickname: event.target.value })} />
+            </label>
+          ) : null}
+          {profileFields.has("maidenName") ? (
+            <label>
+              Maiden name
+              <Input value={form.maidenName} onChange={(event) => setField({ maidenName: event.target.value })} />
+            </label>
+          ) : null}
           <label>
             Avatar URL
             <Input value={form.avatarUrl} onChange={(event) => setField({ avatarUrl: event.target.value })} />
@@ -284,14 +301,18 @@ export default function DirectorAdminMemberEditPage() {
             Email
             <Input value={form.email} onChange={(event) => setField({ email: event.target.value })} />
           </label>
-          <label>
-            Phone
-            <Input value={form.phone} onChange={(event) => setField({ phone: event.target.value })} />
-          </label>
-          <label className="full-width">
-            Current location
-            <Input value={form.cityState} onChange={(event) => setField({ cityState: event.target.value })} />
-          </label>
+          {profileFields.has("phone") ? (
+            <label>
+              Phone
+              <Input value={form.phone} onChange={(event) => setField({ phone: event.target.value })} />
+            </label>
+          ) : null}
+          {profileFields.has("location") ? (
+            <label className="full-width">
+              Current location
+              <Input value={form.cityState} onChange={(event) => setField({ cityState: event.target.value })} />
+            </label>
+          ) : null}
 
           <h3 className="full-width pb-section-title">Camp Info</h3>
           <label>
@@ -302,14 +323,18 @@ export default function DirectorAdminMemberEditPage() {
             Additional roles (comma-separated)
             <Input value={form.rolesText} onChange={(event) => setField({ rolesText: event.target.value })} />
           </label>
-          <label>
-            High school
-            <Input value={form.highSchool} onChange={(event) => setField({ highSchool: event.target.value })} />
-          </label>
-          <label>
-            Industry
-            <Input value={form.industry} onChange={(event) => setField({ industry: event.target.value })} />
-          </label>
+          {profileFields.has("highSchool") ? (
+            <label>
+              High school
+              <Input value={form.highSchool} onChange={(event) => setField({ highSchool: event.target.value })} />
+            </label>
+          ) : null}
+          {profileFields.has("industry") ? (
+            <label>
+              Industry
+              <Input value={form.industry} onChange={(event) => setField({ industry: event.target.value })} />
+            </label>
+          ) : null}
           <h3 className="full-width pb-section-title">Camper Years</h3>
           {(Array.isArray(form.camperYearStints) ? form.camperYearStints : []).map((stint, index) => (
             <div key={`camper-${index}`} className="director-admin-member-edit-block full-width">
@@ -416,6 +441,8 @@ export default function DirectorAdminMemberEditPage() {
             </Button>
           </div>
 
+          {profileFields.has("college") ? (
+          <>
           <h3 className="full-width pb-section-title">Education</h3>
           {(Array.isArray(form.education) ? form.education : []).map((row, index) => (
             <div key={`education-${index}`} className="director-admin-member-edit-block full-width">
@@ -434,13 +461,24 @@ export default function DirectorAdminMemberEditPage() {
                     onChange={(event) => updateRow("education", index, { year: event.target.value })}
                   />
                 </label>
-                <label className="full-width">
-                  Major
-                  <Input
-                    value={row.major || ""}
-                    onChange={(event) => updateRow("education", index, { major: event.target.value })}
-                  />
-                </label>
+                {profileFields.has("collegeMajor") ? (
+                  <label className="full-width">
+                    Major
+                    <Input
+                      value={row.major || ""}
+                      onChange={(event) => updateRow("education", index, { major: event.target.value })}
+                    />
+                  </label>
+                ) : null}
+                {profileFields.has("greekLife") ? (
+                  <label className="full-width">
+                    Greek life
+                    <Input
+                      value={row.greek || ""}
+                      onChange={(event) => updateRow("education", index, { greek: event.target.value })}
+                    />
+                  </label>
+                ) : null}
               </div>
               <div className="director-admin-form-actions">
                 <Button type="button" variant="secondary" onClick={() => removeRow("education", index)}>
@@ -453,11 +491,13 @@ export default function DirectorAdminMemberEditPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => addRow("education", { college: "", year: "", major: "" })}
+              onClick={() => addRow("education", { college: "", year: "", major: "", greek: "" })}
             >
               Add Education Row
             </Button>
           </div>
+          </>
+          ) : null}
 
           <h3 className="full-width pb-section-title">Current Jobs</h3>
           {(Array.isArray(form.currentJobs) ? form.currentJobs : []).map((row, index) => (
