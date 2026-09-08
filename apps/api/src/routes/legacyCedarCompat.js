@@ -129,7 +129,7 @@ import {
 const router = Router({ mergeParams: true });
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fieldArrayIndexLimit: 100, fileSize: 20 * 1024 * 1024 }
 });
 const publicUploadPresignLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,

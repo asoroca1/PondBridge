@@ -11,7 +11,7 @@ vi.mock("../../context/TenantContext.jsx", () => ({
 }));
 vi.mock("../lib/api", () => ({ API_BASE: "/api/t/cedar" }));
 vi.mock("../components/CedarBackground", () => ({ default: () => null }));
-vi.mock("maplibre-gl", () => ({ default: {} }));
+vi.mock("maplibre-gl", () => ({ setWorkerUrl: vi.fn() }));
 
 const cities = [
   { key: "boston-ma", city: "Boston", state: "MA", lat: 42.36, lng: -71.06, count: 1 },
@@ -57,6 +57,8 @@ describe("LocationMap city profiles", () => {
       .toBe("/t/cedar/profile/alex");
     expect(screen.getByRole("link", { name: "Message" }).getAttribute("href"))
       .toBe("/t/cedar/chat-rooms?to=alex");
+    expect(await screen.findByText("WebGL 2 is unavailable. You can still explore cities below.")).toBeTruthy();
+    expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalledWith("webgl2");
   });
 
   it("distinguishes a failed profile request from an empty city and allows retry", async () => {

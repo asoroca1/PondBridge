@@ -271,8 +271,11 @@ export default function LocationMap() {
       try {
         await import("maplibre-gl/dist/maplibre-gl.css");
         const module = await import("maplibre-gl");
+        // Vite must emit the v6 module worker and all its imports as assets.
+        const { default: workerUrl } = await import("maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url");
         if (cancelled) return;
-        maplibreRuntimeRef.current = module?.default || module;
+        module.setWorkerUrl(workerUrl);
+        maplibreRuntimeRef.current = module;
         setMapRuntimeReady(true);
         setMapRuntimeError("");
       } catch (error) {
@@ -590,7 +593,7 @@ export default function LocationMap() {
     const glOK = (() => {
       try {
         const canvas = document.createElement("canvas");
-        return !!(canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
+        return !!canvas.getContext("webgl2");
       } catch {
         return false;
       }
@@ -600,7 +603,7 @@ export default function LocationMap() {
       const msg = document.createElement("div");
       msg.style.cssText =
         "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--neutral-700);background:#fff;";
-      msg.textContent = "WebGL is disabled. Enable it to view the map.";
+      msg.textContent = "WebGL 2 is unavailable. You can still explore cities below.";
       el.appendChild(msg);
       return;
     }
