@@ -26,6 +26,7 @@ export default function usePersonActions({ request, reload }) {
     try {
       const message = await fn();
       reload?.();
+      if (message && typeof message === "object") return message;
       return { ok: true, message: message || "" };
     } catch (requestError) {
       return { ok: false, message: requestError.message || "That action could not be completed." };
@@ -81,8 +82,14 @@ export default function usePersonActions({ request, reload }) {
   }), [previewInvites, request, run]);
 
   const approve = useCallback((person) => run("approve", async () => {
-    await request(`/members/approvals/${person.requestId}/approve`, { method: "POST" });
-    return `${person.fullName || person.email} approved.`;
+    const response = await request(`/members/approvals/${person.requestId}/approve`, { method: "POST" });
+    const setup = response?.awaitingConsent
+      ? " They must finish account confirmation before gaining access. No further approval is needed."
+      : "";
+    const delivery = ["failed", "handoff_unknown"].includes(response?.approvalEmail?.status)
+      ? " Their notification needs attention; the approval is saved."
+      : "";
+    return `${person.fullName || person.email} approved.${setup}${delivery}`;
   }), [request, run]);
 
   const deny = useCallback((person, reason = "") => run("deny", async () => {
@@ -106,7 +113,9 @@ export default function usePersonActions({ request, reload }) {
       }
 
       let decided = 0;
-      let failures = 0;
+      let awaitingConsent = 0;
+      let remaining = 0;
+      const failures = new Map();
       // Keep going until the server says nothing is left over, so "approve
       // everyone" means everyone and not just the first chunk.
       for (let pass = 0; pass < 40; pass += 1) {
@@ -114,14 +123,29 @@ export default function usePersonActions({ request, reload }) {
           method: "POST",
           body: { action, ids, scope, match, reason: String(reason || "").trim() }
         });
-        decided += Number(response?.decided || 0);
-        failures += Array.isArray(response?.failed) ? response.failed.length : 0;
-        if (scope !== "all" || !Number(response?.remaining || 0)) break;
+        const progressed = Number(response?.decided || 0);
+        decided += progressed;
+        awaitingConsent += Number(response?.awaitingConsent || 0);
+        for (const [index, failure] of (Array.isArray(response?.failed) ? response.failed : []).entries()) {
+          failures.set(failure.requestId || `${pass}/${index}`, failure.code || "FAILED");
+        }
+        remaining = Number(response?.remaining || 0);
+        if (scope !== "all" || !remaining || !progressed) break;
       }
 
       const verb = action === "approve" ? "approved" : "denied";
-      const failureNote = failures ? ` ${failures} could not be processed.` : "";
-      return `${decided.toLocaleString()} ${decided === 1 ? "person" : "people"} ${verb}.${failureNote}`;
+      const setupNote = awaitingConsent
+        ? ` ${awaitingConsent} must finish account confirmation before gaining access; no further approval is needed.`
+        : "";
+      const consentBlocked = [...failures.values()].includes("RECOVERED_SIGNUP_CONSENT_REQUIRED");
+      const failureNote = failures.size
+        ? ` ${failures.size} could not be processed.${consentBlocked ? " Account confirmation is blocking these requests. Refresh the page and retry after the update." : " Open the remaining requests to review the issue."}`
+        : "";
+      const remainingNote = remaining ? " Some requests still need attention; processing stopped to avoid repeating failed actions." : "";
+      return {
+        ok: failures.size === 0 && remaining === 0,
+        message: `${decided.toLocaleString()} ${decided === 1 ? "person" : "people"} ${verb}.${setupNote}${failureNote}${remainingNote}`
+      };
     }), [request, run]);
 
   const setContactStatus = useCallback((person, contactStatus) => run("hold", async () => {

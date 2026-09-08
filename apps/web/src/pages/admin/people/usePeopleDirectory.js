@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 const PAGE_SIZE = 25;
 
 const EMPTY_COUNTS = {
-  all: 0, member: 0, request: 0, invited: 0, expired: 0, prospect: 0, on_hold: 0
+  all: 0, member: 0, request: 0, awaiting_setup: 0, invited: 0, expired: 0, prospect: 0, on_hold: 0
 };
 
 const EMPTY_RECOGNITION = { invited: 0, known: 0, unrecognized: 0 };

@@ -49,6 +49,7 @@ vi.mock("../lib/authMode.js", () => ({
 }));
 
 const { default: TenantAuthCallbackPage } = await import("./TenantAuthCallbackPage.jsx");
+const { default: TenantAccessPendingPage } = await import("./TenantAccessPendingPage.jsx");
 const { default: ClerkCreateAccountFlow } =
   await import("../cedar/components/ClerkCreateAccountFlow.jsx");
 
@@ -230,6 +231,44 @@ describe("signed-in tenant callback", () => {
     expect(
       mocks.requestJson.mock.calls.some(([url]) => url.endsWith("/access/request-access"))
     ).toBe(false);
+  });
+
+  it("activates a director-approved request after real consent and continues into the network", async () => {
+    window.sessionStorage.setItem("pondbridgeLegalAgreement:greenlane", JSON.stringify({
+      accepted: true, ageEligibilityConfirmed: true, acceptedAt: "2026-09-08T22:00:00.000Z"
+    }));
+    let completed = false;
+    mocks.requestJson.mockImplementation(async (url) => {
+      if (url === "/api/t/greenlane/access/decision") {
+        return completed
+          ? { decision: { state: "active_member", action: "go_home", nextRoute: "/t/greenlane/home" } }
+          : { decision: { state: "access_pending", action: "wait_for_approval", request: { requiresConsent: true, directorApproved: true } } };
+      }
+      if (url === "/api/t/greenlane/access/request-access") {
+        completed = true;
+        return { ok: true, pendingApproval: false };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    mocks.refreshSession.mockResolvedValue({ user: { id: "activated-member" } });
+    renderCallback("/t/greenlane/auth/callback");
+    expect(await screen.findByLabelText("current route")).toHaveTextContent("/t/greenlane/home");
+    expect(mocks.refreshSession).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem("pondbridgeLegalAgreement:greenlane")).toBeNull();
+  });
+
+  it("shows a saved director approval with a working confirmation action on the waiting page", async () => {
+    mocks.requestJson.mockResolvedValue({ decision: {
+      state: "access_pending", action: "wait_for_approval", request: { requiresConsent: true, directorApproved: true }
+    } });
+    render(<MemoryRouter initialEntries={["/t/greenlane/request-access"]}>
+      <Routes><Route path="/t/:slug/request-access" element={<TenantAccessPendingPage />} />
+        <Route path="*" element={<LocationProbe />} /></Routes>
+    </MemoryRouter>);
+    expect(await screen.findByRole("heading", { name: "Approved — finish your account setup" })).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing else to do on your end/)).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("link", { name: "Finish account confirmation" }));
+    expect(await screen.findByLabelText("current route")).toHaveTextContent("/t/greenlane/create-account?legalRequired=1");
   });
 
   it("keeps Cedar's gate-off invite flow out of the approval queue", async () => {

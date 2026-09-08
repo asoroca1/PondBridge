@@ -18,7 +18,7 @@ function routeWithSlug(slug, path) {
  * they need to keep checking, so the page answers both and offers nothing else
  * to poke at. Both auth modes render this, so the two cannot drift apart.
  */
-function PendingCard({ campName = "", slug = "", error = "" }) {
+function PendingCard({ campName = "", slug = "", error = "", requiresConsent = false, directorApproved = false }) {
   const approver = campName ? `A director at ${campName}` : "A camp director";
 
   return (
@@ -28,15 +28,25 @@ function PendingCard({ campName = "", slug = "", error = "" }) {
           <Hourglass />
         </span>
 
-        <h1>Waiting for director approval</h1>
+        <h1>{directorApproved ? "Approved — finish your account setup" : requiresConsent ? "Finish your account confirmation" : "Waiting for director approval"}</h1>
         <p className="pb-pending-lede">
-          Your account is set up. {approver} needs to approve it before you can sign in.
+          {directorApproved
+            ? "Your camp director approved your request. Confirm your age and accept the Terms and Privacy Policy to activate your access."
+            : requiresConsent
+              ? "Your email is verified and your request is saved. Confirm your age and accept the Terms and Privacy Policy to finish your part."
+              : <>Your account is set up. {approver} needs to approve it before you can sign in.</>}
         </p>
 
         <p className="pb-pending-note">
           <Mail aria-hidden="true" />
-          <span>We will email you as soon as they do. Nothing else to do on your end.</span>
+          <span>{directorApproved ? "No further director approval is needed." : requiresConsent ? "Your director can review your request while you complete this step." : "We will email you as soon as they do. Nothing else to do on your end."}</span>
         </p>
+
+        {requiresConsent ? (
+          <Link className="link-button" to={routeWithSlug(slug, "/create-account?legalRequired=1")}>
+            Finish account confirmation
+          </Link>
+        ) : null}
 
         {error ? <p className="error-text" role="alert">{error}</p> : null}
 
@@ -62,6 +72,7 @@ function ClerkPendingPage() {
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const [error, setError] = useState("");
+  const [requestState, setRequestState] = useState({});
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !slug) return;
@@ -73,7 +84,9 @@ function ClerkPendingPage() {
         const token = await getToken();
         if (!token) return;
         const payload = await requestJson(`/api/t/${slug}/access/decision`, { token });
+        if (!active) return;
         const decision = payload?.decision || {};
+        setRequestState(decision.request || {});
         if (decision.state === "active_member") {
           navigate(
             normalizeTenantRouteForHost(slug, String(decision.nextRoute || routeWithSlug(slug, "/home"))),
@@ -97,7 +110,8 @@ function ClerkPendingPage() {
     };
   }, [getToken, isLoaded, isSignedIn, navigate, slug]);
 
-  return <PendingCard campName={String(tenant?.name || "")} slug={slug} error={error} />;
+  return <PendingCard campName={String(tenant?.name || "")} slug={slug} error={error}
+    requiresConsent={Boolean(requestState.requiresConsent)} directorApproved={Boolean(requestState.directorApproved)} />;
 }
 
 export default function TenantAccessPendingPage() {
