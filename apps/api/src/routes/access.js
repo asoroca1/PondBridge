@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { recoveredRequestRequiresConsent, preserveSignupRecoveryConsent } from "../services/signupRecoveryConsent.js";
+import { getSupabaseAdmin } from "../db/supabaseAdmin.js";
 import rateLimit from "express-rate-limit";
 import {
   UserModel,
@@ -194,6 +195,12 @@ async function findPendingRequest(tenantId, email = "") {
   });
 }
 
+async function findRecoveredRequestForIdentity(tenantId, clerkUserId = "") {
+  const stableId = String(clerkUserId || "").trim();
+  if (!tenantId || !stableId) return null;
+  return AccessRequestModel.findOne(tenantId, { recoveredClerkUserId: stableId });
+}
+
 async function markPendingRequestApprovedByAutoJoin({ tenantId, email, userId }) {
   const pendingRequest = await findPendingRequest(tenantId, email);
   if (!pendingRequest) return null;
@@ -278,7 +285,9 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
           id: String(alreadyAsked._id),
           status: alreadyAsked.status,
           requestedAt: alreadyAsked.requestedAt,
-          requiresConsent: recoveredRequestRequiresConsent(alreadyAsked)
+          requiresConsent: recoveredRequestRequiresConsent(alreadyAsked),
+          directorApproved: Boolean(alreadyAsked.directorApprovedAt),
+          directorApprovedAt: alreadyAsked.directorApprovedAt || null
         }
       };
     }
@@ -403,11 +412,15 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
       joinMode,
       signupMode,
       requiresConsent: recoveredRequestRequiresConsent(pendingRequest),
+      directorApproved: Boolean(pendingRequest.directorApprovedAt),
+      directorApprovedAt: pendingRequest.directorApprovedAt || null,
       request: {
         id: String(pendingRequest._id),
         status: pendingRequest.status,
         requestedAt: pendingRequest.requestedAt,
-        requiresConsent: recoveredRequestRequiresConsent(pendingRequest)
+        requiresConsent: recoveredRequestRequiresConsent(pendingRequest),
+        directorApproved: Boolean(pendingRequest.directorApprovedAt),
+        directorApprovedAt: pendingRequest.directorApprovedAt || null
       }
     };
   }
@@ -527,6 +540,15 @@ async function submitAccessRequest({ tenant, identity, body = {}, invite = null,
   };
 
   const existingPending = await findPendingRequest(tenantId, email);
+  const recoveredHistory = identity.clerkUserId
+    ? await findRecoveredRequestForIdentity(tenantId, identity.clerkUserId)
+    : null;
+  if (!existingPending && recoveredHistory) {
+    throw Object.assign(new Error("This recovered signup changed after director review. Refresh your access status."), {
+      statusCode: 409,
+      code: recoveredHistory.status === "denied" ? "ACCESS_REQUEST_CHANGED" : "RECOVERY_IDENTITY_CHANGED"
+    });
+  }
   const recoveredIdentity = existingPending?.recoveredClerkUserId;
   if (recoveredIdentity && (identity.clerkUserId !== recoveredIdentity || !(await isClerkIdentityEmailVerified(identity)))) {
     throw Object.assign(new Error("Verify the signup account before confirming consent."), {
@@ -544,6 +566,49 @@ async function submitAccessRequest({ tenant, identity, body = {}, invite = null,
     fields.lastName = fields.profilePayload.lastName;
     if (!Object.hasOwn(body, "requestMessage")) fields.requestMessage = existingPending.requestMessage || "";
     if (!Object.hasOwn(body, "roles") && !Object.hasOwn(body, "roleAtCamp")) fields.selfReportedRole = existingPending.selfReportedRole || fields.profilePayload.roleAtCamp || "";
+  }
+  if (recoveredIdentity) {
+    const { data: activation, error } = await getSupabaseAdmin().rpc("submit_recovered_signup_consent", {
+      p_tenant: String(tenantId),
+      p_request: String(existingPending._id),
+      p_clerk_user_id: recoveredIdentity,
+      p_verified_email: email,
+      p_profile_payload: fields.profilePayload,
+      p_first_name: fields.firstName || "",
+      p_last_name: fields.lastName || "",
+      p_self_reported_role: fields.selfReportedRole || "",
+      p_request_message: fields.requestMessage || ""
+    });
+    if (error) throw error;
+    if (!activation?.ok && activation?.code === "ACCESS_REQUEST_CHANGED") {
+      const [member, decidedRequest] = await Promise.all([
+        findTenantUserForIdentity(tenantId, identity),
+        AccessRequestModel.findOne(tenantId, { _id: existingPending._id })
+      ]);
+      if (member?.status === "active" && decidedRequest?.status === "approved") {
+        return { requestRow: decidedRequest, isNew: false, activated: true, activation: {
+          ok: true, activated: true, pendingApproval: false, requestId: String(decidedRequest._id), userId: String(member._id)
+        } };
+      }
+    }
+    if (!activation?.ok) {
+      throw Object.assign(new Error("This access request changed before setup could finish."), {
+        statusCode: 409,
+        code: activation?.code || "RECOVERY_FINALIZATION_FAILED"
+      });
+    }
+    const requestRow = await AccessRequestModel.findOne(tenantId, { _id: activation.requestId });
+    if (!requestRow || (activation.activated && requestRow.status !== "approved")) {
+      throw Object.assign(new Error("Account activation could not be confirmed."), {
+        statusCode: 409,
+        code: "RECOVERY_FINALIZATION_NOT_CONFIRMED"
+      });
+    }
+    await writeTenantAudit(tenantId, activation.userId || null, "access_request_consent_completed", {
+      requestId: String(activation.requestId),
+      source
+    }).catch(() => {});
+    return { requestRow, isNew: false, activated: Boolean(activation.activated), activation };
   }
   let requestRow = existingPending;
   if (existingPending) {
@@ -599,7 +664,7 @@ async function submitAccessRequest({ tenant, identity, body = {}, invite = null,
     }
   }).catch(() => {});
 
-  return { requestRow, isNew: !existingPending };
+  return { requestRow, isNew: !existingPending, activated: false };
 }
 
 async function writeTenantAudit(tenantId, actorUserId, event, metadata = {}) {
@@ -829,7 +894,7 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
   // removal. Returning members still need explicit human approval.
   if (policy.requireApproval || (member && member.status !== "active")) {
     if (!member || member.status !== "active") {
-      const { requestRow, isNew } = await submitAccessRequest({
+      const { requestRow, isNew, activated } = await submitAccessRequest({
         tenant: req.tenant,
         identity,
         body: req.body || {},
@@ -838,7 +903,7 @@ router.post("/join", accessMutationLimiter, async (req, res) => {
       const decision = await buildAccessDecision({ tenant: req.tenant, identity });
       return res.status(isNew ? 202 : 200).json({
         ok: true,
-        pendingApproval: true,
+        pendingApproval: !activated,
         request: {
           id: String(requestRow._id),
           status: requestRow.status,
@@ -948,7 +1013,7 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
     });
   }
 
-  const { requestRow, isNew } = await submitAccessRequest({
+  const { requestRow, isNew, activated } = await submitAccessRequest({
     tenant: req.tenant,
     identity,
     body: req.body || {},
@@ -962,6 +1027,7 @@ router.post("/request-access", accessMutationLimiter, async (req, res) => {
 
   return res.status(isNew ? 201 : 200).json({
     ok: true,
+    pendingApproval: !activated,
     request: {
       id: String(requestRow._id),
       status: requestRow.status,
@@ -1070,7 +1136,7 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
   const policy = resolveTenantAccessPolicy(req.tenant);
   const existingMember = await findTenantUserForIdentity(req.tenant._id, identity);
   if (policy.requireApproval && !isDirectorInvite(invite) && (!existingMember || existingMember.status !== "active")) {
-    const { requestRow, isNew } = await submitAccessRequest({
+    const { requestRow, isNew, activated } = await submitAccessRequest({
       tenant: req.tenant,
       identity,
       body: req.body || {},
@@ -1080,7 +1146,7 @@ router.post("/invite/accept", accessMutationLimiter, async (req, res) => {
     const decision = await buildAccessDecision({ tenant: req.tenant, identity });
     return res.status(isNew ? 202 : 200).json({
       ok: true,
-      pendingApproval: true,
+      pendingApproval: !activated,
       request: {
         id: String(requestRow._id),
         status: requestRow.status,

@@ -429,6 +429,12 @@ test("recovered verified signups remain in Requests and expose missing consent t
   const first = buildPeopleDirectory({ accessRequests: [base] });
   expect(first.counts.request).toBe(1);
   expect(first.people[0]).toMatchObject({ stage: "request", requiresConsent: true, recoveredSignup: true });
+  const preapproved = buildPeopleDirectory({ accessRequests: [{ ...base,
+    directorApprovedAt: new Date("2026-09-08T21:00:00Z"), directorApprovedByUserId: "director-a"
+  }] });
+  expect(preapproved.counts.awaiting_setup).toBe(1);
+  expect(preapproved.people[0]).toMatchObject({ stage: "awaiting_setup", requiresConsent: true,
+    directorApprovedByUserId: "director-a" });
   const complete = buildPeopleDirectory({ accessRequests: [{ ...base, profilePayload: { socials: {
     ...base.profilePayload.socials, legalAgreement: { accepted: true, ageEligibilityConfirmed: true }
   } } }] });
