@@ -47,7 +47,8 @@ import {
   MobileNotificationScheduleModel,
   AiGenerationModel
 } from "../db/models/index.js";
-import { findImportReportForTenant } from "../services/csvImport.js";
+import { findImportReportForTenant, runTenantCsvImport } from "../services/csvImport.js";
+import { IMPORT_FIELDS } from "../services/importFieldMap.js";
 import { env } from "../config/env.js";
 import {
   buildTenantEmailBranding,
@@ -8074,15 +8075,90 @@ router.post("/invites/send", inviteSendLimiter, inviteUpload.single("file"), asy
   }
 });
 
+/**
+ * The old single-shot import. It created members with no way to tell an imported
+ * row from someone who signed up, so it was disabled rather than fixed. The
+ * replacement is /import/dry-run followed by /import/commit, which shows a
+ * director what would happen before anything is written.
+ */
 router.post("/import-csv", csvUpload.single("file"), async (req, res) => {
   return res.status(410).json({
     error: {
       code: "MEMBER_IMPORT_DISABLED",
-      message:
-        "Member import is disabled. Use Invite Members so people create their own accounts."
+      message: "This import route has been replaced. Use the questionnaire import in People."
     }
   });
 });
+
+/** The fields a mapping may target, for the column-mapping step and its dropdowns. */
+router.get("/import/fields", async (_req, res) => {
+  return res.status(200).json({ ok: true, fields: IMPORT_FIELDS });
+});
+
+function parseMappingField(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    const error = new Error("The column mapping was not valid JSON.");
+    error.statusCode = 400;
+    error.code = "IMPORT_MAPPING_INVALID";
+    throw error;
+  }
+}
+
+async function handleImport(req, res, next, { dryRun }) {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({
+        error: { code: "FILE_REQUIRED", message: "Upload a CSV file under field 'file'." }
+      });
+    }
+
+    const mapping = parseMappingField(req.body?.mapping);
+    const result = await runTenantCsvImport({
+      tenantId: req.tenant._id,
+      userId: req.user.id,
+      fileName: req.file.originalname,
+      csvBuffer: req.file.buffer,
+      mapping,
+      options: {
+        dryRun,
+        enableFuzzyMatch: String(req.body?.enableFuzzyMatch || "") === "true",
+        fuzzyDistance: req.body?.fuzzyDistance
+      }
+    });
+
+    if (!dryRun) {
+      await writeAdminAudit(req, "admin_questionnaire_import", {
+        reportId: result.reportId,
+        fileName: req.file.originalname,
+        rowsRead: result.rowsRead,
+        createdCount: result.createdCount,
+        updatedCount: result.updatedCount,
+        errorCount: result.errors.length
+      });
+      clearAdminReadCaches(req.tenant._id);
+    }
+
+    return res.status(dryRun ? 200 : 201).json({ ok: true, ...result });
+  } catch (error) {
+    if (error?.code === "IMPORT_EMAIL_REQUIRED" || error?.code === "IMPORT_FIELD_UNKNOWN"
+      || error?.code === "CSV_INVALID_FORMAT" || error?.code === "IMPORT_MAPPING_INVALID") {
+      return res.status(400).json({ error: { code: error.code, message: error.message } });
+    }
+    return next(error);
+  }
+}
+
+/** Works out what an import would do. Writes nothing. */
+router.post("/import/dry-run", csvUpload.single("file"), async (req, res, next) =>
+  handleImport(req, res, next, { dryRun: true }));
+
+router.post("/import/commit", csvUpload.single("file"), async (req, res, next) =>
+  handleImport(req, res, next, { dryRun: false }));
 
 router.get("/imports/:reportId/failures.csv", async (req, res) => {
   const report = await findImportReportForTenant({

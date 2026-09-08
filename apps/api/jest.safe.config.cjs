@@ -23,6 +23,7 @@ module.exports = {
     "**/tests/featureRolloutBatching.test.js",
     "**/tests/featureRollouts.test.js",
     "**/tests/importedProfileClaim.test.js",
+    "**/tests/questionnaireImportFields.test.js",
     "**/tests/fcmHttpV1.test.js",
     "**/tests/accessPolicy.test.js",
     "**/tests/alumniGrowth.test.js",
