@@ -19,8 +19,9 @@ function setup(overrides = {}) {
   const replies = { "/import/fields": { fields }, "/import/analyze": analysis, "/import/dry-run": preview, "/import/commit": report, "/imports/report-1/undo": { removedCount: 1, keptClaimedCount: 0 }, ...overrides };
   const request = vi.fn(async (path, options) => typeof replies[path] === "function" ? replies[path](options) : replies[path]);
   const download = vi.fn().mockResolvedValue(new Blob(["row,error\n3,Invalid email"]));
-  render(<QuestionnaireImportWizard request={request} download={download} slug="synthetic-camp" />);
-  return { request, download };
+  const onDone = vi.fn();
+  render(<QuestionnaireImportWizard request={request} download={download} slug="synthetic-camp" onDone={onDone} />);
+  return { request, download, onDone };
 }
 async function upload() {
   await waitFor(() => expect(screen.getByLabelText("Questionnaire CSV file")).toBeEnabled());
@@ -34,7 +35,7 @@ async function check() {
 
 describe("questionnaire import acceptance", () => {
   test("reviews mappings and rewrites before committing, then downloads authenticated failures and undoes", async () => {
-    const { request, download } = setup();
+    const { request, download, onDone } = setup();
     const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:failures");
     const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
@@ -44,6 +45,8 @@ describe("questionnaire import acceptance", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Import 1 person" }));
     await screen.findByText("1 profile is ready");
+    fireEvent.click(screen.getByRole("button", { name: "See them in People" }));
+    expect(onDone).toHaveBeenCalledWith("unclaimed");
     const form = request.mock.calls.find(([path]) => path === "/import/commit")[1].body;
     expect(form.get("file")).toBe(file);
     expect(JSON.parse(form.get("mapping"))).toEqual({ Email: "email", Name: "firstName" });

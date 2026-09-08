@@ -74,7 +74,7 @@ export default function DirectorAdminPeoplePage() {
           download={download}
           slug={slug}
           networkName={networkName}
-          onDone={() => navigate(`/t/${slug}/admin/people/prospect`)}
+          onDone={(stage = "prospect") => navigate(`/t/${slug}/admin/people/${stage}`)}
           />
         </Suspense>
       );
