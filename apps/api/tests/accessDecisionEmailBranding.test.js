@@ -1,5 +1,6 @@
 import {
   accessApprovedTemplate,
+  accessConsentPendingTemplate,
   accessDeniedTemplate
 } from "../src/services/emailTemplates.js";
 
@@ -47,4 +48,23 @@ describe("access decision email branding", () => {
     expect(control.html).not.toContain("Camp Cedar Alumni Network");
     expect(control.html).not.toContain("https://cdn.example.com/cedar-logo.png");
   });
+});
+
+test("renders a precise essential setup notice without a tenant logo or active-access claim", () => {
+  const message = accessConsentPendingTemplate({
+    tenantName: "Camp Cedar Alumni Network",
+    firstName: "Aden",
+    loginUrl: "https://cedar.example.com/login",
+    brandPrimary: "#8b1e2d",
+    logoUrl: "https://cdn.example.com/cedar-logo.png"
+  });
+
+  expect(message.subject).toBe("Finish setting up your Camp Cedar Alumni Network account");
+  expect(message.text).toContain("confirm your age eligibility and acceptance of the Terms and Privacy Policy");
+  expect(message.text).toContain("No further director approval is needed");
+  expect(message.text).not.toContain("You can now log in");
+  expect(message.html).toContain("Finish Account Setup");
+  expect(message.html).toContain("Essential account message");
+  expect(message.html).not.toContain("<img");
+  expect(message.html).not.toContain("https://cdn.example.com/cedar-logo.png");
 });

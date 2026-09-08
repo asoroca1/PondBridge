@@ -3,6 +3,7 @@ import { jest, beforeEach, test, expect } from "@jest/globals";
 const requestFind = jest.fn();
 const userFind = jest.fn();
 const buildMessage = jest.fn();
+const buildConsentPendingMessage = jest.fn();
 const send = jest.fn();
 const save = jest.fn();
 const read = jest.fn();
@@ -13,6 +14,7 @@ jest.unstable_mockModule("../src/db/models/index.js", () => ({
 }));
 jest.unstable_mockModule("../src/services/email.js", () => ({
   buildAccessApprovalEmail: buildMessage,
+  buildAccessConsentPendingEmail: buildConsentPendingMessage,
   sendTransactionalEmail: send
 }));
 jest.unstable_mockModule("../src/services/durableJobs.js", () => ({
@@ -34,12 +36,31 @@ const prepared = {
   text: "Approved", html: "<p>Approved</p>", tags: [], transport: "transport-hash",
   idempotencyKey: "access-approval/request-a"
 };
+const consentPendingPayload = {
+  version: 1,
+  phase: "consent_pending",
+  requestId: "request-a",
+  recoveredClerkUserId: "user_recovered",
+  email: "member@example.test",
+  firstName: "Member",
+  directorApprovedAt: "2026-09-08T22:20:00.000Z"
+};
+const consentPendingRequest = {
+  _id: "request-a",
+  status: "pending",
+  email: "member@example.test",
+  recoveredClerkUserId: "user_recovered",
+  directorApprovedAt: "2026-09-08T22:20:00.000Z",
+  directorApprovedByUserId: "director-a",
+  profilePayload: { socials: { signupRecovery: { clerkUserId: "user_recovered" } } }
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
   requestFind.mockResolvedValue({ _id: "request-a", status: "approved", approvedUserId: "user-a" });
   userFind.mockResolvedValue({ _id: "user-a", tenantId: "camp-a", status: "active", email: "member@example.test" });
   buildMessage.mockReturnValue({ ...prepared });
+  buildConsentPendingMessage.mockReturnValue({ ...prepared, subject: "Finish setup" });
   save.mockResolvedValue(undefined);
   send.mockResolvedValue({ messageId: "provider-message-a" });
 });
@@ -83,4 +104,46 @@ test("stale member state skips delivery before provider access", async () => {
   const result = await processApprovalEmailJob({ ...baseJob }, { tenant });
   expect(result.state).toMatchObject({ accepted: 0, skipped: 1, outcome: "APPROVED_MEMBER_NO_LONGER_ACTIVE" });
   expect(send).not.toHaveBeenCalled();
+});
+
+test("a consent-pending preapproval sends one frozen setup notice without requiring an active member", async () => {
+  requestFind.mockResolvedValue(consentPendingRequest);
+  const job = { ...baseJob, payload: consentPendingPayload };
+
+  const result = await processApprovalEmailJob(job, { tenant });
+
+  expect(userFind).not.toHaveBeenCalled();
+  expect(buildConsentPendingMessage).toHaveBeenCalledWith({ tenant, email: "member@example.test", firstName: "Member" });
+  expect(save).toHaveBeenCalledWith(expect.anything(), {
+    state: { prepared: expect.objectContaining({ idempotencyKey: "access-preapproval/request-a", transport: "transport-hash" }) }
+  });
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({
+    idempotencyKey: "access-preapproval/request-a", suppressionFailClosed: true
+  }));
+  expect(result.state).toMatchObject({ accepted: 1, skipped: 0, outcome: "provider_accepted" });
+});
+
+test.each([
+  ["request is no longer pending", { ...consentPendingRequest, status: "approved" }],
+  ["recovered Clerk identity changed", { ...consentPendingRequest, recoveredClerkUserId: "user_other" }],
+  ["recipient email changed", { ...consentPendingRequest, email: "other@example.test" }],
+  ["director preapproval timestamp changed", { ...consentPendingRequest, directorApprovedAt: "2026-09-08T22:21:00.000Z" }],
+  ["consent was already completed", { ...consentPendingRequest, profilePayload: { socials: {
+    signupRecovery: { clerkUserId: "user_recovered" }, legalAgreement: { accepted: true, ageEligibilityConfirmed: true }
+  } } }]]
+)("consent-pending delivery is cancelled before provider access when %s", async (_label, staleRequest) => {
+  requestFind.mockResolvedValue(staleRequest);
+  const result = await processApprovalEmailJob({ ...baseJob, payload: consentPendingPayload }, { tenant });
+  expect(result.state).toMatchObject({ accepted: 0, skipped: 1, outcome: "PREAPPROVAL_NO_LONGER_CURRENT" });
+  expect(buildConsentPendingMessage).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+});
+
+test("a consent-pending retry reuses the frozen setup message and preapproval key", async () => {
+  requestFind.mockResolvedValue(consentPendingRequest);
+  const frozen = { ...prepared, subject: "Finish setup", idempotencyKey: "access-preapproval/request-a", transport: "transport-hash" };
+  const result = await processApprovalEmailJob({ ...baseJob, payload: consentPendingPayload, state: { prepared: frozen } }, { tenant });
+  expect(buildConsentPendingMessage).not.toHaveBeenCalled();
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: "access-preapproval/request-a" }));
+  expect(result.state).toMatchObject({ accepted: 1, outcome: "provider_accepted" });
 });

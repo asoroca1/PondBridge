@@ -680,7 +680,50 @@ export function accessApprovedTemplate({
 }
 
 // ---------------------------------------------------------------------------
-// 6. Access denied template
+// 6. Director-approved, account setup still required
+// ---------------------------------------------------------------------------
+
+export function accessConsentPendingTemplate({
+  tenantName,
+  firstName,
+  loginUrl,
+  brandPrimary = BRAND.primary
+}) {
+  const P = buildEmailPalette(brandPrimary);
+  const safeTenant = escapeHtml(tenantName);
+  const safeName = escapeHtml(firstName || "there");
+  const subject = `Finish setting up your ${tenantName} account`;
+  const text = [
+    `Hi ${firstName || "there"},`,
+    "",
+    `A director approved your request to join ${tenantName}.`,
+    "Before you can access the network, log in with this verified email and confirm your age eligibility and acceptance of the Terms and Privacy Policy.",
+    "No further director approval is needed after you finish account confirmation.",
+    "",
+    loginUrl ? `Finish account setup: ${loginUrl}` : ""
+  ].filter(Boolean).join("\n");
+  const html = wrapInviteLayout(`
+    <h1 style="margin:0 0 16px;font-size:32px;font-weight:700;line-height:1.2;color:${P.text};letter-spacing:-0.02em;">Finish setting up your account</h1>
+    <p style="margin:0 0 12px;">Hi ${safeName},</p>
+    <p style="margin:0 0 12px;">A director approved your request to join <strong>${safeTenant}</strong>.</p>
+    <p style="margin:0 0 12px;">Before you can access the network, log in with this verified email and confirm your age eligibility and acceptance of the Terms and Privacy Policy.</p>
+    <p style="margin:0 0 12px;">No further director approval is needed after you finish account confirmation.</p>
+    ${loginUrl ? ctaButton(loginUrl, "Finish Account Setup", { backgroundColor: brandPrimary }) : ""}
+    ${loginUrl ? `<p style="margin:0;font-size:13px;color:${BRAND.muted};word-break:break-all;"><a href="${escapeHtml(loginUrl)}" style="color:${P.primary};text-decoration:underline;">${escapeHtml(loginUrl)}</a></p>` : ""}
+  `, {
+    contextName: tenantName,
+    brandPrimary,
+    // This is an essential account message. Do not carry a tenant-uploaded
+    // logo into a security/setup notice.
+    logoUrl: "",
+    essential: true,
+    tagline: "Complete account confirmation"
+  });
+  return { subject, text, html };
+}
+
+// ---------------------------------------------------------------------------
+// 7. Access denied template
 // ---------------------------------------------------------------------------
 
 export function accessDeniedTemplate({
