@@ -1,0 +1,137 @@
+{
+  "checked_at": "2026-09-08T19:28:22.122Z",
+  "results": [
+    {
+      "label": "cloudflare-zone",
+      "status": 200,
+      "data": {
+        "success": true,
+        "status": "active",
+        "plan": "Free Website"
+      }
+    },
+    {
+      "label": "cloudflare-settings",
+      "status": 403,
+      "data": {
+        "code": [
+          9109
+        ]
+      }
+    },
+    {
+      "label": "cloudflare-pages",
+      "status": 200,
+      "data": {
+        "success": true,
+        "name": "pondbridge",
+        "production_branch": "main",
+        "build_config": {
+          "build_command": "npm --workspace @pondbridge/web run build",
+          "destination_dir": "apps/web/dist",
+          "root_dir": "",
+          "web_analytics_tag": null,
+          "web_analytics_token": null
+        },
+        "latest_deployment": {
+          "id": "98a7668b-9b9d-4471-aeb9-d881c9214d3f",
+          "environment": "production",
+          "stage": {
+            "name": "deploy",
+            "started_on": "2026-09-08T18:36:32.310521Z",
+            "ended_on": "2026-09-08T18:36:47.427838Z",
+            "status": "success"
+          },
+          "trigger": {
+            "branch": "main",
+            "commit_hash": "2fd23b54f409b704009cf5c36357826e36ba09e5",
+            "commit_message": "Improve search relevance, saved-search privacy, and admin clarity (#142)",
+            "commit_dirty": false
+          }
+        },
+        "env_keys": {
+          "preview": [
+            "VITE_API_BASE",
+            "VITE_APP_BASE_DOMAIN"
+          ],
+          "production": [
+            "VITE_API_BASE",
+            "VITE_APP_BASE_DOMAIN",
+            "VITE_AUTH_PROVIDER",
+            "VITE_CLERK_PUBLISHABLE_KEY"
+          ]
+        }
+      }
+    },
+    {
+      "label": "cloudflare-subscriptions",
+      "status": 403,
+      "data": {
+        "code": [
+          10000
+        ]
+      }
+    },
+    {
+      "label": "stripe-account",
+      "status": 200,
+      "data": {
+        "id": "acct_1T3ScFKmSeC5JnMu",
+        "charges_enabled": true,
+        "payouts_enabled": true,
+        "country": "US",
+        "requirements": {}
+      }
+    },
+    {
+      "label": "stripe-webhooks",
+      "status": 200,
+      "data": {
+        "has_more": false,
+        "endpoints": [
+          {
+            "url": "https://api.pondbridgealumni.com/api/stripe/webhook",
+            "status": "enabled",
+            "livemode": true,
+            "api_version": "2026-01-28.clover",
+            "enabled_events": [
+              "invoice.paid",
+              "invoice.payment_failed",
+              "checkout.session.completed",
+              "customer.subscription.created",
+              "customer.subscription.deleted",
+              "customer.subscription.updated",
+              "invoice.finalization_failed",
+              "payment_intent.succeeded",
+              "payment_intent.payment_failed"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "clerk-instance",
+      "status": 200,
+      "data": {
+        "keys": [
+          "id",
+          "object",
+          "environment_type",
+          "allowed_origins",
+          "allowed_subdomains",
+          "subdomain_allowlist_enabled",
+          "workspace_id"
+        ],
+        "environment_type": "production",
+        "allowed_origins": null
+      }
+    },
+    {
+      "label": "clerk-user-count",
+      "status": 200,
+      "data": {
+        "total_count": 470
+      }
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { invoiceSubscriptionDetails, stripeObjectId, stripeSubscriptionId, stripeLinePriceId, stripeSubscriptionPeriodEnd } from "./stripePayload.js";
 import { env } from "../config/env.js";
 import { invalidatePublicTenantCache } from "../utils/publicResponseCache.js";
 import {
@@ -192,7 +193,7 @@ function pickTenantIdFromPayload(payload = {}) {
   return (
     String(payload?.metadata?.tenantId || "").trim() ||
     String(payload?.client_reference_id || "").trim() ||
-    String(payload?.subscription_details?.metadata?.tenantId || "").trim()
+    String(invoiceSubscriptionDetails(payload)?.metadata?.tenantId || "").trim()
   );
 }
 
@@ -350,24 +351,12 @@ function isStripeWebhookLedgerUnavailableError(error) {
 }
 
 function pickStripeCustomerIdFromPayload(payload = {}) {
-  return String(
-    payload?.customer || payload?.data?.object?.customer || payload?.metadata?.customer || ""
-  )
-    .trim();
+  return stripeObjectId(payload.customer) ||
+    stripeObjectId(payload.data?.object?.customer) || stripeObjectId(payload.metadata?.customer);
 }
 
 function pickStripeSubscriptionIdFromPayload(payload = {}) {
-  const explicit = String(
-    payload?.subscription ||
-      payload?.data?.object?.subscription ||
-      payload?.metadata?.subscriptionId ||
-      ""
-  ).trim();
-  if (explicit) return explicit;
-
-  const maybeSubscriptionId = String(payload?.id || "").trim();
-  if (maybeSubscriptionId.startsWith("sub_")) return maybeSubscriptionId;
-  return "";
+  return stripeSubscriptionId(payload) || stripeSubscriptionId(payload.data?.object || {});
 }
 
 function buildWebhookTenantContext(tenant, payload = {}) {
@@ -557,7 +546,7 @@ function hasOnboardingFeeLine(invoice, tenant = null) {
   }
 
   return lines.some((line) => {
-    const priceId = String(line?.price?.id || "").trim();
+    const priceId = stripeLinePriceId(line);
     if (knownOnboardingPriceIds.has(priceId)) return true;
     const description = String(line?.description || "").trim().toLowerCase();
     const metadataType = String(line?.metadata?.lineType || "").trim().toLowerCase();
@@ -579,13 +568,13 @@ async function findTenantForStripePayload(payload = {}) {
     if (byId) return byId;
   }
 
-  const subscriptionId = String(payload?.subscription || payload?.id || "").trim();
+  const subscriptionId = pickStripeSubscriptionIdFromPayload(payload);
   if (subscriptionId) {
     const bySub = await TenantModel.findByStripeSubscriptionId(subscriptionId);
     if (bySub) return bySub;
   }
 
-  const customerId = String(payload?.customer || "").trim();
+  const customerId = pickStripeCustomerIdFromPayload(payload);
   if (customerId) {
     const byCustomer = await TenantModel.findByStripeCustomerId(customerId);
     if (byCustomer) return byCustomer;
@@ -873,7 +862,7 @@ export async function createTenantCheckoutSession({
       mapStripeLifecycleStatus(existingSubscriptionStatus),
       "customer.subscription.updated"
     );
-    const currentPeriodEndUnix = Number(existingSubscription?.current_period_end || 0);
+    const currentPeriodEndUnix = stripeSubscriptionPeriodEnd(existingSubscription);
     const currentPeriodEnd =
       currentPeriodEndUnix > 0 ? new Date(currentPeriodEndUnix * 1000).toISOString() : tenantBilling.currentPeriodEnd;
 
@@ -901,7 +890,7 @@ export async function createTenantCheckoutSession({
         mapStripeLifecycleStatus(updatedSubscription.status),
         "customer.subscription.updated"
       );
-      const switchedPeriodEndUnix = Number(updatedSubscription?.current_period_end || 0);
+      const switchedPeriodEndUnix = stripeSubscriptionPeriodEnd(updatedSubscription);
       const switchedPeriodEnd =
         switchedPeriodEndUnix > 0
           ? new Date(switchedPeriodEndUnix * 1000).toISOString()
@@ -1179,7 +1168,7 @@ async function handleCheckoutSessionCompleted(event, session, { useTenantEventDe
     );
     planTier = resolveFeatureTierFromBillingPlan(resolvedPlanCode);
     lifecycleStatus = mapStripeLifecycleStatus(subscription.status);
-    const periodEnd = Number(subscription?.current_period_end || 0);
+    const periodEnd = stripeSubscriptionPeriodEnd(subscription);
     if (periodEnd > 0) currentPeriodEnd = new Date(periodEnd * 1000).toISOString();
   }
 
@@ -1261,7 +1250,7 @@ async function handleSubscriptionUpdate(event, subscription, { useTenantEventDed
     event.type
   );
   const billing = resolveTenantBilling(tenant);
-  const periodEnd = Number(subscription?.current_period_end || 0);
+  const periodEnd = stripeSubscriptionPeriodEnd(subscription);
   const lifecycleDatesPatch = activationAndCancellationPatch(tenant, lifecycleStatus, subscription);
   const catalog = getCatalogEntry(resolvedPlanCode);
 
@@ -1879,8 +1868,8 @@ export async function getTenantSubscriptionStatus(tenant) {
   if (!subscription) return { cancelAtPeriodEnd: false, currentPeriodEnd: null };
   return {
     cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
-    currentPeriodEnd: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
+    currentPeriodEnd: stripeSubscriptionPeriodEnd(subscription)
+      ? new Date(stripeSubscriptionPeriodEnd(subscription) * 1000).toISOString()
       : null,
     stripeStatus: subscription.status
   };
@@ -1942,7 +1931,7 @@ export async function cancelTenantSubscription({ tenant, billingOperator = null,
   const nextLegacyStatus = cancelAtPeriodEnd
     ? toLegacyBillingStatusFromLifecycle(nextLifecycle)
     : "canceled";
-  const currentPeriodEndUnix = Number(updatedSubscription?.current_period_end || 0);
+  const currentPeriodEndUnix = stripeSubscriptionPeriodEnd(updatedSubscription);
   const effectiveCancelAt =
     cancelAtPeriodEnd && currentPeriodEndUnix > 0
       ? new Date(currentPeriodEndUnix * 1000).toISOString()
@@ -1984,7 +1973,7 @@ export async function cancelTenantSubscription({ tenant, billingOperator = null,
     mode: "stripe",
     action: "subscription_canceled",
     cancelAtPeriodEnd,
-    cancelAt: cancelAtPeriodEnd ? updatedSubscription.current_period_end : null,
+    cancelAt: cancelAtPeriodEnd ? stripeSubscriptionPeriodEnd(updatedSubscription) || null : null,
     message: cancelAtPeriodEnd
       ? "Your subscription will cancel at the end of the current billing period."
       : "Your subscription has been canceled immediately.",
