@@ -15,6 +15,7 @@ module.exports = {
     "**/tests/brandingFaviconField.test.js",
     "**/tests/brandingLogoTreatment.test.js",
     "**/tests/clerkVerificationEmail.test.js",
+    "**/tests/clerkDeliveryAck.test.js",
     "**/tests/clerkAccountDeletion.test.js",
     "**/tests/cloudflareStream.test.js",
     "**/tests/campAiSearch.test.js",
