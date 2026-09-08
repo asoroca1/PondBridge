@@ -1214,8 +1214,17 @@ router.post("/claim/decline", accessMutationLimiter, async (req, res, next) => {
     // so it stays invisible, and a director has to sort out who the row belongs
     // to — releasing the email automatically would risk handing one alum's
     // history to another.
+    const socials = profile.socials && typeof profile.socials === "object" ? profile.socials : {};
+    const importedFrom = socials.importedFrom && typeof socials.importedFrom === "object"
+      ? socials.importedFrom
+      : null;
     await ProfileModel.update(profile._id, {
-      flaggedReason: "Claim declined: the person who signed in with this address says the profile is not theirs."
+      flaggedReason: "Claim declined: the person who signed in with this address says the profile is not theirs.",
+      // Recorded beside the import so the claim action can stop offering to email
+      // somebody who has already said this is not them.
+      ...(importedFrom
+        ? { socials: { ...socials, importedFrom: { ...importedFrom, claimDeclinedAt: new Date().toISOString() } } }
+        : {})
     });
 
     await logTenantEvent({

@@ -53,7 +53,7 @@ export default function TenantClaimProfilePage() {
   const params = useParams();
   const { slug: contextSlug = "", tenant } = useTenant();
   const slug = String(params.slug || contextSlug || "").trim().toLowerCase();
-  const { token, isReady } = useAuth();
+  const { token, isReady, refreshSession } = useAuth();
 
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -106,6 +106,10 @@ export default function TenantClaimProfilePage() {
         token,
         body: {}
       });
+      // The cached session still describes the profile as unclaimed, and the
+      // route guard reads that — without this refresh a person who has just
+      // confirmed gets sent straight back here, in a loop.
+      await refreshSession?.({ tenantSlug: slug }).catch(() => {});
       // Straight to editing, not the home page: the fastest moment to get a
       // correction is while someone is still looking at the thing to correct.
       goTo(String(payload?.nextRoute || tenantRoute(slug, "/edit-profile")));

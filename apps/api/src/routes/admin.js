@@ -8337,6 +8337,13 @@ router.post("/import/claim-emails", inviteSendLimiter, async (req, res, next) =>
     const usersById = new Map(users.map((user) => [String(user._id), user]));
 
     const targets = unclaimedProfiles
+      // Only rows an import actually created. A profile can be unclaimed without
+      // having come from a questionnaire, and this mail names one — telling
+      // somebody their answers built a profile when they never sent any would be
+      // both wrong and alarming.
+      .filter((profile) => profile?.socials?.importedFrom)
+      // Someone who has said "this is not me" does not get asked again.
+      .filter((profile) => !profile?.socials?.importedFrom?.claimDeclinedAt)
       .map((profile) => ({ profile, user: usersById.get(String(profile.userId)) || null }))
       .filter(({ user }) => user && user.status === "active" && normalizeEmail(user.email))
       .filter(({ user }) => !requested.length || requested.includes(normalizeEmail(user.email)));

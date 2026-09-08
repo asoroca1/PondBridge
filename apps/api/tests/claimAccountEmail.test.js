@@ -63,7 +63,7 @@ describe("claimAccountTemplate", () => {
   });
 });
 
-describe("the imported stage", () => {
+describe("the unclaimed stage", () => {
   const users = [
     { _id: "u1", email: "claimed@example.com", status: "active" },
     { _id: "u2", email: "waiting@example.com", status: "active" }
@@ -78,11 +78,13 @@ describe("the imported stage", () => {
     return people.find((person) => person.email === email)?.stage;
   }
 
-  // An imported account has never been signed in to and its profile is invisible
+  // An unclaimed account has never been signed in to and its profile is invisible
   // to the camp. Filing it under "member" would inflate the count and hide the
-  // people who still need asking.
-  test("an unclaimed import is not a member", () => {
-    expect(stageOf("waiting@example.com")).toBe("imported");
+  // people who still need asking. Staging data proved these are not always
+  // imports — its seed carries pending profiles of its own — so the stage is
+  // named for the claim state rather than the provenance.
+  test("an account nobody has claimed is not a member", () => {
+    expect(stageOf("waiting@example.com")).toBe("unclaimed");
     expect(stageOf("claimed@example.com")).toBe("member");
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@jest/globals";
-import { MAX_IMPORT_ROWS, wasCreatedByImport } from "../src/services/csvImport.js";
+import { MAX_IMPORT_ROWS, wasCreatedByImport, __testables as importTestables } from "../src/services/csvImport.js";
 import { isUnclaimedProfile } from "../src/services/memberVisibility.js";
 
 const stamped = (reportId, status = "pending") => ({
@@ -62,5 +62,55 @@ describe("MAX_IMPORT_ROWS", () => {
   // timing out halfway and leaving a director guessing what landed.
   test("is a real ceiling, big enough for a camp and small enough to finish", () => {
     expect(MAX_IMPORT_ROWS).toBe(2000);
+  });
+});
+
+/**
+ * Found by uploading a real questionnaire through the wizard on staging: a file
+ * holding one person twice previewed as two new profiles.
+ *
+ * Registering a created row in the dedupe maps used to happen inside the write,
+ * which a dry run skips — so the preview met the repeat as a stranger and
+ * promised a director one more account than the commit would make. A preview
+ * that overcounts is worse than none, because the point of the step is that its
+ * numbers are true.
+ */
+describe("a row repeated inside one file", () => {
+  const { rememberRow, buildExistingMaps } = importTestables;
+
+  function freshMaps() {
+    return buildExistingMaps([], []);
+  }
+
+  test("is recognised on the second sighting, with nothing written", () => {
+    const mapState = freshMaps();
+    const payload = { firstName: "Dana", lastName: "Reyes", cityState: "Brooklyn, NY" };
+
+    expect(mapState.emailMap.has("dana@example.test")).toBe(false);
+    rememberRow({ mapState, email: "dana@example.test", payload });
+    expect(mapState.emailMap.has("dana@example.test")).toBe(true);
+  });
+
+  // The remembered row stands in for a profile that does not exist yet, so the
+  // importer has to recognise it as a placeholder rather than try to patch it.
+  test("remembers it as a placeholder, with no profile behind it", () => {
+    const mapState = freshMaps();
+    rememberRow({ mapState, email: "dana@example.test", payload: { firstName: "Dana", lastName: "Reyes" } });
+    expect(mapState.emailMap.get("dana@example.test").profile).toBeNull();
+  });
+
+  test("also catches a repeat under name and city, not only the address", () => {
+    const mapState = freshMaps();
+    const payload = { firstName: "Dana", lastName: "Reyes", cityState: "Brooklyn, NY" };
+    rememberRow({ mapState, email: "dana@example.test", payload });
+    // A second row for the same person with a different address is still a repeat.
+    expect(mapState.secondaryMap.has("dana reyes|brooklyn, ny")).toBe(true);
+  });
+
+  test("joins the pool the fuzzy matcher reads, so near-repeats are caught too", () => {
+    const mapState = freshMaps();
+    rememberRow({ mapState, email: "dana@example.test", payload: { firstName: "Dana", lastName: "Reyes", cityState: "Brooklyn, NY" } });
+    expect(mapState.profilePool).toHaveLength(1);
+    expect(mapState.profilePool[0]).toMatchObject({ email: "dana@example.test", fullName: "dana reyes" });
   });
 });

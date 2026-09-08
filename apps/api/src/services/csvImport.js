@@ -246,6 +246,32 @@ function stampProvenance(socials = {}, reportId = "") {
   };
 }
 
+/**
+ * Records a row as taken, so later rows in the same file see it.
+ *
+ * Called on a dry run too, where nothing is written. A questionnaire that holds
+ * the same person twice is ordinary — people resubmit — and without this the
+ * preview counted the second copy as another new profile, promising a director
+ * one more account than the commit would actually create.
+ */
+function rememberRow({ mapState, email, payload, profile = null, user = null }) {
+  const pair = { user, profile };
+  mapState.emailMap.set(email, pair);
+
+  const secondaryKey = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
+  if (secondaryKey) mapState.secondaryMap.set(secondaryKey, pair);
+
+  mapState.profilePool.push({
+    profileId: String(profile?._id || ""),
+    userId: String(user?._id || ""),
+    email,
+    fullName: fullName(payload.firstName, payload.lastName),
+    cityState: normalizeCityState(payload.cityState),
+    profile,
+    user
+  });
+}
+
 async function createProfileForRow({ tenantId, payload, email, reportId, mapState }) {
   // Nothing ever signs in with this. Clerk owns the password once the person
   // claims the account; the hash exists only because the column is not nullable.
@@ -273,20 +299,7 @@ async function createProfileForRow({ tenantId, payload, email, reportId, mapStat
 
   await UserModel.update(user._id, { profileId: profile._id });
 
-  const createdPair = { user, profile };
-  mapState.emailMap.set(email, createdPair);
-  const secondaryKey = buildSecondaryKey(payload.firstName, payload.lastName, payload.cityState);
-  if (secondaryKey) mapState.secondaryMap.set(secondaryKey, createdPair);
-  mapState.profilePool.push({
-    profileId: String(profile._id),
-    userId: String(user._id),
-    email,
-    fullName: fullName(payload.firstName, payload.lastName),
-    cityState: normalizeCityState(payload.cityState),
-    profile,
-    user
-  });
-
+  rememberRow({ mapState, email, payload, profile, user });
   return profile;
 }
 
@@ -417,6 +430,14 @@ export async function runTenantCsvImport({
 
     const primaryDuplicate = mapState.emailMap.get(email);
     if (primaryDuplicate) {
+      // No profile behind it means this file already held this person and the run
+      // is a dry one, so there is nothing on record to compare against yet. The
+      // row is a repeat either way.
+      if (!primaryDuplicate.profile) {
+        skippedDuplicates += 1;
+        dispositions.push({ rowNumber, email, disposition: "duplicate", reason: "repeated_in_file" });
+        continue;
+      }
       const patch = profilePatchFromPayload(payload, primaryDuplicate.profile);
       if (!Object.keys(patch).length) {
         skippedDuplicates += 1;
@@ -472,7 +493,9 @@ export async function runTenantCsvImport({
       disposition: "create",
       unparseable: skipped.length ? skipped : undefined
     });
-    if (!dryRun) {
+    if (dryRun) {
+      rememberRow({ mapState, email, payload });
+    } else {
       try {
         await createProfileForRow({ tenantId, payload, email, reportId, mapState });
       } catch (error) {
@@ -586,4 +609,4 @@ export async function listImportReportsForTenant({ tenantId, limit = 20 }) {
 // The merge rule decides whether a re-import can overwrite what a member wrote
 // about themselves, so it is tested directly rather than only through a run that
 // needs a database.
-export const __testables = { profilePatchFromPayload, stampProvenance };
+export const __testables = { profilePatchFromPayload, stampProvenance, rememberRow, buildExistingMaps };

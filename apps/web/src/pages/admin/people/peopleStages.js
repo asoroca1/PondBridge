@@ -32,10 +32,10 @@ export const STAGES = [
     blurb: "Invitation lapsed without being used."
   },
   {
-    key: "imported",
-    label: "Imported",
+    key: "unclaimed",
+    label: "Unclaimed",
     tone: "info",
-    blurb: "Profile filled in and waiting. Hidden until they sign in and confirm it."
+    blurb: "Has a profile but has never signed in to confirm it. Hidden from everyone until they do."
   },
   {
     key: "prospect",
@@ -76,7 +76,13 @@ export function isInvitable(person = {}) {
  * is a password, which is a different mail and a different endpoint.
  */
 export function isClaimable(person = {}) {
-  return person.stage === "imported" && Boolean(person.email);
+  // Not every unclaimed profile came from a questionnaire, and the claim email
+  // names one — so the count on the button has to match who will actually be
+  // written to, or a director is told 25 and sees 2.
+  return person.stage === "unclaimed"
+    && Boolean(person.email)
+    && Boolean(person.wasImported)
+    && !person.claimDeclined;
 }
 
 export function canApprove(person = {}) {
