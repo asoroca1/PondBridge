@@ -9,6 +9,7 @@ import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import { buildClerkSignupContext } from "../../lib/clerkSignupContext.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import {
+  MINIMUM_MEMBER_AGE,
   clearPendingLegalAgreement,
   readPendingLegalAgreement,
   setPendingLegalAgreementAccepted
@@ -41,7 +42,7 @@ export default function ClerkCreateAccountFlow() {
   const { isLoaded, isSignedIn } = useClerkAuth();
   const { bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
-  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [pendingLegalAgreement, setPendingLegalAgreement] = useState(() => readPendingLegalAgreement(slug));
   const [legalError, setLegalError] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [accessCodeError, setAccessCodeError] = useState("");
@@ -53,31 +54,31 @@ export default function ClerkCreateAccountFlow() {
   ).trim().toLowerCase();
   const inviteOnlyWithoutInvite = signupMode === "invite_only" && !inviteToken;
   const accessCodeRequired = signupMode === "code" && !inviteToken;
+  const legalAccepted = Boolean(pendingLegalAgreement?.accepted && pendingLegalAgreement?.ageEligibilityConfirmed);
   // A new object identity on every render churns the Clerk widget's props, so
   // keep the signup context stable for as long as the slug is.
-  const signupContext = useMemo(() => buildClerkSignupContext(slug, "member"), [slug]);
+  const signupContext = useMemo(
+    () => buildClerkSignupContext(slug, "member", legalAccepted ? pendingLegalAgreement : null),
+    [legalAccepted, pendingLegalAgreement, slug]
+  );
 
   useEffect(() => {
     noteTabLoginIntent();
   }, []);
 
   useEffect(() => {
-    const pending = readPendingLegalAgreement(slug);
-    setLegalAccepted(Boolean(pending?.accepted));
+    setPendingLegalAgreement((current) => {
+      const next = readPendingLegalAgreement(slug);
+      return JSON.stringify(current) === JSON.stringify(next) ? current : next;
+    });
   }, [slug]);
 
   useEffect(() => {
     if (!legalRequired) return;
-    setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
-  }, [legalRequired]);
-
-  useEffect(() => {
-    if (legalAccepted) {
-      setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
-      return;
+    if (!legalAccepted) {
+      setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
     }
-    clearPendingLegalAgreement(slug);
-  }, [legalAccepted, slug]);
+  }, [legalAccepted, legalRequired]);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -135,7 +136,6 @@ export default function ClerkCreateAccountFlow() {
   const onSignUpSubmitCapture = (event) => {
     if (legalAccepted) {
       setLegalError("");
-      setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
       noteSignupIntent(event.target?.closest?.("form") || event.target);
       return;
     }
@@ -150,7 +150,6 @@ export default function ClerkCreateAccountFlow() {
       return;
     }
     setLegalError("");
-    setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
     navigate(callbackPath, { replace: true });
   };
 
@@ -340,12 +339,19 @@ export default function ClerkCreateAccountFlow() {
                   type="checkbox"
                   checked={legalAccepted}
                   onChange={(event) => {
-                    setLegalAccepted(event.target.checked);
+                    if (event.target.checked) {
+                      setPendingLegalAgreement(
+                        setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true })
+                      );
+                    } else {
+                      clearPendingLegalAgreement(slug);
+                      setPendingLegalAgreement(null);
+                    }
                     setLegalError("");
                   }}
                 />
                 <span>
-                  I agree to the{" "}
+                  I confirm I am {MINIMUM_MEMBER_AGE} or older and agree to the{" "}
                   <a href={`${legalPath}#terms`} target="_blank" rel="noreferrer">
                     Terms of Service
                   </a>{" "}

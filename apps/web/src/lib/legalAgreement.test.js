@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AGE_POLICY_VERSION,
+  LEGAL_AGREEMENT_VERSION,
   LEGAL_PRIVACY_VERSION,
   LEGAL_TERMS_VERSION,
   MINIMUM_MEMBER_AGE,
@@ -29,6 +30,7 @@ describe("legal agreement storage", () => {
       acceptedAt: "2026-05-06T12:00:00.000Z",
       ageEligibilityConfirmed: true
     })).toEqual({
+      version: LEGAL_AGREEMENT_VERSION,
       accepted: true,
       acceptedAt: "2026-05-06T12:00:00.000Z",
       termsVersion: LEGAL_TERMS_VERSION,
@@ -47,12 +49,45 @@ describe("legal agreement storage", () => {
     const pending = readPendingLegalAgreement("cedar");
 
     expect(pending).toMatchObject({
+      version: LEGAL_AGREEMENT_VERSION,
       accepted: true,
       ageEligibilityConfirmed: true,
       termsVersion: LEGAL_TERMS_VERSION,
       privacyVersion: LEGAL_PRIVACY_VERSION
     });
     expect(pending.acceptedAt).toEqual(expect.any(String));
+  });
+
+  it("keeps a pending acceptance timestamp stable across reads and writes", () => {
+    const sessionStorage = createStorage();
+    vi.stubGlobal("window", { sessionStorage });
+
+    setPendingLegalAgreementAccepted("cedar", { ageEligibilityConfirmed: true });
+    const first = readPendingLegalAgreement("cedar");
+    setPendingLegalAgreementAccepted("cedar", { ageEligibilityConfirmed: true });
+
+    expect(readPendingLegalAgreement("cedar")).toEqual(first);
+  });
+
+  it("rejects stale legal tuples instead of upgrading them", () => {
+    const sessionStorage = createStorage();
+    vi.stubGlobal("window", { sessionStorage });
+
+    sessionStorage.setItem(
+      "pondbridgeLegalAgreement:cedar",
+      JSON.stringify({
+        version: LEGAL_AGREEMENT_VERSION,
+        accepted: true,
+        acceptedAt: "2026-05-06T12:00:00.000Z",
+        termsVersion: "old-terms",
+        privacyVersion: LEGAL_PRIVACY_VERSION,
+        ageEligibilityConfirmed: true,
+        minimumAge: MINIMUM_MEMBER_AGE,
+        agePolicyVersion: AGE_POLICY_VERSION
+      })
+    );
+
+    expect(readPendingLegalAgreement("cedar")).toBeNull();
   });
 
   it("clears pending acceptance", () => {
@@ -65,12 +100,13 @@ describe("legal agreement storage", () => {
     expect(readPendingLegalAgreement("cedar")).toBeNull();
   });
 
-  it("does not treat legal acceptance without age confirmation as complete", () => {
+  it("does not write acceptance without explicit age confirmation", () => {
     const sessionStorage = createStorage();
     vi.stubGlobal("window", { sessionStorage });
 
-    setPendingLegalAgreementAccepted("cedar");
+    expect(setPendingLegalAgreementAccepted("cedar")).toBeNull();
 
     expect(readPendingLegalAgreement("cedar")).toBeNull();
+    expect(sessionStorage.setItem).not.toHaveBeenCalled();
   });
 });
