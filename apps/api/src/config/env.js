@@ -310,6 +310,8 @@ export const env = {
     process.env.MOCK_BILLING_BASE_URL || "https://mock-billing.pondbridge.local",
   EMAIL_MODE: String(process.env.EMAIL_MODE || "mock").trim().toLowerCase(),
   EMAIL_FROM: String(process.env.EMAIL_FROM || defaultEmailFrom).trim(),
+  EMAIL_AUTH_FROM: String(process.env.EMAIL_AUTH_FROM || "").trim(),
+  EMAIL_BULK_FROM: String(process.env.EMAIL_BULK_FROM || "").trim(),
   RESEND_API_KEY: process.env.RESEND_API_KEY || "",
   RESEND_API_BASE_URL: resendApiBaseUrl,
   RESEND_WEBHOOK_SECRET: String(process.env.RESEND_WEBHOOK_SECRET || "").trim(),
