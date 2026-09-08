@@ -459,6 +459,15 @@ function isSearchRpcUnavailable(error) {
 
 export const ProfileModel = {
   ...base,
+
+  async deleteUnclaimedImport(tenantId, profileId, reportId) {
+    if (!tenantId || !profileId || !reportId) throw new Error("Import deletion requires tenant, profile and report");
+    const { data, error } = await getSupabaseAdmin().rpc("delete_unclaimed_import_profile", {
+      p_tenant_id: String(tenantId), p_profile_id: String(profileId), p_report_id: String(reportId)
+    });
+    if (error) throw error;
+    return data;
+  },
   COLUMNS,
 
   async search(tenantId, query, opts = {}) {

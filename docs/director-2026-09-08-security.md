@@ -32,3 +32,13 @@ The separately integrated questionnaire feature was also reviewed for admin/impo
 - [sanitize-html upstream releases](https://github.com/apostrophecms/sanitize-html/releases) and installed 2.17.7 manifest: patched sanitizer and Node minimum.
 - [qs upstream releases](https://github.com/ljharb/qs/releases).
 - [xmldom upstream releases](https://github.com/xmldom/xmldom/releases).
+
+## Questionnaire claim/undo follow-up
+
+**High — claim/undo race could delete a claimed account.** A director's undo fetched a pending profile snapshot, then issued unconditional, separate profile and user deletes. A member claiming between the read and deletes could lose an already-claimed account; a failure deleting the user could also leave partial state. This requires a same-camp authorized undo and a concurrent claim, not an unprivileged cross-camp IDOR.
+
+`20260908195000_atomic_import_undo.sql` introduces a service-only, invoker-rights transaction. It locks the tenant/report/profile and rechecks provenance plus pending status, then locks the tenant-local user. It preserves global references, elevated accounts, Clerk-linked or previously signed-in users, and membership-linked accounts. Only an untouched import stub and its profile can be deleted together; failure rolls back both writes. No global identity or Clerk account is deleted. Protected accounts are included in `keptClaimedCount` conservatively even if still pending.
+
+Confirm/decline now compare-and-set the caller's own pending tenant/user profile. A concurrent deletion or prior claim returns 409, without reporting success or logging a claim. Claim reads no longer create a missing profile. Missing RPC deployment fails closed and surfaces per-profile undo failures; there is no fallback to unsafe deletes.
+
+Validation: 61 focused import/claim/security API tests passed. `python3 apps/api/tests/atomicImportUndo.local.py` passed against real PostgreSQL in a newly created isolated local Docker database, then removed only that database. It covers both concurrent claim/undo orders, tenant/report isolation, six protected-account cases, rollback when user deletion fails, and denied client-role execution. No shared fixtures were reset or hosted databases modified. Targeted ESLint and diff whitespace checks passed. Apply the reviewed migration before enabling the updated undo handler; coordinator owns hosted staging/production application and smoke verification.

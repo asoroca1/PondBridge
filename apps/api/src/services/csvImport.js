@@ -580,9 +580,11 @@ export async function undoTenantImport({ tenantId, reportId }) {
       continue;
     }
     try {
-      await ProfileModel.delete(profile._id);
-      if (profile.userId) await UserModel.delete(profile.userId);
-      removedCount += 1;
+      // The transaction rechecks the pending status while holding the profile
+      // lock shared with claimOne, and deletes its unused account stub atomically.
+      const outcome = await ProfileModel.deleteUnclaimedImport(tenantId, profile._id, reportId);
+      if (outcome === "removed") removedCount += 1;
+      else if (outcome === "claimed" || outcome === "protected") keptClaimedCount += 1;
     } catch (error) {
       failures.push({ profileId: String(profile._id), message: error.message || "Could not remove" });
     }

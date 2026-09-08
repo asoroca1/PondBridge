@@ -32,6 +32,7 @@ module.exports = {
     "**/tests/questionnaireValueCleanup.test.js",
     "**/tests/claimAccountEmail.test.js",
     "**/tests/importUndo.test.js",
+    "**/tests/importUndoSecurity.test.js",
     "**/tests/fcmHttpV1.test.js",
     "**/tests/accessPolicy.test.js",
     "**/tests/alumniGrowth.test.js",

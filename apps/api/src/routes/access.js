@@ -1177,7 +1177,8 @@ async function loadOwnUnclaimedProfile(req) {
     return { error: { status: 404, code: "NO_PROFILE_TO_CLAIM", message: "There is no profile waiting to be claimed for this account." } };
   }
 
-  const profile = await ensureProfileForUser({ tenantId: req.tenant._id, user: member, identity });
+  // Claiming must never recreate a profile that an undo removed concurrently.
+  const profile = await ProfileModel.findOne(req.tenant._id, { userId: member._id });
   if (!profile) {
     return { error: { status: 404, code: "NO_PROFILE_TO_CLAIM", message: "There is no profile waiting to be claimed for this account." } };
   }
@@ -1198,10 +1199,15 @@ router.post("/claim/confirm", accessMutationLimiter, async (req, res, next) => {
     // This is the one write that makes an imported profile visible to anyone.
     // Creating a password does not do it, and neither does opening the email —
     // only the person saying the information is theirs.
-    const claimed = await ProfileModel.update(profile._id, {
-      status: "active",
-      flaggedReason: ""
-    });
+    const claimed = await ProfileModel.claimOne(profile._id, {
+      tenantId: req.tenant._id, userId: member._id, status: "pending"
+    }, { status: "active", flaggedReason: "" });
+    if (!claimed) {
+      return res.status(409).json({ error: {
+        code: "PROFILE_CLAIM_CHANGED",
+        message: "This profile was already claimed or removed. Refresh to continue."
+      } });
+    }
 
     await logTenantEvent({
       tenantId: req.tenant._id,
@@ -1240,7 +1246,9 @@ router.post("/claim/decline", accessMutationLimiter, async (req, res, next) => {
     const importedFrom = socials.importedFrom && typeof socials.importedFrom === "object"
       ? socials.importedFrom
       : null;
-    await ProfileModel.update(profile._id, {
+    const declined = await ProfileModel.claimOne(profile._id, {
+      tenantId: req.tenant._id, userId: member._id, status: "pending"
+    }, {
       flaggedReason: "Claim declined: the person who signed in with this address says the profile is not theirs.",
       // Recorded beside the import so the claim action can stop offering to email
       // somebody who has already said this is not them.
@@ -1248,6 +1256,13 @@ router.post("/claim/decline", accessMutationLimiter, async (req, res, next) => {
         ? { socials: { ...socials, importedFrom: { ...importedFrom, claimDeclinedAt: new Date().toISOString() } } }
         : {})
     });
+
+    if (!declined) {
+      return res.status(409).json({ error: {
+        code: "PROFILE_CLAIM_CHANGED",
+        message: "This profile was already claimed or removed. Refresh to continue."
+      } });
+    }
 
     await logTenantEvent({
       tenantId: req.tenant._id,
