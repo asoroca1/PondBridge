@@ -444,3 +444,15 @@ test("recovered verified signups remain in Requests and expose missing consent t
   const forged = buildPeopleDirectory({ accessRequests: [{ ...base, recoveredClerkUserId: undefined }] });
   expect(forged.people[0]).toMatchObject({ requiresConsent: false, recoveredSignup: false });
 });
+
+test("admitted counted cohort appears once as a Member while confirmation request remains pending", () => {
+ const email="counted@synthetic.invalid";
+ const directory=buildPeopleDirectory({
+  users:[{_id:"counted-user",email,status:"active",accountConfirmationRequestId:"request"}],
+  profiles:[{_id:"counted-profile",userId:"counted-user",emails:[email],status:"active",socials:{}}],
+  accessRequests:[{_id:"request",email,status:"pending",recoveredClerkUserId:"user_counted",directorApprovedAt:"2026-09-08T23:00:00Z",directorApprovedByUserId:"director",
+   profilePayload:{socials:{signupRecovery:{clerkUserId:"user_counted",requiresConsent:true}}}}]
+ });
+ expect(directory.counts).toMatchObject({all:1,member:1,request:0,awaiting_setup:0});
+ expect(directory.people[0]).toMatchObject({stage:"member",requiresConsent:true});
+});

@@ -1,4 +1,5 @@
 import { Server } from "socket.io";
+import { resolveAccountConfirmationGate, accountConfirmationError } from "./accountConfirmation.js";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { isAllowedCorsOrigin } from "../config/cors.js";
@@ -86,6 +87,7 @@ export async function authenticateSocket(socket) {
           })
         : await UserModel.findById(String(payload.sub || ""));
       if (!appUser) throw new Error("Membership not found");
+      if (await resolveAccountConfirmationGate({ provider: "legacy" }, appUser)) throw Object.assign(new Error("Account confirmation required"), accountConfirmationError());
       const roles = applySuperConsoleRolePolicy(appUser.roles || [], {
         provider: "legacy", email: payload.email || ""
       }, appUser.email || "");
@@ -146,6 +148,7 @@ export async function authenticateSocket(socket) {
         throw new Error("Membership-backed tenant access required");
       }
       if (appUser) {
+        if (await resolveAccountConfirmationGate(identity, appUser)) throw Object.assign(new Error("Account confirmation required"), accountConfirmationError());
         const roles = applySuperConsoleRolePolicy(appUser.roles || [], identity, appUser.email || "");
         if (!roles.includes("super_admin")) {
           const membershipTenantId = String(appUser.tenantId || "").trim();
@@ -371,6 +374,18 @@ export function attachSocketServer(httpServer) {
   // ------------------------------------------------------------------
   io.on("connection", (socket) => {
     const user = socket.data.user;
+    // Recheck the database before every incoming action, not cached JWT claims.
+    socket.use(async (_packet, next) => {
+      try {
+        const current = await UserModel.findById(user.id);
+        if (!current || (current.status !== "active" && !(current.roles || []).includes("super_admin")) || await resolveAccountConfirmationGate({ provider: "legacy" }, current)) {
+          next(Object.assign(new Error("Account access required"), { data: accountConfirmationError() }));
+          socket.disconnect(true);
+          return;
+        }
+        next();
+      } catch (error) { next(error); socket.disconnect(true); }
+    });
     socket.data.activeRealtimeRooms = new Set();
     const allowRoomJoin = createSocketRateLimiter({ limit: 120, windowMs: 5 * 60_000 });
     const allowMessage = createSocketRateLimiter({ limit: 60, windowMs: 60_000 });

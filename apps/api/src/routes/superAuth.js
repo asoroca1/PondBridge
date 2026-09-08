@@ -5,8 +5,25 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { buildAuthenticatedUserPayload, comparePassword, sanitizeUser, signToken } from "../utils/auth.js";
 import { clearAuthCookie, setAuthCookie } from "../utils/authCookie.js";
 import { isSuperIdentityAllowed, superAllowlistConfigured } from "../services/identityUsers.js";
+import { accountConfirmationError, accountConfirmationRequired } from "../services/accountConfirmation.js";
 
 const router = Router();
+
+export function confirmationRequiredSuperAuthResponse({ token, user }) {
+  const confirmation = accountConfirmationError();
+  return {
+    token,
+    confirmationRequired: true,
+    nextRoute: confirmation.nextRoute,
+    user: {
+      id: String(user?._id || user?.id || ""),
+      _id: String(user?._id || user?.id || ""),
+      tenantId: user?.tenantId ? String(user.tenantId) : null,
+      email: String(user?.email || ""),
+      roles: Array.isArray(user?.roles) ? user.roles : []
+    }
+  };
+}
 
 function isLegacySuperAuthDisabled() {
   return ["clerk", "hybrid"].includes(String(env.AUTH_PROVIDER || "").toLowerCase());
@@ -60,7 +77,11 @@ router.post("/super/login", async (req, res) => {
 
   const token = signToken(user);
   setAuthCookie(res, token);
-  return res.json({ token, user: sanitizeUser(user) });
+  if (accountConfirmationRequired(user)) {
+    return res.json(confirmationRequiredSuperAuthResponse({ token, user }));
+  }
+  const { accountConfirmationRequestId: _accountConfirmationRequestId, ...publicUser } = sanitizeUser(user);
+  return res.json({ token, user: publicUser });
 });
 
 router.post("/super/logout", async (_req, res) => {

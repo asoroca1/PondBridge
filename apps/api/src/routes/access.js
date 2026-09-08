@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { recoveredRequestRequiresConsent, preserveSignupRecoveryConsent } from "../services/signupRecoveryConsent.js";
 import { getSupabaseAdmin } from "../db/supabaseAdmin.js";
+import { accountConfirmationRequired, resolveAccountConfirmationGate, accountConfirmationError, verifyAccountConfirmationIdentity } from "../services/accountConfirmation.js";
+import { validateSignupLegalAgreement } from "../services/signupConsentReceipts.js";
 import rateLimit from "express-rate-limit";
 import {
   UserModel,
@@ -20,7 +22,8 @@ import {
 } from "../services/invites.js";
 import {
   createTenantMembershipFromIdentity,
-  findTenantUserForIdentity
+  findTenantUserForIdentity,
+  findSingleTenantMembershipForIdentity
 } from "../services/identityUsers.js";
 import {
   ensureProfileForUser,
@@ -250,6 +253,13 @@ async function buildAccessDecision({ tenant, identity, inviteToken = "", callerU
   const billingAccess = isTenantBillingAccessAllowed(tenant);
 
   const membership = await findTenantUserForIdentity(tenantId, identity);
+  if (accountConfirmationRequired(membership)) {
+    if (membership.status !== "active") return { state: "revoked", action: "contact_director", nextRoute: `${decisionRouteBase(tenant.slug)}/login` };
+    return { state: "account_confirmation_required", action: "confirm_account",
+      nextRoute: "/t/greenlane/account-confirmation",
+      membership: { id: String(membership._id), status: membership.status, roles: membership.roles || [] },
+      confirmation: { required: true } };
+  }
   const inviteFromToken = inviteToken ? await findInviteByOpaqueToken(tenantId, inviteToken) : null;
   const inviteByEmail = inviteFromToken || (email ? await findInviteForEmail(tenantId, email) : null);
   const invite = inviteByEmail && new Date(inviteByEmail.expiresAt) > new Date() ? inviteByEmail : null;
@@ -677,6 +687,41 @@ async function writeTenantAudit(tenantId, actorUserId, event, metadata = {}) {
 }
 
 router.use(...requireTenantIdentityScope);
+router.use(async (req, res, next) => {
+  try {
+    const resolvedMember = await findTenantUserForIdentity(req.tenant._id, req.identity || {})
+      || await findSingleTenantMembershipForIdentity(req.identity || {});
+    const member = await resolveAccountConfirmationGate(req.identity || {}, resolvedMember);
+    if (member
+      && !(String(member.tenantId) === String(req.tenant._id)
+        && ((req.method === "GET" && req.path === "/decision") || (req.method === "POST" && req.path === "/confirm-account")))) {
+      return res.status(403).json({ error: accountConfirmationError() });
+    }
+    return next();
+  } catch (error) { return next(error); }
+});
+
+router.post("/confirm-account", accessMutationLimiter, async (req, res, next) => {
+  try {
+    const member = await findTenantUserForIdentity(req.tenant._id, req.identity || {});
+    if (!member || member.status !== "active" || req.tenant.slug !== "greenlane") {
+      return res.status(403).json({ error: { code: "ACCOUNT_CONFIRMATION_FORBIDDEN", message: "This account cannot use this confirmation flow." } });
+    }
+    if (!(await verifyAccountConfirmationIdentity(req.identity || {}, member))) {
+      return res.status(403).json({ error: { code: "ACCOUNT_CONFIRMATION_IDENTITY_MISMATCH", message: "Sign in with the verified account that was approved." } });
+    }
+    const agreement = validateSignupLegalAgreement(req.body?.legalAgreement);
+    if (!agreement) return res.status(400).json({ error: { code: "LEGAL_AGREEMENT_REQUIRED", message: "Confirm your age eligibility and accept the current Terms and Privacy." } });
+    const { data, error } = await getSupabaseAdmin().rpc("confirm_counted_signup_account", {
+      p_tenant: String(req.tenant._id), p_user: String(member._id), p_clerk_user_id: member.clerkUserId,
+      p_verified_email: member.email, p_agreement: agreement
+    });
+    if (error) throw error;
+    if (!data?.ok) return res.status(409).json({ error: { code: data?.code || "ACCOUNT_CONFIRMATION_CHANGED", message: "This account changed. Refresh and try again." } });
+    const decision = await buildAccessDecision({ tenant: req.tenant, identity: req.identity });
+    return res.json({ ok: true, confirmed: true, decision, nextRoute: decision.nextRoute });
+  } catch (error) { return next(error); }
+});
 
 router.get("/decision", accessDecisionLimiter, async (req, res) => {
   const inviteToken = String(req.query.inviteToken || req.query.token || "").trim();

@@ -15,6 +15,10 @@ import {
   readPendingAccessGrant,
   storePendingAccessGrant
 } from "../lib/pendingAccessGrant.js";
+import {
+  buildAccountConfirmationPath,
+  isAccountConfirmationRequired
+} from "../lib/accountConfirmation.js";
 
 function truthy(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -379,6 +383,12 @@ function ClerkAuthCallbackPage() {
           return;
         }
 
+        if (decision.action === "confirm_account") {
+          redirected = true;
+          navigate(buildAccountConfirmationPath(slug, returnTo), { replace: true });
+          return;
+        }
+
         const hasDirectorBootstrapIntent = directorBootstrap || readDirectorBootstrapIntent(slug);
         const tenantOnboardingStatus = String(payload?.tenant?.onboardingStatus || "").trim().toLowerCase();
         const bootstrapAvailable = tenantOnboardingStatus && tenantOnboardingStatus !== "live";
@@ -539,6 +549,11 @@ function ClerkAuthCallbackPage() {
           navigate(routeWithSlug(slug, `/create-account?${params.toString()}`), {
             replace: true
           });
+          return;
+        }
+        if (isAccountConfirmationRequired(err)) {
+          redirected = true;
+          navigate(buildAccountConfirmationPath(slug, returnTo), { replace: true });
           return;
         }
         if (isTenantScopeMismatchError(err)) {

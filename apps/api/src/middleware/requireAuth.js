@@ -1,4 +1,5 @@
 import { readBearerToken } from "../utils/bearerToken.js";
+import { resolveAccountConfirmationGate, accountConfirmationError } from "../services/accountConfirmation.js";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { readAuthTokenFromCookie } from "../utils/authCookie.js";
@@ -259,6 +260,9 @@ export async function requireAuth(req, res, next) {
       });
     }
 
+    if (await resolveAccountConfirmationGate(identity, appUser)) {
+      return res.status(403).json({ error: accountConfirmationError() });
+    }
     applyAppUser(req, appUser, identity, req.authSource || "bearer");
     if (tenantId && identity.provider === "clerk") {
       const sessionId = String(identity?.claims?.sid || identity?.claims?.session_id || "").trim();
