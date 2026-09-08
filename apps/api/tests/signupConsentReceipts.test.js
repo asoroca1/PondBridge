@@ -1,9 +1,20 @@
 import { expect, test } from "@jest/globals";
 import { validateSignupLegalAgreement } from "../src/services/signupConsentReceipts.js";
+import { buildAcceptedLegalAgreementPayload } from "../../web/src/lib/legalAgreement.js";
+import { buildClerkSignupContext } from "../../web/src/lib/clerkSignupContext.js";
 const now = Date.parse("2026-09-08T23:00:00.000Z");
 const receipt = () => ({ version: 1, accepted: true, ageEligibilityConfirmed: true,
   termsVersion: "2026-03-04", privacyVersion: "2026-03-04", minimumAge: 14,
   agePolicyVersion: "2026-07-14", acceptedAt: "2026-09-08T22:55:00.000Z" });
+test("the actual signup metadata contract remains compatible with server recovery", () => {
+  const agreement = buildAcceptedLegalAgreementPayload({
+    ageEligibilityConfirmed: true, acceptedAt: receipt().acceptedAt
+  });
+  const context = buildClerkSignupContext("greenlane", "member", agreement);
+  expect(context.tenantSlug).toBe("greenlane");
+  expect(validateSignupLegalAgreement(context.signupLegalAgreement, { now })).toEqual(receipt());
+  expect(buildClerkSignupContext("greenlane", "director", agreement).signupLegalAgreement).toBeUndefined();
+});
 test("normalizes only an exact current explicit self-attestation", () => {
   expect(validateSignupLegalAgreement(receipt(), { now })).toEqual(receipt());
   expect(validateSignupLegalAgreement({ ...receipt(), acceptedAt: "2026-09-08T22:55:00Z" }, { now })).toEqual(receipt());
