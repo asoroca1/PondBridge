@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   defaultNetworkDisplayNameForCamp,
@@ -1674,6 +1674,7 @@ function LabelListEditor({
   onRemove,
   onReorder
 }) {
+  const inputId = useId();
   const [dragIndex, setDragIndex] = useState(-1);
   const [overIndex, setOverIndex] = useState(-1);
   const sortable = typeof onReorder === "function" && values.length > 1;
@@ -1692,12 +1693,15 @@ function LabelListEditor({
   return (
     <div className="pb-set-labels">
       <div className="pb-set-labels-head">
-        <span>{label}</span>
+        <label htmlFor={inputId}>{label}</label>
         <em>{values.length} of 20</em>
       </div>
-      <p>{hint}</p>
+      <p id={`${inputId}-hint`}>{hint}</p>
       <div className="pb-set-labels-add">
         <Input
+          id={inputId}
+          aria-describedby={`${inputId}-hint${error ? ` ${inputId}-error` : ""}`}
+          aria-invalid={Boolean(error)}
           value={draft}
           placeholder={placeholder}
           onChange={(event) => onDraftChange(event.target.value)}
@@ -1711,7 +1715,7 @@ function LabelListEditor({
           Add
         </Button>
       </div>
-      {error ? <p className="error-text">{error}</p> : null}
+      {error ? <p id={`${inputId}-error`} className="error-text" role="alert">{error}</p> : null}
       {sortable ? (
         <p className="pb-set-labels-reorder-hint">
           Drag to reorder, or use the arrows. Members see them in this order.

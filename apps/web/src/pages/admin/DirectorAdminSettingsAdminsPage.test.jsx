@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /**
@@ -45,6 +45,21 @@ afterEach(() => {
 });
 
 describe("the admin list", () => {
+  it("identifies the selected account when admins share a name and cancels without changing access", async () => {
+    const user = userEvent.setup();
+    const sameNameAdmins = admins(3);
+    sameNameAdmins[1].name = sameNameAdmins[2].name = "Alex Rivera";
+    request.mockResolvedValue({ admins: sameNameAdmins, pendingInvites: [] });
+    const { default: Page } = await import("./DirectorAdminSettingsAdminsPage.jsx");
+    render(<Page />);
+    await user.click(await screen.findByRole("button", { name: "Remove admin access for admin3@cedar.example.test" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Account: admin3@cedar.example.test/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Keep it" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a short list whole, with no controls around it", async () => {
     await mountWith(6);
     expect(rowNames()).toHaveLength(6);

@@ -641,10 +641,13 @@ function compareProfiles(left, right, sort = "name") {
 
 // "relevance" ranks by match quality first; an explicit name/recent choice wins
 // outright, with match score only breaking ties.
-function buildRankedComparator(sort = "relevance") {
+function buildRankedComparator(sort = "relevance", { preserveTextRank = false } = {}) {
   return (left, right) => {
     if (sort === "relevance") {
       if (right.filterScore !== left.filterScore) return right.filterScore - left.filterScore;
+      // ProfileModel already ranks the text query. Stable sorting keeps that
+      // order when the structured filters cannot distinguish two matches.
+      if (preserveTextRank) return 0;
       return compareProfiles(left.profile, right.profile, "name");
     }
     const chosen = compareProfiles(left.profile, right.profile, sort);
@@ -738,7 +741,7 @@ async function runSearch(req, { query = req.query, analytics = {} } = {}) {
       camperMaxYear
     }
   )
-    .sort(buildRankedComparator(sort));
+    .sort(buildRankedComparator(sort, { preserveTextRank: Boolean(q) }));
   const total = rankedItems.length;
   const matchFilters = {
     college,

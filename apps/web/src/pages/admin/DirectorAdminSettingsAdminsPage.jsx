@@ -181,7 +181,7 @@ export default function DirectorAdminSettingsAdminsPage() {
                 {item.role === "Director" ? (
                   <Badge tone="neutral">Owner</Badge>
                 ) : (
-                  <Button variant="ghost" size="sm" onClick={() => setAdminToRemove(item)}>Remove</Button>
+                  <Button variant="ghost" size="sm" aria-label={`Remove admin access for ${item.email || item.name}`} onClick={() => setAdminToRemove(item)}>Remove</Button>
                 )}
               </SettingListItem>
             ))}
@@ -241,7 +241,7 @@ export default function DirectorAdminSettingsAdminsPage() {
                     {item.isAdmin ? (
                       <Badge tone="success">Already an admin</Badge>
                     ) : (
-                      <Button size="sm" loading={promoting === key} onClick={() => grantAdmin(item)}>
+                      <Button size="sm" aria-label={`Make ${item.email || item.fullName} an admin`} loading={promoting === key} onClick={() => grantAdmin(item)}>
                         <ShieldCheck aria-hidden="true" />
                         Make admin
                       </Button>
@@ -257,7 +257,7 @@ export default function DirectorAdminSettingsAdminsPage() {
       <ModalConfirm
         open={Boolean(adminToRemove)}
         title={`Remove admin access for ${adminToRemove?.name || adminToRemove?.email || "this person"}?`}
-        description="They lose the dashboard immediately but keep their member account and profile. You can add them back any time."
+        description={`${adminToRemove?.email ? `Account: ${adminToRemove.email}. ` : ""}They lose the dashboard immediately but keep their member account and profile. You can add them back any time.`}
         confirmLabel="Remove access"
         cancelLabel="Keep it"
         tone="danger"
