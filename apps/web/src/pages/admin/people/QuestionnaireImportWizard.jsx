@@ -443,7 +443,7 @@ export default function QuestionnaireImportWizard({ request, download, slug, onD
               <Undo2 aria-hidden="true" />
               Undo this import
             </Button>
-            <Button disabled={Boolean(busy)} onClick={() => onDone?.()}>See them in People</Button>
+            <Button disabled={Boolean(busy)} onClick={() => onDone?.("unclaimed")}>See them in People</Button>
           </div>
         </div>
       ) : null}
