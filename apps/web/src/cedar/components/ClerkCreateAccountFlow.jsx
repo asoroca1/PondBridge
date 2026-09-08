@@ -9,6 +9,7 @@ import { resolveNetworkDisplayName } from "../../lib/campLabels.js";
 import { buildClerkSignupContext } from "../../lib/clerkSignupContext.js";
 import { isNativeApp } from "../../lib/nativeApp.js";
 import {
+  MINIMUM_MEMBER_AGE,
   clearPendingLegalAgreement,
   readPendingLegalAgreement,
   setPendingLegalAgreementAccepted
@@ -38,11 +39,12 @@ export default function ClerkCreateAccountFlow() {
   const inviteToken = String(searchParams.get("inviteToken") || searchParams.get("token") || "").trim();
   const legalRequired = String(searchParams.get("legalRequired") || "").trim() === "1";
   const returnTo = normalizeReturnTo(searchParams.get("returnTo"));
-  const { isLoaded, isSignedIn } = useClerkAuth();
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const { bootstrapError, clerkLoadTimedOut, retryBootstrap, logout } = useAuth();
   const [inviteMeta, setInviteMeta] = useState(null);
-  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [pendingLegalAgreement, setPendingLegalAgreement] = useState(() => readPendingLegalAgreement(slug));
   const [legalError, setLegalError] = useState("");
+  const [savingLegal, setSavingLegal] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [accessCodeError, setAccessCodeError] = useState("");
   const [verifyingAccessCode, setVerifyingAccessCode] = useState(false);
@@ -53,31 +55,31 @@ export default function ClerkCreateAccountFlow() {
   ).trim().toLowerCase();
   const inviteOnlyWithoutInvite = signupMode === "invite_only" && !inviteToken;
   const accessCodeRequired = signupMode === "code" && !inviteToken;
+  const legalAccepted = Boolean(pendingLegalAgreement?.accepted && pendingLegalAgreement?.ageEligibilityConfirmed);
   // A new object identity on every render churns the Clerk widget's props, so
   // keep the signup context stable for as long as the slug is.
-  const signupContext = useMemo(() => buildClerkSignupContext(slug, "member"), [slug]);
+  const signupContext = useMemo(
+    () => buildClerkSignupContext(slug, "member", legalAccepted ? pendingLegalAgreement : null),
+    [legalAccepted, pendingLegalAgreement, slug]
+  );
 
   useEffect(() => {
     noteTabLoginIntent();
   }, []);
 
   useEffect(() => {
-    const pending = readPendingLegalAgreement(slug);
-    setLegalAccepted(Boolean(pending?.accepted));
+    setPendingLegalAgreement((current) => {
+      const next = readPendingLegalAgreement(slug);
+      return JSON.stringify(current) === JSON.stringify(next) ? current : next;
+    });
   }, [slug]);
 
   useEffect(() => {
     if (!legalRequired) return;
-    setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
-  }, [legalRequired]);
-
-  useEffect(() => {
-    if (legalAccepted) {
-      setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
-      return;
+    if (!legalAccepted) {
+      setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
     }
-    clearPendingLegalAgreement(slug);
-  }, [legalAccepted, slug]);
+  }, [legalAccepted, legalRequired]);
 
   useEffect(() => {
     if (!inviteToken || !slug) return;
@@ -135,7 +137,6 @@ export default function ClerkCreateAccountFlow() {
   const onSignUpSubmitCapture = (event) => {
     if (legalAccepted) {
       setLegalError("");
-      setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
       noteSignupIntent(event.target?.closest?.("form") || event.target);
       return;
     }
@@ -144,14 +145,32 @@ export default function ClerkCreateAccountFlow() {
     setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
   };
 
-  const continueSignedInLegalRecovery = () => {
+  const continueSignedInLegalRecovery = async () => {
     if (!legalAccepted) {
       setLegalError("Agree to the Terms of Service and Privacy Policy to create your account.");
       return;
     }
+    if (savingLegal) return;
     setLegalError("");
-    setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true });
-    navigate(callbackPath, { replace: true });
+    setSavingLegal(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Please sign in again before saving your confirmation.");
+      const payload = await requestJson(`/api/t/${slug}/access/decision`, { token });
+      const decision = payload?.decision || {};
+      // Persist an existing recovered request before leaving this page. Other
+      // entry policies (including Cedar's gate-off join) keep their own flow.
+      if (decision.action === "wait_for_approval" && decision.request?.requiresConsent) {
+        await requestJson(`/api/t/${slug}/access/request-access`, {
+          method: "POST", token, body: { legalAgreement: pendingLegalAgreement }
+        });
+      }
+      navigate(callbackPath, { replace: true });
+    } catch (error) {
+      setLegalError(String(error?.message || "Could not save your confirmation. Please try again."));
+    } finally {
+      setSavingLegal(false);
+    }
   };
 
   async function verifyAccessCode(event) {
@@ -339,13 +358,21 @@ export default function ClerkCreateAccountFlow() {
                 <input
                   type="checkbox"
                   checked={legalAccepted}
+                  disabled={savingLegal}
                   onChange={(event) => {
-                    setLegalAccepted(event.target.checked);
+                    if (event.target.checked) {
+                      setPendingLegalAgreement(
+                        setPendingLegalAgreementAccepted(slug, { ageEligibilityConfirmed: true })
+                      );
+                    } else {
+                      clearPendingLegalAgreement(slug);
+                      setPendingLegalAgreement(null);
+                    }
                     setLegalError("");
                   }}
                 />
                 <span>
-                  I agree to the{" "}
+                  I confirm I am {MINIMUM_MEMBER_AGE} or older and agree to the{" "}
                   <a href={`${legalPath}#terms`} target="_blank" rel="noreferrer">
                     Terms of Service
                   </a>{" "}
@@ -362,10 +389,10 @@ export default function ClerkCreateAccountFlow() {
               <button
                 type="button"
                 className="login1-btn"
-                disabled={!legalAccepted}
+                disabled={!legalAccepted || savingLegal}
                 onClick={continueSignedInLegalRecovery}
               >
-                Finish account confirmation
+                {savingLegal ? "Saving confirmation…" : "Finish account confirmation"}
               </button>
             ) : (
             <div className="login1-clerk-host alumni-create-clerk-host" onSubmitCapture={onSignUpSubmitCapture}>
