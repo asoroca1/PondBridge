@@ -126,8 +126,8 @@ export function profilePayloadFromBody(body = {}, identity = {}) {
     ? [String(body.phone).trim()]
     : [];
   return {
-    firstName: String(body.firstName || "").trim(),
-    lastName: String(body.lastName || "").trim(),
+    firstName: String(body.firstName ?? identity.firstName ?? "").trim(),
+    lastName: String(body.lastName ?? identity.lastName ?? "").trim(),
     emails: email ? [email] : [],
     phones,
     cityState: normalizeCityStateFromBody(body),
