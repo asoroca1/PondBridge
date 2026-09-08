@@ -70,6 +70,7 @@ export default function DirectorAdminPeoplePage() {
           actions={actions}
           storage={directory.storage}
           request={request}
+          download={download}
           slug={slug}
           networkName={networkName}
           onDone={() => navigate(`/t/${slug}/admin/people/prospect`)}

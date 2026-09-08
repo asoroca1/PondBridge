@@ -49,10 +49,12 @@ export function aiNote(ai = {}) {
   }
 }
 
-export default function QuestionnaireImportWizard({ request, slug, onDone }) {
+export default function QuestionnaireImportWizard({ request, download, slug, onDone }) {
   const [step, setStep] = useState("upload");
   const [file, setFile] = useState(null);
   const [fields, setFields] = useState([]);
+  const [fieldsError, setFieldsError] = useState("");
+  const [fieldsAttempt, setFieldsAttempt] = useState(0);
   const [analysis, setAnalysis] = useState(null);
   const [choices, setChoices] = useState({});
   const [dryRun, setDryRun] = useState(null);
@@ -64,11 +66,12 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
 
   useEffect(() => {
     let active = true;
+    setFieldsError("");
     request("/import/fields")
       .then((payload) => { if (active) setFields(payload?.fields || []); })
-      .catch(() => { if (active) setFields([]); });
+      .catch((err) => { if (active) setFieldsError(err?.message || "Import fields could not be loaded."); });
     return () => { active = false; };
-  }, [request]);
+  }, [request, fieldsAttempt]);
 
   const mapping = useMemo(() => {
     const next = {};
@@ -77,6 +80,8 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
     }
     return next;
   }, [choices]);
+
+  const duplicateMapping = Object.values(mapping).length !== new Set(Object.values(mapping)).size;
 
   const emailMapped = useMemo(() => Object.values(mapping).includes("email"), [mapping]);
 
@@ -164,6 +169,24 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
     }
   }
 
+  async function downloadFailures() {
+    setBusy("download");
+    setError("");
+    try {
+      const blob = await download(`/imports/${result.reportId}/failures.csv`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${slug}-import-failures.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err?.message || "The skipped rows could not be downloaded. Try again.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   function toggleRewrite(index) {
     setRejectedRewrites((current) => {
       const next = new Set(current);
@@ -200,6 +223,10 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
         ))}
       </ol>
 
+      {fieldsError ? <div role="alert" className="pb-qimport-error">
+        {fieldsError} <Button variant="ghost" onClick={() => setFieldsAttempt((value) => value + 1)}>Retry loading fields</Button>
+      </div> : null}
+
       {error ? <p className="pb-qimport-error" role="alert">{error}</p> : null}
 
       {step === "upload" ? (
@@ -213,6 +240,8 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
           <label className="pb-qimport-file">
             <input
               type="file"
+              aria-label="Questionnaire CSV file"
+              disabled={Boolean(busy) || !fields.length || Boolean(fieldsError)}
               accept=".csv,text/csv,text/plain"
               onChange={(event) => {
                 const chosen = event.target.files?.[0];
@@ -269,6 +298,7 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
                       </td>
                       <td>
                         <Select
+                          disabled={Boolean(busy)}
                           value={choices[proposal.column] || IGNORE}
                           aria-label={`Field for ${proposal.column}`}
                           onChange={(event) => setChoices((current) => ({
@@ -289,6 +319,10 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
             </table>
           </div>
 
+          {duplicateMapping ? <p className="pb-qimport-note is-blocking" role="alert">
+            Match each profile field to only one column. Set any extra column to Do not import.
+          </p> : null}
+
           {!emailMapped ? (
             <p className="pb-qimport-note is-blocking">
               <AlertTriangle aria-hidden="true" />
@@ -298,10 +332,10 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
           ) : null}
 
           <div className="pb-qimport-actions">
-            <Button variant="secondary" onClick={() => { setStep("upload"); setAnalysis(null); }}>
+            <Button variant="secondary" disabled={Boolean(busy)} onClick={() => { setStep("upload"); setAnalysis(null); }}>
               <ArrowLeft aria-hidden="true" /> Choose another file
             </Button>
-            <Button onClick={preview} disabled={!emailMapped || Boolean(busy)}>
+            <Button onClick={preview} disabled={!emailMapped || duplicateMapping || Boolean(busy)}>
               {busy === "preview" ? "Checking..." : "Check what this will do"}
             </Button>
           </div>
@@ -352,6 +386,7 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
                     <label>
                       <input
                         type="checkbox"
+                        disabled={Boolean(busy)}
                         checked={!rejectedRewrites.has(index)}
                         onChange={() => toggleRewrite(index)}
                       />
@@ -372,7 +407,7 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
           ) : null}
 
           <div className="pb-qimport-actions">
-            <Button variant="secondary" onClick={() => setStep("map")}>
+            <Button variant="secondary" disabled={Boolean(busy)} onClick={() => setStep("map")}>
               <ArrowLeft aria-hidden="true" /> Change the matching
             </Button>
             <Button onClick={commit} disabled={Boolean(busy) || !dryRun.createdCount && !dryRun.updatedCount}>
@@ -391,23 +426,24 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
             {result.createdCount} {result.createdCount === 1 ? "profile is" : "profiles are"} ready
           </h3>
           <p>
-            Nobody has been emailed and nobody can see these yet. Each person appears once they
-            sign in and confirm the profile is theirs — email them when you are ready.
+            Nobody has been emailed. New profiles stay hidden until each person signs in and
+            confirms the profile is theirs. Existing profiles keep their current visibility.
           </p>
+          {result.updatedCount ? <p>{result.updatedCount} existing profiles updated.</p> : null}
           {result.errorCount ? (
             <p className="pb-qimport-note">
               {result.errorCount} rows could not be used.{" "}
-              <a href={`/api/t/${slug}/admin/imports/${result.reportId}/failures.csv`}>
-                Download the list
-              </a>
+              <Button variant="ghost" disabled={Boolean(busy)} onClick={downloadFailures}>
+                {busy === "download" ? "Downloading..." : "Download the list"}
+              </Button>
             </p>
           ) : null}
           <div className="pb-qimport-actions">
-            <Button variant="ghost" onClick={undo} loading={busy === "undo"}>
+            <Button variant="ghost" disabled={Boolean(busy)} onClick={undo} loading={busy === "undo"}>
               <Undo2 aria-hidden="true" />
               Undo this import
             </Button>
-            <Button onClick={() => onDone?.()}>See them in People</Button>
+            <Button disabled={Boolean(busy)} onClick={() => onDone?.()}>See them in People</Button>
           </div>
         </div>
       ) : null}
@@ -418,10 +454,16 @@ export default function QuestionnaireImportWizard({ request, slug, onDone }) {
           <h3>
             {undone.removedCount} {undone.removedCount === 1 ? "profile" : "profiles"} removed
           </h3>
+          {undone.failures?.length ? <div className="pb-qimport-error" role="alert">
+            {undone.failures.length} profiles could not be removed. Try undoing this import again.
+            <Button variant="ghost" disabled={Boolean(busy)} onClick={undo}>Retry undo</Button>
+          </div> : null}
           <p>
             {undone.keptClaimedCount
               ? `${undone.keptClaimedCount} ${undone.keptClaimedCount === 1 ? "person has" : "people have"} already signed in and confirmed their profile, so those accounts are theirs now and were left alone.`
-              : "Nothing from that import is left. You can upload a corrected file whenever you are ready."}
+              : undone.failures?.length
+                ? "Some profiles remain from this import."
+                : "The unclaimed profiles created by this import were removed. Updates to existing profiles are kept."}
           </p>
           <div className="pb-qimport-actions">
             <Button onClick={() => { setStep("upload"); setAnalysis(null); setResult(null); setUndone(null); }}>

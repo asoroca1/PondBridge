@@ -106,7 +106,7 @@ export function validateRows(rows = []) {
   return { ready, problems };
 }
 
-export default function PeopleAddView({ actions, storage, request, slug = "", networkName = "", onDone }) {
+export default function PeopleAddView({ actions, storage, request, download, slug = "", networkName = "", onDone }) {
   // Two ways in, because from a director's side they answer the same question:
   // I have a list of people, get them into the site. They differ only in how
   // much each one carries.
@@ -292,7 +292,7 @@ export default function PeopleAddView({ actions, storage, request, slug = "", ne
     return (
       <>
         {modeSwitch}
-        <QuestionnaireImportWizard request={request} slug={slug} onDone={onDone} />
+        <QuestionnaireImportWizard request={request} download={download} slug={slug} onDone={onDone} />
       </>
     );
   }
