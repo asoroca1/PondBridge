@@ -5,6 +5,8 @@ module.exports = {
   testMatch: [
     "**/tests/stripeWebhookCompatibility.test.js",
     "**/tests/authSecurityGuards.test.js",
+    "**/tests/realtimeAuthSecurity.test.js",
+    "**/tests/familyTreePrivacySecurity.test.js",
     "**/tests/objectUrlKeyRecovery.test.js",
     "**/tests/legacyCedarCompatAuthBoundary.test.js",
     "**/tests/accessDecisionEmailBranding.test.js",
