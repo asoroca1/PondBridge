@@ -1235,7 +1235,8 @@ export async function sendInviteEmail({
   customSubject = "",
   customMessage = "",
   firstName = "",
-  lastName = ""
+  lastName = "",
+  idempotencyKey = ""
 }) {
   const branding = buildTenantEmailBranding(tenant, { stream: "bulk" });
   const mergeTagValues = {
@@ -1269,7 +1270,7 @@ export async function sendInviteEmail({
     subject,
     text,
     html,
-    idempotencyKey: buildScopedIdempotencyKey(`invite/${tenant.slug}`, token),
+    idempotencyKey: idempotencyKey || buildScopedIdempotencyKey(`invite/${tenant.slug}`, token),
     tags: [
       { name: "category", value: "invite" },
       { name: "tenant", value: tenant.slug || "tenant" }
