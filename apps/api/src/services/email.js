@@ -172,11 +172,11 @@ function tenantFromAddress(baseAddress = "", tenant = {}) {
     .slice(0, 42);
   if (!tenantToken) return normalizedBase;
 
-  const localPartPrefix = "network";
+  // A plus-addressed From reads as machine-generated to filters and to people.
+  // Resend accepts any local part on a verified domain, so the tenant gets a
+  // plain address of its own instead of a tag on a shared mailbox.
   const maxLocalLength = 64;
-  const suffixBudget = Math.max(0, maxLocalLength - (localPartPrefix.length + 1));
-  const boundedToken = tenantToken.slice(0, suffixBudget);
-  return `${localPartPrefix}+${boundedToken}@${domain}`;
+  return `${tenantToken.slice(0, maxLocalLength)}@${domain}`;
 }
 
 function normalizeFromAddress(value = "") {
@@ -999,16 +999,32 @@ export async function sendBulkTransactionalEmail({
   const normalizedFrom = normalizeFromAddress(from || env.EMAIL_FROM);
   const resendBatchEnabled = asBoolean(env.RESEND_BATCH_ENABLED, true);
 
+  // Personalization does not force the slow path: every item in a Resend batch
+  // carries its own html, text and headers, so merge tags and per-recipient
+  // unsubscribe links survive batching. Attachments and scheduling do not.
   const canUseResendBatchApi =
     mode === "resend" &&
     resendBatchEnabled &&
     normalizedStrategy === "per-recipient" &&
     normalizedAttachments.length === 0 &&
-    !normalizedScheduledAt &&
-    !personalizer;
+    !normalizedScheduledAt;
 
+  // Resend caps a batch at 100 messages. A personalized batch also carries a
+  // full copy of the body per recipient, so keep the encoded request under
+  // RESEND_BATCH_MAX_BYTES rather than trusting the message count alone.
+  const resendBatchItemBytes = Buffer.byteLength(String(html || "") + String(text || ""), "utf8") + 512;
+  const resendBatchByteBudget = toBoundedInt(
+    env.RESEND_BATCH_MAX_BYTES,
+    5_000_000,
+    100_000,
+    30_000_000
+  );
+  const resendBatchCeiling = Math.max(
+    1,
+    Math.min(100, Math.floor(resendBatchByteBudget / Math.max(1, resendBatchItemBytes)))
+  );
   const effectiveBatchSize = canUseResendBatchApi
-    ? Math.min(normalizedBatchSize, 100)
+    ? Math.min(normalizedBatchSize, resendBatchCeiling)
     : normalizedBatchSize;
   const batches = chunk(deliverableRecipients, effectiveBatchSize);
   const failures = [];
@@ -1043,11 +1059,17 @@ export async function sendBulkTransactionalEmail({
         if (replyToList.length > 0) {
           item.reply_to = replyToList.length === 1 ? replyToList[0] : replyToList;
         }
-        if (Object.keys(normalizedHeaders).length > 0) item.headers = normalizedHeaders;
+        const personalized = typeof personalizer === "function" ? personalizer(recipient) : null;
+        const itemHeaders = personalized?.headers
+          ? normalizeResendHeaders({ ...normalizedHeaders, ...personalized.headers })
+          : normalizedHeaders;
+        if (Object.keys(itemHeaders).length > 0) item.headers = itemHeaders;
         if (normalizedTags.length > 0) item.tags = normalizedTags;
         if (normalizedTopicId) item.topic_id = normalizedTopicId;
-        if (html) item.html = html;
-        if (text) item.text = text;
+        const itemHtml = personalized?.html || html;
+        const itemText = personalized?.text || text;
+        if (itemHtml) item.html = itemHtml;
+        if (itemText) item.text = itemText;
         if (!item.html && !item.text) item.text = " ";
         return item;
       });

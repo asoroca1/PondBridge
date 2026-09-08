@@ -324,6 +324,12 @@ export const env = {
   RESEND_MAX_RETRIES: toBoundedInt(process.env.RESEND_MAX_RETRIES, 2, 0, 5),
   RESEND_RETRY_BASE_DELAY_MS: toBoundedInt(process.env.RESEND_RETRY_BASE_DELAY_MS, 300, 0, 10000),
   RESEND_BATCH_ENABLED: toBoolean(process.env.RESEND_BATCH_ENABLED, true),
+  RESEND_BATCH_MAX_BYTES: toBoundedInt(
+    process.env.RESEND_BATCH_MAX_BYTES,
+    5_000_000,
+    100_000,
+    30_000_000
+  ),
   EMAIL_SUPPRESSION_ENABLED: toBoolean(process.env.EMAIL_SUPPRESSION_ENABLED, true),
   EMAIL_PREFERENCE_TOKEN_SECRET:
     String(process.env.EMAIL_PREFERENCE_TOKEN_SECRET || process.env.JWT_SECRET || "").trim(),
