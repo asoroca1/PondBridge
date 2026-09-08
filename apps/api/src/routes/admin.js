@@ -48,8 +48,11 @@ import {
   AiGenerationModel
 } from "../db/models/index.js";
 import { findImportReportForTenant, runTenantCsvImport } from "../services/csvImport.js";
-import { IMPORT_FIELDS } from "../services/importFieldMap.js";
+import { IMPORT_FIELDS, coerceCell } from "../services/importFieldMap.js";
 import { proposeImportMapping } from "../services/importColumnMapperAi.js";
+import { cleanImportValues } from "../services/importValueCleanerAi.js";
+import { cellKey } from "../services/importValueCleaner.js";
+import { parseImportCsv } from "../services/importCsvParse.js";
 import { env } from "../config/env.js";
 import {
   buildTenantEmailBranding,
@@ -8168,6 +8171,25 @@ function parseMappingField(value) {
   }
 }
 
+/**
+ * Rebuilds the rewrite map from the before/after pairs a director approved in the
+ * dry-run preview. Each one is put back through the field's own parser, so an
+ * edited or forged value is no more trusted than the model's original answer.
+ */
+function rewritesFromApprovals(value) {
+  const approvals = parseMappingField(value);
+  const list = Array.isArray(approvals) ? approvals : [];
+  const cleaned = new Map();
+  for (const entry of list) {
+    const field = String(entry?.field || "").trim();
+    const before = String(entry?.before ?? "").trim();
+    const after = coerceCell(field, entry?.after);
+    if (!field || !before || after === null) continue;
+    cleaned.set(cellKey(field, before), after);
+  }
+  return cleaned;
+}
+
 async function handleImport(req, res, next, { dryRun }) {
   try {
     if (!req.file?.buffer) {
@@ -8177,18 +8199,37 @@ async function handleImport(req, res, next, { dryRun }) {
     }
 
     const mapping = parseMappingField(req.body?.mapping);
+
+    // The dry run works out the rewrites and shows them; the commit applies only
+    // the ones that came back approved. Running the cleaner again at commit time
+    // would spend the model's budget twice and could return something the
+    // director never saw.
+    let cleanup = { cleaned: new Map(), preview: [], ai: { used: false, reason: "not_requested" } };
+    if (dryRun && String(req.body?.useAiCleanup ?? "true") !== "false") {
+      cleanup = await cleanImportValues({
+        tenantId: req.tenant._id,
+        actorUserId: req.user.id,
+        rows: parseImportCsv(req.file.buffer),
+        mapping
+      });
+    } else if (!dryRun) {
+      cleanup = { ...cleanup, cleaned: rewritesFromApprovals(req.body?.approvedRewrites) };
+    }
+
     const result = await runTenantCsvImport({
       tenantId: req.tenant._id,
       userId: req.user.id,
       fileName: req.file.originalname,
       csvBuffer: req.file.buffer,
       mapping,
+      cleanedValues: cleanup.cleaned,
       options: {
         dryRun,
         enableFuzzyMatch: String(req.body?.enableFuzzyMatch || "") === "true",
         fuzzyDistance: req.body?.fuzzyDistance
       }
     });
+    result.cleanup = { rewrites: cleanup.preview, ai: cleanup.ai };
 
     if (!dryRun) {
       await writeAdminAudit(req, "admin_questionnaire_import", {

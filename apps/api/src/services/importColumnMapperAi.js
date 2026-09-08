@@ -27,7 +27,8 @@ export const IMPORT_MAPPING_PROMPT_VERSION = "questionnaire-import-mapping-v1.0"
 
 let openAIClient = null;
 
-function getOpenAIClient() {
+/** Shared with the value cleaner so both tiers use one client and one timeout. */
+export function getSharedOpenAIClient() {
   if (!env.OPENAI_API_KEY) return null;
   if (!openAIClient) {
     openAIClient = new OpenAI({
@@ -65,7 +66,7 @@ function safetyIdentifier({ tenantId = "", actorUserId = "" } = {}) {
 }
 
 async function askModelToMapColumns({ tenantId, actorUserId, unmappedHeaders, samples }) {
-  const client = getOpenAIClient();
+  const client = getSharedOpenAIClient();
   const provider = getMapperProviderStatus();
   if (!client || !provider.configured) {
     const error = new Error("AI column mapping is not configured.");

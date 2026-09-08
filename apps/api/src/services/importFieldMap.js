@@ -188,6 +188,17 @@ export function coerceCell(path, rawValue) {
   }
 }
 
+/**
+ * Identifies one (field, raw answer) pair across the import.
+ *
+ * Defined here, beside the parser it belongs to, because the value cleaner builds
+ * these keys and this file reads them — two copies of the format drifted apart
+ * once already and the rewrites silently stopped applying.
+ */
+export function cellKey(path, rawValue) {
+  return `${path}\u0000${String(rawValue ?? "").trim()}`;
+}
+
 function assignPath(target, path, value) {
   const segments = path.split(".");
   let cursor = target;
@@ -215,8 +226,12 @@ function assignPath(target, path, value) {
  * Anything a row leaves blank is simply absent from the result, which is what
  * lets a half-filled questionnaire import without erasing what is already on a
  * profile.
+ *
+ * `cleanedValues` is the optional map of rewrites for cells this file's parsers
+ * could not read. It only ever fills a cell that would otherwise have been
+ * dropped; it can never override a value that parsed on its own.
  */
-export function buildImportBody(row = {}, mapping = {}) {
+export function buildImportBody(row = {}, mapping = {}, cleanedValues = null) {
   const body = {};
   const skipped = [];
 
@@ -234,7 +249,14 @@ export function buildImportBody(row = {}, mapping = {}) {
         skipped.push({ column, path, reason: "unknown_field" });
         continue;
       }
-      const value = coerceCell(path, rawValue);
+      let value = coerceCell(path, rawValue);
+      if (value === null && cleanedValues) {
+        // A rewrite the value cleaner produced and a director approved. It was put
+        // back through this same parser before it got here, so it is a value a
+        // hand-typed answer could equally have produced.
+        const rewritten = cleanedValues.get(cellKey(path, rawValue));
+        if (rewritten !== undefined) value = rewritten;
+      }
       if (value === null) {
         skipped.push({ column, path, reason: "unparseable" });
         continue;

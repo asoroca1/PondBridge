@@ -1,10 +1,10 @@
 import crypto from "crypto";
-import { parse as parseCsv } from "csv-parse/sync";
 import { stringify } from "csv-stringify/sync";
 import { UserModel, ProfileModel, ImportReportModel } from "../db/models/index.js";
 import { collectAll } from "../db/queryLimits.js";
 import { hashPassword } from "../utils/auth.js";
 import { buildImportBody, isKnownImportField } from "./importFieldMap.js";
+import { parseImportCsv } from "./importCsvParse.js";
 import { profilePayloadFromBody } from "./profilePayload.js";
 
 /**
@@ -319,6 +319,7 @@ export async function runTenantCsvImport({
   fileName,
   csvBuffer,
   mapping = {},
+  cleanedValues = null,
   options = {}
 }) {
   const dryRun = Boolean(options.dryRun);
@@ -339,22 +340,7 @@ export async function runTenantCsvImport({
     throw error;
   }
 
-  const csvText = Buffer.isBuffer(csvBuffer) ? csvBuffer.toString("utf8") : String(csvBuffer || "");
-
-  let parsedRows = [];
-  try {
-    parsedRows = parseCsv(csvText, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-      bom: true,
-      relax_column_count: true
-    });
-  } catch (error) {
-    const csvError = new Error(error.message || "Invalid CSV format");
-    csvError.code = "CSV_INVALID_FORMAT";
-    throw csvError;
-  }
+  const parsedRows = parseImportCsv(csvBuffer);
 
   // These build the dedupe maps for the whole import, so they have to be complete.
   // A capped read makes every member past the first 1,000 look new, which would
@@ -388,7 +374,7 @@ export async function runTenantCsvImport({
   for (let index = 0; index < parsedRows.length; index += 1) {
     const rowNumber = index + 2;
     const rawRow = parsedRows[index];
-    const { body, skipped } = buildImportBody(rawRow, mapping);
+    const { body, skipped } = buildImportBody(rawRow, mapping, cleanedValues);
 
     const email = normalizeEmail(body.email || "");
     if (!email) {
