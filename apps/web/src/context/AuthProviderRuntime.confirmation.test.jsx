@@ -161,6 +161,35 @@ describe("AuthProviderRuntime confirmation-gated sessions", () => {
     expect(sessionStorage.getItem(STORAGE_KEYS.sessionToken)).toBeNull();
   });
 
+  it("clears a prior legacy confirmation route signal when a later refresh receives 401", async () => {
+    seedStoredLegacySession();
+    mocks.requestJson.mockRejectedValueOnce(confirmationError());
+    let auth = null;
+
+    render(<LegacyAuthProvider><AuthProbe onContext={(value) => { auth = value; }} /></LegacyAuthProvider>);
+    await waitFor(() => {
+      expect(snapshot()).toMatchObject({
+        token: "legacy-pending-token",
+        authenticated: true,
+        bootstrapError: expect.stringContaining("ACCOUNT_CONFIRMATION_REQUIRED")
+      });
+    });
+
+    mocks.requestJson.mockRejectedValueOnce(unauthorizedError());
+    await expect(auth.refreshSession({ tenantSlug: "greenlane" })).resolves.toMatchObject({
+      ok: false,
+      user: null
+    });
+    await waitFor(() => {
+      expect(snapshot()).toMatchObject({
+        token: "",
+        userId: "",
+        authenticated: false,
+        bootstrapError: ""
+      });
+    });
+  });
+
   it("keeps Clerk state on a non-strict confirmation refresh but rejects strict tenant sync without clearing it", async () => {
     seedStoredLegacySession();
     mocks.requestJson.mockImplementation(async (path) => {
@@ -189,5 +218,51 @@ describe("AuthProviderRuntime confirmation-gated sessions", () => {
       authenticated: true,
       bootstrapError: expect.stringContaining("ACCOUNT_CONFIRMATION_REQUIRED")
     });
+  });
+
+  it("keeps a legacy override created by Clerk login when its refresh is confirmation-gated", async () => {
+    mocks.requestJson.mockResolvedValue({
+      user: pendingUser,
+      tenant: { slug: "greenlane" }
+    });
+    let auth = null;
+
+    render(<ClerkBackedAuthProvider><AuthProbe onContext={(value) => { auth = value; }} /></ClerkBackedAuthProvider>);
+    await waitFor(() => {
+      expect(snapshot()).toMatchObject({
+        token: "clerk-pending-token",
+        userId: "pending-member",
+        authenticated: true,
+        bootstrapError: ""
+      });
+    });
+
+    auth.login("stored-legacy-override", pendingUser);
+    await waitFor(() => {
+      expect(snapshot()).toMatchObject({
+        token: "stored-legacy-override",
+        userId: "pending-member",
+        authenticated: true
+      });
+    });
+
+    mocks.requestJson.mockRejectedValueOnce(confirmationError());
+    await expect(auth.refreshSession({ tenantSlug: "greenlane" })).resolves.toMatchObject({
+      confirmationRequired: true,
+      sessionToken: "stored-legacy-override",
+      user: pendingUser
+    });
+    await waitFor(() => {
+      expect(snapshot()).toMatchObject({
+        token: "stored-legacy-override",
+        userId: "pending-member",
+        authenticated: true,
+        bootstrapError: expect.stringContaining("ACCOUNT_CONFIRMATION_REQUIRED")
+      });
+    });
+    expect(mocks.requestJson).toHaveBeenLastCalledWith("/api/auth/session", expect.objectContaining({
+      token: "stored-legacy-override",
+      headers: { "X-Tenant-Slug": "greenlane" }
+    }));
   });
 });
