@@ -14,6 +14,10 @@ import {
 } from "../lib/authMode.js";
 import { ACTIVITY_CHECK_INTERVAL_MS, createIdleWatcher } from "../lib/idleActivity.js";
 import { settleAuthBootstrap } from "../lib/authReadiness.js";
+import {
+  ACCOUNT_CONFIRMATION_REQUIRED_CODE,
+  isAccountConfirmationRequired
+} from "../lib/accountConfirmation.js";
 
 const IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
 const TAB_AUTH_SESSION_KEY = "pondbridgeTabAuthSession";
@@ -43,6 +47,14 @@ const NATIVE_APP = isNativeApp();
 const DEMO_TENANT_FLAG_CACHE_TTL_MS = 5 * 60 * 1000;
 const demoTenantFlagCache = new Map();
 
+function accountConfirmationBootstrapError(error) {
+  if (!isAccountConfirmationRequired(error)) return "";
+  const message = String(
+    error?.payload?.error?.message || error?.message || "Account confirmation required"
+  ).trim();
+  return `${ACCOUNT_CONFIRMATION_REQUIRED_CODE}: ${message}`;
+}
+
 function inferTenantSlugForSessionRequest() {
   if (typeof window === "undefined") return "";
   const pathname = String(window.location.pathname || "");
@@ -68,6 +80,7 @@ function isAuthEntryRoute(pathname = "") {
     path.includes("/login") ||
     path.includes("/auth/callback") ||
     path.includes("/create-account") ||
+    path.includes("/account-confirmation") ||
     path.includes("/director-claim") ||
     path.includes("/director-create-account")
   );
@@ -276,7 +289,7 @@ function readStoredSessionCandidate(tenantSlug = "") {
   return { candidateToken, candidateUser, resolvedTenantSlug };
 }
 
-function LegacyAuthProvider({ children }) {
+export function LegacyAuthProvider({ children }) {
   // Read the cached session once, at mount. readAuthFromStorage() writes back
   // into session storage, and inferTenantSlugForSessionRequest() reads the
   // current URL, so doing this on every render made the provider's own boot
@@ -306,6 +319,7 @@ function LegacyAuthProvider({ children }) {
   // verification finishes in the background. Invalid sessions are still
   // cleared by refreshSession and routed to sign-in.
   const [sessionReady, setSessionReady] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState("");
   const bootstrapCompleteRef = useRef(false);
 
   useEffect(() => {
@@ -320,6 +334,7 @@ function LegacyAuthProvider({ children }) {
       if (!NATIVE_APP && FORCE_RELOGIN_ON_TAB_CLOSE && !hasTabSessionAuthenticated()) {
         setToken("");
         setUser(null);
+        setBootstrapError("");
         setSessionReady(true);
         return;
       }
@@ -328,6 +343,7 @@ function LegacyAuthProvider({ children }) {
       if (!cachedSessionMatchesTenant(next.user, nextTenantSlug)) {
         setToken("");
         setUser(null);
+        setBootstrapError("");
         setSessionReady(true);
         clearAuthStorage();
         clearTabSessionAuthenticated();
@@ -336,6 +352,7 @@ function LegacyAuthProvider({ children }) {
       }
       setToken(next.token || "");
       setUser(normalizeScopedUserShape(next.user, { tenantSlug: nextTenantSlug }));
+      setBootstrapError("");
       setSessionReady(true);
     }
 
@@ -358,6 +375,7 @@ function LegacyAuthProvider({ children }) {
     writeAuthToStorage(nextToken || "", normalized);
     clearTabLoginIntent();
     setSessionReady(true);
+    setBootstrapError("");
   }, []);
 
   const logout = useCallback(() => {
@@ -367,6 +385,7 @@ function LegacyAuthProvider({ children }) {
     clearTabSessionAuthenticated();
     clearTabLoginIntent();
     setSessionReady(true);
+    setBootstrapError("");
   }, []);
 
   useIdleLogout({
@@ -396,6 +415,7 @@ function LegacyAuthProvider({ children }) {
         setUser(normalizedUser);
         markTabSessionAuthenticated();
         writeAuthToStorage(token || "", normalizedUser);
+        setBootstrapError("");
         return {
           ok: Boolean(normalizedUser),
           authProvider: payload?.authProvider || "legacy",
@@ -403,8 +423,26 @@ function LegacyAuthProvider({ children }) {
         };
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
+          if (isAccountConfirmationRequired(error)) {
+            const message = String(error?.payload?.error?.message || error?.message || "Account confirmation required").trim();
+            markTabSessionAuthenticated();
+            writeAuthToStorage(token || "", user);
+            setSessionReady(true);
+            // writeAuthToStorage synchronously notifies this provider's storage
+            // listener, which clears stale bootstrap errors. Set the current
+            // gate error after that notification so App can route reliably.
+            setBootstrapError(`${ACCOUNT_CONFIRMATION_REQUIRED_CODE}: ${message}`);
+            return {
+              ok: false,
+              authProvider: "legacy",
+              confirmationRequired: true,
+              nextRoute: String(error?.payload?.error?.nextRoute || "/t/greenlane/account-confirmation"),
+              user
+            };
+          }
           setToken("");
           setUser(null);
+          setBootstrapError("");
           clearAuthStorage();
           clearTabSessionAuthenticated();
           clearTabLoginIntent();
@@ -414,7 +452,7 @@ function LegacyAuthProvider({ children }) {
         throw error;
       }
     },
-    [token]
+    [token, user]
   );
 
   useEffect(() => {
@@ -440,7 +478,7 @@ function LegacyAuthProvider({ children }) {
       isReady: sessionReady,
       authProvider: "legacy",
       authConfigError: "",
-      bootstrapError: "",
+      bootstrapError,
       clerkLoadTimedOut: false,
       sessionWarningMinutes: 0,
       dismissSessionWarning: () => {},
@@ -457,7 +495,7 @@ function LegacyAuthProvider({ children }) {
         writeAuthToStorage(token || "", normalized);
       }
     }),
-    [login, logout, refreshSession, sessionReady, token, user]
+    [bootstrapError, login, logout, refreshSession, sessionReady, token, user]
   );
 
   // Releases any request held while the token was being restored. Runs for
@@ -512,7 +550,7 @@ function getTokenExpiry(jwt) {
   }
 }
 
-function ClerkBackedAuthProvider({ children }) {
+export function ClerkBackedAuthProvider({ children }) {
   // Hydrate cached user from localStorage on mount so returning users
   // see content immediately instead of a blank flash while Clerk loads.
   //
@@ -656,7 +694,7 @@ function ClerkBackedAuthProvider({ children }) {
       const resolvedTenantSlug = String(tenantSlug || inferTenantSlugForSessionRequest() || "")
         .trim()
         .toLowerCase();
-      const { candidateToken } = readStoredSessionCandidate(resolvedTenantSlug);
+      const { candidateToken, candidateUser } = readStoredSessionCandidate(resolvedTenantSlug);
       if (!candidateToken) return null;
 
       const shouldRestore = await shouldPreferStoredLegacySession({
@@ -686,7 +724,23 @@ function ClerkBackedAuthProvider({ children }) {
         clearTabLoginIntent();
         setBootstrapError("");
         return payload;
-      } catch {
+      } catch (error) {
+        const confirmationError = accountConfirmationBootstrapError(error);
+        if (confirmationError) {
+          legacySessionOverrideRef.current = true;
+          setToken(candidateToken);
+          setUser(candidateUser);
+          writeSessionToken(candidateToken);
+          markTabSessionAuthenticated();
+          writeAuthToStorage(candidateToken, candidateUser);
+          setBootstrapError(confirmationError);
+          return {
+            confirmationRequired: true,
+            nextRoute: String(error?.payload?.error?.nextRoute || "/t/greenlane/account-confirmation"),
+            sessionToken: candidateToken,
+            user: candidateUser
+          };
+        }
         if (legacySessionOverrideRef.current) {
           legacySessionOverrideRef.current = false;
         }
@@ -752,6 +806,18 @@ function ClerkBackedAuthProvider({ children }) {
         if (!bootstrapDoneRef.current) {
           bootstrapDoneRef.current = true;
           setSessionRefreshing(false);
+        }
+        if (restoredLegacyPayload.confirmationRequired && strictTenantSync) {
+          const error = new Error("Account confirmation required");
+          error.status = 403;
+          error.payload = {
+            error: {
+              code: ACCOUNT_CONFIRMATION_REQUIRED_CODE,
+              message: "Account confirmation required",
+              nextRoute: restoredLegacyPayload.nextRoute
+            }
+          };
+          throw error;
         }
         return restoredLegacyPayload;
       }
@@ -827,6 +893,23 @@ function ClerkBackedAuthProvider({ children }) {
             isSignedIn &&
             !strictTenantSync &&
             (!isTenantScopedRefresh || currentUserStillMatchesTenant);
+          const confirmationError = accountConfirmationBootstrapError(error);
+          if (confirmationError) {
+            setToken(clerkToken);
+            writeSessionToken(clerkToken);
+            setBootstrapError(confirmationError);
+            markTabSessionAuthenticated();
+            if (currentScopedUser && currentUserStillMatchesTenant) {
+              setUser(currentScopedUser);
+              writeAuthToStorage(clerkToken, currentScopedUser);
+            }
+            if (strictTenantSync) throw error;
+            return {
+              confirmationRequired: true,
+              nextRoute: String(error?.payload?.error?.nextRoute || "/t/greenlane/account-confirmation"),
+              user: currentScopedUser
+            };
+          }
           if (preserveCachedSession) {
             markTabSessionAuthenticated();
             writeAuthToStorage(clerkToken, currentScopedUser || userRef.current);
@@ -1111,6 +1194,7 @@ function ClerkBackedAuthProvider({ children }) {
   const logout = useCallback(async () => {
     clearTabLoginIntent();
     clearLocalAuth();
+    setBootstrapError("");
     try {
       await signOut();
     } catch {
